@@ -33,6 +33,25 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-01 현재 판단 · 최신 루프
 
+
+### 루프358 — leftover-token chrome body after label
+
+라벨 아래 `TBD` / `n/a`만 있는 본문. 첫 슬롯은 라벨, **이후 본문 슬롯이 모두** 미채움일 때만 제거(중간 stub+실본문 유지). 카피 발명 없음.
+
+검증: contracts heal-loop331-335-residuals 루프358.
+
+### 루프357 — dash / ellipsis-only chrome body slots
+
+라벨은 두고 본문만 `—` / `...` / `&mdash;`인 카드. `visibleText` dash 엔티티 정규화 + punct-only 미채움. 문장 중간 em dash 유지. 카피 발명 없음.
+
+검증: contracts heal-loop331-335-residuals 루프357.
+
+### 루프356 — numeric nbsp / ZWSP / spaced empty tag / empty heading
+
+`&#160;` / ZWSP / `<font color=red></font>` / 빈 `<h3>` 본문 슬롯. empty 태그를 공백 붕괴 전에 제거. chrome에서만 heading 슬롯. 카피 발명 없음.
+
+검증: contracts heal-loop331-335-residuals 루프356.
+
 ### 루프355 — 칸 번호 `스무 번째` 빈 카드
 
 루프351까지는 A–Z / 가…하 / 스무째까지만 빈 칸 번호로 본다. 띄어쓴 `스무 번째`만 있는 3열 카드가 빈 띠로 남았다. 그 제목만 제거. 번호+본문(`스무 번째 실카피`)은 유지. 문자·서수 leftover 트랙은 여기서 닫음. 카피 발명 없음. 공식 영문 카탈로그는 brief 없이 유지.
@@ -1057,6 +1076,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 - **완료 (루프355):** 칸 번호 `스무 번째` 빈 카드. 번호+본문 유지. 문자·서수 leftover 트랙 닫음.
 - **완료 (루프354):** 본문 있는 행에서 heading-only 카드만 제거. 칩 행·2열 제목+본문·크롬 라벨 칩 유지.
 - **완료 (루프353):** 빈 스페이서 혼합 행 제거. 전부 빈 크롬/스페이서면 행 전체 drop.
+- **완료 (루프356–358):** numeric nbsp/ZWSP/empty heading · dash/ellipsis body · leftover-token body(전 비라벨 슬롯 미채움). 실본문 유지.
 - **완료 (루프352):** 혼합 크롬+비크롬 행에서 빈 크롬만 제거. `.card` / `<ul>` 앵커 · column·영문 카탈로그 유지.
 - **완료 (루프345–351):** Process/Pricing/Roadmap 구조 spill · title cover center · 칸 번호 Z. flex-column orphan grid / ul spill / cross-grid list / orphan chrome / inline cardish / flow text-align / `기둥 Z` drop.
 - **완료 (루프344):** 빈 `<p>` / `<span>` 래퍼 본문 슬롯도 미채움. 미디어·라벨-only 칩·실본문 유지.
@@ -1488,6 +1508,9 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | heal: inline chrome cardish sibling close | ☑ 루프349 |
 | heal: title-only cover flow text-align center | ☑ 루프350 |
 | persist/preview: 칸 번호만 있는 3열 카드(Z) | ☑ 루프351 |
+| heal: numeric nbsp / ZWSP / spaced empty tag / empty heading | ☑ 루프356 |
+| heal: dash / ellipsis-only chrome body slots | ☑ 루프357 |
+| heal: leftover-token chrome body after label | ☑ 루프358 |
 | heal: 혼합 크롬+비크롬 행의 빈 크롬만 제거 | ☑ 루프352 |
 | heal: 빈 스페이서 혼합 행 제거 | ☑ 루프353 |
 | heal: 제목만 있는 카드 형제 제거 | ☑ 루프354 |
@@ -1521,7 +1544,15 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프353–355 · 스페이서 · 제목-only · 스무 번째)
+## 이번 루프 (루프356–358 · nbsp/dash/TBD body)
+
+- [x] 루프356 — numeric nbsp / ZWSP / empty heading
+- [x] 루프357 — dash / ellipsis body
+- [x] 루프358 — leftover-token body · mixed stub+실본문 유지
+- [x] heal-loop331-335-residuals 루프356–358
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프353–355 · 스페이서 · 제목-only · 스무 번째)
 
 - [x] 루프353 — 빈 스페이서 혼합 행 · 전부 빈 행 drop
 - [x] 루프354 — heading-only 카드 형제 제거. 칩 행·2열·라벨 칩 유지

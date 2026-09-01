@@ -673,6 +673,150 @@ describe('루프354 · title-only card peers', () => {
   });
 });
 
+describe('루프356 · numeric nbsp / ZWSP / empty heading / spaced empty tags', () => {
+  it('drops mixed-row chrome cards whose body is &#160; or ZWSP only', () => {
+    const html = [
+      '<div style="display:grid;grid-template-columns:repeat(3, minmax(0,1fr));gap:20px">',
+      `<div style="${chrome}"><div>LLM / NLP</div><div>Llama, vLLM</div></div>`,
+      `<div style="${chrome}"><div>DATA / MLOps</div><div><p>&#160;</p></div></div>`,
+      `<div style="${chrome}"><div>APP / UX</div><div><p>\u200b</p></div></div>`,
+      '</div>',
+    ].join('');
+    const out = dropUnfilledChromeCardPeersInAllocatedRows(html, brief);
+    expect(out).toContain('Llama, vLLM');
+    expect(out).not.toContain('DATA / MLOps');
+    expect(out).not.toContain('APP / UX');
+  });
+
+  it('drops empty <font> with attribute spaces and empty <h3> body slots', () => {
+    const html = [
+      '<div style="display:flex;gap:20px">',
+      `<div style="${chrome}"><div>LLM / NLP</div><div>Llama, vLLM</div></div>`,
+      `<div style="${chrome}"><div>DATA / MLOps</div><div><font color=red></font></div></div>`,
+      `<div style="${chrome}"><div>APP / UX</div><h3></h3></div>`,
+      '</div>',
+    ].join('');
+    const out = dropUnfilledChromeCardPeersInAllocatedRows(html, brief);
+    expect(out).toContain('Llama, vLLM');
+    expect(out).not.toContain('DATA / MLOps');
+    expect(out).not.toContain('APP / UX');
+  });
+
+  it('pipeline removes numeric-nbsp empty bodies without inventing copy', () => {
+    const html = [
+      '<section class="slide" data-screen-label="06 Tech Stack">',
+      '<h2>기술 스택</h2>',
+      '<div style="display:flex;gap:20px">',
+      `<div style="${chrome}"><div>LLM / NLP</div><div>Llama, vLLM</div></div>`,
+      `<div style="${chrome}"><div>DATA / MLOps</div><div><p>&#xA0;</p></div></div>`,
+      '</div>',
+      '</section>',
+    ].join('');
+    const out = healAiGeneratedDeckMarkup(html, brief);
+    expect(out).toContain('기술 스택');
+    expect(out).toContain('Llama, vLLM');
+    expect(out).not.toContain('DATA / MLOps');
+  });
+});
+
+describe('루프357 · dash / ellipsis-only chrome body slots', () => {
+  it('drops mixed-row chrome cards whose body is only — or ...', () => {
+    const html = [
+      '<div style="display:grid;grid-template-columns:repeat(3, minmax(0,1fr));gap:20px">',
+      `<div style="${chrome}"><div>LLM / NLP</div><div>Llama, vLLM</div></div>`,
+      `<div style="${chrome}"><div>DATA / MLOps</div><div>—</div></div>`,
+      `<div style="${chrome}"><div>APP / UX</div><div>...</div></div>`,
+      '</div>',
+    ].join('');
+    const out = dropUnfilledChromeCardPeersInAllocatedRows(html, brief);
+    expect(out).toContain('Llama, vLLM');
+    expect(out).not.toContain('DATA / MLOps');
+    expect(out).not.toContain('APP / UX');
+  });
+
+  it('drops &mdash; / &#8212; body entities without inventing copy', () => {
+    const html = [
+      '<div style="display:flex;gap:20px">',
+      `<div style="${chrome}"><div>LLM / NLP</div><div>Llama, vLLM</div></div>`,
+      `<div style="${chrome}"><div>DATA / MLOps</div><div><p>&mdash;</p></div></div>`,
+      `<div style="${chrome}"><div>INFRA</div><div>&#8212;</div></div>`,
+      '</div>',
+    ].join('');
+    const out = dropUnfilledChromeCardPeersInAllocatedRows(html, brief);
+    expect(out).toContain('Llama, vLLM');
+    expect(out).not.toContain('DATA / MLOps');
+    expect(out).not.toContain('INFRA');
+  });
+
+  it('keeps real copy that uses an em dash mid-sentence', () => {
+    const html = [
+      '<div style="display:flex;gap:20px">',
+      `<div style="${chrome}"><div>LLM / NLP</div><div>Llama — vLLM 기반</div></div>`,
+      `<div style="${chrome}"><div>DATA / MLOps</div><div>—</div></div>`,
+      '</div>',
+    ].join('');
+    const out = dropUnfilledChromeCardPeersInAllocatedRows(html, brief);
+    expect(out).toContain('Llama — vLLM 기반');
+    expect(out).not.toContain('DATA / MLOps');
+  });
+
+  it('pipeline removes dash-only bodies in one heal pass', () => {
+    const html = [
+      '<section class="slide" data-screen-label="06 Tech Stack">',
+      '<h2>기술 스택</h2>',
+      '<div style="display:flex;gap:20px">',
+      `<div style="${chrome}"><div>LLM / NLP</div><div>Llama, vLLM</div></div>`,
+      `<div style="${chrome}"><div>DATA / MLOps</div><div>&hellip;</div></div>`,
+      '</div>',
+      '</section>',
+    ].join('');
+    const out = healAiGeneratedDeckMarkup(html, brief);
+    expect(out).toContain('기술 스택');
+    expect(out).toContain('Llama, vLLM');
+    expect(out).not.toContain('DATA / MLOps');
+  });
+});
+
+describe('루프358 · leftover-token chrome body after label', () => {
+  it('drops cards whose body under a label is only TBD / n/a', () => {
+    const html = [
+      '<div style="display:flex;gap:20px">',
+      `<div style="${chrome}"><div>LLM / NLP</div><div>Llama, vLLM</div></div>`,
+      `<div style="${chrome}"><div>DATA / MLOps</div><div>TBD</div></div>`,
+      `<div style="${chrome}"><div>APP / UX</div><div>n/a</div></div>`,
+      '</div>',
+    ].join('');
+    const out = dropUnfilledChromeCardPeersInAllocatedRows(html, brief);
+    expect(out).toContain('Llama, vLLM');
+    expect(out).not.toContain('DATA / MLOps');
+    expect(out).not.toContain('APP / UX');
+  });
+
+  it('keeps TBD label when body has real copy', () => {
+    const html = [
+      '<div style="display:flex;gap:20px">',
+      `<div style="${chrome}"><div>TBD</div><div>실제 본문이 있습니다</div></div>`,
+      `<div style="${chrome}"><div>DATA / MLOps</div><div>TBD</div></div>`,
+      '</div>',
+    ].join('');
+    const out = dropUnfilledChromeCardPeersInAllocatedRows(html, brief);
+    expect(out).toContain('실제 본문이 있습니다');
+    expect(out).not.toContain('DATA / MLOps');
+  });
+
+  it('keeps a card when a middle stub sits beside later real copy', () => {
+    const html = [
+      '<div style="display:flex;gap:20px">',
+      `<div style="${chrome}"><div>LLM / NLP</div><div>TBD</div><div>Llama, vLLM</div></div>`,
+      `<div style="${chrome}"><div>DATA / MLOps</div><div>—</div></div>`,
+      '</div>',
+    ].join('');
+    const out = dropUnfilledChromeCardPeersInAllocatedRows(html, brief);
+    expect(out).toContain('Llama, vLLM');
+    expect(out).not.toContain('DATA / MLOps');
+  });
+});
+
 describe('healAiGeneratedDeckMarkup · neuralstudio.kr 회사소개 잔여', () => {
   it('applies 루프331 / 333 / 334 in a single heal pass', () => {
     const html = [

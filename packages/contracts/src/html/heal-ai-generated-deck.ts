@@ -56,6 +56,20 @@ function visibleText(html: string): string {
     .replace(/<svg\b[\s\S]*?<\/svg>/gi, ' SVG ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
+    // 루프356 — MiniMax sometimes emits numeric / hex nbsp instead of &nbsp;.
+    .replace(/&#0*160;/gi, ' ')
+    .replace(/&#x0*a0;/gi, ' ')
+    // 루프357 — dash / ellipsis entities left as literal text look "filled".
+    .replace(/&mdash;/gi, '—')
+    .replace(/&ndash;/gi, '–')
+    .replace(/&hellip;/gi, '…')
+    .replace(/&#0*8212;/gi, '—')
+    .replace(/&#x0*2014;/gi, '—')
+    .replace(/&#0*8211;/gi, '–')
+    .replace(/&#x0*2013;/gi, '–')
+    .replace(/&#0*8230;/gi, '…')
+    .replace(/&#x0*2026;/gi, '…')
+    .replace(/[\u00a0\u200b\u200c\u200d\u2060\ufeff\u00ad]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -1905,7 +1919,14 @@ function childLooksEmptyLeftoverPeer(child: DirectChildSpan): boolean {
  * leftover. An empty source is empty (not "has no placeholders").
  * 루프344 — empty wrapper tags (`<p></p>`, `<span></span>`,
  * `<p><br></p>`, `<p><span>&nbsp;</span></p>`) collapse across passes.
- * Media tags keep the slot filled so image cards survive.
+ * 루프356 — numeric `&nbsp;` (`&#160;` / `&#xA0;`), ZWSP/BOM/soft-hyphen,
+ * and empty tags whose attrs still contain spaces (`<font color=red>`)
+ * also collapse. Strip empty tags BEFORE collapsing all whitespace so
+ * attribute spaces are not glued into the tag name. Media tags keep the
+ * slot filled so image cards survive.
+ * 루프357 — dash/ellipsis body slots are handled in
+ * `chromeBodySlotLooksUnfilled` (not collapsed here) so real copy that
+ * mentions "—" mid-sentence stays.
  */
 function innerBlockContainsOnlyEmptyPlaceholders(html: string): boolean {
   let source = String(html ?? '');
@@ -1916,10 +1937,130 @@ function innerBlockContainsOnlyEmptyPlaceholders(html: string): boolean {
     source = source
       .replace(/<br\s*\/?>/gi, '')
       .replace(/&nbsp;/gi, '')
-      .replace(/\s+/g, '')
+      .replace(/&#0*160;/gi, '')
+      .replace(/&#x0*a0;/gi, '')
+      .replace(/[\u00a0\u200b\u200c\u200d\u2060\ufeff\u00ad]/g, '')
+      .replace(/>\s+</g, '><')
+      .replace(/^\s+|\s+$/g, '')
       .replace(/<([a-z][\w-]*)\b[^>]*><\/\1>/gi, '');
   }
-  return source === '';
+  return source.replace(/\s+/g, '') === '';
+}
+
+/**
+ * 루프357 — Chrome body under a real label is often only `—` / `...` /
+ * `&mdash;`. Whole-card leftover peer drop cannot see that because the
+ * label adds substance. Count dash/ellipsis-only slots as unfilled.
+ * 루프358 — Non-first body slots that are leftover tokens only (`TBD`,
+ * `n/a`) are unfilled too. First slot stays label-safe so `TBD` + real
+ * copy is kept.
+ */
+function chromeBodySlotLooksUnfilled(
+  inner: string,
+  opts: { allowLeftoverTokens?: boolean } = {},
+): boolean {
+  if (/<(?:img|svg|video|audio|canvas|iframe|picture|source)\b/i.test(inner)) return false;
+  if (visibleText(inner).length === 0) {
+    return innerBlockContainsOnlyEmptyPlaceholders(inner);
+  }
+  const compact = compactLeftoverPeerPlaceholder(inner);
+  if (!compact) return true;
+  const punct = LEFTOVER_PEER_PLACEHOLDER_PUNCT_RE.exec(compact);
+  if (punct && punct[0].length === compact.length) return true;
+  if (opts.allowLeftoverTokens) {
+    return leftoverPlaceholderTokenCount(compact) != null;
+  }
+  return false;
+}
+
+/**
+ * Body slots inside a chrome card — block children plus empty headings.
+ * Headings are not in GRID_BLOCK_CHILD_RE (a grid-level h2 must not count
+ * as a card column), but MiniMax often leaves `<h3></h3>` as the only
+ * “body” under a chrome label.
+ */
+function listChromeCardBodySlots(
+  html: string,
+  innerStart: number,
+  innerEnd: number,
+): DirectChildSpan[] {
+  const blocks = listDirectBlockChildSpans(html, innerStart, innerEnd);
+  const headingOpens = listDirectBlockChildOpensWithExtra(
+    html,
+    innerStart,
+    innerEnd,
+    /^(?:h[1-6])$/i,
+  );
+  if (headingOpens.length === 0) return blocks;
+  const spans: DirectChildSpan[] = [...blocks];
+  for (const open of headingOpens) {
+    const tag = tagNameFromOpen(open.open);
+    if (!tag) continue;
+    const close = findSameTagClose(html, tag, open.absEnd);
+    if (!close || close.closeStart > innerEnd) continue;
+    const closeTok = html.slice(close.closeStart).match(new RegExp(`^</${tag}\\s*>`, 'i'));
+    if (!closeTok) continue;
+    spans.push({
+      ...open,
+      tag,
+      inner: html.slice(open.absEnd, close.closeStart),
+      absCloseEnd: close.closeStart + closeTok[0].length,
+    });
+  }
+  spans.sort((a, b) => a.absStart - b.absStart);
+  return spans;
+}
+
+function listDirectBlockChildOpensWithExtra(
+  html: string,
+  innerStart: number,
+  innerEnd: number,
+  extraTagRe: RegExp,
+): Array<{ open: string; absStart: number; absEnd: number; style: string; attrs: string }> {
+  const opens: Array<{ open: string; absStart: number; absEnd: number; style: string; attrs: string }> = [];
+  let i = innerStart;
+  let depth = 0;
+  while (i < innerEnd) {
+    if (html.startsWith('<!--', i)) {
+      const end = html.indexOf('-->', i + 4);
+      i = end < 0 ? innerEnd : Math.min(innerEnd, end + 3);
+      continue;
+    }
+    const opaque = /^<(script|style)\b[^>]*>/i.exec(html.slice(i, innerEnd));
+    if (opaque) {
+      const tag = opaque[1]!;
+      const close = new RegExp(`</${tag}\\s*>`, 'i').exec(html.slice(i, innerEnd));
+      i = close ? i + close.index + close[0].length : innerEnd;
+      continue;
+    }
+    const closeM = /^<\/([a-zA-Z][\w-]*)\s*>/i.exec(html.slice(i, innerEnd));
+    if (closeM) {
+      if (depth > 0) depth -= 1;
+      i += closeM[0].length;
+      continue;
+    }
+    const openM = /^<([a-zA-Z][\w-]*)(\b[^>]*)>/i.exec(html.slice(i, innerEnd));
+    if (openM) {
+      const tagName = (openM[1] ?? '').toLowerCase();
+      const attrs = openM[2] ?? '';
+      const open = openM[0]!;
+      const selfClose = /\/\s*>$/.test(open) || HTML_VOID_ELEMENTS.has(tagName);
+      if (depth === 0 && extraTagRe.test(tagName)) {
+        opens.push({
+          open,
+          absStart: i,
+          absEnd: i + open.length,
+          style: extractInlineStyle(attrs),
+          attrs,
+        });
+      }
+      if (!selfClose) depth += 1;
+      i += open.length;
+      continue;
+    }
+    i += 1;
+  }
+  return opens;
 }
 
 function chromeCardBodyLooksUnfilled(
@@ -1931,19 +2072,22 @@ function chromeCardBodyLooksUnfilled(
   // 않도록 로컬에서 self-close 로 재작성해 자식 탐색을 안정화한다.
   const stripped = innerRaw.replace(/<br\b([^/>]*)>/gi, '<br$1/>');
   const stitched = `${html.slice(0, child.absEnd)}${stripped}${html.slice(child.absEnd + innerRaw.length)}`;
-  const slots = listDirectBlockChildSpans(stitched, child.absEnd, child.absEnd + stripped.length);
+  // 루프356 — empty `<h3></h3>` body under a chrome label (headings are
+  // not GRID_BLOCK_CHILD_RE so grid column counts stay intact).
+  // 루프357 — dash / ellipsis-only body slots.
+  // 루프358 — leftover-token body slots after the first (label-safe).
+  // Drop only when every non-label body slot is unfilled — a middle stub
+  // must not delete a later real-copy sibling (Bugbot 루프356–358).
+  const slots = listChromeCardBodySlots(stitched, child.absEnd, child.absEnd + stripped.length)
+    .filter((slot) => slot.tag !== 'br');
   if (slots.length < 1) return false;
-  let bodySlots = 0;
-  let emptyBodySlots = 0;
-  for (const slot of slots) {
-    if (slot.tag === 'br') continue;
-    const text = visibleText(slot.inner);
-    if (text.length === 0 && innerBlockContainsOnlyEmptyPlaceholders(slot.inner)) {
-      emptyBodySlots += 1;
-      bodySlots += 1;
-    }
+  if (slots.length === 1) {
+    return chromeBodySlotLooksUnfilled(slots[0]!.inner, { allowLeftoverTokens: true });
   }
-  return bodySlots >= 1 && emptyBodySlots === bodySlots;
+  const bodySlots = slots.slice(1);
+  return bodySlots.every((slot) =>
+    chromeBodySlotLooksUnfilled(slot.inner, { allowLeftoverTokens: true }),
+  );
 }
 
 function containerLooksLikeAllocatedCardRow(
@@ -3288,6 +3432,7 @@ export function stripDuplicatedInlineTailAfterSiblingClose(html: string): string
  * `flex-direction:column` · 영문 empty-brief 카탈로그 유지.
  * 루프352 — 전체 행 drop은 여전히 크롬-only. 혼합 비크롬 행은 342가
  * 빈 크롬만 제거한다.
+ * 루프356 — `&#160;` / ZWSP / 속성 공백 있는 empty tag / empty heading.
  */
 export function dropChromeCardGridsWithAllEmptyBodies(
   html: string,
@@ -3389,8 +3534,9 @@ function allocatedRowPeerLooksBodyFilled(html: string, child: DirectChildSpan): 
  * too. 루프344 — empty `<p>` / `<span>` wrappers also count as unfilled.
  * 루프352 — `.card` / `<ul>` 같은 비크롬 형제가 있어도 빈 크롬만 제거.
  * 루프353 — 빈 스페이서 형제도 같이 제거. 채워진 앵커가 없고 전부가
- * 빈 크롬/스페이서면 행 전체를 제거. Never invent copy. Column stacks
- * and official English catalogs stay intact.
+ * 빈 크롬/스페이서면 행 전체를 제거.
+ * 루프356–358 — numeric nbsp / dash·ellipsis / leftover-token body slots.
+ * Never invent copy. Column stacks and official English catalogs stay intact.
  */
 export function dropUnfilledChromeCardPeersInAllocatedRows(
   html: string,
@@ -4009,6 +4155,7 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // 루프343 — 빈 div / `&nbsp;`. 루프344 — 빈 `<p>` / `<span>` 래퍼.
   // 루프352 — `.card` / `<ul>` 혼합 행도 빈 크롬만 제거.
   // 루프353 — 빈 스페이서 형제 · 전부 빈 혼합 행 제거.
+  // 루프356–358 — nbsp/ZWSP/empty heading · dash body · TBD body.
   out = dropUnfilledChromeCardPeersInAllocatedRows(out, brief);
   // 루프354 — 본문 있는 행에서 heading-only 카드만 제거.
   out = dropTitleOnlyCardPeersInAllocatedRows(out, brief);
