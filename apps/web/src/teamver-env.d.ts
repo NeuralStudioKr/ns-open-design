@@ -24,6 +24,8 @@ interface ImportMetaEnv {
   readonly VITE_TEAMVER_SOURCE_HTML_COPY_ENABLE?: string;
   /** Manual Edit box resize/move/promote drag. Off in prod embed unless =1. */
   readonly VITE_TEAMVER_MANUAL_EDIT_BOX_DRAG_ENABLE?: string;
+  /** Template clone fill mode. Default prompt; deterministic is opt-in rollback-safe path. */
+  readonly VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE?: string;
   readonly VITE_TEAMVER_SITE_URL?: string;
   readonly VITE_TEAMVER_OG_IMAGE_URL?: string;
   /** BYOK streaming daemon message PUT throttle (ms). Set at Docker build via deploy .env. */

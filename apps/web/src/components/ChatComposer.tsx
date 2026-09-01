@@ -105,9 +105,13 @@ import {
   resolveCanvasSlideTemplate,
   type CanvasSlideQuickSettings,
 } from '../teamver/canvasSlideLaunch';
-import { seedTemplateClonedDeck } from '../teamver/seedTemplateClonedDeck';
+import {
+  fillTemplateClonedDeckDeterministically,
+  seedTemplateClonedDeck,
+} from '../teamver/seedTemplateClonedDeck';
 import {
   buildTemplateCloneContentFillSeed,
+  shouldUseDeterministicTemplateCloneFill,
   withTemplateCloneFillPluginInputs,
   withoutCanonicalDeckAttachments,
 } from '../teamver/templateCloneContentFill';
@@ -2255,7 +2259,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             && isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)
             && templateBinding.projectMetadata.selectedDeckTemplateId
           ) {
-            const seeded = await seedTemplateClonedDeck({
+            const cloneRequest = {
               projectId: id,
               pluginId: templateBinding.projectMetadata.selectedDeckTemplateId,
               templateTitle: selectedCanvasSlideTemplate.title,
@@ -2268,7 +2272,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               slideCountHint: canvasSlideQuickLengthToSlideCount(
                 canvasSlideQuickSettings.length,
               ),
-            });
+            };
+            const deterministicFill = shouldUseDeterministicTemplateCloneFill();
+            const seeded = deterministicFill
+              ? await fillTemplateClonedDeckDeterministically(cloneRequest)
+              : await seedTemplateClonedDeck(cloneRequest);
             if (seeded.ok) {
               onProjectFilesMaybeChanged?.();
               onRequestOpenFile?.(seeded.fileName);
@@ -2278,6 +2286,19 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             setCanvasSlideLaunchError(null);
             setCanvasSlideUserPrompt('');
             setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
+            if (deterministicFill && seeded.ok) {
+              void patchProject(id, {
+                metadata: {
+                  ...(projectMetadata ?? {}),
+                  ...templateBinding.projectMetadata,
+                  templateClonedDeckSeeded: !seeded.preservedFilled,
+                  templateCloneContentFilled: true,
+                  templateCloneContentFillPending: false,
+                  templateCloneFillMode: 'deterministic',
+                },
+              });
+              return;
+            }
             // Clone LOOK seed is optional. Fill always runs as compact CREATE
             // so a clone miss cannot fall through to Neutral / instruction dump.
             // Do NOT attach deck.html (truncated mid-CSS anchors a max_tokens hang).
@@ -2333,7 +2354,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               metadata: {
                 ...(projectMetadata ?? {}),
                 ...templateBinding.projectMetadata,
-                templateClonedDeckSeeded: Boolean(seeded.ok) && !seeded.preservedFilled,
+                templateClonedDeckSeeded: seeded.ok && !seeded.preservedFilled,
                 templateCloneContentFillPending: false,
               },
             });
@@ -2475,7 +2496,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           && isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)
           && templateBinding.projectMetadata.selectedDeckTemplateId
         ) {
-          const seeded = await seedTemplateClonedDeck({
+          const cloneRequest = {
             projectId: id,
             pluginId: templateBinding.projectMetadata.selectedDeckTemplateId,
             templateTitle: selectedCanvasSlideTemplate.title,
@@ -2485,7 +2506,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             slideCountHint: canvasSlideQuickLengthToSlideCount(
               canvasSlideQuickSettings.length,
             ),
-          });
+          };
+          const deterministicFill = shouldUseDeterministicTemplateCloneFill();
+          const seeded = deterministicFill
+            ? await fillTemplateClonedDeckDeterministically(cloneRequest)
+            : await seedTemplateClonedDeck(cloneRequest);
           if (seeded.ok) {
             onProjectFilesMaybeChanged?.();
             onRequestOpenFile?.(seeded.fileName);
@@ -2495,6 +2520,19 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           setCanvasSlideLaunchError(null);
           setCanvasSlideUserPrompt('');
           setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
+          if (deterministicFill && seeded.ok) {
+            void patchProject(id, {
+              metadata: {
+                ...(projectMetadata ?? {}),
+                ...templateBinding.projectMetadata,
+                templateClonedDeckSeeded: !seeded.preservedFilled,
+                templateCloneContentFilled: true,
+                templateCloneContentFillPending: false,
+                templateCloneFillMode: 'deterministic',
+              },
+            });
+            return;
+          }
           // Clone LOOK seed is optional. Fill always runs as compact CREATE
           // so a clone miss cannot fall through to Neutral / instruction dump.
           const fillSeed = buildTemplateCloneContentFillSeed({
@@ -2548,7 +2586,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             metadata: {
               ...(projectMetadata ?? {}),
               ...templateBinding.projectMetadata,
-              templateClonedDeckSeeded: Boolean(seeded.ok) && !seeded.preservedFilled,
+              templateClonedDeckSeeded: seeded.ok && !seeded.preservedFilled,
               templateCloneContentFillPending: false,
             },
           });

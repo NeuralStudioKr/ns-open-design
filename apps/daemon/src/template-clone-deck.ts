@@ -34,6 +34,8 @@ export type TemplateCloneDeckResult =
       previewPath: string;
       /** Existing filled deck.html was kept; FE must not re-stamp LOOK seed. */
       preservedFilled?: boolean;
+      /** True when the clone endpoint also marked content fill as complete. */
+      contentFilled?: boolean;
     }
   | {
       ok: false;
@@ -47,6 +49,8 @@ export type TemplateCloneDeckResult =
       message: string;
       status: number;
     };
+
+export type TemplateCloneDeckContentFillMode = 'prompt-fill' | 'deterministic-fill';
 
 async function readContainedTextFile(
   rootDir: string,
@@ -222,6 +226,7 @@ function buildDeckArtifactManifest(input: {
   pluginId: string;
   templateTitle: string;
   deckTitle?: string | null;
+  contentFillMode?: TemplateCloneDeckContentFillMode;
 }): Record<string, unknown> {
   const now = new Date().toISOString();
   return {
@@ -240,6 +245,13 @@ function buildDeckArtifactManifest(input: {
       identifier: 'deck',
       artifactType: 'deck',
       templateClonedDeckSeeded: true,
+      ...(input.contentFillMode === 'deterministic-fill'
+        ? {
+            templateCloneContentFilled: true,
+            templateCloneContentFillPending: false,
+            templateCloneFillMode: 'deterministic',
+          }
+        : {}),
       selectedDeckTemplateId: input.pluginId,
       ...(input.templateTitle
         ? { selectedDeckTemplateTitle: input.templateTitle }
@@ -283,6 +295,7 @@ export type SeedTemplateClonedDeckOnServerDeps = {
     projectId: string;
     pluginId: string;
     templateTitle: string;
+    contentFillMode: TemplateCloneDeckContentFillMode;
     /** User prompt to persist in chat (Clone skips model auto-send). */
     userInstruction?: string | null;
     sourceBrief?: string | null;
@@ -301,10 +314,13 @@ export async function seedTemplateClonedDeckOnServer(
     userInstruction?: string | null;
     deckTitle?: string | null;
     slideCountHint?: string | number | null;
+    contentFillMode?: TemplateCloneDeckContentFillMode;
   },
 ): Promise<TemplateCloneDeckResult> {
   const pluginId = String(input.pluginId ?? '').trim();
   const projectId = String(deps.projectId ?? '').trim();
+  const contentFillMode: TemplateCloneDeckContentFillMode =
+    input.contentFillMode === 'deterministic-fill' ? 'deterministic-fill' : 'prompt-fill';
   if (!pluginId || !projectId) {
     return {
       ok: false,
@@ -438,6 +454,7 @@ export async function seedTemplateClonedDeckOnServer(
           pluginId: loaded.templateId,
           templateTitle,
           deckTitle,
+          contentFillMode,
         }),
       },
       deps.metadata,
@@ -473,6 +490,7 @@ export async function seedTemplateClonedDeckOnServer(
         projectId,
         pluginId: loaded.templateId,
         templateTitle,
+        contentFillMode,
         userInstruction: input.userInstruction ?? null,
         sourceBrief: input.sourceBrief ?? null,
       });
@@ -491,5 +509,6 @@ export async function seedTemplateClonedDeckOnServer(
     slideCount: countSlides(cloned),
     templateId: loaded.templateId,
     previewPath: loaded.previewPath,
+    ...(contentFillMode === 'deterministic-fill' ? { contentFilled: true } : {}),
   };
 }

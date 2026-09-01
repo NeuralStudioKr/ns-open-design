@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   TEMPLATE_CLONE_CONTENT_FILL_MARKER,
@@ -10,21 +10,42 @@ import {
   deriveTemplateCloneTopicLabel,
   ensureTemplateCloneContentFillContinuePrompt,
   extractTemplateCloneUserFacingRequest,
+  getTemplateCloneFillMode,
   historyHasTemplateCloneContentFill,
   historyHasTemplateCloneSlotFillRepair,
   isTemplateCloneContentFillPrompt,
   isTemplateCloneSlotFillRepairPrompt,
   looksLikeInstructionNotSlideCopy,
+  normalizeTemplateCloneFillMode,
   normalizeTemplateCloneFillSlideCountHint,
   queueTemplateCloneContentFill,
   resolveTemplateCloneAutoSendSeed,
+  shouldUseDeterministicTemplateCloneFill,
   templateCloneFillSlideCountOverrideNotice,
   withTemplateCloneFillPluginInputs,
   withoutCanonicalDeckAttachments,
 } from '../../src/teamver/templateCloneContentFill';
 import { promptWithTemplateCloneContentFillInstruction } from '../../src/components/ProjectView';
 
+afterEach(() => {
+  delete process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE;
+});
+
 describe('templateCloneContentFill', () => {
+  it('defaults to prompt fill and only opts into deterministic mode explicitly', () => {
+    expect(normalizeTemplateCloneFillMode(undefined)).toBe('prompt');
+    expect(normalizeTemplateCloneFillMode('')).toBe('prompt');
+    expect(normalizeTemplateCloneFillMode('prompt')).toBe('prompt');
+    expect(getTemplateCloneFillMode()).toBe('prompt');
+    expect(shouldUseDeterministicTemplateCloneFill()).toBe(false);
+
+    process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = 'deterministic';
+    expect(getTemplateCloneFillMode()).toBe('deterministic');
+    expect(shouldUseDeterministicTemplateCloneFill()).toBe(true);
+    expect(normalizeTemplateCloneFillMode('content-fill')).toBe('deterministic');
+    expect(normalizeTemplateCloneFillMode('server')).toBe('deterministic');
+  });
+
   it('does not treat Canvas boilerplate as the visible request', () => {
     const visible = extractTemplateCloneUserFacingRequest({
       pendingPrompt: [

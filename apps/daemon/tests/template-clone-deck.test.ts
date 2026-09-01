@@ -277,7 +277,7 @@ describe('seedTemplateClonedDeckOnServer', () => {
     });
 
     const writeOptions: Array<Record<string, unknown>> = [];
-    const marked: Array<{ projectId: string; pluginId: string; templateTitle: string }> = [];
+    const marked: Array<Record<string, unknown>> = [];
     const result = await seedTemplateClonedDeckOnServer(
       {
         db,
@@ -293,7 +293,7 @@ describe('seedTemplateClonedDeckOnServer', () => {
           return { name: 'deck.html' };
         },
         markTemplateClonedDeckSeeded: (input) => {
-          marked.push(input);
+          marked.push(input as unknown as Record<string, unknown>);
         },
       },
       {
@@ -313,6 +313,7 @@ describe('seedTemplateClonedDeckOnServer', () => {
         projectId: 'proj-3',
         pluginId: 'html-ppt-mini',
         templateTitle: 'Mini Template',
+        contentFillMode: 'prompt-fill',
         userInstruction: null,
         sourceBrief: 'Visible headings: Alpha / Beta',
       },
@@ -389,6 +390,87 @@ describe('seedTemplateClonedDeckOnServer', () => {
     expect(deck).not.toContain('Daisy Days');
     expect(deck).not.toContain('cheerful presentation template');
     expect(marked[0]?.userInstruction).toBe('AI 트렌드 발표자료를 만들어줘');
+    expect(marked[0]?.contentFillMode).toBe('prompt-fill');
+  });
+
+  it('can mark cloned template output as deterministic content-filled', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'od-template-clone-deterministic-'));
+    const pluginDir = path.join(root, 'plugin');
+    const projectsRoot = path.join(root, 'projects');
+    const dataDir = path.join(root, '.od');
+    await mkdir(pluginDir, { recursive: true });
+    await mkdir(projectsRoot, { recursive: true });
+
+    await writeFile(
+      path.join(pluginDir, 'example.html'),
+      `<!doctype html><html><body>
+        <section class="slide"><h1>Template</h1><p>Demo</p></section>
+      </body></html>`,
+      'utf8',
+    );
+
+    const db = openDatabase(root, { dataDir });
+    upsertInstalledPlugin(db, {
+      id: 'html-ppt-mini',
+      title: 'Mini',
+      version: '0.0.0',
+      sourceKind: 'local',
+      source: pluginDir,
+      trust: 'bundled',
+      capabilitiesGranted: [],
+      manifest: {
+        name: 'html-ppt-mini',
+        title: 'Mini',
+        version: '0.0.0',
+        od: { preview: { entry: 'example.html' } },
+      } as any,
+      fsPath: pluginDir,
+      installedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    let manifest: {
+      metadata?: {
+        templateCloneContentFilled?: boolean;
+        templateCloneContentFillPending?: boolean;
+        templateCloneFillMode?: string;
+      };
+    } | null = null;
+    const marked: Array<Record<string, unknown>> = [];
+    const result = await seedTemplateClonedDeckOnServer(
+      {
+        db,
+        projectsRoot,
+        projectId: 'proj-deterministic',
+        ensureProject: async () => {
+          const dir = path.join(projectsRoot, 'proj-deterministic');
+          await mkdir(dir, { recursive: true });
+          return dir;
+        },
+        writeProjectFile: async (_root, _id, _name, _body, options) => {
+          manifest = options?.artifactManifest as typeof manifest;
+          return { name: 'deck.html' };
+        },
+        markTemplateClonedDeckSeeded: (input) => {
+          marked.push(input as unknown as Record<string, unknown>);
+        },
+      },
+      {
+        pluginId: 'html-ppt-mini',
+        templateTitle: 'Mini Template',
+        sourceBrief: 'Visible headings: Alpha',
+        deckTitle: 'Alpha',
+        contentFillMode: 'deterministic-fill',
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.contentFilled).toBe(true);
+    expect(manifest?.metadata?.templateCloneContentFilled).toBe(true);
+    expect(manifest?.metadata?.templateCloneContentFillPending).toBe(false);
+    expect(manifest?.metadata?.templateCloneFillMode).toBe('deterministic');
+    expect(marked[0]?.contentFillMode).toBe('deterministic-fill');
   });
 
   it('normalizes marketplace-prefixed ids for bundled ensure', () => {

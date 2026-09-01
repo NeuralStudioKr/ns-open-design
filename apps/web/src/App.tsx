@@ -2933,7 +2933,8 @@ function AppInner() {
             metadata: {
               ...(project.metadata && typeof project.metadata === 'object'
                 ? project.metadata
-                : {}),
+                : { kind: 'deck' as const }),
+              kind: project.metadata?.kind ?? 'deck',
               templateClonedDeckSeeded: !preservedFilledDeck,
               templateCloneContentFillPending: true,
               ...(selectedDeckTemplateId

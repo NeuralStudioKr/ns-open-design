@@ -241,3 +241,115 @@ export async function seedTemplateClonedDeck(options: {
     };
   }
 }
+
+/**
+ * Experimental rollback-safe path: daemon writes a content-filled clone and
+ * marks it complete, so FE can skip the legacy model fill turn. The default
+ * product path still uses `seedTemplateClonedDeck`.
+ */
+export async function fillTemplateClonedDeckDeterministically(options: {
+  projectId: string;
+  pluginId: string;
+  templateTitle?: string | null;
+  sourceBrief?: string | null;
+  userInstruction?: string | null;
+  deckTitle?: string | null;
+  slideCountHint?: string | number | null;
+}): Promise<SeedTemplateClonedDeckResult> {
+  const projectId = options.projectId.trim();
+  const pluginId = options.pluginId.trim();
+  if (!projectId || !pluginId) {
+    return { ok: false, reason: 'missing_plugin', message: 'Missing project or plugin id' };
+  }
+
+  const recover = async (): Promise<SeedTemplateClonedDeckResult | null> => {
+    return recoverExistingTemplateClonedDeck(projectId);
+  };
+
+  const body = JSON.stringify({
+    pluginId,
+    templateTitle: options.templateTitle ?? null,
+    sourceBrief: options.sourceBrief ?? null,
+    userInstruction: options.userInstruction ?? null,
+    deckTitle: options.deckTitle ?? null,
+    slideCountHint: options.slideCountHint ?? null,
+    contentFillMode: 'deterministic-fill',
+  });
+
+  const attempt = async (): Promise<SeedTemplateClonedDeckResult> => {
+    const resp = await fetchTeamverDaemon(
+      `/api/projects/${encodeURIComponent(projectId)}/template-clone-content-fill`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      },
+    );
+    if (!resp.ok) {
+      let message = `Template content fill failed (${resp.status})`;
+      let reason: Extract<SeedTemplateClonedDeckResult, { ok: false }>['reason'] =
+        resp.status === 404 ? 'missing_preview' : 'clone_failed';
+      try {
+        const json = (await resp.json()) as { error?: string; code?: string; message?: string };
+        message = json.message || json.error || message;
+        const code = (json.code || '').toLowerCase();
+        if (code.includes('missing_plugin')) reason = 'missing_plugin';
+        else if (code.includes('missing_preview')) reason = 'missing_preview';
+        else if (code.includes('write')) reason = 'write_failed';
+        else if (code.includes('clone')) reason = 'clone_failed';
+      } catch {
+        /* keep defaults */
+      }
+      return { ok: false, reason, message };
+    }
+    const json = (await resp.json()) as {
+      ok?: boolean;
+      fileName?: string;
+      slideCount?: number;
+      templateId?: string;
+      preservedFilled?: boolean;
+    };
+    if (!json?.ok || json.fileName !== 'deck.html') {
+      return {
+        ok: false,
+        reason: 'clone_failed',
+        message: 'Daemon template content fill returned an unexpected payload',
+      };
+    }
+    return {
+      ok: true,
+      fileName: 'deck.html',
+      slideCount: typeof json.slideCount === 'number' ? json.slideCount : 1,
+      templateId: typeof json.templateId === 'string' ? json.templateId : pluginId,
+      ...(json.preservedFilled === true ? { preservedFilled: true } : {}),
+    };
+  };
+
+  try {
+    let result = await attempt();
+    if (
+      !result.ok
+      && (result.reason === 'missing_plugin' || result.reason === 'fetch_failed')
+    ) {
+      result = await attempt();
+    }
+    if (result.ok) return result;
+    const recovered = await recover();
+    if (recovered) return recovered;
+    return result;
+  } catch (err) {
+    try {
+      const retried = await attempt();
+      if (retried.ok) return retried;
+    } catch {
+      /* fall through */
+    }
+    const recovered = await recover();
+    if (recovered) return recovered;
+    return {
+      ok: false,
+      reason: 'fetch_failed',
+      message: err instanceof Error ? err.message : 'Network error while filling template',
+    };
+  }
+}

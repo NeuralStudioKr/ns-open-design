@@ -3724,13 +3724,20 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
    * Reads plugin preview HTML from disk, content-swaps Source headings, writes
    * deck.html. FE must call this instead of cloning in the browser.
    */
-  app.post('/api/projects/:id/template-clone-deck', async (req, res) => {
+  for (const templateCloneRoute of [
+    '/api/projects/:id/template-clone-deck',
+    '/api/projects/:id/template-clone-content-fill',
+  ]) app.post(templateCloneRoute, async (req, res) => {
     try {
-      const project = await resolveProjectRow(req.params.id);
+      const projectId = String(req.params.id ?? '').trim();
+      const project = await resolveProjectRow(projectId);
       if (!project) {
         return sendApiError(res, 404, 'NOT_FOUND', 'project not found');
       }
       const body = req.body || {};
+      const deterministicContentFill =
+        templateCloneRoute.endsWith('/template-clone-content-fill')
+        || body.contentFillMode === 'deterministic-fill';
       const pluginId = typeof body.pluginId === 'string' ? body.pluginId.trim() : '';
       if (!pluginId) {
         return sendApiError(res, 400, 'BAD_REQUEST', 'pluginId required');
@@ -3739,7 +3746,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         {
           db,
           projectsRoot: PROJECTS_DIR,
-          projectId: req.params.id,
+          projectId,
           metadata: project.metadata,
           ensureProject,
           writeProjectFile,
@@ -3750,6 +3757,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             projectId,
             pluginId: seededPluginId,
             templateTitle,
+            contentFillMode,
           }) => {
             const existing = getProject(db, projectId);
             if (!existing) return;
@@ -3764,8 +3772,15 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
               metadata: {
                 ...prevMeta,
                 templateClonedDeckSeeded: true,
-                // FE queues a compact CREATE content-fill — do not attach deck.html.
-                templateCloneContentFillPending: true,
+                // Legacy API queues a compact CREATE content-fill. The
+                // deterministic API is already content-filled and must not auto-send.
+                templateCloneContentFillPending: contentFillMode !== 'deterministic-fill',
+                ...(contentFillMode === 'deterministic-fill'
+                  ? {
+                      templateCloneContentFilled: true,
+                      templateCloneFillMode: 'deterministic',
+                    }
+                  : {}),
                 selectedDeckTemplateId: seededPluginId,
                 ...(templateTitle
                   ? { selectedDeckTemplateTitle: templateTitle }
@@ -3791,6 +3806,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             typeof body.slideCountHint === 'string' || typeof body.slideCountHint === 'number'
               ? body.slideCountHint
               : null,
+          contentFillMode: deterministicContentFill ? 'deterministic-fill' : 'prompt-fill',
         },
       );
       if (!result.ok) {
@@ -3807,7 +3823,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       // 200 so clients open the seeded deck.html without a false error.
       if (ctx.projectStorageHooks) {
         try {
-          await ctx.projectStorageHooks.persistAfterMutation(req, req.params.id, {
+          await ctx.projectStorageHooks.persistAfterMutation(req, projectId, {
             strict: true,
           });
         } catch (persistErr) {
@@ -3819,7 +3835,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             ctx.projectStorageHooks,
             req,
             res,
-            req.params.id,
+            projectId,
           );
         }
       }

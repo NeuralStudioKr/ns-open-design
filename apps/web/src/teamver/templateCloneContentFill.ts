@@ -23,6 +23,7 @@ import {
   isSlideCreateBoilerplateLine,
 } from './slideCreateBoilerplate';
 import { isSlideCountRangeHint, parseSlideCountTarget } from './slideCountTopUp';
+import { readTeamverViteEnv } from './teamverViteEnv';
 
 /** Keep local — contracts barrel can be undefined during web test init. */
 const FIRST_FILL_SLIDE_COUNT_THIS_TURN = 6;
@@ -44,6 +45,35 @@ export const TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER = '[Template clone content 
 
 /** One-shot JSON repair after invalid outline (0901-N02 B5). */
 export const TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER = '[Template clone slot-fill JSON repair]';
+
+export type TemplateCloneFillMode = 'prompt' | 'deterministic';
+
+export function normalizeTemplateCloneFillMode(value: unknown): TemplateCloneFillMode {
+  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (raw === 'deterministic' || raw === 'content-fill' || raw === 'server') {
+    return 'deterministic';
+  }
+  return 'prompt';
+}
+
+export function getTemplateCloneFillMode(): TemplateCloneFillMode {
+  const fromEnv = readTeamverViteEnv('VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE');
+  if (fromEnv) return normalizeTemplateCloneFillMode(fromEnv);
+  if (typeof window !== 'undefined') {
+    try {
+      return normalizeTemplateCloneFillMode(
+        window.localStorage.getItem('od:template-clone-fill-mode'),
+      );
+    } catch {
+      return 'prompt';
+    }
+  }
+  return 'prompt';
+}
+
+export function shouldUseDeterministicTemplateCloneFill(): boolean {
+  return getTemplateCloneFillMode() === 'deterministic';
+}
 
 export function templateCloneContentFillFlagKey(projectId: string): string {
   return `od:template-clone-content-fill:${projectId}`;

@@ -55,6 +55,10 @@ const STATIC_TEAMVER_VITE_ENV: Record<string, string | undefined> = {
     typeof process !== "undefined"
       ? process.env.VITE_TEAMVER_MANUAL_EDIT_BOX_DRAG_ENABLE
       : undefined,
+  VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE:
+    typeof process !== "undefined"
+      ? process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE
+      : undefined,
 };
 
 export function readTeamverViteEnv(key: string): string | undefined {
