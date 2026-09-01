@@ -3677,6 +3677,19 @@ function ConversationRow({
 }) {
   const displayTitle =
     conversation.title || t('chat.untitledConversation');
+  const confirmTitleId = useId();
+  const [pendingDelete, setPendingDelete] = useState(false);
+
+  useEffect(() => {
+    if (!pendingDelete) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      setPendingDelete(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [pendingDelete]);
 
   return (
     <div
@@ -3706,15 +3719,53 @@ function ConversationRow({
         title={t('chat.deleteConversation')}
         onClick={(e) => {
           e.stopPropagation();
-          if (
-            confirm(t('chat.deleteConversationConfirm', { title: displayTitle }))
-          ) {
-            onDelete();
-          }
+          setPendingDelete(true);
         }}
       >
         <Icon name="close" size={12} />
       </button>
+      {pendingDelete && typeof document !== 'undefined' ? createPortal(
+        <div
+          className="modal-backdrop viewer-modal-backdrop"
+          role="presentation"
+          onClick={() => setPendingDelete(false)}
+        >
+          <div
+            className="modal deploy-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={confirmTitleId}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-head">
+              <h2 id={confirmTitleId}>{t('chat.deleteConversation')}</h2>
+              <p className="subtitle">
+                {t('chat.deleteConversationConfirm', { title: displayTitle })}
+              </p>
+            </div>
+            <div className="modal-foot">
+              <button
+                type="button"
+                className="ghost-link button-like"
+                onClick={() => setPendingDelete(false)}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                className="viewer-action primary"
+                onClick={() => {
+                  setPendingDelete(false);
+                  onDelete();
+                }}
+              >
+                {t('common.delete')}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      ) : null}
     </div>
   );
 }

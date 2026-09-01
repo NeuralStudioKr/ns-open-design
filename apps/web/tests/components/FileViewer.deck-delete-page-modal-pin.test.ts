@@ -10,7 +10,9 @@ const ko = readFileSync(join(here, '../../src/i18n/locales/ko.ts'), 'utf8');
 describe('FileViewer deck page delete modal pin (0901-N01-E)', () => {
   it('opens a viewer portal instead of window.confirm', () => {
     expect(fileViewer).not.toContain('window.confirm');
+    expect(fileViewer).not.toContain('window.alert');
     expect(fileViewer).not.toContain('슬라이드를 삭제할까요');
+    expect(fileViewer).toContain('deckStructureNotice');
     expect(fileViewer).toContain('pendingDeleteSlide');
     expect(fileViewer).toContain('requestDeleteCurrentSlide');
     expect(fileViewer).toContain('confirmPendingDeleteSlide');
@@ -23,7 +25,7 @@ describe('FileViewer deck page delete modal pin (0901-N01-E)', () => {
   });
 
   it('cancels the pending delete from Escape and the backdrop', () => {
-    const start = fileViewer.indexOf('if (!pendingDeleteSlide) return;');
+    const start = fileViewer.indexOf('if (!pendingDeleteSlide && !deckStructureNotice) return;');
     expect(start).toBeGreaterThan(0);
     const escapeBlock = fileViewer.slice(start, start + 400);
     expect(escapeBlock).toContain("e.key !== 'Escape'");

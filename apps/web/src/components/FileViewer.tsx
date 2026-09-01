@@ -6278,6 +6278,7 @@ function HtmlViewer({
   const templateDescriptionId = useId();
   const imageExportTitleId = useId();
   const deletePageTitleId = useId();
+  const deckNoticeTitleId = useId();
   // Opt back into the legacy inline-asset srcDoc path via `?forceInline=1`
   // on the host page. Lets users escape-hatch around the URL-load default
   // for non-deck HTML that depends on the in-iframe localStorage shim.
@@ -6570,6 +6571,7 @@ function HtmlViewer({
   const [deckStructureBusy, setDeckStructureBusy] = useState(false);
   const [deckStructureError, setDeckStructureError] = useState<string | null>(null);
   const [pendingDeleteSlide, setPendingDeleteSlide] = useState<{ active: number; count: number } | null>(null);
+  const [deckStructureNotice, setDeckStructureNotice] = useState<{ title: string; message: string } | null>(null);
   const boardPreviewScaleOptions = localCommentSideDockActive ? { canvasPadding: 0 } : undefined;
   const overlayPreviewScale = effectivePreviewScale(
     previewViewport,
@@ -14169,20 +14171,17 @@ function HtmlViewer({
       if (status === 401) {
         notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
       }
-      setDeckStructureError(
-        isTeamverEmbedMode()
-          ? formatProjectArtifactSaveFailedError(file.name, { status, code, message })
-          : embedUiLabel(
-              `Could not save slide change${status ? ` (${status})` : ''}: ${message}`,
-              '슬라이드 변경을 저장하지 못했습니다.',
-            ),
-      );
-      window.alert(
-        embedUiLabel(
-          'Could not save the slide change.',
-          '슬라이드 변경을 저장하지 못했습니다.',
-        ),
-      );
+      const persistError = isTeamverEmbedMode()
+        ? formatProjectArtifactSaveFailedError(file.name, { status, code, message })
+        : embedUiLabel(
+            `Could not save slide change${status ? ` (${status})` : ''}: ${message}`,
+            '슬라이드 변경을 저장하지 못했습니다.',
+          );
+      setDeckStructureError(persistError);
+      setDeckStructureNotice({
+        title: embedUiLabel('Could not save the change.', '변경을 저장하지 못했습니다.'),
+        message: persistError,
+      });
       return false;
     }
     revisionSyncSuppressRef.current = true;
@@ -14246,13 +14245,15 @@ function HtmlViewer({
     const active = Math.min(Math.max(0, pending.active), htmlSlideCount - 1);
     const result = deleteDeckSlideAt(html, active);
     if (!result.ok) {
-      setDeckStructureError(result.reason);
-      window.alert(
-        embedUiLabel(
-          'Could not delete this page.',
-          '이 페이지를 삭제할 수 없습니다.',
-        ),
+      const deleteError = embedUiLabel(
+        'Could not delete this page.',
+        '이 페이지를 삭제할 수 없습니다.',
       );
+      setDeckStructureError(result.reason);
+      setDeckStructureNotice({
+        title: t('fileViewer.deleteSlide'),
+        message: deleteError,
+      });
       return;
     }
     setDeckStructureBusy(true);
@@ -14341,13 +14342,15 @@ function HtmlViewer({
     );
     const result = insertBlankDeckSlideAfter(html, active);
     if (!result.ok) {
-      setDeckStructureError(result.reason);
-      window.alert(
-        embedUiLabel(
-          'Could not insert a blank page.',
-          '빈 페이지를 추가할 수 없습니다.',
-        ),
+      const insertError = embedUiLabel(
+        'Could not insert a blank page.',
+        '빈 페이지를 추가할 수 없습니다.',
       );
+      setDeckStructureError(result.reason);
+      setDeckStructureNotice({
+        title: embedUiLabel('Insert blank page', '빈 페이지 추가'),
+        message: insertError,
+      });
       return;
     }
     setDeckStructureBusy(true);
@@ -14386,13 +14389,15 @@ function HtmlViewer({
     );
     const result = duplicateDeckSlideAt(html, active);
     if (!result.ok) {
-      setDeckStructureError(result.reason);
-      window.alert(
-        embedUiLabel(
-          'Could not duplicate this page.',
-          '이 페이지를 복제할 수 없습니다.',
-        ),
+      const duplicateError = embedUiLabel(
+        'Could not duplicate this page.',
+        '이 페이지를 복제할 수 없습니다.',
       );
+      setDeckStructureError(result.reason);
+      setDeckStructureNotice({
+        title: t('fileViewer.duplicateSlide'),
+        message: duplicateError,
+      });
       return;
     }
     setDeckStructureBusy(true);
@@ -14779,15 +14784,16 @@ function HtmlViewer({
   }, [zoomMenuOpen]);
 
   useEffect(() => {
-    if (!pendingDeleteSlide) return;
+    if (!pendingDeleteSlide && !deckStructureNotice) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.preventDefault();
       setPendingDeleteSlide(null);
+      setDeckStructureNotice(null);
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [pendingDeleteSlide]);
+  }, [pendingDeleteSlide, deckStructureNotice]);
 
   useEffect(() => {
     if (!agentToolsOpen) return;
@@ -18507,6 +18513,36 @@ function HtmlViewer({
                 }}
               >
                 {t('common.delete')}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      ) : null}
+      {deckStructureNotice && typeof document !== 'undefined' ? createPortal(
+        <div
+          className="modal-backdrop viewer-modal-backdrop"
+          role="presentation"
+          onClick={() => setDeckStructureNotice(null)}
+        >
+          <div
+            className="modal deploy-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={deckNoticeTitleId}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-head">
+              <h2 id={deckNoticeTitleId}>{deckStructureNotice.title}</h2>
+              <p className="subtitle">{deckStructureNotice.message}</p>
+            </div>
+            <div className="modal-foot">
+              <button
+                type="button"
+                className="viewer-action primary"
+                onClick={() => setDeckStructureNotice(null)}
+              >
+                {t('common.close')}
               </button>
             </div>
           </div>

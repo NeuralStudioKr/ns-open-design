@@ -1,12 +1,14 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
   type DragEvent as ReactDragEvent,
   type ReactNode,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { devLog } from '../lib/devLog';
 import { Button } from '@open-design/components';
 import type { TrackingProjectKind } from '@open-design/contracts/analytics';
@@ -540,6 +542,13 @@ export function FileWorkspace({
 
   const [showPasteDialog, setShowPasteDialog] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const workspaceConfirmTitleId = useId();
+  const [pendingWorkspaceConfirm, setPendingWorkspaceConfirm] = useState<
+    | { kind: 'delete-file'; name: string }
+    | { kind: 'delete-files'; names: string[] }
+    | { kind: 'close-sketch'; name: string }
+    | null
+  >(null);
   // The folder the Design Files panel is currently viewing (synced via
   // onCurrentDirChange). New files — uploads, pastes, sketches, dropped files —
   // are created under this folder instead of the project root.
@@ -1043,7 +1052,7 @@ export function FileWorkspace({
     setActiveTab(openName);
   }
 
-  function closeTab(name: string) {
+  function closeTab(name: string, options?: { discardSketch?: boolean }) {
     // Terminal tabs own a daemon PTY that now outlives unmount (so tab switches
     // reattach cheaply). An explicit Close is the one place we terminate it —
     // kill the LIVE session (which may differ from the tab's original id after
@@ -1057,7 +1066,10 @@ export function FileWorkspace({
     const sketchEntry = sketches[name];
     const isPending = sketchEntry && !sketchEntry.persisted;
     const hasUnsavedStrokes = sketchEntry && (sketchEntry.dirty || !sketchEntry.persisted);
-    if (hasUnsavedStrokes && !confirm(t('sketch.closeConfirm'))) return;
+    if (hasUnsavedStrokes && !options?.discardSketch) {
+      setPendingWorkspaceConfirm({ kind: 'close-sketch', name });
+      return;
+    }
     if (isPending) {
       setSketches((curr) => {
         const next = { ...curr };
@@ -1321,6 +1333,9 @@ export function FileWorkspace({
         if (e.isComposing) return;
         e.preventDefault();
         setQuickSwitcherOpen((open) => !open);
+      } else if (e.key === 'Escape' && pendingWorkspaceConfirm) {
+        e.preventDefault();
+        setPendingWorkspaceConfirm(null);
       } else if (e.key === 'Escape' && quickSwitcherOpen) {
         // The palette handles Esc itself, but also catch it here for the
         // case where focus has drifted off the palette input.
@@ -1329,10 +1344,13 @@ export function FileWorkspace({
     };
     window.addEventListener('keydown', onKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', onKeyDown, { capture: true });
-  }, [quickSwitcherOpen]);
+  }, [pendingWorkspaceConfirm, quickSwitcherOpen]);
+
+  function requestDelete(name: string) {
+    setPendingWorkspaceConfirm({ kind: 'delete-file', name });
+  }
 
   async function handleDelete(name: string) {
-    if (!confirm(t('workspace.deleteFileConfirm', { name }))) return;
     const ok = await deleteProjectFile(projectId, name);
     if (ok) {
       onFilesDeleted?.([name]);
@@ -1364,9 +1382,13 @@ export function FileWorkspace({
     }
   }
 
+  function requestDeleteMany(names: string[]) {
+    if (names.length === 0) return;
+    setPendingWorkspaceConfirm({ kind: 'delete-files', names });
+  }
+
   async function handleDeleteMany(names: string[]) {
     if (names.length === 0) return;
-    if (!confirm(t('workspace.deleteSelectedFilesConfirm', { n: names.length }))) return;
     const deleted: string[] = [];
     const failed: string[] = [];
     for (const name of names) {
@@ -1395,12 +1417,27 @@ export function FileWorkspace({
       });
     }
     if (failed.length > 0) {
-      if (isTeamverEmbedMode()) {
-        setUploadError(formatProjectDeleteFailureForUser(failed.length));
-      } else {
-        alert(t('workspace.deleteSelectedFilesPartial', { n: failed.length }));
-      }
+      setUploadError(
+        isTeamverEmbedMode()
+          ? formatProjectDeleteFailureForUser(failed.length)
+          : t('workspace.deleteSelectedFilesPartial', { n: failed.length }),
+      );
     }
+  }
+
+  function confirmPendingWorkspace() {
+    const pending = pendingWorkspaceConfirm;
+    setPendingWorkspaceConfirm(null);
+    if (!pending) return;
+    if (pending.kind === 'close-sketch') {
+      closeTab(pending.name, { discardSketch: true });
+      return;
+    }
+    if (pending.kind === 'delete-file') {
+      void handleDelete(pending.name);
+      return;
+    }
+    void handleDeleteMany(pending.names);
   }
 
   async function handleRename(oldName: string, nextName: string): Promise<ProjectFile | null> {
@@ -2578,6 +2615,55 @@ export function FileWorkspace({
           onDismiss={() => setLauncherToast(null)}
         />
       ) : null}
+      {pendingWorkspaceConfirm && typeof document !== 'undefined' ? createPortal(
+        <div
+          className="modal-backdrop viewer-modal-backdrop"
+          role="presentation"
+          onClick={() => setPendingWorkspaceConfirm(null)}
+        >
+          <div
+            className="modal deploy-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={workspaceConfirmTitleId}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-head">
+              <h2 id={workspaceConfirmTitleId}>
+                {pendingWorkspaceConfirm.kind === 'close-sketch'
+                  ? t('common.close')
+                  : t('common.delete')}
+              </h2>
+              <p className="subtitle">
+                {pendingWorkspaceConfirm.kind === 'delete-file'
+                  ? t('workspace.deleteFileConfirm', { name: pendingWorkspaceConfirm.name })
+                  : pendingWorkspaceConfirm.kind === 'delete-files'
+                    ? t('workspace.deleteSelectedFilesConfirm', { n: pendingWorkspaceConfirm.names.length })
+                    : t('sketch.closeConfirm')}
+              </p>
+            </div>
+            <div className="modal-foot">
+              <button
+                type="button"
+                className="ghost-link button-like"
+                onClick={() => setPendingWorkspaceConfirm(null)}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                className="viewer-action primary"
+                onClick={() => confirmPendingWorkspace()}
+              >
+                {pendingWorkspaceConfirm.kind === 'close-sketch'
+                  ? t('common.close')
+                  : t('common.delete')}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      ) : null}
       <div className="ws-body">
         {/* Banner moved into DesignFilesPanel for the Design Files tab so
             single-click preview (which keeps activeTab on DESIGN_FILES_TAB)
@@ -2677,7 +2763,7 @@ export function FileWorkspace({
                 area: 'file_manager',
                 element: 'delete',
               });
-              void handleDelete(name);
+              requestDelete(name);
             }}
             onDeleteFiles={(names) => {
               trackFileManagerClick(analytics.track, {
@@ -2685,7 +2771,7 @@ export function FileWorkspace({
                 area: 'file_manager',
                 element: 'delete',
               });
-              return handleDeleteMany(names);
+              requestDeleteMany(names);
             }}
             onUpload={() => {
               trackFileManagerClick(analytics.track, {
