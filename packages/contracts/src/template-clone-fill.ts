@@ -249,11 +249,30 @@ export function applyTemplateCloneSlotFill(
 export type TemplateCloneSlotFillTerminalDecision =
   | { kind: 'slot-fill'; html: string; title: string }
   | { kind: 'queue-repair' }
-  | { kind: 'html-fallback' };
+  | { kind: 'seed-fallback'; html: string; title: string }
+  | { kind: 'abort' };
+
+function titleForSeedFallback(rawFinalText: string, seedHtml: string): string {
+  const raw = String(rawFinalText ?? '');
+  const titleMatch = /"title"\s*:\s*"((?:\\.|[^"\\])*)"/.exec(raw);
+  if (titleMatch?.[1]) {
+    try {
+      const unescaped = JSON.parse(`"${titleMatch[1]}"`) as string;
+      const cleaned = sanitizeTemplateCloneDeckTitle(unescaped);
+      if (cleaned) return cleaned;
+    } catch {
+      const cleaned = sanitizeTemplateCloneDeckTitle(titleMatch[1]);
+      if (cleaned) return cleaned;
+    }
+  }
+  const seedTitle = /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(seedHtml)?.[1] ?? '';
+  const fromSeed = sanitizeTemplateCloneDeckTitle(seedTitle.replace(/<[^>]+>/g, ' '));
+  return fromSeed || '슬라이드';
+}
 
 /**
- * Terminal decision for Clone first-fill (0901-N02 B5).
- * Prefer LOOK seed slot-fill; otherwise one JSON repair, then HTML hybrid.
+ * Terminal decision for Clone first-fill (0901-N02 B5 + D).
+ * Prefer LOOK seed slot-fill; one JSON repair; then seed-fallback (never model HTML).
  */
 export function decideTemplateCloneSlotFillTerminal(input: {
   rawFinalText: string;
@@ -266,7 +285,15 @@ export function decideTemplateCloneSlotFillTerminal(input: {
     if (filled) return { kind: 'slot-fill', html: filled.html, title: filled.title };
   }
   if (!input.repairAlreadyAttempted) return { kind: 'queue-repair' };
-  return { kind: 'html-fallback' };
+  // 0901-N02-D — keep LOOK seed motif; do not persist model HTML hybrid.
+  if (seed) {
+    return {
+      kind: 'seed-fallback',
+      html: seed,
+      title: titleForSeedFallback(input.rawFinalText, seed),
+    };
+  }
+  return { kind: 'abort' };
 }
 
 export function classifyTemplateCloneShellRole(shell: {

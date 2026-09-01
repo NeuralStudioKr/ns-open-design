@@ -202,13 +202,41 @@ describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
     ).toEqual({ kind: 'queue-repair' });
   });
 
-  it('falls back to HTML hybrid after repair was attempted', () => {
+  it('falls back to LOOK seed after repair was attempted (0901-N02-D)', () => {
+    const decision = decideTemplateCloneSlotFillTerminal({
+      rawFinalText: '<!doctype html><section class="slide"><h1>Nope</h1></section>',
+      seedHtml: seed,
+      repairAlreadyAttempted: true,
+    });
+    expect(decision.kind).toBe('seed-fallback');
+    if (decision.kind === 'seed-fallback') {
+      expect(decision.html).toContain('slide-title');
+      expect(decision.html).toContain('Demo');
+      expect(decision.html).not.toContain('Nope');
+    }
+  });
+
+  it('aborts when repair failed and seed is missing', () => {
     expect(
       decideTemplateCloneSlotFillTerminal({
         rawFinalText: '<!doctype html><section class="slide"><h1>Nope</h1></section>',
-        seedHtml: seed,
+        seedHtml: '',
         repairAlreadyAttempted: true,
       }),
-    ).toEqual({ kind: 'html-fallback' });
+    ).toEqual({ kind: 'abort' });
+  });
+
+  it('prefers a loose JSON title on seed-fallback', () => {
+    const decision = decideTemplateCloneSlotFillTerminal({
+      rawFinalText: '{"title":"분기 전략","slides":[',
+      seedHtml: seed,
+      repairAlreadyAttempted: true,
+    });
+    expect(decision.kind).toBe('seed-fallback');
+    if (decision.kind === 'seed-fallback') {
+      expect(decision.title).toBe('분기 전략');
+      expect(decision.html).toBe(seed);
+      expect(decision.html).not.toContain('<!doctype');
+    }
   });
 });

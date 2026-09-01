@@ -86,14 +86,15 @@ slot-fill 입력 shell:
 
 P0: FE가 seed된 `deck.html`을 읽어 outline으로 재치환해도 됨(제목/본문만 덮어씀). motif 유지를 위해 **AI HTML로 덮지 않는 것**이 핵심.
 
-## Fallback (P0 안전망) — B5 상세
+## Fallback (P0 안전망) — B5 + D
 
 ### 불변식
 
 1. first-fill 턴에서 JSON outline 파싱·slot-fill 성공 → 그 HTML만 persist (motif 유지).
 2. 실패이고 **아직 repair 턴이 히스토리에 없으면** → HTML hybrid로 저장하지 **않는다**. 짧은 JSON repair user 턴을 **정확히 1회** 큐한다.
-3. repair 턴도 실패(또는 HTML dump만) → 기존 HTML artifact hybrid persist 허용. metadata `templateCloneSlotFillFallback: true`.
-4. repair 마커가 있으면 두 번째 repair를 큐하지 않는다 (루프 금지).
+3. repair 턴도 실패(또는 HTML dump만) → **LOOK seed 유지** (`seed-fallback`). metadata `templateCloneSlotFillFallback: true`. 모델 HTML hybrid **금지** (0901-N02-D).
+4. seed 자체가 없으면 `abort` (persist 없음).
+5. repair 마커가 있으면 두 번째 repair를 큐하지 않는다 (루프 금지).
 
 ### 결정표 (`decideTemplateCloneSlotFillTerminal`)
 
@@ -101,7 +102,8 @@ P0: FE가 seed된 `deck.html`을 읽어 outline으로 재치환해도 됨(제목
 |------|------|
 | seed + valid outline → `applyTemplateCloneSlotFill` ok | `slot-fill` |
 | 위 실패 ∧ repair 미시도 | `queue-repair` |
-| 위 실패 ∧ repair 이미 있음 | `html-fallback` |
+| 위 실패 ∧ repair 이미 있음 ∧ seed 있음 | `seed-fallback` |
+| 위 실패 ∧ repair 이미 있음 ∧ seed 없음 | `abort` |
 
 ### Repair prompt
 
@@ -113,10 +115,11 @@ P0: FE가 seed된 `deck.html`을 읽어 outline으로 재치환해도 됨(제목
 
 1. terminal onDone, B4 직후 `decide…`.
 2. `queue-repair`: `artifactToPersist = null`, emergency HTML salvage 억제, incomplete AC 타이머로 repair prompt `handleSend` (fill meta 유지).
-3. `html-fallback`: resolve된 HTML 유지, persist metadata에 `templateCloneSlotFillFallback: true`.
-4. `slot-fill`: 기존 B4와 동일.
+3. `seed-fallback`: LOOK seed HTML persist, metadata `templateCloneSlotFillFallback: true`.
+4. `abort`: persist 없음 (모델 HTML resolve 폐기).
+5. `slot-fill`: 기존 B4와 동일.
 
-강제 전환·MiniMax 기본 경로 변경 없음. P1에서 hybrid fallback 제거(D).
+상세: [0901-N02-5](./0901-N02-5-구현설계-[Clone_slot-fill-D].md).
 
 ## overflow / leftover
 
@@ -149,7 +152,7 @@ MiniMax live E2E는 키 있을 때만. 키 없는 환경에서 가짜 live 금�
 | **B4** | ProjectView persist: JSON → build → 기존 heal/merge | fill path unit/integration |
 | **B5** | JSON repair 1회 + HTML fallback | fallback fixture |
 | **C (P1)** | 공통 cards overflow + Daisy 픽스처 | [N02-4](./0901-N02-4-구현설계-[Clone_slot-map].md) · C2=id map |
-| **D** | hybrid fallback 제거 | 별도 |
+| **D** | hybrid fallback 제거 → seed-fallback | [N02-5](./0901-N02-5-구현설계-[Clone_slot-fill-D].md) |
 
 ## Non-goals (이 설계 문서)
 

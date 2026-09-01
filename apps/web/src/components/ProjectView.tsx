@@ -10398,7 +10398,7 @@ export function ProjectView({
                 deckTitle: project.name || '슬라이드',
               },
             );
-            // 0901-N02 B4/B5 — JSON outline → LOOK seed slot-fill; else one repair; else HTML hybrid.
+            // 0901-N02 B4/B5/D — JSON → LOOK seed slot-fill; one repair; else seed-fallback (no model HTML).
             if (runTemplateCloneContentFillRef.current) {
               try {
                 const seedHtml = await readProjectHtml('deck.html');
@@ -10423,14 +10423,41 @@ export function ProjectView({
                   artifactToPersist = null;
                   pendingSlotFillRepairRef.current = true;
                   runTemplateCloneSlotFillFallbackRef.current = false;
+                } else if (decision.kind === 'seed-fallback') {
+                  pendingSlotFillRepairRef.current = false;
+                  runTemplateCloneSlotFillFallbackRef.current = true;
+                  artifactToPersist = {
+                    identifier: 'deck',
+                    artifactType: 'deck',
+                    title: decision.title,
+                    html: decision.html,
+                  };
                 } else {
+                  // abort — no seed; never persist model HTML on the fill path.
+                  artifactToPersist = null;
                   pendingSlotFillRepairRef.current = false;
                   runTemplateCloneSlotFillFallbackRef.current = true;
                 }
               } catch (error) {
-                devLog.warn('[teamver] template clone slot-fill failed; keeping HTML fallback', error);
+                devLog.warn('[teamver] template clone slot-fill failed; keeping LOOK seed', error);
                 pendingSlotFillRepairRef.current = false;
                 runTemplateCloneSlotFillFallbackRef.current = true;
+                try {
+                  const seedHtml = await readProjectHtml('deck.html');
+                  const seed = String(seedHtml ?? '').trim();
+                  if (seed) {
+                    artifactToPersist = {
+                      identifier: 'deck',
+                      artifactType: 'deck',
+                      title: project.name || '슬라이드',
+                      html: seed,
+                    };
+                  } else {
+                    artifactToPersist = null;
+                  }
+                } catch {
+                  artifactToPersist = null;
+                }
               }
             }
             if (artifactToPersist?.html) {
