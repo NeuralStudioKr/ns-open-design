@@ -296,7 +296,7 @@ export function decideTemplateCloneSlotFillTerminal(input: {
   const seed = String(input.seedHtml ?? '').trim();
   if (seed) {
     const filled = applyTemplateCloneSlotFill(seed, input.rawFinalText, {
-      templateId: input.templateId,
+      ...(input.templateId !== undefined ? { templateId: input.templateId } : {}),
     });
     if (filled) return { kind: 'slot-fill', html: filled.html, title: filled.title };
   }
@@ -1978,7 +1978,7 @@ export function buildTemplateClonedDeckHtml(
   if (shells.length === 0) return null;
 
   const slotMap = resolveTemplateCloneSlotMap({
-    templateId: options.templateId,
+    ...(options.templateId !== undefined ? { templateId: options.templateId } : {}),
     html: source,
   });
 
