@@ -3093,6 +3093,8 @@ export function stripDuplicatedInlineTailAfterSiblingClose(html: string): string
  * 유지. 카피 발명 없음.
  * 루프340 — 같은 실패가 `display:flex` 행에도 남음. inline flex 행도
  * 동일 조건으로 제거. `flex-direction:column` · 혼합 비크롬 자식 유지.
+ * 루프341 — `.cards { display:flex }` / `.grid { … }` class-bound 행도
+ * 동일. 영문 empty-brief 카탈로그는 AI gate로 유지.
  */
 export function dropChromeCardGridsWithAllEmptyBodies(
   html: string,
@@ -3101,6 +3103,8 @@ export function dropChromeCardGridsWithAllEmptyBodies(
   let out = String(html ?? '');
   if (!out) return out;
   if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
+  const flexNames = collectClassFlexRowNames(out);
+  const gridDecls = collectClassEqualTrackDecls(out);
   const openRe =
     /<(div|section|article|main|aside|ul|ol)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
   const removals: Array<{ start: number; end: number }> = [];
@@ -3108,9 +3112,11 @@ export function dropChromeCardGridsWithAllEmptyBodies(
   while ((match = openRe.exec(out)) !== null) {
     const attrs = match[2] ?? '';
     const style = extractInlineStyle(attrs);
+    const tokens = classTokensFromAttrs(attrs);
+    const classBound = tokens.some((token) => flexNames.has(token) || gridDecls.get(token)?.cols);
     const isGrid = /(?:^|;)\s*display\s*:\s*(?:inline-)?grid\b/i.test(style);
     const isFlexRow = isFlexRowContainerStyle(style);
-    if (!isGrid && !isFlexRow) continue;
+    if (!isGrid && !isFlexRow && !classBound) continue;
     const tag = (match[1] ?? '').toLowerCase();
     const openEnd = match.index + match[0].length;
     const close = findSameTagClose(out, tag, openEnd);
@@ -3541,7 +3547,8 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   out = dropAdjacentDuplicatePeerCards(out, brief);
   // 루프334 — 크롬 카드 그리드의 본문 슬롯이 전부 <br>만 남은 경우
   // (Tech Stack 등) 그 그리드만 제거. 슬라이드 제목·꼬리 카피는 유지.
-  // 루프340 — display:flex 행도 동일. 루프335 void depth 안정화 후 자식 정확.
+  // 루프340 — display:flex 행도 동일. 루프341 — class-bound flex/grid도 동일.
+  // 루프335 void depth 안정화 후 자식 정확.
   out = dropChromeCardGridsWithAllEmptyBodies(out, brief);
   out = unnestHeadingBlockChildren(out);
   out = polishTruncatedInstructionTitles(out);

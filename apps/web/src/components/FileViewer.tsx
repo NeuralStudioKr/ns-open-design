@@ -14450,7 +14450,7 @@ function HtmlViewer({
           previewComments,
           file.name,
           fromIndex,
-          result.activeIndex,
+          toIndex,
         );
         const updates = plan.changes
           .filter((change): change is { id: string; action: 'set'; slideIndex: number } =>

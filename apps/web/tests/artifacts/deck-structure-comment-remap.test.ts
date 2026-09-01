@@ -38,6 +38,24 @@ describe('0901-N01 comment slideIndex remap', () => {
     ]);
   });
 
+  it('remaps comments across a non-adjacent filmstrip drag (0901-N01-C)', () => {
+    const plan = planCommentRemapAfterSlideMove(comments, 'deck.html', 0, 2);
+    expect(plan.changes).toEqual([
+      { id: 'a', action: 'set', slideIndex: 2 },
+      { id: 'b', action: 'set', slideIndex: 0 },
+      { id: 'c', action: 'set', slideIndex: 1 },
+    ]);
+  });
+
+  it('remaps comments when dragging a later slide to the front (0901-N01-C)', () => {
+    const plan = planCommentRemapAfterSlideMove(comments, 'deck.html', 2, 0);
+    expect(plan.changes).toEqual([
+      { id: 'a', action: 'set', slideIndex: 1 },
+      { id: 'b', action: 'set', slideIndex: 2 },
+      { id: 'c', action: 'set', slideIndex: 0 },
+    ]);
+  });
+
   it('ignores other files and unscoped comments', () => {
     const plan = planCommentRemapAfterSlideDelete(comments, 'deck.html', 0);
     expect(plan.changes.map((c) => c.id)).toEqual(['a', 'b', 'c']);

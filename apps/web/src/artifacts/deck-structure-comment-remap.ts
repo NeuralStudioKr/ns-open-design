@@ -67,8 +67,9 @@ export function planCommentRemapAfterSlideDelete(
 }
 
 /**
- * After moving the slide at `fromIndex` to `toIndex` (adjacent ±1 today).
- * Comments on those two slides swap; indexes between them shift.
+ * After moving the slide at `fromIndex` to `toIndex` (any distance —
+ * filmstrip drag or ±1 toolbar). The moved slide's comments follow
+ * `toIndex`; indexes between `from` and `to` shift by one.
  */
 export function planCommentRemapAfterSlideMove(
   comments: readonly RemappablePreviewComment[],

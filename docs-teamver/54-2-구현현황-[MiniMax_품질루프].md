@@ -31,6 +31,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-01 현재 판단 · 최신 루프
 
+### 루프341 — class-bound flex/grid empty `<br>`-body 크롬 카드 drop
+
+루프340은 inline `display:flex|grid`만 본다. MiniMax Tech Stack 실패가 `.cards{display:flex}` / `.grid{…}` class-bound 행으로 나오면 라벨+`<br>` 껍데기가 유지된다. `collectClassFlexRowNames` / `collectClassEqualTrackDecls`로 class-bound 행도 동일 조건 제거. 영문 empty-brief 카탈로그는 AI gate로 유지. 카피 발명 없음.
+
+검증: contracts heal-loop331-335-residuals 루프341.
+
 ### 루프340 — flex 행 empty `<br>`-body 크롬 카드 drop
 
 루프334는 `display:grid`만 본다. MiniMax Tech Stack 실패가 `display:flex;gap` 행에도 남아 라벨+`<br>` 껍데기가 유지된다. inline flex 행도 동일 조건으로 제거. `flex-direction:column` · 본문 있는 카드 1장 이상 · 혼합 비크롬은 유지. 카피 발명 없음.
