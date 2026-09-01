@@ -60,6 +60,11 @@ function visibleText(html: string): string {
     .trim();
 }
 
+const HTML_VOID_ELEMENTS = new Set([
+  'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
+  'link', 'meta', 'param', 'source', 'track', 'wbr',
+]);
+
 function escapeHtml(value: string): string {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -897,7 +902,7 @@ function countDirectBlockChildren(inner: string): number {
   while ((tok = tokenRe.exec(inner)) !== null) {
     const closing = tok[1] === '/';
     const tagName = (tok[2] ?? '').toLowerCase();
-    const selfClose = tok[3] === '/';
+    const selfClose = tok[3] === '/' || HTML_VOID_ELEMENTS.has(tagName);
     if (closing) {
       depth = Math.max(0, depth - 1);
       continue;
@@ -1512,7 +1517,9 @@ function listDirectBlockChildOpens(
   while ((tok = tokenRe.exec(inner)) !== null) {
     const closing = tok[1] === '/';
     const tagName = (tok[2] ?? '').toLowerCase();
-    const selfClose = tok[3] === '/' || /\/>\s*$/.test(tok[0] ?? '');
+    const selfClose = tok[3] === '/'
+      || /\/>\s*$/.test(tok[0] ?? '')
+      || HTML_VOID_ELEMENTS.has(tagName);
     if (closing) {
       depth = Math.max(0, depth - 1);
       continue;
@@ -1872,6 +1879,49 @@ function childLooksEmptyLeftoverPeer(child: DirectChildSpan): boolean {
     textLooksLikeLeftoverPeerPlaceholder(child.inner)
     || textLooksLikeLeftoverIndexLabel(child.inner)
   );
+}
+
+/**
+ * 루프335 — MiniMax often fills body copy blocks with `<br><br><br>` only.
+ * Detect direct inner block children whose visible text is empty and whose
+ * inner is br/whitespace only — treat them as unfilled body slots.
+ */
+function innerBlockContainsOnlyBrPlaceholders(html: string): boolean {
+  const source = String(html ?? '');
+  if (!source) return false;
+  const compact = source.replace(/<br\s*\/?>/gi, '').replace(/&nbsp;|\s/g, '');
+  return compact === '';
+}
+
+function chromeCardBodyLooksUnfilled(
+  html: string,
+  child: DirectChildSpan,
+): boolean {
+  const innerRaw = html.slice(child.absEnd, child.absEnd + child.inner.length);
+  if (!/<br\s*\/?>/i.test(innerRaw)) return false;
+  // 루프335 — 스캐너가 `<br>` 을 open 으로 취급해 depth 가 흐려지지
+  // 않도록 로컬에서 self-close 로 재작성해 자식 탐색을 안정화한다.
+  const stripped = innerRaw.replace(/<br\b([^/>]*)>/gi, '<br$1/>');
+  const stitched = `${html.slice(0, child.absEnd)}${stripped}${html.slice(child.absEnd + innerRaw.length)}`;
+  const slots = listDirectBlockChildSpans(stitched, child.absEnd, child.absEnd + stripped.length);
+  if (slots.length < 1) return false;
+  let bodySlots = 0;
+  let emptyBodySlots = 0;
+  for (const slot of slots) {
+    if (slot.tag === 'br') continue;
+    const text = visibleText(slot.inner);
+    if (text.length === 0 && innerBlockContainsOnlyBrPlaceholders(slot.inner)) {
+      emptyBodySlots += 1;
+      bodySlots += 1;
+    } else if (
+      /<br\s*\/?>/i.test(slot.inner)
+      && innerBlockContainsOnlyBrPlaceholders(slot.inner)
+    ) {
+      emptyBodySlots += 1;
+      bodySlots += 1;
+    }
+  }
+  return bodySlots >= 1 && emptyBodySlots === bodySlots;
 }
 
 function containerLooksLikeAllocatedCardRow(
@@ -2829,6 +2879,245 @@ export function absorbSpilledChromeCardSiblings(
   return out;
 }
 
+const HEADING_TAIL_DUP_MIN = 4;
+const HEADING_TAIL_DUP_MAX = 160;
+/**
+ * 루프331 — MiniMax sometimes repeats the trailing phrase of a heading as
+ * bare text right after `</h1..6>` (e.g. `<h2>...AI 파트너,<br>domain</h2>
+ * AI 파트너,<br>domain <div>lede...`). Strip the bare tail (text + `<br>`)
+ * when it exactly matches a suffix of the heading's inner visible text and
+ * is followed by a block-level open. Cover copy · standalone runs stay.
+ * 카피 발명 없음.
+ */
+export function stripDuplicatedHeadingTailAfterClose(html: string): string {
+  const source = String(html ?? '');
+  if (!source) return source;
+  const headingRe = /<(h[1-6])\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  const nextBlockRe = /^\s*(?:<\/(?:section|main|article|div)\b|<(?:div|section|article|main|aside|ul|ol|p|h[1-6]|figure|table|blockquote|header|footer|nav)\b|$)/i;
+  const patches: Array<{ start: number; end: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = headingRe.exec(source)) !== null) {
+    const headingText = normalizeVisibleTextForDedup(match[2] ?? '');
+    if (headingText.length < HEADING_TAIL_DUP_MIN) continue;
+    const tailStart = match.index + match[0].length;
+    let cursor = tailStart;
+    while (cursor < source.length) {
+      const ch = source[cursor]!;
+      if (ch === '<') {
+        const br = /^<br\s*\/?>/i.exec(source.slice(cursor));
+        if (br) {
+          cursor += br[0].length;
+          continue;
+        }
+        break;
+      }
+      cursor += 1;
+    }
+    if (cursor === tailStart) continue;
+    const tailStr = source.slice(tailStart, cursor);
+    if (tailStr.length > HEADING_TAIL_DUP_MAX) continue;
+    const tailText = normalizeVisibleTextForDedup(tailStr);
+    if (tailText.length < HEADING_TAIL_DUP_MIN) continue;
+    if (!headingText.endsWith(tailText)) continue;
+    if (headingText === tailText) continue;
+    const after = source.slice(cursor);
+    if (!nextBlockRe.test(after)) continue;
+    patches.push({ start: tailStart, end: cursor });
+  }
+  if (patches.length === 0) return source;
+  let out = source;
+  for (let i = patches.length - 1; i >= 0; i -= 1) {
+    const p = patches[i]!;
+    out = `${out.slice(0, p.start)}${out.slice(p.end)}`;
+  }
+  return out;
+}
+
+const CROSS_GRID_SPILL_BODY_MIN = 4;
+const CROSS_GRID_SPILL_BODY_MAX = 200;
+
+/**
+ * 루프332 — 그리드 안에서 마지막 크롬 카드가 조기 종료되어 본문 조각이
+ * 그리드 다음 형제로 새는 경우가 있다. 예:
+ *   `<grid> <cardA 3 children> <cardB 3 children> <cardC 2 children> </grid>
+ *    <div style="VT323...">본문</div> ...`
+ * 그리드 내부 마지막 카드의 직접 블록 자식 수가 앞선 크롬 카드들의 최소값
+ * 미만이고, 그리드 바로 다음 형제가 카드 없는 짧은 본문 div면 그 조각을
+ * 마지막 카드 안으로 되돌린다. 다른 그리드 · 그림 · 넓은 본문은 유지.
+ * 카피 발명 없음.
+ */
+export function absorbSpilledBodyAcrossGridBoundary(
+  html: string,
+  brief?: string | null,
+): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
+  const openRe =
+    /<(div|section|article|main|aside|ul|ol)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  type Patch = {
+    parentStart: number;
+    parentEnd: number;
+    cardStart: number;
+    cardEnd: number;
+    spillStart: number;
+    spillEnd: number;
+    cardCloseStart: number;
+    cardCloseEnd: number;
+  };
+  const patches: Patch[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) {
+    const parentAttrs = match[2] ?? '';
+    const parentTag = (match[1] ?? '').toLowerCase();
+    const parentOpenEnd = match.index + match[0].length;
+    const parentClose = findSameTagClose(out, parentTag, parentOpenEnd);
+    if (!parentClose) continue;
+    const parentChildren = listDirectBlockChildSpans(out, parentOpenEnd, parentClose.closeStart);
+    if (parentChildren.length < 2) continue;
+    for (let i = 0; i < parentChildren.length - 1; i += 1) {
+      const gridChild = parentChildren[i]!;
+      if (gridChild.tag !== 'div') continue;
+      const gridStyle = gridChild.style;
+      const isInlineGrid = /(?:^|;)\s*display\s*:\s*(?:inline-)?grid\b/i.test(gridStyle);
+      if (!isInlineGrid) continue;
+      const gridInnerChildren = listDirectBlockChildSpans(out, gridChild.absEnd, gridChild.absEnd + gridChild.inner.length);
+      const chromeChildren = gridInnerChildren.filter((c) => c.tag === 'div' && looksLikeChromeCardStyle(c.style));
+      if (chromeChildren.length < 3 || chromeChildren.length > 6) continue;
+      const lastChrome = chromeChildren[chromeChildren.length - 1]!;
+      const otherChromeSlotCounts = chromeChildren
+        .slice(0, -1)
+        .map((c) => listDirectBlockChildSpans(out, c.absEnd, c.absEnd + c.inner.length).length);
+      if (otherChromeSlotCounts.some((count) => count < 2)) continue;
+      const minOther = Math.min(...otherChromeSlotCounts);
+      const lastSlots = listDirectBlockChildSpans(out, lastChrome.absEnd, lastChrome.absEnd + lastChrome.inner.length);
+      if (lastSlots.length >= minOther) continue;
+      const spill = parentChildren[i + 1]!;
+      if (spill.tag !== 'div') continue;
+      if (exactCardishTokens(spill.attrs).length > 0) continue;
+      if (looksLikeChromeCardStyle(spill.style)) continue;
+      if (/(?:^|;)\s*display\s*:\s*(?:inline-)?(?:grid|flex)\b/i.test(spill.style)) continue;
+      if (/(?:^|;)\s*position\s*:\s*absolute\b/i.test(spill.style)) continue;
+      const spillText = visibleText(spill.inner);
+      if (spillText.length < CROSS_GRID_SPILL_BODY_MIN || spillText.length > CROSS_GRID_SPILL_BODY_MAX) continue;
+      // 자식이 여러 개 있는 넓은 본문(카드가 아닌 큰 섹션)은 유지.
+      if (listDirectBlockChildSpans(out, spill.absEnd, spill.absEnd + spill.inner.length).length > 0) continue;
+      patches.push({
+        parentStart: parentOpenEnd,
+        parentEnd: parentClose.closeStart,
+        cardStart: lastChrome.absStart,
+        cardEnd: lastChrome.absCloseEnd,
+        spillStart: spill.absStart,
+        spillEnd: spill.absCloseEnd,
+        cardCloseStart: lastChrome.absEnd + lastChrome.inner.length,
+        cardCloseEnd: lastChrome.absCloseEnd,
+      });
+    }
+  }
+  if (patches.length === 0) return out;
+  patches.sort((a, b) => b.spillStart - a.spillStart);
+  for (const patch of patches) {
+    const spillHtml = out.slice(patch.spillStart, patch.spillEnd);
+    // Remove the spill first
+    out = `${out.slice(0, patch.spillStart)}${out.slice(patch.spillEnd)}`;
+    // Then insert spill before the last chrome card's close.
+    out = `${out.slice(0, patch.cardCloseStart)}${spillHtml}${out.slice(patch.cardCloseStart)}`;
+  }
+  return out;
+}
+
+const INLINE_TAIL_DUP_MIN_TEXT = 1;
+const INLINE_TAIL_DUP_MAX_TEXT = 20;
+
+/**
+ * 루프333 — MiniMax sometimes duplicates the trailing emphasis of a sibling
+ * as an orphan fragment, e.g.
+ *   `<div>...<b>30%</b></div>` `<b>30%</b></div>` `<div>...`
+ * Strip the orphan `<b>...</b></div>` when the previous div's visible tail
+ * ends with the identical `<b>text</b>` and the duplicate is followed by
+ * another block-level open. Handles `<b>`, `<strong>`, `<em>` inline.
+ * 카피 발명 없음.
+ */
+export function stripDuplicatedInlineTailAfterSiblingClose(html: string): string {
+  const source = String(html ?? '');
+  if (!source) return source;
+  const orphanRe = /<\/div>\s*(<(b|strong|em)\b[^>]*>([^<]+)<\/\2>\s*<\/div>)\s*/gi;
+  const patches: Array<{ start: number; end: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = orphanRe.exec(source)) !== null) {
+    const fullFragmentStart = match.index + match[0].indexOf(match[1]!);
+    const fullFragmentEnd = fullFragmentStart + match[1]!.length;
+    const inlineText = (match[3] ?? '').trim();
+    if (inlineText.length < INLINE_TAIL_DUP_MIN_TEXT) continue;
+    if (inlineText.length > INLINE_TAIL_DUP_MAX_TEXT) continue;
+    const prevSlice = source.slice(0, match.index);
+    const prevDivOpen = /<div\b[^>]*>[\s\S]*$/i.exec(prevSlice);
+    if (!prevDivOpen) continue;
+    const prevOpen = prevDivOpen.index;
+    const prevInner = source.slice(prevOpen, match.index);
+    const escaped = inlineText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const prevTailRe = new RegExp(
+      `<(b|strong|em)\\b[^>]*>\\s*${escaped}\\s*<\\/\\1>\\s*$`,
+      'i',
+    );
+    if (!prevTailRe.test(prevInner)) continue;
+    const after = source.slice(fullFragmentEnd);
+    if (!/^\s*<(?:div|section|article|main|aside|ul|ol|p|h[1-6]|figure|table|blockquote|header|footer|nav|\/(?:div|section|main|article))\b/i.test(after)) continue;
+    patches.push({ start: fullFragmentStart, end: fullFragmentEnd });
+  }
+  if (patches.length === 0) return source;
+  patches.sort((a, b) => b.start - a.start);
+  let out = source;
+  for (const patch of patches) {
+    out = `${out.slice(0, patch.start)}${out.slice(patch.end)}`;
+  }
+  return out;
+}
+
+/**
+ * 루프334 — MiniMax 실패 시 4개 크롬 카드 전체 본문이 `<br><br><br>` 만
+ * 남는다(예: Tech Stack). 라벨은 유지하지만 본문은 텅 빈 상태. 카드
+ * 그리드의 모든 크롬 카드가 본문 슬롯이 완전히 비면 그 그리드만 제거
+ * (슬라이드의 제목·꼬리 카피는 유지). 다른 카드가 하나라도 채워졌으면
+ * 유지. 카피 발명 없음.
+ */
+export function dropChromeCardGridsWithAllEmptyBodies(
+  html: string,
+  brief?: string | null,
+): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
+  const openRe =
+    /<(div|section|article|main|aside|ul|ol)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  const removals: Array<{ start: number; end: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) {
+    const attrs = match[2] ?? '';
+    const style = extractInlineStyle(attrs);
+    if (!/(?:^|;)\s*display\s*:\s*(?:inline-)?grid\b/i.test(style)) continue;
+    const tag = (match[1] ?? '').toLowerCase();
+    const openEnd = match.index + match[0].length;
+    const close = findSameTagClose(out, tag, openEnd);
+    if (!close) continue;
+    const children = listDirectBlockChildSpans(out, openEnd, close.closeStart);
+    if (children.length < 2 || children.length > 6) continue;
+    const chromeChildren = children.filter((c) => c.tag === 'div' && looksLikeChromeCardStyle(c.style));
+    if (chromeChildren.length !== children.length) continue;
+    if (!chromeChildren.every((c) => chromeCardBodyLooksUnfilled(out, c))) continue;
+    const closeTok = out.slice(close.closeStart).match(new RegExp(`^</${tag}\\s*>`, 'i'));
+    const removalEnd = close.closeStart + (closeTok?.[0].length ?? 0);
+    removals.push({ start: match.index, end: removalEnd });
+    openRe.lastIndex = removalEnd;
+  }
+  if (removals.length === 0) return out;
+  removals.sort((a, b) => b.start - a.start);
+  for (const removal of removals) {
+    out = `${out.slice(0, removal.start)}${out.slice(removal.end)}`;
+  }
+  return out;
+}
+
 const ADJACENT_DUPLICATE_CARD_MIN = 12;
 
 function childLooksLikeDedupPeerCard(child: DirectChildSpan): boolean {
@@ -3225,8 +3514,20 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // 루프293 — class 없는 크롬 카드의 조기 close가 제목·본문을 그리드
   // 형제로 남기면 shrink가 열을 늘린다. shrink 전에 카드 안으로 되돌린다.
   out = absorbSpilledChromeCardSiblings(out, brief);
+  // 루프332 — 그리드 바로 다음 형제로 새어나간 본문 조각을 마지막 크롬
+  // 카드 안으로 되돌린다. absorb 다음, dup drop 이전에 실행해야 그리드
+  // 내부 카운트와 dup 판정이 정합적으로 흘러간다.
+  out = absorbSpilledBodyAcrossGridBoundary(out, brief);
+  // 루프333 — 조기 종료된 카드 뒤에 남은 orphan `<b>tail</b></div>` 제거.
+  out = stripDuplicatedInlineTailAfterSiblingClose(out);
+  // 루프331 — `</h1..6>` 다음 heading 꼬리 텍스트가 그대로 중복된 경우 제거.
+  out = stripDuplicatedHeadingTailAfterClose(out);
   // 루프297 — 같은 행의 완전 동일 인접 카드 한 장만 남긴다.
   out = dropAdjacentDuplicatePeerCards(out, brief);
+  // 루프334 — 크롬 카드 그리드의 본문 슬롯이 전부 <br>만 남은 경우
+  // (Tech Stack 등) 그 그리드만 제거. 슬라이드 제목·꼬리 카피는 유지.
+  // 루프335 — HTML void 요소 depth 안정화 후에 그리드 자식이 정확히 잡힌다.
+  out = dropChromeCardGridsWithAllEmptyBodies(out, brief);
   out = unnestHeadingBlockChildren(out);
   out = polishTruncatedInstructionTitles(out);
   // 루프197 — empty leftover card shells keep 3-track rows alive so

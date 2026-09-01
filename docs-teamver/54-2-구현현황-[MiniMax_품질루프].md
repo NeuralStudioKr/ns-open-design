@@ -31,6 +31,36 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-01 현재 판단 · 최신 루프
 
+### 루프335 — HTML void element depth 안정화
+
+`listDirectBlockChildOpens` / `countDirectBlockChildren` 이 `<br>` / `<img>` / `<hr>` 등 HTML void 요소를 open 으로 세어 depth 를 계속 밀어 올렸다. `<br><br><br>` 을 넣는 실패 본문 아래로 이어지는 형제 크롬 카드가 depth != 0 이라서 direct child 로 잡히지 않았고, 결과적으로 루프334·197·240 등 “같은 행의 카드” 로직이 실제 카드 개수를 못 봤다. 표준 void 요소 14종을 self-close 로 처리해 direct child 카운팅을 안정화. offset/부모 트리는 그대로.
+
+검증: contracts 전체 스위트 · heal-ai-generated-deck 회귀 · heal-loop331-335-residuals.
+
+### 루프334 — 크롬 카드 본문이 전부 `<br>`만 남은 그리드 제거
+
+MiniMax 실패 시 (예: Tech Stack) 4개 크롬 카드의 본문 슬롯이 라벨(예 `LLM / NLP`) + `<br><br><br>` 로만 남는다. 라벨만 있고 실제 내용이 없어 슬라이드에 “카드 껍데기가 죽 나열된” 모양. 그리드 안 크롬 카드 전부가 본문 슬롯을 `<br>`/공백으로만 채웠다면 그 그리드 하나만 지운다. 슬라이드 제목·꼬리 카피(vendor-lock 등)는 유지. 카드가 하나라도 채워졌으면 유지. 카피 발명 없음.
+
+검증: contracts heal-loop331-335-residuals 루프334.
+
+### 루프333 — orphan `<b>tail</b></div>` 중복 제거
+
+로드맵/차트에서 `<div>...<b>30%</b></div>` 뒤에 `<b>30%</b></div>` 조각이 그대로 한 번 더 붙는 사례가 있다(그리드 컨테이너 조기 종료 + emphasis 중복). 이전 형제 `<div>` 의 마지막이 동일한 `<b>text</b>` 로 끝나고, 뒤이어 블록 태그가 오면 그 조각을 통째로 제거. `<b>` / `<strong>` / `<em>` 대응. 카피 발명 없음.
+
+검증: contracts heal-loop331-335-residuals 루프333.
+
+### 루프332 — 그리드 밖으로 새어나간 본문 조각 흡수
+
+`<grid>` 안 마지막 크롬 카드가 조기 종료(라벨+제목만 남기고 `</div>` 하나 부족)되면 실제 본문은 그리드 다음 형제로 흘러 나가 4번째 열처럼 렌더된다(예: Close 슬라이드 STEP 03). 그리드 내부 마지막 카드의 직접 블록 자식 수가 앞선 크롬 카드들의 최소값보다 작고, 그리드 바로 다음 형제가 카드가 아닌 짧은 본문 div면 그 본문을 마지막 카드 내부(닫기 직전)로 되돌린다. 다른 그리드·이미지·넓은 본문은 유지. 카피 발명 없음.
+
+검증: contracts heal-loop331-335-residuals 루프332.
+
+### 루프331 — `</h1..6>` heading 꼬리 텍스트 중복 제거
+
+Close 슬라이드에서 `<h2>신뢰할 수 있는 AI 파트너,<br>neuralstudio.kr</h2> AI 파트너,<br>neuralstudio.kr <div>` 같이 heading 마지막 구절이 그대로 한 번 더 붙어 나오는 사례가 있다. `</hN>` 다음의 텍스트+`<br>` 만으로 이뤄진 짧은 꼬리(≤ 160자)가 heading 내부 정규화 텍스트의 정확한 suffix (≥ 4자) 이고 뒤에 블록 태그가 오면 제거. 정상 heading + 본문은 유지. 카피 발명 없음.
+
+검증: contracts heal-loop331-335-residuals 루프331.
+
 ### 루프327 — 칸 번호 S 빈 카드
 
 루프326까지는 A–R / 가…하 / 스무째까지만 빈 칸 번호로 본다. 모델이 빠진 3열을 `기둥 S`만으로 채워 빈 띠가 남는다. 그 제목만 제거. 띄어쓴 `스무 번째` / `기둥 T`와 번호+본문(`기둥 S 실카피`)은 유지. 한글 열 라벨은 `하`가 끝. 카피 발명 없음. 공식 영문 카탈로그는 brief 없이 유지.
@@ -38,10 +68,6 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 검증: contracts heal-ai-generated-deck 루프327 · deck-framework-compact.
 
 ### 루프326 — 칸 번호 R 빈 카드
-
-루프324–325는 A–Q / 가…하 / 스무째까지만 빈 칸 번호로 본다. 모델이 빠진 3열을 `기둥 R`만으로 채워 빈 띠가 남는다. 그 제목만 제거. 띄어쓴 `스무 번째` / `기둥 S`와 번호+본문(`기둥 R 실카피`)은 유지. 한글 열 라벨은 `하`가 끝. 카피 발명 없음. 공식 영문 카탈로그는 brief 없이 유지.
-
-검증: contracts heal-ai-generated-deck 루프326 · deck-framework-compact.
 
 ### 루프325 — 칸 번호 스무째 빈 카드
 
@@ -906,6 +932,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
+- **완료 (루프331–335):** neuralstudio.kr 회사소개 잔여. h2 tail dup / cross-grid absorb / orphan `<b>` tail / empty `<br>`-body grid / void depth 안정화.
 - **완료 (루프327):** 칸 번호 S 빈 카드. 띄어쓴 `스무 번째` / `기둥 T`와 번호+본문은 유지.
 - **완료 (루프326):** 칸 번호 R 빈 카드. 띄어쓴 `스무 번째` / `기둥 S`와 번호+본문은 유지.
 - **완료 (루프325):** 칸 번호 스무째 빈 카드. 띄어쓴 `스무 번째` / `기둥 R`과 번호+본문은 유지.
@@ -1311,6 +1338,11 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist/preview: 칸 번호만 있는 3열 카드(스무째) | ☑ 루프325 |
 | persist/preview: 칸 번호만 있는 3열 카드(R) | ☑ 루프326 |
 | persist/preview: 칸 번호만 있는 3열 카드(S) | ☑ 루프327 |
+| heal: `</hN>` heading 꼬리 텍스트 중복 (`AI 파트너,<br>domain`) | ☑ 루프331 |
+| heal: 그리드 밖 형제로 새어나간 STEP 03 본문 흡수 | ☑ 루프332 |
+| heal: orphan `<b>30%</b></div>` inline tail 조각 제거 | ☑ 루프333 |
+| heal: Tech Stack 크롬 카드 본문이 `<br>`뿐인 그리드 제거 | ☑ 루프334 |
+| heal: HTML void `<br>/<img>/<hr>` 등 depth 안정화 | ☑ 루프335 |
 | heal: nested card soup extra `</div>`가 장 호스트를 닫음 | ☑ 루프287 |
 | docs: leftover 용어를 「빈 칸 번호 카드」로 정리 | ☑ 루프284 |
 | preview: 공식 example-replit-deck GET이 helix를 주고 시드를 주지 않음 | ☑ 루프278 |
@@ -1336,7 +1368,16 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
 
-## 이번 루프 (루프327 · 칸 번호 S)
+## 이번 루프 (루프331–335 · neuralstudio.kr 회사소개 잔여)
+
+- [x] 루프331 — `<h2>...파트너,<br>domain</h2> tail dup` heading 꼬리 텍스트 제거
+- [x] 루프332 — 그리드 밖으로 새어나간 STEP 03 본문을 마지막 크롬 카드로 되돌림
+- [x] 루프333 — Roadmap `<b>30%</b></div>` orphan inline tail 조각 제거
+- [x] 루프334 — Tech Stack 처럼 크롬 카드 본문이 `<br>`뿐인 그리드만 제거
+- [x] 루프335 — `<br>/<img>/<hr>` 등 HTML void 요소 depth 안정화
+- [x] heal-loop331-335-residuals (10 tests) · 전체 스위트 회귀 없음
+
+## 직전 루프 (루프327 · 칸 번호 S)
 
 - [x] 빈 칸 번호 — S
 - [x] 띄어쓴 `스무 번째` / `기둥 T` · 번호+본문 유지
