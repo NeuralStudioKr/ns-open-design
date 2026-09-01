@@ -837,6 +837,10 @@
 .deck-filmstrip__chip.is-drop-target {
   outline: 2px solid var(--accent);
 }
+.deck-filmstrip.is-disabled .deck-filmstrip__chip {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
 .deck-filmstrip__num {
   pointer-events: none;
 }

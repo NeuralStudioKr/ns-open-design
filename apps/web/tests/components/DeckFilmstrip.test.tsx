@@ -91,4 +91,34 @@ describe("DeckFilmstrip (0901-N01-C)", () => {
     });
     expect(onReorder).not.toHaveBeenCalled();
   });
+
+  it("blocks go and reorder while disabled", () => {
+    const onGo = vi.fn();
+    const onReorder = vi.fn();
+    render(
+      <DeckFilmstrip
+        items={items}
+        currentSlideIndex={0}
+        ariaLabel="Slides"
+        slideLabelTemplate="Slide {{n}}"
+        onGo={onGo}
+        onReorder={onReorder}
+        disabled
+      />,
+    );
+    const nav = screen.getByTestId("deck-filmstrip");
+    expect(nav.getAttribute("aria-disabled")).toBe("true");
+    const chips = screen.getAllByRole("button");
+    expect(chips[0]!.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(chips[1]!);
+    expect(onGo).not.toHaveBeenCalled();
+    const dataTransfer = {
+      effectAllowed: "move",
+      dropEffect: "move",
+      getData: vi.fn((type: string) => (type === "text/plain" ? "0" : "")),
+      setData: vi.fn(),
+    };
+    fireEvent.dragStart(chips[0]!, { dataTransfer });
+    expect(dataTransfer.setData).not.toHaveBeenCalled();
+  });
 });

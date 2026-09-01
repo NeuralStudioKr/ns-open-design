@@ -17649,6 +17649,7 @@ function HtmlViewer({
             slideLabelTemplate={t('fileViewer.deckFilmstripSlide')}
             onGo={handleFilmstripGo}
             onReorder={handleReorderSlide}
+            disabled={deckStructureBusy}
           />
         );
       })()}

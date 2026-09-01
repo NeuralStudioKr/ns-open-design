@@ -12,6 +12,7 @@ export function DeckFilmstrip({
   slideLabelTemplate,
   onGo,
   onReorder,
+  disabled = false,
 }: {
   items: DeckFilmstripItem[];
   currentSlideIndex: number;
@@ -19,23 +20,30 @@ export function DeckFilmstrip({
   slideLabelTemplate: string;
   onGo: (index: number) => void;
   onReorder: (fromIndex: number, toIndex: number) => void | Promise<void>;
+  disabled?: boolean;
 }) {
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
 
   const handleDragStart = useCallback((index: number) => (event: DragEvent<HTMLButtonElement>) => {
+    if (disabled) {
+      event.preventDefault();
+      return;
+    }
     event.dataTransfer.setData("text/plain", String(index));
     event.dataTransfer.effectAllowed = "move";
     setDraggingIndex(index);
-  }, []);
+  }, [disabled]);
 
   const handleDragOver = useCallback((index: number) => (event: DragEvent<HTMLButtonElement>) => {
+    if (disabled) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
     setDropIndex(index);
-  }, []);
+  }, [disabled]);
 
   const handleDrop = useCallback((index: number) => (event: DragEvent<HTMLButtonElement>) => {
+    if (disabled) return;
     event.preventDefault();
     const raw = event.dataTransfer.getData("text/plain");
     const fromIndex = Number.parseInt(raw, 10);
@@ -43,7 +51,7 @@ export function DeckFilmstrip({
     setDropIndex(null);
     if (!Number.isInteger(fromIndex) || fromIndex === index) return;
     void onReorder(fromIndex, index);
-  }, [onReorder]);
+  }, [disabled, onReorder]);
 
   const handleDragEnd = useCallback(() => {
     setDraggingIndex(null);
@@ -53,7 +61,12 @@ export function DeckFilmstrip({
   if (items.length === 0) return null;
 
   return (
-    <nav className="deck-filmstrip" aria-label={ariaLabel} data-testid="deck-filmstrip">
+    <nav
+      className={["deck-filmstrip", disabled ? "is-disabled" : ""].filter(Boolean).join(" ")}
+      aria-label={ariaLabel}
+      data-testid="deck-filmstrip"
+      aria-disabled={disabled ? "true" : undefined}
+    >
       <ol className="deck-filmstrip__list">
         {items.map((item) => {
           const slideNumber = item.index + 1;
@@ -69,10 +82,14 @@ export function DeckFilmstrip({
                   draggingIndex === item.index ? "is-dragging" : "",
                   dropIndex === item.index ? "is-drop-target" : "",
                 ].filter(Boolean).join(" ")}
-                draggable
+                draggable={!disabled}
+                disabled={disabled}
                 aria-current={current ? "true" : undefined}
                 title={item.label}
-                onClick={() => onGo(item.index)}
+                onClick={() => {
+                  if (disabled) return;
+                  onGo(item.index);
+                }}
                 onDragStart={handleDragStart(item.index)}
                 onDragOver={handleDragOver(item.index)}
                 onDrop={handleDrop(item.index)}
