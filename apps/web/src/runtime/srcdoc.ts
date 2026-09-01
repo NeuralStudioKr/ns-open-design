@@ -3586,6 +3586,36 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     } catch (_) {}
     return false;
   }
+  function slidesLaidOutAlongAxis(list, axis){
+    if (!list || list.length < 2) return false;
+    try {
+      var a = list[0];
+      var b = list[1];
+      var dx = Math.abs((b.offsetLeft || 0) - (a.offsetLeft || 0));
+      var dy = Math.abs((b.offsetTop || 0) - (a.offsetTop || 0));
+      if (axis === 'y') return dy > Math.max(40, dx);
+      return dx > Math.max(40, dy);
+    } catch (_) {
+      return false;
+    }
+  }
+  function trackLooksLikeHorizontalStrip(track, kids, flexDir){
+    if (!track) return false;
+    var list = kids && kids.length ? kids : [];
+    if (slidesAreOverlappingStack(list)) return false;
+    var dir = String(flexDir || '').toLowerCase();
+    if (!dir) {
+      try { dir = String(window.getComputedStyle(track).flexDirection || '').toLowerCase(); }
+      catch (_) { dir = ''; }
+    }
+    // LOOK_NEUTRALIZE forces .stage itself to column. Translating that
+    // stack on X only nudges page 1 inside the iframe (host prev/next recurrence).
+    if (dir === 'column' || dir === 'column-reverse') {
+      return slidesLaidOutAlongAxis(list, 'x');
+    }
+    if (slidesLaidOutAlongAxis(list, 'y') && !slidesLaidOutAlongAxis(list, 'x')) return false;
+    return true;
+  }
   function transformTrack(list){
     if (!list || !list.length) return null;
     if (slidesAreOverlappingStack(list)) return null;
@@ -3615,9 +3645,10 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
         var isStageTrack = node.id === 'stage'
           || (node.classList && node.classList.contains('stage'));
         // IB #stage is a horizontal translate strip even when neutralize
-        // reports flex-direction:column on #deck. Skipping it here leaves
-        // host next on native translateX(-100vw) against a 1920 canvas.
-        // Opacity-stack .stage (absolute inset slides) must not take this path.
+        // reports flex-direction:column on #deck. Skipping a real row here
+        // leaves host next on native translateX(-100vw) against a 1920 canvas.
+        // Neutralized leftover .stage columns (and opacity stacks) must not
+        // take this path — translateX only nudges page 1.
         if (isStageTrack && directSlides >= 2) {
           var stageKids = [];
           for (var sk = 0; sk < node.children.length; sk++) {
@@ -3625,7 +3656,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
               stageKids.push(node.children[sk]);
             }
           }
-          if (!slidesAreOverlappingStack(stageKids)) return node;
+          if (trackLooksLikeHorizontalStrip(node, stageKids, flexDir)) return node;
         }
         // Stacked letterbox neutralize forces #deck to column — do not treat as
         // horizontal translate track (Studio/Grove/Signal fills).
@@ -3968,7 +3999,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
       }
     } catch (_) {}
     if (slidesAreOverlappingStack(kids.length ? kids : slides())) return false;
-    return true;
+    return trackLooksLikeHorizontalStrip(track, kids.length ? kids : slides(), '');
   }
   function hasAuthorSwipeScript(){
     try {
@@ -4075,10 +4106,14 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
         track.style.transform = 'translateY(' + (-target * 100) + unitY + ')';
       }
     } else {
+      if (slidesLaidOutAlongAxis(list, 'y') && !slidesLaidOutAlongAxis(list, 'x')) return false;
       var stepX = transformSlideStepPx(list, track, 'x');
       if (stepX <= 0 && isHorizontalStageTrack(track)) {
         stepX = authoredFixedCanvasPx() || 1920;
       }
+      var pinX = authoredFixedCanvasPx();
+      var vwX = window.innerWidth || 0;
+      if (stepX <= 0 && pinX >= 1600 && vwX + 48 < pinX) return false;
       if (stepX > 0) {
         track.style.transform = 'translateX(' + (-target * stepX) + 'px)';
       } else {
