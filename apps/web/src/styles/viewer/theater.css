@@ -808,8 +808,32 @@
   align-items: center;
   gap: 6px;
   margin: 0;
-  padding: 0;
+  padding: 0 4px;
   list-style: none;
+}
+.deck-filmstrip__list > li {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.deck-filmstrip__list > li.is-drop-before::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+  z-index: 1;
+}
+.deck-filmstrip__list > li.is-drop-tail {
+  width: 0;
+  min-width: 0;
+  height: 28px;
+  margin-left: 2px;
 }
 .deck-filmstrip__chip {
   display: inline-flex;
@@ -838,9 +862,6 @@
 }
 .deck-filmstrip__chip.is-dragging {
   opacity: 0.55;
-}
-.deck-filmstrip__chip.is-drop-target {
-  outline: 2px solid var(--accent);
 }
 .deck-filmstrip.is-disabled .deck-filmstrip__chip {
   cursor: not-allowed;
