@@ -2839,6 +2839,9 @@ export interface Dict {
   'fileViewer.previousSlide': string;
   'fileViewer.nextSlide': string;
   'fileViewer.slideNavAria': string;
+  'fileViewer.moveSlideEarlier': string;
+  'fileViewer.moveSlideLater': string;
+  'fileViewer.deleteSlide': string;
   'fileViewer.present': string;
   'fileViewer.presentInTab': string;
   'fileViewer.presentFullscreen': string;

@@ -35,6 +35,11 @@ import {
   trackShareOptionPopoverClick,
 } from '../analytics/events';
 import { hasSalvageableDeckSlideContent } from '../artifacts/deck-html-content';
+import {
+  deleteDeckSlideAt,
+  extractTopLevelSlideSections,
+  moveDeckSlideByDelta,
+} from '../artifacts/deck-patch';
 import { MarkdownRenderer, artifactRendererRegistry } from '../artifacts/renderer-registry';
 import { renderMarkdownToSafeHtml } from '../artifacts/markdown';
 import { useI18n } from '../i18n';
@@ -6540,6 +6545,8 @@ function HtmlViewer({
   const [slideState, setSlideState] = useState<SlideState | null>(
     () => htmlPreviewSlideState.get(previewStateKey) ?? null,
   );
+  const [deckStructureBusy, setDeckStructureBusy] = useState(false);
+  const [deckStructureError, setDeckStructureError] = useState<string | null>(null);
   const boardPreviewScaleOptions = localCommentSideDockActive ? { canvasPadding: 0 } : undefined;
   const overlayPreviewScale = effectivePreviewScale(
     previewViewport,
@@ -14112,6 +14119,160 @@ function HtmlViewer({
     }
   }
 
+  function postSlideGo(index: number) {
+    for (const win of slideMessageTargets()) {
+      win.postMessage({ type: 'od:slide', action: 'go', index }, '*');
+    }
+  }
+
+  async function persistDeckStructureMutation(
+    nextHtml: string,
+    activeIndex: number,
+    slideCount: number,
+    label: string,
+  ): Promise<boolean> {
+    const truncateAfter = truncateAfterSequenceForStack(revisionStackRef.current);
+    const previousSource = sourceRef.current ?? source ?? '';
+    const saved = await pushProjectFileRevision(projectId, file.name, {
+      content: nextHtml,
+      source: 'manual_edit',
+      label,
+      truncateAfterSequence: truncateAfter,
+    });
+    if (!saved.ok) {
+      const status = 'status' in saved ? saved.status : undefined;
+      const code = 'code' in saved ? saved.code : undefined;
+      const message = 'message' in saved ? saved.message : 'Unknown save error';
+      if (status === 401) {
+        notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
+      }
+      setDeckStructureError(
+        isTeamverEmbedMode()
+          ? formatProjectArtifactSaveFailedError(file.name, { status, code, message })
+          : embedUiLabel(
+              `Could not save slide change${status ? ` (${status})` : ''}: ${message}`,
+              '슬라이드 변경을 저장하지 못했습니다.',
+            ),
+      );
+      window.alert(
+        embedUiLabel(
+          'Could not save the slide change.',
+          '슬라이드 변경을 저장하지 못했습니다.',
+        ),
+      );
+      return false;
+    }
+    revisionSyncSuppressRef.current = true;
+    setSource(nextHtml);
+    sourceRef.current = nextHtml;
+    pinManualEditSavedSource(nextHtml);
+    setInlinedSource(null);
+    if (manualEditMode) {
+      setManualEditFrozenSource(nextHtml);
+    }
+    const nextState = { active: activeIndex, count: slideCount };
+    setSlideStateCached(previewStateKey, nextState);
+    setSlideState(nextState);
+    commitRevisionStack(stackWithPushedRevision(
+      revisionStackRef.current,
+      saved.revision,
+      truncateAfter,
+    ));
+    setRevisionContentCache(projectId, file.name, saved.revision.id, nextHtml);
+    cacheParentRevisionOnPush(projectId, file.name, saved.revision.parentRevisionId, previousSource);
+    revisionSkipReconcileOnceRef.current = true;
+    setActiveRevisionSequence(projectId, file.name, saved.revision.sequence);
+    emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'manual_edit');
+    setRevisionStackInvalidated(false);
+    warmRevisionListSoftCacheFromStack(
+      projectId,
+      file.name,
+      revisionStackRef.current,
+      saved.revision.sequence,
+      revisionRetentionLimit,
+    );
+    scheduleDeferredRevisionStackRefresh();
+    if (useUrlLoadPreview) {
+      setReloadKey((k) => k + 1);
+    }
+    queueMicrotask(() => postSlideGo(activeIndex));
+    return true;
+  }
+
+  async function handleDeleteCurrentSlide() {
+    if (!effectiveDeck || deckStructureBusy) return;
+    const html = sourceRef.current ?? source;
+    if (typeof html !== 'string' || !html.trim()) return;
+    const htmlSlideCount = extractTopLevelSlideSections(html).length;
+    if (htmlSlideCount <= 1) return;
+    const active = Math.min(
+      Math.max(0, slideState?.active ?? 0),
+      htmlSlideCount - 1,
+    );
+    const confirmed = window.confirm(
+      embedUiLabel(
+        `Delete slide ${active + 1} of ${htmlSlideCount}? This can be undone from version history.`,
+        `${active + 1} / ${htmlSlideCount} 슬라이드를 삭제할까요? 버전 기록에서 되돌릴 수 있습니다.`,
+      ),
+    );
+    if (!confirmed) return;
+    const result = deleteDeckSlideAt(html, active);
+    if (!result.ok) {
+      setDeckStructureError(result.reason);
+      window.alert(
+        embedUiLabel(
+          'Could not delete this slide.',
+          '이 슬라이드를 삭제할 수 없습니다.',
+        ),
+      );
+      return;
+    }
+    setDeckStructureBusy(true);
+    setDeckStructureError(null);
+    try {
+      await persistDeckStructureMutation(
+        result.html,
+        result.activeIndex,
+        result.slideCount,
+        embedUiLabel(`Delete slide ${active + 1}`, `슬라이드 ${active + 1} 삭제`),
+      );
+    } finally {
+      setDeckStructureBusy(false);
+    }
+  }
+
+  async function handleMoveCurrentSlide(delta: -1 | 1) {
+    if (!effectiveDeck || deckStructureBusy) return;
+    const html = sourceRef.current ?? source;
+    if (typeof html !== 'string' || !html.trim()) return;
+    const htmlSlideCount = extractTopLevelSlideSections(html).length;
+    if (htmlSlideCount < 2) return;
+    const active = Math.min(
+      Math.max(0, slideState?.active ?? 0),
+      htmlSlideCount - 1,
+    );
+    const result = moveDeckSlideByDelta(html, active, delta);
+    if (!result.ok) {
+      setDeckStructureError(result.reason);
+      return;
+    }
+    setDeckStructureBusy(true);
+    setDeckStructureError(null);
+    try {
+      await persistDeckStructureMutation(
+        result.html,
+        result.activeIndex,
+        result.slideCount,
+        embedUiLabel(
+          delta < 0 ? 'Move slide earlier' : 'Move slide later',
+          delta < 0 ? '슬라이드 앞으로 이동' : '슬라이드 뒤로 이동',
+        ),
+      );
+    } finally {
+      setDeckStructureBusy(false);
+    }
+  }
+
   function syncCachedSlideStateToIframe(target: HTMLIFrameElement | null = iframeRef.current) {
     const active = htmlPreviewSlideState.get(previewStateKey)?.active;
     const win = target?.contentWindow;
@@ -16714,6 +16875,7 @@ function HtmlViewer({
               className="deck-nav"
               role="group"
               aria-label={t('fileViewer.slideNavAria')}
+              title={deckStructureError ?? undefined}
             >
               <button
                 type="button"
@@ -16746,6 +16908,56 @@ function HtmlViewer({
                 }
               >
                 <Icon name="chevron-right" size={14} />
+              </button>
+              <button
+                type="button"
+                className="icon-only od-tooltip"
+                onClick={() => void handleMoveCurrentSlide(-1)}
+                title={t('fileViewer.moveSlideEarlier')}
+                data-tooltip={t('fileViewer.moveSlideEarlier')}
+                data-tooltip-placement="bottom"
+                aria-label={t('fileViewer.moveSlideEarlier')}
+                disabled={
+                  deckStructureBusy
+                  || slideState == null
+                  || slideState.count < 2
+                  || slideState.active <= 0
+                }
+              >
+                <Icon name="arrow-up" size={14} />
+              </button>
+              <button
+                type="button"
+                className="icon-only od-tooltip"
+                onClick={() => void handleMoveCurrentSlide(1)}
+                title={t('fileViewer.moveSlideLater')}
+                data-tooltip={t('fileViewer.moveSlideLater')}
+                data-tooltip-placement="bottom"
+                aria-label={t('fileViewer.moveSlideLater')}
+                disabled={
+                  deckStructureBusy
+                  || slideState == null
+                  || slideState.count < 2
+                  || slideState.active >= slideState.count - 1
+                }
+              >
+                <Icon name="arrow-up" size={14} style={{ transform: 'rotate(180deg)' }} />
+              </button>
+              <button
+                type="button"
+                className="icon-only od-tooltip"
+                onClick={() => void handleDeleteCurrentSlide()}
+                title={t('fileViewer.deleteSlide')}
+                data-tooltip={t('fileViewer.deleteSlide')}
+                data-tooltip-placement="bottom"
+                aria-label={t('fileViewer.deleteSlide')}
+                disabled={
+                  deckStructureBusy
+                  || slideState == null
+                  || slideState.count <= 1
+                }
+              >
+                <Icon name="trash" size={14} />
               </button>
             </span>
           ) : null}

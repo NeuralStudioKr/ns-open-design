@@ -308,6 +308,117 @@ export function applyDeckPatch(options: ApplyDeckPatchOptions): ApplyDeckPatchSu
   return { ok: true, html: mergedHtml, appliedOps };
 }
 
+export type DeckStructureMutationSuccess = {
+  ok: true;
+  html: string;
+  /** 0-based active index the preview should land on after the mutation. */
+  activeIndex: number;
+  slideCount: number;
+};
+
+export type DeckStructureMutationFailure = {
+  ok: false;
+  reason: string;
+};
+
+/**
+ * Drop one top-level slide and restamp `data-slide-index`. Refuses to delete
+ * the last remaining slide so the deck never becomes empty.
+ */
+export function deleteDeckSlideAt(
+  currentHtml: string,
+  slideIndex: number,
+): DeckStructureMutationSuccess | DeckStructureMutationFailure {
+  const bodyRange = findBodyContentRange(currentHtml);
+  if (!bodyRange) {
+    return { ok: false, reason: 'current deck HTML has no <body>…</body>' };
+  }
+  const bodyContent = currentHtml.slice(bodyRange.start, bodyRange.end);
+  const slides = extractTopLevelSlideSections(bodyContent);
+  if (slides.length <= 1) {
+    return { ok: false, reason: 'cannot delete the last remaining slide' };
+  }
+  if (!Number.isInteger(slideIndex) || slideIndex < 0 || slideIndex >= slides.length) {
+    return { ok: false, reason: `slideIndex ${slideIndex} out of range (0..${slides.length - 1})` };
+  }
+  const patched = applyDeckPatch({
+    currentHtml,
+    patch: { ops: [{ op: 'remove', slideIndex, html: '' }] },
+  });
+  if (!patched.ok) return patched;
+  const slideCount = slides.length - 1;
+  const activeIndex = Math.min(slideIndex, slideCount - 1);
+  return {
+    ok: true,
+    html: restampDeckSlideIndexes(patched.html),
+    activeIndex,
+    slideCount,
+  };
+}
+
+/**
+ * Move the slide at `slideIndex` by `delta` positions (−1 = earlier, +1 = later).
+ */
+export function moveDeckSlideByDelta(
+  currentHtml: string,
+  slideIndex: number,
+  delta: -1 | 1,
+): DeckStructureMutationSuccess | DeckStructureMutationFailure {
+  const bodyRange = findBodyContentRange(currentHtml);
+  if (!bodyRange) {
+    return { ok: false, reason: 'current deck HTML has no <body>…</body>' };
+  }
+  const bodyContent = currentHtml.slice(bodyRange.start, bodyRange.end);
+  const slides = extractTopLevelSlideSections(bodyContent);
+  if (slides.length < 2) {
+    return { ok: false, reason: 'need at least two slides to reorder' };
+  }
+  if (!Number.isInteger(slideIndex) || slideIndex < 0 || slideIndex >= slides.length) {
+    return { ok: false, reason: `slideIndex ${slideIndex} out of range (0..${slides.length - 1})` };
+  }
+  const target = slideIndex + delta;
+  if (target < 0 || target >= slides.length) {
+    return { ok: false, reason: 'slide already at edge' };
+  }
+  const working = slides.map((slide) => ({
+    outerHtml: slide.outerHtml,
+    start: slide.start,
+    end: slide.end,
+  }));
+  const [moved] = working.splice(slideIndex, 1);
+  if (!moved) {
+    return { ok: false, reason: 'failed to splice slide' };
+  }
+  working.splice(target, 0, moved);
+  const rewrittenBody = replaceSlidesInBody(bodyContent, slides, working);
+  const mergedHtml =
+    currentHtml.slice(0, bodyRange.start) +
+    rewrittenBody +
+    currentHtml.slice(bodyRange.end);
+  return {
+    ok: true,
+    html: restampDeckSlideIndexes(mergedHtml),
+    activeIndex: target,
+    slideCount: working.length,
+  };
+}
+
+/** Force sequential `data-slide-index="0..N-1"` on every top-level slide. */
+export function restampDeckSlideIndexes(html: string): string {
+  const bodyRange = findBodyContentRange(html);
+  if (!bodyRange) return html;
+  const bodyContent = html.slice(bodyRange.start, bodyRange.end);
+  const slides = extractTopLevelSlideSections(bodyContent);
+  if (slides.length === 0) return html;
+  const working = slides.map((slide, index) => ({
+    outerHtml: forceDataSlideIndexAttr(slide.outerHtml, index),
+    start: slide.start,
+    end: slide.end,
+  }));
+  const rewrittenBody = replaceSlidesInBody(bodyContent, slides, working);
+  return html.slice(0, bodyRange.start) + rewrittenBody + html.slice(bodyRange.end);
+}
+
 function normalizeAllowedSlideIndexes(indexes: readonly number[] | undefined): Set<number> | null {
   if (!indexes) return null;
   const normalized = indexes
@@ -525,6 +636,20 @@ function ensureDataSlideIndexAttr(outerHtml: string, slideIndex: number): string
     (full, attrs: string) => {
       if (/\bdata-slide-index\s*=/i.test(attrs)) return full;
       const rest = attrs.trimStart();
+      return rest
+        ? `<section data-slide-index="${slideIndex}" ${rest}>`
+        : `<section data-slide-index="${slideIndex}">`;
+    },
+  );
+}
+
+/** Replace or insert `data-slide-index` so structural edits stay index-aligned. */
+function forceDataSlideIndexAttr(outerHtml: string, slideIndex: number): string {
+  return outerHtml.replace(
+    new RegExp(String.raw`^<section\b(${SECTION_OPEN_ATTRS_RE})>`, 'i'),
+    (_full, attrs: string) => {
+      const without = attrs.replace(/\s*\bdata-slide-index\s*=\s*(?:"[^"]*"|'[^']*'|\S+)/gi, '');
+      const rest = without.trimStart();
       return rest
         ? `<section data-slide-index="${slideIndex}" ${rest}>`
         : `<section data-slide-index="${slideIndex}">`;
