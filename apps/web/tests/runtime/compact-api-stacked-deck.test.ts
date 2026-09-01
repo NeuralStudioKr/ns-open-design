@@ -57,6 +57,19 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(looksLikeCompactApiStackedDeck(html)).toBe(false);
   });
 
+  it('does not treat 1920 canvas leftovers with leaked min-width:100vw as swipe strips', () => {
+    const html = [
+      '<!doctype html><html><head><style>',
+      '.slide{min-width:100vw;height:100vh}',
+      '</style></head><body>',
+      '<section class="slide" style="width:1920px;height:1080px">Page one topic</section>',
+      '<section class="slide" style="width:1920px;height:1080px">Page two topic</section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeAuthoredHorizontalSwipeDeck(html)).toBe(false);
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+  });
+
   it('rejects horizontal scroll-snap simple-deck templates', () => {
     const html = readFileSync(resolve(repoRoot, 'design-templates/simple-deck/assets/template.html'), 'utf8');
     expect(looksLikeAuthoredHorizontalSwipeDeck(html)).toBe(true);

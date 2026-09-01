@@ -128,7 +128,10 @@ export function looksLikeAuthoredHorizontalSwipeDeck(html: string): boolean {
   if (css) {
     if (/scroll-snap-type\s*:\s*x\b/i.test(css)) return true;
     if (new RegExp(`${DECK_SLIDE_HOST_CSS_CLASS}[^{]*\\{[^}]*min-width\\s*:\\s*100vw\\b`, 'i').test(css)) {
-      return true;
+      // MiniMax/clone leftovers copy template min-width:100vw onto a
+      // 1920x1080 canvas. That is not a viewport swipe strip — letterbox
+      // + display toggle, otherwise host next only nudges page 1.
+      if (!looksLikeFixedCanvasSlideDeck(html)) return true;
     }
     const rowFlexWithHorizontalScroll =
       /(?:html\s*,\s*body|body|html)\s*\{[^}]*\bdisplay\s*:\s*flex\b[^}]*\boverflow-x\s*:\s*(?:auto|scroll|overlay)\b/i.test(css)
@@ -174,6 +177,18 @@ function looksLikeBareDeckViewportTrack(html: string): boolean {
     || /\bwidth\s*:\s*100vw\b/i.test(slideRules)
     || /\bheight\s*:\s*100(?:vh|dvh|svh|lvh)\b/i.test(slideRules)
   );
+}
+
+function looksLikeFixedCanvasSlideDeck(html: string): boolean {
+  const pinned = extractSlideInlineStyles(html).filter(hasFixedCanvasSizing);
+  if (pinned.length >= 2) return true;
+  if (countSlideElements(html) < 2) return false;
+  const css = extractCssBlocks(html);
+  if (!css) return false;
+  for (const match of css.matchAll(new RegExp(`${DECK_SLIDE_HOST_CSS_CLASS}[^{]*\\{([^}]*)\\}`, 'gi'))) {
+    if (hasFixedCanvasSizing(match[1] ?? '')) return true;
+  }
+  return false;
 }
 
 function looksLikeSlideViewportSized(html: string): boolean {

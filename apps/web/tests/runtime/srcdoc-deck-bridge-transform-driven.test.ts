@@ -746,4 +746,58 @@ h1.display { font-size: 72px; }
       expect(liveStage.style.transform || '').not.toMatch(/translateX\(\s*-?(?:100vw|1920px)\s*\)/);
     }
   });
+
+  it('host next paints slide 2 on a 1920 canvas leftover that leaked min-width:100vw', async () => {
+    const html = `<!doctype html><html><head>
+<style>.slide{min-width:100vw;height:100vh}</style>
+</head><body>
+<section class="slide" style="width:1920px;height:1080px">Page one topic</section>
+<section class="slide" style="width:1920px;height:1080px">Page two topic</section>
+<section class="slide" style="width:1920px;height:1080px">Page three topic</section>
+<script>(function(){ window.n = 0; })();</script>
+</body></html>`;
+    const srcdoc = buildSrcdoc(html, {
+      deck: true,
+      userBrief: '영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘',
+    });
+    expect(srcdoc).toContain('compactStackedDeckEnabled = true');
+    const script = extractDeckBridgeScript(srcdoc);
+    const dom = new JSDOM(srcdoc, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const win = dom.window;
+    const parentPostMessage = vi.fn();
+    Object.defineProperty(win, 'parent', {
+      configurable: true,
+      value: { postMessage: parentPostMessage },
+    });
+    Object.defineProperty(win, 'innerWidth', { configurable: true, value: 800 });
+    Object.defineProperty(win, 'innerHeight', { configurable: true, value: 600 });
+    Object.defineProperty(win.document.documentElement, 'clientWidth', { configurable: true, value: 800 });
+    Object.defineProperty(win.document.documentElement, 'scrollWidth', { configurable: true, value: 1920 });
+    const slides = Array.from(win.document.querySelectorAll<HTMLElement>('.slide'));
+    slides.forEach((slide, index) => {
+      Object.defineProperty(slide, 'offsetWidth', { configurable: true, value: 1920 });
+      Object.defineProperty(slide, 'offsetHeight', { configurable: true, value: 1080 });
+      Object.defineProperty(slide, 'offsetLeft', { configurable: true, value: 0 });
+      Object.defineProperty(slide, 'offsetTop', { configurable: true, value: index * 1080 });
+    });
+    new win.Function(script).call(win);
+    win.dispatchEvent(new win.Event('load'));
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 800, height: 600, scale: 1, layoutFit: false },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 80));
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:slide', action: 'next' },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 120));
+    const painted = Array.from(win.document.querySelectorAll<HTMLElement>('.slide'));
+    const visible = painted.filter((slide) => slide.style.display !== 'none');
+    expect(visible.some((slide) => slide.textContent?.includes('Page two'))).toBe(true);
+    expect(visible.every((slide) => !slide.textContent?.includes('Page one'))).toBe(true);
+    expect(win.document.documentElement.scrollLeft || 0).toBe(0);
+    const slideStates = parentPostMessage.mock.calls
+      .map((call) => call[0])
+      .filter((message) => message?.type === 'od:slide-state');
+    expect(slideStates.at(-1)).toMatchObject({ active: 1, count: 3 });
+  });
 });

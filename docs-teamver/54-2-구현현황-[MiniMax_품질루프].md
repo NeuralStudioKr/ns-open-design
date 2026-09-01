@@ -33,6 +33,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-01 현재 판단 · 최신 루프
 
+### 루프363 — 1920 leftover + leaked 100vw 첫 장 nudge
+
+템플릿 `min-width:100vw`가 1920 캔버스에 남아 authored-swipe로 오인되면 letterbox가 꺼지고, `forceReveal`이 숨김을 안 걸며 `scrollGo(800)`이 첫 장만 민다. 1920 leftover는 swipe가 아님. dead leftover는 display toggle. 1920 overflow는 scroll-strip 아님. pan reset은 인덱스 변경 후. simple-deck/F3 유지. 카피 발명 없음.
+
+검증: web compact-api-stacked-deck · srcdoc-deck-bridge-transform-driven 루프363.
+
 ### 루프361 — host ←/→ 첫 장 translate nudge
 
 neutralize된 column `#stage` leftover(+ swipe script)를 IB 가로 스트립으로 오인해 `translateX`만 걸면 첫 장 뷰만 움직인다. 세로 배치는 가로 트랙이 아님. letterbox `forceReveal`로 장을 바꾸고, 1920 핀에서 100vw fallback 거부. 가로 IB 스트립(F3/281)은 유지. 카피 발명 없음.
@@ -1078,6 +1084,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
+- **완료 (루프363):** 1920 leftover + leaked `min-width:100vw`는 swipe가 아님. forceReveal 숨김 · scrollGo nudge 거부 · pan reset은 이동 후.
 - **완료 (루프361):** neutralize column `#stage` leftover를 가로 스트립으로 오인하지 않음. host ←/→는 2장을 그림. 100vw nudge 거부. F3/281 유지.
 - **완료 (루프355):** 칸 번호 `스무 번째` 빈 카드. 번호+본문 유지. 문자·서수 leftover 트랙 닫음.
 - **완료 (루프354):** 본문 있는 행에서 heading-only 카드만 제거. 칩 행·2열 제목+본문·크롬 라벨 칩 유지.
@@ -1522,6 +1529,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | heal: 제목만 있는 카드 형제 제거 | ☑ 루프354 |
 | persist/preview: 칸 번호만 있는 3열 카드(스무 번째) | ☑ 루프355 |
 | preview: neutralize column `#stage` leftover host ←/→ nudge | ☑ 루프361 |
+| preview: 1920 leftover + leaked 100vw host ←/→ nudge | ☑ 루프363 |
 | heal: 혼합 행의 `<br>`-only 본문 크롬 카드만 제거 | ☑ 루프342 |
 | heal: 빈 div / `&nbsp;` 본문 슬롯도 미채움 | ☑ 루프343 |
 | heal: 빈 `<p>` / `<span>` 래퍼 본문 슬롯도 미채움 | ☑ 루프344 |
@@ -1551,7 +1559,16 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프361 · host ←/→ 첫 장 nudge)
+## 이번 루프 (루프363 · 1920 leftover + leaked 100vw)
+
+- [x] 1920 캔버스 leftover는 `min-width:100vw`만으로 swipe 아님
+- [x] dead leftover `forceReveal` 실제 숨김
+- [x] 1920 overflow는 scroll-strip 아님 · pan reset은 이동 후
+- [x] simple-deck / F3/281 유지
+- [x] compact-api-stacked-deck · srcdoc-deck-bridge-transform-driven 루프363
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프361 · host ←/→ 첫 장 nudge)
 
 - [x] `trackLooksLikeHorizontalStrip` — column / 세로 `#stage`는 가로 트랙 아님
 - [x] letterbox `forceReveal`로 2장 표시

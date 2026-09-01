@@ -3449,6 +3449,21 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
   function isScrollDeck(){
     var list = slides();
     if (transformTrack(list)) return false;
+    // A 1920 canvas wider than the iframe is letterbox overflow, not a
+    // multi-page strip. scrollGo(innerWidth) would only nudge page 1.
+    try {
+      if (authoredFixedCanvasPx() >= 1600) return false;
+      var first = list && list[0];
+      if (first) {
+        var pinStyle = String(first.getAttribute && first.getAttribute('style') || '');
+        if (/width\\s*:\\s*1920px/i.test(pinStyle)) return false;
+        if (window.getComputedStyle) {
+          var cs = window.getComputedStyle(first);
+          var cw = parseFloat(cs.minWidth) || parseFloat(cs.width) || 0;
+          if (cw >= 1600) return false;
+        }
+      }
+    } catch (_) {}
     var targets = scrollTargets();
     for (var i=0; i<targets.length; i++) {
       var candidate = targets[i];
@@ -3944,7 +3959,13 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
   function hostMustNotCollapseSlides(){
     if (frameworkDeckStage() || webComponentDeckStage()) return false;
     if (compactStackedDeckEnabled || stackedDeckStage()) return false;
-    return true;
+    var list = slides();
+    if (transformTrack(list)) return true;
+    var active = findActiveByClass(list);
+    if (active >= 0 && hasComputedHiddenSibling(list, active)) return true;
+    // Dead leftover: every page is painted and there is no live strip.
+    // Collapsing is the only way host prev/next can change the page.
+    return false;
   }
   function syncPaginationControls(target, count){
     try {
@@ -4530,7 +4551,8 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     var list = slides();
     if (!list.length) return;
     var target = Math.max(0, Math.min(list.length - 1, targetFor(action, list)));
-    if (target !== activeIndex(list)) resetDeckPan();
+    var prevGo = activeIndex(list);
+    try {
     if (webComponentDeckGo(target)) return;
     // #stage strips first — compact forceReveal + native 100vw only nudge page 1
     // when the canvas is pinned to 1920 and the iframe is ~800 wide.
@@ -4556,13 +4578,16 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     else if (action === 'first') dispatchKey('Home');
     else if (action === 'last') dispatchKey('End');
     setTimeout(report, 280);
+    } finally {
+      if (activeIndex(slides()) !== prevGo) resetDeckPan();
+    }
   }
   function gotoIndex(i){
     var list = slides();
     if (!list.length) return;
     var target = Math.max(0, Math.min(list.length - 1, i));
     var prev = activeIndex(list);
-    if (target !== prev) resetDeckPan();
+    try {
     if (webComponentDeckGo(target)) return;
     var pxTrackGo = transformTrack(list);
     if (preferStackedOverStageTranslate(pxTrackGo, list) && forceRevealSlide(target)) return;
@@ -4585,6 +4610,9 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     var n = Math.abs(diff);
     for (var k = 0; k < n; k++) dispatchKey(key);
     setTimeout(report, 320);
+    } finally {
+      if (activeIndex(slides()) !== prev) resetDeckPan();
+    }
   }
   var lastCommentTargetSlideIndex = -1;
   function report(){
