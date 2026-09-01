@@ -29,6 +29,11 @@ describe("DeckFilmstrip (0901-N01-C)", () => {
     );
     const chips = screen.getAllByRole("button");
     expect(chips).toHaveLength(3);
+    expect(chips[0]!.getAttribute("aria-label")).toBe("Slide 1 · Cover");
+    expect(chips[1]!.getAttribute("aria-label")).toBe("Slide 2 · Body");
+    expect(chips[2]!.getAttribute("aria-label")).toBe("Slide 3 · Close");
+    expect(chips[0]!.textContent).toBe("1Cover");
+    expect(chips[1]!.textContent).toBe("2Body");
     expect(chips[1]!.getAttribute("aria-current")).toBe("true");
     fireEvent.click(chips[2]!);
     expect(onGo).toHaveBeenCalledWith(2);
@@ -120,5 +125,23 @@ describe("DeckFilmstrip (0901-N01-C)", () => {
     };
     fireEvent.dragStart(chips[0]!, { dataTransfer });
     expect(dataTransfer.setData).not.toHaveBeenCalled();
+  });
+
+  it("hides a title when the label is only the page number", () => {
+    render(
+      <DeckFilmstrip
+        items={[{ index: 0, label: "1" }, { index: 1, label: "Agenda" }]}
+        currentSlideIndex={0}
+        ariaLabel="Pages"
+        slideLabelTemplate="Page {{n}}"
+        onGo={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    );
+    const chips = screen.getAllByRole("button");
+    expect(chips[0]!.getAttribute("aria-label")).toBe("Page 1");
+    expect(chips[0]!.querySelector(".deck-filmstrip__title")).toBeNull();
+    expect(chips[1]!.getAttribute("aria-label")).toBe("Page 2 · Agenda");
+    expect(chips[1]!.textContent).toBe("2Agenda");
   });
 });

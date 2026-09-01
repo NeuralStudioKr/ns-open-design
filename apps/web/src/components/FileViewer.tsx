@@ -6277,6 +6277,7 @@ function HtmlViewer({
   const templateNameId = useId();
   const templateDescriptionId = useId();
   const imageExportTitleId = useId();
+  const deletePageTitleId = useId();
   // Opt back into the legacy inline-asset srcDoc path via `?forceInline=1`
   // on the host page. Lets users escape-hatch around the URL-load default
   // for non-deck HTML that depends on the in-iframe localStorage shim.
@@ -6568,6 +6569,7 @@ function HtmlViewer({
   );
   const [deckStructureBusy, setDeckStructureBusy] = useState(false);
   const [deckStructureError, setDeckStructureError] = useState<string | null>(null);
+  const [pendingDeleteSlide, setPendingDeleteSlide] = useState<{ active: number; count: number } | null>(null);
   const boardPreviewScaleOptions = localCommentSideDockActive ? { canvasPadding: 0 } : undefined;
   const overlayPreviewScale = effectivePreviewScale(
     previewViewport,
@@ -14220,7 +14222,7 @@ function HtmlViewer({
     return true;
   }
 
-  async function handleDeleteCurrentSlide() {
+  function requestDeleteCurrentSlide() {
     if (!effectiveDeck || deckStructureBusy) return;
     const html = sourceRef.current ?? source;
     if (typeof html !== 'string' || !html.trim()) return;
@@ -14230,20 +14232,25 @@ function HtmlViewer({
       Math.max(0, slideState?.active ?? 0),
       htmlSlideCount - 1,
     );
-    const confirmed = window.confirm(
-      embedUiLabel(
-        `Delete slide ${active + 1} of ${htmlSlideCount}? This can be undone from version history.`,
-        `${active + 1} / ${htmlSlideCount} 슬라이드를 삭제할까요? 버전 기록에서 되돌릴 수 있습니다.`,
-      ),
-    );
-    if (!confirmed) return;
+    setPendingDeleteSlide({ active, count: htmlSlideCount });
+  }
+
+  async function confirmPendingDeleteSlide() {
+    if (!effectiveDeck || deckStructureBusy || !pendingDeleteSlide) return;
+    const pending = pendingDeleteSlide;
+    setPendingDeleteSlide(null);
+    const html = sourceRef.current ?? source;
+    if (typeof html !== 'string' || !html.trim()) return;
+    const htmlSlideCount = extractTopLevelSlideSections(html).length;
+    if (htmlSlideCount <= 1) return;
+    const active = Math.min(Math.max(0, pending.active), htmlSlideCount - 1);
     const result = deleteDeckSlideAt(html, active);
     if (!result.ok) {
       setDeckStructureError(result.reason);
       window.alert(
         embedUiLabel(
-          'Could not delete this slide.',
-          '이 슬라이드를 삭제할 수 없습니다.',
+          'Could not delete this page.',
+          '이 페이지를 삭제할 수 없습니다.',
         ),
       );
       return;
@@ -14255,7 +14262,7 @@ function HtmlViewer({
         result.html,
         result.activeIndex,
         result.slideCount,
-        embedUiLabel(`Delete slide ${active + 1}`, `슬라이드 ${active + 1} 삭제`),
+        embedUiLabel(`Delete page ${active + 1}`, `페이지 ${active + 1} 삭제`),
       );
       if (ok && onRemapPreviewCommentsAfterDeckStructure) {
         const plan = planCommentRemapAfterSlideDelete(previewComments, file.name, active);
@@ -14298,8 +14305,8 @@ function HtmlViewer({
         result.activeIndex,
         result.slideCount,
         embedUiLabel(
-          delta < 0 ? 'Move slide earlier' : 'Move slide later',
-          delta < 0 ? '슬라이드 앞으로 이동' : '슬라이드 뒤로 이동',
+          delta < 0 ? 'Move page earlier' : 'Move page later',
+          delta < 0 ? '페이지 앞으로 이동' : '페이지 뒤로 이동',
         ),
       );
       if (ok && onRemapPreviewCommentsAfterDeckStructure) {
@@ -14337,8 +14344,8 @@ function HtmlViewer({
       setDeckStructureError(result.reason);
       window.alert(
         embedUiLabel(
-          'Could not insert a blank slide.',
-          '빈 슬라이드를 추가할 수 없습니다.',
+          'Could not insert a blank page.',
+          '빈 페이지를 추가할 수 없습니다.',
         ),
       );
       return;
@@ -14350,7 +14357,7 @@ function HtmlViewer({
         result.html,
         result.activeIndex,
         result.slideCount,
-        embedUiLabel('Insert blank slide', '빈 슬라이드 추가'),
+        embedUiLabel('Insert blank page', '빈 페이지 추가'),
       );
       if (ok && onRemapPreviewCommentsAfterDeckStructure) {
         const plan = planCommentRemapAfterSlideInsert(previewComments, file.name, active + 1);
@@ -14382,8 +14389,8 @@ function HtmlViewer({
       setDeckStructureError(result.reason);
       window.alert(
         embedUiLabel(
-          'Could not duplicate this slide.',
-          '이 슬라이드를 복제할 수 없습니다.',
+          'Could not duplicate this page.',
+          '이 페이지를 복제할 수 없습니다.',
         ),
       );
       return;
@@ -14395,7 +14402,7 @@ function HtmlViewer({
         result.html,
         result.activeIndex,
         result.slideCount,
-        embedUiLabel('Duplicate slide', '슬라이드 복제'),
+        embedUiLabel('Duplicate page', '페이지 복제'),
       );
       if (ok && onRemapPreviewCommentsAfterDeckStructure) {
         const plan = planCommentRemapAfterSlideInsert(previewComments, file.name, active + 1);
@@ -14443,7 +14450,7 @@ function HtmlViewer({
         result.html,
         result.activeIndex,
         result.slideCount,
-        embedUiLabel('Reorder slide', '슬라이드 순서 변경'),
+        embedUiLabel('Reorder page', '페이지 순서 변경'),
       );
       if (ok && onRemapPreviewCommentsAfterDeckStructure) {
         const plan = planCommentRemapAfterSlideMove(
@@ -14770,6 +14777,17 @@ function HtmlViewer({
       document.removeEventListener('keydown', onKey);
     };
   }, [zoomMenuOpen]);
+
+  useEffect(() => {
+    if (!pendingDeleteSlide) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      setPendingDeleteSlide(null);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [pendingDeleteSlide]);
 
   useEffect(() => {
     if (!agentToolsOpen) return;
@@ -17150,7 +17168,7 @@ function HtmlViewer({
               <button
                 type="button"
                 className="icon-only od-tooltip"
-                onClick={() => void handleDeleteCurrentSlide()}
+                onClick={() => requestDeleteCurrentSlide()}
                 title={t('fileViewer.deleteSlide')}
                 data-tooltip={t('fileViewer.deleteSlide')}
                 data-tooltip-placement="bottom"
@@ -18437,6 +18455,58 @@ function HtmlViewer({
                 }}
               >
                 {savingTemplate ? t('fileViewer.savingTemplate') : t('common.save')}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      ) : null}
+      {pendingDeleteSlide && typeof document !== 'undefined' ? createPortal(
+        <div
+          className="modal-backdrop viewer-modal-backdrop"
+          role="presentation"
+          onClick={() => setPendingDeleteSlide(null)}
+        >
+          <div
+            className="modal deploy-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={deletePageTitleId}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-head">
+              <h2 id={deletePageTitleId}>{t('fileViewer.deleteSlide')}</h2>
+              <p className="subtitle">
+                {embedUiLabel(
+                  `Delete page ${pendingDeleteSlide.active + 1} of ${pendingDeleteSlide.count}?`,
+                  `${pendingDeleteSlide.active + 1} / ${pendingDeleteSlide.count} 페이지를 삭제할까요?`,
+                )}
+              </p>
+              <p className="subtitle">
+                {embedUiLabel(
+                  'This can be undone from version history.',
+                  '버전 기록에서 되돌릴 수 있습니다.',
+                )}
+              </p>
+            </div>
+            <div className="modal-foot">
+              <button
+                type="button"
+                className="ghost-link button-like"
+                disabled={deckStructureBusy}
+                onClick={() => setPendingDeleteSlide(null)}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                className="viewer-action primary"
+                disabled={deckStructureBusy}
+                onClick={() => {
+                  void confirmPendingDeleteSlide();
+                }}
+              >
+                {t('common.delete')}
               </button>
             </div>
           </div>

@@ -815,7 +815,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   min-width: 28px;
+  max-width: 168px;
   height: 28px;
   padding: 0 8px;
   border: 1px solid var(--border);
@@ -825,6 +827,9 @@
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   cursor: grab;
+}
+.deck-filmstrip__chip.has-title {
+  justify-content: flex-start;
 }
 .deck-filmstrip__chip.is-current {
   border-color: var(--accent);
@@ -843,6 +848,15 @@
 }
 .deck-filmstrip__num {
   pointer-events: none;
+  flex: 0 0 auto;
+}
+.deck-filmstrip__title {
+  pointer-events: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  font-weight: 500;
 }
 
 /* ============================================================

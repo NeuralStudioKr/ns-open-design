@@ -71,6 +71,8 @@ export function DeckFilmstrip({
         {items.map((item) => {
           const slideNumber = item.index + 1;
           const title = slideLabelTemplate.replace("{{n}}", String(slideNumber));
+          const heading = item.label.replace(/\s+/g, " ").trim();
+          const showHeading = Boolean(heading) && heading !== String(slideNumber);
           const current = item.index === currentSlideIndex;
           return (
             <li key={item.index}>
@@ -78,6 +80,7 @@ export function DeckFilmstrip({
                 type="button"
                 className={[
                   "deck-filmstrip__chip",
+                  showHeading ? "has-title" : "",
                   current ? "is-current" : "",
                   draggingIndex === item.index ? "is-dragging" : "",
                   dropIndex === item.index ? "is-drop-target" : "",
@@ -85,7 +88,8 @@ export function DeckFilmstrip({
                 draggable={!disabled}
                 disabled={disabled}
                 aria-current={current ? "true" : undefined}
-                title={item.label}
+                aria-label={showHeading ? `${title} · ${heading}` : title}
+                title={showHeading ? heading : title}
                 onClick={() => {
                   if (disabled) return;
                   onGo(item.index);
@@ -96,7 +100,9 @@ export function DeckFilmstrip({
                 onDragEnd={handleDragEnd}
               >
                 <span className="deck-filmstrip__num" aria-hidden="true">{slideNumber}</span>
-                <span className="sr-only">{title}</span>
+                {showHeading ? (
+                  <span className="deck-filmstrip__title" aria-hidden="true">{heading}</span>
+                ) : null}
               </button>
             </li>
           );
