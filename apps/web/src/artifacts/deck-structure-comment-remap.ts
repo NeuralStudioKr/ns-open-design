@@ -18,6 +18,29 @@ export type RemappablePreviewComment = {
   slideIndex?: number;
 };
 
+/** After inserting a new slide at `insertIndex` (0-based). Later slides shift right. */
+export function planCommentRemapAfterSlideInsert(
+  comments: readonly RemappablePreviewComment[],
+  filePath: string,
+  insertIndex: number,
+): DeckStructureCommentRemapPlan {
+  const changes: DeckStructureCommentRemapChange[] = [];
+  if (!Number.isInteger(insertIndex) || insertIndex < 0) {
+    return { changes };
+  }
+  for (const comment of comments) {
+    if (comment.filePath !== filePath) continue;
+    if (typeof comment.slideIndex !== 'number' || !Number.isInteger(comment.slideIndex)) {
+      continue;
+    }
+    const index = Math.floor(comment.slideIndex);
+    if (index >= insertIndex) {
+      changes.push({ id: comment.id, action: 'set', slideIndex: index + 1 });
+    }
+  }
+  return { changes };
+}
+
 /** After deleting the slide at `deletedIndex` (0-based). */
 export function planCommentRemapAfterSlideDelete(
   comments: readonly RemappablePreviewComment[],

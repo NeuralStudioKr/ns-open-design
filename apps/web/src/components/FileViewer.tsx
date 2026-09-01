@@ -37,11 +37,14 @@ import {
 import { hasSalvageableDeckSlideContent } from '../artifacts/deck-html-content';
 import {
   deleteDeckSlideAt,
+  duplicateDeckSlideAt,
   extractTopLevelSlideSections,
+  insertBlankDeckSlideAfter,
   moveDeckSlideByDelta,
 } from '../artifacts/deck-patch';
 import {
   planCommentRemapAfterSlideDelete,
+  planCommentRemapAfterSlideInsert,
   planCommentRemapAfterSlideMove,
 } from '../artifacts/deck-structure-comment-remap';
 import { MarkdownRenderer, artifactRendererRegistry } from '../artifacts/renderer-registry';
@@ -14316,6 +14319,96 @@ function HtmlViewer({
     }
   }
 
+  async function handleInsertBlankSlideAfterCurrent() {
+    if (!effectiveDeck || deckStructureBusy) return;
+    const html = sourceRef.current ?? source;
+    if (typeof html !== 'string' || !html.trim()) return;
+    const htmlSlideCount = extractTopLevelSlideSections(html).length;
+    if (htmlSlideCount === 0) return;
+    const active = Math.min(
+      Math.max(0, slideState?.active ?? 0),
+      htmlSlideCount - 1,
+    );
+    const result = insertBlankDeckSlideAfter(html, active);
+    if (!result.ok) {
+      setDeckStructureError(result.reason);
+      window.alert(
+        embedUiLabel(
+          'Could not insert a blank slide.',
+          '빈 슬라이드를 추가할 수 없습니다.',
+        ),
+      );
+      return;
+    }
+    setDeckStructureBusy(true);
+    setDeckStructureError(null);
+    try {
+      const ok = await persistDeckStructureMutation(
+        result.html,
+        result.activeIndex,
+        result.slideCount,
+        embedUiLabel('Insert blank slide', '빈 슬라이드 추가'),
+      );
+      if (ok && onRemapPreviewCommentsAfterDeckStructure) {
+        const plan = planCommentRemapAfterSlideInsert(previewComments, file.name, active + 1);
+        const updates = plan.changes
+          .filter((change): change is { id: string; action: 'set'; slideIndex: number } =>
+            change.action === 'set')
+          .map((change) => ({ id: change.id, slideIndex: change.slideIndex }));
+        if (updates.length > 0) {
+          await onRemapPreviewCommentsAfterDeckStructure({ deleteIds: [], updates });
+        }
+      }
+    } finally {
+      setDeckStructureBusy(false);
+    }
+  }
+
+  async function handleDuplicateCurrentSlide() {
+    if (!effectiveDeck || deckStructureBusy) return;
+    const html = sourceRef.current ?? source;
+    if (typeof html !== 'string' || !html.trim()) return;
+    const htmlSlideCount = extractTopLevelSlideSections(html).length;
+    if (htmlSlideCount === 0) return;
+    const active = Math.min(
+      Math.max(0, slideState?.active ?? 0),
+      htmlSlideCount - 1,
+    );
+    const result = duplicateDeckSlideAt(html, active);
+    if (!result.ok) {
+      setDeckStructureError(result.reason);
+      window.alert(
+        embedUiLabel(
+          'Could not duplicate this slide.',
+          '이 슬라이드를 복제할 수 없습니다.',
+        ),
+      );
+      return;
+    }
+    setDeckStructureBusy(true);
+    setDeckStructureError(null);
+    try {
+      const ok = await persistDeckStructureMutation(
+        result.html,
+        result.activeIndex,
+        result.slideCount,
+        embedUiLabel('Duplicate slide', '슬라이드 복제'),
+      );
+      if (ok && onRemapPreviewCommentsAfterDeckStructure) {
+        const plan = planCommentRemapAfterSlideInsert(previewComments, file.name, active + 1);
+        const updates = plan.changes
+          .filter((change): change is { id: string; action: 'set'; slideIndex: number } =>
+            change.action === 'set')
+          .map((change) => ({ id: change.id, slideIndex: change.slideIndex }));
+        if (updates.length > 0) {
+          await onRemapPreviewCommentsAfterDeckStructure({ deleteIds: [], updates });
+        }
+      }
+    } finally {
+      setDeckStructureBusy(false);
+    }
+  }
+
   function syncCachedSlideStateToIframe(target: HTMLIFrameElement | null = iframeRef.current) {
     const active = htmlPreviewSlideState.get(previewStateKey)?.active;
     const win = target?.contentWindow;
@@ -16985,6 +17078,30 @@ function HtmlViewer({
                 }
               >
                 <Icon name="arrow-up" size={14} style={{ transform: 'rotate(180deg)' }} />
+              </button>
+              <button
+                type="button"
+                className="icon-only od-tooltip"
+                onClick={() => void handleInsertBlankSlideAfterCurrent()}
+                title={t('fileViewer.insertBlankSlide')}
+                data-tooltip={t('fileViewer.insertBlankSlide')}
+                data-tooltip-placement="bottom"
+                aria-label={t('fileViewer.insertBlankSlide')}
+                disabled={deckStructureBusy || slideState == null}
+              >
+                <Icon name="plus" size={14} />
+              </button>
+              <button
+                type="button"
+                className="icon-only od-tooltip"
+                onClick={() => void handleDuplicateCurrentSlide()}
+                title={t('fileViewer.duplicateSlide')}
+                data-tooltip={t('fileViewer.duplicateSlide')}
+                data-tooltip-placement="bottom"
+                aria-label={t('fileViewer.duplicateSlide')}
+                disabled={deckStructureBusy || slideState == null}
+              >
+                <Icon name="copy" size={14} />
               </button>
               <button
                 type="button"

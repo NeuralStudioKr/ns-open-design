@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   planCommentRemapAfterSlideDelete,
+  planCommentRemapAfterSlideInsert,
   planCommentRemapAfterSlideMove,
 } from '../../src/artifacts/deck-structure-comment-remap';
 
@@ -42,5 +43,13 @@ describe('0901-N01 comment slideIndex remap', () => {
     expect(plan.changes.map((c) => c.id)).toEqual(['a', 'b', 'c']);
     expect(plan.changes.find((c) => c.id === 'other')).toBeUndefined();
     expect(plan.changes.find((c) => c.id === 'unscoped')).toBeUndefined();
+  });
+
+  it('shifts comments at or after the insert index when adding a slide', () => {
+    const plan = planCommentRemapAfterSlideInsert(comments, 'deck.html', 1);
+    expect(plan.changes).toEqual([
+      { id: 'b', action: 'set', slideIndex: 2 },
+      { id: 'c', action: 'set', slideIndex: 3 },
+    ]);
   });
 });

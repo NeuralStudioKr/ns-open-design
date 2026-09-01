@@ -2143,6 +2143,8 @@ export const ja: Dict = {
   'fileViewer.moveSlideEarlier': 'スライドを前へ',
   'fileViewer.moveSlideLater': 'スライドを後ろへ',
   'fileViewer.deleteSlide': 'スライドを削除',
+  'fileViewer.insertBlankSlide': '空白スライドを追加',
+  'fileViewer.duplicateSlide': 'スライドを複製',
   'fileViewer.present': 'プレゼン',
   'fileViewer.presentInTab': 'このタブで',
   'fileViewer.presentFullscreen': 'フルスクリーン',

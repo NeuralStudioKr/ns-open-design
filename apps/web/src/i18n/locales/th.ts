@@ -2143,6 +2143,8 @@ export const th: Dict = {
   'fileViewer.moveSlideEarlier': 'Move slide earlier',
   'fileViewer.moveSlideLater': 'Move slide later',
   'fileViewer.deleteSlide': 'Delete slide',
+  'fileViewer.insertBlankSlide': 'Insert blank slide',
+  'fileViewer.duplicateSlide': 'Duplicate slide',
   'fileViewer.present': 'เปิดจอโชว์',
   'fileViewer.presentInTab': 'ค้างในหน้าจอแท็บ',
   'fileViewer.presentFullscreen': 'ยืดให้เต็มที่หน้าจอ',

@@ -2148,6 +2148,8 @@ export const zhTW: Dict = {
   'fileViewer.moveSlideEarlier': 'Move slide earlier',
   'fileViewer.moveSlideLater': 'Move slide later',
   'fileViewer.deleteSlide': 'Delete slide',
+  'fileViewer.insertBlankSlide': 'Insert blank slide',
+  'fileViewer.duplicateSlide': 'Duplicate slide',
   'fileViewer.present': '簡報',
   'fileViewer.presentInTab': '在當前分頁',
   'fileViewer.presentFullscreen': '全螢幕',

@@ -2143,6 +2143,8 @@ export const ptBR: Dict = {
   'fileViewer.moveSlideEarlier': 'Move slide earlier',
   'fileViewer.moveSlideLater': 'Move slide later',
   'fileViewer.deleteSlide': 'Delete slide',
+  'fileViewer.insertBlankSlide': 'Insert blank slide',
+  'fileViewer.duplicateSlide': 'Duplicate slide',
   'fileViewer.present': 'Apresentar',
   'fileViewer.presentInTab': 'Nesta aba',
   'fileViewer.presentFullscreen': 'Tela cheia',

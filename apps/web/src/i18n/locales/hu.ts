@@ -2143,6 +2143,8 @@ export const hu: Dict = {
   'fileViewer.moveSlideEarlier': 'Move slide earlier',
   'fileViewer.moveSlideLater': 'Move slide later',
   'fileViewer.deleteSlide': 'Delete slide',
+  'fileViewer.insertBlankSlide': 'Insert blank slide',
+  'fileViewer.duplicateSlide': 'Duplicate slide',
   'fileViewer.present': 'Bemutatás',
   'fileViewer.presentInTab': 'Ezen a lapon',
   'fileViewer.presentFullscreen': 'Teljes képernyő',

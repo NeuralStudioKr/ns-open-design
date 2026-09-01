@@ -2143,6 +2143,8 @@ export const tr: Dict = {
   'fileViewer.moveSlideEarlier': 'Move slide earlier',
   'fileViewer.moveSlideLater': 'Move slide later',
   'fileViewer.deleteSlide': 'Delete slide',
+  'fileViewer.insertBlankSlide': 'Insert blank slide',
+  'fileViewer.duplicateSlide': 'Duplicate slide',
   'fileViewer.present': 'Sun',
   'fileViewer.presentInTab': 'Bu pencerede sun',
   'fileViewer.presentFullscreen': 'Tam ekran',

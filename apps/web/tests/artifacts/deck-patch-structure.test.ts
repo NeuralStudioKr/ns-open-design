@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildBlankDeckSlideShell,
   deleteDeckSlideAt,
+  duplicateDeckSlideAt,
   extractTopLevelSlideSections,
+  insertBlankDeckSlideAfter,
   moveDeckSlideByDelta,
   restampDeckSlideIndexes,
 } from '../../src/artifacts/deck-patch';
@@ -75,5 +78,47 @@ describe('0901-N01 deck structure mutations', () => {
     expect(out).toContain('data-slide-index="0"');
     expect(out).toContain('data-slide-index="1"');
     expect(out).not.toContain('data-slide-index="9"');
+  });
+
+  it('inserts a blank slide after the active index', () => {
+    const html = deck('A', 'B');
+    const out = insertBlankDeckSlideAfter(html, 0);
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.slideCount).toBe(3);
+    expect(out.activeIndex).toBe(1);
+    const slides = extractTopLevelSlideSections(out.html);
+    expect(slides).toHaveLength(3);
+    expect(slides[0]!.outerHtml).toContain('data-screen-label="A"');
+    expect(slides[1]!.outerHtml).toContain('slide-inner');
+    expect(slides[2]!.outerHtml).toContain('data-screen-label="B"');
+    expect(slides[0]!.outerHtml).toContain('data-slide-index="0"');
+    expect(slides[2]!.outerHtml).toContain('data-slide-index="2"');
+  });
+
+  it('duplicates a slide after the source and strips identity attrs on the copy', () => {
+    const html =
+      '<!doctype html><html><body>'
+      + '<section class="slide slide-cover" data-slide-index="0" data-od-id="s0" data-screen-label="Cover"><h1>Cover</h1></section>'
+      + '<section class="slide" data-slide-index="1" data-screen-label="Body"><h1>Body</h1></section>'
+      + '</body></html>';
+    const out = duplicateDeckSlideAt(html, 0);
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.slideCount).toBe(3);
+    expect(out.activeIndex).toBe(1);
+    const slides = extractTopLevelSlideSections(out.html);
+    expect(slides).toHaveLength(3);
+    expect(slides[0]!.outerHtml).toContain('data-od-id="s0"');
+    expect(slides[1]!.outerHtml).toContain('slide-cover');
+    expect(slides[1]!.outerHtml).not.toContain('data-od-id=');
+    expect(slides[1]!.outerHtml).not.toContain('data-screen-label=');
+    expect(slides[2]!.outerHtml).toContain('data-screen-label="Body"');
+  });
+
+  it('buildBlankDeckSlideShell inherits slide class from reference', () => {
+    const shell = buildBlankDeckSlideShell('<section class="slide slide-dark theme-a">');
+    expect(shell).toContain('class="slide slide-dark theme-a"');
+    expect(shell).toContain('<h2></h2>');
   });
 });

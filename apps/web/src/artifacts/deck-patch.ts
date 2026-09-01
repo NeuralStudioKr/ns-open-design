@@ -403,6 +403,97 @@ export function moveDeckSlideByDelta(
   };
 }
 
+/** Minimal empty slide — inherits `class` from a neighbor when available. */
+export function buildBlankDeckSlideShell(referenceOuterHtml?: string): string {
+  const ref = String(referenceOuterHtml ?? '').trim();
+  const openMatch = /^<section\b([^>]*)>/i.exec(ref);
+  let sectionOpen = '<section class="slide">';
+  if (openMatch) {
+    const attrs = openMatch[1] ?? '';
+    const classMatch = /\bclass\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(attrs);
+    if (classMatch) {
+      const cls = (classMatch[1] ?? classMatch[2] ?? 'slide').trim() || 'slide';
+      sectionOpen = `<section class="${cls}">`;
+    }
+  }
+  return `${sectionOpen}<div class="slide-inner"><h2></h2></div></section>`;
+}
+
+function cloneSlideOuterHtmlForDuplicate(outerHtml: string): string {
+  return outerHtml
+    .replace(/\s*\bdata-slide-index\s*=\s*(?:"[^"]*"|'[^']*'|\S+)/gi, '')
+    .replace(/\s*\bdata-od-id\s*=\s*(?:"[^"]*"|'[^']*'|\S+)/gi, '')
+    .replace(/\s*\bdata-screen-label\s*=\s*(?:"[^"]*"|'[^']*'|\S+)/gi, '');
+}
+
+/**
+ * Insert a blank slide immediately after `slideIndex`. Focus lands on the new
+ * slide (`slideIndex + 1`).
+ */
+export function insertBlankDeckSlideAfter(
+  currentHtml: string,
+  slideIndex: number,
+): DeckStructureMutationSuccess | DeckStructureMutationFailure {
+  const bodyRange = findBodyContentRange(currentHtml);
+  if (!bodyRange) {
+    return { ok: false, reason: 'current deck HTML has no <body>…</body>' };
+  }
+  const bodyContent = currentHtml.slice(bodyRange.start, bodyRange.end);
+  const slides = extractTopLevelSlideSections(bodyContent);
+  if (slides.length === 0) {
+    return { ok: false, reason: 'deck has no slides' };
+  }
+  if (!Number.isInteger(slideIndex) || slideIndex < 0 || slideIndex >= slides.length) {
+    return { ok: false, reason: `slideIndex ${slideIndex} out of range (0..${slides.length - 1})` };
+  }
+  const blank = buildBlankDeckSlideShell(slides[slideIndex]!.outerHtml);
+  const patched = applyDeckPatch({
+    currentHtml,
+    patch: { ops: [{ op: 'append', slideIndex, html: blank }] },
+  });
+  if (!patched.ok) return patched;
+  return {
+    ok: true,
+    html: restampDeckSlideIndexes(patched.html),
+    activeIndex: slideIndex + 1,
+    slideCount: slides.length + 1,
+  };
+}
+
+/**
+ * Duplicate the slide at `slideIndex` and insert the copy immediately after it.
+ * Identity attrs (`data-od-id`, `data-screen-label`) are stripped on the copy.
+ */
+export function duplicateDeckSlideAt(
+  currentHtml: string,
+  slideIndex: number,
+): DeckStructureMutationSuccess | DeckStructureMutationFailure {
+  const bodyRange = findBodyContentRange(currentHtml);
+  if (!bodyRange) {
+    return { ok: false, reason: 'current deck HTML has no <body>…</body>' };
+  }
+  const bodyContent = currentHtml.slice(bodyRange.start, bodyRange.end);
+  const slides = extractTopLevelSlideSections(bodyContent);
+  if (slides.length === 0) {
+    return { ok: false, reason: 'deck has no slides' };
+  }
+  if (!Number.isInteger(slideIndex) || slideIndex < 0 || slideIndex >= slides.length) {
+    return { ok: false, reason: `slideIndex ${slideIndex} out of range (0..${slides.length - 1})` };
+  }
+  const duplicateHtml = cloneSlideOuterHtmlForDuplicate(slides[slideIndex]!.outerHtml);
+  const patched = applyDeckPatch({
+    currentHtml,
+    patch: { ops: [{ op: 'append', slideIndex, html: duplicateHtml }] },
+  });
+  if (!patched.ok) return patched;
+  return {
+    ok: true,
+    html: restampDeckSlideIndexes(patched.html),
+    activeIndex: slideIndex + 1,
+    slideCount: slides.length + 1,
+  };
+}
+
 /** Force sequential `data-slide-index="0..N-1"` on every top-level slide. */
 export function restampDeckSlideIndexes(html: string): string {
   const bodyRange = findBodyContentRange(html);

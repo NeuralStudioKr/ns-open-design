@@ -2148,6 +2148,8 @@ export const ko: Dict = {
   'fileViewer.moveSlideEarlier': '슬라이드 앞으로',
   'fileViewer.moveSlideLater': '슬라이드 뒤로',
   'fileViewer.deleteSlide': '슬라이드 삭제',
+  'fileViewer.insertBlankSlide': '빈 슬라이드 추가',
+  'fileViewer.duplicateSlide': '슬라이드 복제',
   'fileViewer.present': '프레젠테이션',
   'fileViewer.presentInTab': '현재 탭에서',
   'fileViewer.presentFullscreen': '전체 화면',

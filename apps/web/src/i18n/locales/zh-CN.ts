@@ -2148,6 +2148,8 @@ export const zhCN: Dict = {
   'fileViewer.moveSlideEarlier': '向前移动幻灯片',
   'fileViewer.moveSlideLater': '向后移动幻灯片',
   'fileViewer.deleteSlide': '删除幻灯片',
+  'fileViewer.insertBlankSlide': 'Insert blank slide',
+  'fileViewer.duplicateSlide': 'Duplicate slide',
   'fileViewer.present': '演示',
   'fileViewer.presentInTab': '在当前标签页',
   'fileViewer.presentFullscreen': '全屏',

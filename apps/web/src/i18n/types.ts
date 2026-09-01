@@ -2842,6 +2842,8 @@ export interface Dict {
   'fileViewer.moveSlideEarlier': string;
   'fileViewer.moveSlideLater': string;
   'fileViewer.deleteSlide': string;
+  'fileViewer.insertBlankSlide': string;
+  'fileViewer.duplicateSlide': string;
   'fileViewer.present': string;
   'fileViewer.presentInTab': string;
   'fileViewer.presentFullscreen': string;
