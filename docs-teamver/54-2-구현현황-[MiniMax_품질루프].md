@@ -1396,7 +1396,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | heal: minmax(0,33%/30vw/0.33fr) equal-track dodge | ☑ 루프289 |
 | heal: max-inline-size / inline-size peer lock | ☑ 루프290 |
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
-| 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음 |
+| 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
 ## 이번 루프 (루프339 · 칸 번호 Y)
 
@@ -1404,6 +1404,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 - [x] 띄어쓴 `스무 번째` / `기둥 Z` · 번호+본문 유지
 - [x] heal-ai-generated-deck 루프339 · deck-framework-compact
 - [x] 280 vs 900 sidebar 유지 (비율 2.05 미상향)
+- [x] MiniMax 실키 E2E 게이트 테스트 (키 없으면 skip 고정, live 호출 없음)
 - [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
 
 ## 직전 루프 (루프338 · 칸 번호 W)
