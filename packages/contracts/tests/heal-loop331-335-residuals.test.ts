@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import {
   absorbSpilledBodyAcrossGridBoundary,
   dropChromeCardGridsWithAllEmptyBodies,
+  dropUnfilledChromeCardPeersInAllocatedRows,
   healAiGeneratedDeckMarkup,
   stripDuplicatedHeadingTailAfterClose,
   stripDuplicatedInlineTailAfterSiblingClose,
@@ -204,6 +205,99 @@ describe('루프334 · dropChromeCardGridsWithAllEmptyBodies', () => {
       '</div>',
     ].join('');
     expect(dropChromeCardGridsWithAllEmptyBodies(html)).toBe(html);
+  });
+});
+
+describe('루프342 · dropUnfilledChromeCardPeersInAllocatedRows', () => {
+  it('drops only the unfilled chrome cards in a mixed grid row', () => {
+    const html = [
+      '<section class="slide" data-screen-label="06 Tech Stack">',
+      '<h2>기술 스택</h2>',
+      '<div style="display:grid;grid-template-columns:repeat(3, minmax(0,1fr));gap:20px">',
+      `<div style="${chrome}"><div>LLM / NLP</div><div style="font-family:VT323">Llama, vLLM, LangGraph</div></div>`,
+      `<div style="${chrome}"><div>DATA / MLOps</div><div style="font-family:VT323"><br><br><br></div></div>`,
+      `<div style="${chrome}"><div>APP / UX</div><div style="font-family:VT323"><br><br><br></div></div>`,
+      '</div>',
+      '</section>',
+    ].join('');
+    const out = dropUnfilledChromeCardPeersInAllocatedRows(html, brief);
+    expect(out).toContain('LLM / NLP');
+    expect(out).toContain('Llama, vLLM, LangGraph');
+    expect(out).not.toContain('DATA / MLOps');
+    expect(out).not.toContain('APP / UX');
+    expect(out).toContain('기술 스택');
+  });
+
+  it('drops unfilled chrome cards in a mixed flex row (루프342)', () => {
+    const html = [
+      '<div style="display:flex;gap:20px">',
+      `<div style="${chrome}"><div>LLM / NLP</div><div style="font-family:VT323">Llama, vLLM</div></div>`,
+      `<div style="${chrome}"><div>DATA / MLOps</div><div style="font-family:VT323"><br><br><br></div></div>`,
+      '</div>',
+    ].join('');
+    const out = dropUnfilledChromeCardPeersInAllocatedRows(html, brief);
+    expect(out).toContain('Llama, vLLM');
+    expect(out).not.toContain('DATA / MLOps');
+  });
+
+  it('drops unfilled chrome cards in a mixed class-bound flex row (루프342)', () => {
+    const html = [
+      '<style>.cards{display:flex;gap:20px}</style>',
+      '<div class="cards">',
+      `<div style="${chrome}"><div>LLM / NLP</div><div style="font-family:VT323">Llama, vLLM</div></div>`,
+      `<div style="${chrome}"><div>DATA / MLOps</div><div style="font-family:VT323"><br><br><br></div></div>`,
+      '</div>',
+    ].join('');
+    const out = dropUnfilledChromeCardPeersInAllocatedRows(html, brief);
+    expect(out).toContain('Llama, vLLM');
+    expect(out).not.toContain('DATA / MLOps');
+  });
+
+  it('leaves a fully filled chrome row alone (루프342)', () => {
+    const html = [
+      '<div style="display:flex;gap:20px">',
+      `<div style="${chrome}"><div>LLM / NLP</div><div>Llama</div></div>`,
+      `<div style="${chrome}"><div>DATA / MLOps</div><div>Airflow</div></div>`,
+      '</div>',
+    ].join('');
+    expect(dropUnfilledChromeCardPeersInAllocatedRows(html, brief)).toBe(html);
+  });
+
+  it('leaves a column flex stack with mixed empty bodies alone (루프342)', () => {
+    const html = [
+      '<div style="display:flex;flex-direction:column;gap:20px">',
+      `<div style="${chrome}"><div>LLM / NLP</div><div>Llama</div></div>`,
+      `<div style="${chrome}"><div>DATA / MLOps</div><div style="font-family:VT323"><br><br><br></div></div>`,
+      '</div>',
+    ].join('');
+    expect(dropUnfilledChromeCardPeersInAllocatedRows(html, brief)).toBe(html);
+  });
+
+  it('leaves official English mixed chrome alone without a brief (루프342)', () => {
+    const html = [
+      '<div style="display:flex;gap:20px">',
+      `<div style="${chrome}"><div>LLM / NLP</div><div>Llama</div></div>`,
+      `<div style="${chrome}"><div>DATA / MLOps</div><div><br><br><br></div></div>`,
+      '</div>',
+    ].join('');
+    expect(dropUnfilledChromeCardPeersInAllocatedRows(html)).toBe(html);
+  });
+
+  it('pipeline removes mixed empty-body chrome cards without inventing copy (루프342)', () => {
+    const html = [
+      '<section class="slide"><h2>기술 스택</h2>',
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px">',
+      `<div style="${chrome}"><div>LLM / NLP</div><div>Llama, vLLM, LangGraph</div></div>`,
+      `<div style="${chrome}"><div>DATA / MLOps</div><div><br><br><br></div></div>`,
+      `<div style="${chrome}"><div>APP / UX</div><div><br><br><br></div></div>`,
+      '</div></section>',
+    ].join('');
+    const out = healAiGeneratedDeckMarkup(html, brief);
+    expect(out).toContain('기술 스택');
+    expect(out).toContain('Llama, vLLM, LangGraph');
+    expect(out).not.toContain('DATA / MLOps');
+    expect(out).not.toContain('APP / UX');
+    expect(out).not.toMatch(/기둥 Z|실카피/);
   });
 });
 

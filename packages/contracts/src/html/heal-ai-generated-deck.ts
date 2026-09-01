@@ -3095,6 +3095,9 @@ export function stripDuplicatedInlineTailAfterSiblingClose(html: string): string
  * 동일 조건으로 제거. `flex-direction:column` · 혼합 비크롬 자식 유지.
  * 루프341 — `.cards { display:flex }` / `.grid { … }` class-bound 행도
  * 동일. 영문 empty-brief 카탈로그는 AI gate로 유지.
+ * 루프342 — 한 장이라도 본문이 있으면 그리드 전체를 유지하던 잔여.
+ * 채워진 크롬 카드는 두고, `<br>`-only 본문 슬롯인 형제만 제거.
+ * `flex-direction:column` · 혼합 비크롬 · 영문 empty-brief 카탈로그 유지.
  */
 export function dropChromeCardGridsWithAllEmptyBodies(
   html: string,
@@ -3135,6 +3138,59 @@ export function dropChromeCardGridsWithAllEmptyBodies(
   removals.sort((a, b) => b.start - a.start);
   for (const removal of removals) {
     out = `${out.slice(0, removal.start)}${out.slice(removal.end)}`;
+  }
+  return out;
+}
+
+/**
+ * 루프342 — Mixed chrome rows: keep filled cards, drop siblings whose
+ * body slots are only `<br>` / whitespace. Placement leftover of 334/340/341,
+ * which only removed a row when every chrome card was empty. Never invent
+ * copy. Column stacks and official English catalogs stay intact.
+ */
+export function dropUnfilledChromeCardPeersInAllocatedRows(
+  html: string,
+  brief?: string | null,
+): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
+  const flexNames = collectClassFlexRowNames(out);
+  const gridDecls = collectClassEqualTrackDecls(out);
+  const openRe =
+    /<(div|section|article|main|aside|ul|ol)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  const removals: Array<{ start: number; end: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) {
+    const attrs = match[2] ?? '';
+    const style = extractInlineStyle(attrs);
+    const tokens = classTokensFromAttrs(attrs);
+    const classBound = tokens.some((token) => flexNames.has(token) || gridDecls.get(token)?.cols);
+    const isGrid = /(?:^|;)\s*display\s*:\s*(?:inline-)?grid\b/i.test(style);
+    const isFlexRow = isFlexRowContainerStyle(style);
+    if (!isGrid && !isFlexRow && !classBound) continue;
+    const tag = (match[1] ?? '').toLowerCase();
+    const openEnd = match.index + match[0].length;
+    const close = findSameTagClose(out, tag, openEnd);
+    if (!close) continue;
+    const children = listDirectBlockChildSpans(out, openEnd, close.closeStart);
+    if (children.length < 2 || children.length > 6) continue;
+    const chromeChildren = children.filter((c) => c.tag === 'div' && looksLikeChromeCardStyle(c.style));
+    if (chromeChildren.length !== children.length) continue;
+    const emptyPeers = chromeChildren.filter((c) => chromeCardBodyLooksUnfilled(out, c));
+    const filledPeers = chromeChildren.filter((c) => !chromeCardBodyLooksUnfilled(out, c));
+    if (emptyPeers.length === 0 || filledPeers.length === 0) continue;
+    for (const empty of emptyPeers) {
+      removals.push({ start: empty.absStart, end: empty.absCloseEnd });
+    }
+  }
+  if (removals.length === 0) return out;
+  removals.sort((a, b) => b.start - a.start);
+  let lastKeptStart = Number.POSITIVE_INFINITY;
+  for (const removal of removals) {
+    if (removal.end > lastKeptStart) continue;
+    out = `${out.slice(0, removal.start)}${out.slice(removal.end)}`;
+    lastKeptStart = removal.start;
   }
   return out;
 }
@@ -3550,6 +3606,9 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // 루프340 — display:flex 행도 동일. 루프341 — class-bound flex/grid도 동일.
   // 루프335 void depth 안정화 후 자식 정확.
   out = dropChromeCardGridsWithAllEmptyBodies(out, brief);
+  // 루프342 — 본문 있는 행에서 `<br>`-only 크롬 카드만 제거. 전체 행
+  // drop(334) 다음, leftover shrink 이전에 실행해 빈 띠 트랙을 줄인다.
+  out = dropUnfilledChromeCardPeersInAllocatedRows(out, brief);
   out = unnestHeadingBlockChildren(out);
   out = polishTruncatedInstructionTitles(out);
   // 루프197 — empty leftover card shells keep 3-track rows alive so
