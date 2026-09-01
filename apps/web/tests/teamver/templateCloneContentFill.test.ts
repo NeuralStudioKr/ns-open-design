@@ -55,7 +55,7 @@ describe('templateCloneContentFill', () => {
     expect(seed).toMatch(/Named motif cue/i);
     expect(seed).toMatch(/compact template-identifying motif|kit motif family|deco-pill|Decorations CSS/i);
     expect(seed).toMatch(/generic CSS circles/i);
-    expect(seed).toMatch(/do not omit recognizable kit identity/i);
+    expect(seed).toMatch(/omit kit identity/i);
     expect(seed).toMatch(/Full-bleed surface/i);
     expect(seed).toMatch(/white bands at top\/bottom|white top\/bottom bands/i);
     expect(seed).toMatch(/NEVER "수정 반영 중"/);
@@ -87,7 +87,7 @@ describe('templateCloneContentFill', () => {
     expect(seed).toContain('no 3+3+3 split');
     expect(seed).not.toMatch(/persist rejects 1–2/i);
     expect(seed).toMatch(/large SVG sprites|full Motif sprite dumps/i);
-    expect(seed).toMatch(/compact template-identifying motif\/deco cues/i);
+    expect(seed).toMatch(/compact visible template-identifying motif\/deco anchors/i);
   });
 
   it('derives explicit slide counts from the visible user request when no UI hint is present', () => {

@@ -213,7 +213,8 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(prompt).toContain('hidden top-up only for 11+');
     expect(prompt).toContain('cover: eyebrow + headline + lead');
     expect(prompt).toContain('one idea each');
-    expect(prompt).toContain('Official look/Motif CSS is merged after save');
+    expect(prompt).toMatch(/compact visible kit motif|visible template-identifying motif|visible kit Motif/i);
+    expect(prompt).not.toContain('Official look/Motif CSS is merged after save');
     expect(prompt).not.toContain('디스크의 덱을 기준으로');
     expect(prompt).not.toContain('이미 저장된 슬라이드 덱');
   });

@@ -5,6 +5,18 @@
 
 MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드에 가드가 있고 빨간 스펙이 초록으로 돌아간 경우만 표시합니다.
 
+## 2026-09-01 현재 판단 · Template Clone content-fill
+
+### 루프320 — Clone seed를 visual baseline으로 명시
+
+현재 템플릿 적용은 순수 deterministic DOM slot-fill이 아니라, daemon `template-clone-deck`이 선택 템플릿 `example.html` 기반 LOOK seed를 만든 뒤 AI content-fill로 실제 내용을 채우는 하이브리드다. 따라서 prompt가 “Motif/CSS는 저장 후 merge”라고 표현하면 모델이 대표 장식·아이콘·색상 cue를 생략하거나 generic shape로 대체할 수 있다.
+
+수정: FE content-fill seed / ProjectView clone-fill instruction / runtime auto-continue / daemon selected-template prompt / contracts compact template prompt를 모두 “Clone seed가 DOM/style baseline”으로 통일했다. full example dump와 대형 SVG 선두 출력은 계속 금지하지만, 결과 deck 안에 visible kit motif/deco anchor를 직접 넣도록 요구한다. 빈 `.deco` shell은 motif로 보지 않는다.
+
+검증: contracts system-prompt-api-mode · template-visual-kit · teamver-selected-template-compose · deck-framework-compact · template-clone-fill, web templateCloneContentFill · runtime/resume.
+
+다음 추천 작업: 완전 deterministic DOM slot-fill 전환 검토. AI가 HTML 전체를 다시 쓰는 대신 JSON outline/content slots만 생성하고, 서버가 `buildTemplateClonedDeckHtml`로 템플릿 shell에 내용만 치환하면 템플릿 fidelity와 생성 속도를 더 안정화할 수 있다. 단, 템플릿별 slot 매핑/overflow 검증이 필요하므로 별도 P0 설계 후 진행.
+
 ### 빈 칸 번호 카드 (코드명 leftover)
 
 3열을 맞추려고 모델이 넣은, **칸 번호만 있는 카드**. 슬라이드에 쓸 제목·본문이 아닙니다.

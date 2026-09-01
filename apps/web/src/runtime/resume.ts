@@ -152,7 +152,7 @@ const AUTO_CONTINUE_HEAD_ONLY_BODY_FIRST =
   + 'Emit BODY-FIRST: start the artifact with `<body>` (or the first `<section class="slide">`), '
   + 'use only tiny inline style tokens. Cover = eyebrow + headline + one lead (no stats/footer). '
   + 'Body slides = title + 2–4 bullets. One idea per slide. '
-  + 'Official look/Motif CSS is merged after save — do not stream `<head>` or example.html styles. '
+  + 'Do not stream `<head>` or example.html styles, but include compact visible kit motif/deco anchors after title/body copy when available. '
   + `Close exactly ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} body-first slides this turn unless the user asked for 1–${FIRST_FILL_HONOR_MAX}. Hidden top-up only for ${FIRST_FILL_TOP_UP_FROM}+. `
   + 'A compact static deck beats another CSS-only truncation.';
 
@@ -162,7 +162,7 @@ const AUTO_CONTINUE_TEMPLATE_FILL_MIN_SLIDES =
   + 'rewriting Daisy Days chrome. Emit BODY-FIRST slides '
   + '(cover: eyebrow + headline + lead; body: title + 2–4 bullets; one idea each). '
   + 'If you continue, APPEND more `<section class="slide">` (or `<div class="slide">`) '
-  + 'bodies. Official look/Motif CSS is merged after save.';
+  + 'bodies with compact visible kit motif/deco anchors when available.';
 
 const AUTO_CONTINUE_MOTIF_SVG_DUMP_ABANDON =
   '\n\nCRITICAL: The previous turn dumped Motif `<svg>` path data before any cover `<h1>`. '

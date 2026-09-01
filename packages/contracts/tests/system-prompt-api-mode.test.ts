@@ -605,7 +605,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('direct deck generation rule (READ LAST');
       expect(prompt).toMatch(/Motif CSS|kit Motif vocabulary|deco-pill|Decorations CSS/i);
       expect(prompt).toMatch(/Never invent Motif geometry from another template family|no invented generic circles|FORBIDDEN substitutes/i);
-      expect(prompt).toMatch(/Motif vocabulary REQUIRED|kit Motif AFTER title/i);
+      expect(prompt).toMatch(/Motif vocabulary REQUIRED|kit Motif AFTER title|visible kit Motif/i);
       expect(prompt).toMatch(/Motif sprites \(capped for first content-fill/i);
       expect(prompt).toMatch(/<svg\b/i);
       expect(prompt.indexOf('# Final authority (READ LAST)')).toBeGreaterThan(
@@ -818,16 +818,16 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(fill).toContain('# Final authority (READ LAST)');
       expect(fill).toContain('## Selected template — first content-fill');
       expect(fill).not.toContain('READ LAST (first content-fill)');
-      expect(fill).toMatch(/Motif vocabulary \(required\)|kit Motif vocabulary/i);
+      expect(fill).toMatch(/Motif vocabulary \(required\)|kit Motif vocabulary|visible kit Motif/i);
       expect(fill).toContain('kit Motif AFTER title');
       expect(fill).not.toContain('OD-style CREATE');
       expect(fill).toMatch(/Never invent Motif geometry from another template family|FORBIDDEN substitutes|no invented generic circles/i);
       expect(fill).not.toContain('Copy Motif sprites verbatim');
       expect(normal).not.toContain('Copy Motif sprites verbatim');
       expect(normal).toContain('Motif budget');
-      expect(normal).toContain('at most ONE capped kit Motif sprite');
-      expect(fill).toMatch(/Motif `<svg>` is NOT required this turn/i);
-      expect(fill).toMatch(/REQUIRE 1–2 kit Motif CSS\/deco classes/i);
+      expect(normal).toMatch(/render visible kit Motif anchors|at most ONE capped kit Motif sprite|paste at most ONE capped kit Motif sprite/i);
+      expect(fill).toMatch(/visible kit Motif|visible Motif CSS\/HTML\/deco anchors/i);
+      expect(fill).not.toMatch(/official Motif merged after save|Official look\/Motif CSS\/SVG is merged after save|Motif `<svg>` is NOT required this turn/i);
       expect(fill).toMatch(/honor an explicit user count of 1–10/i);
       expect(fill).not.toMatch(/produce 3 filled 1920×1080 slides/i);
       // Fill kits must not re-inject Motif SVG bodies (persist remmerge paints them).

@@ -1684,7 +1684,7 @@ function slideTemplateCloneContentFillInstruction(
   const lines = [
     TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
     'Daemon Clone seeded a LOOK preview at `deck.html`. This turn REPLACES it with a compact content-complete deck.',
-    'Do NOT attach or reproduce the full cloned example.html CSS/SVG dump — use kit palette/fonts/scaffold map. Title-first, then at most ONE capped kit Motif sprite when Motif sprites lists one (official Motif CSS/SVG is also merged after save).',
+    'Do NOT attach or reproduce the full cloned example.html CSS/SVG dump — use kit palette/fonts/scaffold map. Title-first, then render compact visible kit motif/deco anchors; at most ONE capped kit Motif sprite when Motif sprites lists one.',
     ...templateCloneContentFillHardRules(),
   ];
   if (imagePaths.length > 0) {

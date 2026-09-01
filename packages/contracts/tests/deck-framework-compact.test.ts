@@ -248,13 +248,13 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
 
   it('selected-template compact contract forces visible slides before style-heavy kit chrome', () => {
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).toContain(
-      'the first 1200 characters after',
+      'first 1200 chars after',
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).toContain(
-      'first complete `<section class="slide">...</section>`',
+      'one complete `<section class="slide">...</section>`',
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).toContain(
-      'Do not open a `<head>` block',
+      'No `<head>`/long chrome dump',
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).toContain(
       'Complete deck beats perfect motif fidelity',
@@ -311,7 +311,7 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     );
   });
 
-  it('template-fill compact contract asks for up to 6 slides this turn and defers Motif SVG', () => {
+  it('template-fill compact contract asks for up to 6 slides this turn and requires visible Motif anchors', () => {
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toMatch(
       /honor an explicit user count of 1–10/i,
     );
@@ -328,10 +328,13 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
       'produce **3** filled slides',
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toMatch(
-      /Motif `<svg>` is NOT required this turn/i,
+      /Render 1–2 compact visible kit Motif\/deco anchors/i,
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toMatch(
-      /REQUIRE 1–2 kit Motif CSS\/deco classes/i,
+      /REQUIRE 1–2 visible kit Motif CSS\/HTML\/deco anchors/i,
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).not.toMatch(
+      /official Motif is merged after save|Motif `<svg>` is NOT required this turn/i,
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).not.toMatch(
       /Optional tiny kit Motif CSS/i,

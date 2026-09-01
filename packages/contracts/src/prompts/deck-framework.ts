@@ -576,7 +576,8 @@ export const COMPACT_DECK_SLIDE_COUNT_GUIDANCE =
 
 /**
  * Unspecified / 11+ first-batch cap. Do not raise the unspecified default
- * to 8–10 — "피피티 만들어줘" still closes 6 this turn.
+ * to 8–10 — "피피티 만들어줘" still closes 6 this turn. Template-specific
+ * motif must be visible in the generated deck itself.
  */
 export const COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN = 6;
 
@@ -587,8 +588,8 @@ export const COMPACT_FIRST_FILL_HONOR_MAX = 10;
 export const COMPACT_FIRST_FILL_TOP_UP_FROM = 11;
 
 /**
- * Official look/Motif now merge after save, so an explicit 5–10 page brief
- * can finish in one body-first turn. Top-up remains only for 11+ or a short miss.
+ * Explicit 5–10 page briefs can finish in one body-first turn. Top-up remains
+ * only for 11+ or a short miss.
  */
 export const COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE =
   `Slide count THIS TURN: honor an explicit user count of 1–${COMPACT_FIRST_FILL_HONOR_MAX} (5-6/5~6 → close ≥5 this turn; 8-10 → close this turn). If the user asked for ${COMPACT_FIRST_FILL_TOP_UP_FROM} or more, close ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} this turn. Never close after a single cover or after 3 slides when the target is 5+ — no 3+3+3 split.`;
@@ -635,7 +636,7 @@ A **Selected deck template** is already in this prompt. Use the **token-safe lay
 
 Do **not** paste a full \`example.html\` dump into the artifact (input was already summarized into the kit; rewriting the whole preview burns output tokens and truncates).
 
-**Body-first output order:** the first 1200 characters after \`<artifact\` must include \`<body\` and the first complete \`<section class="slide">...</section>\` with real copy. Place any shared \`<style>\` after slide 1. Do not open a \`<head>\` block or long \`<head>\` chrome dump. Official look/Motif CSS is merged after save — do not stream \`example.html\` styles. Complete deck beats perfect motif fidelity — a shell whose first 1200 chars are all \`<head>\`/\`<style>\` before any visible slide is a failed deliverable.
+**Body-first output order:** first 1200 chars after \`<artifact\` must include \`<body\` and one complete \`<section class="slide">...</section>\` with real copy. Put any shared \`<style>\` after slide 1. No \`<head>\`/long chrome dump. Do not stream full \`example.html\` CSS; do render compact visible kit motif/deco anchors when provided. Complete deck beats perfect motif fidelity.
 
 Fallback wireframe ONLY when neither kit nor scaffold map is usable (structure only — still use Selected template tokens). This sample is a **minimum shape**, not the deliverable. Stopping after 3 slides is a failure — close 6 THIS TURN. Never close \`</html></artifact>\` after a single section:
 
@@ -655,8 +656,8 @@ ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE}
 `;
 
 /**
- * First Clone content-fill: kit Motif create. Motif SVG paste is deferred so the
- * model can close a compact deck instead of hanging on multi-KB ornament dumps.
+ * First Clone content-fill: kit Motif create. Use compact visible motif anchors
+ * from the kit, while avoiding multi-KB ornament dumps before the first slide.
  */
 export const DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL = `# Slide deck — API compact contract for Template Clone content-fill
 
@@ -667,14 +668,14 @@ In-place HTML edits are unavailable in this API run — so regenerate content wi
 **Body / title-first (non-negotiable):**
 1. Status sentence → open \`<artifact type="deck" identifier="deck">\`.
 2. First bytes: \`<!doctype html><html lang="ko"><body style="margin:0;background:<kit surface hex>;color:<kit ink hex>"><section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;padding:56px 72px;background:<kit surface hex>;color:<kit ink hex>;…">\` with a real \`h1\`/\`h2\` title + lead **before any decoration**.
-3. ${COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE} Motif \`<svg>\` is NOT required this turn (official Motif is merged after save).
+3. ${COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE} Render 1–2 compact visible kit Motif/deco anchors per slide when provided; empty \`.deco\` shells do not count.
 4. Close \`</body></html></artifact>\` in this same response.
 
 **Full-bleed surface:** kit Slide surface must paint \`html\`/\`body\` AND every \`.slide\` edge-to-edge. FORBIDDEN: white outer canvas with an inner cream paper panel (white top/bottom bands). White title cards on cream paper are OK.
 
 **Layout (required when kit has Layout CSS / scaffold roles):** reuse capped Layout CSS grid/flex/region rules and scaffold map roles. FORBIDDEN: flattening every slide into one centered flex title column when the kit ships multi-region layouts (cards-grid / weekly-grid / split / matrix / terminal grids).
 
-**Motif (after title):** REQUIRE 1–2 kit Motif CSS/deco classes AFTER title when Decorations are listed. Motif \`<svg>\` NOT required (official Motif merged after save). FORBIDDEN: Motif SVG dumps; Motif-before-title; foreign Motif geometry; generic circles/emoji; omitting Motif CSS cues when listed.
+**Motif (after title):** REQUIRE 1–2 visible kit Motif CSS/HTML/deco anchors AFTER title when Decorations are listed. A capped small kit SVG is allowed after title if recognizable. FORBIDDEN: large SVG dumps; Motif-before-title; foreign/generic motifs; omitting listed Motif cues.
 
 **FORBIDDEN this turn:** Motif \`<svg>\` before cover title, multi-KB Motif/Layout dumps, long \`<head>\`, Neutral \`#0f172a\`, terracotta \`#c96442\`, emoji ornament rows, generic CSS circles when the kit has Motif CSS/sprites, invented tiny Daisy lookalikes, parroting the user brief as slide titles, adjacent duplicate headings/paragraphs/badges.
 
