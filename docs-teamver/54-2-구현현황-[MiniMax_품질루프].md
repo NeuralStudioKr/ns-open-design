@@ -33,6 +33,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-01 현재 판단 · 최신 루프
 
+### 루프352 — 혼합 크롬+비크롬 행의 빈 크롬만 제거
+
+루프342–344는 행의 자식이 전부 인라인 크롬일 때만 빈 본문 카드를 지운다. MiniMax Tech Stack/Pricing은 `.card` / `<ul>` 옆에 `<p></p>`·빈 div 크롬을 남겨 빈 띠가 유지됐다. 채워진 `.card`·리스트·크롬을 앵커로 두고 빈 크롬만 제거. 빈 스페이서만 있는 행·column·영문 empty-brief 카탈로그는 유지. 전체 행 drop(334)은 크롬-only. 카피 발명 없음.
+
+검증: contracts heal-loop331-335-residuals 루프352.
+
 ### 루프351 — 칸 번호 Z 빈 카드
 
 루프339까지는 A–U / W / Y / 가…하 / 스무째까지만 빈 칸 번호로 본다. 모델이 빠진 3열을 `기둥 Z`만으로 채워 빈 띠가 남는다. 그 제목만 제거. 띄어쓴 `스무 번째`와 번호+본문(`기둥 Z 실카피`)은 유지. 한글 열 라벨은 `하`가 끝. 로마 `V`/`X`는 이미 번호. 카피 발명 없음. 공식 영문 카탈로그는 brief 없이 유지.
@@ -1030,6 +1036,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
+- **완료 (루프352):** 혼합 크롬+비크롬 행에서 빈 크롬만 제거. `.card` / `<ul>` 앵커 · column·영문 카탈로그 유지.
 - **완료 (루프345–351):** Process/Pricing/Roadmap 구조 spill · title cover center · 칸 번호 Z. flex-column orphan grid / ul spill / cross-grid list / orphan chrome / inline cardish / flow text-align / `기둥 Z` drop.
 - **완료 (루프344):** 빈 `<p>` / `<span>` 래퍼 본문 슬롯도 미채움. 미디어·라벨-only 칩·실본문 유지.
 - **완료 (루프343):** 빈 `<div></div>` / `&nbsp;` 본문 슬롯도 미채움. 라벨-only 칩·실본문 유지.
@@ -1460,6 +1467,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | heal: inline chrome cardish sibling close | ☑ 루프349 |
 | heal: title-only cover flow text-align center | ☑ 루프350 |
 | persist/preview: 칸 번호만 있는 3열 카드(Z) | ☑ 루프351 |
+| heal: 혼합 크롬+비크롬 행의 빈 크롬만 제거 | ☑ 루프352 |
 | heal: 혼합 행의 `<br>`-only 본문 크롬 카드만 제거 | ☑ 루프342 |
 | heal: 빈 div / `&nbsp;` 본문 슬롯도 미채움 | ☑ 루프343 |
 | heal: 빈 `<p>` / `<span>` 래퍼 본문 슬롯도 미채움 | ☑ 루프344 |
@@ -1489,7 +1497,15 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프345–351 · Process/Pricing/Roadmap + title + Z)
+## 이번 루프 (루프352 · 혼합 크롬+비크롬 빈 크롬)
+
+- [x] `dropUnfilledChromeCardPeersInAllocatedRows` — 비크롬 형제 있어도 빈 크롬만 제거
+- [x] 채워진 `.card` / `<ul>` / 크롬 앵커. 빈 스페이서·column·영문 카탈로그 유지
+- [x] 전체 행 drop(334)은 크롬-only
+- [x] heal-loop331-335-residuals 루프352
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프345–351 · Process/Pricing/Roadmap + title + Z)
 
 - [x] 루프345 — `absorbOrphanContentGridIntoFlexColumnHost`
 - [x] 루프346 — `<ul>/<ol>` spill · sibling 상한 4

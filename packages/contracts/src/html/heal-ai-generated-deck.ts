@@ -3282,7 +3282,9 @@ export function stripDuplicatedInlineTailAfterSiblingClose(html: string): string
  * 채워진 크롬 카드는 두고, `<br>`-only 본문 슬롯인 형제만 제거.
  * 루프343 — 빈 `<div></div>` / `&nbsp;` 본문 슬롯도 동일.
  * 루프344 — 빈 `<p>` / `<span>` 래퍼 본문 슬롯도 동일.
- * `flex-direction:column` · 혼합 비크롬 · 영문 empty-brief 카탈로그 유지.
+ * `flex-direction:column` · 영문 empty-brief 카탈로그 유지.
+ * 루프352 — 전체 행 drop은 여전히 크롬-only. 혼합 비크롬 행은 342가
+ * 빈 크롬만 제거한다.
  */
 export function dropChromeCardGridsWithAllEmptyBodies(
   html: string,
@@ -3327,13 +3329,33 @@ export function dropChromeCardGridsWithAllEmptyBodies(
   return out;
 }
 
+function childLooksLikeChromeCard(child: DirectChildSpan): boolean {
+  return child.tag === 'div' && looksLikeChromeCardStyle(child.style);
+}
+
+/**
+ * True when an allocated-row peer can keep the row after empty chrome
+ * drops. Chrome cards use the 343/344 unfilled-body walk. Non-chrome
+ * peers (`.card`, `<ul>`, title chips) count as filled when they have
+ * visible copy or media (루프352).
+ */
+function allocatedRowPeerLooksFilled(html: string, child: DirectChildSpan): boolean {
+  if (childLooksLikeChromeCard(child)) {
+    return !chromeCardBodyLooksUnfilled(html, child);
+  }
+  if (visibleText(child.inner).replace(/\s+/g, '').length >= 2) return true;
+  return /<(?:img|svg|video|audio|canvas|iframe|picture|source)\b/i.test(child.inner);
+}
+
 /**
  * 루프342 — Mixed chrome rows: keep filled cards, drop siblings whose
  * body slots are only `<br>` / whitespace. Placement leftover of 334/340/341,
  * which only removed a row when every chrome card was empty.
  * 루프343 — empty `<div></div>` / `&nbsp;` body slots count as unfilled
  * too. 루프344 — empty `<p>` / `<span>` wrappers also count as unfilled.
- * Never invent copy. Column stacks and official English catalogs stay intact.
+ * 루프352 — `.card` / `<ul>` 같은 비크롬 형제가 있어도 빈 크롬만 제거.
+ * 채워진 앵커가 없으면 유지. Never invent copy. Column stacks and
+ * official English catalogs stay intact.
  */
 export function dropUnfilledChromeCardPeersInAllocatedRows(
   html: string,
@@ -3362,11 +3384,11 @@ export function dropUnfilledChromeCardPeersInAllocatedRows(
     if (!close) continue;
     const children = listDirectBlockChildSpans(out, openEnd, close.closeStart);
     if (children.length < 2 || children.length > 6) continue;
-    const chromeChildren = children.filter((c) => c.tag === 'div' && looksLikeChromeCardStyle(c.style));
-    if (chromeChildren.length !== children.length) continue;
+    const chromeChildren = children.filter(childLooksLikeChromeCard);
+    if (chromeChildren.length < 1) continue;
     const emptyPeers = chromeChildren.filter((c) => chromeCardBodyLooksUnfilled(out, c));
-    const filledPeers = chromeChildren.filter((c) => !chromeCardBodyLooksUnfilled(out, c));
-    if (emptyPeers.length === 0 || filledPeers.length === 0) continue;
+    if (emptyPeers.length === 0) continue;
+    if (!children.some((c) => allocatedRowPeerLooksFilled(out, c))) continue;
     for (const empty of emptyPeers) {
       removals.push({ start: empty.absStart, end: empty.absCloseEnd });
     }
@@ -3885,6 +3907,7 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // 루프342 — 본문 있는 행에서 빈 본문 크롬 카드만 제거. 전체 행
   // drop(334) 다음, leftover shrink 이전에 실행해 빈 띠 트랙을 줄인다.
   // 루프343 — 빈 div / `&nbsp;`. 루프344 — 빈 `<p>` / `<span>` 래퍼.
+  // 루프352 — `.card` / `<ul>` 혼합 행도 빈 크롬만 제거.
   out = dropUnfilledChromeCardPeersInAllocatedRows(out, brief);
   out = unnestHeadingBlockChildren(out);
   out = polishTruncatedInstructionTitles(out);

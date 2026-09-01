@@ -429,6 +429,101 @@ describe('루프344 · empty <p>/<span> wrapper body slots', () => {
   });
 });
 
+describe('루프352 · mixed chrome + non-chrome empty peers', () => {
+  it('drops empty chrome peers beside a filled .card in a grid', () => {
+    const html = [
+      '<section class="slide" data-screen-label="06 Tech Stack">',
+      '<h2>기술 스택</h2>',
+      '<div style="display:grid;grid-template-columns:repeat(3, minmax(0,1fr));gap:20px">',
+      '<div class="card"><h3>LLM / NLP</h3><p>Llama, vLLM, LangGraph</p></div>',
+      `<div style="${chrome}"><div>DATA / MLOps</div><div><p></p></div></div>`,
+      `<div style="${chrome}"><div>APP / UX</div><div><br></div></div>`,
+      '</div>',
+      '</section>',
+    ].join('');
+    const out = dropUnfilledChromeCardPeersInAllocatedRows(html, brief);
+    expect(out).toContain('LLM / NLP');
+    expect(out).toContain('Llama, vLLM, LangGraph');
+    expect(out).not.toContain('DATA / MLOps');
+    expect(out).not.toContain('APP / UX');
+    expect(out).toContain('기술 스택');
+  });
+
+  it('drops empty chrome peers beside a filled list in a flex row', () => {
+    const html = [
+      '<div style="display:flex;gap:20px">',
+      `<div style="${chrome}"><div>PLAN A</div><div>파일럿 (8주)</div></div>`,
+      '<ul><li>KPI 정의 + 프로토타입</li></ul>',
+      `<div style="${chrome}"><div>DATA / MLOps</div><div></div></div>`,
+      '</div>',
+    ].join('');
+    const out = dropUnfilledChromeCardPeersInAllocatedRows(html, brief);
+    expect(out).toContain('PLAN A');
+    expect(out).toContain('KPI 정의 + 프로토타입');
+    expect(out).not.toContain('DATA / MLOps');
+  });
+
+  it('leaves a mixed row of empty chrome and an empty spacer alone', () => {
+    const html = [
+      '<div style="display:flex;gap:20px">',
+      `<div style="${chrome}"><div>DATA / MLOps</div><div><p></p></div></div>`,
+      '<div></div>',
+      '</div>',
+    ].join('');
+    expect(dropUnfilledChromeCardPeersInAllocatedRows(html, brief)).toBe(html);
+  });
+
+  it('leaves a column flex mixed chrome + .card row alone', () => {
+    const html = [
+      '<div style="display:flex;flex-direction:column;gap:20px">',
+      '<div class="card"><h3>LLM / NLP</h3><p>Llama, vLLM</p></div>',
+      `<div style="${chrome}"><div>DATA / MLOps</div><div><p></p></div></div>`,
+      '</div>',
+    ].join('');
+    expect(dropUnfilledChromeCardPeersInAllocatedRows(html, brief)).toBe(html);
+  });
+
+  it('does not drop the whole mixed grid on the all-empty-chrome path', () => {
+    const html = [
+      '<section class="slide"><h2>기술 스택</h2>',
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">',
+      '<div class="card"><h3>LLM / NLP</h3><p>Llama, vLLM</p></div>',
+      `<div style="${chrome}"><div>DATA / MLOps</div><div><p></p></div></div>`,
+      '</div></section>',
+    ].join('');
+    const out = dropChromeCardGridsWithAllEmptyBodies(html, brief);
+    expect(out).toContain('LLM / NLP');
+    expect(out).toContain('DATA / MLOps');
+  });
+
+  it('leaves official English mixed chrome + .card alone without a brief', () => {
+    const html = [
+      '<div style="display:flex;gap:20px">',
+      '<div class="card"><h3>LLM / NLP</h3><p>Llama, vLLM</p></div>',
+      `<div style="${chrome}"><div>DATA / MLOps</div><div><p></p></div></div>`,
+      '</div>',
+    ].join('');
+    expect(dropUnfilledChromeCardPeersInAllocatedRows(html)).toBe(html);
+  });
+
+  it('pipeline removes mixed-row empty chrome without inventing copy (루프352)', () => {
+    const html = [
+      '<section class="slide"><h2>기술 스택</h2>',
+      '<div style="display:flex;gap:20px">',
+      '<div class="card"><h3>LLM / NLP</h3><p>Llama, vLLM</p></div>',
+      `<div style="${chrome}"><div>DATA / MLOps</div><div><p></p></div></div>`,
+      `<div style="${chrome}"><div>APP / UX</div><div><p><br></p></div></div>`,
+      '</div></section>',
+    ].join('');
+    const out = healAiGeneratedDeckMarkup(html, brief);
+    expect(out).toContain('기술 스택');
+    expect(out).toContain('Llama, vLLM');
+    expect(out).not.toContain('DATA / MLOps');
+    expect(out).not.toContain('APP / UX');
+    expect(out).not.toMatch(/기둥 Z|실카피/);
+  });
+});
+
 describe('healAiGeneratedDeckMarkup · neuralstudio.kr 회사소개 잔여', () => {
   it('applies 루프331 / 333 / 334 in a single heal pass', () => {
     const html = [
