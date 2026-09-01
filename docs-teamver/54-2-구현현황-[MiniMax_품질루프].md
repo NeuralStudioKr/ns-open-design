@@ -33,6 +33,48 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-01 현재 판단 · 최신 루프
 
+### 루프351 — 칸 번호 Z 빈 카드
+
+루프339까지는 A–U / W / Y / 가…하 / 스무째까지만 빈 칸 번호로 본다. 모델이 빠진 3열을 `기둥 Z`만으로 채워 빈 띠가 남는다. 그 제목만 제거. 띄어쓴 `스무 번째`와 번호+본문(`기둥 Z 실카피`)은 유지. 한글 열 라벨은 `하`가 끝. 로마 `V`/`X`는 이미 번호. 카피 발명 없음. 공식 영문 카탈로그는 brief 없이 유지.
+
+검증: contracts heal-ai-generated-deck 루프351 · deck-framework-compact · heal-loop345-350-residuals.
+
+### 루프350 — title-only cover lone h1 가운데 정렬
+
+`slide-title` 에 h1 하나만 있는 cover(≤ 80자, 리스트·미디어 없음)는 flow 안에서 좌측에 붙어 보인다. `text-align:center` 를 `[data-od-slide-flow]` wrapper 에 적용(h1 마크업은 유지해 dedup heal 과 충돌 없음). flow wrapper 가 없을 때만 h1 inline style. 카피 발명 없음.
+
+검증: contracts heal-loop345-350-residuals 루프350 · heal-duplicate-title-only-slide.
+
+### 루프349 — inline 크롬 카드 sibling close (loop194 cardish 확장)
+
+MiniMax retro win-body 카드는 `class="card"` 없이 padding+background/border inline 크롬만 쓴다. `attrsLookCardish` 가 class 토큰만 보면 loop194/203 이 다음 카드를 열 때 이전 카드를 닫지 않아 본문·`<ul>` 이 그리드 형제로 새어 나간다(Process/Pricing). `looksLikeChromeCardStyle` inline 크롬도 cardish 로 취급해 sibling close 를 선행 삽입. 카피 발명 없음.
+
+검증: contracts heal-loop345-350-residuals 루프349.
+
+### 루프348 — 그리드 뒤 orphan 크롬 카드 pull-back
+
+3열 로드맵 등에서 그리드가 N-1장만 닫고 마지막 카드(2027)가 그리드 다음 형제로 남는다. 선언 `grid-template-columns` 열 수보다 그리드 안 크롬 카드가 적을 때, 바로 뒤 크롬 카드 형제(`margin-top` 푸터 제외)를 그리드 안으로 되돌린다. 카피 발명 없음.
+
+검증: contracts heal-loop345-350-residuals 루프348.
+
+### 루프347 — cross-grid `<ul>/<ol>` spill + 2열 로드맵 + multi-pass
+
+루프332는 그리드 다음 형제가 `<div>` 본문일 때만 흡수했고 크롬 카드가 3장 이상일 때만 동작했다. Roadmap 2026 `<ul>` spill · 2열 그리드(2025/2026)도 동일하게 마지막 크롬 카드 안으로 되돌린다. 최대 3패스 multi-pass. 카피 발명 없음.
+
+검증: contracts heal-loop345-350-residuals 루프347.
+
+### 루프346 — pricing `<ul>/<ol>` spill absorb + sibling 상한 4
+
+PLAN A/B 뒤 `<ul>`·title·price 가 그리드 형제로 새어나가는 케이스. `absorbSpilledChromeCardSiblings` 가 `<ul>/<ol>` spill 을 인정하고 sibling 상한을 2→4 로 올린다. 카피 발명 없음.
+
+검증: contracts heal-loop345-350-residuals 루프346.
+
+### 루프345 — flex column host 뒤 orphan main grid 흡수
+
+Process 슬라이드에서 win-body flex column 이 heading/lede 뒤 조기 종료되어 main grid 가 형제로 밀린다. column flex host 바로 다음 `flex:1`/declared grid 를 host 안으로 merge. `margin-top` 푸터는 밖에 둔다. 카피 발명 없음.
+
+검증: contracts heal-loop345-350-residuals 루프345.
+
 ### 루프344 — 빈 `<p>` / `<span>` 래퍼 본문 슬롯
 
 루프343은 빈 소스 / `&nbsp;` / `<br>`만 빈 본문으로 본다. MiniMax는 본문 슬롯을 `<p></p>` / `<p><br></p>` / `<span></span>` / `<p><span>&nbsp;</span></p>` 래퍼로 남겨 빈 띠가 유지됐다. 빈 래퍼 태그를 반복 접어 미채움으로 본다. 미디어·실본문·라벨만 있는 칩·column·영문 카탈로그는 유지. 카피 발명 없음.
@@ -988,6 +1030,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
+- **완료 (루프345–351):** Process/Pricing/Roadmap 구조 spill · title cover center · 칸 번호 Z. flex-column orphan grid / ul spill / cross-grid list / orphan chrome / inline cardish / flow text-align / `기둥 Z` drop.
 - **완료 (루프344):** 빈 `<p>` / `<span>` 래퍼 본문 슬롯도 미채움. 미디어·라벨-only 칩·실본문 유지.
 - **완료 (루프343):** 빈 `<div></div>` / `&nbsp;` 본문 슬롯도 미채움. 라벨-only 칩·실본문 유지.
 - **완료 (루프342):** 혼합 행에서 `<br>`-only 본문 크롬 카드만 제거. 채워진 카드·column·영문 카탈로그 유지.
@@ -1014,7 +1057,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 - **완료 (루프294):** flex 행 크롬 카드 spill. 크롬 1개 스플릿·column·sidebar 유지.
 - **완료 (루프293):** class 없는 크롬 카드 spill absorb · 동일 style nest flatten. `SOH` footer·50/50·sidebar 유지.
 - **완료 (루프292):** `minmax(0, calc(share))` / `calc(100%/3)` equal-track. `calc(50%)` 2열은 유지.
-- **후보 (칸 번호 Z):** 모델이 빈 3열을 다음 칸 번호(`기둥 Z`)로 채우면 그때 빈 칸 번호에 넣는다. 로마 `V`/`X`는 이미 번호. `스무 번째`는 아직 번호로 보지 않는 서수 픽스처. extra-copy·stub는 주제 단어 목록이 아님(루프259·265).
+- **완료 (루프351 · 칸 번호 Z):** `기둥 Z` 빈 카드 drop. 띄어쓴 `스무 번째`·번호+본문 유지. 로마 `V`/`X` 유지.
 - **완료 (루프289–290):** `minmax(0,share)` equal-track · logical `inline-size` peer lock. 3장 280 vs 900 sidebar는 의도적 유지.
 - **인접 (루프206 밖):** native `#deck-next` active off-by-one는 루프281–282로 닫힘.
 - **후보 C (3열 residual):** 칸 번호 `Z` 이후, 또는 비율 >2.05 sidebar를 건드리지 않는 별도 layout residual. 280 vs 900은 의도적 유지.
@@ -1410,6 +1453,13 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | heal: Tech Stack 크롬 카드 본문이 `<br>`뿐인 그리드 제거 | ☑ 루프334 |
 | heal: Tech Stack empty `<br>`-body flex 행 제거 | ☑ 루프340 |
 | heal: class-bound flex/grid empty `<br>`-body 행 제거 | ☑ 루프341 |
+| heal: Process flex-column orphan grid merge | ☑ 루프345 |
+| heal: Pricing `<ul>` spill · sibling 상한 4 | ☑ 루프346 |
+| heal: Roadmap cross-grid list spill · multi-pass | ☑ 루프347 |
+| heal: Roadmap orphan chrome card pull-back | ☑ 루프348 |
+| heal: inline chrome cardish sibling close | ☑ 루프349 |
+| heal: title-only cover flow text-align center | ☑ 루프350 |
+| persist/preview: 칸 번호만 있는 3열 카드(Z) | ☑ 루프351 |
 | heal: 혼합 행의 `<br>`-only 본문 크롬 카드만 제거 | ☑ 루프342 |
 | heal: 빈 div / `&nbsp;` 본문 슬롯도 미채움 | ☑ 루프343 |
 | heal: 빈 `<p>` / `<span>` 래퍼 본문 슬롯도 미채움 | ☑ 루프344 |
@@ -1439,7 +1489,19 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프344 · 빈 `<p>` / `<span>` 래퍼 본문 슬롯)
+## 이번 루프 (루프345–351 · Process/Pricing/Roadmap + title + Z)
+
+- [x] 루프345 — `absorbOrphanContentGridIntoFlexColumnHost`
+- [x] 루프346 — `<ul>/<ol>` spill · sibling 상한 4
+- [x] 루프347 — cross-grid list spill · 크롬 2–6 · 3패스
+- [x] 루프348 — orphan chrome card pull-back
+- [x] 루프349 — inline chrome `attrsLookCardish`
+- [x] 루프350 — title cover `[data-od-slide-flow]` center
+- [x] 루프351 — 칸 번호 Z 빈 카드 · compact `W/Y/Z`
+- [x] heal-loop345-350-residuals · heal-duplicate-title-only-slide · deck-framework-compact
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프344 · 빈 `<p>` / `<span>` 래퍼 본문 슬롯)
 
 - [x] `innerBlockContainsOnlyEmptyPlaceholders` — 빈 `<p>` / `<span>` 래퍼 반복 접음
 - [x] 미디어·실본문·라벨-only 칩 유지. 카피 발명 없음

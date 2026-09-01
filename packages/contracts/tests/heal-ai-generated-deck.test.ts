@@ -2978,12 +2978,26 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표')).toBe(html);
     });
 
-    it('keeps 기둥 Z — not treated as an empty column number yet (루프339)', () => {
+    it('drops a third card whose only text is the column number 기둥 Z (루프351)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card" style="padding:24px"><h3>하나</h3><p>요지</p></div>',
+        '<div class="card" style="padding:24px"><h3>다음</h3><p>요지</p></div>',
+        '<div class="card" style="padding:24px"><h3>기둥 Z</h3></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('기둥 Z');
+      expect(out).toContain('하나');
+    });
+
+    it('keeps 기둥 Z 실카피 — a column number plus real body copy (루프351)', () => {
       const html = [
         '<div style="display:flex;gap:28px">',
         '<div class="card"><h3>하나</h3></div>',
         '<div class="card"><h3>다음</h3></div>',
-        '<div class="card"><h3>기둥 Z</h3></div>',
+        '<div class="card"><h3>기둥 Z 실카피</h3></div>',
         '</div>',
       ].join('');
       expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표')).toBe(html);
@@ -3389,6 +3403,24 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       const out = healAiGeneratedDeckMarkup(html, '발표');
       expect((out.match(/class="card"/g) ?? []).length).toBe(2);
       expect(out).not.toContain('기둥 Y');
+      expect(out).toContain('하나');
+      expect(out).toContain('다음');
+      expect(out).not.toContain('적분');
+      expect(out).not.toContain('실카피');
+    });
+
+    it('pipeline removes a 기둥 Z column-number card without inventing copy (루프351)', () => {
+      const html = [
+        '<section class="slide"><h1>세 가지 포인트</h1>',
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">',
+        '<div class="card"><h3>하나</h3><p>요지</p></div>',
+        '<div class="card"><h3>다음</h3><p>요지</p></div>',
+        '<div class="card"><h3>기둥 Z</h3></div>',
+        '</div></section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '발표');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('기둥 Z');
       expect(out).toContain('하나');
       expect(out).toContain('다음');
       expect(out).not.toContain('적분');

@@ -1850,6 +1850,8 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * 루프339 — drop empty column-number cards titled only `Y`.
  * Keep `기둥 Z` (skip roman `X`), spaced `스무 번째`, and number+body
  * (`기둥 Y 실카피`).
+ * 루프351 — drop empty column-number cards titled only `Z`.
+ * Keep spaced `스무 번째` and number+body (`기둥 Z 실카피`).
  * These tokens are model-emitted column
  * numbers, not product copy.
  */
@@ -1859,8 +1861,8 @@ const LEFTOVER_INDEX_ROMAN =
 const LEFTOVER_INDEX_MARK = '[⓪①-⑨❶-❾⓿０-９⑴-⑼㉠-㉥]';
 /** 루프225/230 — 0 / 00 / 01–09 / 10 leftover shells. */
 const LEFTOVER_INDEX_DIGIT = '(?:0?[0-9]|10)';
-/** Latin A–U + W + Y / 가…하. Not roman I/V/X. Not Z. */
-const LEFTOVER_INDEX_LETTER = '(?:[a-uwy]|[가나다라마바사아자차카타파하])';
+/** Latin A–U + W + Y + Z / 가…하. Not roman I/V/X. */
+const LEFTOVER_INDEX_LETTER = '(?:[a-uwyz]|[가나다라마바사아자차카타파하])';
 /** 첫째…스무째 empty ordinal titles. Keep number+body / spaced `스무 번째`. */
 const LEFTOVER_INDEX_ORDINAL = '(?:스무|열아홉|열여덟|열일곱|열여섯|열다섯|열네|열세|열두|열한|첫|둘|셋|넷|다섯|여섯|일곱|여덟|아홉|열)(?:째|번째)';
 const LEFTOVER_INDEX_CORE =
@@ -2362,7 +2364,23 @@ function classAttrValue(attrs: string): string {
 
 function attrsLookCardish(attrs: string): boolean {
   // Only the class token list — never style values like grid-template-columns.
-  return CARDISH_CLASS_RE.test(classAttrValue(attrs));
+  if (CARDISH_CLASS_RE.test(classAttrValue(attrs))) return true;
+  // 루프349 — MiniMax retro win-body cards often have no class token but
+  // share the same padded chrome inline style as grid cards. Treat them as
+  // cardish so loop194 inserts sibling closes before the next card opens.
+  return looksLikeChromeCardStyle(extractInlineStyle(attrs));
+}
+
+function isFlexColumnContainerStyle(style: string): boolean {
+  if (!/(?:^|;)\s*display\s*:\s*(?:inline-)?flex\b/i.test(style)) return false;
+  if (/(?:^|;)\s*flex-direction\s*:\s*row(?:-reverse)?\b/i.test(style)) return false;
+  return true;
+}
+
+function looksLikeMainContentGrid(style: string): boolean {
+  if (!/(?:^|;)\s*display\s*:\s*(?:inline-)?grid\b/i.test(style)) return false;
+  if (/(?:^|;)\s*flex\s*:\s*1\b/i.test(style)) return true;
+  return /grid-template-columns\s*:/i.test(style);
 }
 
 /**
@@ -2760,9 +2778,14 @@ export function unwrapRedundantNestedPeerCards(
 const SPILLED_CHROME_LABEL_MAX = 48;
 const SPILLED_BODY_MIN = 4;
 const SPILLED_BODY_MAX = 320;
-const SPILLED_SIBLING_MAX = 2;
+/** 루프346 — pricing cards can spill title + price + list (3+) after early close. */
+const SPILLED_SIBLING_MAX = 4;
 
 function looksLikeSpilledCardBody(child: DirectChildSpan): boolean {
+  if (child.tag === 'ul' || child.tag === 'ol') {
+    const text = visibleText(child.inner);
+    return text.length >= SPILLED_BODY_MIN && text.length <= SPILLED_BODY_MAX;
+  }
   if (child.tag !== 'div') return false;
   if (exactCardishTokens(child.attrs).length > 0) return false;
   if (looksLikeChromeCardStyle(child.style)) return false;
@@ -2953,6 +2976,82 @@ export function stripDuplicatedHeadingTailAfterClose(html: string): string {
 const CROSS_GRID_SPILL_BODY_MIN = 4;
 const CROSS_GRID_SPILL_BODY_MAX = 200;
 
+function looksLikeCrossGridSpillBody(
+  html: string,
+  child: DirectChildSpan,
+): boolean {
+  if (child.tag === 'ul' || child.tag === 'ol') {
+    const text = visibleText(child.inner);
+    return text.length >= CROSS_GRID_SPILL_BODY_MIN
+      && text.length <= CROSS_GRID_SPILL_BODY_MAX;
+  }
+  if (child.tag !== 'div') return false;
+  if (exactCardishTokens(child.attrs).length > 0) return false;
+  if (looksLikeChromeCardStyle(child.style)) return false;
+  if (/(?:^|;)\s*display\s*:\s*(?:inline-)?(?:grid|flex)\b/i.test(child.style)) return false;
+  if (/(?:^|;)\s*position\s*:\s*absolute\b/i.test(child.style)) return false;
+  const spillText = visibleText(child.inner);
+  if (spillText.length < CROSS_GRID_SPILL_BODY_MIN
+    || spillText.length > CROSS_GRID_SPILL_BODY_MAX) {
+    return false;
+  }
+  return listDirectBlockChildSpans(html, child.absEnd, child.absEnd + child.inner.length).length === 0;
+}
+
+/**
+ * 루프345 — MiniMax closes a flex column win-body host after the heading
+ * block but leaves the main card grid as the next sibling (Process slide).
+ * When a column flex host is immediately followed by a `flex:1` / declared
+ * column grid, move that grid inside the host before its close. Footers with
+ * `margin-top` stay outside. 카피 발명 없음.
+ */
+export function absorbOrphanContentGridIntoFlexColumnHost(
+  html: string,
+  brief?: string | null,
+): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
+  const openRe =
+    /<(div|section|article|main|aside)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  type Patch = {
+    hostCloseStart: number;
+    gridStart: number;
+    gridEnd: number;
+  };
+  const patches: Patch[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) {
+    const tag = (match[1] ?? '').toLowerCase();
+    const openEnd = match.index + match[0].length;
+    const close = findSameTagClose(out, tag, openEnd);
+    if (!close) continue;
+    const children = listDirectBlockChildSpans(out, openEnd, close.closeStart);
+    for (let i = 0; i < children.length - 1; i += 1) {
+      const host = children[i]!;
+      const grid = children[i + 1]!;
+      if (host.tag !== 'div' || grid.tag !== 'div') continue;
+      if (!isFlexColumnContainerStyle(host.style)) continue;
+      if (!looksLikeMainContentGrid(grid.style)) continue;
+      if (/(?:^|;)\s*margin-top\s*:/i.test(grid.style)) continue;
+      patches.push({
+        hostCloseStart: host.absEnd + host.inner.length,
+        gridStart: grid.absStart,
+        gridEnd: grid.absCloseEnd,
+      });
+      break;
+    }
+  }
+  if (patches.length === 0) return out;
+  patches.sort((a, b) => b.gridStart - a.gridStart);
+  for (const patch of patches) {
+    const gridHtml = out.slice(patch.gridStart, patch.gridEnd);
+    out = `${out.slice(0, patch.gridStart)}${out.slice(patch.gridEnd)}`;
+    out = `${out.slice(0, patch.hostCloseStart)}${gridHtml}${out.slice(patch.hostCloseStart)}`;
+  }
+  return out;
+}
+
 /**
  * 루프332 — 그리드 안에서 마지막 크롬 카드가 조기 종료되어 본문 조각이
  * 그리드 다음 형제로 새는 경우가 있다. 예:
@@ -2961,9 +3060,11 @@ const CROSS_GRID_SPILL_BODY_MAX = 200;
  * 그리드 내부 마지막 카드의 직접 블록 자식 수가 앞선 크롬 카드들의 최소값
  * 미만이고, 그리드 바로 다음 형제가 카드 없는 짧은 본문 div면 그 조각을
  * 마지막 카드 안으로 되돌린다. 다른 그리드 · 그림 · 넓은 본문은 유지.
+ * 루프347 — `<ul>/<ol>` 짧은 리스트 spill · 2열 로드맵(크롬 2장)도 동일.
+ * 루프347 — 최대 3패스 multi-pass.
  * 카피 발명 없음.
  */
-export function absorbSpilledBodyAcrossGridBoundary(
+function absorbSpilledBodyAcrossGridBoundaryOnce(
   html: string,
   brief?: string | null,
 ): string {
@@ -2985,7 +3086,6 @@ export function absorbSpilledBodyAcrossGridBoundary(
   const patches: Patch[] = [];
   let match: RegExpExecArray | null;
   while ((match = openRe.exec(out)) !== null) {
-    const parentAttrs = match[2] ?? '';
     const parentTag = (match[1] ?? '').toLowerCase();
     const parentOpenEnd = match.index + match[0].length;
     const parentClose = findSameTagClose(out, parentTag, parentOpenEnd);
@@ -3000,7 +3100,7 @@ export function absorbSpilledBodyAcrossGridBoundary(
       if (!isInlineGrid) continue;
       const gridInnerChildren = listDirectBlockChildSpans(out, gridChild.absEnd, gridChild.absEnd + gridChild.inner.length);
       const chromeChildren = gridInnerChildren.filter((c) => c.tag === 'div' && looksLikeChromeCardStyle(c.style));
-      if (chromeChildren.length < 3 || chromeChildren.length > 6) continue;
+      if (chromeChildren.length < 2 || chromeChildren.length > 6) continue;
       const lastChrome = chromeChildren[chromeChildren.length - 1]!;
       const otherChromeSlotCounts = chromeChildren
         .slice(0, -1)
@@ -3010,15 +3110,7 @@ export function absorbSpilledBodyAcrossGridBoundary(
       const lastSlots = listDirectBlockChildSpans(out, lastChrome.absEnd, lastChrome.absEnd + lastChrome.inner.length);
       if (lastSlots.length >= minOther) continue;
       const spill = parentChildren[i + 1]!;
-      if (spill.tag !== 'div') continue;
-      if (exactCardishTokens(spill.attrs).length > 0) continue;
-      if (looksLikeChromeCardStyle(spill.style)) continue;
-      if (/(?:^|;)\s*display\s*:\s*(?:inline-)?(?:grid|flex)\b/i.test(spill.style)) continue;
-      if (/(?:^|;)\s*position\s*:\s*absolute\b/i.test(spill.style)) continue;
-      const spillText = visibleText(spill.inner);
-      if (spillText.length < CROSS_GRID_SPILL_BODY_MIN || spillText.length > CROSS_GRID_SPILL_BODY_MAX) continue;
-      // 자식이 여러 개 있는 넓은 본문(카드가 아닌 큰 섹션)은 유지.
-      if (listDirectBlockChildSpans(out, spill.absEnd, spill.absEnd + spill.inner.length).length > 0) continue;
+      if (!looksLikeCrossGridSpillBody(out, spill)) continue;
       patches.push({
         parentStart: parentOpenEnd,
         parentEnd: parentClose.closeStart,
@@ -3035,10 +3127,95 @@ export function absorbSpilledBodyAcrossGridBoundary(
   patches.sort((a, b) => b.spillStart - a.spillStart);
   for (const patch of patches) {
     const spillHtml = out.slice(patch.spillStart, patch.spillEnd);
-    // Remove the spill first
     out = `${out.slice(0, patch.spillStart)}${out.slice(patch.spillEnd)}`;
-    // Then insert spill before the last chrome card's close.
     out = `${out.slice(0, patch.cardCloseStart)}${spillHtml}${out.slice(patch.cardCloseStart)}`;
+  }
+  return out;
+}
+
+export function absorbSpilledBodyAcrossGridBoundary(
+  html: string,
+  brief?: string | null,
+): string {
+  let out = String(html ?? '');
+  for (let pass = 0; pass < 3; pass += 1) {
+    const next = absorbSpilledBodyAcrossGridBoundaryOnce(out, brief);
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+}
+
+/**
+ * 루프348 — 3열 로드맵 등에서 그리드가 N-1장만 닫고 마지막 카드가 그리드
+ * 다음 형제로 남는다. 선언 열 수보다 그리드 안 크롬 카드가 적을 때, 바로
+ * 뒤의 크롬 카드 형제( `margin-top` 푸터 제외 )를 그리드 안으로 되돌린다.
+ * 카피 발명 없음.
+ */
+export function pullOrphanChromeCardsIntoPrecedingGrid(
+  html: string,
+  brief?: string | null,
+): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
+  const openRe =
+    /<(div|section|article|main|aside)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  type Patch = {
+    gridCloseStart: number;
+    orphanStart: number;
+    orphanEnd: number;
+  };
+  const patches: Patch[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) {
+    const parentTag = (match[1] ?? '').toLowerCase();
+    const parentOpenEnd = match.index + match[0].length;
+    const parentClose = findSameTagClose(out, parentTag, parentOpenEnd);
+    if (!parentClose) continue;
+    const parentChildren = listDirectBlockChildSpans(out, parentOpenEnd, parentClose.closeStart);
+    for (let i = 0; i < parentChildren.length; i += 1) {
+      const gridChild = parentChildren[i]!;
+      if (gridChild.tag !== 'div') continue;
+      const gridStyle = gridChild.style;
+      if (!/(?:^|;)\s*display\s*:\s*(?:inline-)?grid\b/i.test(gridStyle)) continue;
+      const colsRaw = /grid-template-columns\s*:\s*([^;]+)/i.exec(gridStyle)?.[1];
+      if (!colsRaw) continue;
+      const decl = parseDeclaredEqualColumns(colsRaw.trim());
+      if (!decl || decl.count < 2) continue;
+      const gridInnerChildren = listDirectBlockChildSpans(
+        out,
+        gridChild.absEnd,
+        gridChild.absEnd + gridChild.inner.length,
+      );
+      const chromeInside = gridInnerChildren.filter(
+        (c) => c.tag === 'div' && looksLikeChromeCardStyle(c.style),
+      ).length;
+      if (chromeInside >= decl.count) continue;
+      let slotsLeft = decl.count - chromeInside;
+      for (let j = i + 1; j < parentChildren.length && slotsLeft > 0; j += 1) {
+        const orphan = parentChildren[j]!;
+        if (orphan.tag !== 'div') break;
+        if (!looksLikeChromeCardStyle(orphan.style)) break;
+        if (/(?:^|;)\s*margin-top\s*:/i.test(orphan.style)) break;
+        if (/(?:^|;)\s*display\s*:\s*(?:inline-)?(?:grid|flex)\b/i.test(orphan.style)) break;
+        const orphanText = visibleText(orphan.inner);
+        if (orphanText.length > CROSS_GRID_SPILL_BODY_MAX) break;
+        patches.push({
+          gridCloseStart: gridChild.absEnd + gridChild.inner.length,
+          orphanStart: orphan.absStart,
+          orphanEnd: orphan.absCloseEnd,
+        });
+        slotsLeft -= 1;
+      }
+    }
+  }
+  if (patches.length === 0) return out;
+  patches.sort((a, b) => b.orphanStart - a.orphanStart);
+  for (const patch of patches) {
+    const orphanHtml = out.slice(patch.orphanStart, patch.orphanEnd);
+    out = `${out.slice(0, patch.orphanStart)}${out.slice(patch.orphanEnd)}`;
+    out = `${out.slice(0, patch.gridCloseStart)}${orphanHtml}${out.slice(patch.gridCloseStart)}`;
   }
   return out;
 }
@@ -3370,6 +3547,90 @@ export function neutralizeUnanchoredTranslateYInSlideContent(html: string): stri
 }
 
 /**
+ * 루프350 — title-only cover (`slide-title`) with a lone `<h1>` reads left-
+ * pinned inside a vertically centered flow. When the slide body is only that
+ * heading (≤ 80 visible chars, no lists/media), add `text-align:center` on
+ * `[data-od-slide-flow]` (or the `<h1>` when no flow wrapper) if not already
+ * set. Keeps bare `<h1>text</h1>` intact for dedup heals. 카피 발명 없음.
+ */
+export function centerSparseTitleSlideHeading(html: string): string {
+  const source = String(html ?? '');
+  if (!source) return source;
+  const slides = listAiSlideSpans(source);
+  if (slides.length === 0) return source;
+  let out = source;
+  const patches: Array<{ start: number; end: number; replacement: string }> = [];
+  for (const slide of slides) {
+    if (!/\bslide-title\b/i.test(slide.attrs)) continue;
+    const inner = out.slice(slide.openEnd, slide.bodyEnd);
+    if (/<(?:ul|ol|figure|table|img|svg|video)\b/i.test(inner)) continue;
+    const h1Re = /<h1\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/h1>/i;
+    const h1Match = h1Re.exec(inner);
+    if (!h1Match) continue;
+    const before = visibleText(inner.slice(0, h1Match.index));
+    const after = visibleText(inner.slice(h1Match.index + h1Match[0].length));
+    if (before.length > 2 || after.length > 2) continue;
+    const headingText = visibleText(h1Match[2] ?? '');
+    if (headingText.length === 0 || headingText.length > 80) continue;
+    const flowRe = /<div\b((?:[^>"']|"[^"]*"|'[^']*')*\bdata-od-slide-flow\b[^>]*)>/i;
+    const flowMatch = flowRe.exec(inner);
+    if (flowMatch) {
+      const flowAttrs = flowMatch[1] ?? '';
+      if (/(?:^|\s)style\s*=\s*["'][^"']*text-align\s*:/i.test(flowAttrs)) continue;
+      const absStart = slide.openEnd + flowMatch.index;
+      const absEnd = absStart + flowMatch[0].length;
+      const styleMatch = /\bstyle\s*=\s*(["'])([\s\S]*?)\1/i.exec(flowAttrs);
+      if (styleMatch) {
+        const quote = styleMatch[1]!;
+        const styleBody = styleMatch[2] ?? '';
+        const newAttrs = flowAttrs.replace(
+          styleMatch[0],
+          `style=${quote}${styleBody}${styleBody.trim().endsWith(';') ? '' : ';'}text-align:center${quote}`,
+        );
+        patches.push({ start: absStart, end: absEnd, replacement: `<div${newAttrs}>` });
+      } else {
+        patches.push({
+          start: absStart,
+          end: absEnd,
+          replacement: `<div${flowAttrs} style="text-align:center">`,
+        });
+      }
+      continue;
+    }
+    const attrs = h1Match[1] ?? '';
+    if (/(?:^|\s)style\s*=\s*["'][^"']*text-align\s*:/i.test(attrs)) continue;
+    const styleMatch = /\bstyle\s*=\s*(["'])([\s\S]*?)\1/i.exec(attrs);
+    const absStart = slide.openEnd + h1Match.index;
+    const absEnd = absStart + h1Match[0].length;
+    if (styleMatch) {
+      const quote = styleMatch[1]!;
+      const styleBody = styleMatch[2] ?? '';
+      const newAttrs = attrs.replace(
+        styleMatch[0],
+        `style=${quote}${styleBody}${styleBody.trim().endsWith(';') ? '' : ';'}text-align:center${quote}`,
+      );
+      patches.push({
+        start: absStart,
+        end: absEnd,
+        replacement: `<h1${newAttrs}>${h1Match[2] ?? ''}</h1>`,
+      });
+    } else {
+      patches.push({
+        start: absStart,
+        end: absEnd,
+        replacement: `<h1${attrs} style="text-align:center">${h1Match[2] ?? ''}</h1>`,
+      });
+    }
+  }
+  if (patches.length === 0) return source;
+  patches.sort((a, b) => b.start - a.start);
+  for (const patch of patches) {
+    out = `${out.slice(0, patch.start)}${patch.replacement}${out.slice(patch.end)}`;
+  }
+  return out;
+}
+
+/**
  * Q5-b — Blank slots whose only text matches the raw user brief.
  *
  * Cover meta rows (`<div class="v">`) and footer confidentials
@@ -3601,10 +3862,15 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // 루프293 — class 없는 크롬 카드의 조기 close가 제목·본문을 그리드
   // 형제로 남기면 shrink가 열을 늘린다. shrink 전에 카드 안으로 되돌린다.
   out = absorbSpilledChromeCardSiblings(out, brief);
-  // 루프332 — 그리드 바로 다음 형제로 새어나간 본문 조각을 마지막 크롬
-  // 카드 안으로 되돌린다. absorb 다음, dup drop 이전에 실행해야 그리드
-  // 내부 카운트와 dup 판정이 정합적으로 흘러간다.
+  // 루프345 — flex column win-body가 heading 뒤에서 조기 종료되고 main grid가
+  // 형제로 남으면 그리드를 column host 안으로 되돌린다.
+  out = absorbOrphanContentGridIntoFlexColumnHost(out, brief);
+  // 루프332 / 347 — 그리드 바로 다음 형제로 새어나간 본문·리스트 조각을
+  // 마지막 크롬 카드 안으로 되돌린다. absorb 다음, dup drop 이전.
   out = absorbSpilledBodyAcrossGridBoundary(out, brief);
+  // 루프348 — 선언 열 수보다 그리드 안 카드가 적을 때 바로 뒤 orphan 카드를
+  // 그리드 안으로 되돌린다 (로드맵 3열 등).
+  out = pullOrphanChromeCardsIntoPrecedingGrid(out, brief);
   // 루프333 — 조기 종료된 카드 뒤에 남은 orphan `<b>tail</b></div>` 제거.
   out = stripDuplicatedInlineTailAfterSiblingClose(out);
   // 루프331 — `</h1..6>` 다음 heading 꼬리 텍스트가 그대로 중복된 경우 제거.
@@ -3638,6 +3904,8 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   out = balanceClassBoundFlexCardRow(out, brief);
   out = normalizeHangulParticleGaps(out);
   out = neutralizeUnanchoredTranslateYInSlideContent(out);
+  // 루프350 — title-only cover의 lone h1을 flow wrapper 기준 가운데 정렬.
+  out = centerSparseTitleSlideHeading(out);
   out = scrubBriefLeakFromMetaSlots(out, brief);
   out = dropLeadingTitleOnlyIntroBeforeRealCover(out, brief);
   out = dropEmptyLikelyDeckSlides(out);
