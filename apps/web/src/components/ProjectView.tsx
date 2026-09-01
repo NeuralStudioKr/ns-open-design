@@ -10959,7 +10959,9 @@ export function ProjectView({
                     if (!armedSlotFillJsonRepair) return;
                     // LOOK seed is already on disk from Clone — open it instead
                     // of leaving incomplete_output when repair auto-continue
-                    // cannot fire (stream busy / navigated away).
+                    // cannot fire (stream busy / navigated away). Persist the
+                    // succeeded state so a hard reload does not resurface the
+                    // AC-pending "incomplete_output" notice (루프359).
                     void (async () => {
                       try {
                         const seedHtml = String(await readProjectHtml('deck.html') ?? '').trim();
@@ -10975,10 +10977,10 @@ export function ProjectView({
                             prev.producedFiles ?? produced,
                             projectFileFromPersistedHtmlFallback(
                               'deck.html',
-                              {
-                                kind: 'written',
-                                fileName: 'deck.html',
-                              } as ArtifactPersistResult,
+                              // LOOK seed already lives on disk from Clone;
+                              // treat as skipped-duplicate so the fallback
+                              // helper accepts it as a successful artifact.
+                              { kind: 'skipped-duplicate', fileName: 'deck.html' },
                               Date.now(),
                             ),
                           ),
@@ -10987,6 +10989,9 @@ export function ProjectView({
                           endedAt: prev.endedAt ?? Date.now(),
                         }));
                         updateConversationLatestRun('succeeded', Date.now());
+                        void saveMessage(project.id, runConversationId, latestAssistantMsg, {
+                          telemetryFinalized: true,
+                        });
                       } catch (error) {
                         devLog.warn('[teamver] slot-fill repair abort; could not keep LOOK seed', error);
                       }
