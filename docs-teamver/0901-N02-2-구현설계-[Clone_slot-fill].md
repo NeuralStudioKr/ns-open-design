@@ -153,6 +153,7 @@ MiniMax live E2E는 키 있을 때만. 키 없는 환경에서 가짜 live 금�
 | **B5** | JSON repair 1회 + HTML fallback | fallback fixture |
 | **C (P1)** | 공통 cards overflow + Daisy 픽스처 | [N02-4](./0901-N02-4-구현설계-[Clone_slot-map].md) |
 | **C2** | 템플릿 id별 slot map (Daisy Days) | [N02-6](./0901-N02-6-구현설계-[Clone_slot-map-C2].md) |
+| **C3** | 추가 맵 + peer-driven host | [N02-7](./0901-N02-7-구현설계-[Clone_slot-map-C3].md) |
 | **D** | hybrid fallback 제거 → seed-fallback | [N02-5](./0901-N02-5-구현설계-[Clone_slot-fill-D].md) |
 
 ## Non-goals (이 설계 문서)

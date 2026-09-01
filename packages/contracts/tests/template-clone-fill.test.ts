@@ -1285,3 +1285,72 @@ describe('0901-N02-C2 template slot maps', () => {
     expect(next).not.toContain('Evening');
   });
 });
+
+describe('0901-N02-C3 additional template slot maps', () => {
+  it('resolves C3 template ids', () => {
+    expect(resolveTemplateCloneSlotMap({ templateId: 'html-ppt-product-launch' })).toBeTruthy();
+    expect(resolveTemplateCloneSlotMap({ templateId: 'example-html-ppt-zhangzara-block-frame' })).toBeTruthy();
+    expect(resolveTemplateCloneSlotMap({ templateId: 'html-ppt-zhangzara-blue-professional' })).toBeTruthy();
+    expect(resolveTemplateCloneSlotMap({ templateId: 'html-ppt-zhangzara-capsule' })).toBeTruthy();
+    expect(resolveTemplateCloneSlotMap({ templateId: 'html-ppt-zhangzara-bold-poster' })).toBeTruthy();
+  });
+
+  it('trims peer-driven price-cards inside grid g3 hosts', () => {
+    const html = [
+      '<h2>Pricing</h2>',
+      '<div class="grid g3 mt-l">',
+      '<div class="price-card"><h4>Starter</h4><p>a</p></div>',
+      '<div class="price-card"><h4>Pro</h4><p>b</p></div>',
+      '<div class="price-card"><h4>Enterprise</h4><p>c</p></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['베이직', '프로']);
+    expect([...(next.matchAll(/\bprice-card\b/gi))].length).toBe(2);
+    expect(next).toContain('베이직');
+    expect(next).toContain('프로');
+    expect(next).not.toContain('Enterprise');
+    expect(next).not.toContain('Starter');
+  });
+
+  it('trims team-grid team-cards', () => {
+    const html = [
+      '<div class="team-grid">',
+      '<div class="team-card"><h4>Ada</h4><p>CEO</p></div>',
+      '<div class="team-card"><h4>Bob</h4><p>CTO</p></div>',
+      '<div class="team-card"><h4>Cara</h4><p>CPO</p></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['김민수', '이서연']);
+    expect([...(next.matchAll(/\bteam-card\b/gi))].length).toBe(2);
+    expect(next).toContain('김민수');
+    expect(next).not.toContain('Cara');
+  });
+
+  it('trims top-level pillar peers without a wrapper host', () => {
+    const html = [
+      '<div class="pillar"><h4>One</h4><p>a</p></div>',
+      '<div class="pillar"><h4>Two</h4><p>b</p></div>',
+      '<div class="pillar"><h4>Three</h4><p>c</p></div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['신뢰', '속도']);
+    expect([...(next.matchAll(/\bpillar\b/gi))].length).toBe(2);
+    expect(next).toContain('신뢰');
+    expect(next).toContain('속도');
+    expect(next).not.toContain('Three');
+  });
+
+  it('trims capsule pillar-cards via cards-grid', () => {
+    const html = [
+      '<div class="cards-grid">',
+      '<div class="pillar-card"><h4>A</h4><p>aa</p></div>',
+      '<div class="pillar-card"><h4>B</h4><p>bb</p></div>',
+      '<div class="pillar-card"><h4>C</h4><p>cc</p></div>',
+      '</div>',
+    ].join('');
+    const map = resolveTemplateCloneSlotMap({ templateId: 'html-ppt-zhangzara-capsule' });
+    const next = fillAndTrimCardPeers(html, ['첫째', '둘째'], map);
+    expect([...(next.matchAll(/\bpillar-card\b/gi))].length).toBe(2);
+    expect(next).toContain('첫째');
+    expect(next).not.toContain('>C<');
+  });
+});

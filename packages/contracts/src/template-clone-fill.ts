@@ -18,6 +18,15 @@ import {
 export type { TemplateCloneSlotMap } from './template-clone-slot-maps.js';
 export {
   DAISY_DAYS_SLOT_MAP,
+  BLOCK_FRAME_SLOT_MAP,
+  PRODUCT_LAUNCH_SLOT_MAP,
+  BLUE_PROFESSIONAL_SLOT_MAP,
+  CAPSULE_SLOT_MAP,
+  BOLD_POSTER_SLOT_MAP,
+  PITCH_DECK_SLOT_MAP,
+  PLAYFUL_SLOT_MAP,
+  EIGHT_BIT_ORBIT_SLOT_MAP,
+  MAT_SLOT_MAP,
   TEMPLATE_CLONE_SLOT_MAPS,
   resolveTemplateCloneSlotMap,
 } from './template-clone-slot-maps.js';
@@ -1616,11 +1625,6 @@ function replaceListItems(html: string, lines: string[]): string {
   );
 }
 
-const CARD_HOST_CLASS_RE =
-  /\b(?:cards-grid|weekly-grid|card-grid|grid-cards|cards)\b/i;
-const CARD_PEER_CLASS_RE =
-  /^(?:info-card|stat-card|feature-card|metric-card|card)$/i;
-
 function classTokensFromAttrs(attrs: string): string[] {
   const match = /\bclass\s*=\s*(["'])([^"']*)\1/i.exec(attrs);
   if (!match?.[2]) return [];
@@ -1634,6 +1638,13 @@ function hostClassSet(slotMap: TemplateCloneSlotMap | null | undefined): Set<str
     'card-grid',
     'grid-cards',
     'cards',
+    'stats-grid',
+    'team-grid',
+    'feature-grid',
+    'metrics-row',
+    'cards-row',
+    'pricing-grid',
+    'timeline-wrap',
   ]);
   for (const token of slotMap?.hostClasses ?? []) {
     const t = String(token ?? '').trim().toLowerCase();
@@ -1649,6 +1660,17 @@ function peerClassSet(slotMap: TemplateCloneSlotMap | null | undefined): Set<str
     'feature-card',
     'metric-card',
     'card',
+    'team-card',
+    'price-card',
+    'pricing-card',
+    'pillar-card',
+    'kpi-card',
+    'step-card',
+    'process-card',
+    'member-card',
+    'pillar',
+    'day-card',
+    'timeline-card',
   ]);
   for (const token of slotMap?.peerClasses ?? []) {
     const t = String(token ?? '').trim().toLowerCase();
@@ -1694,9 +1716,53 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function rebuildHostWithPeers(
+  source: string,
+  openStart: number,
+  openEnd: number,
+  closeEnd: number,
+  closeTag: string,
+  openTag: string,
+  children: HtmlSpan[],
+  peers: HtmlSpan[],
+  lines: string[],
+): string {
+  const keepCount = Math.min(Math.max(0, lines.length), peers.length);
+  const keepPeerStarts = new Set(peers.slice(0, keepCount).map((span) => span.start));
+  const rebuilt: string[] = [];
+  for (const child of children) {
+    if (!peers.some((peer) => peer.start === child.start)) {
+      rebuilt.push(source.slice(child.start, child.end));
+      continue;
+    }
+    if (!keepPeerStarts.has(child.start)) continue;
+    const peerIndex = peers.findIndex((peer) => peer.start === child.start);
+    const line = lines[peerIndex] ?? '';
+    rebuilt.push(fillOneCardPeer(source.slice(child.start, child.end), line));
+  }
+  const nextHost = `${openTag}${rebuilt.join('')}${closeTag}`;
+  return source.slice(0, openStart) + nextHost + source.slice(closeEnd);
+}
+
+function collectPeersAmongChildren(
+  source: string,
+  children: HtmlSpan[],
+  slotMap?: TemplateCloneSlotMap | null,
+): HtmlSpan[] {
+  return children.filter((span) => {
+    const open = /^<([a-zA-Z][\w:-]*)\b([^>]*)>/.exec(source.slice(span.start, span.end));
+    return Boolean(open && attrsLookLikeCardPeer(open[2] ?? '', slotMap));
+  });
+}
+
 /**
  * Fill card peers from outline lines and drop unfilled siblings.
- * 0901-N02-C/C2: 카드 수 = 내용 수. Never invent leftover column labels.
+ * 0901-N02-C/C2/C3: 카드 수 = 내용 수. Never invent leftover column labels.
+ *
+ * Host discovery order:
+ * 1) known host class tokens
+ * 2) peer-driven: any container with ≥2 direct peer children
+ * 3) top-level peer siblings (no wrapper)
  */
 export function fillAndTrimCardPeers(
   html: string,
@@ -1705,48 +1771,105 @@ export function fillAndTrimCardPeers(
 ): string {
   const source = String(html ?? '');
   if (!source) return source;
-  const hostOpenRe =
-    /<(div|ul|ol|section)\b([^>]*)>/gi;
+
+  const tryTrimAt = (
+    openStart: number,
+    openEnd: number,
+    closeEnd: number,
+    openTag: string,
+    closeTag: string,
+    requireHostClass: boolean,
+    attrs: string,
+  ): string | null => {
+    if (requireHostClass && !attrsLookLikeCardHost(attrs, slotMap)) return null;
+    const innerEnd = closeEnd - closeTag.length;
+    const children = listDirectChildRanges(source, openEnd, innerEnd);
+    const peers = collectPeersAmongChildren(source, children, slotMap);
+    if (requireHostClass) {
+      if (peers.length === 0) return null;
+    } else if (peers.length < 2) {
+      return null;
+    }
+    return rebuildHostWithPeers(
+      source,
+      openStart,
+      openEnd,
+      closeEnd,
+      closeTag,
+      openTag,
+      children,
+      peers,
+      lines,
+    );
+  };
+
+  // 1) Class-named hosts
+  const hostOpenRe = /<(div|ul|ol|section)\b([^>]*)>/gi;
   let hostMatch: RegExpExecArray | null;
   while ((hostMatch = hostOpenRe.exec(source)) !== null) {
     const tag = (hostMatch[1] ?? 'div').toLowerCase();
     const attrs = hostMatch[2] ?? '';
-    if (!attrsLookLikeCardHost(attrs, slotMap)) continue;
     const openStart = hostMatch.index;
     const openEnd = openStart + hostMatch[0].length;
     const closeEnd = findMatchingClose(source, openEnd, tag);
     if (closeEnd < 0) continue;
     const closeTag = new RegExp(`</${tag}\\s*>$`, 'i').exec(source.slice(0, closeEnd))?.[0]
       ?? `</${tag}>`;
-    const innerEnd = closeEnd - closeTag.length;
-    const children = listDirectChildRanges(source, openEnd, innerEnd);
-    const peers = children.filter((span) => {
-      const open = /^<([a-zA-Z][\w:-]*)\b([^>]*)>/.exec(source.slice(span.start, span.end));
-      return Boolean(open && attrsLookLikeCardPeer(open[2] ?? '', slotMap));
-    });
-    if (peers.length === 0) continue;
+    const trimmed = tryTrimAt(
+      openStart,
+      openEnd,
+      closeEnd,
+      hostMatch[0],
+      closeTag,
+      true,
+      attrs,
+    );
+    if (trimmed) return trimmed;
+  }
 
-    const keepCount = Math.min(Math.max(0, lines.length), peers.length);
-    const keepPeerStarts = new Set(peers.slice(0, keepCount).map((span) => span.start));
+  // 2) Peer-driven hosts (e.g. product-launch `.grid.g3` without cards-grid)
+  hostOpenRe.lastIndex = 0;
+  while ((hostMatch = hostOpenRe.exec(source)) !== null) {
+    const tag = (hostMatch[1] ?? 'div').toLowerCase();
+    const attrs = hostMatch[2] ?? '';
+    if (attrsLookLikeCardHost(attrs, slotMap)) continue; // already tried
+    const openStart = hostMatch.index;
+    const openEnd = openStart + hostMatch[0].length;
+    const closeEnd = findMatchingClose(source, openEnd, tag);
+    if (closeEnd < 0) continue;
+    const closeTag = new RegExp(`</${tag}\\s*>$`, 'i').exec(source.slice(0, closeEnd))?.[0]
+      ?? `</${tag}>`;
+    const trimmed = tryTrimAt(
+      openStart,
+      openEnd,
+      closeEnd,
+      hostMatch[0],
+      closeTag,
+      false,
+      attrs,
+    );
+    if (trimmed) return trimmed;
+  }
+
+  // 3) Top-level peer siblings (bold-poster `.pillar` row without wrapper)
+  const topChildren = listDirectChildRanges(source, 0, source.length);
+  const topPeers = collectPeersAmongChildren(source, topChildren, slotMap);
+  if (topPeers.length >= 2) {
+    const keepCount = Math.min(Math.max(0, lines.length), topPeers.length);
+    const keepPeerStarts = new Set(topPeers.slice(0, keepCount).map((span) => span.start));
     const rebuilt: string[] = [];
-    for (const child of children) {
-      if (!peers.some((peer) => peer.start === child.start)) {
+    for (const child of topChildren) {
+      if (!topPeers.some((peer) => peer.start === child.start)) {
         rebuilt.push(source.slice(child.start, child.end));
         continue;
       }
       if (!keepPeerStarts.has(child.start)) continue;
-      const peerIndex = peers.findIndex((peer) => peer.start === child.start);
-      const line = lines[peerIndex] ?? '';
-      rebuilt.push(fillOneCardPeer(source.slice(child.start, child.end), line));
+      const peerIndex = topPeers.findIndex((peer) => peer.start === child.start);
+      rebuilt.push(fillOneCardPeer(source.slice(child.start, child.end), lines[peerIndex] ?? ''));
     }
-    const openTag = hostMatch[0];
-    const nextHost = `${openTag}${rebuilt.join('')}${closeTag}`;
-    return (
-      source.slice(0, openStart)
-      + nextHost
-      + source.slice(closeEnd)
-    );
+    return rebuilt.join('');
   }
+
   return source;
 }
 
