@@ -1668,6 +1668,7 @@ function peerClassSet(slotMap: TemplateCloneSlotMap | null | undefined): Set<str
     'step-card',
     'process-card',
     'member-card',
+    'team-member',
     'pillar',
     'day-card',
     'timeline-card',
@@ -1679,12 +1680,44 @@ function peerClassSet(slotMap: TemplateCloneSlotMap | null | undefined): Set<str
   return set;
 }
 
+/**
+ * 0901-N02-C4: prefixed hosts (`hc-grid-3`, `xp-grid-2`, `columns-grid`) without
+ * per-template maps. Exact allowlist still wins; do not invent leftover peers.
+ */
+function tokenLooksLikeCardHost(
+  token: string,
+  hosts: Set<string>,
+): boolean {
+  const t = String(token ?? '').trim().toLowerCase();
+  if (!t) return false;
+  if (hosts.has(t)) return true;
+  // foo-grid / foo-grid-3 — not nav-arrow, not bare "grid" (too broad alone).
+  if (/^[a-z0-9][a-z0-9_-]*-grid(?:-\d+)?$/.test(t)) return true;
+  if (/^grid-\d+$/.test(t)) return true;
+  return false;
+}
+
+/**
+ * 0901-N02-C4: prefixed peers (`xp-card`, `hc-card`, `column-card`).
+ * Matches `*-card` only — never `card-icon` / `card-title` / `card-text`.
+ */
+function tokenLooksLikeCardPeer(
+  token: string,
+  peers: Set<string>,
+): boolean {
+  const t = String(token ?? '').trim().toLowerCase();
+  if (!t) return false;
+  if (peers.has(t)) return true;
+  if (/^[a-z0-9][a-z0-9_-]*-card$/.test(t)) return true;
+  return false;
+}
+
 function attrsLookLikeCardHost(
   attrs: string,
   slotMap?: TemplateCloneSlotMap | null,
 ): boolean {
   const hosts = hostClassSet(slotMap);
-  return classTokensFromAttrs(attrs).some((token) => hosts.has(token.toLowerCase()));
+  return classTokensFromAttrs(attrs).some((token) => tokenLooksLikeCardHost(token, hosts));
 }
 
 function attrsLookLikeCardPeer(
@@ -1692,7 +1725,7 @@ function attrsLookLikeCardPeer(
   slotMap?: TemplateCloneSlotMap | null,
 ): boolean {
   const peers = peerClassSet(slotMap);
-  return classTokensFromAttrs(attrs).some((token) => peers.has(token.toLowerCase()));
+  return classTokensFromAttrs(attrs).some((token) => tokenLooksLikeCardPeer(token, peers));
 }
 
 function shellBodyLooksLikeCardGrid(
@@ -1701,12 +1734,13 @@ function shellBodyLooksLikeCardGrid(
 ): boolean {
   const hosts = [...hostClassSet(slotMap)].map(escapeRegExp).join('|');
   const peers = [...peerClassSet(slotMap)].map(escapeRegExp).join('|');
+  // (?!-) blocks prefix hits inside `kb-grid-bg` / `my-card-icon`.
   const hostRe = new RegExp(
-    `<(?:div|ul|ol|section)\\b[^>]*\\bclass\\s*=\\s*["'][^"']*(?:\\b(?:${hosts})\\b)[^"']*["']`,
+    `<(?:div|ul|ol|section)\\b[^>]*\\bclass\\s*=\\s*["'][^"']*(?:\\b(?:${hosts})\\b|\\b[a-z0-9][\\w-]*-grid(?:-\\d+)?\\b(?!-)|\\bgrid-\\d+\\b)[^"']*["']`,
     'i',
   );
   const peerRe = new RegExp(
-    `<(?:div|article|aside|li|section)\\b[^>]*\\bclass\\s*=\\s*["'][^"']*(?:\\b(?:${peers})\\b)[^"']*["']`,
+    `<(?:div|article|aside|li|section)\\b[^>]*\\bclass\\s*=\\s*["'][^"']*(?:\\b(?:${peers})\\b|\\b[a-z0-9][\\w-]*-card\\b(?!-))[^"']*["']`,
     'i',
   );
   return hostRe.test(html) || peerRe.test(html);
@@ -1757,11 +1791,11 @@ function collectPeersAmongChildren(
 
 /**
  * Fill card peers from outline lines and drop unfilled siblings.
- * 0901-N02-C/C2/C3: 카드 수 = 내용 수. Never invent leftover column labels.
+ * 0901-N02-C/C2/C3/C4: 카드 수 = 내용 수. Never invent leftover column labels.
  *
  * Host discovery order:
- * 1) known host class tokens
- * 2) peer-driven: any container with ≥2 direct peer children
+ * 1) known host class tokens (+ C4 `*-grid` / `grid-N` suffix)
+ * 2) peer-driven: any container with ≥2 direct peer children (`*-card` incl.)
  * 3) top-level peer siblings (no wrapper)
  */
 export function fillAndTrimCardPeers(
@@ -1886,6 +1920,30 @@ function fillOneCardPeer(cardHtml: string, line: string): string {
     next = next.replace(/<li\b[^>]*>[\s\S]*?<\/li>/gi, '');
     return next;
   }
+  // Coral / column-card: `.card-title` (+ clear `.card-text` demo).
+  if (/\bcard-title\b/i.test(next)) {
+    next = next.replace(
+      /(<[^>]*\bcard-title\b[^>]*>)([\s\S]*?)(<\/)/i,
+      (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(text)}${close}`,
+    );
+    next = next.replace(
+      /(<[^>]*\bcard-text\b[^>]*>)([\s\S]*?)(<\/)/gi,
+      (_m, open: string, _inner: string, close: string) => `${open}${close}`,
+    );
+    return next;
+  }
+  // team-member: `.member-name` title slot (0901-N02-C4).
+  if (/\bmember-name\b/i.test(next)) {
+    next = next.replace(
+      /(<[^>]*\bmember-name\b[^>]*>)([\s\S]*?)(<\/)/i,
+      (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(text)}${close}`,
+    );
+    next = next.replace(
+      /(<[^>]*\bmember-role\b[^>]*>)([\s\S]*?)(<\/)/gi,
+      (_m, open: string, _inner: string, close: string) => `${open}${close}`,
+    );
+    return next;
+  }
   if (/<h([3-5])\b/i.test(next)) {
     next = next.replace(
       /(<h([3-5])\b[^>]*>)([\s\S]*?)(<\/h\2>)/i,
@@ -1899,7 +1957,7 @@ function fillOneCardPeer(cardHtml: string, line: string): string {
   }
   if (/<p\b/i.test(next)) {
     let replaced = false;
-    return next.replace(/(<p\b[^>]*>)([\s\S]*?)(<\/p>)/gi, (match, open: string, _inner: string, close: string) => {
+    return next.replace(/(<p\b[^>]*>)([\s\S]*?)(<\/p>)/gi, (_match, open: string, _inner: string, close: string) => {
       if (!replaced) {
         replaced = true;
         return `${open}${escapeHtml(text)}${close}`;

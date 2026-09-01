@@ -1354,3 +1354,73 @@ describe('0901-N02-C3 additional template slot maps', () => {
     expect(next).not.toContain('>C<');
   });
 });
+
+describe('0901-N02-C4 prefixed *-card peer heuristic', () => {
+  it('trims xp-card peers inside xp-grid-2 without a slot map', () => {
+    const html = [
+      '<h2>자동화</h2>',
+      '<div class="xp-grid-2">',
+      '<div class="xp-card peach"><h4>邮件</h4><p>a</p></div>',
+      '<div class="xp-card mint"><h4>订餐</h4><p>b</p></div>',
+      '<div class="xp-card sky"><h4>会议</h4><p>c</p></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['메일', '예약']);
+    expect([...(next.matchAll(/\bxp-card\b/gi))].length).toBe(2);
+    expect(next).toContain('메일');
+    expect(next).toContain('예약');
+    expect(next).not.toContain('会议');
+    expect(next).not.toContain('邮件');
+  });
+
+  it('trims hc-card peers inside hc-grid-3 without a slot map', () => {
+    const html = [
+      '<div class="hc-grid-3">',
+      '<div class="hc-card"><h4>Alpha</h4><p>a</p></div>',
+      '<div class="hc-card"><h4>Beta</h4><p>b</p></div>',
+      '<div class="hc-card"><h4>Gamma</h4><p>c</p></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['신뢰', '속도']);
+    expect([...(next.matchAll(/\bhc-card\b/gi))].length).toBe(2);
+    expect(next).toContain('신뢰');
+    expect(next).not.toContain('Gamma');
+  });
+
+  it('trims column-card via card-title and does not treat card-icon as peer', () => {
+    const html = [
+      '<div class="columns-grid">',
+      '<div class="column-card"><div class="card-icon">A</div><div class="card-title">EXPAND</div><div class="card-text">reach demo</div></div>',
+      '<div class="column-card"><div class="card-icon">B</div><div class="card-title">DEPTH</div><div class="card-text">depth demo</div></div>',
+      '<div class="column-card"><div class="card-icon">C</div><div class="card-title">SPEED</div><div class="card-text">speed demo</div></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['확장', '깊이']);
+    expect([...(next.matchAll(/\bcolumn-card\b/gi))].length).toBe(2);
+    expect(next).toContain('확장');
+    expect(next).toContain('깊이');
+    expect(next).not.toContain('EXPAND');
+    expect(next).not.toContain('SPEED');
+    expect(next).not.toContain('reach demo');
+    expect(next).not.toContain('speed demo');
+    // card-icon deco stays on kept peers; never becomes its own trim unit.
+    expect([...(next.matchAll(/\bcard-icon\b/gi))].length).toBe(2);
+  });
+
+  it('trims team-member peers and fills member-name', () => {
+    const html = [
+      '<div class="team-grid">',
+      '<div class="team-member"><div class="member-name">Ada</div><div class="member-role">CEO</div></div>',
+      '<div class="team-member"><div class="member-name">Bob</div><div class="member-role">CTO</div></div>',
+      '<div class="team-member"><div class="member-name">Cara</div><div class="member-role">CPO</div></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['김민수', '이서연']);
+    expect([...(next.matchAll(/\bteam-member\b/gi))].length).toBe(2);
+    expect(next).toContain('김민수');
+    expect(next).toContain('이서연');
+    expect(next).not.toContain('Cara');
+    expect(next).not.toContain('Ada');
+    expect(next).not.toContain('CEO');
+  });
+});

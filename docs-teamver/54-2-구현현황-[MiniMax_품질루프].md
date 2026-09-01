@@ -15,9 +15,9 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts system-prompt-api-mode · template-visual-kit · teamver-selected-template-compose · deck-framework-compact · template-clone-fill, web templateCloneContentFill · runtime/resume.
 
-**후속 (진행 중):** [0901-N02-2](./0901-N02-2-구현설계-[Clone_slot-fill].md) · [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) — B1–B5 상륙(JSON-only + slot-fill + repair 1회). 다음: C slot map(P1) 또는 D hybrid 제거.
+**후속 (진행 중):** [0901-N02-2](./0901-N02-2-구현설계-[Clone_slot-fill].md) · [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) — B1–B5 · C–C4 · D 상륙. MiniMax 실키 E2E만 ☐(키 없음).
 
-다음 추천 작업: 브라우저로 Clone fill JSON→motif 유지 확인. 템플릿별 slot map은 P1.
+다음 추천 작업: MiniMax 키 환경 Clone fill live smoke. 필요 시 `*-step` 등 좁은 peer 확장.
 
 ### 빈 칸 번호 카드 (코드명 leftover)
 
