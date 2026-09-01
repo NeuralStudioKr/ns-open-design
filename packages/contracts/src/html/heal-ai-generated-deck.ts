@@ -1844,6 +1844,9 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * 루프337 — drop empty column-number cards titled only `U`.
  * Keep `기둥 W` (skip roman `V`), spaced `스무 번째`, and number+body
  * (`기둥 U 실카피`).
+ * 루프338 — drop empty column-number cards titled only `W`.
+ * Keep `기둥 Y` (skip roman `X`), spaced `스무 번째`, and number+body
+ * (`기둥 W 실카피`).
  * These tokens are model-emitted column
  * numbers, not product copy.
  */
@@ -1853,8 +1856,8 @@ const LEFTOVER_INDEX_ROMAN =
 const LEFTOVER_INDEX_MARK = '[⓪①-⑨❶-❾⓿０-９⑴-⑼㉠-㉥]';
 /** 루프225/230 — 0 / 00 / 01–09 / 10 leftover shells. */
 const LEFTOVER_INDEX_DIGIT = '(?:0?[0-9]|10)';
-/** Latin A–U / 가…하 column letters. Not roman I/V/X. Not V–Z. */
-const LEFTOVER_INDEX_LETTER = '(?:[a-u]|[가나다라마바사아자차카타파하])';
+/** Latin A–U + W / 가…하. Not roman I/V/X. Not Y–Z. */
+const LEFTOVER_INDEX_LETTER = '(?:[a-uw]|[가나다라마바사아자차카타파하])';
 /** 첫째…스무째 empty ordinal titles. Keep number+body / spaced `스무 번째`. */
 const LEFTOVER_INDEX_ORDINAL = '(?:스무|열아홉|열여덟|열일곱|열여섯|열다섯|열네|열세|열두|열한|첫|둘|셋|넷|다섯|여섯|일곱|여덟|아홉|열)(?:째|번째)';
 const LEFTOVER_INDEX_CORE =
