@@ -84,8 +84,12 @@ export function installErrorHandlers(): void {
   installed = true;
 
   window.addEventListener('error', (event) => {
+    const filename = typeof event.filename === 'string' ? event.filename : undefined;
+    if (isChromeDevtoolsWebVitalsNoise(event.error, event.message, { filename })) {
+      return;
+    }
     captureException(event.error, event.message ?? 'Uncaught error', {
-      filename: typeof event.filename === 'string' ? event.filename : undefined,
+      filename,
       lineno: typeof event.lineno === 'number' ? event.lineno : undefined,
       colno: typeof event.colno === 'number' ? event.colno : undefined,
     });
@@ -113,11 +117,39 @@ interface CaptureMetadata {
   handled?: boolean;
 }
 
+/**
+ * Chrome DevTools injects web-vitals (`reportAllChanges`) into the page.
+ * Soft navigations / srcdoc remounts can clear Performance entries, then
+ * that script reads `entry.startTime` on undefined. Not our code — skip
+ * PostHog so it does not look like a product exception.
+ */
+export function isChromeDevtoolsWebVitalsNoise(
+  error: unknown,
+  fallbackMessage?: string,
+  metadata: Pick<CaptureMetadata, 'filename'> = {},
+): boolean {
+  const messageParts = [
+    error instanceof Error ? error.message : '',
+    typeof error === 'string' ? error : '',
+    fallbackMessage ?? '',
+  ];
+  const stack = error instanceof Error ? String(error.stack ?? '') : '';
+  const filename = String(metadata.filename ?? '');
+  const blob = `${messageParts.join('\n')}\n${stack}\n${filename}`;
+  if (!/Cannot read properties of undefined \(reading ['"]startTime['"]\)/i.test(blob)) {
+    return false;
+  }
+  if (/reportAllChanges/i.test(blob)) return true;
+  if (/<anonymous>|VM\d+:/i.test(blob)) return true;
+  return filename.trim() === '';
+}
+
 function captureException(
   error: unknown,
   fallbackMessage: string,
   metadata: CaptureMetadata = {},
 ): void {
+  if (isChromeDevtoolsWebVitalsNoise(error, fallbackMessage, metadata)) return;
   const list = buildExceptionList(error, fallbackMessage, metadata);
   const scrubbed = scrubExceptionList(list);
   const properties: Record<string, unknown> = {

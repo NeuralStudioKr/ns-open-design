@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearExceptionTrackingContext,
   installErrorHandlers,
+  isChromeDevtoolsWebVitalsNoise,
   reportHandledException,
   setExceptionTrackingContext,
 } from '../../src/analytics/error-tracking';
@@ -240,6 +241,46 @@ describe('error-tracking', () => {
     expect(fetchMock).not.toHaveBeenCalled();
     // Even after explicitly clearing — the buffer is bounded and harmless.
     clearExceptionTrackingContext();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('recognizes Chrome DevTools web-vitals startTime noise', () => {
+    const error = new TypeError("Cannot read properties of undefined (reading 'startTime')");
+    error.stack = [
+      "TypeError: Cannot read properties of undefined (reading 'startTime')",
+      '    at et.reportAllChanges (<anonymous>:2:19429)',
+      '    at n.timeout (<anonymous>:2:5652)',
+    ].join('\n');
+    expect(isChromeDevtoolsWebVitalsNoise(error)).toBe(true);
+    expect(
+      isChromeDevtoolsWebVitalsNoise(
+        new TypeError("Cannot read properties of undefined (reading 'foo')"),
+      ),
+    ).toBe(false);
+  });
+
+  it('does not send Chrome DevTools web-vitals noise to PostHog', () => {
+    installErrorHandlers();
+    setExceptionTrackingContext({
+      apiKey: 'phc_test',
+      host: 'https://us.i.posthog.com',
+      distinctId: 'user-devtools',
+    });
+    fetchMock.mockClear();
+    const error = new TypeError("Cannot read properties of undefined (reading 'startTime')");
+    error.stack = '    at et.reportAllChanges (<anonymous>:2:19429)';
+    reportHandledException(error);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const event = new Event('error') as Event & {
+      error?: unknown;
+      message?: string;
+      filename?: string;
+    };
+    event.error = error;
+    event.message = error.message;
+    event.filename = '';
+    window.dispatchEvent(event);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
