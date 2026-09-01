@@ -86,6 +86,9 @@ export function installErrorHandlers(): void {
   window.addEventListener('error', (event) => {
     const filename = typeof event.filename === 'string' ? event.filename : undefined;
     if (isChromeDevtoolsWebVitalsNoise(event.error, event.message, { filename })) {
+      // Cancel the browser default so the console does not keep an
+      // Uncaught TypeError from DevTools-injected web-vitals.
+      event.preventDefault();
       return;
     }
     captureException(event.error, event.message ?? 'Uncaught error', {
@@ -121,7 +124,8 @@ interface CaptureMetadata {
  * Chrome DevTools injects web-vitals (`reportAllChanges`) into the page.
  * Soft navigations / srcdoc remounts can clear Performance entries, then
  * that script reads `entry.startTime` on undefined. Not our code — skip
- * PostHog so it does not look like a product exception.
+ * PostHog and cancel the window `error` default so the console Uncaught
+ * does not look like a product crash.
  */
 export function isChromeDevtoolsWebVitalsNoise(
   error: unknown,

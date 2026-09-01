@@ -272,15 +272,14 @@ describe('error-tracking', () => {
     reportHandledException(error);
     expect(fetchMock).not.toHaveBeenCalled();
 
-    const event = new Event('error') as Event & {
-      error?: unknown;
-      message?: string;
-      filename?: string;
-    };
-    event.error = error;
-    event.message = error.message;
-    event.filename = '';
+    const event = new ErrorEvent('error', {
+      error,
+      message: error.message,
+      filename: '',
+      cancelable: true,
+    });
     window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
