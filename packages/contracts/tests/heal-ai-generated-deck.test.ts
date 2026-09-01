@@ -2978,15 +2978,64 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표')).toBe(html);
     });
 
-    it('keeps 기둥 P — not treated as an empty column number yet (루프291)', () => {
+    it('keeps 기둥 Q — not treated as an empty column number yet (루프291)', () => {
       const html = [
         '<div style="display:flex;gap:28px">',
         '<div class="card"><h3>하나</h3></div>',
         '<div class="card"><h3>다음</h3></div>',
-        '<div class="card"><h3>기둥 P</h3></div>',
+        '<div class="card"><h3>기둥 Q</h3></div>',
         '</div>',
       ].join('');
       expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표')).toBe(html);
+    });
+
+    it('drops a third card whose only text is the column number 기둥 P (루프322)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card" style="padding:24px"><h3>하나</h3><p>요지</p></div>',
+        '<div class="card" style="padding:24px"><h3>다음</h3><p>요지</p></div>',
+        '<div class="card" style="padding:24px"><h3>기둥 P</h3></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('기둥 P');
+      expect(out).toContain('하나');
+    });
+
+    it('drops a third card whose only text is the ordinal 열아홉째 (루프322)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card"><h3>하나</h3></div>',
+        '<div class="card"><h3>다음</h3></div>',
+        '<div class="card"><h3>열아홉째</h3></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('열아홉째');
+    });
+
+    it('keeps 열아홉째 실카피 — a column number plus real body copy (루프322)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card"><h3>하나</h3></div>',
+        '<div class="card"><h3>다음</h3></div>',
+        '<div class="card"><h3>열아홉째 실카피</h3></div>',
+        '</div>',
+      ].join('');
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표')).toBe(html);
+    });
+
+    it('leaves official English 기둥 P catalog cells alone without a brief (루프322)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card"><h3>One</h3></div>',
+        '<div class="card"><h3>Two</h3></div>',
+        '<div class="card"><h3>기둥 P</h3></div>',
+        '</div>',
+      ].join('');
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html)).toBe(html);
     });
 
     it('pipeline removes a 기둥 O column-number card without inventing copy (루프291)', () => {
@@ -3003,6 +3052,24 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).not.toContain('기둥 O');
       expect(out).toContain('하나');
       expect(out).toContain('다음');
+    });
+
+    it('pipeline removes a 기둥 P column-number card without inventing copy (루프322)', () => {
+      const html = [
+        '<section class="slide"><h1>세 가지 포인트</h1>',
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">',
+        '<div class="card"><h3>하나</h3><p>요지</p></div>',
+        '<div class="card"><h3>다음</h3><p>요지</p></div>',
+        '<div class="card"><h3>기둥 P</h3></div>',
+        '</div></section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, '발표');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('기둥 P');
+      expect(out).toContain('하나');
+      expect(out).toContain('다음');
+      expect(out).not.toContain('적분');
+      expect(out).not.toContain('실카피');
     });
 
     it('pipeline removes a 기둥 하 column-number card without inventing copy (루프288)', () => {
