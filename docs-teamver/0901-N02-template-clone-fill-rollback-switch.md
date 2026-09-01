@@ -23,6 +23,12 @@
 - 환경변수를 제거하거나 `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=prompt`로 설정하면 기존 프롬프트 기반 경로로 즉시 복귀한다.
 - 신규 API는 별도 endpoint라 기존 `/template-clone-deck` 호출을 변경하지 않는다.
 
+## Env 적용 현황
+
+- 2026-09-01 현재 시점 기준으로 staging 실제 env와 staging example에는 `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=deterministic`을 명시한다.
+- production 실제 env와 production example에는 `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=prompt`를 명시해, production은 기존 프롬프트 기반 경로를 유지한다.
+- 공통 `.env.example`에는 `prompt`와 `deterministic` 값을 모두 문서화한다. 값 변경은 Docker image bake-time 설정이라 open-design-daemon 재빌드가 필요하다.
+
 ## 검증 항목
 
 - 기본값에서 기존 prompt-fill 경로가 유지되는지 확인.
