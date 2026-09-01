@@ -40,8 +40,11 @@ import {
   duplicateDeckSlideAt,
   extractTopLevelSlideSections,
   insertBlankDeckSlideAfter,
+  listDeckFilmstripItems,
   moveDeckSlideByDelta,
+  reorderDeckSlideToIndex,
 } from '../artifacts/deck-patch';
+import { DeckFilmstrip } from './DeckFilmstrip';
 import {
   planCommentRemapAfterSlideDelete,
   planCommentRemapAfterSlideInsert,
@@ -14409,6 +14412,59 @@ function HtmlViewer({
     }
   }
 
+  function handleFilmstripGo(index: number) {
+    if (!effectiveDeck) return;
+    const html = sourceRef.current ?? source ?? liveHtml;
+    if (typeof html !== 'string' || !html.trim()) return;
+    const htmlSlideCount = extractTopLevelSlideSections(html).length;
+    if (!Number.isInteger(index) || index < 0 || index >= htmlSlideCount) return;
+    const next = { active: index, count: htmlSlideCount };
+    setSlideStateCached(previewStateKey, next);
+    setSlideState(next);
+    postSlideGo(index);
+  }
+
+  async function handleReorderSlide(fromIndex: number, toIndex: number) {
+    if (!effectiveDeck || deckStructureBusy) return;
+    if (fromIndex === toIndex) return;
+    const html = sourceRef.current ?? source;
+    if (typeof html !== 'string' || !html.trim()) return;
+    const htmlSlideCount = extractTopLevelSlideSections(html).length;
+    if (htmlSlideCount < 2) return;
+    const result = reorderDeckSlideToIndex(html, fromIndex, toIndex);
+    if (!result.ok) {
+      setDeckStructureError(result.reason);
+      return;
+    }
+    setDeckStructureBusy(true);
+    setDeckStructureError(null);
+    try {
+      const ok = await persistDeckStructureMutation(
+        result.html,
+        result.activeIndex,
+        result.slideCount,
+        embedUiLabel('Reorder slide', '슬라이드 순서 변경'),
+      );
+      if (ok && onRemapPreviewCommentsAfterDeckStructure) {
+        const plan = planCommentRemapAfterSlideMove(
+          previewComments,
+          file.name,
+          fromIndex,
+          result.activeIndex,
+        );
+        const updates = plan.changes
+          .filter((change): change is { id: string; action: 'set'; slideIndex: number } =>
+            change.action === 'set')
+          .map((change) => ({ id: change.id, slideIndex: change.slideIndex }));
+        if (updates.length > 0) {
+          await onRemapPreviewCommentsAfterDeckStructure({ deleteIds: [], updates });
+        }
+      }
+    } finally {
+      setDeckStructureBusy(false);
+    }
+  }
+
   function syncCachedSlideStateToIframe(target: HTMLIFrameElement | null = iframeRef.current) {
     const active = htmlPreviewSlideState.get(previewStateKey)?.active;
     const win = target?.contentWindow;
@@ -17589,6 +17645,25 @@ function HtmlViewer({
             </div>
           ) : null}
         </>)}
+      {showPreviewToolbarControls && effectiveDeck && (() => {
+        const filmstripHtml = (
+          (typeof source === 'string' && source.trim() && source)
+          || (typeof livePreviewSource === 'string' && livePreviewSource.trim() && livePreviewSource)
+          || (typeof liveHtml === 'string' && liveHtml.trim() && liveHtml)
+          || ''
+        );
+        if (!filmstripHtml) return null;
+        return (
+          <DeckFilmstrip
+            items={listDeckFilmstripItems(filmstripHtml)}
+            currentSlideIndex={slideState?.active ?? 0}
+            ariaLabel={t('fileViewer.deckFilmstripAria')}
+            slideLabelTemplate={t('fileViewer.deckFilmstripSlide')}
+            onGo={handleFilmstripGo}
+            onReorder={handleReorderSlide}
+          />
+        );
+      })()}
       <div className="viewer-body" ref={previewBodyRef}>
         {source === null ? (
           showStreamingEmptyVeil ? (

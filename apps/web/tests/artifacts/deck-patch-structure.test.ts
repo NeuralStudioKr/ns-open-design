@@ -5,7 +5,9 @@ import {
   duplicateDeckSlideAt,
   extractTopLevelSlideSections,
   insertBlankDeckSlideAfter,
+  listDeckFilmstripItems,
   moveDeckSlideByDelta,
+  reorderDeckSlideToIndex,
   restampDeckSlideIndexes,
 } from '../../src/artifacts/deck-patch';
 
@@ -114,6 +116,42 @@ describe('0901-N01 deck structure mutations', () => {
     expect(slides[1]!.outerHtml).not.toContain('data-od-id=');
     expect(slides[1]!.outerHtml).not.toContain('data-screen-label=');
     expect(slides[2]!.outerHtml).toContain('data-screen-label="Body"');
+  });
+
+  it('reorders a slide to a non-adjacent index (0901-N01-C)', () => {
+    const html = deck('A', 'B', 'C', 'D');
+    const out = reorderDeckSlideToIndex(html, 3, 0);
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.activeIndex).toBe(0);
+    expect(out.slideCount).toBe(4);
+    const labels = extractTopLevelSlideSections(out.html).map((s) =>
+      /data-screen-label="([^"]+)"/.exec(s.outerHtml)?.[1],
+    );
+    expect(labels).toEqual(['D', 'A', 'B', 'C']);
+  });
+
+  it('treats same-index reorder as a no-op (0901-N01-C)', () => {
+    const html = deck('A', 'B');
+    const out = reorderDeckSlideToIndex(html, 1, 1);
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.activeIndex).toBe(1);
+    expect(out.html).toBe(html);
+  });
+
+  it('refuses out-of-range filmstrip reorder (0901-N01-C)', () => {
+    const html = deck('A', 'B');
+    expect(reorderDeckSlideToIndex(html, 0, 2).ok).toBe(false);
+    expect(reorderDeckSlideToIndex(html, -1, 0).ok).toBe(false);
+  });
+
+  it('lists filmstrip chips from screen-label then heading (0901-N01-C)', () => {
+    const items = listDeckFilmstripItems(deck('Cover', 'Body'));
+    expect(items).toEqual([
+      { index: 0, label: 'Cover' },
+      { index: 1, label: 'Body' },
+    ]);
   });
 
   it('buildBlankDeckSlideShell inherits slide class from reference', () => {

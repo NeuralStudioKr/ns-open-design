@@ -1544,6 +1544,8 @@ describe('FileViewer SVG artifacts', () => {
     );
 
     expect(container.querySelector('.deck-nav')).toBeTruthy();
+    expect(container.querySelector('[data-testid="deck-filmstrip"]')).toBeTruthy();
+    expect(container.querySelectorAll('.deck-filmstrip__chip')).toHaveLength(2);
     expect(screen.queryByRole('button', { name: 'Manual' })).toBeNull();
     expect(container.querySelector('.viewer-viewport-switcher')).toBeNull();
     expect(screen.queryByTestId('palette-tweaks-toggle')).toBeNull();
@@ -1552,6 +1554,7 @@ describe('FileViewer SVG artifacts', () => {
 
     await waitFor(() => {
       expect(container.querySelector('.deck-nav')).toBeNull();
+      expect(container.querySelector('[data-testid="deck-filmstrip"]')).toBeNull();
       expect(container.querySelector('.viewer-viewport-switcher')).toBeNull();
       expect(screen.queryByTestId('manual-edit-mode-toggle')).toBeNull();
       expect(screen.queryByTestId('draw-overlay-toggle')).toBeNull();

@@ -357,12 +357,13 @@ export function deleteDeckSlideAt(
 }
 
 /**
- * Move the slide at `slideIndex` by `delta` positions (−1 = earlier, +1 = later).
+ * Move the slide at `fromIndex` to `toIndex` (any distance). Used by filmstrip
+ * drag reorder. Adjacent ±1 is `moveDeckSlideByDelta`.
  */
-export function moveDeckSlideByDelta(
+export function reorderDeckSlideToIndex(
   currentHtml: string,
-  slideIndex: number,
-  delta: -1 | 1,
+  fromIndex: number,
+  toIndex: number,
 ): DeckStructureMutationSuccess | DeckStructureMutationFailure {
   const bodyRange = findBodyContentRange(currentHtml);
   if (!bodyRange) {
@@ -373,23 +374,30 @@ export function moveDeckSlideByDelta(
   if (slides.length < 2) {
     return { ok: false, reason: 'need at least two slides to reorder' };
   }
-  if (!Number.isInteger(slideIndex) || slideIndex < 0 || slideIndex >= slides.length) {
-    return { ok: false, reason: `slideIndex ${slideIndex} out of range (0..${slides.length - 1})` };
+  if (!Number.isInteger(fromIndex) || fromIndex < 0 || fromIndex >= slides.length) {
+    return { ok: false, reason: `fromIndex ${fromIndex} out of range (0..${slides.length - 1})` };
   }
-  const target = slideIndex + delta;
-  if (target < 0 || target >= slides.length) {
-    return { ok: false, reason: 'slide already at edge' };
+  if (!Number.isInteger(toIndex) || toIndex < 0 || toIndex >= slides.length) {
+    return { ok: false, reason: `toIndex ${toIndex} out of range (0..${slides.length - 1})` };
+  }
+  if (fromIndex === toIndex) {
+    return {
+      ok: true,
+      html: currentHtml,
+      activeIndex: fromIndex,
+      slideCount: slides.length,
+    };
   }
   const working = slides.map((slide) => ({
     outerHtml: slide.outerHtml,
     start: slide.start,
     end: slide.end,
   }));
-  const [moved] = working.splice(slideIndex, 1);
+  const [moved] = working.splice(fromIndex, 1);
   if (!moved) {
     return { ok: false, reason: 'failed to splice slide' };
   }
-  working.splice(target, 0, moved);
+  working.splice(toIndex, 0, moved);
   const rewrittenBody = replaceSlidesInBody(bodyContent, slides, working);
   const mergedHtml =
     currentHtml.slice(0, bodyRange.start) +
@@ -398,9 +406,31 @@ export function moveDeckSlideByDelta(
   return {
     ok: true,
     html: restampDeckSlideIndexes(mergedHtml),
-    activeIndex: target,
+    activeIndex: toIndex,
     slideCount: working.length,
   };
+}
+
+/**
+ * Move the slide at `slideIndex` by `delta` positions (−1 = earlier, +1 = later).
+ */
+export function moveDeckSlideByDelta(
+  currentHtml: string,
+  slideIndex: number,
+  delta: -1 | 1,
+): DeckStructureMutationSuccess | DeckStructureMutationFailure {
+  if (delta !== -1 && delta !== 1) {
+    return { ok: false, reason: 'delta must be −1 or +1' };
+  }
+  const slides = extractTopLevelSlideSections(currentHtml);
+  if (slides.length < 2) {
+    return { ok: false, reason: 'need at least two slides to reorder' };
+  }
+  const target = slideIndex + delta;
+  if (target < 0 || target >= slides.length) {
+    return { ok: false, reason: 'slide already at edge' };
+  }
+  return reorderDeckSlideToIndex(currentHtml, slideIndex, target);
 }
 
 /** Minimal empty slide — inherits `class` from a neighbor when available. */
@@ -590,6 +620,22 @@ const SECTION_OPEN_RE = new RegExp(String.raw`<section\b(${SECTION_OPEN_ATTRS_RE
 
 /** Last HTML → sections cache shared by applyDeckPatch and extractSlideByIndex. */
 let topLevelSlideSectionCache: { html: string; sections: TopLevelSlideSection[] } | null = null;
+
+export function slideFilmstripLabel(slideHtml: string, index: number): string {
+  const screen = /\bdata-screen-label\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(slideHtml);
+  const fromScreen = (screen?.[1] ?? screen?.[2] ?? '').trim();
+  if (fromScreen) return fromScreen;
+  const inner = /<h[1-3]\b[^>]*>([\s\S]*?)<\/h[1-3]>/i.exec(slideHtml)?.[1] ?? '';
+  const heading = inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return heading || String(index + 1);
+}
+
+export function listDeckFilmstripItems(html: string): Array<{ index: number; label: string }> {
+  return extractTopLevelSlideSections(html).map((slide, index) => ({
+    index,
+    label: slideFilmstripLabel(slide.outerHtml, index),
+  }));
+}
 
 export function extractTopLevelSlideSections(html: string): TopLevelSlideSection[] {
   if (topLevelSlideSectionCache?.html === html) {

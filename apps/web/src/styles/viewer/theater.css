@@ -793,6 +793,54 @@
   letter-spacing: 0.02em;
 }
 
+/* Numbered filmstrip (0901-N01-C) — chips, not screenshots */
+.deck-filmstrip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 4px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  overflow-x: auto;
+}
+.deck-filmstrip__list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.deck-filmstrip__chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: grab;
+}
+.deck-filmstrip__chip.is-current {
+  border-color: var(--accent);
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+}
+.deck-filmstrip__chip.is-dragging {
+  opacity: 0.55;
+}
+.deck-filmstrip__chip.is-drop-target {
+  outline: 2px solid var(--accent);
+}
+.deck-filmstrip__num {
+  pointer-events: none;
+}
+
 /* ============================================================
    Composer rename input style for inline conversation rename.
    ============================================================ */
