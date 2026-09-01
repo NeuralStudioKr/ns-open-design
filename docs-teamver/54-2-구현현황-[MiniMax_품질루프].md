@@ -15,7 +15,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts system-prompt-api-mode · template-visual-kit · teamver-selected-template-compose · deck-framework-compact · template-clone-fill, web templateCloneContentFill · runtime/resume.
 
-다음 추천 작업: 완전 deterministic DOM slot-fill 전환 검토. AI가 HTML 전체를 다시 쓰는 대신 JSON outline/content slots만 생성하고, 서버가 `buildTemplateClonedDeckHtml`로 템플릿 shell에 내용만 치환하면 템플릿 fidelity와 생성 속도를 더 안정화할 수 있다. 단, 템플릿별 slot 매핑/overflow 검증이 필요하므로 별도 P0 설계 후 진행.
+다음 추천 작업: 완전 deterministic DOM slot-fill 전환. P0 설계는 [0901-N02-1](./0901-N02-1-상위설계-[Clone_slot-fill].md). 구현(0901-N02-2)은 JSON-only first-fill + `buildTemplateClonedDeckHtml` 치환. 템플릿별 slot map은 P1.
 
 ### 빈 칸 번호 카드 (코드명 leftover)
 
