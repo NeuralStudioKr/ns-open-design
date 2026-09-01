@@ -105,6 +105,7 @@ beforeEach(() => {
     (request: () => Promise<unknown>) => request(),
   );
   vi.mocked(designBffClient.shouldSkipTeamverBffAuthCalls).mockReturnValue(false);
+  vi.mocked(designBffClient.isDesignAuthRefreshDeclined).mockReturnValue(false);
 });
 
 describe('Teamver project registry payload', () => {
@@ -255,6 +256,54 @@ describe('Teamver project registry list', () => {
       filterProjectsByTeamverRegistryIfNeeded([{ id: 'p1' }, { id: 'p2' }]),
     ).resolves.toEqual([{ id: 'p1' }]);
     expect(get).toHaveBeenCalledTimes(2);
+  });
+
+  it('serves last-good registry list while refresh is sticky-declined', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    const get = vi.fn(async () => ({
+      projects: [{ odProjectId: 'od-keep-1' }],
+    }));
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: { get },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await expect(listTeamverRegistryProjects()).resolves.toEqual([
+      { odProjectId: 'od-keep-1' },
+    ]);
+    expect(get).toHaveBeenCalledTimes(1);
+
+    vi.mocked(designBffClient.isDesignAuthRefreshDeclined).mockReturnValue(true);
+    await expect(listTeamverRegistryProjects()).resolves.toEqual([
+      { odProjectId: 'od-keep-1' },
+    ]);
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
+  it('serves last-good registry list after a BFF 401 blip past the TTL', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    const get = vi.fn(async () => ({
+      projects: [{ odProjectId: 'od-keep-2' }],
+    }));
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: { get },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await expect(listTeamverRegistryProjects()).resolves.toEqual([
+      { odProjectId: 'od-keep-2' },
+    ]);
+
+    const later = Date.now() + 20_000;
+    vi.useFakeTimers({ now: later });
+    get.mockRejectedValueOnce(Object.assign(new Error('unauthorized'), { status: 401 }));
+    try {
+      await expect(listTeamverRegistryProjects()).resolves.toEqual([
+        { odProjectId: 'od-keep-2' },
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

@@ -201,6 +201,28 @@ function invalidateRegisteredIdsCache(): void {
   // waiters on the in-flight GET still share one network hop.
 }
 
+/** Last-good registry window for the active workspace (auth-blip fallback). */
+function readCachedRegistryList(
+  workspaceId: string,
+  userId: string | null,
+  options?: { ignoreTtl?: boolean },
+): {
+  workspaceId: string;
+  userId: string | null;
+  projects: TeamverRegisteredProject[];
+} | null {
+  if (!registryListCache || registryListCache.workspaceId !== workspaceId) return null;
+  if (userId && registryListCache.userId !== userId) return null;
+  if (!options?.ignoreTtl && Date.now() - registryListCache.at >= REGISTRY_LIST_CACHE_MS) {
+    return null;
+  }
+  return {
+    workspaceId,
+    userId: userId ?? registryListCache.userId,
+    projects: registryListCache.projects,
+  };
+}
+
 /** Clear FE registry caches after auth/workspace changes. */
 export function invalidateTeamverProjectRegistryCaches(): void {
   feAccessCache.clear();
@@ -452,7 +474,6 @@ async function fetchRegistryProjectsFromBff(): Promise<{
   projects: TeamverRegisteredProject[];
 } | null> {
   if (!isTeamverEmbedMode()) return null;
-  if (shouldSkipTeamverBffAuthCalls() || isDesignAuthRefreshDeclined()) return null;
   await waitForEmbedBootIfNeeded();
 
   const client = getDesignBffClient();
@@ -460,20 +481,16 @@ async function fetchRegistryProjectsFromBff(): Promise<{
 
   const workspaceId = (await resolveActiveTeamverWorkspaceId())?.trim();
   if (!workspaceId) return null;
-  const userId = await resolveRegistryUserId();
 
-  if (
-    userId
-    && registryListCache
-    && registryListCache.workspaceId === workspaceId
-    && registryListCache.userId === userId
-    && Date.now() - registryListCache.at < REGISTRY_LIST_CACHE_MS
-  ) {
-    return {
-      workspaceId,
-      userId,
-      projects: registryListCache.projects,
-    };
+  // Sticky decline / skip used to return null before the workspace cache
+  // lookup — home treated that as an empty rail. Serve last-good rows so a
+  // cookie blip does not look like "no projects".
+  const skipAuth = shouldSkipTeamverBffAuthCalls() || isDesignAuthRefreshDeclined();
+  const userId = skipAuth ? null : await resolveRegistryUserId();
+  const warm = readCachedRegistryList(workspaceId, userId);
+  if (warm) return warm;
+  if (skipAuth) {
+    return readCachedRegistryList(workspaceId, userId, { ignoreTtl: true });
   }
 
   // Boot often races listTeamverRegistryProjects + listTeamverRegisteredProjectIds
@@ -516,7 +533,7 @@ async function fetchRegistryProjectsFromBff(): Promise<{
     } catch (err) {
       if (isTeamverBffUnauthorizedError(err)) {
         handleEmbedPassiveUnauthorized("bff");
-        return null;
+        return readCachedRegistryList(workspaceId, userId, { ignoreTtl: true });
       }
       devLog.warn("[teamver] project registry list failed", err);
       return null;

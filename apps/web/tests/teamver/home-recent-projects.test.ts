@@ -91,4 +91,37 @@ describe("home recent projects stability", () => {
     expect(boot).toContain("completeTeamverEmbedBoot()");
     expect(boot).toContain("void syncAllDaemonProjectsToRegistry()");
   });
+
+  it("does not wipe a painted home rail on idle unauthenticated session-changed", () => {
+    const app = readSource("src/App.tsx");
+    const start = app.indexOf("const reloadProjectsAfterAuth = async () => {");
+    expect(start).toBeGreaterThan(0);
+    const block = app.slice(start, start + 4500);
+    expect(block).toContain("shouldPreserveEmbedCatalogOnAuthDecline()");
+    expect(block).toContain("projectsRef.current.length > 0");
+    expect(block).toContain("homeRecentNeedsAuthRetryRef.current = true");
+    expect(block).toContain("TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT");
+    expect(block).toContain("clearListRecentProjectsInflight()");
+    expect(block).toContain("reloadProjectsAfterAuth");
+  });
+
+  it("refreshes the home recent rail (not the paginated list) after auth recovery", () => {
+    const app = readSource("src/App.tsx");
+    const start = app.indexOf("const refreshProjects = useCallback");
+    expect(start).toBeGreaterThan(0);
+    const block = app.slice(start, start + 1400);
+    expect(block).toContain("loadRecentProjectsForHome()");
+    expect(block).toContain("upsertRecentProjects(result.projects, request)");
+    expect(block).toContain("homeRecentNeedsAuthRetryRef.current = true");
+    expect(block).toContain("loadProjectListPage()");
+  });
+
+  it("marks home recent for auth retry when the first rail fetch 401s", () => {
+    const app = readSource("src/App.tsx");
+    const start = app.indexOf("if (fetchHomeProjects) {");
+    expect(start).toBeGreaterThan(0);
+    const block = app.slice(start, start + 900);
+    expect(block).toContain("homeRecentNeedsAuthRetryRef.current = true");
+    expect(block).toContain("loadRecentProjectsForHome()");
+  });
 });

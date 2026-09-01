@@ -86,6 +86,7 @@ import { resolveEmbedSlideDesignSystemId } from './teamver/embedSlideDesignSyste
 import {
   subscribeTeamverEmbedSessionChanged,
 } from './teamver/teamverEmbedSession';
+import { TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT } from './teamver/teamverEmbedPassiveAuth';
 import {
   isTeamverEmbedBootComplete,
   revealTeamverEmbedChrome,
@@ -612,6 +613,8 @@ function AppInner() {
   const workspaceSwitchReconcilingRef = useRef(false);
   const preWorkspaceSwitchTrustedProjectsRef = useRef<Set<string>>(new Set());
   const projectsRef = useRef<Project[]>(projects);
+  /** Home recent rail failed on 401 — refetch after passive auth recovery. */
+  const homeRecentNeedsAuthRetryRef = useRef(false);
   const wasActiveRunRef = useRef(false);
   const activeRunSignatureRef = useRef("");
   useEffect(() => {
@@ -1267,8 +1270,10 @@ function AppInner() {
           const result = await loadRecentProjectsForHome();
           if (cancelled) return;
           if (!result.ok) {
+            homeRecentNeedsAuthRetryRef.current = true;
             setWorkingDirError(result.errorMessage);
           } else {
+            homeRecentNeedsAuthRetryRef.current = false;
             setWorkingDirError(null);
             reconcileFetchedProjects(result.projects, request);
             warmEmbedProjectListCaches(result.projects);
@@ -1579,6 +1584,23 @@ function AppInner() {
 
   const refreshProjects = useCallback(async () => {
     const request = beginProjectListRequest();
+    const routeNow = routeRef.current;
+    const homeRecent =
+      isTeamverEmbedMode() && routeNow.kind === 'home' && routeNow.view !== 'projects';
+    if (homeRecent) {
+      const result = await loadRecentProjectsForHome();
+      if (!result.ok) {
+        // Retain the previous rail on transient 401 — do not flash empty.
+        homeRecentNeedsAuthRetryRef.current = true;
+        setWorkingDirError(result.errorMessage);
+        return;
+      }
+      homeRecentNeedsAuthRetryRef.current = false;
+      setWorkingDirError(null);
+      upsertRecentProjects(result.projects, request);
+      warmEmbedProjectListCaches(result.projects);
+      return;
+    }
     const result = await loadProjectListPage();
     if (!result.ok) {
       // Retain the previous list on transient failure so the surface does
@@ -1590,7 +1612,7 @@ function AppInner() {
     setWorkingDirError(null);
     projectsPageLoadedRef.current = true;
     applyProjectsPageResult(result, request, 'replace');
-  }, [applyProjectsPageResult, beginProjectListRequest]);
+  }, [applyProjectsPageResult, beginProjectListRequest, upsertRecentProjects]);
 
   const refreshEmbedProjectMetadata = useCallback(async (projectId: string) => {
     const trimmedId = projectId.trim();
@@ -1691,7 +1713,15 @@ function AppInner() {
     });
     const unsubscribeSession = subscribeTeamverEmbedSessionChanged(({ authenticated }) => {
       if (!authenticated) {
-        if (shouldPreserveEmbedCatalogOnAuthDecline()) return;
+        // Soft decline — or cards already painted — must not drop the
+        // workspace label. Idle 401 can flip authenticated=false before
+        // sticky decline is set; wiping here left home looking logged-out.
+        if (
+          shouldPreserveEmbedCatalogOnAuthDecline()
+          || projectsRef.current.length > 0
+        ) {
+          return;
+        }
         setEmbedWorkspaceId(null);
         return;
       }
@@ -1970,11 +2000,38 @@ function AppInner() {
 
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
-    return subscribeTeamverEmbedSessionChanged(({ authenticated }) => {
+    const reloadProjectsAfterAuth = async () => {
+      const detailRoute = readEmbedProjectDetailRoute(routeRef.current);
+      if (detailRoute) {
+        await refreshEmbedProjectMetadata(detailRoute.projectId);
+        return;
+      }
+      clearListRecentProjectsInflight();
+      if (projectsRef.current.length > 0) {
+        setProjectsRefreshing(true);
+      } else {
+        setProjectsLoading(true);
+      }
+      try {
+        await refreshProjects();
+      } finally {
+        setProjectsLoading(false);
+        setProjectsRefreshing(false);
+      }
+    };
+    const unsubscribeSession = subscribeTeamverEmbedSessionChanged(({ authenticated }) => {
       if (!authenticated) {
-        if (shouldPreserveEmbedCatalogOnAuthDecline()) {
+        // Soft decline, or any already-painted rail: idle 401 often fires
+        // authenticated=false before sticky decline is set. Clearing here
+        // emptied the home recent list until a recovery refetch that the
+        // declined guard then skipped.
+        if (
+          shouldPreserveEmbedCatalogOnAuthDecline()
+          || projectsRef.current.length > 0
+        ) {
           setProjectsLoading(false);
           setProjectsRefreshing(false);
+          homeRecentNeedsAuthRetryRef.current = true;
           return;
         }
         pendingLocalProjectIdsRef.current.clear();
@@ -2013,6 +2070,8 @@ function AppInner() {
       }
       // Stale authenticated=true + sticky decline must not force reload
       // /runtime-config or project lists (401 → refresh → probe×2).
+      // Empty home after a 401 still needs a refetch once the cookie is back —
+      // PASSIVE_AUTH_RECOVERED owns that path (decline is already cleared).
       if (isDesignAuthRefreshDeclined() || isTeamverRuntimeConfigAuthBlocked()) {
         return;
       }
@@ -2022,23 +2081,25 @@ function AppInner() {
         return;
       }
       void (async () => {
-        const detailRoute = readEmbedProjectDetailRoute(routeRef.current);
-        if (detailRoute) {
-          await refreshEmbedProjectMetadata(detailRoute.projectId);
-          void reloadTeamverRuntimeConfig({ force: true });
-          return;
-        }
-        if (projectsRef.current.length > 0) {
-          setProjectsRefreshing(true);
-        } else {
-          setProjectsLoading(true);
-        }
-        await refreshProjects();
+        await reloadProjectsAfterAuth();
         void reloadTeamverRuntimeConfig({ force: true });
-        setProjectsLoading(false);
-        setProjectsRefreshing(false);
       })();
     });
+    const onPassiveAuthRecovered = () => {
+      if (!isTeamverEmbedBootComplete()) return;
+      void reloadProjectsAfterAuth();
+    };
+    window.addEventListener(
+      TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT,
+      onPassiveAuthRecovered,
+    );
+    return () => {
+      unsubscribeSession();
+      window.removeEventListener(
+        TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT,
+        onPassiveAuthRecovered,
+      );
+    };
   }, [refreshEmbedProjectMetadata, refreshProjects, reloadTeamverRuntimeConfig]);
 
   const refreshDesignSystems = useCallback(async () => {
@@ -4080,9 +4141,11 @@ function AppInner() {
         const result = await loadRecentProjectsForHome();
         if (cancelled) return;
         if (!result.ok) {
+          homeRecentNeedsAuthRetryRef.current = true;
           setWorkingDirError(result.errorMessage);
           return;
         }
+        homeRecentNeedsAuthRetryRef.current = false;
         setWorkingDirError(null);
         upsertRecentProjects(result.projects, request);
         warmEmbedProjectListCaches(result.projects);
