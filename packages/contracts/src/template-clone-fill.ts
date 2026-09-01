@@ -14,7 +14,16 @@ import { attrsLookLikeDeckOrTemplateSlideHost } from './html/deck-slide-class.js
 export type TemplateCloneSlideContent = {
   title: string;
   body?: string;
+  /** Optional layout hint from JSON outline (0901-N02). Invalid values ignored. */
+  roleHint?: TemplateCloneShellRole;
 };
+
+export type TemplateCloneDeckOutline = {
+  title: string;
+  slides: TemplateCloneSlideContent[];
+};
+
+export const TEMPLATE_CLONE_OUTLINE_MAX_SLIDES = 20;
 
 type SlideShell = {
   tag: 'section' | 'div';
@@ -99,6 +108,127 @@ export type TemplateCloneShellRole =
   | 'closing'
   | 'body';
 
+const TEMPLATE_CLONE_SHELL_ROLES: readonly TemplateCloneShellRole[] = [
+  'cover',
+  'list',
+  'cards',
+  'timeline',
+  'stat',
+  'quote',
+  'team',
+  'process',
+  'closing',
+  'body',
+];
+
+export function isTemplateCloneShellRole(value: unknown): value is TemplateCloneShellRole {
+  return typeof value === 'string' && (TEMPLATE_CLONE_SHELL_ROLES as readonly string[]).includes(value);
+}
+
+/** True when model text looks like a full deck HTML dump instead of JSON outline. */
+export function outlineLooksLikeHtmlDump(text: string): boolean {
+  const sample = String(text ?? '').slice(0, 8000);
+  if (/<!doctype\b/i.test(sample) || /<html\b/i.test(sample)) return true;
+  if (/<section\b[^>]*\b(?:slide|s-[\w-]+)\b/i.test(sample)) return true;
+  if (/<div\b[^>]*\b(?:slide|s-[\w-]+)\b/i.test(sample)) return true;
+  if (/<style\b/i.test(sample) && /<\/style>/i.test(sample)) return true;
+  return false;
+}
+
+function extractJsonObjectText(raw: string): string | null {
+  const trimmed = String(raw ?? '').trim();
+  if (!trimmed) return null;
+  let text = trimmed;
+  const fence = text.match(/^```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence?.[1]) text = fence[1].trim();
+  if (outlineLooksLikeHtmlDump(text)) return null;
+  if (text.startsWith('{') && text.endsWith('}')) return text;
+  const start = text.indexOf('{');
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i]!;
+    if (inString) {
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escape = true;
+        continue;
+      }
+      if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '{') depth += 1;
+    else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+/**
+ * Parse AI JSON outline for Clone slot-fill (0901-N02).
+ * Returns null on HTML dumps, invalid shape, or empty slides after sanitize.
+ */
+export function parseTemplateCloneDeckOutline(
+  raw: unknown,
+): TemplateCloneDeckOutline | null {
+  let value: unknown = raw;
+  if (typeof raw === 'string') {
+    if (outlineLooksLikeHtmlDump(raw)) return null;
+    const jsonText = extractJsonObjectText(raw);
+    if (!jsonText) return null;
+    try {
+      value = JSON.parse(jsonText) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (!Array.isArray(record.slides)) return null;
+
+  const slides: TemplateCloneSlideContent[] = [];
+  for (const entry of record.slides) {
+    if (slides.length >= TEMPLATE_CLONE_OUTLINE_MAX_SLIDES) break;
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const slide = entry as Record<string, unknown>;
+    const title = sanitizeTemplateCloneDeckTitle(
+      typeof slide.title === 'string' ? slide.title : '',
+    );
+    if (!title) continue;
+    const body =
+      typeof slide.body === 'string'
+        ? slide.body.replace(/\r\n/g, '\n').trimEnd()
+        : undefined;
+    const roleHint = isTemplateCloneShellRole(slide.roleHint)
+      ? slide.roleHint
+      : undefined;
+    const next: TemplateCloneSlideContent = { title };
+    if (body !== undefined && body.length > 0) next.body = body;
+    if (roleHint) next.roleHint = roleHint;
+    slides.push(next);
+  }
+  if (slides.length === 0) return null;
+
+  const title =
+    sanitizeTemplateCloneDeckTitle(
+      typeof record.title === 'string' ? record.title : '',
+    ) ??
+    slides[0]!.title;
+
+  return { title, slides };
+}
+
 export function classifyTemplateCloneShellRole(shell: {
   attrs: string;
   body: string;
@@ -123,6 +253,10 @@ export function inferTemplateCloneContentRole(
   index: number,
   total: number,
 ): TemplateCloneShellRole {
+  // 0901-N02 — explicit JSON roleHint wins when valid.
+  if (slide.roleHint && isTemplateCloneShellRole(slide.roleHint)) {
+    return slide.roleHint;
+  }
   if (index === 0) return 'cover';
   const title = slide.title.trim();
   const body = slide.body?.trim() ?? '';

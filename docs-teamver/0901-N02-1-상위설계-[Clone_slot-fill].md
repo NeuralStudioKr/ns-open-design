@@ -104,4 +104,5 @@ P0는 공통 heuristic (`fillSlideShell`)만 쓴다. 템플릿 id별 override는
 
 ## 다음
 
-0901-N02-2 구현설계 — prompt/daemon 호출 지점, JSON schema, fallback 분기, 테스트 픽스처.
+[0901-N02-2](./0901-N02-2-구현설계-[Clone_slot-fill].md) 구현설계 · [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) 현황.  
+코드는 B1(파서) → B5(fallback) 순.
