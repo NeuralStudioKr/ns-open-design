@@ -148,7 +148,7 @@ MiniMax live E2E는 키 있을 때만. 키 없는 환경에서 가짜 live 금�
 | **B3** | prompt/hard rules JSON-only (contracts + daemon + FE) | prompt 스위트 초록 |
 | **B4** | ProjectView persist: JSON → build → 기존 heal/merge | fill path unit/integration |
 | **B5** | JSON repair 1회 + HTML fallback | fallback fixture |
-| **C (P1)** | 템플릿 id별 slot map | 별도 설계 |
+| **C (P1)** | 공통 cards overflow + Daisy 픽스처 | [N02-4](./0901-N02-4-구현설계-[Clone_slot-map].md) · C2=id map |
 | **D** | hybrid fallback 제거 | 별도 |
 
 ## Non-goals (이 설계 문서)

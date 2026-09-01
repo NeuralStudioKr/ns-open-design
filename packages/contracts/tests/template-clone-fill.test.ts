@@ -34,6 +34,7 @@ import {
   stripEmptyOfficialMotifInstances,
   stripHostProtocolLeakFromDeckHtml,
   stripNonSlotWrappers,
+  fillAndTrimCardPeers,
 } from '../src/template-clone-fill.js';
 import { hoistDeckHostStylesToHead } from '../src/html/deck-template-look-css.js';
 import { healAiGeneratedDeckMarkup } from '../src/html/heal-ai-generated-deck.js';
@@ -1163,5 +1164,58 @@ describe('stripNonSlotWrappers (0826-N01 F4)', () => {
     expect(next).toContain('class="body"');
     expect(next).toContain('<h2>Title</h2>');
     expect(next).not.toMatch(/kpi-grid|14\.8/);
+  });
+});
+
+describe('0901-N02-C fillAndTrimCardPeers', () => {
+  it('keeps only as many info-cards as body lines', () => {
+    const html = [
+      '<h2>KPI</h2>',
+      '<div class="cards-grid">',
+      '<div class="info-card"><h4>A</h4><p>aa</p></div>',
+      '<div class="info-card"><h4>B</h4><p>bb</p></div>',
+      '<div class="info-card"><h4>C</h4><p>cc</p></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['매출', '리텐션']);
+    expect([...(next.matchAll(/\binfo-card\b/gi))].length).toBe(2);
+    expect(next).toContain('매출');
+    expect(next).toContain('리텐션');
+    expect(next).not.toMatch(/<h4>\s*A\s*<\/h4>/i);
+    expect(next).not.toMatch(/<h4>\s*B\s*<\/h4>/i);
+    expect(next).not.toMatch(/<h4>\s*C\s*<\/h4>/i);
+    expect(next).not.toContain('<p>aa</p>');
+    expect(next).not.toContain('<p>cc</p>');
+  });
+
+  it('trims Daisy Days slide-cards leftover demo peers', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-daisy-days/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      [
+        { title: '분기 전략 개요', roleHint: 'cover' },
+        { title: '핵심 KPI', body: '매출\n리텐션', roleHint: 'cards' },
+      ],
+      { title: '분기 전략 개요' },
+    );
+    expect(cloned).toBeTruthy();
+    expect(cloned).toContain('핵심 KPI');
+    expect(cloned).toContain('매출');
+    expect(cloned).toContain('리텐션');
+    expect(cloned).not.toContain('Creative Expression');
+    expect(cloned).not.toContain('Critical Thinking');
+    expect(cloned).not.toContain('Collaboration');
+    expect(cloned).not.toContain('Curiosity');
+    const cardsSlide = listTemplateCloneSlideShells(cloned!).find((shell) => (
+      /\bslide-cards\b/i.test(shell.attrs)
+    ));
+    expect(cardsSlide).toBeTruthy();
+    expect([...(cardsSlide!.body.matchAll(/\binfo-card\b/gi))].length).toBe(2);
   });
 });

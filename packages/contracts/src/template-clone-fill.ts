@@ -331,6 +331,44 @@ function leastUsedShell(pool: SlideShell[], usage: Map<SlideShell, number>): Sli
   return best;
 }
 
+/** Prefer info-card / cards-grid shells over weekly day-card chrome (0901-N02-C). */
+function cardsShellFillScore(shell: SlideShell): number {
+  // Do not truncate body — Daisy cards shells open with large SVG deco before
+  // `.info-card`, so a short haystack falsely scores them below weekly.
+  const attrs = shell.attrs;
+  const body = shell.body;
+  if (
+    /\bslide-cards\b/i.test(attrs)
+    || /\binfo-card\b/i.test(body)
+    || /\bcards-grid\b/i.test(body)
+  ) {
+    return 3;
+  }
+  if (/\b(?:stat-card|feature-card|metric-card)\b/i.test(body)) return 2;
+  if (/\bslide-weekly\b/i.test(attrs) || /\bweekly-grid\b/i.test(body) || /\bday-card\b/i.test(body)) {
+    return 0;
+  }
+  if (shellBodyLooksLikeCardGrid(body)) return 1;
+  return 0;
+}
+
+function leastUsedCardsShell(pool: SlideShell[], usage: Map<SlideShell, number>): SlideShell | null {
+  if (pool.length === 0) return null;
+  let best = pool[0]!;
+  let bestUses = usage.get(best) ?? 0;
+  let bestScore = cardsShellFillScore(best);
+  for (const shell of pool) {
+    const uses = usage.get(shell) ?? 0;
+    const score = cardsShellFillScore(shell);
+    if (score > bestScore || (score === bestScore && uses < bestUses)) {
+      best = shell;
+      bestUses = uses;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
 function pickShellByRole(
   role: TemplateCloneShellRole,
   byRole: Map<TemplateCloneShellRole, SlideShell[]>,
@@ -368,7 +406,9 @@ function pickShellByRole(
   for (const candidateRole of fallbacks) {
     // Never reuse the cover shell for body roles — title layouts lack list/card slots.
     const pool = (byRole.get(candidateRole) ?? []).filter((shell) => shell !== cover);
-    const best = leastUsedShell(pool, usage);
+    const best = role === 'cards' && candidateRole === 'cards'
+      ? leastUsedCardsShell(pool, usage)
+      : leastUsedShell(pool, usage);
     if (best) return best;
   }
 
@@ -1533,6 +1573,115 @@ function replaceListItems(html: string, lines: string[]): string {
   );
 }
 
+const CARD_HOST_CLASS_RE =
+  /\b(?:cards-grid|weekly-grid|card-grid|grid-cards|cards)\b/i;
+const CARD_PEER_CLASS_RE =
+  /^(?:info-card|stat-card|feature-card|metric-card|card)$/i;
+
+function classTokensFromAttrs(attrs: string): string[] {
+  const match = /\bclass\s*=\s*(["'])([^"']*)\1/i.exec(attrs);
+  if (!match?.[2]) return [];
+  return match[2].split(/\s+/).map((token) => token.trim()).filter(Boolean);
+}
+
+function attrsLookLikeCardHost(attrs: string): boolean {
+  return classTokensFromAttrs(attrs).some((token) => CARD_HOST_CLASS_RE.test(token));
+}
+
+function attrsLookLikeCardPeer(attrs: string): boolean {
+  return classTokensFromAttrs(attrs).some((token) => CARD_PEER_CLASS_RE.test(token));
+}
+
+function shellBodyLooksLikeCardGrid(html: string): boolean {
+  return /<(?:div|ul|ol|section)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:cards-grid|weekly-grid|card-grid|grid-cards|cards)\b/i
+    .test(html)
+    || /<(?:div|article|aside|li|section)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:info-card|stat-card|feature-card|metric-card)\b/i
+      .test(html);
+}
+
+/**
+ * Fill card peers from outline lines and drop unfilled siblings.
+ * 0901-N02-C: 카드 수 = 내용 수. Never invent leftover column labels.
+ */
+export function fillAndTrimCardPeers(html: string, lines: string[]): string {
+  const source = String(html ?? '');
+  if (!source) return source;
+  const hostOpenRe =
+    /<(div|ul|ol|section)\b([^>]*)>/gi;
+  let hostMatch: RegExpExecArray | null;
+  while ((hostMatch = hostOpenRe.exec(source)) !== null) {
+    const tag = (hostMatch[1] ?? 'div').toLowerCase();
+    const attrs = hostMatch[2] ?? '';
+    if (!attrsLookLikeCardHost(attrs)) continue;
+    const openStart = hostMatch.index;
+    const openEnd = openStart + hostMatch[0].length;
+    const closeEnd = findMatchingClose(source, openEnd, tag);
+    if (closeEnd < 0) continue;
+    const closeTag = new RegExp(`</${tag}\\s*>$`, 'i').exec(source.slice(0, closeEnd))?.[0]
+      ?? `</${tag}>`;
+    const innerEnd = closeEnd - closeTag.length;
+    const children = listDirectChildRanges(source, openEnd, innerEnd);
+    const peers = children.filter((span) => {
+      const open = /^<([a-zA-Z][\w:-]*)\b([^>]*)>/.exec(source.slice(span.start, span.end));
+      return Boolean(open && attrsLookLikeCardPeer(open[2] ?? ''));
+    });
+    if (peers.length === 0) continue;
+
+    const keepCount = Math.min(Math.max(0, lines.length), peers.length);
+    const keepPeerStarts = new Set(peers.slice(0, keepCount).map((span) => span.start));
+    const rebuilt: string[] = [];
+    for (const child of children) {
+      if (!peers.some((peer) => peer.start === child.start)) {
+        rebuilt.push(source.slice(child.start, child.end));
+        continue;
+      }
+      if (!keepPeerStarts.has(child.start)) continue;
+      const peerIndex = peers.findIndex((peer) => peer.start === child.start);
+      const line = lines[peerIndex] ?? '';
+      rebuilt.push(fillOneCardPeer(source.slice(child.start, child.end), line));
+    }
+    const openTag = hostMatch[0];
+    const nextHost = `${openTag}${rebuilt.join('')}${closeTag}`;
+    return (
+      source.slice(0, openStart)
+      + nextHost
+      + source.slice(closeEnd)
+    );
+  }
+  return source;
+}
+
+function fillOneCardPeer(cardHtml: string, line: string): string {
+  const text = String(line ?? '').trim();
+  let next = cardHtml;
+  if (/<h([3-5])\b/i.test(next)) {
+    next = next.replace(
+      /(<h([3-5])\b[^>]*>)([\s\S]*?)(<\/h\2>)/i,
+      (_m, open: string, _level: string, _inner: string, close: string) => (
+        `${open}${escapeHtml(text)}${close}`
+      ),
+    );
+    // Drop template demo body under the card title — do not invent a second line.
+    next = next.replace(/(<p\b[^>]*>)([\s\S]*?)(<\/p>)/gi, '$1$3');
+    return next;
+  }
+  if (/<p\b/i.test(next)) {
+    let replaced = false;
+    return next.replace(/(<p\b[^>]*>)([\s\S]*?)(<\/p>)/gi, (match, open: string, _inner: string, close: string) => {
+      if (!replaced) {
+        replaced = true;
+        return `${open}${escapeHtml(text)}${close}`;
+      }
+      return `${open}${close}`;
+    });
+  }
+  if (!text) return next;
+  return next.replace(
+    /^(<[a-zA-Z][\w:-]*\b[^>]*>)([\s\S]*)$/i,
+    (_m, open: string, rest: string) => `${open}${escapeHtml(text)}${rest}`,
+  );
+}
+
 function fillSlideShell(
   shell: SlideShell,
   content: TemplateCloneSlideContent,
@@ -1569,10 +1718,16 @@ function fillSlideShell(
     );
   }
 
+  const cardsGridBody = shellBodyLooksLikeCardGrid(body)
+    || classifyTemplateCloneShellRole(shell) === 'cards';
+
   if (placeholderBody) {
     // Ellipsis placeholders must not land in the first N list items and
     // leave the rest of the template TOC / finance copy intact.
-    if (/<[uo]l\b/i.test(body)) {
+    if (cardsGridBody && shellBodyLooksLikeCardGrid(body)) {
+      // 0901-N02-C: empty outline → drop demo card peers (카드 수 = 0).
+      body = fillAndTrimCardPeers(body, []);
+    } else if (/<[uo]l\b/i.test(body)) {
       const existingCount = [...body.matchAll(/<li\b/gi)].length;
       if (existingCount > 0) {
         body = replaceListItems(body, Array.from({ length: existingCount }, () => ''));
@@ -1590,6 +1745,20 @@ function fillSlideShell(
         /(<[^>]*\bclass\s*=\s*["'][^"']*\b(?:quote-text|number|caption)\b[^"']*["'][^>]*>)(<\/)/i,
         `$1${escapeHtml(title)}$2`,
       );
+    }
+  } else if (cardsGridBody && shellBodyLooksLikeCardGrid(body)) {
+    // Prefer card-peer fill over first-<p> so unused columns are removed.
+    const before = body;
+    body = fillAndTrimCardPeers(body, bodyLines);
+    // weekly-grid hosts without info-card peers are a no-op — fall through
+    // to list/`p` fill so day-card demo copy is not left untouched.
+    if (body === before && bodyLines.length > 0 && /<[uo]l\b/i.test(body)) {
+      body = replaceListItems(body, bodyLines);
+    } else if (body === before && (bodyLines[0] || bodyText)) {
+      const paragraph = bodyLines[0] || bodyText;
+      if (!/<p\b[^>]*class\s*=\s*["'][^"']*subtitle/i.test(shell.body) && /<p\b/i.test(body)) {
+        body = replaceFirstTagText(body, 'p', paragraph);
+      }
     }
   } else if (bodyLines.length > 0 && /<[uo]l\b/i.test(body)) {
     body = replaceListItems(body, bodyLines);
@@ -1701,7 +1870,12 @@ export function buildTemplateClonedDeckHtml(
     const title = sanitizeTemplateCloneDeckTitle(slide.title);
     if (!title) continue;
     const body = slide.body?.trim();
-    cleanedSlides.push(body ? { title, body } : { title });
+    const next: TemplateCloneSlideContent = body ? { title, body } : { title };
+    // 0901-N02: roleHint must survive seed fill (was dropped and broke cards pick).
+    if (slide.roleHint && isTemplateCloneShellRole(slide.roleHint)) {
+      next.roleHint = slide.roleHint;
+    }
+    cleanedSlides.push(next);
   }
   // Slide-count policy (NOT template fidelity):
   // - Content outline / synthesized brief wins.

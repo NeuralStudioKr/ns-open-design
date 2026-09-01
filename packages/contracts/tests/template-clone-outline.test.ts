@@ -137,6 +137,37 @@ describe('0901-N02 applyTemplateCloneSlotFill', () => {
       ),
     ).toBeNull();
   });
+
+  it('0901-N02-C: trims unfilled info-card peers to body line count', () => {
+    const seed = [
+      '<!doctype html><html><head><style>.motif{color:#FCDF6C}.cards-grid{display:grid}</style></head><body>',
+      '<section class="slide slide-title cover"><h1>Demo Cover</h1></section>',
+      '<section class="slide slide-cards"><h2>Demo Cards</h2>',
+      '<div class="cards-grid">',
+      '<div class="info-card"><div class="card-icon">A</div><h4>Creative Expression</h4><p>Explore imagination.</p></div>',
+      '<div class="info-card"><div class="card-icon">B</div><h4>Critical Thinking</h4><p>Develop skills.</p></div>',
+      '<div class="info-card"><div class="card-icon">C</div><h4>Collaboration</h4><p>Build teamwork.</p></div>',
+      '</div></section>',
+      '</body></html>',
+    ].join('');
+    const filled = applyTemplateCloneSlotFill(seed, {
+      title: '분기 전략',
+      slides: [
+        { title: '표지', roleHint: 'cover' },
+        { title: '핵심 KPI', body: '매출\n리텐션', roleHint: 'cards' },
+      ],
+    });
+    expect(filled).not.toBeNull();
+    expect(filled!.html).toContain('핵심 KPI');
+    expect(filled!.html).toContain('매출');
+    expect(filled!.html).toContain('리텐션');
+    expect(filled!.html).toContain('.motif{color:#FCDF6C}');
+    expect([...(filled!.html.matchAll(/\binfo-card\b/gi))].length).toBe(2);
+    expect(filled!.html).not.toContain('Creative Expression');
+    expect(filled!.html).not.toContain('Critical Thinking');
+    expect(filled!.html).not.toContain('Collaboration');
+    expect(filled!.html).not.toContain('Explore imagination');
+  });
 });
 
 describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
