@@ -10908,6 +10908,7 @@ export function ProjectView({
               // to think a manual retry is required. Cap-exhausted / infra
               // failures still surface the deliverable error.
               if (runIsVisible() && !canAutoContinue) setError(deliverableError);
+              const armedSlotFillJsonRepair = pendingSlotFillRepairRef.current;
               if (canAutoContinue) {
                 conversationAutoContinueCountRef.current.set(
                   runConversationId,
@@ -10954,6 +10955,43 @@ export function ProjectView({
                   autoContinueTimerRef.current = null;
                   pendingAutoContinueConversationIdRef.current = null;
                   setAutoContinuePending(false);
+                  const keepLookSeedAfterRepairAbort = () => {
+                    if (!armedSlotFillJsonRepair) return;
+                    // LOOK seed is already on disk from Clone — open it instead
+                    // of leaving incomplete_output when repair auto-continue
+                    // cannot fire (stream busy / navigated away).
+                    void (async () => {
+                      try {
+                        const seedHtml = String(await readProjectHtml('deck.html') ?? '').trim();
+                        if (!seedHtml) return;
+                        if (runIsVisible()) {
+                          setError(null);
+                          maybeArmTeamverPublishMenuAfterRunSuccess(project.id, 'deck.html');
+                          requestOpenFile('deck.html');
+                        }
+                        updateAssistant((prev) => ({
+                          ...clearDurableDeliverableErrorsAfterRecovery(prev),
+                          producedFiles: mergeRecoveredArtifact(
+                            prev.producedFiles ?? produced,
+                            projectFileFromPersistedHtmlFallback(
+                              'deck.html',
+                              {
+                                kind: 'written',
+                                fileName: 'deck.html',
+                              } as ArtifactPersistResult,
+                              Date.now(),
+                            ),
+                          ),
+                          runStatus: resolveSucceededRunStatus(prev.runStatus),
+                          resumable: true,
+                          endedAt: prev.endedAt ?? Date.now(),
+                        }));
+                        updateConversationLatestRun('succeeded', Date.now());
+                      } catch (error) {
+                        devLog.warn('[teamver] slot-fill repair abort; could not keep LOOK seed', error);
+                      }
+                    })();
+                  };
                   // Abort if the user switched projects/conversations — otherwise
                   // a late timer from project A would inject the recovery prompt
                   // into project B's brand-new chat.
@@ -10962,6 +11000,7 @@ export function ProjectView({
                       conversationAutoContinueCountRef.current,
                       scheduledConversationId,
                     );
+                    keepLookSeedAfterRepairAbort();
                     return;
                   }
                   const conversationStillActive =
@@ -10971,6 +11010,7 @@ export function ProjectView({
                       conversationAutoContinueCountRef.current,
                       scheduledConversationId,
                     );
+                    keepLookSeedAfterRepairAbort();
                     return;
                   }
                   // Drop phantom BYOK recovery "streaming" so React-state
@@ -10996,6 +11036,7 @@ export function ProjectView({
                       conversationAutoContinueCountRef.current,
                       scheduledConversationId,
                     );
+                    keepLookSeedAfterRepairAbort();
                     return;
                   }
                   const attempt =

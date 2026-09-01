@@ -294,7 +294,9 @@ function titleForSeedFallback(rawFinalText: string, seedHtml: string): string {
 
 /**
  * Terminal decision for Clone first-fill (0901-N02 B5 + D).
- * Prefer LOOK seed slot-fill; one JSON repair; then seed-fallback (never model HTML).
+ * Prefer LOOK seed slot-fill; one JSON repair for soft parse fails;
+ * HTML dump → seed-fallback immediately (MiniMax rarely recovers to JSON);
+ * then seed-fallback after repair (never model HTML).
  */
 export function decideTemplateCloneSlotFillTerminal(input: {
   rawFinalText: string;
@@ -303,11 +305,22 @@ export function decideTemplateCloneSlotFillTerminal(input: {
   templateId?: string | null;
 }): TemplateCloneSlotFillTerminalDecision {
   const seed = String(input.seedHtml ?? '').trim();
+  const raw = String(input.rawFinalText ?? '');
   if (seed) {
-    const filled = applyTemplateCloneSlotFill(seed, input.rawFinalText, {
+    const filled = applyTemplateCloneSlotFill(seed, raw, {
       ...(input.templateId !== undefined ? { templateId: input.templateId } : {}),
     });
     if (filled) return { kind: 'slot-fill', html: filled.html, title: filled.title };
+  }
+  // MiniMax often dumps a full deck instead of JSON. One repair turn almost
+  // never converts that into a valid outline and leaves incomplete_output when
+  // auto-continue cannot fire — keep LOOK seed immediately (N02-D).
+  if (seed && outlineLooksLikeHtmlDump(raw)) {
+    return {
+      kind: 'seed-fallback',
+      html: seed,
+      title: titleForSeedFallback(raw, seed),
+    };
   }
   if (!input.repairAlreadyAttempted) return { kind: 'queue-repair' };
   // 0901-N02-D — keep LOOK seed motif; do not persist model HTML hybrid.
@@ -315,7 +328,7 @@ export function decideTemplateCloneSlotFillTerminal(input: {
     return {
       kind: 'seed-fallback',
       html: seed,
-      title: titleForSeedFallback(input.rawFinalText, seed),
+      title: titleForSeedFallback(raw, seed),
     };
   }
   return { kind: 'abort' };

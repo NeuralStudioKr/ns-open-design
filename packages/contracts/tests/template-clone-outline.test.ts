@@ -192,10 +192,24 @@ describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
     }
   });
 
-  it('queues repair once when outline is invalid', () => {
+  it('keeps LOOK seed immediately on HTML dump (skip repair churn)', () => {
+    const decision = decideTemplateCloneSlotFillTerminal({
+      rawFinalText: '<!doctype html><section class="slide"><h1>Nope</h1></section>',
+      seedHtml: seed,
+      repairAlreadyAttempted: false,
+    });
+    expect(decision.kind).toBe('seed-fallback');
+    if (decision.kind === 'seed-fallback') {
+      expect(decision.html).toContain('slide-title');
+      expect(decision.html).toContain('Demo');
+      expect(decision.html).not.toContain('Nope');
+    }
+  });
+
+  it('queues repair once when outline is soft-invalid (not an HTML dump)', () => {
     expect(
       decideTemplateCloneSlotFillTerminal({
-        rawFinalText: '<!doctype html><section class="slide"><h1>Nope</h1></section>',
+        rawFinalText: '{"title":"덱","slides":[{"title":',
         seedHtml: seed,
         repairAlreadyAttempted: false,
       }),
