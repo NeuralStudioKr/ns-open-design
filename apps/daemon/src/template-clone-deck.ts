@@ -395,6 +395,7 @@ export async function seedTemplateClonedDeckOnServer(
   // a count — never pad to the template's demo page count (discouraged).
   const cloned = buildTemplateClonedDeckHtml(loaded.html, slides, {
     title: deckTitle,
+    templateId: loaded.templateId,
     ...(countHint != null ? { maxSlides: countHint } : {}),
   });
   if (!cloned) {

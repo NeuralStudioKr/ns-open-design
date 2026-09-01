@@ -35,6 +35,7 @@ import {
   stripHostProtocolLeakFromDeckHtml,
   stripNonSlotWrappers,
   fillAndTrimCardPeers,
+  resolveTemplateCloneSlotMap,
 } from '../src/template-clone-fill.js';
 import { hoistDeckHostStylesToHead } from '../src/html/deck-template-look-css.js';
 import { healAiGeneratedDeckMarkup } from '../src/html/heal-ai-generated-deck.js';
@@ -1202,7 +1203,10 @@ describe('0901-N02-C fillAndTrimCardPeers', () => {
         { title: '분기 전략 개요', roleHint: 'cover' },
         { title: '핵심 KPI', body: '매출\n리텐션', roleHint: 'cards' },
       ],
-      { title: '분기 전략 개요' },
+      {
+        title: '분기 전략 개요',
+        templateId: 'example-html-ppt-zhangzara-daisy-days',
+      },
     );
     expect(cloned).toBeTruthy();
     expect(cloned).toContain('핵심 KPI');
@@ -1217,5 +1221,67 @@ describe('0901-N02-C fillAndTrimCardPeers', () => {
     ));
     expect(cardsSlide).toBeTruthy();
     expect([...(cardsSlide!.body.matchAll(/\binfo-card\b/gi))].length).toBe(2);
+  });
+});
+
+
+describe('0901-N02-C2 template slot maps', () => {
+  it('resolves Daisy Days by id and fingerprint', async () => {
+    expect(
+      resolveTemplateCloneSlotMap({ templateId: 'example-html-ppt-zhangzara-daisy-days' }),
+    ).toBeTruthy();
+    expect(
+      resolveTemplateCloneSlotMap({ templateId: 'plugins/html-ppt-zhangzara-daisy-days' }),
+    ).toBeTruthy();
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-daisy-days/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(resolveTemplateCloneSlotMap({ html })).toBeTruthy();
+  });
+
+  it('trims Daisy weekly day-cards to body line count', () => {
+    const html = [
+      '<h2>주간</h2>',
+      '<div class="weekly-grid">',
+      '<div class="day-card"><div class="day-header pink">Monday</div><div class="day-body"><ul><li>Reading</li><li>Writing</li></ul></div></div>',
+      '<div class="day-card"><div class="day-header green">Tuesday</div><div class="day-body"><ul><li>Numbers</li></ul></div></div>',
+      '<div class="day-card"><div class="day-header coral">Wednesday</div><div class="day-body"><ul><li>Science</li></ul></div></div>',
+      '</div>',
+    ].join('');
+    const map = resolveTemplateCloneSlotMap({
+      templateId: 'example-html-ppt-zhangzara-daisy-days',
+    });
+    const next = fillAndTrimCardPeers(html, ['킥오프', '리뷰'], map);
+    expect([...(next.matchAll(/\bday-card\b/gi))].length).toBe(2);
+    expect(next).toContain('킥오프');
+    expect(next).toContain('리뷰');
+    expect(next).not.toContain('Monday');
+    expect(next).not.toContain('Wednesday');
+    expect(next).not.toContain('Reading');
+    expect(next).not.toContain('Science');
+  });
+
+  it('trims Daisy timeline-cards to body line count', () => {
+    const flat = [
+      '<h2>일정</h2>',
+      '<div class="timeline-wrap">',
+      '<div class="timeline-card"><h4>Morning</h4><p>a</p></div>',
+      '<div class="timeline-card"><h4>Noon</h4><p>b</p></div>',
+      '<div class="timeline-card"><h4>Evening</h4><p>c</p></div>',
+      '</div>',
+    ].join('');
+    const map = resolveTemplateCloneSlotMap({
+      templateId: 'html-ppt-zhangzara-daisy-days',
+    });
+    const next = fillAndTrimCardPeers(flat, ['오프닝', '클로징'], map);
+    expect([...(next.matchAll(/\btimeline-card\b/gi))].length).toBe(2);
+    expect(next).toContain('오프닝');
+    expect(next).toContain('클로징');
+    expect(next).not.toContain('Morning');
+    expect(next).not.toContain('Evening');
   });
 });

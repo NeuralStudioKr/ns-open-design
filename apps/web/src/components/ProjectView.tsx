@@ -10408,6 +10408,10 @@ export function ProjectView({
                   repairAlreadyAttempted: historyHasTemplateCloneSlotFillRepair(
                     messagesRef.current,
                   ),
+                  templateId:
+                    (project.metadata as { selectedDeckTemplateId?: string } | undefined)
+                      ?.selectedDeckTemplateId
+                    ?? null,
                 });
                 if (decision.kind === 'slot-fill') {
                   pendingSlotFillRepairRef.current = false;

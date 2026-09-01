@@ -10,6 +10,17 @@
  */
 
 import { attrsLookLikeDeckOrTemplateSlideHost } from './html/deck-slide-class.js';
+import {
+  resolveTemplateCloneSlotMap,
+  type TemplateCloneSlotMap,
+} from './template-clone-slot-maps.js';
+
+export type { TemplateCloneSlotMap } from './template-clone-slot-maps.js';
+export {
+  DAISY_DAYS_SLOT_MAP,
+  TEMPLATE_CLONE_SLOT_MAPS,
+  resolveTemplateCloneSlotMap,
+} from './template-clone-slot-maps.js';
 
 export type TemplateCloneSlideContent = {
   title: string;
@@ -236,11 +247,13 @@ export function parseTemplateCloneDeckOutline(
 export function applyTemplateCloneSlotFill(
   seedHtml: string,
   rawOutline: unknown,
+  options: { templateId?: string | null } = {},
 ): { html: string; title: string } | null {
   const outline = parseTemplateCloneDeckOutline(rawOutline);
   if (!outline) return null;
   const html = buildTemplateClonedDeckHtml(seedHtml, outline.slides, {
     title: outline.title,
+    ...(options.templateId != null ? { templateId: options.templateId } : {}),
   });
   if (!html?.trim()) return null;
   return { html, title: outline.title };
@@ -278,10 +291,13 @@ export function decideTemplateCloneSlotFillTerminal(input: {
   rawFinalText: string;
   seedHtml: string | null | undefined;
   repairAlreadyAttempted: boolean;
+  templateId?: string | null;
 }): TemplateCloneSlotFillTerminalDecision {
   const seed = String(input.seedHtml ?? '').trim();
   if (seed) {
-    const filled = applyTemplateCloneSlotFill(seed, input.rawFinalText);
+    const filled = applyTemplateCloneSlotFill(seed, input.rawFinalText, {
+      templateId: input.templateId,
+    });
     if (filled) return { kind: 'slot-fill', html: filled.html, title: filled.title };
   }
   if (!input.repairAlreadyAttempted) return { kind: 'queue-repair' };
@@ -1611,26 +1627,82 @@ function classTokensFromAttrs(attrs: string): string[] {
   return match[2].split(/\s+/).map((token) => token.trim()).filter(Boolean);
 }
 
-function attrsLookLikeCardHost(attrs: string): boolean {
-  return classTokensFromAttrs(attrs).some((token) => CARD_HOST_CLASS_RE.test(token));
+function hostClassSet(slotMap: TemplateCloneSlotMap | null | undefined): Set<string> {
+  const set = new Set<string>([
+    'cards-grid',
+    'weekly-grid',
+    'card-grid',
+    'grid-cards',
+    'cards',
+  ]);
+  for (const token of slotMap?.hostClasses ?? []) {
+    const t = String(token ?? '').trim().toLowerCase();
+    if (t) set.add(t);
+  }
+  return set;
 }
 
-function attrsLookLikeCardPeer(attrs: string): boolean {
-  return classTokensFromAttrs(attrs).some((token) => CARD_PEER_CLASS_RE.test(token));
+function peerClassSet(slotMap: TemplateCloneSlotMap | null | undefined): Set<string> {
+  const set = new Set<string>([
+    'info-card',
+    'stat-card',
+    'feature-card',
+    'metric-card',
+    'card',
+  ]);
+  for (const token of slotMap?.peerClasses ?? []) {
+    const t = String(token ?? '').trim().toLowerCase();
+    if (t) set.add(t);
+  }
+  return set;
 }
 
-function shellBodyLooksLikeCardGrid(html: string): boolean {
-  return /<(?:div|ul|ol|section)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:cards-grid|weekly-grid|card-grid|grid-cards|cards)\b/i
-    .test(html)
-    || /<(?:div|article|aside|li|section)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:info-card|stat-card|feature-card|metric-card)\b/i
-      .test(html);
+function attrsLookLikeCardHost(
+  attrs: string,
+  slotMap?: TemplateCloneSlotMap | null,
+): boolean {
+  const hosts = hostClassSet(slotMap);
+  return classTokensFromAttrs(attrs).some((token) => hosts.has(token.toLowerCase()));
+}
+
+function attrsLookLikeCardPeer(
+  attrs: string,
+  slotMap?: TemplateCloneSlotMap | null,
+): boolean {
+  const peers = peerClassSet(slotMap);
+  return classTokensFromAttrs(attrs).some((token) => peers.has(token.toLowerCase()));
+}
+
+function shellBodyLooksLikeCardGrid(
+  html: string,
+  slotMap?: TemplateCloneSlotMap | null,
+): boolean {
+  const hosts = [...hostClassSet(slotMap)].map(escapeRegExp).join('|');
+  const peers = [...peerClassSet(slotMap)].map(escapeRegExp).join('|');
+  const hostRe = new RegExp(
+    `<(?:div|ul|ol|section)\\b[^>]*\\bclass\\s*=\\s*["'][^"']*(?:\\b(?:${hosts})\\b)[^"']*["']`,
+    'i',
+  );
+  const peerRe = new RegExp(
+    `<(?:div|article|aside|li|section)\\b[^>]*\\bclass\\s*=\\s*["'][^"']*(?:\\b(?:${peers})\\b)[^"']*["']`,
+    'i',
+  );
+  return hostRe.test(html) || peerRe.test(html);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
  * Fill card peers from outline lines and drop unfilled siblings.
- * 0901-N02-C: 카드 수 = 내용 수. Never invent leftover column labels.
+ * 0901-N02-C/C2: 카드 수 = 내용 수. Never invent leftover column labels.
  */
-export function fillAndTrimCardPeers(html: string, lines: string[]): string {
+export function fillAndTrimCardPeers(
+  html: string,
+  lines: string[],
+  slotMap?: TemplateCloneSlotMap | null,
+): string {
   const source = String(html ?? '');
   if (!source) return source;
   const hostOpenRe =
@@ -1639,7 +1711,7 @@ export function fillAndTrimCardPeers(html: string, lines: string[]): string {
   while ((hostMatch = hostOpenRe.exec(source)) !== null) {
     const tag = (hostMatch[1] ?? 'div').toLowerCase();
     const attrs = hostMatch[2] ?? '';
-    if (!attrsLookLikeCardHost(attrs)) continue;
+    if (!attrsLookLikeCardHost(attrs, slotMap)) continue;
     const openStart = hostMatch.index;
     const openEnd = openStart + hostMatch[0].length;
     const closeEnd = findMatchingClose(source, openEnd, tag);
@@ -1650,7 +1722,7 @@ export function fillAndTrimCardPeers(html: string, lines: string[]): string {
     const children = listDirectChildRanges(source, openEnd, innerEnd);
     const peers = children.filter((span) => {
       const open = /^<([a-zA-Z][\w:-]*)\b([^>]*)>/.exec(source.slice(span.start, span.end));
-      return Boolean(open && attrsLookLikeCardPeer(open[2] ?? ''));
+      return Boolean(open && attrsLookLikeCardPeer(open[2] ?? '', slotMap));
     });
     if (peers.length === 0) continue;
 
@@ -1681,6 +1753,16 @@ export function fillAndTrimCardPeers(html: string, lines: string[]): string {
 function fillOneCardPeer(cardHtml: string, line: string): string {
   const text = String(line ?? '').trim();
   let next = cardHtml;
+  // Daisy weekly: `.day-header` is the title slot (0901-N02-C2).
+  if (/\bday-header\b/i.test(next)) {
+    next = next.replace(
+      /(<[^>]*\bday-header\b[^>]*>)([\s\S]*?)(<\/)/i,
+      (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(text)}${close}`,
+    );
+    // Wipe demo list items under the day — do not invent Reading/Writing leftovers.
+    next = next.replace(/<li\b[^>]*>[\s\S]*?<\/li>/gi, '');
+    return next;
+  }
   if (/<h([3-5])\b/i.test(next)) {
     next = next.replace(
       /(<h([3-5])\b[^>]*>)([\s\S]*?)(<\/h\2>)/i,
@@ -1713,6 +1795,7 @@ function fillSlideShell(
   shell: SlideShell,
   content: TemplateCloneSlideContent,
   index: number,
+  slotMap?: TemplateCloneSlotMap | null,
 ): string {
   let body = shell.body;
   const title = content.title.trim() || `Slide ${index + 1}`;
@@ -1745,15 +1828,17 @@ function fillSlideShell(
     );
   }
 
-  const cardsGridBody = shellBodyLooksLikeCardGrid(body)
-    || classifyTemplateCloneShellRole(shell) === 'cards';
+  const role = classifyTemplateCloneShellRole(shell);
+  const cardsGridBody = shellBodyLooksLikeCardGrid(body, slotMap)
+    || role === 'cards'
+    || (role === 'timeline' && Boolean(slotMap?.peerClasses.some((c) => /timeline-card/i.test(c))));
 
   if (placeholderBody) {
     // Ellipsis placeholders must not land in the first N list items and
     // leave the rest of the template TOC / finance copy intact.
-    if (cardsGridBody && shellBodyLooksLikeCardGrid(body)) {
+    if (cardsGridBody && shellBodyLooksLikeCardGrid(body, slotMap)) {
       // 0901-N02-C: empty outline → drop demo card peers (카드 수 = 0).
-      body = fillAndTrimCardPeers(body, []);
+      body = fillAndTrimCardPeers(body, [], slotMap);
     } else if (/<[uo]l\b/i.test(body)) {
       const existingCount = [...body.matchAll(/<li\b/gi)].length;
       if (existingCount > 0) {
@@ -1773,12 +1858,12 @@ function fillSlideShell(
         `$1${escapeHtml(title)}$2`,
       );
     }
-  } else if (cardsGridBody && shellBodyLooksLikeCardGrid(body)) {
+  } else if (cardsGridBody && shellBodyLooksLikeCardGrid(body, slotMap)) {
     // Prefer card-peer fill over first-<p> so unused columns are removed.
     const before = body;
-    body = fillAndTrimCardPeers(body, bodyLines);
-    // weekly-grid hosts without info-card peers are a no-op — fall through
-    // to list/`p` fill so day-card demo copy is not left untouched.
+    body = fillAndTrimCardPeers(body, bodyLines, slotMap);
+    // weekly-grid hosts without mapped peers are a no-op — fall through
+    // to list/`p` fill so day-card demo copy is not left untouched when map missing.
     if (body === before && bodyLines.length > 0 && /<[uo]l\b/i.test(body)) {
       body = replaceListItems(body, bodyLines);
     } else if (body === before && (bodyLines[0] || bodyText)) {
@@ -1885,12 +1970,17 @@ function replaceSlideBlocks(html: string, shells: SlideShell[], filledSlides: st
 export function buildTemplateClonedDeckHtml(
   exampleHtml: string,
   slides: TemplateCloneSlideContent[],
-  options: { title?: string; maxSlides?: number } = {},
+  options: { title?: string; maxSlides?: number; templateId?: string | null } = {},
 ): string | null {
   const source = stripScriptsAndNav(String(exampleHtml ?? '').trim());
   if (!source) return null;
   const shells = listTemplateCloneSlideShells(source);
   if (shells.length === 0) return null;
+
+  const slotMap = resolveTemplateCloneSlotMap({
+    templateId: options.templateId,
+    html: source,
+  });
 
   const cleanedSlides: TemplateCloneSlideContent[] = [];
   for (const slide of slides) {
@@ -1947,7 +2037,7 @@ export function buildTemplateClonedDeckHtml(
     const content = workingSlides[index] ?? {
       title: index === 0 ? deckTitle : `${deckTitle} · ${index + 1}`,
     };
-    return fillSlideShell(shell, content, index);
+    return fillSlideShell(shell, content, index, slotMap);
   });
 
   let out = replaceSlideBlocks(source, shells, filled);
