@@ -87,7 +87,7 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('M/열여섯째');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('N/열일곱째');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('O/열여덟째');
-    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('P/열아홉째');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('P/열아홉째/Q');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('xxx');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('Group 3');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('xxx/null');
@@ -155,7 +155,7 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
       'O/열여덟째',
     );
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain(
-      'P/열아홉째',
+      'P/열아홉째/Q',
     );
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain(
       'vh/vmin',
