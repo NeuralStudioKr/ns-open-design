@@ -46,19 +46,14 @@ describe('templateCloneContentFill', () => {
     expect(seed).toMatch(/attached source materials/i);
     expect(seed).toMatch(/Quality bar: each non-divider slide/i);
     expect(seed).toMatch(/headline, takeaway/i);
-    expect(seed).toMatch(/Strict body-first contract/i);
-    expect(seed).toMatch(/`<head>` is FORBIDDEN/i);
-    expect(seed).toMatch(/first 800 characters after `<artifact`/i);
-    expect(seed).toMatch(/Motif vocabulary OVERRIDE/i);
+    expect(seed).toMatch(/JSON slot-fill|JSON outline only/i);
+    expect(seed).toMatch(/do NOT regenerate deck HTML|Forbidden output/i);
+    expect(seed).toMatch(/roleHint/i);
     expect(seed).toMatch(/Slide count THIS TURN/i);
     expect(seed).toMatch(/default 6-slide outline/i);
-    expect(seed).toMatch(/Named motif cue/i);
-    expect(seed).toMatch(/compact template-identifying motif|kit motif family|deco-pill|Decorations CSS/i);
-    expect(seed).toMatch(/generic CSS circles/i);
-    expect(seed).toMatch(/omit kit identity/i);
-    expect(seed).toMatch(/Full-bleed surface/i);
-    expect(seed).toMatch(/white bands at top\/bottom|white top\/bottom bands/i);
+    expect(seed).toMatch(/empty pillar\/column-number|Card count = content count/i);
     expect(seed).toMatch(/NEVER "수정 반영 중"/);
+    expect(seed).not.toMatch(/Strict body-first contract/i);
     expect(seed).not.toMatch(/emit a full.*rewrites visible text/i);
     expect(seed).not.toMatch(/Prefer `<artifact type="deck-patch" identifier="deck">`/);
     expect(seed).toContain('Cover topic (use as the title — not the instruction): expo');
@@ -86,8 +81,8 @@ describe('templateCloneContentFill', () => {
     expect(seed).not.toMatch(/honor an explicit user count of 1–6/i);
     expect(seed).toContain('no 3+3+3 split');
     expect(seed).not.toMatch(/persist rejects 1–2/i);
-    expect(seed).toMatch(/large SVG sprites|full Motif sprite dumps/i);
-    expect(seed).toMatch(/compact visible template-identifying motif\/deco anchors/i);
+    expect(seed).toMatch(/JSON outline only|JSON slot-fill/i);
+    expect(seed).toMatch(/host slot-fills|do NOT regenerate deck HTML/i);
   });
 
   it('derives explicit slide counts from the visible user request when no UI hint is present', () => {
@@ -190,7 +185,7 @@ describe('templateCloneContentFill', () => {
     expect(prompted).toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
     expect(prompted).toMatch(/슬라이드 초안 작성 중/);
     expect(prompted).toMatch(/NEVER "수정 반영 중"/);
-    expect(prompted).toMatch(/body-first/i);
+    expect(prompted).toMatch(/JSON outline only|JSON slot-fill/i);
     expect(prompted).not.toContain('[Existing deck edit]');
     expect(prompted).not.toMatch(/rewrites visible text/i);
     expect(prompted).not.toMatch(/use edit tone only/i);
@@ -396,13 +391,12 @@ describe('templateCloneContentFill', () => {
 
   it('ensureTemplateCloneContentFillContinuePrompt restamps create contract without Existing deck edit', () => {
     const continued = ensureTemplateCloneContentFillContinuePrompt(
-      '이전 응답이 끊겼습니다. body-first로 이어서 완성하세요.',
+      '이전 응답이 끊겼습니다. JSON outline으로 이어서 완성하세요.',
     );
     expect(continued).toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
     expect(continued).toContain(TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER);
     expect(continued).toMatch(/NEVER "수정 반영 중"/);
-    expect(continued).toMatch(/kit motif vocabulary|compact existing CSS classes|ABANDON any large Motif/i);
-    expect(continued).toMatch(/body-first/i);
+    expect(continued).toMatch(/ABANDON any HTML deck dump|JSON outline only/i);
     expect(continued).not.toContain('[Existing deck edit]');
     expect(continued).toMatch(/이전 응답이 끊겼습니다/);
     // Idempotent when already stamped.

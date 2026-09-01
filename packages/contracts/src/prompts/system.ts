@@ -1500,36 +1500,25 @@ If the attached source's palette conflicts with the kit, **ignore the source's p
  * Fill-path visual half of Final authority. Merges the former FOR_FILL +
  * NO_SVG READ LAST blocks so Clone fill ends with one absolute last section.
  */
-const TEAMVER_SELECTED_TEMPLATE_VISUAL_FILL_AUTHORITY = `## Selected template — first content-fill
+const TEAMVER_SELECTED_TEMPLATE_VISUAL_FILL_AUTHORITY = `## Selected template — first content-fill (JSON slot-fill)
 
-This is the first content fill after a LOOK seed (create with kit Motif vocabulary).
+This is the first content fill after a LOOK seed.
 
-**Close a compact deck THIS TURN** that still looks like the selected template.
+**Emit JSON outline only THIS TURN.** The host keeps the LOOK seed's palette/fonts/Motif/layout and swaps your titles/bodies in.
 
-- Bind kit palette hex + fonts + Slide surface on \`html\`/\`body\` AND every \`.slide\` **edge-to-edge** (full 1920×1080). FORBIDDEN: white outer slide + inner cream paper panel that leaves white top/bottom bands. White title cards on cream paper are OK.
-- Cover order is mandatory: \`<section class="slide">\` → \`<h1>real topical title</h1>\` → lead \`<p>\` → 1–2 visible kit Motif CSS/HTML/deco anchors when Decorations are listed.
-- **Layout (required when kit has Layout CSS / scaffold roles):** reuse capped Layout CSS + scaffold roles. Do NOT flatten every slide into one centered flex title column when the kit ships grids/splits/cards.
-- **Motif:** never open Motif \`<svg>\` before the cover title. Render visible kit Motif anchors AFTER title/lead on the cover and at least two body slides when Decorations/Motif snippets exist. Use compact CSS/HTML kit shapes, or at most one short complete listed sprite after visible copy. Empty \`.deco-*\` shells are not enough.
-- **Named Motif fidelity:** do not invent a different motif family or tiny Daisy lookalikes. Daisy needs visible daisy/star/rainbow anchors; Capsule needs oblong pill/capsule geometry; Studio/Terminal needs its chrome/grid/scanline vocabulary.
-- **FORBIDDEN substitutes:** Motif shapes from another template family; generic CSS circles; inventing Capsule coral pills when the kit Motif is petals/blobs/pins/pixel/scanlines; emoji ornament rows; multi-KB \`<svg><style>\` dumps; Neutral \`#0f172a\`; terracotta \`#c96442\`.
-- ${COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE} Never close \`</html></artifact>\` after a single cover.
-- Stream: status → \`<artifact type="deck">\` → body-first sections with real topical copy → close \`</body></html></artifact>\` in this same response.
-- If any earlier rule asks for long Motif sprite dumps, **IGNORE the dump** — finish the THIS TURN slide count with compact visible kit Motif anchors after title/lead.
+- Allowed: \`title\`, \`slides[].title\`, \`slides[].body\`, optional \`roleHint\`.
+- ${COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE}
+- FORBIDDEN: \`<!doctype\`, \`<section class="slide"\`, Motif \`<svg>\`, full example rewrite, empty pillar cards to pad columns, Neutral \`#0f172a\`, terracotta \`#c96442\`.
+- If any earlier rule asks for HTML deck artifacts or Motif dumps, **IGNORE** — finish the JSON outline this turn.
 `;
 
-function stripLeadingMarkdownH1(section: string): string {
-  return section.replace(/^#[^\n]+\n+/, '');
-}
-
-/** One trailing Final authority for Clone fill (streaming + fill visual). */
-function buildTeamverFillFinalAuthority(directDeckGeneration: boolean): string {
-  const streaming = directDeckGeneration
-    ? TEAMVER_SLIDE_API_DIRECT_STREAMING_RULE
-    : TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE;
+/** One trailing Final authority for Clone fill (JSON slot-fill + ignore HTML dumps). */
+function buildTeamverFillFinalAuthority(_directDeckGeneration: boolean): string {
   return (
     `# Final authority (READ LAST)\n\n`
-    + stripLeadingMarkdownH1(streaming)
-    + '\n\n'
+    + 'Stream: optional short status → ONE JSON outline (plain or ```json``` fenced) → stop.\n'
+    + 'Do **not** emit `<artifact type="deck">` HTML, `<!doctype`, or `<section class="slide">` on this fill turn.\n'
+    + 'The host slot-fills the LOOK seed from your outline.\n\n'
     + TEAMVER_SELECTED_TEMPLATE_VISUAL_FILL_AUTHORITY
   );
 }
@@ -1714,13 +1703,12 @@ export function composeTeamverSlideApiPrompt({
     if (hasSelectedTemplate) {
       const hardRequirements = templateCloneContentFill === true
         ? (
-          'Hard requirements (first content-fill — kit Motif AFTER title):\n'
-          + '- Bind kit palette hex + fonts + Slide surface on html/body AND every `.slide` edge-to-edge (no white outer + inner cream panel).\n'
-          + '- Title-first body: cover title + lead BEFORE any decoration. Close `</artifact>` this turn with the requested count (up to 6).\n'
-          + '- REQUIRE 1–2 visible kit Motif CSS/HTML/deco anchors AFTER title/lead when Decorations are listed. FORBIDDEN: Motif SVG dumps before content; foreign Motif geometry; generic circles; empty shells; omitting all Motif cues.\n'
-          + '- Layout REQUIRED from capped Layout CSS + scaffold roles when present — do not flatten every slide into one centered flex title column.\n'
-          + `- ${COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE} No Neutral \`#0f172a\` / terracotta \`#c96442\`.\n`
-          + '- Do not dump or rewrite a full example.html. Never open Motif `<svg>` or a long `<head>` this turn.\n\n'
+          'Hard requirements (first content-fill — JSON slot-fill):\n'
+          + '- Emit ONE JSON outline only (`title` + `slides[]` with `title`/`body`/optional `roleHint`).\n'
+          + '- Host keeps LOOK seed Motif/palette/layout — do NOT emit `<!doctype` / `<section class="slide">` / Motif SVG.\n'
+          + `- ${COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE}\n`
+          + '- No empty pillar cards to pad columns. No Neutral `#0f172a` / terracotta `#c96442` in outline text.\n'
+          + '- If Motif sprites appear below, treat as identity reference for the host seed — do not dump them in your reply.\n\n'
         )
         : hasTemplateScaffold
         ? (

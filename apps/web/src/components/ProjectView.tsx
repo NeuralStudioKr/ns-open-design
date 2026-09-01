@@ -179,6 +179,7 @@ import {
   looksLikeLeftoverTemplateDemoDeck,
   looksLikeScrubbedCatalogExampleShell,
   sanitizePersistedDeckHostLeaks,
+  applyTemplateCloneSlotFill,
   type AudioVoiceOption,
   type MemorySystemPromptResponse,
   type ResearchOptions,
@@ -1678,19 +1679,19 @@ function slideExistingDeckEditInstruction(
   return lines.join('\n');
 }
 
-/** First AI turn after daemon template Clone — compact CREATE, not full HTML rewrite. */
+/** First AI turn after daemon template Clone — JSON outline, host slot-fills LOOK seed. */
 function slideTemplateCloneContentFillInstruction(
   imagePaths: readonly string[] = [],
 ): string {
   const lines = [
     TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
-    'Daemon Clone seeded a LOOK preview at `deck.html`. This turn REPLACES it with a compact content-complete deck.',
-    'Do NOT attach or reproduce the full cloned example.html CSS/SVG dump — use kit palette/fonts/scaffold map. Title-first, then render compact visible kit motif/deco anchors; at most ONE capped kit Motif sprite when Motif sprites lists one.',
+    'Daemon Clone seeded a LOOK preview at `deck.html`. This turn emits a JSON outline only — the host slot-fills that seed.',
+    'Do NOT emit <!doctype / <section class="slide"> / Motif SVG. Titles and bodies only.',
     ...templateCloneContentFillHardRules(),
   ];
   if (imagePaths.length > 0) {
     lines.push(
-      'When placing attached images, use these exact project-relative paths:',
+      'When referencing attached images in outline body text, use these exact project-relative paths:',
       ...imagePaths.map((path) => `- ${path}`),
     );
   }
@@ -10377,7 +10378,7 @@ export function ProjectView({
                 ? bestArtifactSoFar
                 : parsedArtifact;
 
-            const artifactToPersist = resolveTerminalArtifactToPersist(
+            let artifactToPersist = resolveTerminalArtifactToPersist(
               effectiveParsedArtifact,
               rawFinalText,
               artifactFromStandaloneHtml,
@@ -10386,6 +10387,25 @@ export function ProjectView({
                 deckTitle: project.name || '슬라이드',
               },
             );
+            // 0901-N02 B4 — JSON outline → slot-fill LOOK seed (prefer over HTML rewrite).
+            if (runTemplateCloneContentFillRef.current) {
+              try {
+                const seedHtml = await readProjectHtml('deck.html');
+                if (seedHtml?.trim()) {
+                  const slotFilled = applyTemplateCloneSlotFill(seedHtml, rawFinalText);
+                  if (slotFilled) {
+                    artifactToPersist = {
+                      identifier: 'deck',
+                      artifactType: 'deck',
+                      title: slotFilled.title,
+                      html: slotFilled.html,
+                    };
+                  }
+                }
+              } catch (error) {
+                devLog.warn('[teamver] template clone slot-fill failed; keeping HTML fallback', error);
+              }
+            }
             if (artifactToPersist?.html) {
               const producedBeforeFallback = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
               const scopedCommentPersist = runCommentAttachmentsRef.current.length > 0;

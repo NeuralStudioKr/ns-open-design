@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   TEMPLATE_CLONE_OUTLINE_MAX_SLIDES,
+  applyTemplateCloneSlotFill,
   inferTemplateCloneContentRole,
   outlineLooksLikeHtmlDump,
   parseTemplateCloneDeckOutline,
@@ -100,5 +101,39 @@ describe('0901-N02 roleHint infer', () => {
 
   it('keeps cover default without roleHint', () => {
     expect(inferTemplateCloneContentRole({ title: '표지' }, 0, 3)).toBe('cover');
+  });
+});
+
+describe('0901-N02 applyTemplateCloneSlotFill', () => {
+  it('swaps outline titles into seed shells without emitting model HTML', () => {
+    const seed = [
+      '<!doctype html><html><head><style>.motif{color:#FCDF6C}</style></head><body>',
+      '<section class="slide slide-title cover"><h1>Demo Cover</h1><p>Lead</p></section>',
+      '<section class="slide slide-welcome"><h2>Demo List</h2><ul><li>a</li><li>b</li></ul></section>',
+      '</body></html>',
+    ].join('');
+    const filled = applyTemplateCloneSlotFill(seed, {
+      title: '분기 전략',
+      slides: [
+        { title: '분기 전략 개요', body: '한 줄 리드', roleHint: 'cover' },
+        { title: '핵심 KPI', body: '매출\n리텐션', roleHint: 'list' },
+      ],
+    });
+    expect(filled).not.toBeNull();
+    expect(filled!.title).toBe('분기 전략');
+    expect(filled!.html).toContain('분기 전략 개요');
+    expect(filled!.html).toContain('핵심 KPI');
+    expect(filled!.html).toContain('매출');
+    expect(filled!.html).toContain('.motif{color:#FCDF6C}');
+    expect(filled!.html).not.toContain('Demo Cover');
+  });
+
+  it('returns null for HTML dumps', () => {
+    expect(
+      applyTemplateCloneSlotFill(
+        '<section class="slide"><h1>x</h1></section>',
+        '<!doctype html><section class="slide"><h1>Nope</h1></section>',
+      ),
+    ).toBeNull();
   });
 });

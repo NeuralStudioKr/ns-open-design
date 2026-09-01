@@ -229,6 +229,23 @@ export function parseTemplateCloneDeckOutline(
   return { title, slides };
 }
 
+/**
+ * LOOK seed + AI JSON outline → filled deck HTML (0901-N02 B4).
+ * Returns null when outline parse fails or seed has no slide shells.
+ */
+export function applyTemplateCloneSlotFill(
+  seedHtml: string,
+  rawOutline: unknown,
+): { html: string; title: string } | null {
+  const outline = parseTemplateCloneDeckOutline(rawOutline);
+  if (!outline) return null;
+  const html = buildTemplateClonedDeckHtml(seedHtml, outline.slides, {
+    title: outline.title,
+  });
+  if (!html?.trim()) return null;
+  return { html, title: outline.title };
+}
+
 export function classifyTemplateCloneShellRole(shell: {
   attrs: string;
   body: string;

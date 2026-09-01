@@ -10,8 +10,8 @@
 | 구현설계 (B0 문서) | ☑ |
 | **B1** contracts outline 타입·파서 | ☑ |
 | **B2** roleHint → shell pick/fill | ☑ infer 우선 · pick 경로 연결 |
-| **B3** prompt/hard rules JSON-only | ☐ |
-| **B4** ProjectView persist JSON→build | ☐ |
+| **B3** prompt/hard rules JSON-only | ☑ |
+| **B4** ProjectView persist JSON→build | ☑ slot-fill LOOK seed; HTML fallback |
 | **B5** JSON repair 1회 + HTML fallback | ☐ |
 | **C** 템플릿 id별 slot map (P1) | ☐ |
 | **D** hybrid fallback 제거 | ☐ |
@@ -19,15 +19,15 @@
 
 ## 검증
 
-- [x] `template-clone-outline` parse/reject (10/10)
+- [x] `template-clone-outline` parse/reject (+ applyTemplateCloneSlotFill)
 - [x] roleHint → `inferTemplateCloneContentRole` 우선
-- [ ] fill prompt에 HTML regenerate 문구 없음
-- [ ] fill persist가 JSON→shell swap
-- [ ] fallback 1회 후 hybrid
+- [x] fill prompt에 HTML regenerate 문구 없음 (JSON-only Final authority)
+- [x] fill persist가 JSON→shell swap (`applyTemplateCloneSlotFill`)
+- [ ] fallback 1회 repair 턴 (HTML hybrid는 parse fail 시 유지)
 
 ## 메모
 
 - LOOK seed (`seedTemplateClonedDeckOnServer`)는 유지.
 - `buildTemplateClonedDeckHtml` 재사용이 P0 핵심 — DOM swap 재발명 없음.
 - leftover `기둥 Z` 확장과 bundling하지 않음.
-- B1/B2 상륙: `parseTemplateCloneDeckOutline` · `outlineLooksLikeHtmlDump` · `roleHint` on `TemplateCloneSlideContent`.
+- B3/B4 상륙: fill hard rules · compact directive · Final authority JSON-only; terminal persist prefers slot-fill.

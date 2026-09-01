@@ -26,6 +26,12 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
       'Never emit the same heading, paragraph, or badge twice in a row',
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toContain(
+      'JSON outline',
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toContain(
+      'roleHint',
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).not.toContain(
       'adjacent duplicate headings/paragraphs/badges',
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('Selected deck template look');
@@ -347,7 +353,7 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     );
   });
 
-  it('template-fill compact contract asks for up to 6 slides this turn and requires visible Motif anchors', () => {
+  it('template-fill compact contract asks for JSON outline slot-fill (0901-N02)', () => {
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toMatch(
       /honor an explicit user count of 1–10/i,
     );
@@ -360,20 +366,23 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toContain(
       'when the target is 5+',
     );
-    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).not.toContain(
-      'produce **3** filled slides',
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toContain(
+      'Emit a JSON outline',
     );
-    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toMatch(
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toContain(
+      'FORBIDDEN this turn',
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toContain(
+      '<section class="slide"',
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).not.toMatch(
       /Render 1–2 compact visible kit Motif\/deco anchors/i,
     );
-    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toMatch(
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).not.toMatch(
       /REQUIRE 1–2 visible kit Motif CSS\/HTML\/deco anchors/i,
     );
-    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).not.toMatch(
-      /official Motif is merged after save|Motif `<svg>` is NOT required this turn/i,
-    );
-    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).not.toMatch(
-      /Optional tiny kit Motif CSS/i,
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).not.toContain(
+      'produce **3** filled slides',
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).not.toContain(
       'persist rejects 1–2',

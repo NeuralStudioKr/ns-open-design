@@ -603,11 +603,10 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('Template clone fill — Motif AFTER title');
       expect(prompt).not.toContain('Selected deck template visual — READ LAST');
       expect(prompt).not.toContain('direct deck generation rule (READ LAST');
-      expect(prompt).toMatch(/Motif CSS|kit Motif vocabulary|deco-pill|Decorations CSS/i);
-      expect(prompt).toMatch(/Never invent Motif geometry from another template family|no invented generic circles|FORBIDDEN substitutes/i);
-      expect(prompt).toMatch(/Motif vocabulary REQUIRED|kit Motif AFTER title|visible kit Motif/i);
+      expect(prompt).toMatch(/JSON outline|JSON slot-fill/i);
+      expect(prompt).toMatch(/FORBIDDEN this turn|Emit a JSON outline/i);
+      expect(prompt).toMatch(/roleHint/i);
       expect(prompt).toMatch(/Motif sprites \(capped for first content-fill/i);
-      expect(prompt).toMatch(/<svg\b/i);
       expect(prompt.indexOf('# Final authority (READ LAST)')).toBeGreaterThan(
         prompt.indexOf('Slide deck — API compact contract'),
       );
@@ -782,7 +781,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       }
     });
 
-    it('requires kit Motif vocabulary AFTER title on Clone content-fill turns', () => {
+    it('requires JSON outline slot-fill on Clone content-fill turns (0901-N02)', () => {
       const kitBody = [
         '# Selected deck template guard',
         '',
@@ -818,15 +817,15 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(fill).toContain('# Final authority (READ LAST)');
       expect(fill).toContain('## Selected template — first content-fill');
       expect(fill).not.toContain('READ LAST (first content-fill)');
-      expect(fill).toMatch(/Motif vocabulary \(required\)|kit Motif vocabulary|visible kit Motif/i);
-      expect(fill).toContain('kit Motif AFTER title');
+      expect(fill).toMatch(/JSON outline|JSON slot-fill/i);
+      expect(fill).toContain('Emit JSON outline only');
       expect(fill).not.toContain('OD-style CREATE');
-      expect(fill).toMatch(/Never invent Motif geometry from another template family|FORBIDDEN substitutes|no invented generic circles/i);
+      expect(fill).toMatch(/FORBIDDEN:.*section class="slide"|FORBIDDEN this turn/i);
+      expect(fill).toContain('If any earlier rule asks for HTML deck artifacts or Motif dumps, **IGNORE**');
       expect(fill).not.toContain('Copy Motif sprites verbatim');
       expect(normal).not.toContain('Copy Motif sprites verbatim');
       expect(normal).toContain('Motif budget');
       expect(normal).toMatch(/render visible kit Motif anchors|at most ONE capped kit Motif sprite|paste at most ONE capped kit Motif sprite/i);
-      expect(fill).toMatch(/visible kit Motif|visible Motif CSS\/HTML\/deco anchors/i);
       expect(fill).not.toMatch(/official Motif merged after save|Official look\/Motif CSS\/SVG is merged after save|Motif `<svg>` is NOT required this turn/i);
       expect(fill).toMatch(/honor an explicit user count of 1–10/i);
       expect(fill).not.toMatch(/produce 3 filled 1920×1080 slides/i);

@@ -656,30 +656,35 @@ ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE}
 `;
 
 /**
- * First Clone content-fill: kit Motif create. Use compact visible motif anchors
- * from the kit, while avoiding multi-KB ornament dumps before the first slide.
+ * First Clone content-fill (0901-N02): JSON outline only.
+ * Host slot-fills the LOOK seed via `buildTemplateClonedDeckHtml` — model must
+ * not regenerate `<section class="slide">` HTML.
  */
-export const DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL = `# Slide deck — API compact contract for Template Clone content-fill
+export const DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL = `# Slide deck — API compact contract for Template Clone content-fill (JSON slot-fill)
 
-You are in API mode after a LOOK seed. **Finish a closed compact deck THIS TURN.**
+You are in API mode after a LOOK seed. **Emit a JSON outline THIS TURN — not HTML.**
 
-In-place HTML edits are unavailable in this API run — so regenerate content with kit **palette + fonts + Motif vocabulary + capped Layout CSS**. Do not hang on multi-KB Motif dumps.
+The host already has the template DOM/CSS/motif in \`deck.html\`. It will swap your titles/bodies into that shell. Regenerating \`<!doctype\` / \`<section class="slide">\` / Motif SVG destroys the kit look.
 
-**Body / title-first (non-negotiable):**
-1. Status sentence → open \`<artifact type="deck" identifier="deck">\`.
-2. First bytes: \`<!doctype html><html lang="ko"><body style="margin:0;background:<kit surface hex>;color:<kit ink hex>"><section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;padding:56px 72px;background:<kit surface hex>;color:<kit ink hex>;…">\` with a real \`h1\`/\`h2\` title + lead **before any decoration**.
-3. ${COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE} Render 1–2 compact visible kit Motif/deco anchors per slide when provided; empty \`.deco\` shells do not count.
-4. Close \`</body></html></artifact>\` in this same response.
+**Output contract (non-negotiable):**
+1. Short status sentence (optional), then ONE JSON object (plain or \`\`\`json\`\`\` fenced).
+2. Shape:
+\`\`\`json
+{
+  "title": "덱 제목",
+  "slides": [
+    { "title": "표지", "body": "한 줄 리드", "roleHint": "cover" },
+    { "title": "포인트", "body": "하나\\n둘\\n셋", "roleHint": "list" }
+  ]
+}
+\`\`\`
+3. Allowed fields only: \`title\`, \`slides[].title\`, \`slides[].body\` (newline = slot lines), optional \`slides[].roleHint\` (\`cover|list|cards|timeline|stat|quote|team|process|closing|body\`).
+4. ${COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE} Outline slide count = deliverable count (max 20). Never mirror the template demo page lineup.
+5. Fill REAL topical titles/bodies. No "만들어줘", no template demo nouns (Hartfield / Daisy Days captions), no empty pillar/column-number fillers, no adjacent duplicate headings.
 
-**Full-bleed surface:** kit Slide surface must paint \`html\`/\`body\` AND every \`.slide\` edge-to-edge. FORBIDDEN: white outer canvas with an inner cream paper panel (white top/bottom bands). White title cards on cream paper are OK.
+**FORBIDDEN this turn:** \`<!doctype\`, \`<html\`, \`<head\`, \`<style\`, \`<section class="slide"\`, Motif \`<svg>\`, full example.html rewrite, Neutral \`#0f172a\`, terracotta \`#c96442\`, emoji ornament rows, inventing empty cards to pad columns.
 
-**Layout (required when kit has Layout CSS / scaffold roles):** reuse capped Layout CSS grid/flex/region rules and scaffold map roles. FORBIDDEN: flattening every slide into one centered flex title column when the kit ships multi-region layouts (cards-grid / weekly-grid / split / matrix / terminal grids).
-
-**Motif (after title):** REQUIRE 1–2 visible kit Motif CSS/HTML/deco anchors AFTER title when Decorations are listed. A capped small kit SVG is allowed after title if recognizable. FORBIDDEN: large SVG dumps; Motif-before-title; foreign/generic motifs; omitting listed Motif cues.
-
-**FORBIDDEN this turn:** Motif \`<svg>\` before cover title, multi-KB Motif/Layout dumps, long \`<head>\`, Neutral \`#0f172a\`, terracotta \`#c96442\`, emoji ornament rows, generic CSS circles when the kit has Motif CSS/sprites, invented tiny Daisy lookalikes, parroting the user brief as slide titles, adjacent duplicate headings/paragraphs/badges.
-
-**Allowed look:** kit palette hex + fonts + kit Motif vocabulary AFTER title + capped Layout CSS from the kit. Use scaffold map as layout role names.
+**Host responsibility (do not do this yourself):** palette, fonts, Motif/deco anchors, layout grids, full-bleed surface — already in the LOOK seed.
 
 ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE}
 `;

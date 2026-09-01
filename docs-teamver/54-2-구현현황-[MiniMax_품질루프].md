@@ -15,9 +15,9 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts system-prompt-api-mode · template-visual-kit · teamver-selected-template-compose · deck-framework-compact · template-clone-fill, web templateCloneContentFill · runtime/resume.
 
-**후속 (진행 중):** [0901-N02-2](./0901-N02-2-구현설계-[Clone_slot-fill].md) · [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) — B1 파서·B2 roleHint 상륙. 다음 코드는 B3 prompt JSON-only → B4 persist.
+**후속 (진행 중):** [0901-N02-2](./0901-N02-2-구현설계-[Clone_slot-fill].md) · [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) — B1–B4 상륙(JSON-only + LOOK seed slot-fill). 다음 코드는 B5 JSON repair 1회.
 
-다음 추천 작업: B3 `templateCloneContentFillHardRules` / compact fill directive를 JSON-only로. 템플릿별 slot map은 P1.
+다음 추천 작업: B5 repair 턴. 템플릿별 slot map은 P1.
 
 ### 빈 칸 번호 카드 (코드명 leftover)
 

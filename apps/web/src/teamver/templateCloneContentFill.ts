@@ -76,8 +76,8 @@ export function historyHasTemplateCloneContentFill(
  * handleSend keeps stripping deck.html and never flips to existing-deck edit.
  * No-op when the prompt already carries a fill marker (first seed or prior stamp).
  */
-const TEMPLATE_CLONE_FILL_SVG_ABANDON =
-  'ABANDON any large Motif `<svg>` started BEFORE the cover title. Restart body-first with `<h1>` then lead `<p>`. Do not dump full SVG/style sprites, but DO reuse the kit motif vocabulary after title copy: compact existing CSS classes, small complete inline motifs, or template deco snippets from the visual kit. Keep ~56–80px slide padding. Never invent generic CSS circles / tiny corner flowers.';
+const TEMPLATE_CLONE_FILL_JSON_REPAIR =
+  'ABANDON any HTML deck dump. Restart with ONE JSON outline only: {"title":"...","slides":[{"title":"...","body":"...","roleHint":"cover"}]}. No <!doctype / <section class="slide">.';
 
 export function ensureTemplateCloneContentFillContinuePrompt(prompt: string): string {
   const trimmed = String(prompt ?? '').trim();
@@ -86,17 +86,19 @@ export function ensureTemplateCloneContentFillContinuePrompt(prompt: string): st
     if (
       trimmed.includes('ABANDON any Motif')
       || trimmed.includes('ABANDON any large Motif')
+      || trimmed.includes('ABANDON any HTML deck dump')
       || trimmed.includes('kit Motif vocabulary')
       || trimmed.includes('kit motif vocabulary')
+      || trimmed.includes('JSON outline only')
     ) return trimmed;
-    return `${trimmed}\n\n${TEMPLATE_CLONE_FILL_SVG_ABANDON}`;
+    return `${trimmed}\n\n${TEMPLATE_CLONE_FILL_JSON_REPAIR}`;
   }
   return [
     TEMPLATE_CLONE_CONTENT_FILL_MARKER,
     TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
     'This is an auto-continue of a template-clone CONTENT FILL (CREATE), not a surgical edit of the Clone LOOK seed.',
     ...templateCloneContentFillHardRules(),
-    TEMPLATE_CLONE_FILL_SVG_ABANDON,
+    TEMPLATE_CLONE_FILL_JSON_REPAIR,
     '',
     trimmed,
   ].join('\n');
@@ -238,33 +240,26 @@ export function extractTemplateCloneUserFacingRequest(input: {
   return HOME_FILL_SLIDES_PROMPT;
 }
 
-/** Shared hard rules for Clone → first AI content fill (seed + turn marker). */
+/** Shared hard rules for Clone → first AI content fill (JSON slot-fill, 0901-N02). */
 export function templateCloneContentFillHardRules(): string[] {
   return [
-    'Hard rules (READ — truncation/quality):',
+    'Hard rules (READ — JSON slot-fill):',
     '- This is CREATE of real topical content, not a surgical edit. Status tone: "슬라이드 초안 작성 중" — NEVER "수정 반영 중" / "Applying your edits".',
-    '- Do NOT rewrite or reproduce the full cloned example.html / attached deck.html CSS+SVG head (that burns max_tokens and hangs with only `<head>`).',
-    '- Use the Template visual kit + scaffold map from the system prompt for LOOK (palette hex, fonts, layout roles). Neutral Modern / OD skeleton terracotta is a failed deliverable.',
+    '- Emit ONE JSON outline only (plain or ```json fenced). The host slot-fills the LOOK seed — do NOT regenerate deck HTML.',
+    '- Forbidden output: <!doctype, <html, <head, <style, <section class="slide">, Motif <svg>, full example.html rewrite.',
     `- ${SLIDE_DECK_QUALITY_BAR_INSTRUCTION}`,
     `- ${SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION}`,
     `- ${SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE}`,
-    '- Strict body-first contract: start the artifact body exactly like `<!doctype html><html lang="ko"><body><section class="slide" ...>`.',
-    '- `<head>` is FORBIDDEN on this fill turn. Do not emit `<head>`, `<title>`, meta tags, or a style prelude before slide 1.',
-    '- The first 800 characters after `<artifact` MUST include `<body` and one complete `<section class="slide">` with real topical copy (cover title + lead).',
-    `- ${FIRST_FILL_SLIDE_COUNT_GUIDANCE} Close \`</html></artifact>\` this turn. Hidden top-up appends only when the user asked for ${FIRST_FILL_TOP_UP_FROM}+. Never spend this turn on \`<head>\` or full Motif sprite dumps.`,
-    '- Treat the daemon Clone seed as the visual baseline: preserve template surface/classes/layout roles/motif geometry while replacing visible content.',
-    '- Do not stream `<head>`, full example.html CSS, or large SVG sprites. Still render 1–2 compact visible template-identifying motif/deco anchors per slide when the kit provides them; empty `.deco` shells do not count.',
+    '- JSON shape: {"title":"...","slides":[{"title":"...","body":"line\\nline","roleHint":"cover|list|cards|timeline|stat|quote|team|process|closing|body"}]}',
+    `- ${FIRST_FILL_SLIDE_COUNT_GUIDANCE} Outline length = deliverable count this turn (max 20). Hidden top-up only when the user asked for ${FIRST_FILL_TOP_UP_FROM}+.`,
+    '- Treat the daemon Clone seed as the visual baseline the host will keep. You only supply titles/bodies/roleHint.',
     `- If the brief is only a topic, use a default ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}-slide outline (cover, why it matters, key concepts, evidence, next steps, close). Adapt labels to the topic and audience.`,
-    '- Motif vocabulary OVERRIDE: Title-first always. Use the selected kit motif family after cover `<h1>`/`<h2>` + lead: compact existing classes, small complete inline snippets, or deco HTML from the kit. Keep slide padding (~56–80px) and put titles in normal flow (not under absolute Motif corners). FORBIDDEN this turn: Motif `<svg>` before title copy, multi-KB sprite dumps, inventing generic CSS circles / tiny corner dots / fake 12–48px flower SVGs / emoji daisies, Capsule coral pills when the kit Motif is petals/flowers/blobs/pins/pixel/scanlines, empty `.deco` shells. If you already started an SVG-before-title dump, abandon it and restart with `<h1>`.',
-    `- Named motif cue: never invent another motif family or omit kit identity. Each slide should carry at least one visible lightweight kit-specific motif/deco cue when exposed.`,
-    '- Layout OVERRIDE: reuse capped Layout CSS + scaffold roles when present. FORBIDDEN: flattening every slide into one centered flex title column when the kit ships grids/splits/cards.',
-    '- Full-bleed surface: bind kit Slide surface hex on `html`/`body` AND every `<section class="slide" style="…background:<kit surface>…">` edge-to-edge for the full 1920×1080 canvas. Prefer the kit identity surface (e.g. `--hc-bg` / cream / paper) — never substitute Neutral white/`#0f172a` when the kit names a surface. FORBIDDEN: white/default outer slide with an inner cream "paper" panel that leaves white bands at top/bottom. White title cards ON cream paper are OK.',
-    '- Keep `<style>` very short (kit tokens + fonts only, ideally under ~1KB) and place it after slide 1 or omit it in favor of inline styles. Never dump the whole template stylesheet.',
-    `- Fill REAL topical titles/body (no "…", no "만들어줘", no create-slides boilerplate). Brief/Quick settings are the eventual target — honor an explicit 1–${FIRST_FILL_HONOR_MAX} this turn; unspecified still closes ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}. Hidden top-up appends only ${FIRST_FILL_TOP_UP_FROM}+. Never copy the template demo page lineup.`,
-    '- REPLACE every example.html proper noun, table, and metric. Hartfield / NorthPeak / Project Atlas / WACC / EBITDA / "Demo-data notice" are forbidden unless the user brief names them. Do not splice the user topic into a leftover DCF/finance heading.',
-    '- Prefer finishing a closed THIS-TURN `</artifact>` this turn over any Motif fidelity. A complete compact deck beats a truncated SVG/CSS shell.',
+    '- Do not invent empty pillar/column-number cards to pad a 3-column look. Card count = content count.',
+    `- Fill REAL topical titles/body (no "…", no "만들어줘", no create-slides boilerplate). Brief/Quick settings are the eventual target — honor an explicit 1–${FIRST_FILL_HONOR_MAX} this turn; unspecified still closes ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}. Never copy the template demo page lineup.`,
+    '- REPLACE every example.html proper noun, table, and metric in your outline text. Hartfield / NorthPeak / Project Atlas / WACC / EBITDA / "Demo-data notice" are forbidden unless the user brief names them.',
+    '- Prefer a closed valid JSON outline this turn over Motif/HTML fidelity experiments.',
     '- Honor stated audience/level (e.g. 시니어 개발자 = architecture/internals/trade-offs, not a beginner intro).',
-    '- Each body slide needs a real title plus 2–4 concrete bullets or a real paragraph. No "핵심 메시지를 정리합니다" filler.',
+    '- Each body slide needs a real title plus 2–4 concrete bullet lines or a real paragraph in `body`. No "핵심 메시지를 정리합니다" filler.',
   ];
 }
 
@@ -417,7 +412,7 @@ export function buildTemplateCloneContentFillSeed(options: {
     visible,
     '',
     TEMPLATE_CLONE_CONTENT_FILL_MARKER,
-    'Daemon Clone already seeded a LOOK preview into `deck.html`. This turn REPLACES it with a compact, content-complete deck. Do NOT copy or rewrite that document from `<head>`.',
+    'Daemon Clone already seeded a LOOK preview into `deck.html`. This turn emits a JSON outline only — the host slot-fills that seed. Do NOT rewrite deck HTML.',
     hasAttachedSource
       ? 'Fill REAL presentation CONTENT for this request and any attached source materials (Canvas/Drive/files) — not the cloned demo copy.'
       : 'Fill REAL presentation CONTENT for this create (user prompt may be empty; invent clear topical copy — do not paste boilerplate leads into titles).',
