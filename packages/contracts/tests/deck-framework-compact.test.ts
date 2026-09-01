@@ -92,6 +92,8 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('Q/스무째');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('Q/스무째/R');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('스무째/R');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('스무째/R/S');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('R/S');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('xxx');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('Group 3');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('xxx/null');
@@ -166,6 +168,9 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     );
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain(
       'Q/스무째/R',
+    );
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain(
+      'R/S',
     );
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain(
       'vh/vmin',
