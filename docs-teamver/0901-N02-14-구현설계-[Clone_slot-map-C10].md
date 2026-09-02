@@ -40,7 +40,4 @@
 
 ## 다음 추천 작업
 
-1. MiniMax 키 환경 Clone fill live smoke
-2. FileViewer ←/→ tools-dev + Chrome GUI bake(선택)
-3. scatterbrain LOOK seed 전체 shell pick → fill → heal(선택)
-4. filmstrip/키보드(0901-N01-C3) 수동 회귀(선택)
+→ 후속 [0901-N02-15](./0901-N02-15-구현설계-[Clone_slot-map-C11].md) (C11)에서 scatterbrain cards 분류·LOOK seed 처리.

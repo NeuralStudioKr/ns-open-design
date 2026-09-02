@@ -1906,6 +1906,49 @@ describe('0901-N02 heal↔clone integration', () => {
     expect(healed).toMatch(/tpl-knowledge|kb-grid-2/i);
     expect(healed).toMatch(/\bkb-grid-bg\b/);
   });
+
+  it('scatterbrain LOOK seed → slot-fill → heal keeps sticky motif', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-scatterbrain/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const brief = '워크숍 전략과 비교';
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      [
+        { title: '워크숍 킥오프', roleHint: 'cover' },
+        { title: '핵심 축', body: '전략\n디자인', roleHint: 'cards' },
+        { title: '비교', body: '이전\n이후', roleHint: 'cards' },
+      ],
+      {
+        title: '워크숍 킥오프',
+        templateId: 'example-html-ppt-zhangzara-scatterbrain',
+      },
+    );
+    expect(cloned).toBeTruthy();
+    const healed = pinDeckSlidesToFixedCanvas(
+      healAiGeneratedDeckMarkup(cloned!, brief),
+    );
+    const bodyOnly = healed.replace(/<style[\s\S]*?<\/style>/gi, '');
+    expect(healed).toContain('워크숍 킥오프');
+    expect(healed).toContain('전략');
+    expect(healed).toContain('디자인');
+    expect(healed).toContain('이전');
+    expect(healed).toContain('이후');
+    expect(bodyOnly).not.toContain('Strategy');
+    expect(bodyOnly).not.toContain('Launch');
+    expect(bodyOnly).not.toContain('Finding the Problem');
+    expect(bodyOnly).not.toContain('<h3>Before</h3>');
+    // Sticky / doodle motif should survive heal.
+    expect(healed).toMatch(/post-it|feature-postit|col-postit|compare-postit|doodle|Caveat|Shrikhand/i);
+    const stickyPeers = [
+      ...bodyOnly.matchAll(/class="[^"]*\b(?:feature|col|compare)-postit\b/gi),
+    ].length;
+    expect(stickyPeers).toBeGreaterThanOrEqual(4);
+  });
 });
 
 describe('0901-N02-C10 compare/col-postit polish', () => {

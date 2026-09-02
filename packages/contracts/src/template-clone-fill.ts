@@ -427,6 +427,10 @@ export function classifyTemplateCloneShellRole(shell: {
   if (/\bslide-cards\b|\bslide-weekly\b|\bcards-grid\b|\binfo-card\b|\bweekly-grid\b/i.test(hay)) {
     return 'cards';
   }
+  // 0901-N02-C11: scatterbrain sticky peers / layouts are card shells, not body.
+  if (/\b(?:feature|col|compare)-postit\b|\b(?:three|two)-col-layout\b|\bcompare-layout\b/i.test(hay)) {
+    return 'cards';
+  }
   if (/\bslide-welcome\b|\bwelcome-list\b|<[uo]l\b/i.test(hay)) return 'list';
   if (/\bslide-closing\b|\bthanks\b|\bend\b|\bclosing\b/i.test(hay)) return 'closing';
   return 'body';
@@ -489,6 +493,8 @@ function cardsShellFillScore(shell: SlideShell): number {
     return 3;
   }
   if (/\b(?:stat-card|feature-card|metric-card)\b/i.test(body)) return 2;
+  // 0901-N02-C11: scatterbrain sticky peers score as real card shells.
+  if (/\b(?:feature|col|compare)-postit\b/i.test(body)) return 2;
   if (/\bslide-weekly\b/i.test(attrs) || /\bweekly-grid\b/i.test(body) || /\bday-card\b/i.test(body)) {
     return 0;
   }
@@ -1996,6 +2002,7 @@ function collectPeersAmongChildren(
  * C7: bare `stat`/`kpi` and letter-led `*-stat` peers (denied slide/card/gc chrome).
  * C9: hermes `.lbl` fill · `*-postit` peers (denied statement/main-title) · flow arrows.
  * C10: oc/kb fill→heal · compare-postit/col-postit · compare-vs orphan drop.
+ * C11: scatterbrain postit shells classify as cards · LOOK seed fill→heal.
  */
 export function fillAndTrimCardPeers(
   html: string,
