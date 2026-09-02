@@ -9,6 +9,7 @@ import {
   exportAsPdf,
   exportAsZip,
   captureHostIframeSnapshot,
+  formatExportFailureMessageForUser,
   openSandboxedPreviewInNewTab,
   requestPreviewSnapshot,
 } from '../runtime/exports';
@@ -289,6 +290,7 @@ export function PreviewModal({
     key: string;
     ok: boolean;
   } | null>(null);
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(
     sidebar?.defaultOpen ?? false,
@@ -337,6 +339,10 @@ export function PreviewModal({
   useEffect(() => {
     onView?.(activeId);
   }, [activeId, onView]);
+
+  useEffect(() => {
+    setExportNotice(null);
+  }, [activeId]);
 
   // Move focus into the dialog on open and restore it on close so Tab/AT
   // do not linger on the gallery tile behind the modal.
@@ -1166,8 +1172,11 @@ export function PreviewModal({
                             onClick={() => {
                               onSharePopoverItemClick?.('pdf');
                               setTemplateShareOpen(false);
+                              setExportNotice(null);
                               if (activeHtml) {
-                                void exportAsPdf(activeHtml, exportTitle, { deck: activeDeck }).catch(() => {});
+                                void exportAsPdf(activeHtml, exportTitle, { deck: activeDeck }).catch((err) => {
+                                  setExportNotice(formatExportFailureMessageForUser(err));
+                                });
                               }
                             }}
                           >
@@ -1213,6 +1222,7 @@ export function PreviewModal({
                             onClick={async () => {
                               onSharePopoverItemClick?.('image');
                               setTemplateShareOpen(false);
+                              setExportNotice(null);
                               const iframe = previewIframeRef.current;
                               if (!iframe) return;
                               const snap =
@@ -1223,11 +1233,11 @@ export function PreviewModal({
                                   exportAsImage(snap.dataUrl, exportTitle);
                                 } else {
                                   devLog.warn('[PreviewModal] snapshot capture returned null');
-                                  alert(t('common.exportImageFailed'));
+                                  setExportNotice(t('common.exportImageFailed'));
                                 }
                               } catch (err) {
                                 devLog.warn('[PreviewModal] failed to convert snapshot:', err);
-                                alert(t('common.exportImageFailed'));
+                                setExportNotice(t('common.exportImageFailed'));
                               }
                             }}
                           >
@@ -1260,6 +1270,18 @@ export function PreviewModal({
               {headerExtras}
             </div>
           </div>
+          {exportNotice ? (
+            <div
+              className="ds-modal-export-banner"
+              data-testid="preview-export-error-banner"
+              role="alert"
+            >
+              <span>{exportNotice}</span>
+              <button type="button" onClick={() => setExportNotice(null)}>
+                {t('common.close')}
+              </button>
+            </div>
+          ) : null}
         </header>
         <div
           className={`ds-modal-stage ${sidebar && sidebarOpen ? 'has-sidebar' : ''}`}

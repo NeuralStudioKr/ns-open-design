@@ -11,9 +11,15 @@ import { PreviewModal } from '../../src/components/PreviewModal';
 // mock them so the test can exercise the full button flow without a real
 // iframe or DOM snapshot.
 
-const { captureHostIframeSnapshotMock, exportAsImageMock, requestPreviewSnapshotMock } = vi.hoisted(() => ({
+const {
+  captureHostIframeSnapshotMock,
+  exportAsImageMock,
+  exportAsPdfMock,
+  requestPreviewSnapshotMock,
+} = vi.hoisted(() => ({
   captureHostIframeSnapshotMock: vi.fn(),
   exportAsImageMock: vi.fn(),
+  exportAsPdfMock: vi.fn(),
   requestPreviewSnapshotMock: vi.fn(),
 }));
 
@@ -21,8 +27,10 @@ vi.mock('../../src/runtime/exports', () => ({
   captureHostIframeSnapshot: captureHostIframeSnapshotMock,
   exportAsHtml: vi.fn(),
   exportAsImage: exportAsImageMock,
-  exportAsPdf: vi.fn(),
+  exportAsPdf: exportAsPdfMock,
   exportAsZip: vi.fn(),
+  formatExportFailureMessageForUser: (err: unknown) =>
+    err instanceof Error ? err.message : String(err ?? ''),
   openSandboxedPreviewInNewTab: vi.fn(),
   requestPreviewSnapshot: requestPreviewSnapshotMock,
 }));
@@ -117,7 +125,7 @@ describe('PreviewModal image export', () => {
     expect(exportAsImageMock).toHaveBeenCalledWith(fakeDataUrl, 'main');
   });
 
-  it('alerts when snapshot capture returns null', async () => {
+  it('shows an in-modal banner when snapshot capture returns null', async () => {
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
     captureHostIframeSnapshotMock.mockResolvedValueOnce(null);
     requestPreviewSnapshotMock.mockResolvedValueOnce(null);
@@ -130,16 +138,17 @@ describe('PreviewModal image export', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: /export as image/i }));
 
     await waitFor(() => {
-      expect(alertSpy).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('preview-export-error-banner').textContent).toMatch(
+        /image capture failed/i,
+      );
     });
 
-    // exportAsImage must not be called when snapshot is null.
     expect(exportAsImageMock).not.toHaveBeenCalled();
-
+    expect(alertSpy).not.toHaveBeenCalled();
     alertSpy.mockRestore();
   });
 
-  it('alerts when exportAsImage throws', async () => {
+  it('shows an in-modal banner when exportAsImage throws', async () => {
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
     captureHostIframeSnapshotMock.mockResolvedValueOnce(null);
     requestPreviewSnapshotMock.mockResolvedValueOnce({
@@ -159,9 +168,33 @@ describe('PreviewModal image export', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: /export as image/i }));
 
     await waitFor(() => {
-      expect(alertSpy).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('preview-export-error-banner').textContent).toMatch(
+        /image capture failed/i,
+      );
     });
 
+    expect(alertSpy).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
+  });
+
+  it('shows an in-modal banner when PDF export fails', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    exportAsPdfMock.mockRejectedValueOnce(new Error('팝업이 차단되었습니다. 주소창에서 팝업을 허용한 뒤 다시 시도해 주세요.'));
+
+    render(
+      <PreviewModal {...baseProps} onClose={() => {}} />,
+    );
+
+    openShareMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /export as pdf|pdf로 다운로드/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('preview-export-error-banner').textContent).toContain(
+        '팝업이 차단되었습니다',
+      );
+    });
+
+    expect(alertSpy).not.toHaveBeenCalled();
     alertSpy.mockRestore();
   });
 

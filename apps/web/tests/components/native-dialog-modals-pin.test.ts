@@ -7,6 +7,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const fileWorkspace = readFileSync(join(here, '../../src/components/FileWorkspace.tsx'), 'utf8');
 const chatPane = readFileSync(join(here, '../../src/components/ChatPane.tsx'), 'utf8');
 const designFiles = readFileSync(join(here, '../../src/components/DesignFilesPanel.tsx'), 'utf8');
+const previewModal = readFileSync(join(here, '../../src/components/PreviewModal.tsx'), 'utf8');
 const exportsSrc = readFileSync(join(here, '../../src/runtime/exports.ts'), 'utf8');
 
 describe('Teamver embed native dialog replacements', () => {
@@ -32,6 +33,14 @@ describe('Teamver embed native dialog replacements', () => {
     expect(exportsSrc).toContain('BROWSER_PDF_POPUP_BLOCKED');
     expect(exportsSrc).toContain('BROWSER_PDF_PRINT_FAILED');
     expect(exportsSrc).toContain('throw new Error(BROWSER_PDF_POPUP_BLOCKED)');
+  });
+
+  it('PreviewModal surfaces export failures in a banner', () => {
+    expect(previewModal).not.toMatch(/\balert\(/);
+    expect(previewModal).toContain('setExportNotice');
+    expect(previewModal).toContain('common.exportImageFailed');
+    expect(previewModal).toContain('formatExportFailureMessageForUser');
+    expect(previewModal).toContain('preview-export-error-banner');
   });
 
   it('ChatPane deletes a conversation from a viewer modal', () => {
