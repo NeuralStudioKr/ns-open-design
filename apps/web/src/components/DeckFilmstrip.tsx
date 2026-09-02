@@ -59,11 +59,38 @@ export function scrollFilmstripChipIntoView(
 
 const EDGE_PX = 28;
 const EDGE_SCROLL_STEP = 14;
+export const FILMSTRIP_COMPACT_STORAGE_KEY = "teamver:deck-filmstrip:compact";
+
+export function readFilmstripCompactPreference(): boolean {
+  try {
+    return sessionStorage.getItem(FILMSTRIP_COMPACT_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function writeFilmstripCompactPreference(compactOnly: boolean): void {
+  try {
+    sessionStorage.setItem(FILMSTRIP_COMPACT_STORAGE_KEY, compactOnly ? "1" : "0");
+  } catch {
+    // sessionStorage may be unavailable in embed/tests
+  }
+}
+
+export function isFilmstripTitleTruncated(titleEl: HTMLElement | null): boolean {
+  if (!titleEl) return false;
+  return titleEl.scrollWidth > titleEl.clientWidth + 1;
+}
 
 type ContextMenuState = {
   index: number;
   x: number;
   y: number;
+};
+
+export type DeckFilmstripCompactToggle = {
+  showTitlesLabel: string;
+  numbersOnlyLabel: string;
 };
 
 export function DeckFilmstrip({
@@ -74,6 +101,7 @@ export function DeckFilmstrip({
   onGo,
   onReorder,
   chipActions,
+  compactToggle,
   disabled = false,
 }: {
   items: DeckFilmstripItem[];
@@ -83,6 +111,7 @@ export function DeckFilmstrip({
   onGo: (index: number) => void;
   onReorder: (fromIndex: number, toIndex: number) => void | Promise<void>;
   chipActions?: DeckFilmstripChipActions;
+  compactToggle?: DeckFilmstripCompactToggle;
   disabled?: boolean;
 }) {
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
@@ -90,7 +119,9 @@ export function DeckFilmstrip({
   const [dropSlot, setDropSlot] = useState<number | null>(null);
   const [focusedIndex, setFocusedIndex] = useState(currentSlideIndex);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const navRef = useRef<HTMLElement | null>(null);
+  const [compactOnly, setCompactOnly] = useState(readFilmstripCompactPreference);
+  const [titleTip, setTitleTip] = useState<{ text: string; x: number; y: number } | null>(null);
+  const scrollRef = useRef<HTMLElement | null>(null);
   const chipRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const edgeRafRef = useRef<number | null>(null);
   const edgeDirRef = useRef<-1 | 0 | 1>(0);
@@ -112,7 +143,7 @@ export function DeckFilmstrip({
   }, []);
 
   const tickEdgeScroll = useCallback(() => {
-    const nav = navRef.current;
+    const nav = scrollRef.current;
     const dir = edgeDirRef.current;
     if (!nav || dir === 0) {
       edgeRafRef.current = null;
@@ -123,7 +154,7 @@ export function DeckFilmstrip({
   }, []);
 
   const updateEdgeScroll = useCallback((clientX: number) => {
-    const nav = navRef.current;
+    const nav = scrollRef.current;
     if (!nav || disabled) {
       stopEdgeScroll();
       return;
@@ -152,12 +183,39 @@ export function DeckFilmstrip({
 
   useEffect(() => {
     if (disabled || draggingIndex != null) return;
-    const nav = navRef.current;
+    const nav = scrollRef.current;
     const chip = chipRefs.current[currentSlideIndex];
     if (!nav || !chip) return;
     scrollFilmstripChipIntoView(nav, chip);
     setFocusedIndex(currentSlideIndex);
   }, [currentSlideIndex, items.length, disabled, draggingIndex]);
+
+  const updateTitleTip = useCallback((chip: HTMLButtonElement | null, heading: string, showHeading: boolean) => {
+    if (!chip || !showHeading || compactOnly) {
+      setTitleTip(null);
+      return;
+    }
+    const titleEl = chip.querySelector(".deck-filmstrip__title");
+    if (!isFilmstripTitleTruncated(titleEl as HTMLElement | null)) {
+      setTitleTip(null);
+      return;
+    }
+    const rect = chip.getBoundingClientRect();
+    setTitleTip({
+      text: heading,
+      x: rect.left + rect.width / 2,
+      y: rect.top - 6,
+    });
+  }, [compactOnly]);
+
+  const toggleCompactOnly = useCallback(() => {
+    setCompactOnly((prev) => {
+      const next = !prev;
+      writeFilmstripCompactPreference(next);
+      return next;
+    });
+    setTitleTip(null);
+  }, []);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -318,81 +376,125 @@ export function DeckFilmstrip({
 
   const showContextMenu = contextMenu && chipActions && !disabled;
   const contextDeleteEnabled = chipActions?.deleteEnabled !== false;
+  const compactToggleLabel = compactOnly
+    ? compactToggle?.showTitlesLabel ?? "Show titles"
+    : compactToggle?.numbersOnlyLabel ?? "Numbers only";
 
   return (
     <>
-      <nav
-        ref={navRef}
-        className={["deck-filmstrip", disabled ? "is-disabled" : ""].filter(Boolean).join(" ")}
-        aria-label={ariaLabel}
+      <div
+        className={[
+          "deck-filmstrip",
+          compactOnly ? "is-compact" : "",
+          disabled ? "is-disabled" : "",
+        ].filter(Boolean).join(" ")}
         data-testid="deck-filmstrip"
         aria-disabled={disabled ? "true" : undefined}
-        onDragOver={handleNavDragOver}
-        onDrop={handleNavDrop}
       >
-        <ol className="deck-filmstrip__list">
-          {items.map((item) => {
-            const slideNumber = item.index + 1;
-            const title = slideLabelTemplate.replace("{{n}}", String(slideNumber));
-            const heading = item.label.replace(/\s+/g, " ").trim();
-            const showHeading = Boolean(heading) && heading !== String(slideNumber);
-            const current = item.index === currentSlideIndex;
-            const showGapBefore =
-              draggingIndex != null && dropSlot === item.index;
-            return (
-              <li
-                key={item.index}
-                className={showGapBefore ? "is-drop-before" : undefined}
-                data-drop-before={showGapBefore ? "true" : undefined}
-              >
-                <button
-                  type="button"
-                  ref={(node) => {
-                    chipRefs.current[item.index] = node;
-                  }}
-                  className={[
-                    "deck-filmstrip__chip",
-                    showHeading ? "has-title" : "",
-                    current ? "is-current" : "",
-                    draggingIndex === item.index ? "is-dragging" : "",
-                  ].filter(Boolean).join(" ")}
-                  draggable={!disabled}
-                  disabled={disabled}
-                  tabIndex={item.index === focusedIndex ? 0 : -1}
-                  aria-current={current ? "true" : undefined}
-                  aria-label={showHeading ? `${title} · ${heading}` : title}
-                  title={showHeading ? heading : title}
-                  data-testid={current ? "deck-filmstrip-current" : undefined}
-                  onClick={() => {
-                    if (disabled) return;
-                    if (suppressClickRef.current) {
-                      suppressClickRef.current = false;
-                      return;
-                    }
-                    setFocusedIndex(item.index);
-                    onGo(item.index);
-                  }}
-                  onFocus={() => setFocusedIndex(item.index)}
-                  onKeyDown={handleChipKeyDown(item.index)}
-                  onContextMenu={chipActions ? handleContextMenu(item.index) : undefined}
-                  onDragStart={handleDragStart(item.index)}
-                  onDragOver={handleChipDragOver(item.index)}
-                  onDrop={handleDrop(item.index)}
-                  onDragEnd={handleDragEnd}
+        <nav
+          ref={scrollRef}
+          className="deck-filmstrip__scroll"
+          aria-label={ariaLabel}
+          data-testid="deck-filmstrip-scroll"
+          onDragOver={handleNavDragOver}
+          onDrop={handleNavDrop}
+        >
+          <ol className="deck-filmstrip__list">
+            {items.map((item) => {
+              const slideNumber = item.index + 1;
+              const title = slideLabelTemplate.replace("{{n}}", String(slideNumber));
+              const heading = item.label.replace(/\s+/g, " ").trim();
+              const hasHeading = Boolean(heading) && heading !== String(slideNumber);
+              const showHeading = !compactOnly && hasHeading;
+              const current = item.index === currentSlideIndex;
+              const showGapBefore =
+                draggingIndex != null && dropSlot === item.index;
+              return (
+                <li
+                  key={item.index}
+                  className={showGapBefore ? "is-drop-before" : undefined}
+                  data-drop-before={showGapBefore ? "true" : undefined}
                 >
-                  <span className="deck-filmstrip__num" aria-hidden="true">{slideNumber}</span>
-                  {showHeading ? (
-                    <span className="deck-filmstrip__title" aria-hidden="true">{heading}</span>
-                  ) : null}
-                </button>
-              </li>
-            );
-          })}
-          {draggingIndex != null && dropSlot === items.length ? (
-            <li className="is-drop-before is-drop-tail" data-drop-before="true" aria-hidden="true" />
-          ) : null}
-        </ol>
-      </nav>
+                  <button
+                    type="button"
+                    ref={(node) => {
+                      chipRefs.current[item.index] = node;
+                    }}
+                    className={[
+                      "deck-filmstrip__chip",
+                      showHeading ? "has-title" : "",
+                      current ? "is-current" : "",
+                      draggingIndex === item.index ? "is-dragging" : "",
+                    ].filter(Boolean).join(" ")}
+                    draggable={!disabled}
+                    disabled={disabled}
+                    tabIndex={item.index === focusedIndex ? 0 : -1}
+                    aria-current={current ? "true" : undefined}
+                    aria-label={hasHeading ? `${title} · ${heading}` : title}
+                    title={hasHeading ? `${title} · ${heading}` : title}
+                    data-testid={current ? "deck-filmstrip-current" : undefined}
+                    onClick={() => {
+                      if (disabled) return;
+                      if (suppressClickRef.current) {
+                        suppressClickRef.current = false;
+                        return;
+                      }
+                      setFocusedIndex(item.index);
+                      onGo(item.index);
+                    }}
+                    onFocus={(event) => {
+                      setFocusedIndex(item.index);
+                      updateTitleTip(event.currentTarget, heading, showHeading);
+                    }}
+                    onBlur={() => setTitleTip(null)}
+                    onMouseEnter={(event) => updateTitleTip(event.currentTarget, heading, showHeading)}
+                    onMouseLeave={() => setTitleTip(null)}
+                    onKeyDown={handleChipKeyDown(item.index)}
+                    onContextMenu={chipActions ? handleContextMenu(item.index) : undefined}
+                    onDragStart={handleDragStart(item.index)}
+                    onDragOver={handleChipDragOver(item.index)}
+                    onDrop={handleDrop(item.index)}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <span className="deck-filmstrip__num" aria-hidden="true">{slideNumber}</span>
+                    {showHeading ? (
+                      <span className="deck-filmstrip__title" aria-hidden="true">{heading}</span>
+                    ) : null}
+                  </button>
+                </li>
+              );
+            })}
+            {draggingIndex != null && dropSlot === items.length ? (
+              <li className="is-drop-before is-drop-tail" data-drop-before="true" aria-hidden="true" />
+            ) : null}
+          </ol>
+        </nav>
+        {compactToggle ? (
+          <button
+            type="button"
+            className="deck-filmstrip__compact-toggle od-tooltip"
+            aria-pressed={compactOnly}
+            aria-label={compactToggleLabel}
+            data-tooltip={compactToggleLabel}
+            data-tooltip-placement="bottom"
+            disabled={disabled}
+            data-testid="deck-filmstrip-compact-toggle"
+            onClick={toggleCompactOnly}
+          >
+            {compactOnly ? "#" : "Aa"}
+          </button>
+        ) : null}
+      </div>
+      {titleTip ? (
+        <div
+          className="deck-filmstrip__title-tip"
+          role="tooltip"
+          data-testid="deck-filmstrip-title-tip"
+          style={{ left: titleTip.x, top: titleTip.y }}
+        >
+          {titleTip.text}
+        </div>
+      ) : null}
       {showContextMenu ? (
         <div
           className="deck-filmstrip__menu"

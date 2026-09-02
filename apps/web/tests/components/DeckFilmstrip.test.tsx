@@ -4,11 +4,37 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DeckFilmstrip,
   filmstripSlotToReorderIndex,
+  isFilmstripTitleTruncated,
+  readFilmstripCompactPreference,
   scrollFilmstripChipIntoView,
+  writeFilmstripCompactPreference,
 } from "../../src/components/DeckFilmstrip";
 
 afterEach(() => {
   cleanup();
+});
+
+describe("filmstrip compact preference (0901-N01-C4)", () => {
+  afterEach(() => {
+    sessionStorage.removeItem("teamver:deck-filmstrip:compact");
+  });
+
+  it("reads and writes sessionStorage compact preference", () => {
+    expect(readFilmstripCompactPreference()).toBe(false);
+    writeFilmstripCompactPreference(true);
+    expect(readFilmstripCompactPreference()).toBe(true);
+  });
+
+  it("detects truncated title elements", () => {
+    const truncated = document.createElement("span");
+    Object.defineProperty(truncated, "clientWidth", { configurable: true, value: 40 });
+    Object.defineProperty(truncated, "scrollWidth", { configurable: true, value: 80 });
+    expect(isFilmstripTitleTruncated(truncated)).toBe(true);
+    const full = document.createElement("span");
+    Object.defineProperty(full, "clientWidth", { configurable: true, value: 40 });
+    Object.defineProperty(full, "scrollWidth", { configurable: true, value: 40 });
+    expect(isFilmstripTitleTruncated(full)).toBe(false);
+  });
 });
 
 describe("filmstripSlotToReorderIndex (0901-N01-C2)", () => {
@@ -193,7 +219,7 @@ describe("DeckFilmstrip (0901-N01-C)", () => {
         onReorder={vi.fn()}
       />,
     );
-    const nav = screen.getByTestId("deck-filmstrip");
+    const nav = screen.getByTestId("deck-filmstrip-scroll");
     Object.defineProperty(nav, "getBoundingClientRect", {
       configurable: true,
       value: () => ({ left: 0, right: 80, top: 0, bottom: 40, width: 80, height: 40, x: 0, y: 0, toJSON: () => ({}) }),
@@ -424,5 +450,63 @@ describe("DeckFilmstrip (0901-N01-C3)", () => {
     fireEvent.contextMenu(chips[2]!);
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete page" }));
     expect(chipActions.onDelete).toHaveBeenCalledWith(2);
+  });
+});
+
+describe("DeckFilmstrip (0901-N01-C4)", () => {
+  const items = [
+    { index: 0, label: "Cover" },
+    { index: 1, label: "A very long agenda title that will truncate in the chip" },
+  ];
+  const compactToggle = {
+    showTitlesLabel: "Show titles",
+    numbersOnlyLabel: "Numbers only",
+  };
+
+  afterEach(() => {
+    sessionStorage.removeItem("teamver:deck-filmstrip:compact");
+  });
+
+  it("toggles compact mode and hides chip titles", () => {
+    render(
+      <DeckFilmstrip
+        items={items}
+        currentSlideIndex={0}
+        ariaLabel="Slides"
+        slideLabelTemplate="Slide {{n}}"
+        onGo={vi.fn()}
+        onReorder={vi.fn()}
+        compactToggle={compactToggle}
+      />,
+    );
+    expect(screen.getByTestId("deck-filmstrip").classList.contains("is-compact")).toBe(false);
+    expect(screen.getAllByRole("button")[1]!.querySelector(".deck-filmstrip__title")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("deck-filmstrip-compact-toggle"));
+    expect(screen.getByTestId("deck-filmstrip").classList.contains("is-compact")).toBe(true);
+    expect(screen.getAllByRole("button")[1]!.querySelector(".deck-filmstrip__title")).toBeNull();
+    expect(sessionStorage.getItem("teamver:deck-filmstrip:compact")).toBe("1");
+  });
+
+  it("shows a tooltip when a truncated title is hovered", () => {
+    render(
+      <DeckFilmstrip
+        items={items}
+        currentSlideIndex={1}
+        ariaLabel="Slides"
+        slideLabelTemplate="Slide {{n}}"
+        onGo={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    );
+    const chip = screen.getAllByRole("button")[1]!;
+    const titleEl = chip.querySelector(".deck-filmstrip__title") as HTMLElement;
+    Object.defineProperty(titleEl, "clientWidth", { configurable: true, value: 40 });
+    Object.defineProperty(titleEl, "scrollWidth", { configurable: true, value: 180 });
+    fireEvent.mouseEnter(chip);
+    const tip = screen.getByTestId("deck-filmstrip-title-tip");
+    expect(tip.textContent).toContain("very long agenda");
+    fireEvent.mouseLeave(chip);
+    expect(screen.queryByTestId("deck-filmstrip-title-tip")).toBeNull();
   });
 });

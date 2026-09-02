@@ -2152,6 +2152,8 @@ export const en: Dict = {
   'fileViewer.duplicateSlide': 'Duplicate page',
   'fileViewer.deckFilmstripAria': 'Page list',
   'fileViewer.deckFilmstripSlide': 'Page {{n}}',
+  'fileViewer.deckFilmstripShowTitles': 'Show titles',
+  'fileViewer.deckFilmstripNumbersOnly': 'Numbers only',
   'fileViewer.reorderSlide': 'Reorder page',
   'fileViewer.present': 'Present',
   'fileViewer.presentInTab': 'In this tab',

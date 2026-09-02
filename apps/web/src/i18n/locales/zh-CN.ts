@@ -2152,6 +2152,8 @@ export const zhCN: Dict = {
   'fileViewer.duplicateSlide': 'Duplicate slide',
   'fileViewer.deckFilmstripAria': 'Deck pages',
   'fileViewer.deckFilmstripSlide': 'Slide {{n}}',
+  'fileViewer.deckFilmstripShowTitles': 'Show titles',
+  'fileViewer.deckFilmstripNumbersOnly': 'Numbers only',
   'fileViewer.reorderSlide': 'Reorder slide',
   'fileViewer.present': '演示',
   'fileViewer.presentInTab': '在当前标签页',

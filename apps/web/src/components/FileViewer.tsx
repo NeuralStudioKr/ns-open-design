@@ -17704,6 +17704,10 @@ function HtmlViewer({
               onDelete: (index) => requestDeleteSlideAt(index),
               onDuplicate: (index) => void handleDuplicateSlideAt(index),
             }}
+            compactToggle={{
+              showTitlesLabel: t('fileViewer.deckFilmstripShowTitles'),
+              numbersOnlyLabel: t('fileViewer.deckFilmstripNumbersOnly'),
+            }}
           />
         );
       })()}

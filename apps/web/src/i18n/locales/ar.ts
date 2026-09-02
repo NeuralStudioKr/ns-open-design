@@ -2147,6 +2147,8 @@ export const ar: Dict = {
   'fileViewer.duplicateSlide': 'Duplicate slide',
   'fileViewer.deckFilmstripAria': 'Deck pages',
   'fileViewer.deckFilmstripSlide': 'Slide {{n}}',
+  'fileViewer.deckFilmstripShowTitles': 'Show titles',
+  'fileViewer.deckFilmstripNumbersOnly': 'Numbers only',
   'fileViewer.reorderSlide': 'Reorder slide',
   'fileViewer.present': 'تقديم',
   'fileViewer.presentInTab': 'في علامة التبويب هذه',

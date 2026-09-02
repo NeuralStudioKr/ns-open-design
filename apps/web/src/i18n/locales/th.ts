@@ -2147,6 +2147,8 @@ export const th: Dict = {
   'fileViewer.duplicateSlide': 'Duplicate slide',
   'fileViewer.deckFilmstripAria': 'Deck pages',
   'fileViewer.deckFilmstripSlide': 'Slide {{n}}',
+  'fileViewer.deckFilmstripShowTitles': 'Show titles',
+  'fileViewer.deckFilmstripNumbersOnly': 'Numbers only',
   'fileViewer.reorderSlide': 'Reorder slide',
   'fileViewer.present': 'เปิดจอโชว์',
   'fileViewer.presentInTab': 'ค้างในหน้าจอแท็บ',

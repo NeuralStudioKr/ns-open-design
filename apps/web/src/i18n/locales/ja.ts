@@ -2147,6 +2147,8 @@ export const ja: Dict = {
   'fileViewer.duplicateSlide': 'スライドを複製',
   'fileViewer.deckFilmstripAria': 'スライド一覧',
   'fileViewer.deckFilmstripSlide': 'スライド {{n}}',
+  'fileViewer.deckFilmstripShowTitles': 'Show titles',
+  'fileViewer.deckFilmstripNumbersOnly': 'Numbers only',
   'fileViewer.reorderSlide': 'スライドを並べ替え',
   'fileViewer.present': 'プレゼン',
   'fileViewer.presentInTab': 'このタブで',

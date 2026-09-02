@@ -2846,6 +2846,8 @@ export interface Dict {
   'fileViewer.duplicateSlide': string;
   'fileViewer.deckFilmstripAria': string;
   'fileViewer.deckFilmstripSlide': string;
+  'fileViewer.deckFilmstripShowTitles': string;
+  'fileViewer.deckFilmstripNumbersOnly': string;
   'fileViewer.reorderSlide': string;
   'fileViewer.present': string;
   'fileViewer.presentInTab': string;

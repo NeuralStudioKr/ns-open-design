@@ -2152,6 +2152,8 @@ export const ko: Dict = {
   'fileViewer.duplicateSlide': '페이지 복제',
   'fileViewer.deckFilmstripAria': '페이지 목록',
   'fileViewer.deckFilmstripSlide': '{{n}}페이지',
+  'fileViewer.deckFilmstripShowTitles': '제목 표시',
+  'fileViewer.deckFilmstripNumbersOnly': '번호만',
   'fileViewer.reorderSlide': '페이지 순서 변경',
   'fileViewer.present': '프레젠테이션',
   'fileViewer.presentInTab': '현재 탭에서',
