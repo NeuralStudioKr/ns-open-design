@@ -4077,6 +4077,161 @@ export function scrubTemplatePlaceholderSlots(html: string): string {
   );
 }
 
+/**
+ * 루프378 — Unwrap trivial single-child `display:flex`/`display:grid`
+ * `<div>` wrappers.
+ *
+ * MiniMax edit-turn output for slot-fill decks often wraps a real grid inside
+ * a flex `<div>` that has only `display:flex` + `gap` + `align-items` +
+ * `margin-bottom` and holds exactly one grid child. The wrapper adds bottom
+ * spacing but no meaningful layout — its removal restores the intended card
+ * row position.
+ *
+ * Safe to run because the guard rejects any wrapper that carries width /
+ * height / padding / border / background / box-shadow / grid-template /
+ * flex-basis, has more than one direct block child, or contains text between
+ * its child and its close. Authored templates that use flex meaningfully
+ * (padding, borders, multiple children) are untouched.
+ */
+export function unwrapTrivialSingleChildLayoutWrappers(html: string): string {
+  const source = String(html ?? '');
+  if (!source) return source;
+  let out = source;
+  for (let pass = 0; pass < 4; pass += 1) {
+    const next = unwrapTrivialSingleChildLayoutWrappersOnce(out);
+    if (next === out) return out;
+    out = next;
+  }
+  return out;
+}
+
+const TRIVIAL_LAYOUT_REJECT_PROPS = new Set<string>([
+  'width', 'min-width', 'max-width', 'inline-size', 'min-inline-size', 'max-inline-size',
+  'height', 'min-height', 'max-height', 'block-size', 'min-block-size', 'max-block-size',
+  'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+  'padding-inline', 'padding-inline-start', 'padding-inline-end',
+  'padding-block', 'padding-block-start', 'padding-block-end',
+  'border', 'border-top', 'border-right', 'border-bottom', 'border-left',
+  'border-inline', 'border-inline-start', 'border-inline-end',
+  'border-block', 'border-block-start', 'border-block-end',
+  'border-width', 'border-style', 'border-color', 'border-image',
+  'background', 'background-color', 'background-image', 'background-size',
+  'background-position', 'background-repeat', 'background-clip', 'background-origin',
+  'box-shadow', 'outline', 'outline-width', 'outline-style', 'outline-color',
+  'filter', 'backdrop-filter', 'transform', 'clip-path', 'mask', 'mask-image',
+  'position', 'inset', 'top', 'right', 'bottom', 'left', 'z-index',
+  'grid-template', 'grid-template-columns', 'grid-template-rows', 'grid-template-areas',
+  'grid-auto-columns', 'grid-auto-rows', 'grid-auto-flow',
+  'grid-column', 'grid-row', 'grid-area',
+  'flex', 'flex-basis', 'flex-grow', 'flex-shrink', 'flex-flow',
+]);
+
+function parseStyleDeclarations(style: string): { property: string; value: string }[] {
+  return String(style ?? '')
+    .split(';')
+    .map((raw) => raw.trim())
+    .filter(Boolean)
+    .map((decl) => {
+      const idx = decl.indexOf(':');
+      if (idx < 0) return { property: '', value: '' };
+      return {
+        property: decl.slice(0, idx).trim().toLowerCase(),
+        value: decl.slice(idx + 1).trim(),
+      };
+    })
+    .filter((decl) => decl.property);
+}
+
+function trivialLayoutWrapperStyle(style: string): boolean {
+  const decls = parseStyleDeclarations(style);
+  if (decls.length === 0) return false;
+  const hasLayout = decls.some(
+    (d) => d.property === 'display' && /^(?:flex|grid|inline-flex|inline-grid)$/i.test(d.value),
+  );
+  if (!hasLayout) return false;
+  for (const decl of decls) {
+    if (TRIVIAL_LAYOUT_REJECT_PROPS.has(decl.property)) return false;
+  }
+  return true;
+}
+
+function inlineTextBetween(html: string, from: number, to: number): boolean {
+  if (to <= from) return false;
+  const slice = html.slice(from, to)
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;|&#160;|&#xa0;/gi, ' ');
+  return /\S/.test(slice);
+}
+
+function closeTagLength(html: string, closeStart: number): number {
+  const match = /^<\/[a-zA-Z][\w-]*\s*>/.exec(html.slice(closeStart));
+  return match ? match[0].length : '</div>'.length;
+}
+
+function unwrapTrivialSingleChildLayoutWrappersOnce(html: string): string {
+  const openRe = /<div\b([^>]*)>/gi;
+  const edits: Array<{ openStart: number; openEnd: number; closeStart: number; closeEnd: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(html)) !== null) {
+    const attrs = match[1] ?? '';
+    const style = /\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(attrs);
+    const styleValue = (style?.[1] ?? style?.[2] ?? '').trim();
+    if (!styleValue) continue;
+    if (!trivialLayoutWrapperStyle(styleValue)) continue;
+    // Reject wrappers with `class` — a class may carry non-inline layout.
+    if (/\bclass\s*=/i.test(attrs)) continue;
+    const openStart = match.index;
+    const openEnd = openStart + match[0]!.length;
+    const closeInfo = findSameTagClose(html, 'div', openEnd);
+    if (!closeInfo) continue;
+    const closeStart = closeInfo.closeStart;
+    const innerStart = openEnd;
+    const innerEnd = closeStart;
+    const children = listDirectBlockChildOpens(html, innerStart, innerEnd);
+    if (children.length !== 1) continue;
+    const only = children[0]!;
+    // Text between wrapper open and only-child open, or between only-child
+    // close and wrapper close, means the wrapper is not trivially single-child.
+    if (inlineTextBetween(html, innerStart, only.absStart)) continue;
+    const onlyTag = tagNameFromOpen(only.open);
+    if (!onlyTag) continue;
+    const selfClose = /\/\s*>$/.test(only.open);
+    let onlyEnd: number;
+    if (selfClose) {
+      onlyEnd = only.absEnd;
+    } else {
+      const onlyCloseInfo = findSameTagClose(html, onlyTag, only.absEnd);
+      if (!onlyCloseInfo) continue;
+      const closeMatch = new RegExp(`^</${onlyTag}\\s*>`, 'i').exec(html.slice(onlyCloseInfo.closeStart));
+      onlyEnd = closeMatch ? onlyCloseInfo.closeStart + closeMatch[0].length : onlyCloseInfo.closeStart;
+    }
+    if (inlineTextBetween(html, onlyEnd, innerEnd)) continue;
+    const closeEnd = closeStart + closeTagLength(html, closeStart);
+    edits.push({ openStart, openEnd, closeStart, closeEnd });
+  }
+  if (edits.length === 0) return html;
+  // Keep only outermost, non-overlapping edits in this pass — nested edits
+  // corrupt each other's offsets after the first splice. The multi-pass
+  // outer loop picks up the newly-outermost wrappers on the next call.
+  const outer: typeof edits = [];
+  let cursor = -1;
+  const sorted = [...edits].sort((a, b) => a.openStart - b.openStart);
+  for (const edit of sorted) {
+    if (edit.openStart < cursor) continue;
+    outer.push(edit);
+    cursor = edit.closeEnd;
+  }
+  // Rewrite from the tail so earlier offsets stay valid.
+  let out = html;
+  for (let i = outer.length - 1; i >= 0; i -= 1) {
+    const edit = outer[i]!;
+    out = out.slice(0, edit.closeStart) + out.slice(edit.closeEnd);
+    out = out.slice(0, edit.openStart) + out.slice(edit.openEnd);
+  }
+  return out;
+}
+
 export function stripEmptyLeftoverPresenterChrome(html: string): string {
   const source = String(html ?? '');
   if (!source || /<script\b/i.test(source)) return source;
@@ -4160,6 +4315,13 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // 루프354 — 본문 있는 행에서 heading-only 카드만 제거.
   out = dropTitleOnlyCardPeersInAllocatedRows(out, brief);
   out = unnestHeadingBlockChildren(out);
+  // 루프378 — MiniMax edit turns wrap grids inside a single-child
+  // `display:flex` (or `display:grid`) `<div>` that has no width/height/
+  // padding/border/background — the wrapper adds margin-bottom but no
+  // meaningful layout. Unwrap so the enclosed grid renders at the correct
+  // vertical position. Only touches wrappers with exactly one block-level
+  // child so authored decks with real flex layouts are never modified.
+  out = unwrapTrivialSingleChildLayoutWrappers(out);
   out = polishTruncatedInstructionTitles(out);
   // 루프197 — empty leftover card shells keep 3-track rows alive so
   // 190/195 cannot shrink and 191 grows the blank column. Drop first.

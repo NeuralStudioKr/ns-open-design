@@ -21,6 +21,7 @@ import {
   relaxUniformPeerCardFixedMainSize,
   unwrapRedundantNestedPeerCards,
   unnestHeadingBlockChildren,
+  unwrapTrivialSingleChildLayoutWrappers,
 } from '../src/html/heal-ai-generated-deck.js';
 
 describe('heal-ai-generated-deck (0826-N01 F7)', () => {
@@ -5044,6 +5045,111 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       const out = healAiGeneratedDeckMarkup(html, brief);
       expect(out).toContain('삼각함수');
       expect(out).not.toContain(brief);
+    });
+  });
+
+  describe('루프378 unwrapTrivialSingleChildLayoutWrappers', () => {
+    it('unwraps a flex <div> that only holds a single grid child', () => {
+      const html = [
+        '<div style="display:flex;align-items:center;gap:16px;margin-bottom:24px">',
+        '<div style="display:grid;grid-template-columns:repeat(4, minmax(0,1fr));gap:24px">',
+        '<div class="card">A</div><div class="card">B</div>',
+        '</div>',
+        '</div>',
+      ].join('');
+      const out = unwrapTrivialSingleChildLayoutWrappers(html);
+      expect(out).toBe([
+        '<div style="display:grid;grid-template-columns:repeat(4, minmax(0,1fr));gap:24px">',
+        '<div class="card">A</div><div class="card">B</div>',
+        '</div>',
+      ].join(''));
+    });
+
+    it('keeps a flex wrapper that also carries padding / background', () => {
+      const html = [
+        '<div style="display:flex;padding:24px;background:#fff">',
+        '<div><h3>Only</h3><p>Body</p></div>',
+        '</div>',
+      ].join('');
+      // Outer flex wrapper has padding + background — visually meaningful,
+      // must survive. Inner div has no `style` (nothing to unwrap).
+      expect(unwrapTrivialSingleChildLayoutWrappers(html)).toBe(html);
+    });
+
+    it('keeps a flex wrapper with more than one direct child', () => {
+      const html = [
+        '<div style="display:flex;gap:12px">',
+        '<div class="a">A</div>',
+        '<div class="b">B</div>',
+        '</div>',
+      ].join('');
+      expect(unwrapTrivialSingleChildLayoutWrappers(html)).toBe(html);
+    });
+
+    it('keeps a wrapper that has inline text between the wrapper open and its only child', () => {
+      const html = '<div style="display:flex;gap:12px">Label <div class="card">A</div></div>';
+      expect(unwrapTrivialSingleChildLayoutWrappers(html)).toBe(html);
+    });
+
+    it('keeps a flex wrapper that declares its own grid-template-columns', () => {
+      const html = [
+        '<div style="display:grid;grid-template-columns:1fr 2fr;gap:24px">',
+        '<div><h3>Only</h3></div>',
+        '</div>',
+      ].join('');
+      expect(unwrapTrivialSingleChildLayoutWrappers(html)).toBe(html);
+    });
+
+    it('keeps a wrapper that declares a class (author layout may live in CSS)', () => {
+      const html = [
+        '<div class="wrap" style="display:flex;gap:12px">',
+        '<div class="grid"><div>A</div></div>',
+        '</div>',
+      ].join('');
+      expect(unwrapTrivialSingleChildLayoutWrappers(html)).toBe(html);
+    });
+
+    it('is idempotent — repeated passes stop changing output', () => {
+      // Three nested trivial wrappers each hold exactly one child. Repeated
+      // passes strip them all until the classed leaf (`.card`) remains — a
+      // classed element is never treated as an unwrap target.
+      const html = [
+        '<div style="display:flex;gap:8px">',
+        '<div style="display:flex;gap:8px">',
+        '<div style="display:grid">',
+        '<div class="card">Only</div>',
+        '</div>',
+        '</div>',
+        '</div>',
+      ].join('');
+      const once = unwrapTrivialSingleChildLayoutWrappers(html);
+      const twice = unwrapTrivialSingleChildLayoutWrappers(once);
+      expect(twice).toBe(once);
+      expect(once).toBe('<div class="card">Only</div>');
+    });
+
+    it('runs inside healAiGeneratedDeckMarkup for slide bodies', () => {
+      const html = [
+        '<section class="slide" data-screen-label="03 Problem" style="background:#FFDC8B">',
+        '<div data-od-slide-flow style="padding:56px 72px">',
+        '<div style="display:flex;align-items:center;gap:16px;margin-bottom:24px">',
+        '<div style="display:grid;grid-template-columns:repeat(4, minmax(0,1fr));gap:24px;margin-bottom:36px">',
+        '<div class="card"><h3>Slack</h3><p>대화</p></div>',
+        '<div class="card"><h3>Notion</h3><p>문서</p></div>',
+        '<div class="card"><h3>Drive</h3><p>파일</p></div>',
+        '<div class="card"><h3>ChatGPT</h3><p>AI</p></div>',
+        '</div>',
+        '</div>',
+        '<h2>팀의 일이 너무 많이 흩어져 있습니다</h2>',
+        '</div>',
+        '</section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, 'teamver 서비스 소개');
+      // Extra flex wrapper is gone; grid still holds its 4 cards.
+      expect(out).not.toMatch(/display:flex;align-items:center;gap:16px;margin-bottom:24px/);
+      expect(out).toContain('Slack');
+      expect(out).toContain('ChatGPT');
+      expect(out).toContain('팀의 일이 너무 많이 흩어져 있습니다');
     });
   });
 });
