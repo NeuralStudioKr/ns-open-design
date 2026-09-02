@@ -74,6 +74,7 @@ import type { DesignToolboxActionId } from "../runtime/design-toolbox";
 import { copyToClipboard } from "../lib/copy-to-clipboard";
 import { assistantEventsForDisplay, assistantMessageTextBody } from "../runtime/chat-events";
 import { useT } from "../i18n";
+import { systemReminderLooksLikeTrustedPolicyEcho } from "../runtime/system-reminder-echo";
 import { embedUiLabel } from "../teamver/embedUiLabels";
 import { deriveFileOps, type FileOpEntry } from "../runtime/file-ops";
 import {
@@ -2385,6 +2386,10 @@ function ProseBlock({
     <div className="prose-block" data-stream-cursor={showStreamCursor && !live ? "true" : undefined}>
       {visibleRenderable.map((seg) => {
         if (seg.kind === "reminder") {
+          const trustedEcho =
+            (slideOnlyMvp || teamverEmbedEnabled)
+            && systemReminderLooksLikeTrustedPolicyEcho(seg.text);
+          if (trustedEcho) return null;
           return <SystemReminderBlock key={seg.key} text={seg.text} variant="injection" />;
         }
         if (seg.kind === "text") {

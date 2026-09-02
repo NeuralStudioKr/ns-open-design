@@ -22,6 +22,7 @@
 | **루프360** repair 판단 messagesRef 레이스 · sendNow synchronous reject 회복 | ☑ |
 | **루프362** low-substance persist skip → LOOK seed 복구 (succeeded + warning) | ☑ |
 | **루프364** soft-invalid JSON도 queue-repair 없이 seed-fallback · pending+seed 복구 | ☑ |
+| **루프365** seed-fallback persist 생략 · skipped-incomplete 전 reason LOOK seed 복구 · repair dead path 제거 · policy echo UI | ☑ |
 | MiniMax 실키 E2E | ☐ 키 없음 (`template-clone-minimax-live.e2e` skip 가드) |
 
 ## 검증

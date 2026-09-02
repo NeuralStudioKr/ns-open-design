@@ -180,8 +180,6 @@ import {
   looksLikeScrubbedCatalogExampleShell,
   sanitizePersistedDeckHostLeaks,
   decideTemplateCloneSlotFillTerminal,
-  isCloneContentFillLookSeedRecoverablePersistReason,
-  TEMPLATE_CLONE_SLOT_FILL_JSON_REPAIR_REASON,
   type AudioVoiceOption,
   type MemorySystemPromptResponse,
   type ResearchOptions,
@@ -218,14 +216,11 @@ import {
 import {
   TEMPLATE_CLONE_CONTENT_FILL_MARKER,
   TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
-  buildTemplateCloneSlotFillRepairPrompt,
   clearTemplateCloneContentFillQueue,
   ensureTemplateCloneContentFillContinuePrompt,
   extractTemplateCloneFillSlideCountHintFromPrompt,
   historyHasTemplateCloneContentFill,
-  historyHasTemplateCloneSlotFillRepair,
   isTemplateCloneContentFillPrompt,
-  isTemplateCloneSlotFillRepairPrompt,
   isTemplateCloneContentFillQueued,
   queueTemplateCloneContentFill,
   readQueuedAutoSendSeed,
@@ -3055,6 +3050,19 @@ export function findTemplateCloneFillSlideCountIncomplete(input: {
   return null;
 }
 
+/** 루프365 — Clone fill: open the LOOK seed already on disk from Clone. */
+export async function tryRecoverCloneContentFillLookSeed(input: {
+  readProjectHtml: (name: string) => Promise<string | null>;
+}): Promise<{ kind: 'skipped-duplicate'; fileName: string } | null> {
+  try {
+    const seedOnDisk = String(await input.readProjectHtml('deck.html') ?? '').trim();
+    if (!seedOnDisk) return null;
+    return { kind: 'skipped-duplicate', fileName: 'deck.html' };
+  } catch {
+    return null;
+  }
+}
+
 export function ProjectView({
   project,
   routeFileName,
@@ -3464,9 +3472,7 @@ export function ProjectView({
    * large cloned CSS/SVG shell, and must not block intentional slide-count caps.
    */
   const runTemplateCloneContentFillRef = useRef(false);
-  /** 0901-N02 B5 — suppress HTML hybrid this turn and fire one JSON repair send. */
-  const pendingSlotFillRepairRef = useRef(false);
-  /** 0901-N02 B5 — persist metadata when HTML hybrid was used after repair. */
+  /** 0901-N02 B5/D — persist metadata when slot-fill fell back to LOOK seed. */
   const runTemplateCloneSlotFillFallbackRef = useRef(false);
   /** Hidden / user slide-count append — persist merges new sections onto disk. */
   const runSlideCountTopUpRef = useRef(false);
@@ -9728,7 +9734,6 @@ export function ProjectView({
           && historyHasTemplateCloneContentFill(historyBase)
         );
       runTemplateCloneContentFillRef.current = isCloneContentFillTurn;
-      pendingSlotFillRepairRef.current = false;
       runTemplateCloneSlotFillFallbackRef.current = false;
       const fillSlideCountHint =
         extractTemplateCloneFillSlideCountHintFromPrompt(
@@ -10411,27 +10416,20 @@ export function ProjectView({
                 deckTitle: project.name || '슬라이드',
               },
             );
-            // 0901-N02 B4/B5/D — JSON → LOOK seed slot-fill; one repair; else seed-fallback (no model HTML).
+            // 0901-N02 B4/B5/D — JSON → LOOK seed slot-fill; else seed-fallback (no model HTML).
             if (runTemplateCloneContentFillRef.current) {
               try {
                 const seedHtml = await readProjectHtml('deck.html');
-                // 루프360 — messagesRef can lag behind the appended AC user
-                // msg on very fast streams; also check THIS turn's userMsg
-                // so the repair turn never re-fires queue-repair by mistake.
-                const repairAlreadyAttempted =
-                  historyHasTemplateCloneSlotFillRepair(messagesRef.current)
-                  || isTemplateCloneSlotFillRepairPrompt(userMsg.content);
                 const decision = decideTemplateCloneSlotFillTerminal({
                   rawFinalText,
                   seedHtml,
-                  repairAlreadyAttempted,
+                  repairAlreadyAttempted: false,
                   templateId:
                     (project.metadata as { selectedDeckTemplateId?: string } | undefined)
                       ?.selectedDeckTemplateId
                     ?? null,
                 });
                 if (decision.kind === 'slot-fill') {
-                  pendingSlotFillRepairRef.current = false;
                   runTemplateCloneSlotFillFallbackRef.current = false;
                   artifactToPersist = {
                     identifier: 'deck',
@@ -10439,44 +10437,41 @@ export function ProjectView({
                     title: decision.title,
                     html: decision.html,
                   };
-                } else if (decision.kind === 'queue-repair') {
-                  // Do not save HTML hybrid before the one-shot JSON repair.
-                  artifactToPersist = null;
-                  pendingSlotFillRepairRef.current = true;
-                  runTemplateCloneSlotFillFallbackRef.current = false;
                 } else if (decision.kind === 'seed-fallback') {
-                  pendingSlotFillRepairRef.current = false;
                   runTemplateCloneSlotFillFallbackRef.current = true;
-                  artifactToPersist = {
-                    identifier: 'deck',
-                    artifactType: 'deck',
-                    title: decision.title,
-                    html: decision.html,
-                  };
+                  // 루프365 — LOOK seed is already on disk; skip persist (substance
+                  // gate on template demo copy) and finalize on the seed directly.
+                  const recovered = await tryRecoverCloneContentFillLookSeed({ readProjectHtml });
+                  if (recovered) {
+                    cloneLookSeedFallbackRecovered = true;
+                    terminalPersistResult = recovered;
+                    terminalPersistResultKind = recovered.kind;
+                    terminalArtifactPersistFailed = false;
+                    artifactToPersist = null;
+                  } else {
+                    artifactToPersist = {
+                      identifier: 'deck',
+                      artifactType: 'deck',
+                      title: decision.title,
+                      html: decision.html,
+                    };
+                  }
                 } else {
                   // abort — no seed; never persist model HTML on the fill path.
                   artifactToPersist = null;
-                  pendingSlotFillRepairRef.current = false;
                   runTemplateCloneSlotFillFallbackRef.current = true;
                 }
               } catch (error) {
                 devLog.warn('[teamver] template clone slot-fill failed; keeping LOOK seed', error);
-                pendingSlotFillRepairRef.current = false;
                 runTemplateCloneSlotFillFallbackRef.current = true;
-                try {
-                  const seedHtml = await readProjectHtml('deck.html');
-                  const seed = String(seedHtml ?? '').trim();
-                  if (seed) {
-                    artifactToPersist = {
-                      identifier: 'deck',
-                      artifactType: 'deck',
-                      title: project.name || '슬라이드',
-                      html: seed,
-                    };
-                  } else {
-                    artifactToPersist = null;
-                  }
-                } catch {
+                const recovered = await tryRecoverCloneContentFillLookSeed({ readProjectHtml });
+                if (recovered) {
+                  cloneLookSeedFallbackRecovered = true;
+                  terminalPersistResult = recovered;
+                  terminalPersistResultKind = recovered.kind;
+                  terminalArtifactPersistFailed = false;
+                  artifactToPersist = null;
+                } else {
                   artifactToPersist = null;
                 }
               }
@@ -10606,66 +10601,24 @@ export function ProjectView({
               }
             }
 
-            // 루프362/364 — Clone content-fill LOOK seed recovery.
-            // If a Clone first-fill turn's persist was rejected as
-            // low-substance / unfilled-catalog / incomplete-shell OR the
-            // legacy slot-fill JSON-repair skip AND the LOOK seed already
-            // lives on disk, rewrite to `skipped-duplicate` so the run
-            // finalizes succeeded on the seed instead of leaking
-            // incomplete_output. Non-Clone runs keep the substance guard.
-            //
-            // 루프364: also recover when `pendingSlotFillRepairRef` is armed.
-            // The old path forced skipped-incomplete + AC repair, which left
-            // durable incomplete_output on the first turn even when AC later
-            // started. Prefer LOOK seed over repair churn.
+            // 루프362/364/365 — Clone content-fill LOOK seed recovery.
+            // Any skipped-incomplete on a Clone first-fill turn with a LOOK
+            // seed on disk → succeeded on the seed (warning notice). Non-Clone
+            // runs keep the substance gate as SSOT.
             if (
               !cloneLookSeedFallbackRecovered
               && runTemplateCloneContentFillRef.current
-              && (
-                pendingSlotFillRepairRef.current
-                || (
-                  terminalPersistResult?.kind === 'skipped-incomplete'
-                  && isCloneContentFillLookSeedRecoverablePersistReason(
-                    'reason' in terminalPersistResult
-                      ? terminalPersistResult.reason ?? null
-                      : null,
-                  )
-                )
-              )
+              && terminalPersistResult?.kind === 'skipped-incomplete'
             ) {
-              try {
-                const seedOnDisk = String(await readProjectHtml('deck.html') ?? '').trim();
-                if (seedOnDisk) {
-                  terminalPersistResult = {
-                    kind: 'skipped-duplicate',
-                    fileName: 'deck.html',
-                  };
-                  terminalPersistResultKind = 'skipped-duplicate';
-                  terminalArtifactPersistFailed = false;
-                  cloneLookSeedFallbackRecovered = true;
-                  runTemplateCloneSlotFillFallbackRef.current = true;
-                  pendingSlotFillRepairRef.current = false;
-                }
-              } catch (error) {
-                devLog.warn(
-                  '[teamver] clone content-fill LOOK seed recovery failed',
-                  error,
-                );
-              }
-            }
-
-            // Legacy B5 path — only when LOOK seed is missing (recovery above
-            // cleared pending when seed existed). Without a seed, force the
-            // incomplete path so the user can Retry.
-            if (pendingSlotFillRepairRef.current) {
-              terminalArtifactPersistFailed = true;
-              if (!terminalPersistResult) {
-                terminalPersistResult = {
-                  kind: 'skipped-incomplete',
-                  fileName: 'deck.html',
-                  reason: TEMPLATE_CLONE_SLOT_FILL_JSON_REPAIR_REASON,
-                };
-                terminalPersistResultKind = 'skipped-incomplete';
+              const recovered = await tryRecoverCloneContentFillLookSeed({ readProjectHtml });
+              if (recovered) {
+                terminalPersistResult = recovered;
+                terminalPersistResultKind = recovered.kind;
+                terminalArtifactPersistFailed = false;
+                cloneLookSeedFallbackRecovered = true;
+                runTemplateCloneSlotFillFallbackRef.current = true;
+              } else {
+                devLog.warn('[teamver] clone content-fill LOOK seed recovery failed; seed missing');
               }
             }
 
@@ -10802,9 +10755,7 @@ export function ProjectView({
               const terminalAutoContinueVisualFlags = visualAnnotationAutoContinueFlags(
                 terminalAutoContinueCommentAttachments,
               );
-              const canAutoContinue =
-                pendingSlotFillRepairRef.current
-                || shouldAutoContinueForIncompleteOutput({
+              const canAutoContinue = shouldAutoContinueForIncompleteOutput({
                 runIsVisible: runIsVisible(),
                 autoContinueCount,
                 scopedCommentAttachmentCount: terminalAutoContinueCommentAttachments.length,
@@ -10837,7 +10788,6 @@ export function ProjectView({
                 slideOnlyMvp
                 && !producedHtmlToOpen
                 && streamLooksLikeHtmlDeliverable
-                && !pendingSlotFillRepairRef.current
               ) {
                 const outlineMessages = retryTarget
                   ? [...historyBase, latestAssistantMsg]
@@ -10975,7 +10925,6 @@ export function ProjectView({
               // to think a manual retry is required. Cap-exhausted / infra
               // failures still surface the deliverable error.
               if (runIsVisible() && !canAutoContinue) setError(deliverableError);
-              const armedSlotFillJsonRepair = pendingSlotFillRepairRef.current;
               if (canAutoContinue) {
                 conversationAutoContinueCountRef.current.set(
                   runConversationId,
@@ -11022,48 +10971,6 @@ export function ProjectView({
                   autoContinueTimerRef.current = null;
                   pendingAutoContinueConversationIdRef.current = null;
                   setAutoContinuePending(false);
-                  const keepLookSeedAfterRepairAbort = () => {
-                    if (!armedSlotFillJsonRepair) return;
-                    // LOOK seed is already on disk from Clone — open it instead
-                    // of leaving incomplete_output when repair auto-continue
-                    // cannot fire (stream busy / navigated away). Persist the
-                    // succeeded state so a hard reload does not resurface the
-                    // AC-pending "incomplete_output" notice (루프359).
-                    void (async () => {
-                      try {
-                        const seedHtml = String(await readProjectHtml('deck.html') ?? '').trim();
-                        if (!seedHtml) return;
-                        if (runIsVisible()) {
-                          setError(null);
-                          maybeArmTeamverPublishMenuAfterRunSuccess(project.id, 'deck.html');
-                          requestOpenFile('deck.html');
-                        }
-                        updateAssistant((prev) => ({
-                          ...clearDurableDeliverableErrorsAfterRecovery(prev),
-                          producedFiles: mergeRecoveredArtifact(
-                            prev.producedFiles ?? produced,
-                            projectFileFromPersistedHtmlFallback(
-                              'deck.html',
-                              // LOOK seed already lives on disk from Clone;
-                              // treat as skipped-duplicate so the fallback
-                              // helper accepts it as a successful artifact.
-                              { kind: 'skipped-duplicate', fileName: 'deck.html' },
-                              Date.now(),
-                            ),
-                          ),
-                          runStatus: resolveSucceededRunStatus(prev.runStatus),
-                          resumable: true,
-                          endedAt: prev.endedAt ?? Date.now(),
-                        }));
-                        updateConversationLatestRun('succeeded', Date.now());
-                        void saveMessage(project.id, runConversationId, latestAssistantMsg, {
-                          telemetryFinalized: true,
-                        });
-                      } catch (error) {
-                        devLog.warn('[teamver] slot-fill repair abort; could not keep LOOK seed', error);
-                      }
-                    })();
-                  };
                   // Abort if the user switched projects/conversations — otherwise
                   // a late timer from project A would inject the recovery prompt
                   // into project B's brand-new chat.
@@ -11072,7 +10979,6 @@ export function ProjectView({
                       conversationAutoContinueCountRef.current,
                       scheduledConversationId,
                     );
-                    keepLookSeedAfterRepairAbort();
                     return;
                   }
                   const conversationStillActive =
@@ -11082,7 +10988,6 @@ export function ProjectView({
                       conversationAutoContinueCountRef.current,
                       scheduledConversationId,
                     );
-                    keepLookSeedAfterRepairAbort();
                     return;
                   }
                   // Drop phantom BYOK recovery "streaming" so React-state
@@ -11108,7 +11013,6 @@ export function ProjectView({
                       conversationAutoContinueCountRef.current,
                       scheduledConversationId,
                     );
-                    keepLookSeedAfterRepairAbort();
                     return;
                   }
                   const attempt =
@@ -11160,13 +11064,7 @@ export function ProjectView({
                   const autoContinueOriginIsFill = isTemplateCloneContentFillPrompt(
                     originatingUserMsg?.content,
                   );
-                  const wantSlotFillRepair = pendingSlotFillRepairRef.current;
-                  if (wantSlotFillRepair) {
-                    pendingSlotFillRepairRef.current = false;
-                  }
-                  const autoContinuePromptRaw = wantSlotFillRepair
-                    ? buildTemplateCloneSlotFillRepairPrompt()
-                    : resolveAutoContinuePrompt({
+                  const autoContinuePromptRaw = resolveAutoContinuePrompt({
                     commentAttachmentCount: autoContinueCommentAttachments.length,
                     visualMarkOnly: autoContinueVisualFlags.visualMarkOnly,
                     visualAnnotationEdit: autoContinueVisualFlags.visualAnnotationEdit,
@@ -11194,9 +11092,7 @@ export function ProjectView({
                       healTitle: project.name || '슬라이드',
                     },
                   });
-                  const autoContinuePrompt = wantSlotFillRepair
-                    ? autoContinuePromptRaw
-                    : autoContinueOriginIsFill
+                  const autoContinuePrompt = autoContinueOriginIsFill
                     ? ensureTemplateCloneContentFillContinuePrompt(autoContinuePromptRaw)
                     : autoContinuePromptRaw;
                   // Preserve comment scope + image/deck attachments on retry.
@@ -11209,7 +11105,7 @@ export function ProjectView({
                     autoContinueCommentAttachments,
                     {
                       entryFrom: AUTO_CONTINUE_ENTRY_FROM,
-                      ...((autoContinueOriginIsFill || wantSlotFillRepair)
+                      ...(autoContinueOriginIsFill
                         ? { templateCloneContentFill: true }
                         : {}),
                     },
@@ -11220,11 +11116,6 @@ export function ProjectView({
                         conversationAutoContinueCountRef.current,
                         scheduledConversationId,
                       );
-                      // 루프360 — sendNow can reject synchronously (activeConversationId
-                      // flip, retryTarget miss). Without this, the first-turn card
-                      // stays incomplete_output forever even though the LOOK seed
-                      // is already on disk.
-                      keepLookSeedAfterRepairAbort();
                     }
                   });
                 }, 600);
