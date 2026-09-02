@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
 import {
+  applyTemplateCloneSlotFill,
   buildTemplateClonedDeckHtml,
   classifyTemplateCloneShellRole,
   inferTemplateCloneContentRole,
@@ -1353,6 +1354,90 @@ describe('0901-N02-C3 additional template slot maps', () => {
     expect([...(next.matchAll(/\bpillar-card\b/gi))].length).toBe(2);
     expect(next).toContain('첫째');
     expect(next).not.toContain('>C<');
+  });
+
+  it('keeps capsule pillar-card inner structure (card-icon + h3 + p) (루프373)', () => {
+    const html = [
+      '<div class="cards-grid">',
+      '<div class="pillar-card">',
+      '<div class="card-icon pill-coral">I</div>',
+      '<h3>Clarity of Purpose</h3>',
+      '<p>Before any action is taken.</p>',
+      '</div>',
+      '<div class="pillar-card">',
+      '<div class="card-icon pill-lime">II</div>',
+      '<h3>Structured Flexibility</h3>',
+      '<p>Rigorous frameworks need not constrain creativity.</p>',
+      '</div>',
+      '<div class="pillar-card">',
+      '<div class="card-icon pill-sky">III</div>',
+      '<h3>Measured Impact</h3>',
+      '<p>Success is not a feeling but a quantity.</p>',
+      '</div>',
+      '</div>',
+    ].join('');
+    const map = resolveTemplateCloneSlotMap({ templateId: 'html-ppt-zhangzara-capsule' });
+    const next = fillAndTrimCardPeers(html, ['핵심 기능'], map);
+    expect(next).toMatch(
+      /<div class="pillar-card">\s*<div class="card-icon pill-coral">I<\/div>\s*<h3>핵심 기능<\/h3>\s*<p><\/p>\s*<\/div>/,
+    );
+    expect(next).not.toMatch(/<div class="pillar-card">\s*<\/div>/);
+    expect([...(next.matchAll(/\bpillar-card\b/gi))].length).toBe(1);
+  });
+
+  it('capsule LOOK seed fill preserves cards-grid DOM for brief-like outline (루프373)', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-capsule/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const briefLine = 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.';
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      [
+        { title: 'Teamver 소개', roleHint: 'cover' },
+        { title: '서비스 개요', body: 'AI 슬라이드 생성 플랫폼', roleHint: 'body' },
+        { title: '핵심 가치', body: '협업\n자동화\n품질', roleHint: 'cards' },
+      ],
+      { title: 'Teamver 소개', templateId: 'html-ppt-zhangzara-capsule', brief: briefLine },
+    );
+    expect(cloned).toBeTruthy();
+    const slide3 = listTemplateCloneSlideShells(cloned!).find((shell) => /\bslide-3\b/.test(shell.attrs));
+    expect(slide3).toBeTruthy();
+    expect(slide3!.body).toMatch(/<div class="pillar-card">[\s\S]*<div class="card-icon/);
+    expect(slide3!.body).not.toMatch(/<div class="pillar-card">\s*<\/div>/);
+    expect(slide3!.body).toContain('핵심 가치');
+  });
+
+  it('rewrites brief-parroting capsule titles and drops instruction body from cards (루프373)', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-capsule/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const briefLine = 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.';
+    const raw = JSON.stringify({
+      title: 'www.teamver.com 사이',
+      slides: [
+        { title: 'www.teamver.com 사이', roleHint: 'cover' },
+        { title: 'www.teamver.com 사이 2', roleHint: 'body', body: briefLine },
+        { title: 'www.teamver.com 사이 · 3', roleHint: 'cards', body: briefLine },
+      ],
+    });
+    const filled = applyTemplateCloneSlotFill(html, raw, {
+      templateId: 'html-ppt-zhangzara-capsule',
+      brief: briefLine,
+    });
+    expect(filled).toBeTruthy();
+    expect(filled!.html).not.toContain('만들어줘');
+    expect(filled!.html).toMatch(/teamver|Teamver|서비스|소개/i);
+    const slide3 = listTemplateCloneSlideShells(filled!.html).find((s) => /\bslide-3\b/.test(s.attrs));
+    expect(slide3?.body).toMatch(/<div class="pillar-card">[\s\S]*<div class="card-icon/);
+    expect(slide3?.body).toContain('핵심 기능');
   });
 });
 

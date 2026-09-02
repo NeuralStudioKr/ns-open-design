@@ -93,18 +93,18 @@ export function listTemplateCloneSlideShells(html: string): SlideShell[] {
   const opens = [...html.matchAll(/<div\b([^>]*)>/gi)]
     .filter((match) => attrsLookLikeDeckOrTemplateSlideHost(match[1] ?? ''));
   const out: SlideShell[] = [];
-  for (let i = 0; i < opens.length; i += 1) {
-    const open = opens[i]!;
-    const start = (open.index ?? 0) + open[0].length;
-    const end = i + 1 < opens.length ? (opens[i + 1]!.index ?? html.length) : html.length;
-    let body = html.slice(start, end);
-    const close = body.lastIndexOf('</div>');
-    if (close >= 0) body = body.slice(0, close);
+  for (const open of opens) {
+    const openStart = open.index ?? 0;
+    const openEnd = openStart + open[0].length;
+    const closeEnd = findMatchingClose(html, openEnd, 'div');
+    if (closeEnd < 0) continue;
+    const closeTag = /<\/div\s*>$/i.exec(html.slice(openStart, closeEnd))?.[0] ?? '</div>';
+    const bodyEnd = closeEnd - closeTag.length;
     out.push({
       tag: 'div',
       attrs: open[1] ?? '',
-      body,
-      full: `${open[0]}${body}</div>`,
+      body: html.slice(openEnd, bodyEnd),
+      full: html.slice(openStart, closeEnd),
     });
   }
   return out;
@@ -396,13 +396,14 @@ export function parseTemplateCloneDeckOutline(
 export function applyTemplateCloneSlotFill(
   seedHtml: string,
   rawOutline: unknown,
-  options: { templateId?: string | null } = {},
+  options: { templateId?: string | null; brief?: string | null } = {},
 ): { html: string; title: string } | null {
   const outline = parseTemplateCloneDeckOutline(rawOutline);
   if (!outline) return null;
   const html = buildTemplateClonedDeckHtml(seedHtml, outline.slides, {
     title: outline.title,
     ...(options.templateId != null ? { templateId: options.templateId } : {}),
+    ...(options.brief != null ? { brief: options.brief } : {}),
   });
   if (!html?.trim()) return null;
   return { html, title: outline.title };
@@ -546,9 +547,12 @@ export function decideTemplateCloneSlotFillTerminal(input: {
     void input.repairAlreadyAttempted;
     return { kind: 'abort' };
   }
-  const templateOpts = input.templateId !== undefined
-    ? { templateId: input.templateId }
-    : {};
+  const templateOpts = {
+    ...(input.templateId !== undefined ? { templateId: input.templateId } : {}),
+    ...(input.userBrief != null && String(input.userBrief).trim()
+      ? { brief: input.userBrief }
+      : {}),
+  };
   const filled = applyTemplateCloneSlotFill(seed, raw, templateOpts);
   if (filled) return { kind: 'slot-fill', html: filled.html, title: filled.title };
 
@@ -853,6 +857,7 @@ function replaceFirstTagText(html: string, tag: string, text: string): string {
 function isPlaceholderCloneBody(body?: string): boolean {
   const text = String(body ?? '').trim();
   if (!text) return true;
+  if (looksLikeInstructionCopy(text)) return true;
   return text.split(/\r?\n/).every((line) => /^(?:…|\.{3}|⋯|\s)*$/u.test(line.trim()));
 }
 
@@ -2705,7 +2710,7 @@ function replaceSlideBlocks(html: string, shells: SlideShell[], filledSlides: st
 export function buildTemplateClonedDeckHtml(
   exampleHtml: string,
   slides: TemplateCloneSlideContent[],
-  options: { title?: string; maxSlides?: number; templateId?: string | null } = {},
+  options: { title?: string; maxSlides?: number; templateId?: string | null; brief?: string | null } = {},
 ): string | null {
   const source = stripScriptsAndNav(String(exampleHtml ?? '').trim());
   if (!source) return null;
@@ -2743,7 +2748,10 @@ export function buildTemplateClonedDeckHtml(
 
   let workingSlides: TemplateCloneSlideContent[];
   if (cleanedSlides.length > 0) {
-    workingSlides = cleanedSlides.slice(0, 20);
+    workingSlides = rewriteInstructionParrotingSlideTitles(cleanedSlides.slice(0, 20), {
+      ...(options.brief !== undefined ? { brief: options.brief } : {}),
+      deckTitle: options.title ?? cleanedSlides[0]?.title ?? null,
+    });
     if (
       hint != null
       && hint > workingSlides.length
@@ -3210,6 +3218,55 @@ export function looksLikeInstructionCopy(text: string): boolean {
   if (/^(?:please\s+)?(?:make|create|build|write|generate)\s+/i.test(t)) return true;
   if (/피피티|PPT|슬라이드\s*덱/i.test(t) && /(?:만들어|작성|생성|설명)/i.test(t)) return true;
   return false;
+}
+
+/** Slide title that mirrors the start of a user brief / URL instruction fragment. */
+function slideTitleParrotsBriefFragment(title: string, brief?: string | null): boolean {
+  const t = String(title ?? '').trim();
+  const b = String(brief ?? '').trim();
+  if (!t || !b || t.length < 6) return false;
+  if (b.startsWith(t)) return true;
+  if (t.startsWith(b.slice(0, Math.min(b.length, t.length))) && looksLikeInstructionCopy(b)) return true;
+  if (/^www\.[a-z0-9.-]+\b/i.test(t) && looksLikeInstructionCopy(b)) return true;
+  return false;
+}
+
+function synthesizeCardsBodyFromBrief(brief: string, slideTitle: string): string | undefined {
+  const topic = deriveDeckCoverTitleFromBrief(brief, slideTitle);
+  if (!topic || topic === '슬라이드') return undefined;
+  return [topic, '핵심 기능', '차별점'].join('\n');
+}
+
+function rewriteInstructionParrotingSlideTitles(
+  slides: TemplateCloneSlideContent[],
+  options: { brief?: string | null; deckTitle?: string | null },
+): TemplateCloneSlideContent[] {
+  const brief = String(options.brief ?? '').trim();
+  const fallbackCover = brief
+    ? deriveDeckCoverTitleFromBrief(brief, options.deckTitle)
+    : sanitizeTemplateCloneDeckTitle(options.deckTitle ?? '') ?? '슬라이드';
+  return slides.map((slide, index) => {
+    const sanitized = sanitizeTemplateCloneDeckTitle(slide.title);
+    const parrotsBrief = slideTitleParrotsBriefFragment(slide.title, brief);
+    const instructionBody = slide.body != null && looksLikeInstructionCopy(slide.body);
+    const needsTitleRewrite = !sanitized || parrotsBrief;
+    const title = needsTitleRewrite
+      ? (index === 0 ? fallbackCover : `${fallbackCover} · ${index + 1}`)
+      : slide.title;
+    let body = slide.body;
+    if (instructionBody && brief) {
+      if (slide.roleHint === 'cards') {
+        body = synthesizeCardsBodyFromBrief(brief, title) ?? undefined;
+      } else {
+        body = undefined;
+      }
+    }
+    if (!needsTitleRewrite && body === slide.body) return slide;
+    const next: TemplateCloneSlideContent = { title };
+    if (body !== undefined && String(body).trim()) next.body = body;
+    if (slide.roleHint) next.roleHint = slide.roleHint;
+    return next;
+  });
 }
 
 /**
