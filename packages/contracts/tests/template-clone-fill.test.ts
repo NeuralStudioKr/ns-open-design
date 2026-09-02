@@ -38,6 +38,7 @@ import {
   fillAndTrimCardPeers,
   hoistCloneSlidesOutOfFlexTrack,
   resolveTemplateCloneSlotMap,
+  stripLeafEmptyListAndParagraphShells,
 } from '../src/template-clone-fill.js';
 import { hoistDeckHostStylesToHead } from '../src/html/deck-template-look-css.js';
 import { healAiGeneratedDeckMarkup } from '../src/html/heal-ai-generated-deck.js';
@@ -2172,5 +2173,69 @@ describe('hoistCloneSlidesOutOfFlexTrack', () => {
     expect([...(out.matchAll(/<div\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b/gi))].length).toBe(2);
     expect(out).toContain('One');
     expect(out).toContain('Two');
+  });
+});
+
+describe('루프376 stripLeafEmptyListAndParagraphShells', () => {
+  it('drops <ul> whose direct <li>s are all empty', () => {
+    const html = '<div class="split-content"><h2>Smarter &amp; Faster</h2><ul class="content-list"><li></li><li></li><li></li></ul></div>';
+    const out = stripLeafEmptyListAndParagraphShells(html);
+    expect(out).toBe('<div class="split-content"><h2>Smarter &amp; Faster</h2></div>');
+  });
+
+  it('drops <li> whose only text is whitespace or &nbsp;', () => {
+    const html = '<ul><li>  </li><li>&nbsp;</li><li><br></li></ul>';
+    const out = stripLeafEmptyListAndParagraphShells(html);
+    expect(out).toBe('');
+  });
+
+  it('keeps a list when any <li> has visible text', () => {
+    const html = '<ul><li></li><li>Kept</li><li></li></ul>';
+    expect(stripLeafEmptyListAndParagraphShells(html)).toBe(html);
+  });
+
+  it('keeps a <li> when it holds SVG / img / other visible media', () => {
+    const html = '<ul><li><img src="x.png" alt=""></li></ul>';
+    expect(stripLeafEmptyListAndParagraphShells(html)).toBe(html);
+  });
+
+  it('drops empty <p class="hero-subtitle"> shells', () => {
+    const html = '<div class="hero-frame"><h1>Cover</h1><p class="hero-subtitle"></p><p>Body</p></div>';
+    const out = stripLeafEmptyListAndParagraphShells(html);
+    expect(out).toBe('<div class="hero-frame"><h1>Cover</h1><p>Body</p></div>');
+  });
+
+  it('is idempotent — a second pass changes nothing', () => {
+    const html = '<div><ul><li></li></ul><p></p><p>Real</p></div>';
+    const once = stripLeafEmptyListAndParagraphShells(html);
+    const twice = stripLeafEmptyListAndParagraphShells(once);
+    expect(twice).toBe(once);
+    expect(once).toBe('<div><p>Real</p></div>');
+  });
+});
+
+describe('루프376 fillSlideShell drops title-only empty content-list shells end-to-end', () => {
+  it('slot-fill of a split-content template slide skips empty <li> shells', () => {
+    const seed = [
+      '<!doctype html><html><head><style>.motif{color:#FCDF6C}</style></head><body>',
+      '<section class="slide slide-title cover"><h1>Demo Cover</h1></section>',
+      '<section class="slide slide-6"><div class="split-content"><h2>Demo Title</h2><ul class="content-list"><li>Demo A</li><li>Demo B</li><li>Demo C</li><li>Demo D</li></ul></div></section>',
+      '</body></html>',
+    ].join('');
+    const filled = applyTemplateCloneSlotFill(seed, {
+      title: '분기 전략',
+      slides: [
+        { title: '표지', roleHint: 'cover' },
+        { title: 'Smarter & Faster', roleHint: 'body' },
+      ],
+    });
+    expect(filled).not.toBeNull();
+    // Empty content-list stays out of the second slide — no orphan pills.
+    expect(filled!.html).not.toMatch(/<li>\s*<\/li>/);
+    expect(filled!.html).not.toMatch(/<ul[^>]*>\s*<\/ul>/);
+    // Real body copy from the outline is respected (heading swap survives).
+    expect(filled!.html).toContain('Smarter &amp; Faster');
+    // Motif still visible.
+    expect(filled!.html).toContain('.motif{color:#FCDF6C}');
   });
 });

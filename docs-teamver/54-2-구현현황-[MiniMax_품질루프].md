@@ -56,6 +56,20 @@ repair auto-send 600ms 창에 사용자가 Retry/Continue를 눌러 repair send�
 
 검증: web ChatPane.resume-failed 루프370 · contracts redacted_thinking parse.
 
+### 루프376 — 빈 leaf `<ul>` / `<p>` shells 제거 (Clone slot-fill 후처리)
+
+**reproduce:** neubrutalism 템플릿으로 "www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘" 실행 후 결과의 2번 슬라이드에서 `Teamver — Smarter & Faster` 제목 아래 큰 빈 공간. HTML 검사 결과 `<ul class="content-list"><li></li><li></li><li></li><li></li></ul>` — 4개의 빈 `<li>`가 numbered pill로 렌더. 1번 슬라이드에도 `<p class="hero-subtitle"></p>` 빈 subtitle이 title과 deco 사이 공간을 벌려 놓았다.
+
+원인: `fillSlideShell`의 placeholder / title-only 경로는 “템플릿 English 데모 카피 (Learn to code / Master frameworks / ...) 유출 방지”를 위해 `<li>` 내용을 빈 문자열로 wipe한다. body가 없으면 결국 `<li></li>` shell만 남는데 CSS의 `list-num` counter가 여전히 pill을 그려서 사용자에게는 “빈 번호 카드” 처럼 보인다.
+
+수정:
+1. `stripLeafEmptyListAndParagraphShells` — leaf `<ul>` / `<ol>` (모든 `<li>`가 whitespace/&nbsp;/br만) · 빈 `<p>` shell을 통째로 제거. 방문 요소 안에 `<img>` / `<svg>` / `<video>` / `<canvas>` / `<iframe>` / `<figure>` / `<table>`이 있으면 유지. idempotent (최대 5회 재실행).
+2. `fillSlideShell` 마지막 단계에서 호출 → placeholder 경로가 만든 빈 shell을 제거하고 heading-only 레이아웃으로 fallback.
+
+Motif / 데모 카드 트림은 기존 pipeline이 계속 담당. content가 실제로 있는 리스트/`<p>`는 절대 건드리지 않음. buildTemplateClonedDeckHtml → applyTemplateCloneSlotFill 회귀 없음.
+
+검증: contracts template-clone-fill 신규 7개 케이스 (empty ul drop / whitespace li / kept-with-content / media-in-li / empty subtitle / idempotent / end-to-end slot-fill) · 전체 스위트 2868/2868.
+
 ### 루프373 — Clone slot-fill 실패 시 seed에 사용자 topic 채우기
 
 reproduce: "expo 설명 자료를 만들어줘"로 첫 채우기 실행 → 모델이 JSON parse 실패 → "슬라이드 채우기에 실패해 템플릿 초안(LOOK seed)을 유지했습니다" 경고 + Retry 안내. 문제는 사용자가 열어본 LOOK seed가 **Hartfield / Daisy Days / Project Atlas** 같은 템플릿 데모 카피를 그대로 보여줬다는 점 — 사용자의 실제 주제와 무관한 발표 초안이 노출됐다.

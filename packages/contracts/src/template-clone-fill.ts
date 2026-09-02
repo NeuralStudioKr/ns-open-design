@@ -2689,6 +2689,13 @@ function fillSlideShell(
     body = stripLeftoverTemplateDemoCopy(body);
   }
 
+  // Loop376 — Empty content-list / subtitle shells left behind by the
+  // placeholder / title-only wipe paths render as visible orphan pills or
+  // as an ugly gap between the heading and the next block. Drop the leaf
+  // wrappers so the shell falls back to the heading-only layout. Runs
+  // idempotently until nothing else can be trimmed.
+  body = stripLeafEmptyListAndParagraphShells(body);
+
   // Force Teamver fixed canvas size even when template used vw/vh or had
   // a pre-existing inline style that would otherwise win over CSS overrides.
   let attrs = shell.attrs;
@@ -3516,6 +3523,67 @@ function polishTrailingInstructionHeadings(fragment: string): string {
 
 function stripTagsToText(html: string): string {
   return String(html ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Loop376 — Strip leaf `<ul>` / `<ol>` shells whose direct `<li>` items are
+ * empty, and `<p>` tags with only whitespace (or `&nbsp;`). These shells are
+ * what the placeholder / title-only fill paths leave behind when the model
+ * outline had no body text; rendered, they show up as orphan numbered pills
+ * (content-list) or an awkward tall gap between blocks.
+ * Passes are idempotent: the helper re-runs until the body stops shrinking.
+ *
+ * Only leaf-empty is dropped. A `<ul>` whose `<li>` still carries visible
+ * text is left intact so real content-fill decks are never touched. Media
+ * inside a `<li>` (svg / img / …) also counts as content.
+ */
+export function stripLeafEmptyListAndParagraphShells(html: string): string {
+  const source = String(html ?? '');
+  if (!source) return source;
+  let out = source;
+  for (let i = 0; i < 5; i += 1) {
+    const next = dropLeafEmptyShellsOnce(out);
+    if (next === out) return out;
+    out = next;
+  }
+  return out;
+}
+
+function dropLeafEmptyShellsOnce(html: string): string {
+  let out = html;
+  out = out.replace(
+    /<(ul|ol)\b[^>]*>([\s\S]*?)<\/\1>/gi,
+    (block, _tag: string, inner: string) => {
+      if (looksLikeEmptyListInner(inner)) return '';
+      return block;
+    },
+  );
+  out = out.replace(
+    /<p\b[^>]*>([\s\S]*?)<\/p>/gi,
+    (block, inner: string) => (leafOnlyWhitespace(inner) ? '' : block),
+  );
+  return out;
+}
+
+function looksLikeEmptyListInner(inner: string): boolean {
+  const items = [...String(inner ?? '').matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/gi)];
+  if (items.length === 0) return leafOnlyWhitespace(inner);
+  return items.every((match) => leafOnlyLeafListItem(match[1] ?? ''));
+}
+
+function leafOnlyLeafListItem(inner: string): boolean {
+  if (/<(?:svg|img|video|canvas|iframe|picture|figure|source|input|table)\b/i.test(inner)) return false;
+  return leafOnlyWhitespace(inner);
+}
+
+function leafOnlyWhitespace(inner: string): boolean {
+  const stripped = String(inner ?? '')
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/&nbsp;|&#160;|&#xa0;/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return stripped.length === 0;
 }
 
 function bodyWithoutMotif(body: string): string {
