@@ -15,7 +15,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts system-prompt-api-mode · template-visual-kit · teamver-selected-template-compose · deck-framework-compact · template-clone-fill, web templateCloneContentFill · runtime/resume.
 
-**후속 (진행 중):** [0901-N02-2](./0901-N02-2-구현설계-[Clone_slot-fill].md) · [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) — B1–B5 · C–C11 · D · 루프368/369 상륙. MiniMax live 가드 ☑(키 있으면 실측). 루프366 vitest ☑ · filmstrip C3 ☑.
+**후속 (진행 중):** [0901-N02-2](./0901-N02-2-구현설계-[Clone_slot-fill].md) · [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) — B1–B5 · C–C11 · D · 루프368–370. MiniMax live E2E ☑(키 있으면 slot-fill smoke) · 키 없으면 skip. 루프366 vitest ☑ · filmstrip C3 ☑.
 
 다음 추천 작업:
 1. MiniMax 키 환경 Clone fill live smoke (`deploy/teamver/.env` 또는 `MINIMAX_API_KEY`)
@@ -37,6 +37,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 `기둥` / `PILLAR` / `Phase`는 모델이 붙이는 접두일 뿐, 발표 용어가 아닙니다. extra-copy·stub는 주제 단어 목록이 아닙니다(루프259·265).
 
 ## 2026-09-02 현재 판단 · 최신 루프
+
+### 루프370 — Clone JSON repair pending UX
+
+repair auto-send 600ms 창에 사용자가 Retry/Continue를 눌러 repair send와 경쟁하던 문제. `cloneSlotFillRepairPending`으로 ChatPane manual recovery를 auto-continue와 동일하게 억제.
+
+검증: web ChatPane.resume-failed 루프370 · contracts redacted_thinking parse.
 
 ### 루프369 — JSON 본문 section.slide 오탐 · repair send 실패 · brief 전달
 

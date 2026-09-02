@@ -33,6 +33,7 @@
 | **루프367** hard reload incomplete_output → LOOK seed 복구 | ☑ |
 | **루프368** JSON 파싱 강화 + FE 1회 auto-repair (LOOK seed 경고 전) | ☑ |
 | **루프369** JSON 본문 section 오탐 · repair send 실패 fallback · brief 전달 | ☑ |
+| **루프370** repair pending UX — ChatPane Retry 이중 클릭 방지 | ☑ |
 | **루프366** section `#stage` hoist · contracts dist rebuild | ☑ web transform-driven 19/19 |
 | MiniMax 실키 E2E | ☑ 가드 있음 · 키 없으면 skip (`template-clone-minimax-live.e2e`) |
 
@@ -56,6 +57,7 @@
 - [x] MiniMax live: 키 없으면 skip · `deploy/teamver/.env`에서 키 로드(있을 때)
 - [x] MiniMax live clone-fill: slot-fill 또는 seed-fallback
 - [x] 루프368/369: policy echo JSON 추출 · repair 1회 auto-send · section.slide 본문 오탐 제거
+- [x] 루프370: cloneSlotFillRepairPending · ChatPane resume-failed · redacted_thinking parse
 
 ## 메모
 
@@ -78,6 +80,7 @@
 
 | 일자 | 내용 |
 |------|------|
+| 2026-09-02 | 루프370 — repair pending UX · redacted_thinking JSON parse |
 | 2026-09-02 | C11 — scatterbrain postit→cards · LOOK seed fill→heal · filmstrip/366 bake |
 | 2026-09-02 | C10 — oc/kb fill→heal · compare/col-postit · compare-vs · 루프366 dist rebuild |
 | 2026-09-02 | 루프368/369 — JSON 파싱 + FE repair 1회 auto-send · live E2E 복원 |

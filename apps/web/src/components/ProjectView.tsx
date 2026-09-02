@@ -3518,6 +3518,8 @@ export function ProjectView({
   const pendingAutoContinueConversationIdRef = useRef<string | null>(null);
   /** True while the 600ms auto-continue timer is armed — ChatPane hides Retry. */
   const [autoContinuePending, setAutoContinuePending] = useState(false);
+  /** True while Clone slot-fill JSON repair auto-send timer is armed (루프370). */
+  const [cloneSlotFillRepairPending, setCloneSlotFillRepairPending] = useState(false);
   /** Pending Clone slot-fill JSON repair timer (separate from incomplete-output AC). */
   const cloneSlotFillRepairTimerRef = useRef<number | null>(null);
   /** Closed-deck append loop (remaining slides after a short first fill). */
@@ -3567,9 +3569,11 @@ export function ProjectView({
   }, []);
 
   const clearPendingCloneSlotFillRepairTimer = useCallback(() => {
-    if (cloneSlotFillRepairTimerRef.current === null) return;
-    window.clearTimeout(cloneSlotFillRepairTimerRef.current);
-    cloneSlotFillRepairTimerRef.current = null;
+    if (cloneSlotFillRepairTimerRef.current !== null) {
+      window.clearTimeout(cloneSlotFillRepairTimerRef.current);
+      cloneSlotFillRepairTimerRef.current = null;
+    }
+    setCloneSlotFillRepairPending(false);
   }, []);
 
   useEffect(() => {
@@ -10477,17 +10481,6 @@ export function ProjectView({
                 deckTitle: project.name || '슬라이드',
               },
             );
-            const armCloneSlotFillRepairQueue = (): boolean => {
-              if (!shouldQueueCloneSlotFillJsonRepair(cloneFillMessageHistory, userMsg.content)) {
-                return false;
-              }
-              cloneSlotFillRepairQueued = true;
-              artifactToPersist = null;
-              terminalPersistResult = null;
-              terminalPersistResultKind = null;
-              terminalArtifactPersistFailed = false;
-              return true;
-            };
             const recoverCloneLookSeedFallback = async (): Promise<boolean> => {
               const recovered = await tryRecoverCloneContentFillLookSeed({ readProjectHtml });
               if (!recovered) return false;
@@ -10679,7 +10672,6 @@ export function ProjectView({
             // runs keep the substance gate as SSOT.
             if (
               !cloneLookSeedFallbackRecovered
-              && !cloneSlotFillRepairQueued
               && runTemplateCloneContentFillRef.current
               && terminalPersistResult?.kind === 'skipped-incomplete'
             ) {
@@ -11205,6 +11197,7 @@ export function ProjectView({
                 requestOpenFile('deck.html');
               }
               clearPendingCloneSlotFillRepairTimer();
+              setCloneSlotFillRepairPending(true);
               const scheduledProjectId = project.id;
               const scheduledConversationId = runConversationId;
               const scheduledAssistantId = assistantId;
@@ -11234,6 +11227,7 @@ export function ProjectView({
               };
               cloneSlotFillRepairTimerRef.current = window.setTimeout(() => {
                 cloneSlotFillRepairTimerRef.current = null;
+                setCloneSlotFillRepairPending(false);
                 if (project.id !== scheduledProjectId) return;
                 if (messagesConversationIdRef.current !== scheduledConversationId) return;
                 if (!abortRef.current) {
@@ -14518,6 +14512,7 @@ export function ProjectView({
               onRetry={handleRetry}
               onResumeRun={handleResumeRun}
               autoContinuePending={autoContinuePending}
+              cloneSlotFillRepairPending={cloneSlotFillRepairPending}
               onStop={handleStop}
               onRemoveQueuedSend={removeQueuedChatSend}
               onUpdateQueuedSend={updateQueuedChatSend}

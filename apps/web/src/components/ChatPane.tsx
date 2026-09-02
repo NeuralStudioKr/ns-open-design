@@ -532,6 +532,8 @@ interface Props {
    * durable `incomplete_output` underneath.
    */
   autoContinuePending?: boolean;
+  /** True while ProjectView's Clone JSON repair auto-send timer is armed (루프370). */
+  cloneSlotFillRepairPending?: boolean;
   onStop: () => void;
   // Skills available for @-mention assembly. ProjectView filters out the
   // user's disabled set before passing them in here.
@@ -747,6 +749,7 @@ export function ChatPane({
   onRetry,
   onResumeRun,
   autoContinuePending = false,
+  cloneSlotFillRepairPending = false,
   onStop,
   onRemoveQueuedSend,
   onUpdateQueuedSend,
@@ -996,7 +999,7 @@ export function ChatPane({
   // Suppress manual Retry only while ProjectView's live timer is armed.
   // Legacy rows that only carry `auto_continue_incomplete_output` must still
   // rebuild Retry after reload (`autoContinuePending === false`).
-  const autoContinueScheduled = Boolean(autoContinuePending);
+  const autoContinueScheduled = Boolean(autoContinuePending || cloneSlotFillRepairPending);
   const failedRunErrorEvent = (() => {
     if (autoContinueScheduled) return null;
     if (durableFailedRunErrorEvent) return durableFailedRunErrorEvent;

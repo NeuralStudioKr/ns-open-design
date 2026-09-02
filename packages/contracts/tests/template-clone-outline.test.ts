@@ -110,6 +110,16 @@ describe('0901-N02 parseTemplateCloneDeckOutline', () => {
     expect(prepareTemplateCloneSlotFillAssistantText(raw)).toBe('{"title":"A","slides":[{"title":"B"}]}');
   });
 
+  it('루프370: parses JSON after redacted_thinking block', () => {
+    const raw = [
+      '<think>internal reasoning</think>',
+      '{"title":"Expo","slides":[{"title":"개요"},{"title":"아키텍처"}]}',
+    ].join('\n');
+    const outline = parseTemplateCloneDeckOutline(raw);
+    expect(outline?.title).toBe('Expo');
+    expect(outline?.slides).toHaveLength(2);
+  });
+
   it('drops empty titles and caps at max slides', () => {
     const slides = Array.from({ length: TEMPLATE_CLONE_OUTLINE_MAX_SLIDES + 5 }, (_, i) => ({
       title: i === 2 ? '   ' : `슬라이드 ${i + 1}`,
