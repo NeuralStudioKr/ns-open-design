@@ -1704,6 +1704,8 @@ function hostClassSet(slotMap: TemplateCloneSlotMap | null | undefined): Set<str
     'grid-cards',
     'cards',
     'stats-grid',
+    'stats-row',
+    'mini-stat-row',
     'team-grid',
     'feature-grid',
     'metrics-row',
@@ -1739,6 +1741,9 @@ function peerClassSet(slotMap: TemplateCloneSlotMap | null | undefined): Set<str
     'timeline-card',
     // 0901-N02-C5: bare `.step` (creative-mode / soft-editorial).
     'step',
+    // 0901-N02-C7: bare `.stat` / `.kpi` rows (soft-editorial / weekly-report).
+    'stat',
+    'kpi',
   ]);
   for (const token of slotMap?.peerClasses ?? []) {
     const t = String(token ?? '').trim().toLowerCase();
@@ -1753,8 +1758,30 @@ function isCountedStepSectionToken(token: string): boolean {
 }
 
 /**
- * 0901-N02-C4/C5: prefixed hosts (`hc-grid-3`, `xp-grid-2`, `oc-steps`) without
- * per-template maps. Exact allowlist still wins; do not invent leftover peers.
+ * 0901-N02-C7: section / inner chrome that ends with `-stat` but is not a row peer.
+ * `grove-stat` / `mini-stat` / `pin-stat` stay allowed.
+ */
+function isDeniedStatPeerToken(token: string): boolean {
+  const t = String(token ?? '').trim().toLowerCase();
+  if (!t) return false;
+  if (
+    t === 'slide-stat'
+    || t === 's-stat'
+    || t === 'card-stat'
+    || t === 'gc-stat'
+    || t === 'split-stat'
+    || t === 'big-stat'
+  ) {
+    return true;
+  }
+  // Hero closers like `xw-big-stat`.
+  if (t.endsWith('-big-stat')) return true;
+  return false;
+}
+
+/**
+ * 0901-N02-C4/C5/C7: prefixed hosts (`hc-grid-3`, `xp-grid-2`, `oc-steps`, `stats-row`)
+ * without per-template maps. Exact allowlist still wins; do not invent leftover peers.
  */
 function tokenLooksLikeCardHost(
   token: string,
@@ -1768,13 +1795,16 @@ function tokenLooksLikeCardHost(
   if (/^grid-\d+$/.test(t)) return true;
   // oc-steps / xw-steps host rows (C5).
   if (/^[a-z][a-z0-9_-]*-steps$/.test(t)) return true;
+  // mini-stat-row / stats-row variants (C7).
+  if (/^[a-z][a-z0-9_-]*-stat-row$/.test(t)) return true;
   return false;
 }
 
 /**
- * 0901-N02-C4/C5: prefixed peers (`xp-card`, `kb-step`, `timeline-step`).
+ * 0901-N02-C4/C5/C7: prefixed peers (`xp-card`, `kb-step`, `grove-stat`).
  * `*-card` never matches `card-icon` / `card-title`.
  * `*-step` requires a letter start and rejects `4-step` / `five-step` section chrome.
+ * `*-stat` rejects slide/card/gc/split/big-stat chrome.
  */
 function tokenLooksLikeCardPeer(
   token: string,
@@ -1787,6 +1817,9 @@ function tokenLooksLikeCardPeer(
   if (isCountedStepSectionToken(t)) return false;
   // Letter-led `*-step` only — excludes digit `4-step` and inner `step-title`.
   if (/^[a-z][a-z0-9_-]*-step$/.test(t)) return true;
+  if (isDeniedStatPeerToken(t)) return false;
+  // Letter-led `*-stat` (grove-stat / mini-stat / pin-stat / mat-stat).
+  if (/^[a-z][a-z0-9_-]*-stat$/.test(t)) return true;
   return false;
 }
 
@@ -1814,11 +1847,11 @@ function shellBodyLooksLikeCardGrid(
   const peers = [...peerClassSet(slotMap)].map(escapeRegExp).join('|');
   // (?!-) blocks prefix hits inside `kb-grid-bg` / `my-card-icon` / `kb-step-title`.
   const hostRe = new RegExp(
-    `<(?:div|ul|ol|section)\\b[^>]*\\bclass\\s*=\\s*["'][^"']*(?:\\b(?:${hosts})\\b|\\b[a-z0-9][\\w-]*-grid(?:-\\d+)?\\b(?!-)|\\bgrid-\\d+\\b|\\b[a-z][\\w-]*-steps\\b(?!-))[^"']*["']`,
+    `<(?:div|ul|ol|section)\\b[^>]*\\bclass\\s*=\\s*["'][^"']*(?:\\b(?:${hosts})\\b|\\b[a-z0-9][\\w-]*-grid(?:-\\d+)?\\b(?!-)|\\bgrid-\\d+\\b|\\b[a-z][\\w-]*-steps\\b(?!-)|\\b[a-z][\\w-]*-stat-row\\b(?!-))[^"']*["']`,
     'i',
   );
   const peerRe = new RegExp(
-    `<(?:div|article|aside|li|section)\\b[^>]*\\bclass\\s*=\\s*["'][^"']*(?:\\b(?:${peers})\\b|\\b[a-z0-9][\\w-]*-card\\b(?!-)|\\b[a-z][\\w-]*-step\\b(?!-))[^"']*["']`,
+    `<(?:div|article|aside|li|section)\\b[^>]*\\bclass\\s*=\\s*["'][^"']*(?:\\b(?:${peers})\\b|\\b[a-z0-9][\\w-]*-card\\b(?!-)|\\b[a-z][\\w-]*-step\\b(?!-)|\\b[a-z][\\w-]*-stat\\b(?!-))[^"']*["']`,
     'i',
   );
   return hostRe.test(html) || peerRe.test(html);
@@ -1878,6 +1911,7 @@ function collectPeersAmongChildren(
  *
  * C6: repeat passes so a slide with both `.cards-grid` and `.timeline` trims every
  * host — earlier slices returned after the first match.
+ * C7: bare `stat`/`kpi` and letter-led `*-stat` peers (denied slide/card/gc chrome).
  */
 export function fillAndTrimCardPeers(
   html: string,
@@ -2091,6 +2125,43 @@ function fillOneCardPeer(cardHtml: string, line: string): string {
     );
     next = next.replace(
       /(<[^>]*\bclass\s*=\s*["'][^"']*\bd\b[^"']*["'][^>]*>)([\s\S]*?)(<\/)/gi,
+      (_m, open: string, _inner: string, close: string) => `${open}${close}`,
+    );
+    return next;
+  }
+  // 0901-N02-C7: grove/pin/mat/mini stat labels + soft-editorial `.lab` + kpi `.label`.
+  if (/\b(?:[\w-]+-stat-label|mini-label)\b/i.test(next) || (
+    /\bclass\s*=\s*["'][^"']*\blab\b[^"']*["']/i.test(next)
+    && /\bclass\s*=\s*["'][^"']*\bstat\b/i.test(cardHtml)
+  )) {
+    if (/\b(?:[\w-]+-stat-label|mini-label)\b/i.test(next)) {
+      next = next.replace(
+        /(<[^>]*\b(?:[\w-]+-stat-label|mini-label)\b[^>]*>)([\s\S]*?)(<\/)/i,
+        (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(text)}${close}`,
+      );
+    } else {
+      next = next.replace(
+        /(<[^>]*\bclass\s*=\s*["'][^"']*\blab\b[^"']*["'][^>]*>)([\s\S]*?)(<\/)/i,
+        (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(text)}${close}`,
+      );
+    }
+    next = next.replace(
+      /(<[^>]*\b(?:[\w-]+-stat-val|mini-val)\b[^>]*>)([\s\S]*?)(<\/)/gi,
+      (_m, open: string, _inner: string, close: string) => `${open}${close}`,
+    );
+    next = next.replace(
+      /(<[^>]*\bclass\s*=\s*["'][^"']*\bv\b[^"']*["'][^>]*>)([\s\S]*?)(<\/)/gi,
+      (_m, open: string, _inner: string, close: string) => `${open}${close}`,
+    );
+    return next;
+  }
+  if (/\bclass\s*=\s*["'][^"']*\bkpi\b/i.test(cardHtml) && /\blabel\b/i.test(next)) {
+    next = next.replace(
+      /(<[^>]*\blabel\b[^>]*>)([\s\S]*?)(<\/)/i,
+      (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(text)}${close}`,
+    );
+    next = next.replace(
+      /(<[^>]*\b(?:value|v|delta)\b[^>]*>)([\s\S]*?)(<\/)/gi,
       (_m, open: string, _inner: string, close: string) => `${open}${close}`,
     );
     return next;

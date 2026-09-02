@@ -15,13 +15,13 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts system-prompt-api-mode · template-visual-kit · teamver-selected-template-compose · deck-framework-compact · template-clone-fill, web templateCloneContentFill · runtime/resume.
 
-**후속 (진행 중):** [0901-N02-2](./0901-N02-2-구현설계-[Clone_slot-fill].md) · [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) — B1–B5 · C–C6 · D 상륙. MiniMax 실키 E2E만 ☐(키 없음).
+**후속 (진행 중):** [0901-N02-2](./0901-N02-2-구현설계-[Clone_slot-fill].md) · [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) — B1–B5 · C–C7 · D 상륙. MiniMax 실키 E2E만 ☐(키 없음).
 
 다음 추천 작업:
 1. MiniMax 키 환경 Clone fill live smoke
-2. 좁은 `*-stat` / exact `kpi` peer (섹션 오탐 가드)
-3. 루프366 FileViewer ←/→ staging bake (브라우저)
-4. heal↔clone 통합 픽스처 (LOOK seed → fill → heal)
+2. 루프366 FileViewer ←/→ staging bake (브라우저)
+3. heal↔clone 통합 픽스처 (LOOK seed → fill → heal)
+4. `process-flow` / `timeline-track` / `kb-pipeline` host allowlist 보강(선택)
 
 ### 빈 칸 번호 카드 (코드명 leftover)
 

@@ -1551,6 +1551,91 @@ describe('0901-N02-C6 multi-host fillAndTrimCardPeers', () => {
   });
 });
 
+describe('0901-N02-C7 *-stat / kpi peer heuristic', () => {
+  it('trims grove-stat peers inside stats-row', () => {
+    const html = [
+      '<div class="stats-row">',
+      '<div class="grove-stat"><div class="grove-stat-val">73%</div><div class="grove-stat-label">Distrust</div></div>',
+      '<div class="grove-stat"><div class="grove-stat-val">4.8x</div><div class="grove-stat-label">Engagement</div></div>',
+      '<div class="grove-stat"><div class="grove-stat-val">12</div><div class="grove-stat-label">Markets</div></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['신뢰 하락', '참여 배수']);
+    expect([...(next.matchAll(/\bclass="grove-stat"/gi))].length).toBe(2);
+    expect(next).toContain('신뢰 하락');
+    expect(next).toContain('참여 배수');
+    expect(next).not.toContain('Markets');
+    expect(next).not.toContain('Distrust');
+    expect(next).not.toMatch(/grove-stat-val">[^<]+/i);
+  });
+
+  it('trims bare kpi peers and fills label', () => {
+    const html = [
+      '<div class="row">',
+      '<div class="kpi"><div class="label">Paid conv.</div><div class="value">3.82%</div></div>',
+      '<div class="kpi"><div class="label">MRR</div><div class="value">$148k</div></div>',
+      '<div class="kpi"><div class="label">Signups</div><div class="value">12,430</div></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['전환율', '월매출']);
+    expect([...(next.matchAll(/\bclass="kpi"/gi))].length).toBe(2);
+    expect(next).toContain('전환율');
+    expect(next).toContain('월매출');
+    expect(next).not.toContain('Signups');
+    expect(next).not.toContain('Paid conv.');
+    expect(next).not.toMatch(/class="value">[^<]+/i);
+  });
+
+  it('trims bare soft-editorial stat peers via .lab', () => {
+    const html = [
+      '<div class="grid">',
+      '<div class="stat a"><div class="lab">of new accounts</div><div class="v">68%</div></div>',
+      '<div class="stat b"><div class="v">28</div><div class="lab">interviews</div></div>',
+      '<div class="stat c"><div class="v">9</div><div class="lab">teams</div></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['신규 계정', '인터뷰']);
+    expect([...(next.matchAll(/\bclass="stat\b/gi))].length).toBe(2);
+    expect(next).toContain('신규 계정');
+    expect(next).toContain('인터뷰');
+    expect(next).not.toContain('teams');
+    expect(next).not.toContain('of new accounts');
+  });
+
+  it('does not treat slide-stat / s-stat / card-stat as peers', () => {
+    const slide = [
+      '<div class="wrap">',
+      '<div class="slide-stat"><h4>One</h4><p>a</p></div>',
+      '<div class="slide-stat"><h4>Two</h4><p>b</p></div>',
+      '<div class="slide-stat"><h4>Three</h4><p>c</p></div>',
+      '</div>',
+    ].join('');
+    expect(fillAndTrimCardPeers(slide, ['하나', '둘'])).toContain('One');
+    expect(fillAndTrimCardPeers(slide, ['하나', '둘'])).not.toContain('하나');
+
+    const section = [
+      '<div class="wrap">',
+      '<div class="s-stat"><h4>One</h4><p>a</p></div>',
+      '<div class="s-stat"><h4>Two</h4><p>b</p></div>',
+      '<div class="s-stat"><h4>Three</h4><p>c</p></div>',
+      '</div>',
+    ].join('');
+    expect([...(fillAndTrimCardPeers(section, ['하나', '둘']).matchAll(/\bs-stat\b/gi))].length).toBe(3);
+
+    // card-stat stays inside column-card; columns-grid still trims via column-card (C4).
+    const columns = [
+      '<div class="columns-grid">',
+      '<div class="column-card"><div class="card-title">A</div><div class="card-stat">24</div></div>',
+      '<div class="column-card"><div class="card-title">B</div><div class="card-stat">25</div></div>',
+      '<div class="column-card"><div class="card-title">C</div><div class="card-stat">26</div></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(columns, ['확장', '깊이']);
+    expect([...(next.matchAll(/\bcolumn-card\b/gi))].length).toBe(2);
+    expect([...(next.matchAll(/\bcard-stat\b/gi))].length).toBe(2);
+  });
+});
+
 describe('hoistCloneSlidesOutOfFlexTrack', () => {
   it('unwraps leftover <section id="stage"> and <main class="stage"> slide tracks', () => {
     const sectionStage = [
