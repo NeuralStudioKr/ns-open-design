@@ -16,7 +16,8 @@
   - FE는 후속 AI fill turn을 건너뛰고 바로 `deck.html`을 연다.
 - FE 스위치:
   - 기본값: `prompt`
-  - `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=deterministic` 또는 `localStorage.od:template-clone-fill-mode=deterministic`이면 신규 경로 사용.
+- `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=deterministic`이면 신규 경로 사용.
+- env가 비어 있는 로컬/QA 빌드에서는 `localStorage.od:template-clone-fill-mode=deterministic`으로도 신규 경로를 켤 수 있다. 단, env가 `prompt`로 명시된 배포 빌드에서는 env가 우선한다.
 
 ## 롤백
 
@@ -25,8 +26,10 @@
 
 ## Env 적용 현황
 
-- 2026-09-01 현재 시점 기준으로 staging 실제 env와 staging example에는 `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=deterministic`을 명시한다.
-- production 실제 env와 production example에는 `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=prompt`를 명시해, production은 기존 프롬프트 기반 경로를 유지한다.
+- 2026-09-02 현재 시점 기준으로 staging 실제 env와 staging example은 `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=prompt`로 되돌린다.
+- 이유: deterministic server content-fill은 JSON outline 재요청/복구 경로와 결합될 때 “JSON outline 형식을 다시 요청하는 중” 상태가 노출되거나, template seed fallback 뒤 품질이 불안정해질 수 있어 출시 기본값으로 두지 않는다.
+- production 실제 env와 production example도 `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=prompt`를 유지해, production은 기존 프롬프트 기반 경로를 유지한다.
+- deterministic 경로는 제한된 staging env override 또는 env가 비어 있는 로컬/QA 빌드의 `localStorage.od:template-clone-fill-mode=deterministic`으로만 QA한다.
 - 공통 `.env.example`에는 `prompt`와 `deterministic` 값을 모두 문서화한다. 값 변경은 Docker image bake-time 설정이라 open-design-daemon 재빌드가 필요하다.
 
 ## 검증 항목
@@ -38,6 +41,6 @@
 
 ## 다음 추천 작업
 
-1. staging에서 `localStorage.setItem('od:template-clone-fill-mode', 'deterministic')`로 제한 테스트 후 템플릿별 품질을 비교한다.
-2. deterministic 결과가 충분하지 않은 템플릿은 바로 `prompt`로 되돌리고, 해당 템플릿 fixture를 추가해 원인 분석한다.
-3. 품질이 확인되면 staging env에만 `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=deterministic`을 넣고 운영 로그를 본다.
+1. env가 비어 있는 로컬/QA 빌드에서 `localStorage.setItem('od:template-clone-fill-mode', 'deterministic')`로 제한 테스트 후 템플릿별 품질을 비교한다.
+2. deterministic 결과가 충분하지 않은 템플릿은 해당 템플릿 fixture를 추가해 원인 분석한다.
+3. 품질과 복구 UX가 확인된 뒤에만 staging env를 `deterministic`으로 다시 올린다.
