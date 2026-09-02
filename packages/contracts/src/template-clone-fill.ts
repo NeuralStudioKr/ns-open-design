@@ -1869,101 +1869,141 @@ function collectPeersAmongChildren(
 
 /**
  * Fill card peers from outline lines and drop unfilled siblings.
- * 0901-N02-C/C2/C3/C4/C5: 카드 수 = 내용 수. Never invent leftover column labels.
+ * 0901-N02-C/C2/C3/C4/C5/C6: 카드 수 = 내용 수. Never invent leftover column labels.
  *
- * Host discovery order:
+ * Host discovery order (each pass):
  * 1) known host class tokens (+ C4 `*-grid` / `grid-N` · C5 `*-steps`)
  * 2) peer-driven: any container with ≥2 direct peer children (`*-card`/`*-step`)
  * 3) top-level peer siblings (no wrapper)
+ *
+ * C6: repeat passes so a slide with both `.cards-grid` and `.timeline` trims every
+ * host — earlier slices returned after the first match.
  */
 export function fillAndTrimCardPeers(
   html: string,
   lines: string[],
   slotMap?: TemplateCloneSlotMap | null,
 ): string {
-  const source = String(html ?? '');
+  let next = String(html ?? '');
+  if (!next) return next;
+  // Bound passes: one host (or top-level row) per pass; slides rarely need more.
+  for (let pass = 0; pass < 8; pass += 1) {
+    const trimmed = fillAndTrimCardPeersOnce(next, lines, slotMap);
+    if (trimmed === next) break;
+    next = trimmed;
+  }
+  return next;
+}
+
+function fillAndTrimCardPeersOnce(
+  source: string,
+  lines: string[],
+  slotMap?: TemplateCloneSlotMap | null,
+): string {
   if (!source) return source;
 
-  const tryTrimAt = (
-    openStart: number,
-    openEnd: number,
-    closeEnd: number,
-    openTag: string,
-    closeTag: string,
-    requireHostClass: boolean,
-    attrs: string,
-  ): string | null => {
-    if (requireHostClass && !attrsLookLikeCardHost(attrs, slotMap)) return null;
-    const innerEnd = closeEnd - closeTag.length;
-    const children = listDirectChildRanges(source, openEnd, innerEnd);
-    const peers = collectPeersAmongChildren(source, children, slotMap);
-    if (requireHostClass) {
-      if (peers.length === 0) return null;
-    } else if (peers.length < 2) {
-      return null;
-    }
-    return rebuildHostWithPeers(
-      source,
-      openStart,
-      openEnd,
-      closeEnd,
-      closeTag,
-      openTag,
-      children,
-      peers,
-      lines,
-    );
+  type Candidate = {
+    openStart: number;
+    openEnd: number;
+    closeEnd: number;
+    openTag: string;
+    closeTag: string;
+    children: HtmlSpan[];
+    peers: HtmlSpan[];
   };
 
-  // 1) Class-named hosts
-  const hostOpenRe = /<(div|ul|ol|section)\b([^>]*)>/gi;
-  let hostMatch: RegExpExecArray | null;
-  while ((hostMatch = hostOpenRe.exec(source)) !== null) {
-    const tag = (hostMatch[1] ?? 'div').toLowerCase();
-    const attrs = hostMatch[2] ?? '';
-    const openStart = hostMatch.index;
-    const openEnd = openStart + hostMatch[0].length;
-    const closeEnd = findMatchingClose(source, openEnd, tag);
-    if (closeEnd < 0) continue;
-    const closeTag = new RegExp(`</${tag}\\s*>$`, 'i').exec(source.slice(0, closeEnd))?.[0]
-      ?? `</${tag}>`;
-    const trimmed = tryTrimAt(
-      openStart,
-      openEnd,
-      closeEnd,
-      hostMatch[0],
-      closeTag,
-      true,
-      attrs,
-    );
-    if (trimmed) return trimmed;
+  const collectClassHosts = (): Candidate[] => {
+    const out: Candidate[] = [];
+    const hostOpenRe = /<(div|ul|ol|section)\b([^>]*)>/gi;
+    let hostMatch: RegExpExecArray | null;
+    while ((hostMatch = hostOpenRe.exec(source)) !== null) {
+      const tag = (hostMatch[1] ?? 'div').toLowerCase();
+      const attrs = hostMatch[2] ?? '';
+      if (!attrsLookLikeCardHost(attrs, slotMap)) continue;
+      const openStart = hostMatch.index;
+      const openEnd = openStart + hostMatch[0].length;
+      const closeEnd = findMatchingClose(source, openEnd, tag);
+      if (closeEnd < 0) continue;
+      const closeTag = new RegExp(`</${tag}\\s*>$`, 'i').exec(source.slice(0, closeEnd))?.[0]
+        ?? `</${tag}>`;
+      const innerEnd = closeEnd - closeTag.length;
+      const children = listDirectChildRanges(source, openEnd, innerEnd);
+      const peers = collectPeersAmongChildren(source, children, slotMap);
+      if (peers.length === 0) continue;
+      out.push({
+        openStart,
+        openEnd,
+        closeEnd,
+        openTag: hostMatch[0],
+        closeTag,
+        children,
+        peers,
+      });
+    }
+    return out;
+  };
+
+  const collectPeerDrivenHosts = (): Candidate[] => {
+    const out: Candidate[] = [];
+    const hostOpenRe = /<(div|ul|ol|section)\b([^>]*)>/gi;
+    let hostMatch: RegExpExecArray | null;
+    while ((hostMatch = hostOpenRe.exec(source)) !== null) {
+      const tag = (hostMatch[1] ?? 'div').toLowerCase();
+      const attrs = hostMatch[2] ?? '';
+      if (attrsLookLikeCardHost(attrs, slotMap)) continue;
+      const openStart = hostMatch.index;
+      const openEnd = openStart + hostMatch[0].length;
+      const closeEnd = findMatchingClose(source, openEnd, tag);
+      if (closeEnd < 0) continue;
+      const closeTag = new RegExp(`</${tag}\\s*>$`, 'i').exec(source.slice(0, closeEnd))?.[0]
+        ?? `</${tag}>`;
+      const innerEnd = closeEnd - closeTag.length;
+      const children = listDirectChildRanges(source, openEnd, innerEnd);
+      const peers = collectPeersAmongChildren(source, children, slotMap);
+      if (peers.length < 2) continue;
+      out.push({
+        openStart,
+        openEnd,
+        closeEnd,
+        openTag: hostMatch[0],
+        closeTag,
+        children,
+        peers,
+      });
+    }
+    return out;
+  };
+
+  const applyCandidate = (candidate: Candidate): string => rebuildHostWithPeers(
+    source,
+    candidate.openStart,
+    candidate.openEnd,
+    candidate.closeEnd,
+    candidate.closeTag,
+    candidate.openTag,
+    candidate.children,
+    candidate.peers,
+    lines,
+  );
+
+  const classHosts = collectClassHosts();
+  const peerHosts = collectPeerDrivenHosts();
+  const allHosts = [...classHosts, ...peerHosts];
+
+  // Prefer hosts with leftover demo peers so a filled cards-grid does not block
+  // a still-oversized timeline on a later pass (0901-N02-C6).
+  const oversized = allHosts.filter((c) => c.peers.length > Math.max(0, lines.length));
+  for (const candidate of oversized) {
+    const trimmed = applyCandidate(candidate);
+    if (trimmed !== source) return trimmed;
+  }
+  for (const candidate of allHosts) {
+    if (oversized.includes(candidate)) continue;
+    const trimmed = applyCandidate(candidate);
+    if (trimmed !== source) return trimmed;
   }
 
-  // 2) Peer-driven hosts (e.g. product-launch `.grid.g3` without cards-grid)
-  hostOpenRe.lastIndex = 0;
-  while ((hostMatch = hostOpenRe.exec(source)) !== null) {
-    const tag = (hostMatch[1] ?? 'div').toLowerCase();
-    const attrs = hostMatch[2] ?? '';
-    if (attrsLookLikeCardHost(attrs, slotMap)) continue; // already tried
-    const openStart = hostMatch.index;
-    const openEnd = openStart + hostMatch[0].length;
-    const closeEnd = findMatchingClose(source, openEnd, tag);
-    if (closeEnd < 0) continue;
-    const closeTag = new RegExp(`</${tag}\\s*>$`, 'i').exec(source.slice(0, closeEnd))?.[0]
-      ?? `</${tag}>`;
-    const trimmed = tryTrimAt(
-      openStart,
-      openEnd,
-      closeEnd,
-      hostMatch[0],
-      closeTag,
-      false,
-      attrs,
-    );
-    if (trimmed) return trimmed;
-  }
-
-  // 3) Top-level peer siblings (bold-poster `.pillar` row without wrapper)
+  // Top-level peer siblings (bold-poster `.pillar` row without wrapper)
   const topChildren = listDirectChildRanges(source, 0, source.length);
   const topPeers = collectPeersAmongChildren(source, topChildren, slotMap);
   if (topPeers.length >= 2) {
@@ -1979,7 +2019,8 @@ export function fillAndTrimCardPeers(
       const peerIndex = topPeers.findIndex((peer) => peer.start === child.start);
       rebuilt.push(fillOneCardPeer(source.slice(child.start, child.end), lines[peerIndex] ?? ''));
     }
-    return rebuilt.join('');
+    const next = rebuilt.join('');
+    if (next !== source) return next;
   }
 
   return source;

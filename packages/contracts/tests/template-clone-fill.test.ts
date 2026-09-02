@@ -1507,6 +1507,50 @@ describe('0901-N02-C5 prefixed *-step peer heuristic', () => {
   });
 });
 
+describe('0901-N02-C6 multi-host fillAndTrimCardPeers', () => {
+  it('trims both cards-grid and timeline hosts in one slide body', () => {
+    const html = [
+      '<h2>분기</h2>',
+      '<div class="cards-grid">',
+      '<div class="info-card"><h4>A</h4><p>aa</p></div>',
+      '<div class="info-card"><h4>B</h4><p>bb</p></div>',
+      '<div class="info-card"><h4>C</h4><p>cc</p></div>',
+      '</div>',
+      '<div class="timeline">',
+      '<div class="timeline-step"><div class="step-title">Research</div><div class="step-desc">x</div></div>',
+      '<div class="timeline-step"><div class="step-title">Build</div><div class="step-desc">y</div></div>',
+      '<div class="timeline-step"><div class="step-title">Launch</div><div class="step-desc">z</div></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['매출', '리텐션']);
+    expect([...(next.matchAll(/\binfo-card\b/gi))].length).toBe(2);
+    expect([...(next.matchAll(/\btimeline-step\b/gi))].length).toBe(2);
+    expect(next).toContain('매출');
+    expect(next).toContain('리텐션');
+    expect(next).not.toContain('>C<');
+    expect(next).not.toContain('Launch');
+    expect(next).not.toContain('Research');
+  });
+
+  it('is idempotent after both hosts are already sized', () => {
+    const html = [
+      '<div class="cards-grid">',
+      '<div class="info-card"><h4>매출</h4><p></p></div>',
+      '<div class="info-card"><h4>리텐션</h4><p></p></div>',
+      '</div>',
+      '<div class="timeline">',
+      '<div class="timeline-step"><div class="step-title">매출</div><div class="step-desc"></div></div>',
+      '<div class="timeline-step"><div class="step-title">리텐션</div><div class="step-desc"></div></div>',
+      '</div>',
+    ].join('');
+    const once = fillAndTrimCardPeers(html, ['매출', '리텐션']);
+    const twice = fillAndTrimCardPeers(once, ['매출', '리텐션']);
+    expect(twice).toBe(once);
+    expect([...(twice.matchAll(/\binfo-card\b/gi))].length).toBe(2);
+    expect([...(twice.matchAll(/\btimeline-step\b/gi))].length).toBe(2);
+  });
+});
+
 describe('hoistCloneSlidesOutOfFlexTrack', () => {
   it('unwraps leftover <section id="stage"> and <main class="stage"> slide tracks', () => {
     const sectionStage = [
