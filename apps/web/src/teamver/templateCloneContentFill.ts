@@ -586,9 +586,12 @@ export function buildTemplateClonePromptFillSeed(options: {
     'Use the selected template kit in the system prompt as visual authority: palette, typography, motif, layout rhythm, and slide chrome.',
     'Use the cloned `deck.html` only as a look reference. Do not treat it as an existing-deck edit, copy demo placeholders, or paste this host contract onto slides.',
     'Chat status may describe the deck, but the artifact must contain that many `<section class="slide">` (or equivalent slide hosts). Never claim 9 slides while emitting only a cover.',
+    'Do not invent quantitative KPIs, headcount, NPS, market size ($XB), or pricing unless the brief/source materials state them. Prefer qualitative product claims and named features over fabricated metrics.',
+    'Every KPI/stat cell must be a complete card (number + label inside one bordered shell). Do not leave bare .stat-number/.stat-label siblings or empty .stat-card shells.',
+    'Keep kit CSS variables by including the template look (:root --pink/--blue/…). Never emit var(--pink) without defining tokens.',
     hasAttachedSource
-      ? 'Fill REAL presentation CONTENT for this request and any attached source materials (Canvas/Drive/files).'
-      : 'Fill REAL presentation CONTENT for this create; expand THIS brief with concrete domain knowledge.',
+      ? 'Fill REAL presentation CONTENT for this request and any attached source materials (Canvas/Drive/files). Prefer facts from the source over invented numbers.'
+      : 'Fill REAL presentation CONTENT for this create; expand THIS brief with concrete domain knowledge — still do not invent company metrics.',
     'The visible request above is THIS turn\'s brief/topic. Do NOT paste the user instruction, this host contract, or any system-prompt worked example onto the cover or body slides.',
     topic ? `Cover topic (use as the title, not the instruction): ${topic}.` : '',
     SLIDE_DECK_QUALITY_BAR_INSTRUCTION,

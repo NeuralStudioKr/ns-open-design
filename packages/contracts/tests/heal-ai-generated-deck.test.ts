@@ -24,6 +24,8 @@ import {
   unwrapHeadingOnlyLayoutWrappers,
   unwrapTrivialSingleChildLayoutWrappers,
   wrapLoosePillHeadingTriplesInsideMixedGrid,
+  wrapLooseStatMetricPairsIntoCards,
+  ensureNeoBrutalCssVariableFallback,
 } from '../src/html/heal-ai-generated-deck.js';
 
 describe('heal-ai-generated-deck (0826-N01 F7)', () => {
@@ -5290,6 +5292,70 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(chromeShells).toBe(3);
       expect(out).toContain('Channels');
       expect(out).toContain('Shared Drive');
+    });
+  });
+
+  describe('루프386 wrapLooseStatMetricPairsIntoCards + CSS var fallback', () => {
+    it('rebuilds early-closed Key Numbers into a 2×2 stat-card grid', () => {
+      const html = [
+        '<section class="slide" data-screen-label="04 Key Numbers">',
+        '<div data-od-slide-flow>',
+        '<h2>데이터로 보는 팀버</h2>',
+        '<div style="display:grid;grid-template-columns:repeat(2, minmax(0,1fr));gap:24px">',
+        '<div class="stat-number" style="font-size:88px">2,400+</div>',
+        '<div class="stat-label" style="font-size:14px">등록 팀 수</div>',
+        '</div>',
+        '<div class="stat-number" style="font-size:88px">38%</div>',
+        '<div class="stat-label" style="font-size:14px">업무 시간 절감</div>',
+        '<div class="stat-card" style="border:4px solid #000;padding:32px;background:#fff"> ',
+        '<span class="stat-deco"></span></div>',
+        '<div class="stat-number" style="font-size:88px">9.2/10</div>',
+        '<div class="stat-label" style="font-size:14px">사용자 만족도</div>',
+        '<div class="stat-card" style="border:4px solid #000;padding:32px;background:#fff"> </div>',
+        '<div class="stat-number" style="font-size:88px">5</div>',
+        '<div class="stat-label" style="font-size:14px">지원 언어</div>',
+        '</div>',
+        '</section>',
+      ].join('');
+      const out = wrapLooseStatMetricPairsIntoCards(html);
+      expect(out).toMatch(/stats-grid[^>]*repeat\(2,/);
+      expect(out.match(/class="stat-card"/g)?.length).toBe(4);
+      expect(out).toContain('등록 팀 수');
+      expect(out).toContain('지원 언어');
+      expect(out).not.toMatch(/stat-card"[^>]*>\s*<span class="stat-deco"/);
+    });
+
+    it('injects neo-brutal :root when kit vars are used without look CSS', () => {
+      const html = [
+        '<!doctype html><html><head></head><body>',
+        '<section class="slide" style="background:var(--cream);color:var(--ink)">',
+        '<h1 style="color:var(--pink)">Teamver</h1>',
+        '</section>',
+        '</body></html>',
+      ].join('');
+      const out = ensureNeoBrutalCssVariableFallback(html);
+      expect(out).toContain('data-od-neobrutal-var-fallback');
+      expect(out).toMatch(/:root\{[^}]*--pink:#FE90E8/);
+      expect(ensureNeoBrutalCssVariableFallback(out)).toBe(out);
+    });
+
+    it('end-to-end heal wraps stats and injects var fallback', () => {
+      const html = [
+        '<!doctype html><html><head></head><body>',
+        '<section class="slide" style="background:var(--blue)">',
+        '<div data-od-slide-flow>',
+        '<div style="display:grid;grid-template-columns:repeat(2,1fr)">',
+        '<div class="stat-number" style="font-size:88px">10</div>',
+        '<div class="stat-label" style="font-size:14px">A</div>',
+        '</div>',
+        '<div class="stat-number" style="font-size:88px">20</div>',
+        '<div class="stat-label" style="font-size:14px">B</div>',
+        '</div></section></body></html>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, 'teamver 소개');
+      expect(out).toContain('stats-grid');
+      expect(out).toContain('data-od-neobrutal-var-fallback');
+      expect(out.match(/class="stat-card"/g)?.length).toBe(2);
     });
   });
 });

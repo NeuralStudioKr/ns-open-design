@@ -43,6 +43,8 @@
 | **루프377** 깨진 heading/빈 카드 salvage · orphan split column | ☑ |
 | **루프379** pin bg flatten 제거 · persist salvage · orphan repeat grid | ☑ |
 | **루프383** prompt-fill compact snap-back · short-deck top-up | ☑ |
+| **루프385** mixed grid loose pill+h3+p wrap | ☑ |
+| **루프386** Key Numbers loose stats wrap · neo-brutal CSS var fallback · KPI seed 가드 | ☑ |
 | **루프366** section `#stage` hoist · contracts dist rebuild | ☑ web transform-driven 19/19 |
 | MiniMax 실키 E2E | ☑ 가드 있음 · 키 없으면 skip (`template-clone-minimax-live.e2e`) |
 

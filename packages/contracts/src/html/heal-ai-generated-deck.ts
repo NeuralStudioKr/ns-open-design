@@ -4116,6 +4116,223 @@ export function scrubTemplatePlaceholderSlots(html: string): string {
 }
 
 /**
+ * 루프386 — Key Numbers slides emit `.stat-number` + `.stat-label` as loose
+ * siblings (sometimes after an early-closed 2-col grid), plus empty
+ * `.stat-card` shells. Rebuild one equal-column grid of filled cards.
+ * 카피 발명 없음.
+ */
+const STAT_CARD_SHELL_STYLE =
+  'border:4px solid var(--black,#000);background:var(--white,#fff);'
+  + 'box-shadow:8px 8px 0 var(--black,#000);padding:32px;text-align:center;position:relative';
+
+function childHasExactClass(child: DirectChildSpan, name: string): boolean {
+  return classAttrValue(child.attrs)
+    .trim()
+    .split(/\s+/)
+    .some((token) => token.toLowerCase() === name.toLowerCase());
+}
+
+function isLooseStatNumberChild(child: DirectChildSpan): boolean {
+  if (child.tag !== 'div') return false;
+  if (childHasExactClass(child, 'stat-number')) return true;
+  const font = /font-size\s*:\s*(\d+)px/i.exec(child.style)?.[1];
+  const size = font ? Number(font) : 0;
+  if (!(size >= 56)) return false;
+  const text = visibleText(child.inner);
+  return /[\d,]/.test(text) && text.length <= 24;
+}
+
+function isLooseStatLabelChild(child: DirectChildSpan): boolean {
+  if (child.tag !== 'div') return false;
+  if (childHasExactClass(child, 'stat-label')) return true;
+  const text = visibleText(child.inner);
+  return text.length >= 2 && text.length <= 40 && !/[\d,]{3,}/.test(text)
+    && /font-size\s*:\s*(1[2-8]|20)px/i.test(child.style);
+}
+
+function isEmptyStatCardShell(child: DirectChildSpan): boolean {
+  if (child.tag !== 'div') return false;
+  if (!childHasExactClass(child, 'stat-card')) return false;
+  return visibleText(child.inner).length < 2;
+}
+
+function wrapStatPairHtml(numberHtml: string, labelHtml: string): string {
+  return `<div class="stat-card" style="${STAT_CARD_SHELL_STYLE}">${numberHtml}${labelHtml}</div>`;
+}
+
+function rewriteLooseStatMetricsInContainer(
+  html: string,
+  openEnd: number,
+  closeStart: number,
+): string | null {
+  const children = listDirectBlockChildSpans(html, openEnd, closeStart);
+  if (children.length < 2) return null;
+  type Pair = { numberHtml: string; labelHtml: string; start: number; end: number };
+  const pairs: Pair[] = [];
+  let i = 0;
+  while (i < children.length) {
+    const first = children[i]!;
+    if (
+      first.tag === 'div'
+      && /(?:^|;)\s*display\s*:\s*(?:inline-)?grid\b/i.test(first.style)
+    ) {
+      const gridKids = listDirectBlockChildSpans(
+        html,
+        first.absEnd,
+        first.absEnd + first.inner.length,
+      );
+      if (
+        gridKids.length === 2
+        && isLooseStatNumberChild(gridKids[0]!)
+        && isLooseStatLabelChild(gridKids[1]!)
+      ) {
+        pairs.push({
+          numberHtml: html.slice(gridKids[0]!.absStart, gridKids[0]!.absCloseEnd),
+          labelHtml: html.slice(gridKids[1]!.absStart, gridKids[1]!.absCloseEnd),
+          start: first.absStart,
+          end: first.absCloseEnd,
+        });
+        i += 1;
+        continue;
+      }
+    }
+    let cursor = i;
+    if (isEmptyStatCardShell(first)) {
+      cursor += 1;
+      if (cursor >= children.length) break;
+    }
+    const num = children[cursor];
+    const label = children[cursor + 1];
+    if (!num || !label || !isLooseStatNumberChild(num) || !isLooseStatLabelChild(label)) {
+      if (pairs.length > 0) break;
+      i += 1;
+      continue;
+    }
+    const start = isEmptyStatCardShell(first) ? first.absStart : num.absStart;
+    pairs.push({
+      numberHtml: html.slice(num.absStart, num.absCloseEnd),
+      labelHtml: html.slice(label.absStart, label.absCloseEnd),
+      start,
+      end: label.absCloseEnd,
+    });
+    i = cursor + 2;
+  }
+  if (pairs.length < 2) return null;
+  const alreadyCards = children.filter(
+    (c) => c.tag === 'div' && childHasExactClass(c, 'stat-card') && visibleText(c.inner).length >= 2,
+  ).length;
+  if (alreadyCards >= pairs.length) return null;
+  const cols = pairs.length === 3 ? 3 : pairs.length >= 4 ? 2 : pairs.length;
+  const gridOpen =
+    `<div class="stats-grid" style="display:grid;grid-template-columns:repeat(${cols},minmax(0,1fr));gap:24px;width:100%">`;
+  const cards = pairs.map((p) => wrapStatPairHtml(p.numberHtml, p.labelHtml)).join('');
+  const grid = `${gridOpen}${cards}</div>`;
+  const runStart = pairs[0]!.start;
+  const runEnd = pairs[pairs.length - 1]!.end;
+  return `${html.slice(openEnd, runStart)}${grid}${html.slice(runEnd, closeStart)}`;
+}
+
+export function wrapLooseStatMetricPairsIntoCards(html: string): string {
+  const source = String(html ?? '');
+  if (!source || !/\bstat-number\b|\bstat-label\b/i.test(source)) return source;
+  const slideRe =
+    /<(section|div)\b([^>]*\b(?:slide|data-screen-label)\b[^>]*)>([\s\S]*?)<\/\1>/gi;
+  let out = source;
+  const blocks: Array<{
+    start: number;
+    end: number;
+    tag: string;
+    attrs: string;
+    inner: string;
+  }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = slideRe.exec(source)) !== null) {
+    blocks.push({
+      start: match.index,
+      end: match.index + match[0]!.length,
+      tag: match[1]!,
+      attrs: match[2]!,
+      inner: match[3]!,
+    });
+  }
+  for (let b = blocks.length - 1; b >= 0; b -= 1) {
+    const block = blocks[b]!;
+    if (!/\bstat-number\b|\bstat-label\b/i.test(block.inner)) continue;
+    let rewrittenInner: string | null = null;
+    const flowOpen = /<div\b([^>]*\bdata-od-slide-flow\b[^>]*)>/i.exec(block.inner);
+    if (flowOpen && flowOpen.index != null) {
+      const flowOpenEnd = flowOpen.index + flowOpen[0].length;
+      const flowClose = findSameTagClose(block.inner, 'div', flowOpenEnd);
+      if (flowClose) {
+        const nextFlow = rewriteLooseStatMetricsInContainer(
+          block.inner,
+          flowOpenEnd,
+          flowClose.closeStart,
+        );
+        if (nextFlow != null) {
+          rewrittenInner =
+            block.inner.slice(0, flowOpenEnd)
+            + nextFlow
+            + block.inner.slice(flowClose.closeStart);
+        }
+      }
+    }
+    if (rewrittenInner == null) {
+      const wrapped = `<x>${block.inner}</x>`;
+      const nextBody = rewriteLooseStatMetricsInContainer(
+        wrapped,
+        3,
+        3 + block.inner.length,
+      );
+      if (nextBody != null) rewrittenInner = nextBody;
+    }
+    if (rewrittenInner == null || rewrittenInner === block.inner) continue;
+    out =
+      `${out.slice(0, block.start)}<${block.tag}${block.attrs}>${rewrittenInner}</${block.tag}>`
+      + out.slice(block.end);
+  }
+  return out;
+}
+
+const NEO_BRUTAL_VAR_FALLBACK_ATTR = 'data-od-neobrutal-var-fallback';
+const NEO_BRUTAL_ROOT_VARS =
+  ':root{--pink:#FE90E8;--blue:#C0F7FE;--green:#99E885;--yellow:#F7CB46;'
+  + '--cream:#FFDC8B;--black:#000000;--white:#FFFFFF;--offwhite:#FFFDF5;--ink:#2D2D2D}';
+
+/**
+ * 루프386 — MiniMax body-first fill drops official look CSS but still uses
+ * kit tokens. Inject minimal :root so slides are not unstyled.
+ */
+export function ensureNeoBrutalCssVariableFallback(html: string): string {
+  const source = String(html ?? '');
+  if (!source) return source;
+  if (!/var\(\s*--(?:pink|blue|green|yellow|cream|offwhite|ink)\b/i.test(source)) {
+    return source;
+  }
+  if (new RegExp(`\\b${NEO_BRUTAL_VAR_FALLBACK_ATTR}\\b`, 'i').test(source)) {
+    return source;
+  }
+  if (/:root\s*\{[^}]{0,800}--(?:pink|offwhite|cream)\s*:/i.test(source)) {
+    return source;
+  }
+  if (
+    /\bdata-od-official-look-css\b/i.test(source)
+    && /--(?:pink|offwhite|cream)\s*:/i.test(source)
+  ) {
+    return source;
+  }
+  const style =
+    `<style ${NEO_BRUTAL_VAR_FALLBACK_ATTR}>${NEO_BRUTAL_ROOT_VARS}</style>`;
+  if (/<\/head\s*>/i.test(source)) {
+    return source.replace(/<\/head\s*>/i, `${style}</head>`);
+  }
+  if (/<body\b/i.test(source)) {
+    return source.replace(/<body\b([^>]*)>/i, `${style}<body$1>`);
+  }
+  return `${style}${source}`;
+}
+
+/**
  * 루프385 — Inside a grid whose direct children are a mix of proper chrome
  * shells (`<div style="border+padding+background">…</div>` wrapping pill +
  * heading + paragraph) and LOOSE pill / heading / paragraph siblings without
@@ -4671,6 +4888,10 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // 그대로 복사해 loose 삼중항을 카드로 승격. 완성된 grid는 4장이
   // uniform하게 보임.
   out = wrapLoosePillHeadingTriplesInsideMixedGrid(out);
+  // 루프386 — Key Numbers: early-closed grid leaves .stat-number/.stat-label
+  // (and empty .stat-card shells) as loose siblings. Wrap pairs into
+  // .stat-card cells inside one equal-column grid.
+  out = wrapLooseStatMetricPairsIntoCards(out);
   // 루프333 — 조기 종료된 카드 뒤에 남은 orphan `<b>tail</b></div>` 제거.
   out = stripDuplicatedInlineTailAfterSiblingClose(out);
   // 루프331 — `</h1..6>` 다음 heading 꼬리 텍스트가 그대로 중복된 경우 제거.
@@ -4751,6 +4972,9 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
     out = scrubUnresolvedTemplatePlaceholders(out);
   }
   out = revealEntranceAnimSlots(out);
+  // 루프386 — prompt-fill often drops official look CSS but still paints with
+  // var(--pink)/var(--offwhite). Without :root the slides render unstyled.
+  out = ensureNeoBrutalCssVariableFallback(out);
   return out;
 }
 

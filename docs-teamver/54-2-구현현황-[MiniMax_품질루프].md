@@ -42,6 +42,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프386 — Key Numbers loose stats + CSS var fallback
+
+체감: Core Pillars~Close body-first HTML에서 Key Numbers grid 붕괴(숫자·라벨 흩어짐 + 빈 card), look CSS 누락으로 neo-brutal 색 미적용, 허구 지표/빈 pricing li/깨진 Edge 비교표.
+
+수정: `wrapLooseStatMetricPairsIntoCards` · `ensureNeoBrutalCssVariableFallback` · prompt-fill KPI/완성 카드 가드. 비교표 salvage·pricing empty-li는 후속.
+
+검증: contracts 루프386 3 · web seed KPI assert.
+
 ### 루프383 — prompt-fill 다장→1장 체감
 
 compact bootstrap 400ms 재시도가 next 후 slide 0으로 스냅백. prompt-fill이 short-deck top-up을 못 타던 갭 수정.
