@@ -3471,6 +3471,34 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     } catch (_) {}
     return 0;
   }
+  function leftoverAuthoredCanvasPx(list){
+    try {
+      var first = list && list[0];
+      if (first) {
+        var st = String(first.getAttribute && first.getAttribute('style') || '');
+        var m = st.match(/(?:min-)?width\\s*:\\s*(\\d+(?:\\.\\d+)?)px/i);
+        if (m) {
+          var authored = parseFloat(m[1]);
+          if (authored >= 1600) return authored;
+        }
+      }
+    } catch (_) {}
+    try {
+      var sheets = document.querySelectorAll('style');
+      for (var i = 0; i < sheets.length; i++) {
+        var el = sheets[i];
+        if (el.getAttribute && el.getAttribute('data-od-deck-fixed-canvas-pin') != null) continue;
+        var t = String(el.textContent || '');
+        if (/[.#]?slide[^{]*\\{[^}]*(?:min-)?width\\s*:\\s*1920px/i.test(t)) return 1920;
+      }
+    } catch (_) {}
+    return 0;
+  }
+  function leftoverAuthoredCanvasWouldNudge(list){
+    var canvas = leftoverAuthoredCanvasPx(list);
+    var vw = window.innerWidth || 0;
+    return canvas >= 1600 && vw > 0 && vw + 48 < canvas;
+  }
   function vwStepWouldNudgeCanvas(list){
     var canvas = slideCanvasPx(list);
     var vw = window.innerWidth || 0;
@@ -3976,6 +4004,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     if (frameworkDeckStage() || webComponentDeckStage()) return false;
     if (compactStackedDeckEnabled || stackedDeckStage()) return false;
     var list = slides();
+    if (leftoverStageShouldCollapse(transformTrack(list), list)) return false;
     if (transformTrack(list)) return true;
     var active = findActiveByClass(list);
     if (active >= 0 && hasComputedHiddenSibling(list, active)) return true;
@@ -4064,7 +4093,18 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     var step = transformSlideStepPx(list, track, 'x');
     return step >= 1600 && vw > 0 && vw + 48 < step;
   }
+  function leftoverStageShouldCollapse(track, list){
+    if (leftoverAuthoredCanvasWouldNudge(list)) return true;
+    if (!track) return false;
+    if (!(track.id === 'stage' || !!(track.classList && track.classList.contains('stage')))) return false;
+    // Neutralized leftover columns are not IB swipe strips.
+    return !isHorizontalStageTrack(track);
+  }
   function preferStackedOverStageTranslate(track, list){
+    // Authored 1920 leftovers keep a swipe <script> on #stage. Pin-only
+    // official IB must still translate; leftover canvas + narrow iframe
+    // only pans page 1, so forceReveal even when that script is present.
+    if (leftoverStageShouldCollapse(track, list)) return true;
     if (!stageTranslateWouldNudge(track, list)) return false;
     if (hasAuthorSwipeScript()) return false;
     return true;
@@ -4155,6 +4195,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
       }
       var pinX = authoredFixedCanvasPx();
       var vwX = window.innerWidth || 0;
+      if (leftoverAuthoredCanvasWouldNudge(list)) return false;
       if (stepX <= 0 && (vwStepWouldNudgeCanvas(list) || (pinX >= 1600 && vwX + 48 < pinX))) return false;
       if (stepX > 0) {
         track.style.transform = 'translateX(' + (-target * stepX) + 'px)';

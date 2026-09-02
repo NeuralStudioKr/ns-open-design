@@ -872,4 +872,180 @@ h1.display { font-size: 72px; }
     expect(srcdoc).toMatch(/<div\b[^>]*\bid\s*=\s*["']stage["']/i);
     expect(srcdoc).not.toContain('compactStackedDeckEnabled = true');
   });
+
+  it('paints slide 2 on a 1920 leftover #stage that hoist cannot unwrap (deco residue + swipe script)', async () => {
+    // MiniMax leftovers keep #stage, a swipe <script>, and a deco wrapper
+    // hoist refuses to unwrap. translateX(-1920px|-100vw) only pans page 1
+    // inside an ~800px iframe. Host ←/→ must hide page 1 and show page 2.
+    const html = `<!doctype html><html><head></head><body>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  #stage { display: flex; }
+  .slide { box-sizing: border-box; }
+</style>
+<div class="stage" id="stage">
+  <div class="deco-orbit" aria-hidden="true"></div>
+  <section class="slide" style="width:1920px;height:1080px">Page one topic</section>
+  <section class="slide" style="width:1920px;height:1080px">Page two topic</section>
+  <section class="slide" style="width:1920px;height:1080px">Page three topic</section>
+</div>
+<script>
+  (function () {
+    var stage = document.getElementById('stage');
+    var i = 0;
+    window.go = function () {
+      i += 1;
+      if (stage) stage.style.transform = 'translateX(-' + (i * 100) + 'vw)';
+    };
+  })();
+</script>
+</body></html>`;
+    const srcdoc = buildSrcdoc(html, {
+      deck: true,
+      userBrief: '영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘',
+    });
+    expect(srcdoc).toContain('compactStackedDeckEnabled = true');
+    expect(srcdoc).toMatch(/id\s*=\s*["']stage["']/i);
+    const script = extractDeckBridgeScript(srcdoc);
+    const dom = new JSDOM(srcdoc, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const win = dom.window;
+    const parentPostMessage = vi.fn();
+    Object.defineProperty(win, 'parent', {
+      configurable: true,
+      value: { postMessage: parentPostMessage },
+    });
+    Object.defineProperty(win, 'innerWidth', { configurable: true, value: 800 });
+    Object.defineProperty(win, 'innerHeight', { configurable: true, value: 600 });
+    const stage = win.document.getElementById('stage') as HTMLElement | null;
+    const slides = Array.from(win.document.querySelectorAll<HTMLElement>('.slide'));
+    expect(slides.length).toBeGreaterThanOrEqual(2);
+    slides.forEach((slide, index) => {
+      Object.defineProperty(slide, 'offsetWidth', { configurable: true, value: 1920 });
+      Object.defineProperty(slide, 'offsetHeight', { configurable: true, value: 1080 });
+      Object.defineProperty(slide, 'offsetLeft', { configurable: true, value: index * 1920 });
+      Object.defineProperty(slide, 'offsetTop', { configurable: true, value: 0 });
+    });
+    if (stage) {
+      Object.defineProperty(stage, 'scrollWidth', { configurable: true, value: 5760 });
+      Object.defineProperty(stage, 'offsetWidth', { configurable: true, value: 800 });
+    }
+    new win.Function(script).call(win);
+    win.dispatchEvent(new win.Event('load'));
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 800, height: 600, scale: 1, layoutFit: false },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 80));
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:slide', action: 'next' },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 120));
+
+    const painted = Array.from(win.document.querySelectorAll<HTMLElement>('.slide'));
+    const visible = painted.filter((slide) => slide.style.display !== 'none');
+    expect(visible.some((slide) => slide.textContent?.includes('Page two'))).toBe(true);
+    expect(visible.every((slide) => !slide.textContent?.includes('Page one'))).toBe(true);
+    const liveStage = win.document.getElementById('stage');
+    if (liveStage) {
+      expect(liveStage.style.transform || '').not.toMatch(/translateX\(\s*-?(?:100vw|1920px)\s*\)/);
+    }
+    const slideStates = parentPostMessage.mock.calls
+      .map((call) => call[0])
+      .filter((message) => message?.type === 'od:slide-state');
+    expect(slideStates.at(-1)).toMatchObject({ active: 1, count: 3 });
+  });
+
+  it('paints slide 2 on a neutralized 100vw leftover #stage that never authored 1920', async () => {
+    // Clone leftovers sometimes keep only template 100vw + swipe script.
+    // LOOK_NEUTRALIZE columns #stage; translating X only pans page 1.
+    const html = `<!doctype html><html><head>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  #stage { display: flex; }
+  .slide { min-width: 100vw; height: 100vh; box-sizing: border-box; }
+</style>
+</head><body>
+<div class="stage" id="stage">
+  <section class="slide">Page one topic</section>
+  <section class="slide">Page two topic</section>
+  <section class="slide">Page three topic</section>
+</div>
+<script>
+  (function () {
+    var stage = document.getElementById('stage');
+    var i = 0;
+    window.go = function () {
+      i += 1;
+      if (stage) stage.style.transform = 'translateX(-' + (i * 100) + 'vw)';
+    };
+  })();
+</script>
+</body></html>`;
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    const script = extractDeckBridgeScript(srcdoc);
+    const dom = new JSDOM(srcdoc, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const win = dom.window;
+    const parentPostMessage = vi.fn();
+    Object.defineProperty(win, 'parent', {
+      configurable: true,
+      value: { postMessage: parentPostMessage },
+    });
+    Object.defineProperty(win, 'innerWidth', { configurable: true, value: 800 });
+    Object.defineProperty(win, 'innerHeight', { configurable: true, value: 600 });
+    const stage = win.document.getElementById('stage') as HTMLElement | null;
+    const slides = Array.from(win.document.querySelectorAll<HTMLElement>('.slide'));
+    expect(slides.length).toBeGreaterThanOrEqual(2);
+    slides.forEach((slide, index) => {
+      Object.defineProperty(slide, 'offsetWidth', { configurable: true, value: 800 });
+      Object.defineProperty(slide, 'offsetHeight', { configurable: true, value: 600 });
+      Object.defineProperty(slide, 'offsetLeft', { configurable: true, value: 0 });
+      Object.defineProperty(slide, 'offsetTop', { configurable: true, value: index * 600 });
+    });
+    if (stage) {
+      const originalGetComputedStyle = win.getComputedStyle.bind(win);
+      win.getComputedStyle = ((el: Element, pseudo?: string | null) => {
+        const cs = originalGetComputedStyle(el, pseudo);
+        if (el === stage) {
+          return new win.Proxy(cs, {
+            get(target, prop) {
+              if (prop === 'flexDirection') return 'column';
+              if (prop === 'display') return 'flex';
+              const value = Reflect.get(target, prop);
+              return typeof value === 'function' ? value.bind(target) : value;
+            },
+          });
+        }
+        return cs;
+      }) as typeof win.getComputedStyle;
+    }
+    new win.Function(script).call(win);
+    win.dispatchEvent(new win.Event('load'));
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 800, height: 600, scale: 1, layoutFit: false },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 260));
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:slide', action: 'next' },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 120));
+    const painted = Array.from(win.document.querySelectorAll<HTMLElement>('.slide'));
+    const visible = painted.filter((slide) => {
+      if (slide.style.display === 'none') return false;
+      try {
+        const cs = win.getComputedStyle(slide);
+        return cs.display !== 'none' && cs.visibility !== 'hidden';
+      } catch {
+        return slide.style.display !== 'none';
+      }
+    });
+    expect(painted[1] && visible.includes(painted[1])).toBe(true);
+    expect(painted[0] && visible.includes(painted[0])).toBe(false);
+    const liveStage = win.document.getElementById('stage');
+    if (liveStage) {
+      expect(liveStage.style.transform || '').not.toMatch(/translateX\(\s*-?(?:100vw|1920px)\s*\)/);
+    }
+    const slideStates = parentPostMessage.mock.calls
+      .map((call) => call[0])
+      .filter((message) => message?.type === 'od:slide-state');
+    expect(slideStates.at(-1)).toMatchObject({ active: 1, count: 3 });
+  });
 });

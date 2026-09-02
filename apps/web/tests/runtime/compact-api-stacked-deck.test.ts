@@ -57,6 +57,19 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(looksLikeCompactApiStackedDeck(html)).toBe(false);
   });
 
+  it('treats min-width:1920 leftover slides as a fixed canvas, not a swipe strip', () => {
+    const html = [
+      '<!doctype html><html><head><style>',
+      '.slide{min-width:1920px;height:1080px}',
+      '</style></head><body>',
+      '<section class="slide">One</section>',
+      '<section class="slide">Two</section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeAuthoredHorizontalSwipeDeck(html)).toBe(false);
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+  });
+
   it('does not treat 1920 canvas leftovers with leaked min-width:100vw as swipe strips', () => {
     const html = [
       '<!doctype html><html><head><style>',

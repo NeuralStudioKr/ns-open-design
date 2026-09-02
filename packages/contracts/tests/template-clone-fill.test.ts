@@ -2030,4 +2030,20 @@ describe('hoistCloneSlidesOutOfFlexTrack', () => {
     expect(mainOut).not.toMatch(/<main\b[^>]*\bclass\s*=\s*["'][^"']*\bstage\b/i);
     expect([...(mainOut.matchAll(/<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b/gi))].length).toBe(2);
   });
+
+  it('unwraps leftover <div class="slide"> tracks inside #stage', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<div class="stage" id="stage">',
+      '<div class="slide" style="width:1920px;height:1080px"><div class="pad">One</div></div>',
+      '<div class="slide" style="width:1920px;height:1080px"><div class="pad">Two</div></div>',
+      '</div>',
+      '</body></html>',
+    ].join('');
+    const out = hoistCloneSlidesOutOfFlexTrack(html);
+    expect(out).not.toMatch(/\bid\s*=\s*["']stage["']/i);
+    expect([...(out.matchAll(/<div\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b/gi))].length).toBe(2);
+    expect(out).toContain('One');
+    expect(out).toContain('Two');
+  });
 });
