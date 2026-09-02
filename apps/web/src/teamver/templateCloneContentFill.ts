@@ -589,6 +589,7 @@ export function buildTemplateClonePromptFillSeed(options: {
     'Do not invent quantitative KPIs, headcount, NPS, market size ($XB), or pricing unless the brief/source materials state them. Prefer qualitative product claims and named features over fabricated metrics.',
     'Every KPI/stat cell must be a complete card (number + label inside one bordered shell). Do not leave bare .stat-number/.stat-label siblings or empty .stat-card shells.',
     'Keep kit CSS variables by including the template look (:root --pink/--blue/…). Never emit var(--pink) without defining tokens.',
+    'If the kit is neo-brutal Block Frame (hero-frame, .slide-1…N, --pink/--cream), keep that DOM. Do not emit IB magazine chrome (mast, ribbon, h1.display, cover-meta, foot, or 학습 노트).',
     hasAttachedSource
       ? 'Fill REAL presentation CONTENT for this request and any attached source materials (Canvas/Drive/files). Prefer facts from the source over invented numbers.'
       : 'Fill REAL presentation CONTENT for this create; expand THIS brief with concrete domain knowledge — still do not invent company metrics.',

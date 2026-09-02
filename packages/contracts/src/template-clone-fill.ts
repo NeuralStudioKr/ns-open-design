@@ -1084,6 +1084,60 @@ function officialLookIsBiennaleYellow(html: string): boolean {
   return /--sun\s*:\s*#F1EE2E/i.test(css) && /--paper\s*:/i.test(css);
 }
 
+/**
+ * 루프387 — Zhangzara Block Frame / neo-brutal look (or Motif deco sheet).
+ * IB magazine chrome must not be stamped onto these kits.
+ */
+function officialLookIsNeoBrutalBlockFrame(html: string): boolean {
+  const css = lookCssWithoutNeutralize(html);
+  if (css.trim()) {
+    if (/\.slide-1\s+\.hero-frame\b/i.test(css)) return true;
+    if (/--pink\s*:\s*#FE90E8/i.test(css) && /\.nb-heading-(?:xl|lg)\b/i.test(css)) {
+      return true;
+    }
+    if (/--pink\s*:\s*#FE90E8/i.test(css) && /\.feature-card\b/i.test(css)) return true;
+  }
+  const deco = [...String(html ?? '').matchAll(
+    /<style\b[^>]*\bdata-od-official-motif-deco-css\b[^>]*>([\s\S]*?)<\/style>/gi,
+  )].map((match) => match[1] ?? '').join('\n');
+  return /--pink\b|#FE90E8/i.test(deco)
+    && /\.deco-pink-rect|\.card-deco|\.deco-yellow-bar/i.test(deco);
+}
+
+function magazineLeftoverRibbonLabel(text: string): boolean {
+  return /^(?:학습\s*노트|Study Notes|Working notes|Notes)$/i.test(
+    String(text ?? '').replace(/\s+/g, ' ').trim(),
+  );
+}
+
+/**
+ * Brief/title salvage for URL + "사이트 …" prompts. Completes truncated
+ * Hangul (`사이` → `사이트`) and prefers a brand label over a raw host crumb.
+ */
+export function polishUrlSiteCoverTitle(title: string, brief?: string | null): string {
+  let next = String(title ?? '').replace(/\s+/g, ' ').trim();
+  const source = `${String(brief ?? '')}\n${next}`;
+  // Truncated "… 사이" almost always means "사이트" on URL briefs.
+  if (
+    /사이$/u.test(next)
+    && (/사이트/u.test(source) || /(?:www\.|[a-z0-9-]+\.(?:com|co\.kr|kr|io|net|ai|app))\b/i.test(next))
+  ) {
+    next = next.replace(/사이$/u, '사이트');
+  }
+  const host = source.match(
+    /(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+)\.(?:com|co\.kr|kr|io|net|ai|app)\b/i,
+  )?.[1];
+  if (
+    host
+    && /사이트/u.test(`${source}\n${next}`)
+    && /^(?:https?:\/\/)?(?:www\.)?[a-z0-9.-]+\s*사이트/i.test(next)
+  ) {
+    if (/^teamver$/i.test(host)) return /[가-힣]/.test(source) ? '팀버' : 'Teamver';
+    return host.charAt(0).toUpperCase() + host.slice(1).toLowerCase();
+  }
+  return next;
+}
+
 /** Instruction leftovers MiniMax parks on cover titles (`연습 팁에 대한`). */
 export function polishInstructionCoverTitle(raw: string): string {
   return String(raw ?? '')
@@ -1540,31 +1594,37 @@ function coverAlreadyBiennalePoster(attrs: string, body: string): boolean {
 }
 
 /**
- * Persist stamps IB magazine chrome onto Biennale/poster kits before look
- * CSS lands. Restyle that cover with the official poster slots only.
+ * Persist stamps IB magazine chrome onto Biennale/poster/neo-brutal kits
+ * before look CSS lands. Restyle that cover with the official kit slots only.
  * MiniMax often copies ribbon/`h1.display`/cover-meta without `.mast`.
+ * 루프387 — Block Frame must become `.slide-1` + `.hero-frame`, not IB paper.
  */
 export function restyleForeignIbMagazineCover(html: string): string {
   const dest = String(html ?? '');
   if (!dest.trim() || officialLookIsIbMagazine(dest)) return dest;
   const biennale = officialLookIsBiennaleYellow(dest);
-  if (!biennale && !destHasPosterSlideKinds(dest)) return dest;
+  const neo = officialLookIsNeoBrutalBlockFrame(dest);
+  if (!biennale && !neo && !destHasPosterSlideKinds(dest)) return dest;
   const spans = listHealSlideHostSpans(dest);
   if (spans.length === 0) return dest;
   const first = spans[0]!;
   const body = dest.slice(first.bodyStart, first.bodyEnd);
   if (coverAlreadyBiennalePoster(first.attrs, body)) return dest;
+  if (/\bhero-frame\b/i.test(body) && /\bslide-1\b/i.test(first.attrs)) return dest;
   if (!coverHasIbDisplayHeading(body) || !coverHasIbMagazineChrome(first.attrs, body)) {
     return dest;
   }
-  // No-mast leftover chrome is Biennale-only. Poster-kind alone is too
+  // No-mast leftover chrome is Biennale/neo. Poster-kind alone is too
   // broad for Daisy/Studio decks that also happen to have s-chapter.
-  if (!/\bmast\b/i.test(body) && !biennale) return dest;
-  const title = polishInstructionCoverTitle(
-    (body.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim(),
+  if (!/\bmast\b/i.test(body) && !biennale && !neo) return dest;
+  const title = polishUrlSiteCoverTitle(
+    polishInstructionCoverTitle(
+      (body.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    ),
+    stripTagsToText(dest).slice(0, 400),
   );
   if (title.length < 2) return dest;
   const subhead = polishInstructionCoverTitle(
@@ -1574,6 +1634,34 @@ export function restyleForeignIbMagazineCover(html: string): string {
       .trim(),
   );
   const subline = attachHangulParticles(subhead);
+  const close = dest.slice(first.bodyEnd).match(new RegExp(`^</${first.tag}\\s*>`, 'i'));
+  const end = first.bodyEnd + (close?.[0].length ?? 0);
+
+  if (neo) {
+    const ribbonRaw = (
+      (body.match(/<(?:span|div)\b[^>]*\bribbon\b[^>]*>([\s\S]*?)<\/(?:span|div)>/i)?.[1] ?? '')
+      || (body.match(/<(?:span|div)\b[^>]*\bbrand\b[^>]*>([\s\S]*?)<\/(?:span|div)>/i)?.[1] ?? '')
+    ).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const label = ribbonRaw && !magazineLeftoverRibbonLabel(ribbonRaw)
+      ? ribbonRaw.slice(0, 28)
+      : (/[가-힣]/.test(title) ? '표지' : 'Cover');
+    const inner =
+      `<div class="hero-frame">`
+      + `<div class="nb-label nb-label-pink hero-label">${escapeHtml(label)}</div>`
+      + `<h1 class="nb-heading-xl hero-title">${escapeHtml(title)}</h1>`
+      + (subline
+        ? `<p class="hero-subtitle">${escapeHtml(subline)}</p>`
+        : '')
+      + `</div>`;
+    return (
+      `${dest.slice(0, first.start)}<${first.tag} class="slide slide-1" `
+      + `style="width:1920px;height:1080px;box-sizing:border-box;overflow:visible;`
+      + `position:relative;background:var(--cream);color:var(--black);`
+      + `display:flex;flex-direction:column;justify-content:center;align-items:center">`
+      + `${inner}</${first.tag}>${dest.slice(end)}`
+    );
+  }
+
   const inner = biennale
     ? `<div class="blocks" aria-hidden="true"><div class="b1"></div><div class="b2"></div><div class="b3"></div><div class="b4"></div></div>`
       + `<div class="sunglow" aria-hidden="true"></div><div class="titlewrap"><h1 class="title">${formatBiennaleCoverTitle(title)}</h1>${
@@ -1582,8 +1670,6 @@ export function restyleForeignIbMagazineCover(html: string): string {
     : `<h1 class="title">${escapeHtml(attachHangulParticles(title))}</h1>${
       subline ? `<p class="subhead">${escapeHtml(subline)}</p>` : ''
     }`;
-  const close = dest.slice(first.bodyEnd).match(new RegExp(`^</${first.tag}\\s*>`, 'i'));
-  const end = first.bodyEnd + (close?.[0].length ?? 0);
   return (
     `${dest.slice(0, first.start)}<${first.tag} class="slide s-cover" ` +
     `style="width:1920px;height:1080px;box-sizing:border-box;overflow:visible;` +
@@ -3563,14 +3649,21 @@ function extractUserFacingBrief(text: string): string {
 function deriveTitleFromBrief(brief: string, deckTitle?: string | null): string {
   const preferred = deckTitle?.trim() ?? '';
   if (preferred && !looksLikeTemplateMarketingTitle(preferred) && !looksLikeInstructionCopy(preferred)) {
-    return cleanCloneTitle(preferred).slice(0, 80);
+    return polishUrlSiteCoverTitle(cleanCloneTitle(preferred).slice(0, 80), brief);
   }
   const first = brief.split(/\r?\n/).map((line) => line.trim()).find(Boolean) || brief;
   // "expo에 대해서 설명하는 피피티 만들어줘" → topic before 설명/피피티/만들어
   const aboutTopic = first.match(
     /^(.+?)\s*(?:에\s*대해(?:서)?|에\s*대한|에\s*관한)\s*(?:설명하는\s*)?(?:발표\s*자료|피피티|PPT|슬라이드|덱|프레젠테이션)/i,
   )?.[1]?.trim();
-  let title = aboutTopic || first
+  // "www.teamver.com 사이트 분석해서 …" → brand, not a truncated host crumb
+  const siteBrand = polishUrlSiteCoverTitle(
+    first.match(
+      /^(?:https?:\/\/)?(?:www\.)?[a-z0-9.-]+\s*사이트(?:\s*분석\S*)?/i,
+    )?.[0] ?? '',
+    brief,
+  );
+  let title = siteBrand || aboutTopic || first
     .replace(/^(?:please\s+)?(?:make|create|build|write)\s+(?:me\s+)?(?:a|an|the)?\s*/i, '')
     .replace(/\s+(?:slides?|deck|presentation)\s*\.?$/i, '')
     .replace(
@@ -3589,7 +3682,10 @@ function deriveTitleFromBrief(brief: string, deckTitle?: string | null): string 
       ? aboutTopic
       : '슬라이드';
   }
-  return polishInstructionCoverTitle(cleanCloneTitle(title).slice(0, 60)) || '슬라이드';
+  return polishUrlSiteCoverTitle(
+    polishInstructionCoverTitle(cleanCloneTitle(title).slice(0, 60)),
+    brief,
+  ) || '슬라이드';
 }
 
 /**
@@ -3845,10 +3941,13 @@ export function healInstructionCopyCoverHeading(
   deckTitle?: string | null,
 ): string {
   const dest = String(html ?? '');
-  const coverTitle = polishInstructionCoverTitle(
-    sanitizeTemplateCloneDeckTitle(
-      deriveDeckCoverTitleFromBrief(brief, deckTitle),
-    ) ?? '',
+  const coverTitle = polishUrlSiteCoverTitle(
+    polishInstructionCoverTitle(
+      sanitizeTemplateCloneDeckTitle(
+        deriveDeckCoverTitleFromBrief(brief, deckTitle),
+      ) ?? '',
+    ),
+    brief,
   );
   if (!coverTitle || !dest.trim()) return dest;
 
@@ -4020,12 +4119,16 @@ export function healSparseDeckCoverLayout(
   deckTitle?: string | null,
 ): string {
   const dest = String(html ?? '');
-  const coverTitle = polishInstructionCoverTitle(
-    sanitizeTemplateCloneDeckTitle(
-      deriveDeckCoverTitleFromBrief(brief, deckTitle),
-    ) ?? '',
+  const coverTitle = polishUrlSiteCoverTitle(
+    polishInstructionCoverTitle(
+      sanitizeTemplateCloneDeckTitle(
+        deriveDeckCoverTitleFromBrief(brief, deckTitle),
+      ) ?? '',
+    ),
+    brief,
   );
   if (!coverTitle || isGenericDeckArtifactTitle(coverTitle) || !dest.trim()) return dest;
+  if (officialLookIsNeoBrutalBlockFrame(dest)) return dest;
   if (destHasPosterSlideKinds(dest) && !officialLookIsIbMagazine(dest)) return dest;
   if (lookCssWithoutNeutralize(dest).trim() && !officialLookIsIbMagazine(dest)) return dest;
 

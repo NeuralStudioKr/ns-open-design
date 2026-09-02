@@ -5339,6 +5339,19 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(ensureNeoBrutalCssVariableFallback(out)).toBe(out);
     });
 
+    it('aliases --paper/--rule when magazine tokens sit on neo-brutal look', () => {
+      const html = [
+        '<!doctype html><html><head>',
+        '<style data-od-official-look-css>:root{--pink:#FE90E8;--cream:#FFDC8B;--black:#000}</style>',
+        '</head><body>',
+        '<section class="slide" style="background:var(--paper);color:var(--ink)">x</section>',
+        '</body></html>',
+      ].join('');
+      const out = ensureNeoBrutalCssVariableFallback(html);
+      expect(out).toContain('data-od-neobrutal-var-fallback');
+      expect(out).toMatch(/--paper:var\(--cream\)/);
+    });
+
     it('end-to-end heal wraps stats and injects var fallback', () => {
       const html = [
         '<!doctype html><html><head></head><body>',

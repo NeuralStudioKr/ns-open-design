@@ -45,6 +45,7 @@
 | **루프383** prompt-fill compact snap-back · short-deck top-up | ☑ |
 | **루프385** mixed grid loose pill+h3+p wrap | ☑ |
 | **루프386** Key Numbers loose stats wrap · neo-brutal CSS var fallback · KPI seed 가드 | ☑ |
+| **루프387** neo-brutal 위 IB magazine 커버 → hero-frame · URL 제목 polish | ☑ |
 | **루프366** section `#stage` hoist · contracts dist rebuild | ☑ web transform-driven 19/19 |
 | MiniMax 실키 E2E | ☑ 가드 있음 · 키 없으면 skip (`template-clone-minimax-live.e2e`) |
 

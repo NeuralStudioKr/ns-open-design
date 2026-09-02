@@ -32,6 +32,7 @@ import {
   restyleBiennaleSparseQuoteBodies,
   injectBiennaleSparseFillCss,
   polishInstructionCoverTitle,
+  polishUrlSiteCoverTitle,
   stripEmptyOfficialMotifInstances,
   stripHostProtocolLeakFromDeckHtml,
   stripNonSlotWrappers,
@@ -684,6 +685,41 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     );
     expect(restyleForeignIbMagazineCover(daisy)).toContain('class="display"');
     expect(restyleForeignIbMagazineCover(daisy)).not.toMatch(/class="slide s-cover"/);
+  });
+
+  it('루프387: restyles foreign IB magazine cover onto neo-brutal Block Frame hero', () => {
+    const html = `<!doctype html><html lang="ko"><head>
+<style data-od-official-motif-deco-css>
+.slide [data-od-official-motif-html].deco-pink-rect{background:var(--pink)}
+.slide [data-od-official-motif-html].card-deco{background:var(--yellow)}
+</style>
+</head><body style="margin:0">
+<section class="slide cover slide-title" style="background:var(--paper);color:var(--ink)">
+<header class="mast"><span class="brand">학습 노트</span></header>
+<div class="body"><span class="ribbon">학습 노트</span>
+<h1 class="display">www.teamver.com 사이</h1></div>
+<footer class="foot"><span class="conf">www.teamver.com 사이</span></footer>
+</section>
+<style data-od-official-look-css>
+:root { --pink: #FE90E8; --cream: #FFDC8B; --black: #000000; --offwhite: #FFFDF5; }
+.slide-1 .hero-frame { border: 4px solid var(--black); }
+.nb-heading-xl { font-weight: 900; }
+.feature-card { border: 4px solid var(--black); }
+/* stacked preview/export: Motif paint */
+.slide.cover h1.display { font-size: 96px !important; }
+</style>
+</body></html>`;
+    const restyled = restyleForeignIbMagazineCover(html);
+    expect(restyled).toMatch(/class="slide slide-1"/);
+    expect(restyled).toMatch(/class="hero-frame"/);
+    expect(restyled).toMatch(/nb-heading-xl hero-title/);
+    expect(restyled).toMatch(/팀버|Teamver|사이트/);
+    expect(restyled).not.toMatch(/학습 노트|class="mast"|class="ribbon"|h1 class="display"/i);
+    expect(restyled).toMatch(/background:var\(--cream\)/);
+
+    expect(polishUrlSiteCoverTitle('www.teamver.com 사이', 'www.teamver.com 사이트 분석')).toBe('팀버');
+    expect(deriveDeckCoverTitleFromBrief('www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘'))
+      .toMatch(/팀버|Teamver/);
   });
 
   it('does not wrap dense or already-stacked Biennale chapters', () => {

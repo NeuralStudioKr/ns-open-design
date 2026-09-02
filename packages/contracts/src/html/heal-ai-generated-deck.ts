@@ -4297,29 +4297,46 @@ export function wrapLooseStatMetricPairsIntoCards(html: string): string {
 const NEO_BRUTAL_VAR_FALLBACK_ATTR = 'data-od-neobrutal-var-fallback';
 const NEO_BRUTAL_ROOT_VARS =
   ':root{--pink:#FE90E8;--blue:#C0F7FE;--green:#99E885;--yellow:#F7CB46;'
-  + '--cream:#FFDC8B;--black:#000000;--white:#FFFFFF;--offwhite:#FFFDF5;--ink:#2D2D2D}';
+  + '--cream:#FFDC8B;--black:#000000;--white:#FFFFFF;--offwhite:#FFFDF5;'
+  + '--ink:#2D2D2D;--paper:var(--cream);--rule:var(--black)}';
 
 /**
- * 루프386 — MiniMax body-first fill drops official look CSS but still uses
- * kit tokens. Inject minimal :root so slides are not unstyled.
+ * 루프386/387 — MiniMax body-first fill drops official look CSS but still uses
+ * kit tokens. Inject minimal :root so slides are not unstyled. Also alias
+ * magazine `--paper`/`--rule` when neo-brutal kits are present (foreign IB
+ * chrome leftovers).
  */
 export function ensureNeoBrutalCssVariableFallback(html: string): string {
   const source = String(html ?? '');
   if (!source) return source;
-  if (!/var\(\s*--(?:pink|blue|green|yellow|cream|offwhite|ink)\b/i.test(source)) {
-    return source;
-  }
+  const usesNeoToken = /var\(\s*--(?:pink|blue|green|yellow|cream|offwhite|ink)\b/i.test(source);
+  const usesMagazineOnNeo =
+    /var\(\s*--(?:paper|rule)\b/i.test(source)
+    && /(?:--pink\s*:|#FE90E8|var\(\s*--pink\b)/i.test(source);
+  if (!usesNeoToken && !usesMagazineOnNeo) return source;
   if (new RegExp(`\\b${NEO_BRUTAL_VAR_FALLBACK_ATTR}\\b`, 'i').test(source)) {
     return source;
   }
-  if (/:root\s*\{[^}]{0,800}--(?:pink|offwhite|cream)\s*:/i.test(source)) {
+  const hasPaperDef = /--paper\s*:/i.test(source);
+  const hasPinkDef =
+    /:root\s*\{[^}]{0,1200}--(?:pink|offwhite|cream)\s*:/i.test(source)
+    || (
+      /\bdata-od-official-look-css\b/i.test(source)
+      && /--(?:pink|offwhite|cream)\s*:/i.test(source)
+    );
+  if (hasPinkDef && (!usesMagazineOnNeo || hasPaperDef)) {
     return source;
   }
-  if (
-    /\bdata-od-official-look-css\b/i.test(source)
-    && /--(?:pink|offwhite|cream)\s*:/i.test(source)
-  ) {
-    return source;
+  if (hasPinkDef && usesMagazineOnNeo && !hasPaperDef) {
+    const alias =
+      `<style ${NEO_BRUTAL_VAR_FALLBACK_ATTR}>:root{--paper:var(--cream);--ink:var(--black);--rule:var(--black)}</style>`;
+    if (/<\/head\s*>/i.test(source)) {
+      return source.replace(/<\/head\s*>/i, `${alias}</head>`);
+    }
+    if (/<body\b/i.test(source)) {
+      return source.replace(/<body\b([^>]*)>/i, `${alias}<body$1>`);
+    }
+    return `${alias}${source}`;
   }
   const style =
     `<style ${NEO_BRUTAL_VAR_FALLBACK_ATTR}>${NEO_BRUTAL_ROOT_VARS}</style>`;

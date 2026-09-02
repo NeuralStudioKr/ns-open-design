@@ -42,6 +42,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프387 — Block Frame 위 IB 매거진 커버
+
+체감: look은 Zhangzara Block Frame인데 MiniMax가 IB magazine 표지(학습 노트 · truncated `사이`) 1장만 냄.
+
+수정: neo-brutal foreign IB → hero-frame restyle · sparse magazine cover 금지 · URL 제목 polish · `--paper` alias · prompt IB chrome 가드. **다장 top-up은 별도** — 이번 슬라이스는 표지 셸/카피.
+
 ### 루프386 — Key Numbers loose stats + CSS var fallback
 
 체감: Core Pillars~Close body-first HTML에서 Key Numbers grid 붕괴(숫자·라벨 흩어짐 + 빈 card), look CSS 누락으로 neo-brutal 색 미적용, 허구 지표/빈 pricing li/깨진 Edge 비교표.
