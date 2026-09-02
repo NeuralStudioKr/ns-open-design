@@ -5,6 +5,7 @@ import {
   TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
   TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER,
   buildTemplateCloneContentFillSeed,
+  buildTemplateClonePromptFillSeed,
   buildTemplateCloneSlotFillRepairPrompt,
   cloneFillJsonRepairAlreadyAttempted,
   compactTemplateCloneFillSourceBrief,
@@ -20,6 +21,7 @@ import {
   normalizeTemplateCloneFillMode,
   normalizeTemplateCloneFillSlideCountHint,
   queueTemplateCloneContentFill,
+  queueTemplateClonePromptFill,
   resolveTemplateCloneAutoSendSeed,
   shouldUseDeterministicTemplateCloneFill,
   shouldQueueCloneSlotFillJsonRepair,
@@ -96,6 +98,26 @@ describe('templateCloneContentFill', () => {
     expect(deriveTemplateCloneTopicLabel(
       'expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
     )).toBe('expo');
+  });
+
+  it('builds prompt-fill rollback seed without JSON slot-fill markers', () => {
+    const seed = buildTemplateClonePromptFillSeed({
+      userInstruction: 'expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
+      templateTitle: 'Html Ppt Zhangzara Daisy Days',
+      sourceBrief: 'Canvas title: Expo\nVisible headings: Intro / API / Next',
+      slideCountHint: '5-6',
+    });
+
+    expect(seed).toContain('[Template clone prompt fill]');
+    expect(seed).toMatch(/complete final deck artifact/i);
+    expect(seed).toMatch(/Do not emit JSON outline/i);
+    expect(seed).toMatch(/1920x1080/);
+    expect(seed).toContain('Selected template: Html Ppt Zhangzara Daisy Days');
+    expect(seed).toContain('Cover topic (use as the title, not the instruction): expo');
+    expect(seed).not.toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
+    expect(seed).not.toContain(TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER);
+    expect(seed).not.toContain(TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER);
+    expect(isTemplateCloneContentFillPrompt(seed)).toBe(false);
   });
 
   it('adds a default 6-slide hint when no explicit count is provided', () => {
@@ -496,6 +518,44 @@ describe('templateCloneContentFill', () => {
       expect(store.get('od:auto-send-attachments:proj-fill')).not.toContain('deck.html');
       // App/create owns od:auto-send-first — fill queue must not bypass Drive suppress.
       expect(store.get('od:auto-send-first:proj-fill')).toBeUndefined();
+    } finally {
+      if (prev) (globalThis as { window?: unknown }).window = prev;
+      else delete (globalThis as { window?: unknown }).window;
+    }
+  });
+
+  it('queues prompt-fill rollback seed without arming JSON slot-fill recovery', () => {
+    const store = new Map<string, string>();
+    const prev = globalThis.window;
+    (globalThis as { window?: unknown }).window = {
+      sessionStorage: {
+        setItem: (key: string, value: string) => {
+          store.set(key, value);
+        },
+        removeItem: (key: string) => {
+          store.delete(key);
+        },
+        getItem: (key: string) => store.get(key) ?? null,
+      },
+    };
+    try {
+      const seed = buildTemplateClonePromptFillSeed({
+        userInstruction: 'expo 발표자료 만들어줘.',
+      });
+      store.set('od:template-clone-content-fill:proj-prompt', '1');
+      queueTemplateClonePromptFill({
+        projectId: 'proj-prompt',
+        seed,
+        attachments: [
+          { path: 'deck.html', name: 'deck.html', kind: 'file' },
+          { path: 'refs/drive/notes.pdf', name: 'notes.pdf', kind: 'file' },
+        ],
+      });
+      expect(store.get('od:auto-send-seed:proj-prompt')).toBe(seed);
+      expect(store.get('od:template-clone-content-fill:proj-prompt')).toBeUndefined();
+      expect(store.get('od:auto-send-attachments:proj-prompt')).toContain('notes.pdf');
+      expect(store.get('od:auto-send-attachments:proj-prompt')).not.toContain('deck.html');
+      expect(isTemplateCloneContentFillPrompt(store.get('od:auto-send-seed:proj-prompt'))).toBe(false);
     } finally {
       if (prev) (globalThis as { window?: unknown }).window = prev;
       else delete (globalThis as { window?: unknown }).window;

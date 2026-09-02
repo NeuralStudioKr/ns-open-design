@@ -543,6 +543,62 @@ export function buildTemplateCloneContentFillSeed(options: {
   return parts.join('\n');
 }
 
+/** Legacy rollback path: model emits the final deck HTML; no JSON slot-fill marker. */
+export function buildTemplateClonePromptFillSeed(options: {
+  userInstruction?: string | null;
+  sourceBrief?: string | null;
+  pendingPrompt?: string | null;
+  templateTitle?: string | null;
+  hasSourceMaterial?: boolean;
+  slideCountHint?: string | number | null;
+}): string {
+  const visible = extractTemplateCloneUserFacingRequest(options);
+  const topic = deriveTemplateCloneTopicLabel(visible);
+  const templateTitle = options.templateTitle?.trim() || '';
+  const rawBrief = String(options.sourceBrief ?? '').trim();
+  const brief = compactTemplateCloneFillSourceBrief(
+    [options.sourceBrief, options.pendingPrompt, options.userInstruction]
+      .filter(Boolean)
+      .join('\n\n'),
+  );
+  const hasAttachedSource =
+    options.hasSourceMaterial
+    ?? (briefLooksLikeAttachedSource(rawBrief) || briefLooksLikeAttachedSource(brief));
+  const visibleSlideCount = parseSlideCountTarget(visible);
+  const slideCountHintSource =
+    visibleSlideCount != null && isSlideCountRangeHint(options.slideCountHint)
+      ? visibleSlideCount
+      : (options.slideCountHint ?? visibleSlideCount);
+  const slideCountHint = normalizeTemplateCloneFillSlideCountHint(slideCountHintSource);
+  const parts = [
+    visible,
+    '',
+    '[Template clone prompt fill]',
+    'A visual deck template was selected. Create ONE complete final deck artifact now.',
+    'Emit `<artifact type="deck" identifier="deck">` with a complete HTML document and filled slides. Do not emit JSON outline.',
+    'Use the selected template kit in the system prompt as visual authority: palette, typography, motif/decorative language, layout rhythm, and slide chrome.',
+    'Use the cloned `deck.html` only as a visual/look reference if the host mentions it; do not treat it as an existing-deck edit and do not copy demo placeholder text.',
+    hasAttachedSource
+      ? 'Fill REAL presentation CONTENT for this request and any attached source materials (Canvas/Drive/files).'
+      : 'Fill REAL presentation CONTENT for this create; expand the topic with concrete domain knowledge.',
+    'The visible request above is a brief/topic. Do NOT paste the user instruction onto the cover or body slides.',
+    topic ? `Cover topic (use as the title, not the instruction): ${topic}.` : '',
+    `Quality bar: ${SLIDE_DECK_QUALITY_BAR_INSTRUCTION}`,
+    SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION,
+    SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE,
+    `Slide count: ${slideCountHint || FIRST_FILL_SLIDE_COUNT_GUIDANCE}.`,
+    'Every slide must be 1920x1080, fixed-size, overflow hidden, and navigable as a deck, not a scrolling article.',
+    'Do not stop after a status sentence, outline, or partial `<head>`; close `</html></artifact>`.',
+  ].filter((line) => line !== '');
+  if (templateTitle) {
+    parts.push(`Selected template: ${templateTitle}.`);
+  }
+  if (brief) {
+    parts.push('', '[Source brief]', brief);
+  }
+  return parts.join('\n');
+}
+
 /**
  * Auto-send seed after daemon Clone.
  *
@@ -600,6 +656,31 @@ export function queueTemplateCloneContentFill(options: {
     // suppressAutoSendForFailedDriveImport (and similar) cannot be bypassed.
     window.sessionStorage.setItem(autoSendSeedStorageKey(projectId), options.seed);
     window.sessionStorage.setItem(templateCloneContentFillFlagKey(projectId), '1');
+    const attachments = withoutCanonicalDeckAttachments(options.attachments);
+    if (attachments.length > 0) {
+      window.sessionStorage.setItem(
+        `od:auto-send-attachments:${projectId}`,
+        JSON.stringify(attachments),
+      );
+    } else {
+      window.sessionStorage.removeItem(`od:auto-send-attachments:${projectId}`);
+    }
+  } catch {
+    /* sessionStorage may be unavailable */
+  }
+}
+
+/** Store a Clone follow-up seed without arming the JSON slot-fill recovery path. */
+export function queueTemplateClonePromptFill(options: {
+  projectId: string;
+  seed: string;
+  attachments?: ChatAttachment[];
+}): void {
+  const projectId = options.projectId.trim();
+  if (!projectId || !options.seed.trim()) return;
+  try {
+    window.sessionStorage.setItem(autoSendSeedStorageKey(projectId), options.seed);
+    window.sessionStorage.removeItem(templateCloneContentFillFlagKey(projectId));
     const attachments = withoutCanonicalDeckAttachments(options.attachments);
     if (attachments.length > 0) {
       window.sessionStorage.setItem(
