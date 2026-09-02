@@ -61,6 +61,10 @@ export function normalizeTemplateCloneFillMode(value: unknown): TemplateCloneFil
   return 'prompt';
 }
 
+export function isTemplateClonePromptFillPrompt(text: unknown): boolean {
+  return String(text ?? '').includes(TEMPLATE_CLONE_PROMPT_FILL_MARKER);
+}
+
 export function getTemplateCloneFillMode(): TemplateCloneFillMode {
   const fromEnv = readTeamverViteEnv('VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE');
   if (fromEnv) return normalizeTemplateCloneFillMode(fromEnv);

@@ -19,6 +19,11 @@
   - 기본값: `prompt`
   - `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=deterministic`이면 신규 경로 사용.
   - env가 비어 있는 로컬/QA 빌드에서는 `localStorage.od:template-clone-fill-mode=deterministic`으로도 신규 경로를 켤 수 있다. 단, env가 `prompt`로 명시된 배포 빌드에서는 env가 우선한다.
+- 2026-09-02 추가 보강:
+  - `prompt-fill` 후속 AI turn은 `deck.html`이 이미 있어도 기존 덱 편집으로 분류하지 않는다.
+  - 이유: Clone seed로 만들어진 `deck.html`은 LOOK 기준일 뿐이며, 이 턴은 새 콘텐츠를 채운 최종 덱을 생성하는 CREATE turn이다.
+  - 기존 덱 편집 지시(`[Existing deck edit]`)나 canonical `deck.html` 자동 첨부가 같이 들어가면 MiniMax/API agent가 "전체 생성"과 "부분 편집"을 동시에 받아 `AGENT_EXECUTION_FAILED` 또는 빈 결과로 빠질 수 있다.
+  - 따라서 prompt-fill marker를 별도 판별자로 분리하고, 기존 JSON slot-fill recovery와는 연결하지 않는다.
 
 ## 롤백
 
@@ -36,6 +41,7 @@
 ## 검증 항목
 
 - 기본값에서 기존 prompt-fill 경로가 JSON outline marker 없이 완성 deck artifact를 요청하는지 확인.
+- prompt-fill 경로에서 cloned `deck.html`이 있어도 `[Existing deck edit]` 지시가 붙지 않고 canonical deck attachment가 제거되는지 확인.
 - deterministic opt-in에서 후속 AI fill turn이 자동 전송되지 않는지 확인.
 - metadata stamp가 `templateCloneContentFilled=true`로 남아 재진입/새로고침 시 다시 fill을 시작하지 않는지 확인.
 - 템플릿 preview clone 실패 시 기존 복구 로직과 단건 retry가 유지되는지 확인.

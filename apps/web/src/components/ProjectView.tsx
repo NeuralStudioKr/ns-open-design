@@ -225,6 +225,7 @@ import {
   extractTemplateCloneFillSlideCountHintFromPrompt,
   historyHasTemplateCloneContentFill,
   isTemplateCloneContentFillPrompt,
+  isTemplateClonePromptFillPrompt,
   isTemplateCloneContentFillQueued,
   queueTemplateCloneContentFill,
   readQueuedAutoSendSeed,
@@ -1721,6 +1722,10 @@ export function promptWithExistingDeckEditInstruction(
   const deckPath = options.deckPath.trim();
   if (!deckPath) return prompt;
   if (prompt.includes(EXISTING_DECK_EDIT_INSTRUCTION_MARKER)) return prompt;
+  // Prompt-fill follows daemon Clone, but it is still a CREATE turn. If the
+  // cloned deck.html is restamped as an existing-deck edit, BYOK/API agents
+  // can receive conflicting instructions and fail before a usable artifact.
+  if (isTemplateClonePromptFillPrompt(prompt)) return prompt;
   const visiblePrompt = prompt.trim() || '슬라이드 덱을 수정해줘.';
   const templateCloneContentFill = isTemplateCloneContentFillPrompt(prompt);
   return `${visiblePrompt}\n\n${slideExistingDeckEditInstruction(
@@ -9822,6 +9827,9 @@ export function ProjectView({
           (isAutoContinueSend || Boolean(retryTarget))
           && historyHasTemplateCloneContentFill(historyBase)
         );
+      const isTemplateClonePromptFillTurn = isTemplateClonePromptFillPrompt(
+        retryTarget ? retryTarget.userMsg.content || prompt : prompt,
+      );
       runTemplateCloneContentFillRef.current = isCloneContentFillTurn;
       runTemplateCloneSlotFillFallbackRef.current = false;
       const fillSlideCountHint =
@@ -9837,7 +9845,7 @@ export function ProjectView({
       const fillPluginInputs = isCloneContentFillTurn
         ? withTemplateCloneFillPluginInputs(meta?.pluginInputs, fillSlideCountHint)
         : meta?.pluginInputs;
-      if (isCloneContentFillTurn || isSlideCountTopUpSend) {
+      if (isCloneContentFillTurn || isTemplateClonePromptFillTurn || isSlideCountTopUpSend) {
         effectiveAttachments = effectiveAttachments.filter(
           (attachment) => !isCanonicalDeckFileName(
             String(attachment.path || attachment.name || '').trim(),
@@ -9849,7 +9857,7 @@ export function ProjectView({
       // on-disk deck attached so the model can emit element-patch / deck-patch
       // against real target ids instead of guessing from stale chat prose.
       // Skip for Clone content-fill — LOOK seed must not re-enter as edit context.
-      if (slideOnlyMvp && scopedCommentAttachments.length > 0 && !isCloneContentFillTurn && !isSlideCountTopUpSend) {
+      if (slideOnlyMvp && scopedCommentAttachments.length > 0 && !isCloneContentFillTurn && !isTemplateClonePromptFillTurn && !isSlideCountTopUpSend) {
         const existingDeck = resolveCanonicalDeckFileForEdit(
           filesSnapshot,
           project.metadata?.entryFile ?? null,
@@ -9872,7 +9880,7 @@ export function ProjectView({
       // no prior assistant in historyBase, but the project already has deck.html.
       // Do not treat leftover about.html / notes.html as an existing deck edit.
       // Skip for Clone content-fill: kit-driven compact CREATE instead of HTML rewrite.
-      if (slideOnlyMvp && scopedCommentAttachments.length === 0 && !isCloneContentFillTurn && !isSlideCountTopUpSend) {
+      if (slideOnlyMvp && scopedCommentAttachments.length === 0 && !isCloneContentFillTurn && !isTemplateClonePromptFillTurn && !isSlideCountTopUpSend) {
         const existingDeck = resolveCanonicalDeckFileForEdit(
           filesSnapshot,
           project.metadata?.entryFile ?? null,
@@ -9923,7 +9931,7 @@ export function ProjectView({
           }
         }
       }
-      if (isCloneContentFillTurn || isSlideCountTopUpSend) {
+      if (isCloneContentFillTurn || isTemplateClonePromptFillTurn || isSlideCountTopUpSend) {
         effectiveAttachments = withoutCanonicalDeckAttachments(effectiveAttachments);
         autoAttachedDeckPath = null;
       }

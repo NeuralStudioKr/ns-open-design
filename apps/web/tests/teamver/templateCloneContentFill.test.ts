@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   TEMPLATE_CLONE_CONTENT_FILL_MARKER,
   TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
+  TEMPLATE_CLONE_PROMPT_FILL_MARKER,
   TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER,
   buildTemplateCloneContentFillSeed,
   buildTemplateClonePromptFillSeed,
@@ -16,6 +17,7 @@ import {
   historyHasTemplateCloneContentFill,
   historyHasTemplateCloneSlotFillRepair,
   isTemplateCloneContentFillPrompt,
+  isTemplateClonePromptFillPrompt,
   isTemplateCloneSlotFillRepairPrompt,
   looksLikeInstructionNotSlideCopy,
   normalizeTemplateCloneFillMode,
@@ -109,7 +111,8 @@ describe('templateCloneContentFill', () => {
       slideCountHint: '5-6',
     });
 
-    expect(seed).toContain('[Template clone prompt fill]');
+    expect(seed).toContain(TEMPLATE_CLONE_PROMPT_FILL_MARKER);
+    expect(isTemplateClonePromptFillPrompt(seed)).toBe(true);
     expect(seed).toMatch(/complete final deck artifact/i);
     expect(seed).toMatch(/Do not emit JSON outline/i);
     expect(seed).toMatch(/1920x1080/);

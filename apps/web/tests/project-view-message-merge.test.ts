@@ -20,6 +20,10 @@ import {
   stripUserVisibleUserMessageText,
 } from "../src/comments";
 import { stripUserVisibleQuestionFormProtocolText } from "../src/artifacts/question-form";
+import {
+  buildTemplateClonePromptFillSeed,
+  isTemplateClonePromptFillPrompt,
+} from "../src/teamver/templateCloneContentFill";
 import type { ChatMessage } from "../src/types";
 
 describe("stripGreenfieldDeliverableInstruction", () => {
@@ -260,6 +264,23 @@ describe("promptWithExistingDeckEditInstruction", () => {
     expect(prompt).toContain("exact project-relative paths");
     expect(prompt).toContain("- photo.png");
     expect(prompt).toContain("COPY the full current target slide HTML");
+  });
+
+  it("does not restamp template clone prompt-fill as an existing-deck edit", () => {
+    const seed = buildTemplateClonePromptFillSeed({
+      userInstruction: "expo에 대해서 설명하는 피피티 만들어줘.",
+      templateTitle: "Html Ppt Zhangzara Daisy Days",
+      slideCountHint: "5-6",
+    });
+    expect(isTemplateClonePromptFillPrompt(seed)).toBe(true);
+
+    const prompt = promptWithExistingDeckEditInstruction(seed, {
+      slideOnlyMvp: true,
+      deckPath: "deck.html",
+    });
+    expect(prompt).toBe(seed);
+    expect(prompt).not.toContain("[Existing deck edit]");
+    expect(prompt).not.toContain("Applying your edits");
   });
 });
 
