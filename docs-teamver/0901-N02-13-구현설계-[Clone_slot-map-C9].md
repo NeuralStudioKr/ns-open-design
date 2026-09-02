@@ -36,7 +36,4 @@
 
 ## 다음 추천 작업
 
-1. MiniMax 키 환경 Clone fill live smoke
-2. 루프366 FileViewer ←/→ staging bake (브라우저)
-3. hermes/oc/kb LOOK seed → fill → heal 추가 통합(선택)
-4. compare-postit / 기타 sticky 레이아웃 미세 조정(선택)
+→ 후속 [0901-N02-14](./0901-N02-14-구현설계-[Clone_slot-map-C10].md) (C10)에서 oc/kb·compare/col-postit·루프366 dist 처리.

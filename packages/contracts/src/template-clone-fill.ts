@@ -1892,11 +1892,18 @@ function attrsLookLikeCardPeer(
   return classTokensFromAttrs(attrs).some((token) => tokenLooksLikeCardPeer(token, peers));
 }
 
-/** Process/flow/cycle arrows between step peers — not content peers (0901-N02-C8). */
+/**
+ * Chrome between step/compare peers — not content peers (0901-N02-C8/C10).
+ * Keep only when the next peer sibling is kept (no trailing orphan arrows/vs).
+ */
 function attrsLookLikeStepArrow(attrs: string): boolean {
   return classTokensFromAttrs(attrs).some((token) => {
     const t = token.toLowerCase();
-    return /^(?:process|flow|cycle)-arrow$/.test(t) || t === 'arrow';
+    return (
+      /^(?:process|flow|cycle)-arrow$/.test(t)
+      || t === 'arrow'
+      || t === 'compare-vs'
+    );
   });
 }
 
@@ -1988,6 +1995,7 @@ function collectPeersAmongChildren(
  * host — earlier slices returned after the first match.
  * C7: bare `stat`/`kpi` and letter-led `*-stat` peers (denied slide/card/gc chrome).
  * C9: hermes `.lbl` fill · `*-postit` peers (denied statement/main-title) · flow arrows.
+ * C10: oc/kb fill→heal · compare-postit/col-postit · compare-vs orphan drop.
  */
 export function fillAndTrimCardPeers(
   html: string,

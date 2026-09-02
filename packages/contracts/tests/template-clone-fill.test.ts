@@ -1850,6 +1850,114 @@ describe('0901-N02 heal↔clone integration', () => {
     expect([...(healed.matchAll(/\bhc-card\b/gi))].length).toBe(2);
     expect(healed).toMatch(/tpl-hermes|hc-grid/i);
   });
+
+  it('oc-grid fragment → fill → heal keeps oc-card titles', () => {
+    const slideBody = [
+      '<h2>비교</h2>',
+      '<div class="oc-grid-2">',
+      '<div class="oc-card"><h4>Notion</h4><p>demo a</p></div>',
+      '<div class="oc-card"><h4>Obsidian</h4><p>demo b</p></div>',
+      '<div class="oc-card"><h4>Roam</h4><p>demo c</p></div>',
+      '</div>',
+    ].join('');
+    const trimmed = fillAndTrimCardPeers(slideBody, ['노션', '옵시디언']);
+    const deck = [
+      '<!doctype html><html><body class="tpl-obsidian-claude-gradient">',
+      `<section class="slide">${trimmed}</section>`,
+      '</body></html>',
+    ].join('');
+    const healed = pinDeckSlidesToFixedCanvas(
+      healAiGeneratedDeckMarkup(deck, '지식 도구 비교'),
+    );
+    expect(healed).toContain('노션');
+    expect(healed).toContain('옵시디언');
+    expect(healed).not.toContain('Roam');
+    expect(healed).not.toContain('Notion');
+    expect([...(healed.matchAll(/\boc-card\b/gi))].length).toBe(2);
+    expect(healed).toMatch(/tpl-obsidian|oc-grid/i);
+  });
+
+  it('kb-grid fragment → fill → heal keeps kb-card titles', () => {
+    const slideBody = [
+      '<div class="kb-grid-bg"></div>',
+      '<h2>원판 vs 업그레이드</h2>',
+      '<div class="kb-grid-2">',
+      '<div class="kb-card"><h4>One-shot write</h4><p>demo a</p></div>',
+      '<div class="kb-card"><h4>Feedback loop</h4><p>demo b</p></div>',
+      '<div class="kb-card"><h4>Unused spare</h4><p>demo c</p></div>',
+      '</div>',
+    ].join('');
+    const trimmed = fillAndTrimCardPeers(slideBody, ['일회성 기록', '피드백 루프']);
+    // Decorative kb-grid-bg must not be mistaken for a card host / trimmed away.
+    expect(trimmed).toMatch(/\bkb-grid-bg\b/);
+    const deck = [
+      '<!doctype html><html><body class="tpl-knowledge-arch-blueprint">',
+      `<section class="slide">${trimmed}</section>`,
+      '</body></html>',
+    ].join('');
+    const healed = pinDeckSlidesToFixedCanvas(
+      healAiGeneratedDeckMarkup(deck, '지식 아키텍처 비교'),
+    );
+    expect(healed).toContain('일회성 기록');
+    expect(healed).toContain('피드백 루프');
+    expect(healed).not.toContain('Unused spare');
+    expect(healed).not.toContain('One-shot write');
+    expect([...(healed.matchAll(/\bkb-card\b/gi))].length).toBe(2);
+    expect(healed).toMatch(/tpl-knowledge|kb-grid-2/i);
+    expect(healed).toMatch(/\bkb-grid-bg\b/);
+  });
+});
+
+describe('0901-N02-C10 compare/col-postit polish', () => {
+  it('trims compare-postit peers and drops orphan compare-vs', () => {
+    const html = [
+      '<div class="compare-layout">',
+      '<div class="compare-postit left"><h3>Before</h3><ul><li>a</li></ul></div>',
+      '<div class="compare-vs">vs</div>',
+      '<div class="compare-postit right"><h3>After</h3><ul><li>b</li></ul></div>',
+      '<div class="compare-vs">vs</div>',
+      '<div class="compare-postit"><h3>Spare</h3><ul><li>c</li></ul></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['이전', '이후']);
+    expect([...(next.matchAll(/\bcompare-postit\b/gi))].length).toBe(2);
+    expect([...(next.matchAll(/\bcompare-vs\b/gi))].length).toBe(1);
+    expect(next).toContain('이전');
+    expect(next).toContain('이후');
+    expect(next).not.toContain('Spare');
+    expect(next).not.toContain('Before');
+  });
+
+  it('trims col-postit peers inside two-col-layout', () => {
+    const html = [
+      '<div class="two-col-layout">',
+      '<div class="col-postit"><h3>Finding the Problem</h3><p>a</p></div>',
+      '<div class="col-postit"><h3>Crafting the Answer</h3><p>b</p></div>',
+      '<div class="col-postit"><h3>Shipping Extra</h3><p>c</p></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['문제 발견', '해답 설계']);
+    expect([...(next.matchAll(/\bcol-postit\b/gi))].length).toBe(2);
+    expect(next).toContain('문제 발견');
+    expect(next).toContain('해답 설계');
+    expect(next).not.toContain('Shipping Extra');
+    expect(next).not.toContain('Finding the Problem');
+  });
+
+  it('still denies statement-postit and main-title-postit hero chrome', () => {
+    const html = [
+      '<div class="wrap">',
+      '<div class="statement-postit"><h4>One</h4><p>a</p></div>',
+      '<div class="main-title-postit"><h4>Two</h4><p>b</p></div>',
+      '<div class="hero-title-postit"><h4>Three</h4><p>c</p></div>',
+      '</div>',
+    ].join('');
+    const denied = fillAndTrimCardPeers(html, ['하나', '둘']);
+    expect(denied).not.toContain('하나');
+    expect([...(denied.matchAll(/\bstatement-postit\b/gi))].length).toBe(1);
+    expect([...(denied.matchAll(/\bmain-title-postit\b/gi))].length).toBe(1);
+    expect([...(denied.matchAll(/\bhero-title-postit\b/gi))].length).toBe(1);
+  });
 });
 
 describe('hoistCloneSlidesOutOfFlexTrack', () => {
