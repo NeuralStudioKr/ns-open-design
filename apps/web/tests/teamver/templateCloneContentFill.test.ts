@@ -141,6 +141,7 @@ describe('templateCloneContentFill', () => {
     expect(seed).toContain('Do not invent quantitative KPIs');
     expect(seed).toContain('complete card (number + label');
     expect(seed).toContain('Do not emit IB magazine chrome');
+    expect(seed).toContain('never a raw URL or truncated host crumb');
     expect(seed).not.toMatch(/Worked example — brief/i);
     expect(seed).not.toMatch(/Expo for Senior Engineers|expo-modules-core|EAS Build|EXPO_PUBLIC_/i);
     expect(seed).not.toMatch(/Content expansion contract/i);

@@ -1127,6 +1127,74 @@ function officialLookIsBiennaleYellow(html: string): boolean {
 }
 
 /**
+ * 루프388 — Cobalt Grid look fingerprint (cream paper + electric cobalt ink).
+ */
+function officialLookIsCobaltGrid(html: string): boolean {
+  const css = lookCssWithoutNeutralize(html);
+  if (!css.trim()) return false;
+  if (!/--ink\s*:\s*#1F2BE0/i.test(css)) return false;
+  return /\.s-cover\s+\.(?:pixel-glitch|titlewrap|subkicker)\b/i.test(css);
+}
+
+/**
+ * Cobalt covers need titlewrap + subkicker density. MiniMax often leaves a
+ * lone italic URL title on cream paper with only the pixel-glitch column.
+ */
+export function enrichSparseCobaltCover(
+  html: string,
+  brief?: string | null,
+  deckTitle?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsCobaltGrid(dest)) return dest;
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) return dest;
+  const first = spans[0]!;
+  if (!/\bs-cover\b/i.test(first.attrs)) return dest;
+  let body = dest.slice(first.bodyStart, first.bodyEnd);
+  const existingTitle = visibleHeadingText(
+    body.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '',
+  );
+  const title = polishUrlSiteCoverTitle(
+    polishInstructionCoverTitle(
+      sanitizeTemplateCloneDeckTitle(
+        existingTitle || deriveDeckCoverTitleFromBrief(brief ?? '', deckTitle),
+      ) ?? existingTitle,
+    ),
+    brief,
+  );
+  if (title.length < 2) return dest;
+
+  const titleHtml = /\s/.test(title)
+    ? title.split(/\s+/).map((part) => escapeHtml(part)).join('<br/>')
+    : escapeHtml(title);
+  if (/<h1\b[^>]*>/i.test(body)) {
+    body = body.replace(
+      /<h1\b([^>]*)>([\s\S]*?)<\/h1>/i,
+      (_full, attrs: string) => `<h1${attrs}>${titleHtml}</h1>`,
+    );
+  }
+
+  if (!/\bsubkicker\b/i.test(body)) {
+    const hangul = /[가-힣]/.test(`${brief ?? ''}\n${title}`);
+    const label = 'SERVICE INTRO';
+    const ed = hangul ? '제품 소개' : 'Product introduction';
+    const sub =
+      `<div class="subkicker"><div class="l caption">${label}</div>`
+      + `<div class="ed">${escapeHtml(ed)}</div></div>`;
+    if (/\btitlewrap\b/i.test(body)) {
+      body = body.replace(/<\/h1\s*>/i, `</h1>${sub}`);
+    } else {
+      body = `<div class="titlewrap"><h1 class="title">${titleHtml}</h1>${sub}</div>${body}`;
+    }
+  }
+
+  const close = dest.slice(first.bodyEnd).match(new RegExp(`^</${first.tag}\\s*>`, 'i'));
+  const end = first.bodyEnd + (close?.[0].length ?? 0);
+  return `${dest.slice(0, first.start)}<${first.tag}${first.attrs}>${body}</${first.tag}>${dest.slice(end)}`;
+}
+
+/**
  * 루프387 — Zhangzara Block Frame / neo-brutal look (or Motif deco sheet).
  * IB magazine chrome must not be stamped onto these kits.
  */
@@ -1174,10 +1242,27 @@ export function polishUrlSiteCoverTitle(title: string, brief?: string | null): s
     && /사이트/u.test(`${source}\n${next}`)
     && /^(?:https?:\/\/)?(?:www\.)?[a-z0-9.-]+\s*사이트/i.test(next)
   ) {
-    if (/^teamver$/i.test(host)) return /[가-힣]/.test(source) ? '팀버' : 'Teamver';
+    if (/^teamver$/i.test(host)) {
+      if (/서비스\s*소개|소개\s*슬라이드|product\s*intro/i.test(source)) {
+        return /[가-힣]/.test(source) ? '팀버 소개' : 'Teamver Intro';
+      }
+      return /[가-힣]/.test(source) ? '팀버' : 'Teamver';
+    }
     return host.charAt(0).toUpperCase() + host.slice(1).toLowerCase();
   }
   return next;
+}
+
+/** Raw URL / truncated-site crumbs must never stay as cover titles (루프388). */
+export function looksLikeRawUrlSiteCoverTitle(text: string): boolean {
+  const t = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!t) return false;
+  if (/^(?:https?:\/\/)?(?:www\.)?[a-z0-9.-]+\.[a-z]{2,}(?:\.[a-z]{2,})?\s*사이(?:트)?$/iu.test(t)) {
+    return true;
+  }
+  if (/^(?:https?:\/\/)?www\.[a-z0-9.-]+\/?$/i.test(t)) return true;
+  const polished = polishUrlSiteCoverTitle(t, t);
+  return polished !== t && polished.length >= 2 && /(?:www\.|https?:\/\/)/i.test(t);
 }
 
 /** Instruction leftovers MiniMax parks on cover titles (`연습 팁에 대한`). */
@@ -2004,6 +2089,7 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string): string {
   next = healOrphanRadialCircles(next);
   next = dropEmptyDeckSlides(next);
   next = restyleForeignIbMagazineCover(next);
+  next = enrichSparseCobaltCover(next);
   next = restyleBiennaleSparseChapterBodies(next);
   next = restyleBiennaleSparseDataBodies(next);
   next = restyleBiennaleSparseQuoteBodies(next);
@@ -3895,7 +3981,8 @@ function visibleHeadingText(inner: string): string {
 function headingLooksLikeFailedGenerate(visible: string): boolean {
   return looksLikeInstructionCopy(visible)
     || looksLikeTemplateMarketingTitle(visible)
-    || isGenericDeckArtifactTitle(visible);
+    || isGenericDeckArtifactTitle(visible)
+    || looksLikeRawUrlSiteCoverTitle(visible);
 }
 
 const GENERIC_HEAL_TITLE_RE =
@@ -3951,7 +4038,10 @@ function replaceFailedHeadings(fragment: string, title: string): string {
   return fragment.replace(headingRe, (full, level, attrs, inner) => {
     const visible = visibleHeadingText(String(inner ?? ''));
     if (!headingLooksLikeFailedGenerate(visible)) return full;
-    return `<h${level}${attrs ?? ''}>${escapeHtml(title)}</h${level}>`;
+    const htmlTitle = /\btitle\b/i.test(String(attrs ?? '')) && /\s/.test(title)
+      ? title.split(/\s+/).map((part) => escapeHtml(part)).join('<br/>')
+      : escapeHtml(title);
+    return `<h${level}${attrs ?? ''}>${htmlTitle}</h${level}>`;
   });
 }
 
@@ -4026,22 +4116,32 @@ export function healInstructionCopyCoverHeading(
       : screenLabelRoleTitle(span.attrs)
         || firstParagraphTitle(body)
         || roleFallbackTitle(span.attrs, body, coverTitle, i);
-    const rewritten = polishTrailingInstructionHeadings(replaceFailedHeadings(body, title));
+    const rewritten = polishTrailingInstructionHeadings(
+      replaceFailedHeadings(body, title),
+      brief,
+    );
     if (rewritten === body) continue;
     next = next.slice(0, span.bodyStart) + rewritten + next.slice(span.bodyEnd);
   }
-  return healSparseDeckCoverLayout(stripDeckLevelDemoChrome(next), brief, deckTitle);
+  return healSparseDeckCoverLayout(
+    enrichSparseCobaltCover(stripDeckLevelDemoChrome(next), brief, deckTitle),
+    brief,
+    deckTitle,
+  );
 }
 
-function polishTrailingInstructionHeadings(fragment: string): string {
+function polishTrailingInstructionHeadings(fragment: string, brief?: string | null): string {
   return String(fragment ?? '').replace(
     /<h([1-3])\b([^>]*)>([\s\S]*?)<\/h\1>/gi,
     (full, level: string, attrs: string, inner: string) => {
       if (/<(?:div|ul|ol)\b/i.test(inner)) return full;
       const text = visibleHeadingText(inner);
-      const polished = polishInstructionCoverTitle(text);
+      const polished = polishUrlSiteCoverTitle(polishInstructionCoverTitle(text), brief);
       if (!polished || polished === text) return full;
-      return `<h${level}${attrs}>${escapeHtml(polished)}</h${level}>`;
+      const htmlTitle = /\btitle\b/i.test(attrs) && /\s/.test(polished)
+        ? polished.split(/\s+/).map((part) => escapeHtml(part)).join('<br/>')
+        : escapeHtml(polished);
+      return `<h${level}${attrs}>${htmlTitle}</h${level}>`;
     },
   );
 }

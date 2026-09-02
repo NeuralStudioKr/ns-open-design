@@ -27,12 +27,14 @@ import {
   sanitizePersistedDeckHostLeaks,
   salvageMalformedMiniMaxSlideMarkup,
   restyleForeignIbMagazineCover,
+  enrichSparseCobaltCover,
   restyleBiennaleSparseChapterBodies,
   restyleBiennaleSparseDataBodies,
   restyleBiennaleSparseQuoteBodies,
   injectBiennaleSparseFillCss,
   polishInstructionCoverTitle,
   polishUrlSiteCoverTitle,
+  looksLikeRawUrlSiteCoverTitle,
   stripEmptyOfficialMotifInstances,
   stripHostProtocolLeakFromDeckHtml,
   stripNonSlotWrappers,
@@ -724,8 +726,42 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(restyled).toMatch(/background:var\(--cream\)/);
 
     expect(polishUrlSiteCoverTitle('www.teamver.com 사이', 'www.teamver.com 사이트 분석')).toBe('팀버');
+    expect(polishUrlSiteCoverTitle(
+      'www.teamver.com 사이',
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘',
+    )).toBe('팀버 소개');
     expect(deriveDeckCoverTitleFromBrief('www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘'))
-      .toMatch(/팀버|Teamver/);
+      .toMatch(/팀버/);
+  });
+
+  it('루프388: rewrites raw URL cover titles on Cobalt Grid and fills sparse subkicker', () => {
+    const brief = 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.';
+    const html = `<!doctype html><html lang="ko"><body>
+<section class="slide s-cover hairlines">
+<div class="titlewrap"><h1 class="title">www.teamver.com 사이</h1></div>
+<div class="pixel-glitch" aria-hidden="true"><svg></svg></div>
+</section>
+<section class="slide s-manifesto"><h2>02 Positioning</h2></section>
+<style data-od-official-look-css>
+:root { --paper:#F0EBDE; --ink:#1F2BE0; --rule:#1F2BE0; }
+.s-cover .titlewrap { position:absolute; }
+.s-cover .pixel-glitch { position:absolute; }
+.s-cover .subkicker { margin-top:20px; }
+.s-cover .title { font-style:italic; }
+/* stacked preview/export: Motif paint */
+.slide.cover h1.display { font-size:96px !important; }
+</style>
+</body></html>`;
+    expect(looksLikeRawUrlSiteCoverTitle('www.teamver.com 사이')).toBe(true);
+    const healed = healInstructionCopyCoverHeading(html, brief);
+    expect(healed).toMatch(/팀버/);
+    expect(healed).not.toMatch(/www\.teamver\.com 사이/);
+    expect(healed).toMatch(/class="subkicker"/);
+    expect(healed).toMatch(/제품 소개|Product introduction/);
+
+    const enriched = enrichSparseCobaltCover(html, brief);
+    expect(enriched).toMatch(/팀버/);
+    expect(enriched).toMatch(/subkicker/);
   });
 
   it('does not wrap dense or already-stacked Biennale chapters', () => {

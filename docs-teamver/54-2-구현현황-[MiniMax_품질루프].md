@@ -42,6 +42,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프388 — Cobalt raw URL 커버 제목
+
+체감: Cobalt Grid 표지가 `www.teamver.com 사이` + sparse cream. instruction-copy 게이트가 URL 크럼을 놓침.
+
+수정: URL/사이 제목을 failed-generate로 분류 · Cobalt subkicker enrich · prompt 가드.
+
 ### 루프387 — Block Frame 위 IB 매거진 커버
 
 체감: look은 Zhangzara Block Frame인데 MiniMax가 IB magazine 표지(학습 노트 · truncated `사이`) 1장만 냄.
