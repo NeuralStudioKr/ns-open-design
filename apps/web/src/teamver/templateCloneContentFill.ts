@@ -10,7 +10,6 @@
 
 import type { ChatAttachment } from '../types';
 import {
-  SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE,
   SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION,
 } from '@open-design/contracts';
 import {
@@ -42,6 +41,9 @@ export const TEMPLATE_CLONE_CONTENT_FILL_MARKER = '[Template clone content fill]
 
 /** Appended model-only contract after Clone seed (not an existing-deck edit). */
 export const TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER = '[Template clone content fill turn]';
+
+/** Prompt-mode HTML fill (not JSON slot-fill). Model-only — strip from chat UI. */
+export const TEMPLATE_CLONE_PROMPT_FILL_MARKER = '[Template clone prompt fill]';
 
 /** One-shot JSON repair after invalid outline (0901-N02 B5). */
 export const TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER = '[Template clone slot-fill JSON repair]';
@@ -310,9 +312,10 @@ export function extractTemplateCloneUserFacingRequest(input: {
     const userInstr = /\[?User instruction\]?\s*[:：]\s*\n?([\s\S]*?)(?=\n(?:Source |Canvas |Drive |Visible |Selected |\[)|$)/i
       .exec(text)?.[1]?.trim();
     if (userInstr) candidates.push(userInstr);
-    // Prefer the lead line before deliverable protocol blocks.
+    // Prefer the lead line before deliverable / Clone host-contract blocks.
     const beforeDeliverable = text.split(/\n\n\[Deliverable instruction\]/i)[0]?.trim() ?? text;
-    for (const line of beforeDeliverable.split(/\r?\n/)) {
+    const beforeHostContract = beforeDeliverable.split(/\n\[Template clone /i)[0]?.trim() ?? beforeDeliverable;
+    for (const line of beforeHostContract.split(/\r?\n/)) {
       const trimmed = line.trim();
       if (!trimmed) continue;
       if (/^\[/.test(trimmed)) continue;
@@ -344,7 +347,7 @@ export function templateCloneContentFillHardRules(): string[] {
     '- Forbidden output: <!doctype, <html, <head, <style, <section class="slide">, Motif <svg>, full example.html rewrite.',
     `- ${SLIDE_DECK_QUALITY_BAR_INSTRUCTION}`,
     `- ${SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION}`,
-    `- ${SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE}`,
+    '- Expand THIS turn\'s brief only. Do not copy host-contract examples or the user instruction onto slides.',
     '- JSON shape: {"title":"...","slides":[{"title":"...","body":"line\\nline","roleHint":"cover|list|cards|timeline|stat|quote|team|process|closing|body"}]}',
     `- ${FIRST_FILL_SLIDE_COUNT_GUIDANCE} Outline length = deliverable count this turn (max 20). Hidden top-up only when the user asked for ${FIRST_FILL_TOP_UP_FROM}+.`,
     '- Treat the daemon Clone seed as the visual baseline the host will keep. You only supply titles/bodies/roleHint.',
@@ -573,19 +576,17 @@ export function buildTemplateClonePromptFillSeed(options: {
   const parts = [
     visible,
     '',
-    '[Template clone prompt fill]',
+    TEMPLATE_CLONE_PROMPT_FILL_MARKER,
     'A visual deck template was selected. Create ONE complete final deck artifact now.',
     'Emit `<artifact type="deck" identifier="deck">` with a complete HTML document and filled slides. Do not emit JSON outline.',
-    'Use the selected template kit in the system prompt as visual authority: palette, typography, motif/decorative language, layout rhythm, and slide chrome.',
-    'Use the cloned `deck.html` only as a visual/look reference if the host mentions it; do not treat it as an existing-deck edit and do not copy demo placeholder text.',
+    'Use the selected template kit in the system prompt as visual authority: palette, typography, motif, layout rhythm, and slide chrome.',
+    'Use the cloned `deck.html` only as a look reference. Do not treat it as an existing-deck edit, copy demo placeholders, or paste this host contract onto slides.',
     hasAttachedSource
       ? 'Fill REAL presentation CONTENT for this request and any attached source materials (Canvas/Drive/files).'
-      : 'Fill REAL presentation CONTENT for this create; expand the topic with concrete domain knowledge.',
-    'The visible request above is a brief/topic. Do NOT paste the user instruction onto the cover or body slides.',
+      : 'Fill REAL presentation CONTENT for this create; expand THIS brief with concrete domain knowledge.',
+    'The visible request above is THIS turn\'s brief/topic. Do NOT paste the user instruction, this host contract, or any system-prompt worked example onto the cover or body slides.',
     topic ? `Cover topic (use as the title, not the instruction): ${topic}.` : '',
-    `Quality bar: ${SLIDE_DECK_QUALITY_BAR_INSTRUCTION}`,
-    SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION,
-    SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE,
+    SLIDE_DECK_QUALITY_BAR_INSTRUCTION,
     `Slide count: ${slideCountHint || FIRST_FILL_SLIDE_COUNT_GUIDANCE}.`,
     'Every slide must be 1920x1080, fixed-size, overflow hidden, and navigable as a deck, not a scrolling article.',
     'Do not stop after a status sentence, outline, or partial `<head>`; close `</html></artifact>`.',

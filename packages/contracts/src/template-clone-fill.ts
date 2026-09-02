@@ -991,6 +991,12 @@ export function stripDeckLevelDemoChrome(html: string): string {
 const HOST_TOP_UP_SENTINEL_RE = /\[od:slide_count_top_up\]|<!--\s*od:slide_count_top_up\s*-->/gi;
 const HOST_TOP_UP_INSTRUCTION_LINE_RE =
   /(?:The current deck is a CLOSED \d+-slide deliverable|This is an explicit slide-count expansion|APPEND only new slides|Do NOT rewrite the saved deck|Emit ONLY the new)[^\n<]*/gi;
+const HOST_CLONE_FILL_CONTRACT_RE =
+  /\[Template clone (?:content fill(?: turn)?|prompt fill|slot-fill JSON repair)\][\s\S]*?(?=<section\b|<\/(?:section|body|html|artifact)>|$)/gi;
+const HOST_CLONE_FILL_WORKED_EXAMPLE_RE =
+  /Worked example — brief[\s\S]*?failed deliverable\./gi;
+const HOST_CLONE_FILL_EXPANSION_CONTRACT_RE =
+  /Content expansion contract \(READ[\s\S]*?actually say\./gi;
 const EMPTY_NESTED_ARTIFACT_RE = /<artifact\b[^>]*>\s*<\/artifact>/gi;
 const LEFTOVER_MOTIF_COPY_RE =
   /Hartfield|NorthPeak Industries|Filebase|Project Atlas|WACC\s*\(/i;
@@ -1000,6 +1006,9 @@ export function stripHostProtocolLeakFromDeckHtml(html: string): string {
   let out = String(html ?? '');
   if (!out) return out;
   out = out.replace(HOST_TOP_UP_SENTINEL_RE, '');
+  out = out.replace(HOST_CLONE_FILL_CONTRACT_RE, '');
+  out = out.replace(HOST_CLONE_FILL_WORKED_EXAMPLE_RE, '');
+  out = out.replace(HOST_CLONE_FILL_EXPANSION_CONTRACT_RE, '');
   out = out.replace(HOST_TOP_UP_INSTRUCTION_LINE_RE, '');
   out = out.replace(EMPTY_NESTED_ARTIFACT_RE, '');
   return out;

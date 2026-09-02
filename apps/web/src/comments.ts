@@ -426,7 +426,7 @@ const COMMENT_EDIT_PATCH_DIRECTIVE_RE =
 const EXISTING_DECK_EDIT_DIRECTIVE_RE =
   /\n*\[Existing deck edit\][\s\S]*$/i;
 const TEMPLATE_CLONE_CONTENT_FILL_DIRECTIVE_RE =
-  /\n*\[Template clone content fill(?: turn)?\][\s\S]*$/i;
+  /\n*\[Template clone (?:content fill(?: turn)?|prompt fill|slot-fill JSON repair)\][\s\S]*$/i;
 const CANVAS_CREATE_SCAFFOLD_DIRECTIVE_RE =
   /\n*\[(?:Deliverable instruction|Selected slide template(?: priority)?|Source brief|Quick settings)\][\s\S]*$/i;
 const DESIGN_TOOLBOX_INSTRUCTION_RE =

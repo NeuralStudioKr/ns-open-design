@@ -92,7 +92,8 @@ describe('templateCloneContentFill', () => {
     expect(seed).toContain('Cover topic (use as the title — not the instruction): expo');
     expect(seed).toMatch(/brief is a topic, not slide text/i);
     expect(seed).toMatch(/The visible request above is a BRIEF\/TOPIC/);
-    expect(seed).toMatch(/Expo for Senior Engineers/);
+    expect(seed).not.toMatch(/Worked example — brief/i);
+    expect(seed).not.toMatch(/Expo for Senior Engineers/);
     expect(seed).toMatch(/Do NOT paste the request onto the cover/);
     expect(looksLikeInstructionNotSlideCopy('첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.')).toBe(true);
     expect(deriveTemplateCloneTopicLabel(
@@ -114,10 +115,29 @@ describe('templateCloneContentFill', () => {
     expect(seed).toMatch(/1920x1080/);
     expect(seed).toContain('Selected template: Html Ppt Zhangzara Daisy Days');
     expect(seed).toContain('Cover topic (use as the title, not the instruction): expo');
+    expect(seed).not.toMatch(/Quality bar:\s*Quality bar:/);
+    expect(seed).not.toMatch(/Worked example — brief/i);
+    expect(seed).not.toMatch(/Expo for Senior Engineers/);
+    expect(seed).not.toMatch(/Content expansion contract/i);
     expect(seed).not.toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
     expect(seed).not.toContain(TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER);
     expect(seed).not.toContain(TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER);
     expect(isTemplateCloneContentFillPrompt(seed)).toBe(false);
+  });
+
+  it('keeps a teamver.com prompt-fill seed free of Expo worked-example leakage', () => {
+    const seed = buildTemplateClonePromptFillSeed({
+      userInstruction: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+      templateTitle: 'Html Ppt Zhangzara 블록 프레임',
+      slideCountHint: '8-10',
+    });
+    expect(seed).toContain('www.teamver.com');
+    expect(seed).toContain('[Template clone prompt fill]');
+    expect(seed).toContain('Selected template: Html Ppt Zhangzara 블록 프레임');
+    expect(seed).not.toMatch(/Worked example — brief/i);
+    expect(seed).not.toMatch(/Expo for Senior Engineers|expo-modules-core|EAS Build|EXPO_PUBLIC_/i);
+    expect(seed).not.toMatch(/Content expansion contract/i);
+    expect(seed).not.toMatch(/Quality bar:\s*Quality bar:/);
   });
 
   it('adds a default 6-slide hint when no explicit count is provided', () => {

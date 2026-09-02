@@ -980,6 +980,34 @@ describe('preview comment attachment helpers', () => {
     );
   });
 
+  it('strips Template clone prompt-fill host contract from user-visible chat text', () => {
+    const prompt = [
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+      '[Template clone prompt fill]',
+      'A visual deck template was selected. Create ONE complete final deck artifact now.',
+      'Quality bar: Quality bar: each non-divider slide needs a headline.',
+      'Worked example — brief "expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.": Cover title must be Expo for Senior Engineers.',
+      'Selected template: Html Ppt Zhangzara 블록 프레임.',
+    ].join('\n');
+    expect(stripUserVisibleUserMessageText(prompt)).toBe(
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+    );
+    expect(stripUserVisibleUserMessageText(prompt)).not.toMatch(/expo|Quality bar|Selected template/i);
+  });
+
+  it('strips Template clone content-fill host contract from user-visible chat text', () => {
+    const prompt = [
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+      '',
+      '[Template clone content fill]',
+      'Daemon Clone already seeded a LOOK preview.',
+      'Worked example — brief "expo에 대해서 설명하는 피피티 만들어줘."',
+    ].join('\n');
+    expect(stripUserVisibleUserMessageText(prompt)).toBe(
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+    );
+  });
+
   it('builds set-style templates for style-only comment requests', () => {
     const template = buildConcreteElementPatchTemplate([
       commentAttachment({

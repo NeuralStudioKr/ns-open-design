@@ -42,6 +42,10 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프382 — Clone prompt-fill 호스트 계약 채팅 노출 + Expo 예시 누수
+
+`[Template clone prompt fill]`이 채팅 숨김 목록에 없어 사용자 brief 뒤로 전체 계약이 보임. user-turn seed에 시스템용 Expo worked example이 붙어 teamver.com 요청에도 Expo가 본문으로 샐 수 있음. 숨김 확대 · seed에서 예시 제거 · HTML host-contract heal.
+
 ### 루프379 — pin 배경 flatten · persist salvage · orphan repeat grid
 
 pin이 kit `.slide-N` wash를 흰색으로 덮고, salvage가 persist에 없어 깨진 HTML이 disk에 남음. size-only pin + persist salvage + `repeat(N)` 고아 카드 재부모.
@@ -1260,6 +1264,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
+- **완료 (루프382):** prompt-fill 호스트 계약은 채팅에서 숨김. Expo worked example은 시스템 프롬프트에만. 덱 HTML 누수 heal.
 - **완료 (루프378):** leftover host-nav는 display toggle이 translate/scroll보다 앞선다. clone-size hoist · 빈 deco unwrap. F3/IB ROW · Zhangzara · simple-deck 유지.
 - **완료 (루프374):** leftover `#stage`+swipe script는 authored 1920/column이면 forceReveal가 실제로 숨김. deco residue · `div.slide` hoist · `min-width:1920`. F3/IB ROW 유지.
 - **완료 (루프366):** 1920 leftover는 script가 있어도 `#stage` hoist. section/main unwrap. snap/overflow-x+1920은 swipe 아님. vw nudge 거부. Zhangzara `#deck`·공식 IB 유지.
@@ -1708,6 +1713,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | heal: 제목만 있는 카드 형제 제거 | ☑ 루프354 |
 | persist/preview: 칸 번호만 있는 3열 카드(스무 번째) | ☑ 루프355 |
 | preview: neutralize column `#stage` leftover host ←/→ nudge | ☑ 루프361 |
+| chat/persist: Clone prompt-fill 호스트 계약 숨김 · Expo 예시 user-turn 제거 | ☑ 루프382 |
 | preview: leftover host-nav 불변식 (clone-size · deco · gotoIndex) | ☑ 루프378 |
 | preview: leftover `#stage`+swipe script deco residue host ←/→ nudge | ☑ 루프374 |
 | preview: 1920 leftover `#stage`+script / section unwrap / snap leftover host ←/→ nudge | ☑ 루프366 |
@@ -1741,7 +1747,16 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프378 · leftover host-nav 불변식)
+## 이번 루프 (루프382 · prompt-fill 호스트 계약 숨김)
+
+- [x] `[Template clone prompt fill]` 채팅 숨김
+- [x] user-turn seed에서 Expo worked example / expansion contract 제거
+- [x] Quality bar 중복 접두 제거
+- [x] 덱 HTML host-contract heal
+- [x] comments · templateCloneContentFill · slideCountTopUp · contracts host-leak
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프378 · leftover host-nav 불변식)
 
 - [x] `leftoverHostNavMustPaintByDisplay`가 `go()`/`gotoIndex()`에서 translate/scroll보다 먼저
 - [x] clone-size leftover · 빈/주석 deco hoist · leftover `#stage` 잔여도 2장 표시

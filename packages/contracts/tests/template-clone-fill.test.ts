@@ -477,6 +477,23 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
       .not.toMatch(/od:slide_count_top_up/i);
   });
 
+  it('strips leaked Template clone prompt-fill contract and Expo worked example from deck HTML', () => {
+    const leaked = [
+      '<section class="slide"><h1>Teamver</h1>',
+      '<p>[Template clone prompt fill]',
+      'A visual deck template was selected. Create ONE complete final deck artifact now.',
+      'Worked example — brief "expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.": ',
+      'Cover title must be a real talk title such as "Expo for Senior Engineers" (NEVER the brief itself). ',
+      'A deck that only restates "expo 설명해줘" / "Expo 소개" is a failed deliverable.',
+      '</p></section>',
+    ].join('');
+    const cleaned = stripHostProtocolLeakFromDeckHtml(leaked);
+    expect(cleaned).not.toMatch(/Template clone prompt fill/i);
+    expect(cleaned).not.toMatch(/Worked example — brief/i);
+    expect(cleaned).not.toMatch(/Expo for Senior Engineers/i);
+    expect(cleaned).toContain('Teamver');
+  });
+
   it('heals a generic 슬라이드 cover heading from the user brief', () => {
     const healed = healInstructionCopyCoverHeading(
       '<section class="slide"><h1>슬라이드</h1><p>초안</p></section>',

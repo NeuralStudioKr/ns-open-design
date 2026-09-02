@@ -154,7 +154,7 @@ export function parseSlideCountTarget(
 
 function visibleUserSlideCountSource(content: string): string {
   return (content.split(/\n\n\[Deliverable instruction\]/i)[0] ?? content)
-    .split("[Template clone content fill]")[0]
+    .split(/\[Template clone (?:content fill|prompt fill)\]/i)[0]
     ?? content;
 }
 
