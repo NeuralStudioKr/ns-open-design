@@ -10481,6 +10481,17 @@ export function ProjectView({
                 deckTitle: project.name || '슬라이드',
               },
             );
+            const armCloneSlotFillRepairQueue = (): boolean => {
+              if (!shouldQueueCloneSlotFillJsonRepair(cloneFillMessageHistory, userMsg.content)) {
+                return false;
+              }
+              cloneSlotFillRepairQueued = true;
+              artifactToPersist = null;
+              terminalPersistResult = null;
+              terminalPersistResultKind = null;
+              terminalArtifactPersistFailed = false;
+              return true;
+            };
             const recoverCloneLookSeedFallback = async (): Promise<boolean> => {
               const recovered = await tryRecoverCloneContentFillLookSeed({ readProjectHtml });
               if (!recovered) return false;
