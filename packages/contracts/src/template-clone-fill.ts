@@ -1750,6 +1750,9 @@ function peerClassSet(slotMap: TemplateCloneSlotMap | null | undefined): Set<str
     // 0901-N02-C7: bare `.stat` / `.kpi` rows (soft-editorial / weekly-report).
     'stat',
     'kpi',
+    // 0901-N02-C9: scatterbrain feature sticky peers.
+    'feature-postit',
+    'col-postit',
   ]);
   for (const token of slotMap?.peerClasses ?? []) {
     const t = String(token ?? '').trim().toLowerCase();
@@ -1807,10 +1810,25 @@ function tokenLooksLikeCardHost(
 }
 
 /**
- * 0901-N02-C4/C5/C7: prefixed peers (`xp-card`, `kb-step`, `grove-stat`).
+ * 0901-N02-C9: hero/title postits that are not trim peers.
+ */
+function isDeniedPostitPeerToken(token: string): boolean {
+  const t = String(token ?? '').trim().toLowerCase();
+  if (!t) return false;
+  return (
+    t === 'statement-postit'
+    || t === 'main-title-postit'
+    || t === 'main-text-postit'
+    || t.endsWith('-title-postit')
+  );
+}
+
+/**
+ * 0901-N02-C4/C5/C7/C9: prefixed peers (`xp-card`, `kb-step`, `grove-stat`, `feature-postit`).
  * `*-card` never matches `card-icon` / `card-title`.
  * `*-step` requires a letter start and rejects `4-step` / `five-step` section chrome.
  * `*-stat` rejects slide/card/gc/split/big-stat chrome.
+ * `*-postit` rejects statement/main-title hero chrome.
  */
 function tokenLooksLikeCardPeer(
   token: string,
@@ -1826,6 +1844,8 @@ function tokenLooksLikeCardPeer(
   if (isDeniedStatPeerToken(t)) return false;
   // Letter-led `*-stat` (grove-stat / mini-stat / pin-stat / mat-stat).
   if (/^[a-z][a-z0-9_-]*-stat$/.test(t)) return true;
+  if (isDeniedPostitPeerToken(t)) return false;
+  if (/^[a-z][a-z0-9_-]*-postit$/.test(t)) return true;
   return false;
 }
 
@@ -1865,7 +1885,7 @@ function shellBodyLooksLikeCardGrid(
     'i',
   );
   const peerRe = new RegExp(
-    `<(?:div|article|aside|li|section)\\b[^>]*\\bclass\\s*=\\s*["'][^"']*(?:\\b(?:${peers})\\b|\\b[a-z0-9][\\w-]*-card\\b(?!-)|\\b[a-z][\\w-]*-step\\b(?!-)|\\b[a-z][\\w-]*-stat\\b(?!-))[^"']*["']`,
+    `<(?:div|article|aside|li|section)\\b[^>]*\\bclass\\s*=\\s*["'][^"']*(?:\\b(?:${peers})\\b|\\b[a-z0-9][\\w-]*-card\\b(?!-)|\\b[a-z][\\w-]*-step\\b(?!-)|\\b[a-z][\\w-]*-stat\\b(?!-)|\\b[a-z][\\w-]*-postit\\b(?!-))[^"']*["']`,
     'i',
   );
   return hostRe.test(html) || peerRe.test(html);
@@ -1940,6 +1960,7 @@ function collectPeersAmongChildren(
  * C6: repeat passes so a slide with both `.cards-grid` and `.timeline` trims every
  * host — earlier slices returned after the first match.
  * C7: bare `stat`/`kpi` and letter-led `*-stat` peers (denied slide/card/gc chrome).
+ * C9: hermes `.lbl` fill · `*-postit` peers (denied statement/main-title) · flow arrows.
  */
 export function fillAndTrimCardPeers(
   html: string,
@@ -2153,6 +2174,18 @@ function fillOneCardPeer(cardHtml: string, line: string): string {
     );
     next = next.replace(
       /(<[^>]*\bclass\s*=\s*["'][^"']*\bd\b[^"']*["'][^>]*>)([\s\S]*?)(<\/)/gi,
+      (_m, open: string, _inner: string, close: string) => `${open}${close}`,
+    );
+    return next;
+  }
+  // 0901-N02-C9: hermes/ts `.lbl` when there is no h3–h5 title slot.
+  if (/\blbl\b/i.test(next) && !/<h([3-5])\b/i.test(next)) {
+    next = next.replace(
+      /(<[^>]*\blbl\b[^>]*>)([\s\S]*?)(<\/)/i,
+      (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(text)}${close}`,
+    );
+    next = next.replace(
+      /(<[^>]*\b(?:val|desc|value)\b[^>]*>)([\s\S]*?)(<\/)/gi,
       (_m, open: string, _inner: string, close: string) => `${open}${close}`,
     );
     return next;

@@ -1702,6 +1702,84 @@ describe('0901-N02-C8 process/timeline host allowlist + orphan arrows', () => {
   });
 });
 
+describe('0901-N02-C9 lbl fill · postit · flow arrows', () => {
+  it('trims hc-card peers and fills .lbl without inventing val/desc', () => {
+    const html = [
+      '<div class="hc-grid-3">',
+      '<div class="hc-card"><div class="lbl">install time</div><div class="val">42s</div><div class="desc">demo a</div></div>',
+      '<div class="hc-card"><div class="lbl">first token</div><div class="val">1.8s</div><div class="desc">demo b</div></div>',
+      '<div class="hc-card"><div class="lbl">first PR</div><div class="val">3d</div><div class="desc">demo c</div></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['설치 시간', '첫 토큰']);
+    expect([...(next.matchAll(/\bhc-card\b/gi))].length).toBe(2);
+    expect(next).toContain('설치 시간');
+    expect(next).toContain('첫 토큰');
+    expect(next).not.toContain('first PR');
+    expect(next).not.toContain('install time');
+    expect(next).not.toMatch(/class="val">[^<]+/i);
+    expect(next).not.toContain('demo c');
+  });
+
+  it('prefers h4 over .lbl on ts-card peers', () => {
+    const html = [
+      '<div class="ts-grid-3">',
+      '<div class="ts-card"><div class="lbl">L1</div><h4>Green</h4><p>a</p></div>',
+      '<div class="ts-card"><div class="lbl">L2</div><h4>Amber</h4><p>b</p></div>',
+      '<div class="ts-card"><div class="lbl">L3</div><h4>Red</h4><p>c</p></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['허용', '주의']);
+    expect([...(next.matchAll(/\bts-card\b/gi))].length).toBe(2);
+    expect(next).toContain('허용');
+    expect(next).toContain('주의');
+    expect(next).not.toContain('Red');
+    expect(next).toContain('L1'); // label chrome kept when h4 is the title slot
+  });
+
+  it('trims feature-postit peers and ignores statement-postit chrome', () => {
+    const html = [
+      '<div class="features">',
+      '<div class="feature-postit"><h3>Strategy</h3><p>a</p></div>',
+      '<div class="feature-postit"><h3>Design</h3><p>b</p></div>',
+      '<div class="feature-postit"><h3>Ship</h3><p>c</p></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['전략', '디자인']);
+    expect([...(next.matchAll(/\bfeature-postit\b/gi))].length).toBe(2);
+    expect(next).toContain('전략');
+    expect(next).not.toContain('Ship');
+
+    const statement = [
+      '<div class="wrap">',
+      '<div class="statement-postit"><h4>One</h4><p>a</p></div>',
+      '<div class="statement-postit"><h4>Two</h4><p>b</p></div>',
+      '<div class="statement-postit"><h4>Three</h4><p>c</p></div>',
+      '</div>',
+    ].join('');
+    const denied = fillAndTrimCardPeers(statement, ['하나', '둘']);
+    expect([...(denied.matchAll(/\bstatement-postit\b/gi))].length).toBe(3);
+    expect(denied).not.toContain('하나');
+  });
+
+  it('trims broadside flow steps and drops orphan flow-arrows', () => {
+    const html = [
+      '<div class="flow">',
+      '<div class="flow-step"><div class="flow-title">Discover</div><div class="flow-desc">a</div></div>',
+      '<div class="flow-arrow">→</div>',
+      '<div class="flow-step"><div class="flow-title">Define</div><div class="flow-desc">b</div></div>',
+      '<div class="flow-arrow">→</div>',
+      '<div class="flow-step"><div class="flow-title">Deploy</div><div class="flow-desc">c</div></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['발견', '정의']);
+    expect([...(next.matchAll(/\bflow-step\b/gi))].length).toBe(2);
+    expect([...(next.matchAll(/\bflow-arrow\b/gi))].length).toBe(1);
+    expect(next).toContain('발견');
+    expect(next).not.toContain('Deploy');
+  });
+});
+
 describe('0901-N02 heal↔clone integration', () => {
   it('Daisy LOOK seed → slot-fill → heal keeps motif and drops demo peers', async () => {
     const html = await readFile(
