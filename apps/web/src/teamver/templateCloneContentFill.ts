@@ -585,6 +585,7 @@ export function buildTemplateClonePromptFillSeed(options: {
     'Emit `<artifact type="deck" identifier="deck">` with a complete HTML document and filled slides. Do not emit JSON outline.',
     'Use the selected template kit in the system prompt as visual authority: palette, typography, motif, layout rhythm, and slide chrome.',
     'Use the cloned `deck.html` only as a look reference. Do not treat it as an existing-deck edit, copy demo placeholders, or paste this host contract onto slides.',
+    'Chat status may describe the deck, but the artifact must contain that many `<section class="slide">` (or equivalent slide hosts). Never claim 9 slides while emitting only a cover.',
     hasAttachedSource
       ? 'Fill REAL presentation CONTENT for this request and any attached source materials (Canvas/Drive/files).'
       : 'Fill REAL presentation CONTENT for this create; expand THIS brief with concrete domain knowledge.',

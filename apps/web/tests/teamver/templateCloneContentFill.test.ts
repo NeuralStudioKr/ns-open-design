@@ -137,6 +137,7 @@ describe('templateCloneContentFill', () => {
     expect(seed).toContain('www.teamver.com');
     expect(seed).toContain('[Template clone prompt fill]');
     expect(seed).toContain('Selected template: Html Ppt Zhangzara 블록 프레임');
+    expect(seed).toContain('Never claim 9 slides while emitting only a cover');
     expect(seed).not.toMatch(/Worked example — brief/i);
     expect(seed).not.toMatch(/Expo for Senior Engineers|expo-modules-core|EAS Build|EXPO_PUBLIC_/i);
     expect(seed).not.toMatch(/Content expansion contract/i);

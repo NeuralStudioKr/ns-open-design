@@ -4923,7 +4923,16 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     // 16:9 split slides that only set display:flex keep row on reveal.
     snapshotAuthoredStackedSlideStyles(list);
     if (list.length) {
-      var target = Math.max(0, Math.min(list.length - 1, initialSlideIndex));
+      // Delayed ready retries (400ms) used to always forceReveal(initial=0).
+      // After the host/user already moved pages, that snap-back made a 9-slide
+      // compact deck look like a single page (loop382 / Teamver Block Frame).
+      var target;
+      if (hostSlideNavigationSeen) {
+        target = activeIndex(list);
+        if (target < 0) target = 0;
+      } else {
+        target = Math.max(0, Math.min(list.length - 1, initialSlideIndex));
+      }
       forceRevealSlide(target);
     }
     nudgeDeckFit();
@@ -5000,6 +5009,8 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     bootstrapCompactStackedDeck();
     setTimeout(function() {
       if (document.documentElement.hasAttribute('data-od-stacked-deck-ready')) return;
+      // Still rebuild stage/fit, but never reset the active page if the host
+      // already navigated (bootstrapCompactStackedDeck honors that flag).
       bootstrapCompactStackedDeck();
       requestHostDeckViewport();
       markStackedDeckReadyIfFit();

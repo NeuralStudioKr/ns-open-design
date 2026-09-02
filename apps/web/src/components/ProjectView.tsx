@@ -3472,8 +3472,15 @@ export function ProjectView({
    * Active send is a Template Clone content-fill (LOOK seed → compact CREATE).
    * Persist must not treat a smaller filled deck as a stub regression over the
    * large cloned CSS/SVG shell, and must not block intentional slide-count caps.
+   * JSON slot-fill terminal only — prompt-fill uses {@link runTemplateClonePromptFillRef}.
    */
   const runTemplateCloneContentFillRef = useRef(false);
+  /**
+   * Prompt-mode HTML fill (staging default). Needs the same seed-replace +
+   * short-deck top-up as JSON content-fill, without routing through slot-fill
+   * decide (loop383).
+   */
+  const runTemplateClonePromptFillRef = useRef(false);
   /** 0901-N02 B5/D — persist metadata when slot-fill fell back to LOOK seed. */
   const runTemplateCloneSlotFillFallbackRef = useRef(false);
   /** Hidden / user slide-count append — persist merges new sections onto disk. */
@@ -6059,6 +6066,7 @@ export function ProjectView({
       const priorDiskHtml = ext === '.html' ? await readDiskHtml(fileName) : null;
       const allowReplaceSeedOrLeftover =
         runTemplateCloneContentFillRef.current
+        || runTemplateClonePromptFillRef.current
         || priorDeckAllowsCompactReplacement(
           priorDiskHtml,
           runVisiblePromptRef.current || '',
@@ -9831,6 +9839,7 @@ export function ProjectView({
         retryTarget ? retryTarget.userMsg.content || prompt : prompt,
       );
       runTemplateCloneContentFillRef.current = isCloneContentFillTurn;
+      runTemplateClonePromptFillRef.current = isTemplateClonePromptFillTurn;
       runTemplateCloneSlotFillFallbackRef.current = false;
       const fillSlideCountHint =
         extractTemplateCloneFillSlideCountHintFromPrompt(
@@ -9842,7 +9851,7 @@ export function ProjectView({
             ? String(meta.pluginInputs.slideCount)
             : null
         );
-      const fillPluginInputs = isCloneContentFillTurn
+      const fillPluginInputs = (isCloneContentFillTurn || isTemplateClonePromptFillTurn)
         ? withTemplateCloneFillPluginInputs(meta?.pluginInputs, fillSlideCountHint)
         : meta?.pluginInputs;
       if (isCloneContentFillTurn || isTemplateClonePromptFillTurn || isSlideCountTopUpSend) {
@@ -12294,6 +12303,7 @@ export function ProjectView({
         if (findIncompleteSlideAssistantForRecovery(conversationMessages)) return;
         const allowDefaultShortDeckTopUp =
           runTemplateCloneContentFillRef.current
+          || runTemplateClonePromptFillRef.current
           || (slideOnlyMvp && !runPersistTargetFileRef.current);
         const requestedSpec = extractRequestedSlideCountSpecFromMessages(conversationMessages);
         const requested = requestedSpec?.max ?? null;

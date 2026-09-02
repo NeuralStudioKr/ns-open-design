@@ -42,6 +42,10 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프383 — prompt-fill 다장→1장 체감
+
+compact bootstrap 400ms 재시도가 next 후 slide 0으로 스냅백. prompt-fill이 short-deck top-up을 못 타던 갭 수정.
+
 ### 루프382 — Clone prompt-fill 호스트 계약 채팅 노출 + Expo 예시 누수
 
 `[Template clone prompt fill]`이 채팅 숨김 목록에 없어 사용자 brief 뒤로 전체 계약이 보임. user-turn seed에 시스템용 Expo worked example이 붙어 teamver.com 요청에도 Expo가 본문으로 샐 수 있음. 숨김 확대 · seed에서 예시 제거 · HTML host-contract heal.
