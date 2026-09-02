@@ -39,6 +39,8 @@
 | **루프372** stuck repair notice reload → LOOK seed 안내 | ☑ |
 | **루프373** brief 패러디 제목·cards instruction body 가드 | ☑ |
 | **루프375** block-frame hero/split flow 레이아웃 복구 | ☑ |
+| **루프376** 빈 leaf ul/p shell 제거 | ☑ |
+| **루프377** 깨진 heading/빈 카드 salvage · orphan split column | ☑ |
 | **루프366** section `#stage` hoist · contracts dist rebuild | ☑ web transform-driven 19/19 |
 | MiniMax 실키 E2E | ☑ 가드 있음 · 키 없으면 skip (`template-clone-minimax-live.e2e`) |
 

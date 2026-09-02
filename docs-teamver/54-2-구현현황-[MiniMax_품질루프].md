@@ -42,6 +42,10 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프377 — MiniMax 깨진 heading / 빈 카드 / orphan split
+
+편집 턴이 `</p>/h3>` · 중첩 heading · 빈 border 카드를 남기고, `split-content`만 있으면 flow가 row로 좌반만 씀. salvage + column-center CSS.
+
 ### 루프375 — block-frame hero/split 레이아웃
 
 `data-od-slide-flow`가 `.slide-1`의 center와 `.slide-6`의 row를 무시해 hero가 좌상단, split이 제목만 남음. flow CSS + 빈 li 제거 + list 합성.

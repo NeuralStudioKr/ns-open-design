@@ -1126,6 +1126,63 @@ function repairBareHeadingCloses(html: string): string {
   });
 }
 
+/**
+ * MiniMax edit turns often emit broken neo-brutal markup:
+ * `</p>/h3></h3>`, nested `<h3>A <h3>A`, headings closed with `</p>`.
+ * Repair typos before unwrap/grid salvage (루프377).
+ */
+function repairBrokenHeadingTypos(html: string): string {
+  let next = String(html ?? '');
+  if (!next) return next;
+  // `Shared Drive </p>/h3></h3>` → close as h3
+  next = next.replace(/<\/p>\s*\/h([1-6])>/gi, '</h$1>');
+  // Bare `/h3>` (missing `<`) after text
+  next = next.replace(/([^<\s/])\s*\/h([1-6])>/gi, '$1</h$2>');
+  // Nested same-level open: `<h3>Title <h3>Title` → close outer then reopen
+  next = next.replace(
+    /<h([1-3])(\b[^>]*)>([^<]{0,240}?)\s*<h\1(\b[^>]*)>/gi,
+    (_full, level: string, attrs1: string, text: string, attrs2: string) => {
+      const trimmed = String(text ?? '').trim();
+      return trimmed
+        ? `<h${level}${attrs1}>${trimmed}</h${level}><h${level}${attrs2}>`
+        : `<h${level}${attrs2}>`;
+    },
+  );
+  // Heading body closed with `</p>` instead of `</hN>`
+  next = next.replace(
+    /<h([1-3])(\b[^>]*)>([^<]{1,240}?)\s*<\/p>/gi,
+    '<h$1$2>$3</h$1>',
+  );
+  // Double close leftovers
+  next = next.replace(/<\/h([1-3])>\s*<\/h\1>/gi, '</h$1>');
+  // Adjacent duplicate identical headings (edit-turn echo)
+  next = next.replace(
+    /(<h([1-3])\b[^>]*>)\s*([^<]{1,160}?)\s*<\/h\2>\s*<h\2\b[^>]*>\s*\3\s*<\/h\2>/gi,
+    '$1$3</h$2>',
+  );
+  return next;
+}
+
+/**
+ * Drop empty padded border boxes MiniMax leaves as "card" shells after a
+ * failed edit (`padding:32px` + solid border + only whitespace).
+ */
+function stripEmptyBorderPadCardShells(html: string): string {
+  return String(html ?? '').replace(
+    /<div\b([^>]*)>(\s|&nbsp;|&#160;|<br\s*\/?\s*>)*<\/div>/gi,
+    (full, attrs: string) => {
+      const a = String(attrs ?? '');
+      if (!/border\s*:\s*[^;]*solid/i.test(a)) return full;
+      if (!/padding\s*:\s*\d/i.test(a)) return full;
+      // Keep intentional deco squares (tiny fixed size, no copy expected).
+      if (/width\s*:\s*(?:\d{1,2}|1\d{2})px/i.test(a) && /height\s*:\s*(?:\d{1,2}|1\d{2})px/i.test(a)) {
+        return full;
+      }
+      return '';
+    },
+  );
+}
+
 function collapseHeadingBreaks(inner: string): string {
   return String(inner ?? '').replace(/(?:<br\s*\/?>\s*){2,}/gi, '<br>');
 }
@@ -1601,8 +1658,10 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string): string {
   next = next.replace(LEAKED_LABEL_AFTER_CLOSE_RE, '</$1>');
   next = next.replace(PREMATURE_AUTO_AUTO_1FR_CARD_RE, '$1$2$3</div>');
   next = next.replace(EARLY_NUMBERED_OL_CLOSE_RE, '$2</ol>$1');
+  next = repairBrokenHeadingTypos(next);
   next = repairBareHeadingCloses(next);
   next = unwrapBlocksFromHeadings(next);
+  next = stripEmptyBorderPadCardShells(next);
   next = collapseSparseRepeatGrids(next);
   next = pinDecorativeGradientOverlays(next);
   next = healOrphanRadialCircles(next);

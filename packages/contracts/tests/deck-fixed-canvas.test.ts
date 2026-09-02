@@ -826,7 +826,12 @@ describe('deck slide class tokens', () => {
     const pinned = pinDeckSlidesToFixedCanvas(html);
     expect(pinned).toContain(DECK_FIXED_CANVAS_PIN_ATTR);
     expect(pinned).toMatch(/\[data-od-slide-flow\]:has\(\.hero-frame\)/);
-    expect(pinned).toMatch(/\[data-od-slide-flow\]:has\(\.split-visual\)/);
+    expect(pinned).toMatch(
+      /\[data-od-slide-flow\]:has\(\.split-visual\):has\(\.split-content\)/,
+    );
+    expect(pinned).toMatch(
+      /\[data-od-slide-flow\]:has\(\.split-content\):not\(:has\(\.split-visual\)\)/,
+    );
     expect(pinned).toMatch(/justify-content:\s*center/);
     expect(pinned).toContain('split-visual');
     expect(pinned).toContain('hero-frame');

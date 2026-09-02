@@ -92,11 +92,18 @@ article[data-screen-label] {
 .slide > [data-od-slide-flow]:has(.split-left),
 .slide > [data-od-slide-flow]:has(.split-right),
 .slide > [data-od-slide-flow]:has(.split-pane),
-.slide > [data-od-slide-flow]:has(.split-visual),
-.slide > [data-od-slide-flow]:has(.split-content),
+.slide > [data-od-slide-flow]:has(.split-visual):has(.split-content),
 .slide > [data-od-slide-flow]:has(.col-left):has(.col-right),
 .slide > [data-od-slide-flow]:has(.left-col):has(.right-col) {
   flex-direction: row;
+  align-items: stretch;
+}
+/* Orphan split half (slot-fill dropped the visual pane) — column-center so
+ * a lone title does not hug the left half of a forced row (루프377). */
+.slide > [data-od-slide-flow]:has(.split-content):not(:has(.split-visual)),
+.slide > [data-od-slide-flow]:has(.split-visual):not(:has(.split-content)) {
+  flex-direction: column;
+  justify-content: center;
   align-items: stretch;
 }
 /* Block-frame / neo-brutalism: host .slide-1 centers via class CSS, but the

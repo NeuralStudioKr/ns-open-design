@@ -759,6 +759,27 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(salvagedList).not.toMatch(/<\/ol><\/div><li/);
   });
 
+  it('repairs nested heading typos and empty border pad shells (루프377)', () => {
+    const html = [
+      '<section class="slide" data-screen-label="04 Product">',
+      '<h3 style="font-size:32px">Shared Drive </p>/h3></h3>',
+      '<h3 style="font-size:32px">AI Chat <h3 style="font-size:32px">AI Chat </p>',
+      '<p style="font-size:18px">파일과 대화 맥락을 이해하는 AI</p>',
+      '<h3>AI Apps</h3><h3>AI Apps</h3>',
+      '<div style="background:#FFFDF5;border:4px solid #000;box-shadow:8px 8px 0 #000;padding:32px"> </div>',
+      '<div style="width:48px;height:48px;border:3px solid #000;padding:0"></div>',
+      '</section>',
+    ].join('');
+    const salvaged = salvageMalformedMiniMaxSlideMarkup(html);
+    expect(salvaged).toMatch(/<h3[^>]*>Shared Drive\s*<\/h3>/);
+    expect(salvaged).not.toMatch(/<\/p>\s*\/h3>|\s\/h3>/);
+    expect(salvaged).toMatch(/<h3[^>]*>AI Chat\s*<\/h3>/);
+    expect(salvaged).toContain('파일과 대화 맥락을 이해하는 AI');
+    expect(salvaged.match(/AI Apps/g)?.length).toBe(1);
+    expect(salvaged).not.toMatch(/padding:32px[^>]*>\s*<\/div>/);
+    expect(salvaged).toMatch(/width:48px;height:48px/);
+  });
+
   it('strips empty class-only ribbon shells without Motif attrs', () => {
     const html = '<section class="slide"><span class="ribbon"></span><h1>개요</h1></section>';
     const cleaned = stripEmptyOfficialMotifInstances(html);
