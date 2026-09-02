@@ -155,63 +155,184 @@ export function outlineLooksLikeHtmlDump(text: string): boolean {
   return false;
 }
 
-/** Strip model policy echo / thinking blocks before JSON outline extraction. */
+/**
+ * Strip model policy echo / thinking blocks before JSON outline extraction.
+ *
+ * Providers wrap chain-of-thought in different tags; a stray closing `</think>`
+ * or `</redacted_thinking>` inside the visible answer must NOT nuke the JSON
+ * outline that follows it. Each pattern is balanced (open + close) and only
+ * strips its own paired block. Trailing open-only tags on truncated streams
+ * are trimmed conservatively so the JSON that arrived before the tag stays.
+ *
+ * Loop373 — the previous strip used `<think>[\s\S]*?</redacted_thinking>`
+ * (mismatched open/close, never matched real content) and `[\s\S]*?</think>`
+ * (matched the ENTIRE prefix up to the first `</think>`, deleting valid JSON
+ * that happened to precede a stray close tag). Both are replaced here.
+ */
 export function stripTemplateCloneOutlineNoise(text: string): string {
-  return String(text ?? '')
-    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, '')
-    .replace(/<think>[\s\S]*?<\/redacted_thinking>/gi, '')
-    .replace(/[\s\S]*?<\/think>/gi, '')
-    .trim();
+  let out = String(text ?? '');
+  out = out.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, '');
+  out = out.replace(/<redacted_thinking\b[^>]*>[\s\S]*?<\/redacted_thinking>/gi, '');
+  out = out.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, '');
+  out = out.replace(/<thinking\b[^>]*>[\s\S]*?<\/thinking>/gi, '');
+  // Truncated stream: an unclosed `<think>`/`<redacted_thinking>` at the tail.
+  // Drop from that open tag onward so a partial reasoning block does not eat
+  // into the JSON extractor's balanced-brace scan.
+  out = out.replace(/<(?:think|thinking|redacted_thinking)\b[^>]*>[\s\S]*$/i, '');
+  // Anthropic <artifact> wrapper on tool-emitted JSON.
+  out = out.replace(/<\/?artifact\b[^>]*>/gi, '');
+  return out.trim();
+}
+
+/**
+ * Yield every balanced `{...}` block from `startIndex` onwards. Skips over
+ * quoted strings so a `"}"` inside a body line does not close the object
+ * early. Used by the outline parser to try more than one candidate — model
+ * replies sometimes emit `{ "note": "..." }` prose before the real outline.
+ */
+function* iterateBalancedJsonObjects(text: string, startIndex = 0): IterableIterator<{
+  start: number;
+  end: number;
+  body: string;
+}> {
+  let cursor = Math.max(0, startIndex);
+  while (cursor < text.length) {
+    const start = text.indexOf('{', cursor);
+    if (start < 0) return;
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    let closed = -1;
+    for (let i = start; i < text.length; i += 1) {
+      const ch = text[i]!;
+      if (inString) {
+        if (escape) { escape = false; continue; }
+        if (ch === '\\') { escape = true; continue; }
+        if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') { inString = true; continue; }
+      if (ch === '{') depth += 1;
+      else if (ch === '}') {
+        depth -= 1;
+        if (depth === 0) { closed = i; break; }
+      }
+    }
+    if (closed < 0) return;
+    const body = text.slice(start, closed + 1);
+    yield { start, end: closed + 1, body };
+    cursor = closed + 1;
+  }
 }
 
 function extractBalancedJsonObject(text: string, startIndex = 0): string | null {
-  const start = text.indexOf('{', startIndex);
-  if (start < 0) return null;
-  let depth = 0;
+  const first = iterateBalancedJsonObjects(text, startIndex).next();
+  return first.done ? null : first.value.body;
+}
+
+/**
+ * Best-effort JSON hardening: strip trailing commas before `]` / `}` and
+ * strip `// line` comments the model sometimes emits when it "quotes" the
+ * schema back at us. Never touches quoted strings.
+ */
+function hardenLooseJson(text: string): string {
+  let out = '';
   let inString = false;
   let escape = false;
-  for (let i = start; i < text.length; i += 1) {
+  for (let i = 0; i < text.length; i += 1) {
     const ch = text[i]!;
     if (inString) {
-      if (escape) {
-        escape = false;
-        continue;
-      }
-      if (ch === '\\') {
-        escape = true;
-        continue;
-      }
+      out += ch;
+      if (escape) { escape = false; continue; }
+      if (ch === '\\') { escape = true; continue; }
       if (ch === '"') inString = false;
       continue;
     }
-    if (ch === '"') {
-      inString = true;
+    if (ch === '"') { inString = true; out += ch; continue; }
+    if (ch === '/' && text[i + 1] === '/') {
+      const nl = text.indexOf('\n', i + 2);
+      if (nl < 0) break;
+      i = nl - 1;
       continue;
     }
-    if (ch === '{') depth += 1;
-    else if (ch === '}') {
-      depth -= 1;
-      if (depth === 0) return text.slice(start, i + 1);
+    if (ch === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      if (end < 0) break;
+      i = end + 1;
+      continue;
     }
+    out += ch;
   }
-  return null;
+  return out.replace(/,(\s*[\]}])/g, '$1');
 }
 
-function extractJsonObjectText(raw: string): string | null {
+/**
+ * Try parsing `body` as JSON; fall back to a hardened variant that removes
+ * trailing commas and stray line comments. Returns the parsed value or null.
+ */
+function tryParseLooseJson(body: string): unknown {
+  try {
+    return JSON.parse(body) as unknown;
+  } catch {
+    /* try harden */
+  }
+  try {
+    return JSON.parse(hardenLooseJson(body)) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function candidateLooksLikeOutlineShape(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return Array.isArray(record.slides);
+}
+
+/**
+ * Prefer the first balanced `{...}` that parses AND carries a `slides`
+ * array. Falls back to the first parseable object so downstream code
+ * can still surface a title / partial recovery. Handles fenced blocks
+ * (```json ... ```), leading prose, and multiple candidate objects.
+ */
+function extractOutlineCandidateJson(raw: string): {
+  jsonText: string;
+  parsed: unknown;
+} | null {
   const trimmed = stripTemplateCloneOutlineNoise(String(raw ?? ''));
   if (!trimmed) return null;
 
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fenced?.[1]) {
-    const inner = fenced[1].trim();
-    const fromFence =
-      (inner.startsWith('{') && inner.endsWith('}') ? inner : null)
-      ?? extractBalancedJsonObject(inner);
-    if (fromFence) return fromFence;
+  const scanRegions: string[] = [];
+  const seen = new Set<string>();
+  const push = (region: string) => {
+    const value = region.trim();
+    if (!value || seen.has(value)) return;
+    seen.add(value);
+    scanRegions.push(value);
+  };
+  const fenceRe = /```(?:json|JSON)?\s*([\s\S]*?)```/g;
+  let fence: RegExpExecArray | null;
+  while ((fence = fenceRe.exec(trimmed)) !== null) {
+    push(fence[1] ?? '');
   }
+  push(trimmed);
 
-  if (trimmed.startsWith('{') && trimmed.endsWith('}')) return trimmed;
-  return extractBalancedJsonObject(trimmed);
+  let firstAny: { jsonText: string; parsed: unknown } | null = null;
+  for (const region of scanRegions) {
+    for (const candidate of iterateBalancedJsonObjects(region)) {
+      const parsed = tryParseLooseJson(candidate.body);
+      if (parsed == null) continue;
+      const hardened = hardenLooseJson(candidate.body);
+      const entry = { jsonText: hardened, parsed };
+      if (candidateLooksLikeOutlineShape(parsed)) return entry;
+      if (!firstAny) firstAny = entry;
+    }
+  }
+  return firstAny;
+}
+
+function extractJsonObjectText(raw: string): string | null {
+  return extractOutlineCandidateJson(raw)?.jsonText ?? null;
 }
 
 /** Normalize assistant text before Clone slot-fill terminal decision (루프368/369). */
@@ -228,17 +349,9 @@ export function parseTemplateCloneDeckOutline(
 ): TemplateCloneDeckOutline | null {
   let value: unknown = raw;
   if (typeof raw === 'string') {
-    const cleaned = stripTemplateCloneOutlineNoise(raw);
-    const jsonText = extractJsonObjectText(cleaned);
-    if (!jsonText) {
-      if (outlineLooksLikeHtmlDump(cleaned)) return null;
-      return null;
-    }
-    try {
-      value = JSON.parse(jsonText) as unknown;
-    } catch {
-      return null;
-    }
+    const candidate = extractOutlineCandidateJson(raw);
+    if (!candidate) return null;
+    value = candidate.parsed;
   }
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
@@ -301,22 +414,107 @@ export type TemplateCloneSlotFillTerminalDecision =
   | { kind: 'seed-fallback'; html: string; title: string }
   | { kind: 'abort' };
 
+function extractTitleStringsFromLoose(raw: string, cap = 40): string[] {
+  const cleaned = stripTemplateCloneOutlineNoise(String(raw ?? ''));
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const re = /"title"\s*:\s*"((?:\\.|[^"\\])*)"/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(cleaned)) !== null && out.length < cap) {
+    const raw1 = match[1] ?? '';
+    let value = raw1;
+    try {
+      value = JSON.parse(`"${raw1}"`) as string;
+    } catch {
+      /* keep raw */
+    }
+    const clean = String(value ?? '').trim();
+    if (!clean || seen.has(clean)) continue;
+    seen.add(clean);
+    out.push(clean);
+  }
+  return out;
+}
+
 function titleForSeedFallback(rawFinalText: string, seedHtml: string): string {
   const raw = String(rawFinalText ?? '');
-  const titleMatch = /"title"\s*:\s*"((?:\\.|[^"\\])*)"/.exec(raw);
-  if (titleMatch?.[1]) {
-    try {
-      const unescaped = JSON.parse(`"${titleMatch[1]}"`) as string;
-      const cleaned = sanitizeTemplateCloneDeckTitle(unescaped);
-      if (cleaned) return cleaned;
-    } catch {
-      const cleaned = sanitizeTemplateCloneDeckTitle(titleMatch[1]);
-      if (cleaned) return cleaned;
-    }
+  const titles = extractTitleStringsFromLoose(raw, 1);
+  const first = titles[0];
+  if (first) {
+    const cleaned = sanitizeTemplateCloneDeckTitle(first);
+    if (cleaned) return cleaned;
   }
   const seedTitle = /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(seedHtml)?.[1] ?? '';
   const fromSeed = sanitizeTemplateCloneDeckTitle(seedTitle.replace(/<[^>]+>/g, ' '));
   return fromSeed || '슬라이드';
+}
+
+/**
+ * Recover a partial outline from a broken JSON reply — pull every `"title": "…"`
+ * literal that survived the truncation. Callers use this to slot-fill the
+ * LOOK seed with the model's real slide titles even when the JSON never closed.
+ */
+export function recoverPartialTemplateCloneOutline(
+  rawFinalText: string,
+  options?: { fallbackTitle?: string | null },
+): TemplateCloneDeckOutline | null {
+  const titles = extractTitleStringsFromLoose(rawFinalText, TEMPLATE_CLONE_OUTLINE_MAX_SLIDES + 1);
+  const slides: TemplateCloneSlideContent[] = [];
+  const seen = new Set<string>();
+  for (const raw of titles) {
+    const title = sanitizeTemplateCloneDeckTitle(raw);
+    if (!title || seen.has(title)) continue;
+    seen.add(title);
+    slides.push({ title });
+    if (slides.length >= TEMPLATE_CLONE_OUTLINE_MAX_SLIDES) break;
+  }
+  if (slides.length === 0) return null;
+  const fallback =
+    sanitizeTemplateCloneDeckTitle(options?.fallbackTitle ?? '')
+    ?? slides[0]!.title;
+  return { title: fallback, slides };
+}
+
+/**
+ * When the model produced NOTHING usable, synthesize a minimal topical outline
+ * from the user brief so the seed-fallback deck shows the topic on the cover
+ * plus generic section labels instead of untouched template demo copy
+ * (Hartfield / Daisy Days / Project Atlas). Non-Clone paths never call this.
+ */
+const SYNTH_GENERIC_TITLE_RE =
+  /^(?:슬라이드|deck|slides?|presentation|발표\s*자료|untitled|artifact)$/i;
+
+export function synthesizeTemplateCloneOutlineFromBrief(input: {
+  userBrief?: string | null;
+  deckTitle?: string | null;
+  slideCount?: number | null;
+}): TemplateCloneDeckOutline | null {
+  const brief = String(input.userBrief ?? '').trim();
+  const fallbackTitle = String(input.deckTitle ?? '').trim();
+  // Prefer the topic extracted from the brief. Only fall back to deckTitle if
+  // the brief yielded nothing — the caller often passes generic "슬라이드"
+  // as deckTitle, which would otherwise pin the synthesized cover to "슬라이드".
+  const fromBrief = brief
+    ? sanitizeTemplateCloneDeckTitle(deriveDeckCoverTitleFromBrief(brief, null))
+    : null;
+  const fromDeckTitle = fallbackTitle
+    ? sanitizeTemplateCloneDeckTitle(fallbackTitle)
+    : null;
+  const cover = [fromBrief, fromDeckTitle].find(
+    (candidate): candidate is string =>
+      typeof candidate === 'string'
+      && candidate.length > 0
+      && !SYNTH_GENERIC_TITLE_RE.test(candidate),
+  );
+  if (!cover) return null;
+  const target = Math.max(3, Math.min(6, Math.floor(input.slideCount ?? 5)));
+  const genericSections: string[] = ['개요', '핵심 포인트', '근거와 사례', '실행 방안', '요약'];
+  const slides: TemplateCloneSlideContent[] = [{ title: cover, roleHint: 'cover' }];
+  for (let i = 1; i < target; i += 1) {
+    const label = genericSections[i - 1] ?? `핵심 ${i}`;
+    slides.push({ title: label });
+  }
+  return { title: cover, slides };
 }
 
 /**
@@ -336,25 +534,56 @@ export function decideTemplateCloneSlotFillTerminal(input: {
   seedHtml: string | null | undefined;
   repairAlreadyAttempted: boolean;
   templateId?: string | null;
+  /** User brief / topic + resolved deck title used to synthesize a topical
+   *  outline when the model output is unusable — so seed-fallback shows the
+   *  user's topic instead of raw template demo copy (Hartfield / Daisy). */
+  userBrief?: string | null;
+  deckTitle?: string | null;
 }): TemplateCloneSlotFillTerminalDecision {
   const seed = String(input.seedHtml ?? '').trim();
   const raw = String(input.rawFinalText ?? '');
-  if (seed) {
-    const filled = applyTemplateCloneSlotFill(seed, raw, {
-      ...(input.templateId !== undefined ? { templateId: input.templateId } : {}),
-    });
-    if (filled) return { kind: 'slot-fill', html: filled.html, title: filled.title };
-    // Soft-invalid JSON or HTML dump — keep LOOK seed (no repair AC churn).
-    return {
-      kind: 'seed-fallback',
-      html: seed,
-      title: titleForSeedFallback(raw, seed),
-    };
+  if (!seed) {
+    void input.repairAlreadyAttempted;
+    return { kind: 'abort' };
   }
-  // No LOOK seed — cannot slot-fill or fall back. Repair without a seed cannot
-  // produce a deck either, so abort immediately (do not queue-repair).
-  void input.repairAlreadyAttempted;
-  return { kind: 'abort' };
+  const templateOpts = input.templateId !== undefined
+    ? { templateId: input.templateId }
+    : {};
+  const filled = applyTemplateCloneSlotFill(seed, raw, templateOpts);
+  if (filled) return { kind: 'slot-fill', html: filled.html, title: filled.title };
+
+  // Model failed to emit a parseable outline. Loop373 — try harder before
+  // falling back to raw LOOK seed demo copy: (1) recover partial titles
+  // from broken JSON, (2) synthesize a topical outline from user brief so
+  // the seed at least reflects the user's topic. Both paths still call
+  // buildTemplateClonedDeckHtml so no model HTML lands.
+  const fallbackTitleGuess = titleForSeedFallback(raw, seed);
+  const partial = recoverPartialTemplateCloneOutline(raw, {
+    fallbackTitle: fallbackTitleGuess,
+  });
+  if (partial) {
+    const filledPartial = buildTemplateClonedDeckHtml(seed, partial.slides, {
+      title: partial.title,
+      ...templateOpts,
+    });
+    if (filledPartial?.trim()) {
+      return { kind: 'seed-fallback', html: filledPartial, title: partial.title };
+    }
+  }
+  const synth = synthesizeTemplateCloneOutlineFromBrief({
+    userBrief: input.userBrief ?? null,
+    deckTitle: input.deckTitle ?? fallbackTitleGuess,
+  });
+  if (synth) {
+    const filledSynth = buildTemplateClonedDeckHtml(seed, synth.slides, {
+      title: synth.title,
+      ...templateOpts,
+    });
+    if (filledSynth?.trim()) {
+      return { kind: 'seed-fallback', html: filledSynth, title: synth.title };
+    }
+  }
+  return { kind: 'seed-fallback', html: seed, title: fallbackTitleGuess };
 }
 
 /**

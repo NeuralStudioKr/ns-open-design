@@ -10533,6 +10533,8 @@ export function ProjectView({
                     (project.metadata as { selectedDeckTemplateId?: string } | undefined)
                       ?.selectedDeckTemplateId
                     ?? null,
+                  userBrief: runVisiblePromptRef.current || '',
+                  deckTitle: project.name || '슬라이드',
                 });
                 if (decision.kind === 'slot-fill') {
                   runTemplateCloneSlotFillFallbackRef.current = false;
@@ -10544,7 +10546,23 @@ export function ProjectView({
                   };
                 } else if (decision.kind === 'seed-fallback') {
                   runTemplateCloneSlotFillFallbackRef.current = true;
-                  if (!(await recoverCloneLookSeedFallback())) {
+                  // Loop373 — when the terminal decision applied a partial
+                  // recovery or brief-synth outline to the seed (decision.html
+                  // differs from the raw LOOK seed on disk), persist that
+                  // topical version. Otherwise point at the untouched disk
+                  // seed to keep the earlier recovery behavior.
+                  const rawSeed = String(seedHtml ?? '').trim();
+                  const decisionHtml = String(decision.html ?? '').trim();
+                  const decisionIsTopical =
+                    decisionHtml.length > 0 && decisionHtml !== rawSeed;
+                  if (decisionIsTopical) {
+                    artifactToPersist = {
+                      identifier: 'deck',
+                      artifactType: 'deck',
+                      title: decision.title,
+                      html: decision.html,
+                    };
+                  } else if (!(await recoverCloneLookSeedFallback())) {
                     artifactToPersist = {
                       identifier: 'deck',
                       artifactType: 'deck',

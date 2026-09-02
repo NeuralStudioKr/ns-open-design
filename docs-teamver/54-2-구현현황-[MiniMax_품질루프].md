@@ -52,6 +52,27 @@ repair auto-send 600ms 창에 사용자가 Retry/Continue를 눌러 repair send�
 
 검증: web ChatPane.resume-failed 루프370 · contracts redacted_thinking parse.
 
+### 루프373 — Clone slot-fill 실패 시 seed에 사용자 topic 채우기
+
+reproduce: "expo 설명 자료를 만들어줘"로 첫 채우기 실행 → 모델이 JSON parse 실패 → "슬라이드 채우기에 실패해 템플릿 초안(LOOK seed)을 유지했습니다" 경고 + Retry 안내. 문제는 사용자가 열어본 LOOK seed가 **Hartfield / Daisy Days / Project Atlas** 같은 템플릿 데모 카피를 그대로 보여줬다는 점 — 사용자의 실제 주제와 무관한 발표 초안이 노출됐다.
+
+원인:
+1. `stripTemplateCloneOutlineNoise`가 `<think>[\s\S]*?</redacted_thinking>` (mismatched open/close) + `[\s\S]*?</think>` (앞에 있던 JSON까지 통째로 삭제)로 되어 있어 실제 `<redacted_thinking>` 블록을 못 걷어내고, 잘못 위치한 `</think>`가 JSON을 지웠다
+2. JSON 추출이 첫 balanced `{...}` 하나만 시도해서 `{ "note": "..." }` 프로즈가 앞서면 outline 후보를 놓쳤다
+3. seed-fallback이 raw LOOK seed를 그대로 persist → 사용자는 데모 카피만 봤다
+
+수정:
+1. `stripTemplateCloneOutlineNoise` — `<redacted_thinking>...</redacted_thinking>` · balanced `<think>...</think>` / `<thinking>...</thinking>` · 끊긴 스트림의 open-only tag · `<artifact>` wrapper 모두 처리
+2. outline 파서 — 모든 balanced `{...}` 후보를 걸어가며 `slides` 배열이 있는 첫 후보 선택 · trailing comma / `// line comment` / `/* block */` 관용
+3. `recoverPartialTemplateCloneOutline` — 깨진 JSON에서 살아남은 `"title": "..."` 리터럴만 뽑아 partial outline 구성
+4. `synthesizeTemplateCloneOutlineFromBrief` — 그것마저 없으면 user brief에서 `deriveDeckCoverTitleFromBrief`로 topic을 뽑아 `[cover, 개요, 핵심 포인트, 근거와 사례, 실행 방안, 요약]` 5장짜리 생성
+5. `decideTemplateCloneSlotFillTerminal` — `userBrief`/`deckTitle` 파라미터 추가. seed가 있을 때 slot-fill 실패 → partial → synth 순서로 시도해 seed에 topic을 실제로 stamp
+6. ProjectView finalize — decision.html이 raw seed와 다르면(=topic이 stamp됨) LOOK seed 대신 그것을 persist
+
+카피 발명 없음. 완전한 새 문장을 넣지 않고 사용자 brief에서 뽑은 cover 제목 + 일반 섹션 라벨만 사용. Motif/데모 카드 카피는 buildTemplateClonedDeckHtml이 이미 스트립한다. 280 vs 900 sidebar / leftover heal / 공식 English 카탈로그 규칙 모두 유지.
+
+검증: contracts template-clone-outline (redacted_thinking / stray `</think>` / multi-candidate / trailing comma / `<artifact>` wrapper / partial recovery / brief synth / decide-terminal 통합) · template-clone-fill 회귀 · 전체 스위트 2855/2855.
+
 ### 루프369 — JSON 본문 section.slide 오탐 · repair send 실패 · brief 전달
 
 JSON outline 문자열 안의 `<section class="slide">` 멘션이 HTML dump로 오탐되던 문제 수정. repair auto-send 실패/stream busy 시 LOOK seed 경고로 fallback. repair prompt에 원 brief 포함.

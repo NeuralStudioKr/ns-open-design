@@ -12,7 +12,9 @@ import {
   isCloneContentFillLowSubstancePersistReason,
   outlineLooksLikeHtmlDump,
   parseTemplateCloneDeckOutline,
+  recoverPartialTemplateCloneOutline,
   stripTemplateCloneOutlineNoise,
+  synthesizeTemplateCloneOutlineFromBrief,
   prepareTemplateCloneSlotFillAssistantText,
 } from '../src/template-clone-fill.js';
 
@@ -117,6 +119,55 @@ describe('0901-N02 parseTemplateCloneDeckOutline', () => {
     ].join('\n');
     const outline = parseTemplateCloneDeckOutline(raw);
     expect(outline?.title).toBe('Expo');
+    expect(outline?.slides).toHaveLength(2);
+  });
+
+  it('루프373: strips <redacted_thinking> blocks (Anthropic-native tag)', () => {
+    const raw = [
+      '<redacted_thinking>hidden chain of thought</redacted_thinking>',
+      '{"title":"Expo","slides":[{"title":"개요"}]}',
+    ].join('\n');
+    expect(stripTemplateCloneOutlineNoise(raw)).not.toMatch(/redacted_thinking/i);
+    expect(parseTemplateCloneDeckOutline(raw)?.title).toBe('Expo');
+  });
+
+  it('루프373: keeps JSON when a stray </think> appears before it', () => {
+    const raw = 'end of prior turn</think>{"title":"OK","slides":[{"title":"A"}]}';
+    // Old bug: `[\s\S]*?</think>` swallowed the JSON above. New strip only
+    // deletes balanced <think>...</think> pairs, leaves the JSON intact.
+    expect(parseTemplateCloneDeckOutline(raw)?.title).toBe('OK');
+  });
+
+  it('루프373: prefers the balanced object with a slides array over prose objects', () => {
+    const raw = [
+      '{ "note": "here is the plan" }',
+      '',
+      '{"title":"분기 전략","slides":[{"title":"표지"},{"title":"KPI"}]}',
+    ].join('\n');
+    const outline = parseTemplateCloneDeckOutline(raw);
+    expect(outline?.title).toBe('분기 전략');
+    expect(outline?.slides).toHaveLength(2);
+  });
+
+  it('루프373: tolerates trailing commas and // line comments', () => {
+    const raw = [
+      '{',
+      '  "title": "Sonic", // deck title',
+      '  "slides": [',
+      '    { "title": "표지", "roleHint": "cover", },',
+      '    { "title": "핵심", },',
+      '  ],',
+      '}',
+    ].join('\n');
+    const outline = parseTemplateCloneDeckOutline(raw);
+    expect(outline?.title).toBe('Sonic');
+    expect(outline?.slides.map((s) => s.title)).toEqual(['표지', '핵심']);
+  });
+
+  it('루프373: unwraps <artifact> wrapper on tool-emitted JSON', () => {
+    const raw = '<artifact>{"title":"A","slides":[{"title":"B"},{"title":"C"}]}</artifact>';
+    const outline = parseTemplateCloneDeckOutline(raw);
+    expect(outline?.title).toBe('A');
     expect(outline?.slides).toHaveLength(2);
   });
 
@@ -226,6 +277,61 @@ describe('0901-N02 applyTemplateCloneSlotFill', () => {
   });
 });
 
+describe('루프373 recoverPartialTemplateCloneOutline', () => {
+  it('extracts every "title" string from a truncated JSON reply', () => {
+    const raw = [
+      '{"title":"Expo","slides":[',
+      '{"title":"개요","body":"WHY"},',
+      '{"title":"핵심 개념","body":"CORE"},',
+      '{"title":"실행 방안"',
+      // stream ended before the object closed
+    ].join('\n');
+    const outline = recoverPartialTemplateCloneOutline(raw);
+    expect(outline?.title).toBe('Expo');
+    expect(outline?.slides.map((s) => s.title)).toEqual([
+      'Expo',
+      '개요',
+      '핵심 개념',
+      '실행 방안',
+    ]);
+  });
+
+  it('falls back deck title when only a body reply is present', () => {
+    const raw = '{"slides":[{"title":"Only Slide"}';
+    const outline = recoverPartialTemplateCloneOutline(raw, { fallbackTitle: '표지' });
+    expect(outline?.title).toBe('표지');
+    expect(outline?.slides).toHaveLength(1);
+  });
+
+  it('returns null when no title literal survives', () => {
+    expect(recoverPartialTemplateCloneOutline('sorry, ran out of tokens')).toBeNull();
+    expect(recoverPartialTemplateCloneOutline('')).toBeNull();
+  });
+});
+
+describe('루프373 synthesizeTemplateCloneOutlineFromBrief', () => {
+  it('produces a topic cover + generic body sections from a user brief', () => {
+    const outline = synthesizeTemplateCloneOutlineFromBrief({
+      userBrief: 'Expo 개발 도구에 대해 시니어 개발자용 발표 자료를 만들어 주세요',
+      deckTitle: '슬라이드',
+    });
+    expect(outline).not.toBeNull();
+    expect(outline!.title.length).toBeGreaterThan(0);
+    expect(outline!.title).not.toBe('슬라이드');
+    expect(outline!.slides[0]?.roleHint).toBe('cover');
+    // generic section labels — never leaks demo template captions
+    for (const slide of outline!.slides.slice(1)) {
+      expect(slide.title).toMatch(/^(?:개요|핵심 포인트|근거와 사례|실행 방안|요약|핵심 \d+)$/);
+    }
+  });
+
+  it('returns null when brief cannot yield a cover title', () => {
+    expect(
+      synthesizeTemplateCloneOutlineFromBrief({ userBrief: '', deckTitle: '' }),
+    ).toBeNull();
+  });
+});
+
 describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
   const seed = [
     '<section class="slide slide-title cover"><h1>Demo</h1></section>',
@@ -262,7 +368,11 @@ describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
     }
   });
 
-  it('keeps LOOK seed immediately on soft-invalid JSON (루프364 — no queue-repair)', () => {
+  it('recovers 덱 title from soft-invalid JSON and stamps it into the seed (루프364 + 루프373)', () => {
+    // Loop364 kept the raw LOOK seed here. Loop373 recovers the "덱" title
+    // from the broken JSON via `recoverPartialTemplateCloneOutline` and slot-
+    // fills the seed with it, so the user sees "덱" on the cover instead of
+    // the raw template demo copy. Still `seed-fallback` (no queue-repair).
     const decision = decideTemplateCloneSlotFillTerminal({
       rawFinalText: '{"title":"덱","slides":[{"title":',
       seedHtml: seed,
@@ -270,8 +380,9 @@ describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
     });
     expect(decision.kind).toBe('seed-fallback');
     if (decision.kind === 'seed-fallback') {
-      expect(decision.html).toBe(seed);
       expect(decision.title).toBe('덱');
+      expect(decision.html).toContain('덱');
+      expect(decision.html).not.toContain('Demo');
     }
   });
 
@@ -315,8 +426,61 @@ describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
     expect(decision.kind).toBe('seed-fallback');
     if (decision.kind === 'seed-fallback') {
       expect(decision.title).toBe('분기 전략');
+      // Loop373 — partial recovery pushes the sole "분기 전략" title into the
+      // cover, so the seed-fallback is topical, not raw template demo copy.
+      expect(decision.html).toContain('분기 전략');
+      expect(decision.html).not.toContain('Demo');
+    }
+  });
+
+  it('루프373: broken JSON → partial recovery slot-fills every surviving title', () => {
+    const brokenRaw = [
+      '{"title":"Expo","slides":[',
+      '{"title":"개요","body":"WHY"},',
+      '{"title":"핵심 개념"',
+    ].join('\n');
+    const decision = decideTemplateCloneSlotFillTerminal({
+      rawFinalText: brokenRaw,
+      seedHtml: seed,
+      repairAlreadyAttempted: false,
+    });
+    expect(decision.kind).toBe('seed-fallback');
+    if (decision.kind === 'seed-fallback') {
+      expect(decision.title).toBe('Expo');
+      expect(decision.html).toContain('Expo');
+      expect(decision.html).toContain('개요');
+      expect(decision.html).not.toContain('Demo');
+    }
+  });
+
+  it('루프373: model gave nothing usable → synth outline from brief', () => {
+    const decision = decideTemplateCloneSlotFillTerminal({
+      rawFinalText: 'sorry, could not build the deck',
+      seedHtml: seed,
+      repairAlreadyAttempted: false,
+      userBrief: 'Expo 개발 도구에 대해 시니어 개발자용 발표 자료를 만들어 주세요',
+      deckTitle: '슬라이드',
+    });
+    expect(decision.kind).toBe('seed-fallback');
+    if (decision.kind === 'seed-fallback') {
+      expect(decision.html).not.toContain('Demo');
+      expect(decision.title).not.toBe('슬라이드');
+      // At least one generic body section landed in the seed
+      expect(/개요|핵심 포인트|근거와 사례|실행 방안|요약/.test(decision.html)).toBe(true);
+    }
+  });
+
+  it('루프373: unusable model output + no brief → raw seed (no synth)', () => {
+    const decision = decideTemplateCloneSlotFillTerminal({
+      rawFinalText: '???',
+      seedHtml: seed,
+      repairAlreadyAttempted: false,
+      userBrief: '',
+      deckTitle: '',
+    });
+    expect(decision.kind).toBe('seed-fallback');
+    if (decision.kind === 'seed-fallback') {
       expect(decision.html).toBe(seed);
-      expect(decision.html).not.toContain('<!doctype');
     }
   });
 });
