@@ -102,7 +102,6 @@ function renderChat(opts: {
   activeAgentId?: string;
   messages?: ChatMessage[];
   autoContinuePending?: boolean;
-  cloneSlotFillRepairPending?: boolean;
 }) {
   return render(
     <ChatPane
@@ -117,7 +116,6 @@ function renderChat(opts: {
       onRetry={opts.onRetry}
       onResumeRun={opts.onResumeRun}
       autoContinuePending={opts.autoContinuePending}
-      cloneSlotFillRepairPending={opts.cloneSlotFillRepairPending}
       conversations={[
         { projectId: 'project-1', id: 'conv-1', title: 'Current', createdAt: 1, updatedAt: 1 },
       ]}
@@ -256,20 +254,6 @@ describe('ChatPane resume-on-failure', () => {
       onRetry,
       activeAgentId: 'claude',
       autoContinuePending: true,
-      messages: [autoContinueWithDurableIncompleteMessage()],
-    });
-    expect(screen.queryByText('chat.resumeRunCta')).toBeNull();
-    expect(screen.queryByText('promptTemplates.retry')).toBeNull();
-  });
-
-  it('hides Retry while cloneSlotFillRepairPending (루프370)', () => {
-    const onResumeRun = vi.fn();
-    const onRetry = vi.fn();
-    renderChat({
-      onResumeRun,
-      onRetry,
-      activeAgentId: 'claude',
-      cloneSlotFillRepairPending: true,
       messages: [autoContinueWithDurableIncompleteMessage()],
     });
     expect(screen.queryByText('chat.resumeRunCta')).toBeNull();

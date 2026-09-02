@@ -218,7 +218,6 @@ import {
   TEMPLATE_CLONE_CONTENT_FILL_MARKER,
   TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
   CLONE_SLOT_FILL_REPAIR_ENTRY_FROM,
-  buildTemplateCloneSlotFillRepairPrompt,
   clearTemplateCloneContentFillQueue,
   cloneFillJsonRepairAlreadyAttempted,
   ensureTemplateCloneContentFillContinuePrompt,
@@ -229,7 +228,6 @@ import {
   queueTemplateCloneContentFill,
   readQueuedAutoSendSeed,
   resolveTemplateCloneAutoSendSeed,
-  shouldQueueCloneSlotFillJsonRepair,
   templateCloneContentFillHardRules,
   templateCloneFillSlideCountOverrideNotice,
   withTemplateCloneFillPluginInputs,
@@ -480,7 +478,6 @@ import {
   encodePersistedRunErrorDetail,
   formatAutoContinueIncompleteOutputNotice,
   formatCloneLookSeedFallbackNotice,
-  formatCloneSlotFillRepairInProgressNotice,
   formatEmergencyDeckFallbackNotice,
   formatOutlineDeckFallbackNotice,
   formatPersistedProjectRunError,
@@ -3518,10 +3515,6 @@ export function ProjectView({
   const pendingAutoContinueConversationIdRef = useRef<string | null>(null);
   /** True while the 600ms auto-continue timer is armed — ChatPane hides Retry. */
   const [autoContinuePending, setAutoContinuePending] = useState(false);
-  /** True while Clone slot-fill JSON repair auto-send timer is armed (루프370). */
-  const [cloneSlotFillRepairPending, setCloneSlotFillRepairPending] = useState(false);
-  /** Pending Clone slot-fill JSON repair timer (separate from incomplete-output AC). */
-  const cloneSlotFillRepairTimerRef = useRef<number | null>(null);
   /** Closed-deck append loop (remaining slides after a short first fill). */
   const conversationSlideCountTopUpCountRef = useRef<Map<string, number>>(new Map());
   const slideCountTopUpTimerRef = useRef<number | null>(null);
@@ -3568,14 +3561,6 @@ export function ProjectView({
     }
   }, []);
 
-  const clearPendingCloneSlotFillRepairTimer = useCallback(() => {
-    if (cloneSlotFillRepairTimerRef.current !== null) {
-      window.clearTimeout(cloneSlotFillRepairTimerRef.current);
-      cloneSlotFillRepairTimerRef.current = null;
-    }
-    setCloneSlotFillRepairPending(false);
-  }, []);
-
   useEffect(() => {
     htmlAutoOpenClaimedRef.current.clear();
     htmlAutoOpenGenerationRef.current.clear();
@@ -3592,7 +3577,6 @@ export function ProjectView({
       htmlAutoOpenTimerRef.current = null;
     }
     clearPendingAutoContinueTimer();
-    clearPendingCloneSlotFillRepairTimer();
     clearPendingSlideCountTopUpTimer();
     return () => {
       if (htmlAutoOpenTimerRef.current !== null) {
@@ -3600,10 +3584,9 @@ export function ProjectView({
         htmlAutoOpenTimerRef.current = null;
       }
       clearPendingAutoContinueTimer();
-      clearPendingCloneSlotFillRepairTimer();
       clearPendingSlideCountTopUpTimer();
     };
-  }, [project.id, clearPendingAutoContinueTimer, clearPendingCloneSlotFillRepairTimer, clearPendingSlideCountTopUpTimer]);
+  }, [project.id, clearPendingAutoContinueTimer, clearPendingSlideCountTopUpTimer]);
 
   // Abort a pending automatic-continue when the user switches chats inside
   // the same project — otherwise a late timer can inject into the new chat.
@@ -3611,14 +3594,12 @@ export function ProjectView({
   // recover if the user switches back.
   useEffect(() => {
     clearPendingAutoContinueTimer({ rollback: true });
-    clearPendingCloneSlotFillRepairTimer();
     clearPendingSlideCountTopUpTimer({ rollback: true });
     return () => {
       clearPendingAutoContinueTimer({ rollback: true });
-      clearPendingCloneSlotFillRepairTimer();
       clearPendingSlideCountTopUpTimer({ rollback: true });
     };
-  }, [activeConversationId, clearPendingAutoContinueTimer, clearPendingCloneSlotFillRepairTimer, clearPendingSlideCountTopUpTimer]);
+  }, [activeConversationId, clearPendingAutoContinueTimer, clearPendingSlideCountTopUpTimer]);
 
   // Pending Write tool invocations: tool_use_id -> destination basename.
   // When the matching tool_result lands we refresh the file list and open
@@ -10441,7 +10422,6 @@ export function ProjectView({
             // so the user sees the fallback banner + Retry instead of a
             // blank incomplete_output. Non-Clone runs never set this flag.
             let cloneLookSeedFallbackRecovered = false;
-            let cloneSlotFillRepairQueued = false;
             const cloneFillMessageHistory = retryTarget
               ? [...historyBase, retryTarget.userMsg]
               : [...historyBase, userMsg];
@@ -10481,17 +10461,6 @@ export function ProjectView({
                 deckTitle: project.name || '슬라이드',
               },
             );
-            const armCloneSlotFillRepairQueue = (): boolean => {
-              if (!shouldQueueCloneSlotFillJsonRepair(cloneFillMessageHistory, userMsg.content)) {
-                return false;
-              }
-              cloneSlotFillRepairQueued = true;
-              artifactToPersist = null;
-              terminalPersistResult = null;
-              terminalPersistResultKind = null;
-              terminalArtifactPersistFailed = false;
-              return true;
-            };
             const recoverCloneLookSeedFallback = async (): Promise<boolean> => {
               const recovered = await tryRecoverCloneContentFillLookSeed({ readProjectHtml });
               if (!recovered) return false;
@@ -10528,15 +10497,13 @@ export function ProjectView({
                   };
                 } else if (decision.kind === 'seed-fallback') {
                   runTemplateCloneSlotFillFallbackRef.current = true;
-                  if (!armCloneSlotFillRepairQueue()) {
-                    if (!(await recoverCloneLookSeedFallback())) {
-                      artifactToPersist = {
-                        identifier: 'deck',
-                        artifactType: 'deck',
-                        title: decision.title,
-                        html: decision.html,
-                      };
-                    }
+                  if (!(await recoverCloneLookSeedFallback())) {
+                    artifactToPersist = {
+                      identifier: 'deck',
+                      artifactType: 'deck',
+                      title: decision.title,
+                      html: decision.html,
+                    };
                   }
                 } else {
                   artifactToPersist = null;
@@ -10545,10 +10512,8 @@ export function ProjectView({
               } catch (error) {
                 devLog.warn('[teamver] template clone slot-fill failed; keeping LOOK seed', error);
                 runTemplateCloneSlotFillFallbackRef.current = true;
-                if (!armCloneSlotFillRepairQueue()) {
-                  if (!(await recoverCloneLookSeedFallback())) {
-                    artifactToPersist = null;
-                  }
+                if (!(await recoverCloneLookSeedFallback())) {
+                  artifactToPersist = null;
                 }
               }
             }
@@ -10686,12 +10651,10 @@ export function ProjectView({
               && runTemplateCloneContentFillRef.current
               && terminalPersistResult?.kind === 'skipped-incomplete'
             ) {
-              if (!armCloneSlotFillRepairQueue()) {
-                if (await recoverCloneLookSeedFallback()) {
-                  runTemplateCloneSlotFillFallbackRef.current = true;
-                } else {
-                  devLog.warn('[teamver] clone content-fill LOOK seed recovery failed; seed missing');
-                }
+              if (await recoverCloneLookSeedFallback()) {
+                runTemplateCloneSlotFillFallbackRef.current = true;
+              } else {
+                devLog.warn('[teamver] clone content-fill LOOK seed recovery failed; seed missing');
               }
             }
 
@@ -11194,90 +11157,6 @@ export function ProjectView({
                 }, 600);
               }
               }
-            } else if (cloneSlotFillRepairQueued) {
-              const repairNotice = formatCloneSlotFillRepairInProgressNotice();
-              updateAssistant((prev) => ({
-                ...appendWarningStatusEvent(prev, repairNotice),
-                producedFiles: produced,
-                runStatus: resolveSucceededRunStatus(prev.runStatus),
-                resumable: true,
-                endedAt: prev.endedAt ?? endedAt,
-              }));
-              updateConversationLatestRun('succeeded', endedAt);
-              if (runIsVisible()) {
-                requestOpenFile('deck.html');
-              }
-              clearPendingCloneSlotFillRepairTimer();
-              setCloneSlotFillRepairPending(true);
-              const scheduledProjectId = project.id;
-              const scheduledConversationId = runConversationId;
-              const scheduledAssistantId = assistantId;
-              const applyLookSeedFallbackAfterFailedRepair = async () => {
-                if (project.id !== scheduledProjectId) return;
-                if (messagesConversationIdRef.current !== scheduledConversationId) return;
-                const recovered = await tryRecoverCloneContentFillLookSeed({ readProjectHtml });
-                if (!recovered) return;
-                const lookSeedNotice = formatCloneLookSeedFallbackNotice();
-                if (runIsVisible()) {
-                  setMessages((curr) =>
-                    curr.map((message) => {
-                      if (message.id !== scheduledAssistantId) return message;
-                      return {
-                        ...appendWarningStatusEvent(
-                          clearDurableDeliverableErrorsAfterRecovery(message),
-                          lookSeedNotice,
-                          CLONE_LOOK_SEED_FALLBACK_STATUS_CODE,
-                        ),
-                        runStatus: resolveSucceededRunStatus(message.runStatus),
-                        resumable: true,
-                      };
-                    }),
-                  );
-                  requestOpenFile('deck.html');
-                }
-              };
-              cloneSlotFillRepairTimerRef.current = window.setTimeout(() => {
-                cloneSlotFillRepairTimerRef.current = null;
-                setCloneSlotFillRepairPending(false);
-                if (project.id !== scheduledProjectId) return;
-                if (messagesConversationIdRef.current !== scheduledConversationId) return;
-                if (!abortRef.current) {
-                  if (apiBackgroundRecoveryRef.current) {
-                    apiBackgroundRecoveryRef.current = false;
-                    clearApiBackgroundRecoveryBanner();
-                  }
-                  if (streamingConversationIdRef.current === scheduledConversationId) {
-                    clearStreamingMarker(scheduledConversationId);
-                  }
-                }
-                const liveStreamBlocking = isLiveLocalStreamBlockingAutoContinue({
-                  abortController: abortRef.current,
-                  streamingConversationId: streamingConversationIdRef.current,
-                  targetConversationId: scheduledConversationId,
-                });
-                const sendNow = handleSendRef.current;
-                if (liveStreamBlocking || !sendNow) {
-                  void applyLookSeedFallbackAfterFailedRepair();
-                  return;
-                }
-                void Promise.resolve(
-                  sendNow(
-                    buildTemplateCloneSlotFillRepairPrompt({
-                      userBrief: runVisiblePromptRef.current || '',
-                    }),
-                    [],
-                    [],
-                    {
-                      entryFrom: CLONE_SLOT_FILL_REPAIR_ENTRY_FROM,
-                      templateCloneContentFill: true,
-                    },
-                  ),
-                ).then((ok) => {
-                  if (ok === false) {
-                    void applyLookSeedFallbackAfterFailedRepair();
-                  }
-                });
-              }, 600);
             } else if (cloneLookSeedFallbackRecovered) {
               // 루프362 — Clone content-fill low-substance recovery. The LOOK
               // seed lives on disk, so we mark succeeded with a warning notice
@@ -14523,7 +14402,6 @@ export function ProjectView({
               onRetry={handleRetry}
               onResumeRun={handleResumeRun}
               autoContinuePending={autoContinuePending}
-              cloneSlotFillRepairPending={cloneSlotFillRepairPending}
               onStop={handleStop}
               onRemoveQueuedSend={removeQueuedChatSend}
               onUpdateQueuedSend={updateQueuedChatSend}
