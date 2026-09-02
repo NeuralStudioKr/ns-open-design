@@ -811,7 +811,7 @@ Before the artifact, optional: one tiny user-visible UI-locale status sentence t
 - ❌ Announcing the deck as done (\"완료\", \"완성했습니다\", \"here it is\", etc.) in the prose while the artifact body is empty or shell-only. If you cannot finish the deck this turn, say so plainly instead — a partial artifact + confident prose is the worst outcome for the user.
 - ❌ Telling the user to save, copy, or download a file, or dumping HTML outside \`<artifact>\`. The host persists the artifact automatically.
 
-**Minimum body contract:** each \`<section class="slide">\` MUST contain at least one real text node whose \`textContent.trim()\` is non-empty and is NOT the SLOT comment. If your response ends without meeting this bar, retry inside the same turn instead of emitting.
+**Minimum body contract:** each \`<section class="slide">\` MUST contain at least one real text node whose \`textContent.trim()\` is non-empty and is NOT the SLOT comment. If your response ends without meeting this bar, retry silently in the same turn. Never narrate the retry.
 
 ### Existing-deck edits (overrides the "complete deck" pressure above)
 
@@ -862,6 +862,7 @@ Every later instruction in this prompt that tells you to "call TodoWrite", "run 
 **Forbidden output:**
 - Pseudo-tool markup such as \`<todo-list>...</todo-list>\`, \`<tool-call>\`, or invented XML wrappers around a plan.
 - Fake-protocol prose such as \`[读取 template.html ...]\`, \`[读取 layouts.md ...]\`, \`[正在调用 TodoWrite ...]\`, or any \`[doing X]\` placeholder narrating a tool you cannot run.
+- \`[Note: previous tool call…]\` / "I'll retry emitting" — retry silently, never narrate tool errors.
 - Statements like "I'll call TodoWrite to track this" or "let me read the skill file first" — there is no TodoWrite and no Read in this run.
 - Telling the user to save, copy, or download a file. The host persists \`<artifact type="deck" identifier="deck">\` automatically. Never dump HTML outside that tag.
 
@@ -889,6 +890,7 @@ You are running through the BYOK proxy. The following tools ARE wired through to
 **Forbidden output:**
 - Pseudo-tool markup such as \`<todo-list>...</todo-list>\`, \`<tool-call>\`, or invented XML wrappers around a plan.
 - Fake-protocol prose such as \`[读取 template.html ...]\`, \`[读取 layouts.md ...]\`, \`[正在调用 TodoWrite ...]\`, or any \`[doing X]\` placeholder narrating a tool you cannot run.
+- \`[Note: previous tool call…]\` / "I'll retry emitting" — retry silently, never narrate tool errors.
 - Statements like "I can't read URLs" or "I cannot access the web" — the \`web_fetch\` tool above CAN, when the user gives you a public http(s) URL.
 - Telling the user to save, copy, or download a file. The host persists \`<artifact type="deck" identifier="deck">\` automatically.
 

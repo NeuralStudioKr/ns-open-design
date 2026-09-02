@@ -166,6 +166,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('Do not wait silently');
       expect(prompt).toContain('Artifact-only is OK for speed/tokens');
       expect(prompt).toContain('Never start a deck with `<artifact type="text/html"`');
+      expect(prompt).toContain('[Note: previous tool call…]');
+      expect(prompt).toContain('Never narrate the retry');
       expect(prompt).not.toContain('Never open `<artifact type="deck">` until the complete deck is ready');
       expect(prompt).toContain('API — deck framework emission override');
       expect(prompt).toContain('API compact contract');
