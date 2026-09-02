@@ -36,7 +36,4 @@
 
 ## 다음 추천 작업
 
-1. MiniMax 키 환경 Clone fill live smoke
-2. FileViewer ←/→ tools-dev + Chrome GUI bake(선택)
-3. feature-postit 3열을 cards 우선 순위로 강제(선택)
-4. 다른 sticky 템플릿(LOOK seed) 확장(선택)
+→ 후속 [0901-N02-16](./0901-N02-16-구현설계-[Clone_slot-map-C12].md) (C12)에서 peer-fit·sticky timeline·366 chrome bake 처리.

@@ -2034,6 +2034,48 @@ describe('0901-N02 heal↔clone integration', () => {
     ].length;
     expect(stickyPeers).toBeGreaterThanOrEqual(4);
   });
+
+  it('0901-N02-C12: 3-line cards prefer feature-postit over col-postit', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-scatterbrain/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const brief = '세 축 워크숍';
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      [
+        { title: '킥오프', roleHint: 'cover' },
+        { title: '세 축', body: '전략\n디자인\n런칭', roleHint: 'cards' },
+        { title: '로드맵', body: '기반\n제작', roleHint: 'timeline' },
+      ],
+      {
+        title: '킥오프',
+        templateId: 'example-html-ppt-zhangzara-scatterbrain',
+      },
+    );
+    expect(cloned).toBeTruthy();
+    const bodyOnly = (cloned ?? '').replace(/<style[\s\S]*?<\/style>/gi, '');
+    expect([...bodyOnly.matchAll(/class="[^"]*\bfeature-postit\b/gi)].length).toBe(3);
+    expect(bodyOnly).toContain('전략');
+    expect(bodyOnly).toContain('디자인');
+    expect(bodyOnly).toContain('런칭');
+    expect(bodyOnly).not.toContain('Strategy');
+    expect(bodyOnly).not.toContain('Launch');
+    // Sticky timeline rows trim to outline lines.
+    expect([...bodyOnly.matchAll(/class="[^"]*\btimeline-row\b/gi)].length).toBe(2);
+    expect(bodyOnly).toContain('기반');
+    expect(bodyOnly).toContain('제작');
+    expect(bodyOnly).not.toContain('Phase Three');
+    const healed = pinDeckSlidesToFixedCanvas(
+      healAiGeneratedDeckMarkup(cloned!, brief),
+    );
+    expect(healed).toMatch(/feature-postit|timeline-layout|post-it|Caveat/i);
+    expect(healed).toContain('런칭');
+    expect(healed).not.toContain('Phase Three');
+  });
 });
 
 describe('0901-N02-C10 compare/col-postit polish', () => {

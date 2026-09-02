@@ -713,36 +713,80 @@ function leastUsedShell(pool: SlideShell[], usage: Map<SlideShell, number>): Sli
 }
 
 /** Prefer info-card / cards-grid shells over weekly day-card chrome (0901-N02-C). */
-function cardsShellFillScore(shell: SlideShell): number {
+function cardsShellFillScore(shell: SlideShell, lineCount = 0): number {
   // Do not truncate body — Daisy cards shells open with large SVG deco before
   // `.info-card`, so a short haystack falsely scores them below weekly.
   const attrs = shell.attrs;
   const body = shell.body;
+  let score = 0;
   if (
     /\bslide-cards\b/i.test(attrs)
     || /\binfo-card\b/i.test(body)
     || /\bcards-grid\b/i.test(body)
   ) {
-    return 3;
-  }
-  if (/\b(?:stat-card|feature-card|metric-card)\b/i.test(body)) return 2;
-  // 0901-N02-C11: scatterbrain sticky peers score as real card shells.
-  if (/\b(?:feature|col|compare)-postit\b/i.test(body)) return 2;
-  if (/\bslide-weekly\b/i.test(attrs) || /\bweekly-grid\b/i.test(body) || /\bday-card\b/i.test(body)) {
+    score = 3;
+  } else if (/\b(?:stat-card|feature-card|metric-card)\b/i.test(body)) {
+    score = 2;
+  } else if (/\b(?:feature|col|compare)-postit\b/i.test(body)) {
+    // 0901-N02-C11: scatterbrain sticky peers score as real card shells.
+    score = 2;
+  } else if (/\bslide-weekly\b/i.test(attrs) || /\bweekly-grid\b/i.test(body) || /\bday-card\b/i.test(body)) {
+    score = 0;
+  } else if (shellBodyLooksLikeCardGrid(body)) {
+    score = 1;
+  } else {
     return 0;
   }
-  if (shellBodyLooksLikeCardGrid(body)) return 1;
-  return 0;
+  // 0901-N02-C12: prefer shells whose peer count fits the outline lines
+  // (3-line cards → feature-postit×3 beats col-postit×2).
+  if (lineCount > 0 && score > 0) {
+    score += cardsShellPeerFitBonus(body, lineCount);
+  }
+  return score;
 }
 
-function leastUsedCardsShell(pool: SlideShell[], usage: Map<SlideShell, number>): SlideShell | null {
+/**
+ * Count HTML class peers only (ignore CSS rule selectors like `.feature-postit {`).
+ */
+function countClassTokenPeers(body: string, token: string): number {
+  const re = new RegExp(
+    `\\bclass\\s*=\\s*["'][^"']*\\b${token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
+    'gi',
+  );
+  return [...body.matchAll(re)].length;
+}
+
+/** Exact peer fit > trimable oversize > undersized (drops outline lines). */
+function cardsShellPeerFitBonus(body: string, lineCount: number): number {
+  const peerCounts = [
+    countClassTokenPeers(body, 'feature-postit'),
+    countClassTokenPeers(body, 'col-postit'),
+    countClassTokenPeers(body, 'compare-postit'),
+    countClassTokenPeers(body, 'info-card'),
+    countClassTokenPeers(body, 'stat-card'),
+    countClassTokenPeers(body, 'feature-card'),
+    countClassTokenPeers(body, 'metric-card'),
+    countClassTokenPeers(body, 'timeline-row'),
+  ];
+  const peers = Math.max(0, ...peerCounts);
+  if (peers <= 0) return 0;
+  if (peers === lineCount) return 2;
+  if (peers > lineCount) return 1;
+  return -1;
+}
+
+function leastUsedCardsShell(
+  pool: SlideShell[],
+  usage: Map<SlideShell, number>,
+  lineCount = 0,
+): SlideShell | null {
   if (pool.length === 0) return null;
   let best = pool[0]!;
   let bestUses = usage.get(best) ?? 0;
-  let bestScore = cardsShellFillScore(best);
+  let bestScore = cardsShellFillScore(best, lineCount);
   for (const shell of pool) {
     const uses = usage.get(shell) ?? 0;
-    const score = cardsShellFillScore(shell);
+    const score = cardsShellFillScore(shell, lineCount);
     if (score > bestScore || (score === bestScore && uses < bestUses)) {
       best = shell;
       bestUses = uses;
@@ -758,6 +802,7 @@ function pickShellByRole(
   cover: SlideShell,
   bodyPool: SlideShell[],
   usage: Map<SlideShell, number>,
+  lineCount = 0,
 ): SlideShell {
   const fallbacks: TemplateCloneShellRole[] = (() => {
     switch (role) {
@@ -790,7 +835,7 @@ function pickShellByRole(
     // Never reuse the cover shell for body roles — title layouts lack list/card slots.
     const pool = (byRole.get(candidateRole) ?? []).filter((shell) => shell !== cover);
     const best = role === 'cards' && candidateRole === 'cards'
-      ? leastUsedCardsShell(pool, usage)
+      ? leastUsedCardsShell(pool, usage, lineCount)
       : leastUsedShell(pool, usage);
     if (best) return best;
   }
@@ -819,8 +864,13 @@ export function pickTemplateShellsForContent(
   const picked: SlideShell[] = [];
 
   for (let i = 0; i < slides.length; i += 1) {
-    const role = inferTemplateCloneContentRole(slides[i]!, i, slides.length);
-    const shell = pickShellByRole(role, byRole, cover, bodyPool, usage);
+    const slide = slides[i]!;
+    const role = inferTemplateCloneContentRole(slide, i, slides.length);
+    const lineCount = String(slide.body ?? '')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean).length;
+    const shell = pickShellByRole(role, byRole, cover, bodyPool, usage, lineCount);
     picked.push(shell);
     usage.set(shell, (usage.get(shell) ?? 0) + 1);
   }
@@ -1983,6 +2033,7 @@ function hostClassSet(slotMap: TemplateCloneSlotMap | null | undefined): Set<str
     'process-flow',
     'timeline-track',
     'timeline',
+    'timeline-layout',
     'kb-pipeline',
     'flow',
   ]);
@@ -2012,6 +2063,8 @@ function peerClassSet(slotMap: TemplateCloneSlotMap | null | undefined): Set<str
     'pillar',
     'day-card',
     'timeline-card',
+    // 0901-N02-C12: scatterbrain sticky timeline rows (node+content+connector).
+    'timeline-row',
     // 0901-N02-C5: bare `.step` (creative-mode / soft-editorial).
     'step',
     // 0901-N02-C7: bare `.stat` / `.kpi` rows (soft-editorial / weekly-report).
@@ -2237,6 +2290,7 @@ function collectPeersAmongChildren(
  * C9: hermes `.lbl` fill · `*-postit` peers (denied statement/main-title) · flow arrows.
  * C10: oc/kb fill→heal · compare-postit/col-postit · compare-vs orphan drop.
  * C11: scatterbrain postit shells classify as cards · LOOK seed fill→heal.
+ * C12: peer-count fit for cards pick · timeline-layout/timeline-row sticky.
  */
 export function fillAndTrimCardPeers(
   html: string,

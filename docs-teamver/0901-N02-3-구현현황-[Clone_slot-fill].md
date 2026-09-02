@@ -1,6 +1,6 @@
 # 0901-N02-3 구현현황 — Clone slot-fill
 
-상위: [0901-N02-1](./0901-N02-1-상위설계-[Clone_slot-fill].md) · 설계: [0901-N02-2](./0901-N02-2-구현설계-[Clone_slot-fill].md) · slot map: [0901-N02-4](./0901-N02-4-구현설계-[Clone_slot-map].md) · D: [0901-N02-5](./0901-N02-5-구현설계-[Clone_slot-fill-D].md) · C2: [0901-N02-6](./0901-N02-6-구현설계-[Clone_slot-map-C2].md) · C3: [0901-N02-7](./0901-N02-7-구현설계-[Clone_slot-map-C3].md) · C4: [0901-N02-8](./0901-N02-8-구현설계-[Clone_slot-map-C4].md) · C5: [0901-N02-9](./0901-N02-9-구현설계-[Clone_slot-map-C5].md) · C6: [0901-N02-10](./0901-N02-10-구현설계-[Clone_slot-map-C6].md) · C7: [0901-N02-11](./0901-N02-11-구현설계-[Clone_slot-map-C7].md) · C8: [0901-N02-12](./0901-N02-12-구현설계-[Clone_slot-map-C8].md) · C9: [0901-N02-13](./0901-N02-13-구현설계-[Clone_slot-map-C9].md) · C10: [0901-N02-14](./0901-N02-14-구현설계-[Clone_slot-map-C10].md) · C11: [0901-N02-15](./0901-N02-15-구현설계-[Clone_slot-map-C11].md)
+상위: [0901-N02-1](./0901-N02-1-상위설계-[Clone_slot-fill].md) · 설계: [0901-N02-2](./0901-N02-2-구현설계-[Clone_slot-fill].md) · slot map: [0901-N02-4](./0901-N02-4-구현설계-[Clone_slot-map].md) · D: [0901-N02-5](./0901-N02-5-구현설계-[Clone_slot-fill-D].md) · C2: [0901-N02-6](./0901-N02-6-구현설계-[Clone_slot-map-C2].md) · C3: [0901-N02-7](./0901-N02-7-구현설계-[Clone_slot-map-C3].md) · C4: [0901-N02-8](./0901-N02-8-구현설계-[Clone_slot-map-C4].md) · C5: [0901-N02-9](./0901-N02-9-구현설계-[Clone_slot-map-C5].md) · C6: [0901-N02-10](./0901-N02-10-구현설계-[Clone_slot-map-C6].md) · C7: [0901-N02-11](./0901-N02-11-구현설계-[Clone_slot-map-C7].md) · C8: [0901-N02-12](./0901-N02-12-구현설계-[Clone_slot-map-C8].md) · C9: [0901-N02-13](./0901-N02-13-구현설계-[Clone_slot-map-C9].md) · C10: [0901-N02-14](./0901-N02-14-구현설계-[Clone_slot-map-C10].md) · C11: [0901-N02-15](./0901-N02-15-구현설계-[Clone_slot-map-C11].md) · C12: [0901-N02-16](./0901-N02-16-구현설계-[Clone_slot-map-C12].md)
 
 ## 진행
 
@@ -24,6 +24,7 @@
 | **C9** `.lbl` fill · `*-postit` · flow arrows | ☑ hc-card lbl · feature-postit · flow orphan arrow |
 | **C10** oc/kb fill→heal · compare/col-postit · 루프366 dist | ☑ compare-vs orphan · contracts rebuild |
 | **C11** scatterbrain cards 분류 · LOOK seed fill→heal | ☑ postit shell→cards · filmstrip/366 bake |
+| **C12** feature-postit peer-fit · sticky timeline · 366 chrome | ☑ 3줄→feature×3 · timeline-row · chrome bake |
 | **D** hybrid fallback 제거 | ☑ |
 | **루프359** HTML dump → seed-fallback 즉시 · repair AC abort시 seed 유지 | ☑ |
 | **루프360** repair 판단 messagesRef 레이스 · sendNow synchronous reject 회복 | ☑ |
@@ -53,6 +54,7 @@
 - [x] C9: hc-card `.lbl` · feature-postit · statement-postit deny · flow arrows
 - [x] C10: oc/kb fill→heal · compare-postit/col-postit · compare-vs orphan
 - [x] C11: scatterbrain LOOK seed fill→heal · postit→cards 분류
+- [x] C12: peer-fit 3줄→feature-postit · timeline-layout/row · 루프366 chrome/srcdoc bake
 - [x] 루프364: soft-invalid → seed-fallback · `isCloneContentFillLookSeedRecoverablePersistReason`
 - [x] 루프366: srcdoc-deck-bridge-transform-driven · contracts dist section/main hoist
 - [x] filmstrip: DeckFilmstrip C2/C3/C4 19/19
@@ -74,6 +76,7 @@
 - C9: `.lbl` when no h3–h5 · `*-postit` (deny statement/main-title) · flow arrows.
 - C10: oc/kb fragment fill→heal · compare-postit/col-postit · compare-vs orphan · 루프366 dist rebuild.
 - C11: scatterbrain postit/layout → cards 분류 · LOOK seed fill→heal · filmstrip/366 vitest bake.
+- C12: cards peer-fit(lineCount) · timeline-layout/timeline-row · Chrome host-next bake 증거.
 - MiniMax 키(`MINIMAX_API_KEY` / `OD_MINIMAX_API_KEY`) 있으면 live smoke 슬롯 활성화.
 - 루프362: `isCloneContentFillLowSubstancePersistReason(reason)` (`low-substance deck artifact` / `unfilled-catalog-example` / `incomplete-html-document-shell`). Clone 첫 채우기 턴에서만 발동, LOOK seed 있으면 `skipped-duplicate`로 재작성 + `CLONE_LOOK_SEED_FALLBACK_STATUS_CODE` 경고. 비-Clone 실행은 그대로 low-substance gate 유지.
 - 루프364: LOOK seed가 있으면 soft-invalid JSON도 queue-repair/AC 없이 즉시 seed-fallback. `pendingSlotFillRepair` arm 상태에서도 seed가 있으면 incomplete_output을 강제하지 않고 LOOK seed로 succeeded. `reason=template-clone-slot-fill-json-repair`도 recoverable set에 포함.
@@ -82,6 +85,7 @@
 
 | 일자 | 내용 |
 |------|------|
+| 2026-09-02 | C12 — peer-fit feature-postit×3 · timeline-row · 루프366 chrome/srcdoc bake |
 | 2026-09-02 | 루프370 — repair pending UX · redacted_thinking JSON parse |
 | 2026-09-02 | C11 — scatterbrain postit→cards · LOOK seed fill→heal · filmstrip/366 bake |
 | 2026-09-02 | C10 — oc/kb fill→heal · compare/col-postit · compare-vs · 루프366 dist rebuild |
