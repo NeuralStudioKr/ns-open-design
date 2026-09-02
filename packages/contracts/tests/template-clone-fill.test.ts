@@ -1681,6 +1681,25 @@ describe('0901-N02-C8 process/timeline host allowlist + orphan arrows', () => {
     expect(pNext).toContain('수집');
     expect(pNext).not.toContain('Wiki');
   });
+
+  it('trims cycle-grid cycle-steps via *-grid host and drops orphan cycle-arrows', () => {
+    const html = [
+      '<div class="cycle-grid">',
+      '<div class="cycle-step"><div class="cycle-title">build</div><div class="cycle-desc">a</div></div>',
+      '<div class="cycle-arrow">→</div>',
+      '<div class="cycle-step"><div class="cycle-title">measure</div><div class="cycle-desc">b</div></div>',
+      '<div class="cycle-arrow">→</div>',
+      '<div class="cycle-step"><div class="cycle-title">learn</div><div class="cycle-desc">c</div></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['구축', '측정']);
+    expect([...(next.matchAll(/\bcycle-step\b/gi))].length).toBe(2);
+    expect([...(next.matchAll(/\bcycle-arrow\b/gi))].length).toBe(1);
+    expect(next).toContain('구축');
+    expect(next).toContain('측정');
+    expect(next).not.toContain('learn');
+    expect(next).not.toContain('build');
+  });
 });
 
 describe('0901-N02 heal↔clone integration', () => {
