@@ -324,9 +324,11 @@ import {
   attemptEmergencySlideDeckRecovery,
   attemptFinalOutlineDeckFallback,
   attemptCloneContentFillLookSeedReloadRecovery,
+  attemptCloneSlotFillStuckRepairNoticeRecovery,
   canFireAutoContinueForConversation,
   collectSlideReferencePathsFromMessages,
   extractRequestedSlideCountHintFromMessages,
+  findCloneSlotFillStuckRepairNoticeAssistant,
   findIncompleteSlideAssistantForRecovery,
   isEmergencyArtifactPersistSuccess,
   CLONE_LOOK_SEED_FALLBACK_STATUS_CODE,
@@ -4362,6 +4364,51 @@ export function ProjectView({
               scopedCommentAttachmentCount: recoveryCommentAttachments.length,
               visualMarkOnly: visualAnnotationAutoContinueFlags(recoveryCommentAttachments).visualMarkOnly,
             });
+            // 루프372 — loop370 repair-in-progress notice stuck on succeeded rows.
+            if (slideOnlyMvp) {
+              const stuckRepairAssistant = findCloneSlotFillStuckRepairNoticeAssistant(mergedMessages);
+              if (stuckRepairAssistant) {
+                const stuckRepairRecovery = await attemptCloneSlotFillStuckRepairNoticeRecovery({
+                  stuckAssistant: stuckRepairAssistant,
+                  messages: mergedMessages,
+                  readProjectHtml,
+                  producedFiles:
+                    computeProducedFiles(
+                      resolveTurnStartFileBaseline(
+                        stuckRepairAssistant.preTurnFileNames,
+                        filesForRecovery,
+                      ),
+                      filesForRecovery,
+                    ) ?? [],
+                });
+                if (
+                  stuckRepairRecovery.recovered
+                  && stuckRepairRecovery.htmlToOpen
+                  && stuckRepairRecovery.updatedAssistant
+                ) {
+                  const updatedAssistant = stuckRepairRecovery.updatedAssistant;
+                  setMessages((current) =>
+                    current.map((message) =>
+                      message.id === updatedAssistant.id ? updatedAssistant : message,
+                    ),
+                  );
+                  void saveMessage(project.id, activeConversationId, updatedAssistant, {
+                    telemetryFinalized: true,
+                  });
+                  const filesAfterLookSeed = await refreshProjectFiles();
+                  await finalizeSlideOnlyDeckArtifactsRef.current(
+                    filesAfterLookSeed,
+                    stuckRepairRecovery.htmlToOpen,
+                  );
+                  maybeArmTeamverPublishMenuAfterRunSuccess(
+                    project.id,
+                    stuckRepairRecovery.htmlToOpen,
+                  );
+                  requestOpenFile(stuckRepairRecovery.htmlToOpen);
+                  return;
+                }
+              }
+            }
             // Prefer Clone LOOK seed reload recovery before stream salvage or
             // auto-continue when a persisted incomplete_output row still has
             // deck.html on disk (루프367).
@@ -11177,6 +11224,9 @@ export function ProjectView({
                 endedAt: prev.endedAt ?? endedAt,
               }));
               updateConversationLatestRun('succeeded', endedAt);
+              if (runIsVisible()) {
+                requestOpenFile('deck.html');
+              }
             } else {
               updateAssistant((prev) => ({
                 ...prev,

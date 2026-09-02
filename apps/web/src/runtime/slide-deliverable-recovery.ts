@@ -38,7 +38,7 @@ import {
   clearDurableDeliverableErrorsAfterRecovery,
 } from './chat-events';
 import { CLONE_LOOK_SEED_FALLBACK_STATUS_CODE } from './deliverable-lifecycle-codes';
-import { formatCloneLookSeedFallbackNotice } from '../teamver/projectErrorMessages';
+import { formatCloneLookSeedFallbackNotice, isCloneSlotFillRepairInProgressNotice } from '../teamver/projectErrorMessages';
 
 /**
  * Status-event code for the "auto-continue cap exhausted and we synthesized a
@@ -621,6 +621,13 @@ export function buildCloneLookSeedReloadRecoveredAssistant(
   incompleteAssistant: ChatMessage,
   producedFiles: readonly ProjectFile[],
 ): ChatMessage {
+  return buildCloneLookSeedRecoveredAssistant(incompleteAssistant, producedFiles);
+}
+
+function buildCloneLookSeedRecoveredAssistant(
+  assistant: ChatMessage,
+  producedFiles: readonly ProjectFile[],
+): ChatMessage {
   const lookSeedNotice = formatCloneLookSeedFallbackNotice();
   let produced = [...producedFiles];
   if (!produced.some((file) => file.name === 'deck.html')) {
@@ -635,16 +642,85 @@ export function buildCloneLookSeedReloadRecoveredAssistant(
       },
     ];
   }
+  const withoutRepairNotice: ChatMessage = {
+    ...assistant,
+    events: (assistant.events ?? []).filter(
+      (event) => !(event.kind === 'status'
+        && event.label === 'warning'
+        && isCloneSlotFillRepairInProgressNotice(event.detail)),
+    ),
+  };
   return {
     ...appendWarningStatusEvent(
-      clearDurableDeliverableErrorsAfterRecovery(incompleteAssistant),
+      clearDurableDeliverableErrorsAfterRecovery(withoutRepairNotice),
       lookSeedNotice,
       CLONE_LOOK_SEED_FALLBACK_STATUS_CODE,
     ),
     producedFiles: produced,
     runStatus: 'succeeded',
     resumable: true,
-    endedAt: incompleteAssistant.endedAt ?? Date.now(),
+    endedAt: assistant.endedAt ?? Date.now(),
+  };
+}
+
+/** True when a succeeded assistant row still carries loop370 repair-in-progress copy. */
+export function assistantHasCloneSlotFillRepairInProgressNotice(
+  assistant: ChatMessage,
+): boolean {
+  return (assistant.events ?? []).some(
+    (event) => event.kind === 'status'
+      && event.label === 'warning'
+      && isCloneSlotFillRepairInProgressNotice(event.detail),
+  );
+}
+
+export function findCloneSlotFillStuckRepairNoticeAssistant(
+  messages: readonly ChatMessage[],
+): ChatMessage | null {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message?.role !== 'assistant') continue;
+    if (message.runStatus !== 'succeeded') continue;
+    if (!assistantHasCloneSlotFillRepairInProgressNotice(message)) continue;
+    if (!isCloneContentFillReloadRecoveryCandidate(messages, message)) continue;
+    return message;
+  }
+  return null;
+}
+
+/**
+ * 루프372 — On conversation load, replace persisted loop370 repair-in-progress
+ * notices on succeeded Clone fill rows with LOOK seed fallback guidance.
+ */
+export async function attemptCloneSlotFillStuckRepairNoticeRecovery(options: {
+  stuckAssistant: ChatMessage;
+  messages: readonly ChatMessage[];
+  readProjectHtml: (name: string) => Promise<string | null>;
+  producedFiles: readonly ProjectFile[];
+}): Promise<{
+  recovered: boolean;
+  htmlToOpen: string | null;
+  updatedAssistant: ChatMessage | null;
+}> {
+  if (!isCloneContentFillReloadRecoveryCandidate(options.messages, options.stuckAssistant)) {
+    return { recovered: false, htmlToOpen: null, updatedAssistant: null };
+  }
+  if (!assistantHasCloneSlotFillRepairInProgressNotice(options.stuckAssistant)) {
+    return { recovered: false, htmlToOpen: null, updatedAssistant: null };
+  }
+  const persistHint = await tryRecoverCloneContentFillLookSeed({
+    readProjectHtml: options.readProjectHtml,
+  });
+  if (!persistHint) {
+    return { recovered: false, htmlToOpen: null, updatedAssistant: null };
+  }
+  return {
+    recovered: true,
+    htmlToOpen: persistHint.fileName,
+    updatedAssistant: buildCloneLookSeedRecoveredAssistant(
+      options.stuckAssistant,
+      options.producedFiles,
+    ),
   };
 }
 

@@ -421,11 +421,19 @@ export function formatCloneLookSeedFallbackNotice(): string {
     : "Slide fill did not complete — kept the template draft (LOOK seed). Use the retry button to regenerate the full deck.";
 }
 
-/** 루프368 — JSON repair auto-send 진행 중 (LOOK seed 경고 전). */
+/** 루프368 — JSON repair auto-send 진행 중 (LOOK seed 경고 전). @deprecated 루프371에서 FE repair loop 제거. */
 export function formatCloneSlotFillRepairInProgressNotice(): string {
   return isTeamverEmbedMode()
     ? 'JSON outline 형식을 다시 요청하는 중입니다. 잠시만 기다려 주세요.'
     : 'Retrying for a valid JSON outline. Please wait a moment.';
+}
+
+/** Persisted repair-in-progress notice from loop370 — reload 시 LOOK seed 안내로 승격. */
+export function isCloneSlotFillRepairInProgressNotice(detail: string | null | undefined): boolean {
+  const trimmed = String(detail ?? '').trim();
+  if (!trimmed) return false;
+  return trimmed.includes('JSON outline 형식을 다시 요청')
+    || trimmed.includes('Retrying for a valid JSON outline');
 }
 
 function mapHttpStatusToProjectRunErrorCode(status: number): string {

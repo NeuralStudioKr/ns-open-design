@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { systemReminderLooksLikeTrustedPolicyEcho } from '../src/runtime/system-reminder-echo';
 import {
   attemptCloneContentFillLookSeedReloadRecovery,
+  attemptCloneSlotFillStuckRepairNoticeRecovery,
   buildCloneLookSeedReloadRecoveredAssistant,
+  findCloneSlotFillStuckRepairNoticeAssistant,
   isCloneContentFillReloadRecoveryCandidate,
   tryRecoverCloneContentFillLookSeed,
 } from '../src/runtime/slide-deliverable-recovery';
 import { TEMPLATE_CLONE_CONTENT_FILL_MARKER } from '../src/teamver/templateCloneContentFill';
+import { formatCloneSlotFillRepairInProgressNotice } from '../src/teamver/projectErrorMessages';
 import type { ChatMessage } from '../src/types';
 
 describe('systemReminderLooksLikeTrustedPolicyEcho (루프365)', () => {
@@ -95,5 +98,42 @@ describe('attemptCloneContentFillLookSeedReloadRecovery (루프367)', () => {
       incompleteAssistant,
     )).toBe(true);
     expect(buildCloneLookSeedReloadRecoveredAssistant(incompleteAssistant, []).runStatus).toBe('succeeded');
+  });
+});
+
+describe('attemptCloneSlotFillStuckRepairNoticeRecovery (루프372)', () => {
+  const repairNotice = formatCloneSlotFillRepairInProgressNotice();
+  const userFill: ChatMessage = {
+    id: 'user-1',
+    role: 'user',
+    content: `${TEMPLATE_CLONE_CONTENT_FILL_MARKER}\nfill the deck`,
+    createdAt: 0,
+  };
+  const stuckAssistant: ChatMessage = {
+    id: 'asst-1',
+    role: 'assistant',
+    content: 'partial',
+    runStatus: 'succeeded',
+    resumable: true,
+    events: [{ kind: 'status', label: 'warning', detail: repairNotice }],
+    createdAt: 1,
+  };
+
+  it('promotes loop370 repair notice to LOOK seed guidance when deck.html exists', async () => {
+    expect(findCloneSlotFillStuckRepairNoticeAssistant([userFill, stuckAssistant])?.id).toBe('asst-1');
+    const result = await attemptCloneSlotFillStuckRepairNoticeRecovery({
+      stuckAssistant,
+      messages: [userFill, stuckAssistant],
+      readProjectHtml: async () => '<section class="slide"><h1>Seed</h1></section>',
+      producedFiles: [],
+    });
+    expect(result.recovered).toBe(true);
+    expect(result.htmlToOpen).toBe('deck.html');
+    expect(result.updatedAssistant?.events?.some(
+      (event) => event.kind === 'status' && event.code === 'clone_look_seed_fallback',
+    )).toBe(true);
+    expect(result.updatedAssistant?.events?.some(
+      (event) => event.kind === 'status' && event.detail === repairNotice,
+    )).toBe(false);
   });
 });

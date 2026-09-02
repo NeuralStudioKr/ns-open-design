@@ -38,6 +38,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프372 — stuck repair notice reload
+
+loop370에서 persist된 「JSON outline 형식을 다시 요청…」 warning이 succeeded 행에 남으면 preview가 열리지 않음. conversation load에서 LOOK seed fallback 안내로 승격.
+
+### 루프371 — Clone JSON repair loop 차단
+
+invalid JSON outline 시 contracts는 이미 seed-fallback인데 FE가 repair auto-send를 한 번 더 띄워 「JSON outline 형식을 다시 요청…」 대기 UI와 preview 불일치가 발생. seed-fallback/skipped-incomplete는 즉시 LOOK seed 복구, FE repair loop 제거.
+
 ### 루프370 — Clone JSON repair pending UX
 
 repair auto-send 600ms 창에 사용자가 Retry/Continue를 눌러 repair send와 경쟁하던 문제. `cloneSlotFillRepairPending`으로 ChatPane manual recovery를 auto-continue와 동일하게 억제.

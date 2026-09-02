@@ -33,7 +33,9 @@
 | **루프367** hard reload incomplete_output → LOOK seed 복구 | ☑ |
 | **루프368** JSON 파싱 강화 + FE 1회 auto-repair (LOOK seed 경고 전) | ☑ |
 | **루프369** JSON 본문 section 오탐 · repair send 실패 fallback · brief 전달 | ☑ |
-| **루프370** repair pending UX — ChatPane Retry 이중 클릭 방지 | ☑ |
+| **루프370** repair pending UX — ChatPane Retry 이중 클릭 방지 | ☑ (371에서 repair loop 제거) |
+| **루프371** JSON repair auto-send loop 차단 — seed-fallback 즉시 LOOK seed | ☑ |
+| **루프372** stuck repair notice reload → LOOK seed 안내 | ☑ |
 | **루프366** section `#stage` hoist · contracts dist rebuild | ☑ web transform-driven 19/19 |
 | MiniMax 실키 E2E | ☑ 가드 있음 · 키 없으면 skip (`template-clone-minimax-live.e2e`) |
 
