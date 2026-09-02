@@ -35,6 +35,7 @@ import {
   stripEmptyOfficialMotifInstances,
   stripHostProtocolLeakFromDeckHtml,
   stripNonSlotWrappers,
+  absorbFollowingPillHeadingIntoEmptyChromeShell,
   fillAndTrimCardPeers,
   hoistCloneSlidesOutOfFlexTrack,
   resolveTemplateCloneSlotMap,
@@ -2336,5 +2337,104 @@ describe('루프376 fillSlideShell drops title-only empty content-list shells en
     expect(filled!.html).toContain('Smarter &amp; Faster');
     // Motif still visible.
     expect(filled!.html).toContain('.motif{color:#FCDF6C}');
+  });
+});
+
+describe('루프381 absorbFollowingPillHeadingIntoEmptyChromeShell', () => {
+  it('reparents a pill+h3+p triple into the preceding empty chrome shell', () => {
+    const html = [
+      '<div style="background:#FFFDF5;border:4px solid #000;box-shadow:8px 8px 0 #000;padding:32px"></div>',
+      '<div style="background:#F7CB46;border:3px solid #000;display:inline-block;padding:4px 14px">파일</div>',
+      '<h3>Shared Drive</h3>',
+      '<p>개인·팀 자료를 안전하게 관리</p>',
+    ].join('');
+    const out = absorbFollowingPillHeadingIntoEmptyChromeShell(html);
+    // Pill / heading / paragraph are now inside the chrome shell.
+    expect(out).toMatch(
+      /<div style="background:#FFFDF5;border:4px solid #000;box-shadow:8px 8px 0 #000;padding:32px"><div style="background:#F7CB46[^>]*>파일<\/div><h3>Shared Drive<\/h3><p>개인·팀 자료를 안전하게 관리<\/p><\/div>/,
+    );
+  });
+
+  it('reparents just a heading when no pill is present', () => {
+    const html = [
+      '<div style="background:#FFFDF5;border:4px solid #000;padding:32px"></div>',
+      '<h3>Shared Drive</h3>',
+      '<p>Body</p>',
+    ].join('');
+    const out = absorbFollowingPillHeadingIntoEmptyChromeShell(html);
+    expect(out).toContain('<div style="background:#FFFDF5;border:4px solid #000;padding:32px"><h3>Shared Drive</h3><p>Body</p></div>');
+  });
+
+  it('keeps a shell alone when no heading follows', () => {
+    const html = [
+      '<div style="background:#FFFDF5;border:4px solid #000;padding:32px"></div>',
+      '<div style="display:inline-block;padding:4px 14px">Just a pill</div>',
+    ].join('');
+    // Pill without heading — do not absorb. `stripEmptyBorderPadCardShells`
+    // may drop the shell later, but we do not invent a heading.
+    const out = absorbFollowingPillHeadingIntoEmptyChromeShell(html);
+    expect(out).toBe(html);
+  });
+
+  it('skips shells that already carry content', () => {
+    const html = [
+      '<div style="background:#FFFDF5;border:4px solid #000;padding:32px"><h3>Existing</h3></div>',
+      '<div style="display:inline-block;padding:4px 14px">Pill</div>',
+      '<h3>Next</h3>',
+    ].join('');
+    expect(absorbFollowingPillHeadingIntoEmptyChromeShell(html)).toBe(html);
+  });
+
+  it('skips shells without border+padding chrome (e.g. bare wrappers)', () => {
+    const html = [
+      '<div style="background:#fff"></div>',
+      '<div style="display:inline-block;padding:4px 14px">Pill</div>',
+      '<h3>Heading</h3>',
+    ].join('');
+    expect(absorbFollowingPillHeadingIntoEmptyChromeShell(html)).toBe(html);
+  });
+
+  it('handles a chain of empty shells each followed by their own card content', () => {
+    const html = [
+      '<div style="background:#FFFDF5;border:4px solid #000;padding:32px"></div>',
+      '<div style="display:inline-block;padding:4px 14px">Card 1</div>',
+      '<h3>Title 1</h3>',
+      '<p>Body 1</p>',
+      '<div style="background:#FFFDF5;border:4px solid #000;padding:32px"></div>',
+      '<div style="display:inline-block;padding:4px 14px">Card 2</div>',
+      '<h3>Title 2</h3>',
+      '<p>Body 2</p>',
+    ].join('');
+    const out = absorbFollowingPillHeadingIntoEmptyChromeShell(html);
+    // Two shells, each with their own pill+heading+body reparented.
+    const shellMatches = out.match(/<div style="background:#FFFDF5;border:4px solid #000;padding:32px">/g) ?? [];
+    expect(shellMatches.length).toBe(2);
+    // Each shell should contain a "Title N" h3 (no loose h3 between shells).
+    expect(out).toMatch(
+      /<div style="background:#FFFDF5;border:4px solid #000;padding:32px"><div style="display:inline-block;padding:4px 14px">Card 1<\/div><h3>Title 1<\/h3><p>Body 1<\/p><\/div>/,
+    );
+    expect(out).toMatch(
+      /<div style="background:#FFFDF5;border:4px solid #000;padding:32px"><div style="display:inline-block;padding:4px 14px">Card 2<\/div><h3>Title 2<\/h3><p>Body 2<\/p><\/div>/,
+    );
+  });
+
+  it('is idempotent — a second pass changes nothing', () => {
+    const html = [
+      '<div style="background:#FFFDF5;border:4px solid #000;padding:32px"></div>',
+      '<div style="display:inline-block;padding:4px 14px">파일</div>',
+      '<h3>Shared Drive</h3>',
+      '<p>Body</p>',
+    ].join('');
+    const once = absorbFollowingPillHeadingIntoEmptyChromeShell(html);
+    const twice = absorbFollowingPillHeadingIntoEmptyChromeShell(once);
+    expect(twice).toBe(once);
+  });
+
+  it('leaves deco squares (tiny fixed size) alone', () => {
+    const html = [
+      '<div style="border:2px solid #000;padding:4px;width:24px;height:24px"></div>',
+      '<h3>Heading</h3>',
+    ].join('');
+    expect(absorbFollowingPillHeadingIntoEmptyChromeShell(html)).toBe(html);
   });
 });

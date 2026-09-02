@@ -2771,6 +2771,14 @@ function looksLikeChromeCardStyle(style: string): boolean {
   const compact = compactInlineStyle(style);
   if (!compact) return false;
   if (/(?:^|;)position:absolute(?:;|$)/.test(compact)) return false;
+  // 루프381 — Inline-block pills / badges are NOT layout cards. MiniMax
+  // pill labels (`background:#F7CB46;border:3px solid #000;display:inline-
+  // block;padding:4px 14px`) share the same padding + background + border
+  // triple as chrome cards, so they were flagged cardish and
+  // `closeUnclosedSiblingCardsInSlides` would close a preceding chrome
+  // shell whenever a pill opened inside it — orphaning the shell's real
+  // content. Real cards flow as block/flex/grid children, never inline.
+  if (/(?:^|;)display:inline(?:-block|-flex|-grid)?(?:;|$)/.test(compact)) return false;
   const hasPad = /(?:^|;)padding(?:-?(?:block|inline|top|right|bottom|left))?:/.test(compact);
   const hasBg = /(?:^|;)background(?:-color)?:(?!transparent|none|inherit|initial|unset)/.test(
     compact,
@@ -3359,11 +3367,24 @@ export function pullOrphanChromeCardsIntoPrecedingGrid(
     }
   }
   if (patches.length === 0) return out;
+  // 루프381 — Prior code used original offsets after each splice. When a grid
+  // had multiple orphan siblings and we processed patches tail-first, each
+  // insertion at `gridCloseStart` shifted the remaining patches' orphanStart
+  // values by +orphanHtml.length (both orphanStart and orphanEnd are AFTER
+  // gridCloseStart), which the loop never accounted for. The second orphan
+  // then sliced from the wrong offset — mid-tag inside a preceding `<h2>` —
+  // and corrupted the HTML. Track the per-grid cumulative insertion shift so
+  // the second orphan's slice reflects its position in the mutated string.
   patches.sort((a, b) => b.orphanStart - a.orphanStart);
+  const perGridInsertions = new Map<number, number>();
   for (const patch of patches) {
-    const orphanHtml = out.slice(patch.orphanStart, patch.orphanEnd);
-    out = `${out.slice(0, patch.orphanStart)}${out.slice(patch.orphanEnd)}`;
+    const shift = perGridInsertions.get(patch.gridCloseStart) ?? 0;
+    const orphanStart = patch.orphanStart + shift;
+    const orphanEnd = patch.orphanEnd + shift;
+    const orphanHtml = out.slice(orphanStart, orphanEnd);
+    out = `${out.slice(0, orphanStart)}${out.slice(orphanEnd)}`;
     out = `${out.slice(0, patch.gridCloseStart)}${orphanHtml}${out.slice(patch.gridCloseStart)}`;
+    perGridInsertions.set(patch.gridCloseStart, shift + orphanHtml.length);
   }
   return out;
 }

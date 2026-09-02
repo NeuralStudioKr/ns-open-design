@@ -1183,6 +1183,201 @@ function stripEmptyBorderPadCardShells(html: string): string {
   );
 }
 
+/**
+ * Loop381 — MiniMax edit turns often emit the chrome for a card ("empty
+ * border+padding shell") and then leak the intended card content — a small
+ * pill badge, an h3, and a paragraph — as loose siblings AFTER the shell:
+ *
+ *   <div style="background:#FFFDF5;border:4px solid #000;padding:32px"></div>
+ *   <div style="display:inline-block;padding:4px 14px">파일</div>
+ *   <h3>Shared Drive</h3>
+ *   <p>개인·팀 자료를 …</p>
+ *
+ * The prior heal (`stripEmptyBorderPadCardShells`) DROPS the empty shell —
+ * that shell was actually the intended card wrapper. Reparent the following
+ * pill / heading / paragraph triple INTO the shell before dropping ever
+ * runs, so the visible layout collapses into a proper card.
+ *
+ * Guards:
+ *   - Shell must be empty (only whitespace / `&nbsp;` / `<br>` inside).
+ *   - Shell must carry a chrome style (`border: … solid …` + `padding: …`).
+ *   - Immediately following sibling must be a "pill" (short text, tiny
+ *     inline-block, padding present) OR a heading (h1–h6).
+ *   - After the pill we accept exactly one heading (h1–h6) then zero or one
+ *     `<p>` paragraph. Anything more complex is left untouched.
+ *   - Do not touch shells wrapping deco squares (tiny fixed size).
+ */
+export function absorbFollowingPillHeadingIntoEmptyChromeShell(
+  html: string,
+): string {
+  const source = String(html ?? '');
+  if (!source) return source;
+  const shellRe = /<div\b([^>]*)>((?:\s|&nbsp;|&#160;|<br\s*\/?\s*>)*)<\/div>/gi;
+  type Edit = {
+    shellStart: number;
+    shellEnd: number;
+    shellOpen: string;
+    shellClose: string;
+    absorbedStart: number;
+    absorbedEnd: number;
+    absorbed: string;
+  };
+  const edits: Edit[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = shellRe.exec(source)) !== null) {
+    const attrs = match[1] ?? '';
+    if (!/border\s*:\s*[^;]*solid/i.test(attrs)) continue;
+    if (!/padding\s*:\s*\d/i.test(attrs)) continue;
+    // Skip deco squares — tiny fixed size means intentional decoration.
+    if (
+      /width\s*:\s*(?:\d{1,2}|1\d{2})px/i.test(attrs)
+      && /height\s*:\s*(?:\d{1,2}|1\d{2})px/i.test(attrs)
+    ) {
+      continue;
+    }
+    const shellStart = match.index;
+    const shellEnd = shellStart + match[0]!.length;
+    const shellOpen = `<div${attrs}>`;
+    const shellClose = '</div>';
+    const absorbed = collectFollowingPillHeadingTriple(source, shellEnd);
+    if (!absorbed) continue;
+    edits.push({
+      shellStart,
+      shellEnd,
+      shellOpen,
+      shellClose,
+      absorbedStart: absorbed.start,
+      absorbedEnd: absorbed.end,
+      absorbed: source.slice(absorbed.start, absorbed.end),
+    });
+  }
+  if (edits.length === 0) return source;
+  // Apply from tail so earlier offsets stay valid. Also skip edits whose
+  // absorbed range overlaps a prior edit's absorbed range (defensive — the
+  // pill/heading scanner already stops at the next shell).
+  edits.sort((a, b) => a.shellStart - b.shellStart);
+  const applied: Edit[] = [];
+  let cursor = -1;
+  for (const edit of edits) {
+    if (edit.shellStart < cursor) continue;
+    applied.push(edit);
+    cursor = edit.absorbedEnd;
+  }
+  let out = source;
+  for (let i = applied.length - 1; i >= 0; i -= 1) {
+    const edit = applied[i]!;
+    // Remove the absorbed range first (higher offset) so shell splice does
+    // not shift it. Then rewrite the shell to include the absorbed body.
+    out = out.slice(0, edit.absorbedStart) + out.slice(edit.absorbedEnd);
+    const rebuilt = `${edit.shellOpen}${edit.absorbed}${edit.shellClose}`;
+    out = out.slice(0, edit.shellStart) + rebuilt + out.slice(edit.shellEnd);
+  }
+  return out;
+}
+
+function collectFollowingPillHeadingTriple(
+  html: string,
+  from: number,
+): { start: number; end: number } | null {
+  const tokenRe = /<([a-zA-Z][\w-]*)\b([^>]*)>/g;
+  tokenRe.lastIndex = from;
+  // Skip pure whitespace / comments between shell close and next block.
+  const skipRe = /[\s\r\n]+|<!--[\s\S]*?-->/y;
+  skipRe.lastIndex = from;
+  let cursor = from;
+  while (skipRe.exec(html)) {
+    cursor = skipRe.lastIndex;
+  }
+  const start = cursor;
+  let end = cursor;
+  let sawHeading = false;
+  let sawParagraph = false;
+  let sawPill = false;
+  // Walk up to 4 consecutive matching siblings: [pill?, heading, p?, p?]
+  for (let step = 0; step < 4; step += 1) {
+    const openMatch = /<([a-zA-Z][\w-]*)\b([^>]*)>/.exec(html.slice(end));
+    if (!openMatch || openMatch.index !== 0) break;
+    const tag = (openMatch[1] ?? '').toLowerCase();
+    const attrs = openMatch[2] ?? '';
+    if (/\/>\s*$/.test(openMatch[0])) break;
+    const openLen = openMatch[0].length;
+    const closeStart = findSameTagCloseInSlice(html, tag, end + openLen);
+    if (closeStart < 0) break;
+    const closeMatch = /^<\/[a-zA-Z][\w-]*\s*>/.exec(html.slice(closeStart));
+    const blockEnd = closeStart + (closeMatch ? closeMatch[0].length : `</${tag}>`.length);
+    const blockHtml = html.slice(end, blockEnd);
+    const inner = html.slice(end + openLen, closeStart);
+    const style = /\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(attrs);
+    const styleValue = (style?.[1] ?? style?.[2] ?? '').trim();
+    const kind = classifyChromeShellFollowSibling(tag, styleValue, inner);
+    if (kind === 'pill') {
+      if (sawPill || sawHeading || sawParagraph) break;
+      sawPill = true;
+    } else if (kind === 'heading') {
+      if (sawHeading) break;
+      sawHeading = true;
+    } else if (kind === 'paragraph') {
+      if (!sawHeading) break;
+      if (sawParagraph) break;
+      sawParagraph = true;
+    } else {
+      break;
+    }
+    // Advance over the block plus any trailing whitespace so the next
+    // iteration's regex sees the next block directly.
+    let next = blockEnd;
+    while (next < html.length) {
+      const remainder = html.slice(next);
+      const skip = /^[\s\r\n]+|^<!--[\s\S]*?-->/.exec(remainder);
+      if (!skip) break;
+      next += skip[0].length;
+    }
+    end = next;
+    if (sawHeading && sawParagraph) break;
+    void blockHtml;
+  }
+  if (!sawHeading) return null;
+  return { start, end };
+}
+
+function findSameTagCloseInSlice(
+  html: string,
+  tag: string,
+  from: number,
+): number {
+  const closeRe = new RegExp(`<\\/?${tag}\\b[^>]*>`, 'gi');
+  closeRe.lastIndex = from;
+  let depth = 1;
+  let tok: RegExpExecArray | null;
+  while ((tok = closeRe.exec(html)) !== null) {
+    if (tok[0]!.startsWith('</')) {
+      depth -= 1;
+      if (depth === 0) return tok.index;
+    } else if (!tok[0]!.endsWith('/>')) {
+      depth += 1;
+    }
+  }
+  return -1;
+}
+
+function classifyChromeShellFollowSibling(
+  tag: string,
+  style: string,
+  inner: string,
+): 'pill' | 'heading' | 'paragraph' | null {
+  const text = inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (/^h[1-6]$/i.test(tag) && text.length > 0) return 'heading';
+  if (tag === 'p' && text.length > 0) return 'paragraph';
+  if (tag === 'div') {
+    const hasInlineBlock = /(?:^|;)\s*display\s*:\s*inline-block\b/i.test(style);
+    const hasPadding = /(?:^|;)\s*padding\s*:/i.test(style);
+    if (hasInlineBlock && hasPadding && text.length > 0 && text.length <= 40) {
+      return 'pill';
+    }
+  }
+  return null;
+}
+
 function collapseHeadingBreaks(inner: string): string {
   return String(inner ?? '').replace(/(?:<br\s*\/?>\s*){2,}/gi, '<br>');
 }
@@ -1661,6 +1856,10 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string): string {
   next = repairBrokenHeadingTypos(next);
   next = repairBareHeadingCloses(next);
   next = unwrapBlocksFromHeadings(next);
+  // 루프381 — Model often emits an empty chrome card shell followed by the
+  // pill/heading/paragraph triple that should live INSIDE it. Reparent first
+  // so `stripEmptyBorderPadCardShells` does not drop the intended wrapper.
+  next = absorbFollowingPillHeadingIntoEmptyChromeShell(next);
   next = stripEmptyBorderPadCardShells(next);
   next = salvageOrphanRepeatGridCards(next);
   next = collapseSparseRepeatGrids(next);

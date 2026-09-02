@@ -72,6 +72,35 @@ repair auto-send 600ms 창에 사용자가 Retry/Continue를 눌러 repair send�
 
 검증: web ChatPane.resume-failed 루프370 · contracts redacted_thinking parse.
 
+### 루프381 — chrome shell 콘텐츠 흡수 · inline-block pill cardish 오탐 봉쇄 · orphan pull offset 버그
+
+**reproduce:** neubrutalism 사용자 fixture 슬라이드 4 여전히 무너짐 — 4개 제품 카드 중 첫 번째만 반쯤 grid 안에 있고, 나머지 3개는 chrome shell **빈 껍데기**(padding+border)와 loose `pill+h3+p` 삼중항으로 슬라이드 flow에 흩어져 있음. `stripEmptyBorderPadCardShells`가 빈 shell을 드랍한 뒤 pill/h3/p가 아무 wrapper 없이 남아 layout이 완전 붕괴.
+
+**세 층의 원인 + 세 층의 수정:**
+
+**(1) 빈 shell 흡수 (source):** `absorbFollowingPillHeadingIntoEmptyChromeShell`
+- 빈 chrome shell (`border: … solid` + `padding: …`, deco 정사각 제외) 뒤에 pill (inline-block+padding, ≤40자) → heading (h1-h6) → 옵션 paragraph 순서로 오는 loose sibling 삼중항을 shell 안으로 reparent.
+- `stripEmptyBorderPadCardShells` 실행 이전에 배치. 흡수된 shell은 이제 콘텐츠가 있으므로 드랍 안 됨.
+- Guards: 빈 shell만, heading 없으면 흡수 안 함, 이미 콘텐츠 있는 shell은 건드리지 않음, deco 정사각은 유지.
+
+**(2) inline-block pill cardish 오탐 (pipeline poisoning):** `looksLikeChromeCardStyle`
+- 기존 규칙: `padding + (background|border)` → cardish. Pill (`background:...;border:...;display:inline-block;padding:4px 14px`)이 셋 다 있어 cardish로 오탐.
+- 오탐 결과: `closeUnclosedSiblingCardsInSlides`가 chrome shell 안에서 pill 열기를 만나면 pill을 "새 sibling card"로 취급, shell을 먼저 닫아버려서 pill/h3/p는 shell 밖으로 orphan. (내 흡수 heal의 결과가 파괴됨.)
+- 수정: `looksLikeChromeCardStyle`에 `display:inline*` 리젝트 추가. 실제 카드는 절대 inline flow가 아님. 안전.
+
+**(3) `pullOrphanChromeCardsIntoPrecedingGrid` 여러 orphan 배치 시 offset 시프트 버그 (pre-existing):**
+- 여러 orphan chrome card를 grid로 옮길 때 각 삽입이 gridCloseStart에서 발생 → 이후 patch의 orphan positions가 삽입된 길이만큼 시프트되지만 loop는 원본 offset을 계속 사용.
+- 두 번째 orphan의 slice가 잘못된 위치에서 시작, 앞선 h2 태그 안에 chrome shell 파편을 삽입해 `합니다<<div ...>` 같은 corrupted markup 생성.
+- 수정: 그리드별 cumulative insertion shift `perGridInsertions`를 추적, 각 patch의 orphanStart/End에 shift 더해 새 문자열 위치로 매핑. 이 heal은 loop376의 shell 흡수 이전에는 shell이 항상 비어 있어서 pull이 그것을 orphan으로 안 봤기 때문에 버그가 겉으로 드러나지 않았음.
+
+**결과 (사용자 fixture slide 4):**
+- Before: `grid<pill,h3,p>` + h2 + 3개 빈 shell + 3개 loose `pill+h3+p`
+- After: `grid<pill,h3,p, shell1<파일+Shared Drive+p>, shell2<AI+AI Chat+p>>` + h2 + `shell3<결과물+AI Apps+p>`
+
+pull 슬롯이 2뿐이라 shell3는 grid 밖. 그래도 이제 3개 shell 모두 실제 콘텐츠를 담고 있고, h2는 온전히 닫힘. 카피 발명 없음.
+
+**검증:** contracts template-clone-fill 신규 8개 (absorb-pill-heading-triple / bare-heading / no-heading-no-absorb / already-filled / non-chrome-style / chain-of-shells / idempotent / deco-square 유지) · heal-ai-generated-deck 회귀 · integration fixture 11 (신규 2: chrome shell 콘텐츠 유지 · h2 corruption 방지) · 전체 스위트 2901/2901 · web focused 78/78.
+
 ### 루프380 — modify-turn `<ul>`/`<p>` 빈 shell heal + fixture 회귀 봉쇄
 
 **reproduce:** neubrutalism 첨부 HTML (2026-09-02 사용자 리포트) fixture 저장. 최초 fill 이후 "수정 반영" 턴이 만든 HTML을 `salvageMalformedMiniMaxSlideMarkup + healAiGeneratedDeckMarkup` 전체에 통과시켜 결과가 사용자 눈에 얼마나 정리되는지 정밀 검증.

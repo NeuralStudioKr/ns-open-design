@@ -110,6 +110,30 @@ describe('teamver neubrutalism modify-turn fixture (2026-09-02 user report)', ()
     expect(out).not.toMatch(/<h[1-3][^>]*>[^<]*www\.teamver\.com[^<]*<\/h[1-3]>/);
   });
 
+  it('reparents leaked pill+heading+paragraph triples into their intended chrome shells (loop381)', () => {
+    // Slide 4: the model emitted an empty chrome shell followed by pill +
+    // heading + paragraph as loose siblings. Loop381 absorbs each triple
+    // back into its intended shell so the shells now hold real content.
+    // Check the specific card names.
+    for (const productName of ['Shared Drive', 'AI Chat', 'AI Apps']) {
+      const shellWithProduct = new RegExp(
+        `<div style="background:#FFFDF5;border:4px solid #000;box-shadow:8px 8px 0 #000;padding:32px"><div style="background:#[0-9A-Fa-f]{6}[^"]*inline-block[^"]*"[^>]*>[^<]+</div>\\s*<h3[^>]*>${productName}</h3>`,
+      );
+      expect(out).toMatch(shellWithProduct);
+    }
+  });
+
+  it('keeps the h2 slide title intact when pull-orphan reparents siblings (loop381 offset fix)', () => {
+    // Preexisting `pullOrphanChromeCardsIntoPrecedingGrid` bug: when
+    // multiple orphan chrome cards followed the grid, each insertion at
+    // gridCloseStart shifted subsequent orphans' positions but the loop
+    // used original offsets — the second orphan sliced mid-tag inside the
+    // h2 and corrupted the HTML. Fixed by tracking per-grid cumulative
+    // insertion shift. Verify the slide 4 h2 close is intact.
+    expect(out).not.toMatch(/합니다<</);
+    expect(out).toContain('하나로 연결</span>합니다</h2>');
+  });
+
   it('is idempotent — a second pipeline pass changes nothing', () => {
     const twice = pipeline(out, BRIEF);
     expect(twice).toBe(out);
