@@ -35,6 +35,7 @@ import {
   stripHostProtocolLeakFromDeckHtml,
   stripNonSlotWrappers,
   fillAndTrimCardPeers,
+  hoistCloneSlidesOutOfFlexTrack,
   resolveTemplateCloneSlotMap,
 } from '../src/template-clone-fill.js';
 import { hoistDeckHostStylesToHead } from '../src/html/deck-template-look-css.js';
@@ -1422,5 +1423,34 @@ describe('0901-N02-C4 prefixed *-card peer heuristic', () => {
     expect(next).not.toContain('Cara');
     expect(next).not.toContain('Ada');
     expect(next).not.toContain('CEO');
+  });
+});
+
+describe('hoistCloneSlidesOutOfFlexTrack', () => {
+  it('unwraps leftover <section id="stage"> and <main class="stage"> slide tracks', () => {
+    const sectionStage = [
+      '<!doctype html><html><body>',
+      '<section class="stage" id="stage">',
+      '<section class="slide" style="width:1920px;height:1080px">One</section>',
+      '<section class="slide" style="width:1920px;height:1080px">Two</section>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const sectionOut = hoistCloneSlidesOutOfFlexTrack(sectionStage);
+    expect(sectionOut).not.toMatch(/<section\b[^>]*\bid\s*=\s*["']stage["']/i);
+    expect(sectionOut).toContain('class="slide"');
+    expect([...(sectionOut.matchAll(/<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b/gi))].length).toBe(2);
+
+    const mainStage = [
+      '<!doctype html><html><body>',
+      '<main class="stage">',
+      '<section class="slide">One</section>',
+      '<section class="slide">Two</section>',
+      '</main>',
+      '</body></html>',
+    ].join('');
+    const mainOut = hoistCloneSlidesOutOfFlexTrack(mainStage);
+    expect(mainOut).not.toMatch(/<main\b[^>]*\bclass\s*=\s*["'][^"']*\bstage\b/i);
+    expect([...(mainOut.matchAll(/<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b/gi))].length).toBe(2);
   });
 });

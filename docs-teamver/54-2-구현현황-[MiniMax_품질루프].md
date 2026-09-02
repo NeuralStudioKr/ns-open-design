@@ -31,7 +31,13 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 `기둥` / `PILLAR` / `Phase`는 모델이 붙이는 접두일 뿐, 발표 용어가 아닙니다. extra-copy·stub는 주제 단어 목록이 아닙니다(루프259·265).
 
-## 2026-09-01 현재 판단 · 최신 루프
+## 2026-09-02 현재 판단 · 최신 루프
+
+### 루프366 — 1920 leftover `#stage` + 잔여 swipe 지문 첫 장 nudge
+
+author `<script>`가 있으면 preview hoist가 `#stage`를 건너뛰고, `<section id="stage">`는 unwrap 대상이 아니었다. `scroll-snap-x`/body overflow-x leftover도 1920 캔버스면 swipe가 아니다. hoist + 분류 + vw nudge 거부. Zhangzara `#deck` 100vw는 compact 유지. 공식 IB swipe `#stage`는 유지. 카피 발명 없음.
+
+검증: web compact-api-stacked-deck · srcdoc-deck-bridge-transform-driven 루프366 · contracts template-clone-fill hoist.
 
 ### 루프363 — 1920 leftover + leaked 100vw 첫 장 nudge
 
@@ -1084,6 +1090,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
+- **완료 (루프366):** 1920 leftover는 script가 있어도 `#stage` hoist. section/main unwrap. snap/overflow-x+1920은 swipe 아님. vw nudge 거부. Zhangzara `#deck`·공식 IB 유지.
 - **완료 (루프363):** 1920 leftover + leaked `min-width:100vw`는 swipe가 아님. forceReveal 숨김 · scrollGo nudge 거부 · pan reset은 이동 후.
 - **완료 (루프361):** neutralize column `#stage` leftover를 가로 스트립으로 오인하지 않음. host ←/→는 2장을 그림. 100vw nudge 거부. F3/281 유지.
 - **완료 (루프355):** 칸 번호 `스무 번째` 빈 카드. 번호+본문 유지. 문자·서수 leftover 트랙 닫음.
@@ -1529,6 +1536,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | heal: 제목만 있는 카드 형제 제거 | ☑ 루프354 |
 | persist/preview: 칸 번호만 있는 3열 카드(스무 번째) | ☑ 루프355 |
 | preview: neutralize column `#stage` leftover host ←/→ nudge | ☑ 루프361 |
+| preview: 1920 leftover `#stage`+script / section unwrap / snap leftover host ←/→ nudge | ☑ 루프366 |
 | preview: 1920 leftover + leaked 100vw host ←/→ nudge | ☑ 루프363 |
 | heal: 혼합 행의 `<br>`-only 본문 크롬 카드만 제거 | ☑ 루프342 |
 | heal: 빈 div / `&nbsp;` 본문 슬롯도 미채움 | ☑ 루프343 |
@@ -1559,7 +1567,17 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프363 · 1920 leftover + leaked 100vw)
+## 이번 루프 (루프366 · 1920 leftover `#stage` + swipe 지문)
+
+- [x] 1920 leftover는 author script가 있어도 `#stage` hoist
+- [x] `section`/`main` `#stage` unwrap
+- [x] `scroll-snap-x` / body overflow-x + 1920은 swipe 아님. Zhangzara `#deck` 100vw는 compact 유지
+- [x] vw/`innerWidth` nudge 거부 · 보이는 iframe 먼저
+- [x] 공식 IB example.html swipe `#stage` · simple-deck · F3/281 유지
+- [x] compact-api-stacked-deck · srcdoc-deck-bridge-transform-driven · contracts hoist 루프366
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+
+## 직전 루프 (루프363 · 1920 leftover + leaked 100vw)
 
 - [x] 1920 캔버스 leftover는 `min-width:100vw`만으로 swipe 아님
 - [x] dead leftover `forceReveal` 실제 숨김

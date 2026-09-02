@@ -70,6 +70,47 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
   });
 
+  it('does not treat 1920 canvas leftovers with leaked width/flex 100vw or scroll-snap-x as swipe strips', () => {
+    const widthVw = [
+      '<!doctype html><html><head><style>.slide{width:100vw;height:100vh}</style></head><body>',
+      '<section class="slide" style="width:1920px;height:1080px">One</section>',
+      '<section class="slide" style="width:1920px;height:1080px">Two</section>',
+      '</body></html>',
+    ].join('');
+    const flexVw = [
+      '<!doctype html><html><head><style>.slide{flex:0 0 100vw;height:100vh}</style></head><body>',
+      '<section class="slide" style="width:1920px;height:1080px">One</section>',
+      '<section class="slide" style="width:1920px;height:1080px">Two</section>',
+      '</body></html>',
+    ].join('');
+    const snap = [
+      '<!doctype html><html><head><style>body{scroll-snap-type:x mandatory}.slide{min-height:100vh}</style></head><body>',
+      '<section class="slide" style="width:1920px;height:1080px">One</section>',
+      '<section class="slide" style="width:1920px;height:1080px">Two</section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeAuthoredHorizontalSwipeDeck(widthVw)).toBe(false);
+    expect(looksLikeCompactApiStackedDeck(widthVw)).toBe(true);
+    expect(looksLikeAuthoredHorizontalSwipeDeck(flexVw)).toBe(false);
+    expect(looksLikeCompactApiStackedDeck(flexVw)).toBe(true);
+    expect(looksLikeAuthoredHorizontalSwipeDeck(snap)).toBe(false);
+    expect(looksLikeCompactApiStackedDeck(snap)).toBe(true);
+  });
+
+  it('does not treat html,body row-flex overflow-x leftovers as swipe when slides are 1920 canvases', () => {
+    const html = [
+      '<!doctype html><html><head><style>',
+      'html,body{margin:0;display:flex;overflow-x:auto;min-height:100vh}',
+      '.slide{flex:0 0 100vw;min-height:100vh}',
+      '</style></head><body>',
+      '<section class="slide" style="width:1920px;height:1080px">One</section>',
+      '<section class="slide" style="width:1920px;height:1080px">Two</section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeAuthoredHorizontalSwipeDeck(html)).toBe(false);
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+  });
+
   it('rejects horizontal scroll-snap simple-deck templates', () => {
     const html = readFileSync(resolve(repoRoot, 'design-templates/simple-deck/assets/template.html'), 'utf8');
     expect(looksLikeAuthoredHorizontalSwipeDeck(html)).toBe(true);

@@ -2351,24 +2351,34 @@ export function buildTemplateClonedDeckHtml(
 export function hoistCloneSlidesOutOfFlexTrack(html: string): string {
   let out = String(html ?? '');
   if (!out) return out;
-  const passes: RegExp[] = [
-    /<div\b[^>]*(?:\bclass\s*=\s*(["'])[^"'<>]*\b(?:stage|deck-stage|slides-container|deck-track)\b[^"'<>]*\1|\bid\s*=\s*(["'])(?:stage|slides-container|deck-track)\2)[^>]*>/i,
-    /<div\b[^>]*(?:\bclass\s*=\s*(["'])[^"'<>]*\bdeck\b[^"'<>]*\1|\bid\s*=\s*(["'])deck\2)[^>]*>/i,
-  ];
-  for (const wrapperOpenRe of passes) {
-    out = unwrapSlideOnlyContainer(out, wrapperOpenRe);
+  const tags = ['div', 'section', 'main'] as const;
+  const trackClassOrId =
+    '(?:\\bclass\\s*=\\s*(["\'])[^"\'<>]*\\b(?:stage|deck-stage|slides-container|deck-track)\\b[^"\'<>]*\\1|\\bid\\s*=\\s*(["\'])(?:stage|slides-container|deck-track)\\2)';
+  const deckClassOrId =
+    '(?:\\bclass\\s*=\\s*(["\'])[^"\'<>]*\\bdeck\\b[^"\'<>]*\\1|\\bid\\s*=\\s*(["\'])deck\\2)';
+  for (const tag of tags) {
+    out = unwrapSlideOnlyContainer(
+      out,
+      new RegExp(`<${tag}\\b[^>]*${trackClassOrId}[^>]*>`, 'i'),
+      tag,
+    );
+    out = unwrapSlideOnlyContainer(
+      out,
+      new RegExp(`<${tag}\\b[^>]*${deckClassOrId}[^>]*>`, 'i'),
+      tag,
+    );
   }
   return out;
 }
 
-function unwrapSlideOnlyContainer(source: string, wrapperOpenRe: RegExp): string {
+function unwrapSlideOnlyContainer(source: string, wrapperOpenRe: RegExp, tag: string): string {
   const openMatch = wrapperOpenRe.exec(source);
   if (!openMatch || openMatch.index == null) return source;
 
   const openStart = openMatch.index;
   const openEnd = openStart + openMatch[0].length;
 
-  const tagRe = /<\/?div\b[^>]*>/gi;
+  const tagRe = new RegExp(`</?${tag}\\b[^>]*>`, 'gi');
   tagRe.lastIndex = openEnd;
   let depth = 1;
   let closeStart = -1;

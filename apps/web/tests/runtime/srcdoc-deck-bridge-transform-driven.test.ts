@@ -644,11 +644,10 @@ h1.display { font-size: 72px; }
   });
 
   it('host next reveals slide 2 on a neutralized column #stage leftover, not a first-page translate nudge', async () => {
-    // MiniMax clone leftovers keep `#stage` plus a swipe <script>, so
-    // buildSrcdoc skips hoistCloneSlidesOutOfFlexTrack. LOOK_NEUTRALIZE then
-    // forces `.stage { flex-direction:column }`. Treating that column as an
-    // IB horizontal strip applies translateX(-100vw|-1920px) inside an ~800px
-    // iframe — the first page just shifts. Host ←/→ must paint slide 2.
+    // MiniMax clone leftovers keep `#stage` plus a swipe <script>. A 1920
+    // canvas still hoists the track so host next uses display toggle.
+    // Without that, LOOK_NEUTRALIZE column `#stage` was treated as an IB
+    // strip and translateX(-100vw|-1920px) only shifted page 1.
     const html = `<!doctype html><html><head></head><body>
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; }
@@ -799,5 +798,78 @@ h1.display { font-size: 72px; }
       .map((call) => call[0])
       .filter((message) => message?.type === 'od:slide-state');
     expect(slideStates.at(-1)).toMatchObject({ active: 1, count: 3 });
+  });
+
+  it('hoists a 1920 leftover <section id="stage"> even when a dead 100vw script remains', async () => {
+    const html = `<!doctype html><html><head>
+<style>.slide{width:100vw;height:100vh}</style>
+</head><body>
+<section class="stage" id="stage">
+  <section class="slide" style="width:1920px;height:1080px">Page one topic</section>
+  <section class="slide" style="width:1920px;height:1080px">Page two topic</section>
+</section>
+<script>
+  (function () {
+    var stage = document.getElementById('stage');
+    var i = 0;
+    window.go = function () {
+      i += 1;
+      if (stage) stage.style.transform = 'translateX(-' + (i * 100) + 'vw)';
+    };
+  })();
+</script>
+</body></html>`;
+    const srcdoc = buildSrcdoc(html, {
+      deck: true,
+      userBrief: '영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘',
+    });
+    expect(srcdoc).toContain('compactStackedDeckEnabled = true');
+    expect(srcdoc).not.toMatch(/<section\b[^>]*\bid\s*=\s*["']stage["']/i);
+    const script = extractDeckBridgeScript(srcdoc);
+    const dom = new JSDOM(srcdoc, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const win = dom.window;
+    const parentPostMessage = vi.fn();
+    Object.defineProperty(win, 'parent', {
+      configurable: true,
+      value: { postMessage: parentPostMessage },
+    });
+    Object.defineProperty(win, 'innerWidth', { configurable: true, value: 800 });
+    Object.defineProperty(win, 'innerHeight', { configurable: true, value: 600 });
+    const slides = Array.from(win.document.querySelectorAll<HTMLElement>('.slide'));
+    expect(slides.length).toBe(2);
+    slides.forEach((slide, index) => {
+      Object.defineProperty(slide, 'offsetWidth', { configurable: true, value: 1920 });
+      Object.defineProperty(slide, 'offsetHeight', { configurable: true, value: 1080 });
+      Object.defineProperty(slide, 'offsetTop', { configurable: true, value: index * 1080 });
+    });
+    new win.Function(script).call(win);
+    win.dispatchEvent(new win.Event('load'));
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 800, height: 600, scale: 1, layoutFit: false },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 80));
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:slide', action: 'next' },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 120));
+    const painted = Array.from(win.document.querySelectorAll<HTMLElement>('.slide'));
+    const visible = painted.filter((slide) => slide.style.display !== 'none');
+    expect(visible.some((slide) => slide.textContent?.includes('Page two'))).toBe(true);
+    expect(visible.every((slide) => !slide.textContent?.includes('Page one'))).toBe(true);
+    expect(win.document.documentElement.scrollLeft || 0).toBe(0);
+    const slideStates = parentPostMessage.mock.calls
+      .map((call) => call[0])
+      .filter((message) => message?.type === 'od:slide-state');
+    expect(slideStates.at(-1)).toMatchObject({ active: 1, count: 2 });
+  });
+
+  it('keeps official IB example.html #stage so native swipe still owns paging', async () => {
+    const html = await readFile(
+      new URL('../../../../plugins/_official/examples/ib-pitch-book/example.html', import.meta.url),
+      'utf8',
+    );
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    expect(srcdoc).toMatch(/<div\b[^>]*\bid\s*=\s*["']stage["']/i);
+    expect(srcdoc).not.toContain('compactStackedDeckEnabled = true');
   });
 });

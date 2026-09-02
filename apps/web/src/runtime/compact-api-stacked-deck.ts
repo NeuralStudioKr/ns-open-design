@@ -122,21 +122,31 @@ export function looksLikeAuthoredScrollNavigateDeck(html: string): boolean {
  */
 export function looksLikeAuthoredHorizontalSwipeDeck(html: string): boolean {
   if (!html) return false;
-  if (/scroll-snap-type\s*:\s*x\b/i.test(html)) return true;
+  const pinnedCanvas = looksLikeFixedCanvasSlideDeck(html);
+  // MiniMax/clone leftovers copy viewport-swipe CSS onto a 1920x1080 canvas.
+  // That is not a simple-deck strip — letterbox + display toggle, otherwise
+  // host next only nudges page 1. Real simple-decks have no 1920 pin.
+  // Do not treat `.slide { width:100vw }` / `flex:0 0 100vw` as swipe —
+  // Zhangzara `#deck` tracks use those rules and must stay compact-stacked.
+  if (/scroll-snap-type\s*:\s*x\b/i.test(html) && !pinnedCanvas) return true;
 
   const css = extractCssBlocks(html);
   if (css) {
-    if (/scroll-snap-type\s*:\s*x\b/i.test(css)) return true;
-    if (new RegExp(`${DECK_SLIDE_HOST_CSS_CLASS}[^{]*\\{[^}]*min-width\\s*:\\s*100vw\\b`, 'i').test(css)) {
-      // MiniMax/clone leftovers copy template min-width:100vw onto a
-      // 1920x1080 canvas. That is not a viewport swipe strip — letterbox
-      // + display toggle, otherwise host next only nudges page 1.
-      if (!looksLikeFixedCanvasSlideDeck(html)) return true;
+    if (/scroll-snap-type\s*:\s*x\b/i.test(css) && !pinnedCanvas) return true;
+    if (
+      new RegExp(`${DECK_SLIDE_HOST_CSS_CLASS}[^{]*\\{[^}]*min-width\\s*:\\s*100vw\\b`, 'i').test(css)
+      && !pinnedCanvas
+    ) {
+      return true;
     }
     const rowFlexWithHorizontalScroll =
       /(?:html\s*,\s*body|body|html)\s*\{[^}]*\bdisplay\s*:\s*flex\b[^}]*\boverflow-x\s*:\s*(?:auto|scroll|overlay)\b/i.test(css)
       || /(?:html\s*,\s*body|body|html)\s*\{[^}]*\boverflow-x\s*:\s*(?:auto|scroll|overlay)\b[^}]*\bdisplay\s*:\s*flex\b/i.test(css);
-    if (rowFlexWithHorizontalScroll && !/(?:html\s*,\s*body|body)\s*\{[^}]*flex-direction\s*:\s*column(?:-reverse)?\b/i.test(css)) {
+    if (
+      rowFlexWithHorizontalScroll
+      && !/(?:html\s*,\s*body|body)\s*\{[^}]*flex-direction\s*:\s*column(?:-reverse)?\b/i.test(css)
+      && !pinnedCanvas
+    ) {
       return true;
     }
   }
@@ -145,6 +155,7 @@ export function looksLikeAuthoredHorizontalSwipeDeck(html: string): boolean {
   if (
     /\bstyle\s*=\s*['"][^'"]*\bdisplay\s*:\s*flex\b[^'"]*\boverflow-x\s*:\s*(?:auto|scroll|overlay)\b/i.test(bodyOpenTag)
     && !/flex-direction\s*:\s*column(?:-reverse)?\b/i.test(bodyOpenTag)
+    && !pinnedCanvas
   ) {
     return true;
   }
@@ -179,7 +190,8 @@ function looksLikeBareDeckViewportTrack(html: string): boolean {
   );
 }
 
-function looksLikeFixedCanvasSlideDeck(html: string): boolean {
+/** 2+ slides pinned to a 1920x1080 canvas — leftover swipe CSS is not native. */
+export function looksLikeFixedCanvasSlideDeck(html: string): boolean {
   const pinned = extractSlideInlineStyles(html).filter(hasFixedCanvasSizing);
   if (pinned.length >= 2) return true;
   if (countSlideElements(html) < 2) return false;

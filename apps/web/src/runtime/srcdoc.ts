@@ -54,6 +54,7 @@ import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
 import {
   injectStackedDeckViewport,
   looksLikeCompactApiStackedDeck,
+  looksLikeFixedCanvasSlideDeck,
   prepareCompactStackedDeckPreviewHtml,
   wrapPreviewHtmlShell,
 } from './compact-api-stacked-deck';
@@ -260,9 +261,11 @@ function buildSrcdocUnsafe(
     // scripts were stripped. Hoist those slides to `<body>` so preview
     // classifies as compact-stacked and host next uses display toggle
     // instead of translateX(-1920px) inside an ~800px iframe (0826-N01 F3).
-    // Author catalogs that still ship a swipe `<script>` are left intact.
+    // Author catalogs that still ship a swipe `<script>` on a viewport
+    // strip (no 1920 canvas) are left intact. 1920 leftovers plus a dead
+    // 100vw script must still hoist — otherwise host next only nudges page 1.
     try {
-      if (!/<script\b/i.test(html)) {
+      if (!/<script\b/i.test(html) || looksLikeFixedCanvasSlideDeck(html)) {
         html = hoistCloneSlidesOutOfFlexTrack(html);
       }
     } catch (_) {
@@ -3446,24 +3449,37 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     }
     return false;
   }
+  function slideCanvasPx(list){
+    var pin = authoredFixedCanvasPx();
+    if (pin >= 1600) return pin;
+    try {
+      var first = list && list[0];
+      if (!first) return 0;
+      var st = String(first.getAttribute && first.getAttribute('style') || '');
+      var m = st.match(/width\\s*:\\s*(\\d+(?:\\.\\d+)?)px/i);
+      if (m) {
+        var authored = parseFloat(m[1]);
+        if (authored >= 1600) return authored;
+      }
+      if (window.getComputedStyle) {
+        var cs = window.getComputedStyle(first);
+        var cw = parseFloat(cs.minWidth) || parseFloat(cs.width) || 0;
+        if (cw >= 1600) return cw;
+      }
+      var laid = first.offsetWidth || 0;
+      if (laid >= 1600) return laid;
+    } catch (_) {}
+    return 0;
+  }
+  function vwStepWouldNudgeCanvas(list){
+    var canvas = slideCanvasPx(list);
+    var vw = window.innerWidth || 0;
+    return canvas >= 1600 && vw > 0 && vw + 48 < canvas;
+  }
   function isScrollDeck(){
     var list = slides();
     if (transformTrack(list)) return false;
-    // A 1920 canvas wider than the iframe is letterbox overflow, not a
-    // multi-page strip. scrollGo(innerWidth) would only nudge page 1.
-    try {
-      if (authoredFixedCanvasPx() >= 1600) return false;
-      var first = list && list[0];
-      if (first) {
-        var pinStyle = String(first.getAttribute && first.getAttribute('style') || '');
-        if (/width\\s*:\\s*1920px/i.test(pinStyle)) return false;
-        if (window.getComputedStyle) {
-          var cs = window.getComputedStyle(first);
-          var cw = parseFloat(cs.minWidth) || parseFloat(cs.width) || 0;
-          if (cw >= 1600) return false;
-        }
-      }
-    } catch (_) {}
+    if (vwStepWouldNudgeCanvas(list) || slideCanvasPx(list) >= 1600) return false;
     var targets = scrollTargets();
     for (var i=0; i<targets.length; i++) {
       var candidate = targets[i];
@@ -4032,7 +4048,12 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
         if (el.getAttribute('data-od-sandbox-shim') != null) continue;
         if (el.getAttribute('data-od-manual-edit-bridge') != null) continue;
         if (String(el.getAttribute('src') || '').trim()) return true;
-        if (String(el.textContent || '').trim()) return true;
+        var text = String(el.textContent || '');
+        // Inert leftover IIFEs (window.n = 0) must not block stacked
+        // forceReveal. Real swipe drivers mention a translate/scroll step.
+        if (/translateX|translate3d|100vw|scrollTo|scrollLeft|scrollBy|scrollIntoView/i.test(text)) {
+          return true;
+        }
       }
     } catch (_) {}
     return false;
@@ -4134,7 +4155,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
       }
       var pinX = authoredFixedCanvasPx();
       var vwX = window.innerWidth || 0;
-      if (stepX <= 0 && pinX >= 1600 && vwX + 48 < pinX) return false;
+      if (stepX <= 0 && (vwStepWouldNudgeCanvas(list) || (pinX >= 1600 && vwX + 48 < pinX))) return false;
       if (stepX > 0) {
         track.style.transform = 'translateX(' + (-target * stepX) + 'px)';
       } else {
@@ -4506,7 +4527,10 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
   function scrollGo(i){
     var list = slides();
     var next = Math.max(0, Math.min(list.length - 1, i));
-    var left = next * window.innerWidth;
+    if (vwStepWouldNudgeCanvas(list)) return;
+    var step = slideCanvasPx(list);
+    var vw = window.innerWidth || 0;
+    var left = next * (step >= 600 ? step : vw);
     var targets = scrollTargets();
     for (var t=0; t<targets.length; t++) {
       try {

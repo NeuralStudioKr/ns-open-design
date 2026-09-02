@@ -14128,6 +14128,9 @@ function HtmlViewer({
       if (!win || targets.includes(win)) return;
       targets.push(win);
     };
+    // Visible frame first so a hidden sibling cannot swallow the only
+    // successful next as a leftover translate nudge.
+    add(resolveActiveDeckPreviewIframe()?.contentWindow);
     add(iframeRef.current?.contentWindow);
     add(srcDocPreviewIframeRef.current?.contentWindow);
     add(urlPreviewIframeRef.current?.contentWindow);
