@@ -20,10 +20,15 @@ vi.mock('../../src/providers/registry', () => ({
 }));
 
 vi.mock('../../src/runtime/exports', () => ({
-  exportAsHtml: vi.fn(),
-  exportAsPdf: vi.fn(),
-  exportAsZip: vi.fn(),
+  captureHostIframeSnapshot: vi.fn().mockResolvedValue(null),
+  exportAsHtml: vi.fn().mockResolvedValue(undefined),
+  exportAsImage: vi.fn(),
+  exportAsPdf: vi.fn().mockResolvedValue(undefined),
+  exportAsZip: vi.fn().mockResolvedValue(undefined),
+  formatExportFailureMessageForUser: (err: unknown) =>
+    err instanceof Error ? err.message : String(err ?? ''),
   openSandboxedPreviewInNewTab: vi.fn(),
+  requestPreviewSnapshot: vi.fn().mockResolvedValue(null),
 }));
 
 const originalIntersectionObserver = globalThis.IntersectionObserver;
@@ -294,15 +299,45 @@ describe('ExamplesTab', () => {
     );
   });
 
+  it('surfaces card PDF export failures in a banner', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    vi.mocked(exportAsPdf).mockRejectedValueOnce(
+      new Error('팝업이 차단되었습니다. 주소창에서 팝업을 허용한 뒤 다시 시도해 주세요.'),
+    );
+
+    renderExamples();
+
+    const card = screen.getByTestId('example-card-live-dashboard');
+    fireEvent.mouseEnter(card);
+
+    const shareButton = within(card).getByRole('button', { name: 'Share ▾' }) as HTMLButtonElement;
+    await waitFor(() => {
+      expect(shareButton.disabled).toBe(false);
+    });
+
+    fireEvent.click(shareButton);
+    fireEvent.click(screen.getByRole('menuitem', { name: /Export as PDF/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId('example-export-error-banner-live-dashboard').textContent,
+      ).toContain('팝업이 차단되었습니다');
+    });
+    expect(alertSpy).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
+  });
+
   it('opens the full preview modal and exercises its toolbar actions', async () => {
     renderExamples();
 
     const card = screen.getByTestId('example-card-live-dashboard');
     fireEvent.click(within(card).getByRole('button', { name: /Open preview/ }));
 
-    const dialog = await screen.findByRole('dialog', { name: 'live-dashboard preview' });
+    const dialog = await screen.findByRole('dialog', {
+      name: /live-dashboard (preview|미리보기)/i,
+    });
     await waitFor(() => {
-      expect(screen.getByTitle('live-dashboard Preview')).toBeTruthy();
+      expect(within(dialog).getByTitle(/live-dashboard (preview|미리보기)/i)).toBeTruthy();
     });
 
     fireEvent.click(within(dialog).getByRole('button', { name: /Fullscreen/i }));
@@ -312,7 +347,9 @@ describe('ExamplesTab', () => {
 
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(modal.classList.contains('ds-modal-fullscreen')).toBe(false);
-    expect(screen.getByRole('dialog', { name: 'live-dashboard preview' })).toBeTruthy();
+    expect(
+      screen.getByRole('dialog', { name: /live-dashboard (preview|미리보기)/i }),
+    ).toBeTruthy();
 
     fireEvent.click(within(dialog).getByRole('button', { name: /Fullscreen/i }));
     expect(modal.classList.contains('ds-modal-fullscreen')).toBe(true);
@@ -352,6 +389,8 @@ describe('ExamplesTab', () => {
     );
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
-    expect(screen.queryByRole('dialog', { name: 'live-dashboard preview' })).toBeNull();
+    expect(
+      screen.queryByRole('dialog', { name: /live-dashboard (preview|미리보기)/i }),
+    ).toBeNull();
   });
 });

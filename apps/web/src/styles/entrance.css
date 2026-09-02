@@ -369,6 +369,7 @@
 .memory-noprovider-banner,
 .df-upload-banner,
 .ds-modal-export-banner,
+.example-export-banner,
 .mcp-error {
   animation: od-fade-slide-down 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
 }

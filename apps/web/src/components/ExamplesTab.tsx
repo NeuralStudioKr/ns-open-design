@@ -7,7 +7,7 @@ import {
 } from '../i18n/content';
 import type { Dict } from '../i18n/types';
 import { fetchSkillExample } from '../providers/registry';
-import { exportAsHtml, exportAsPdf, exportAsZip } from '../runtime/exports';
+import { exportAsHtml, exportAsPdf, exportAsZip, formatExportFailureMessageForUser } from '../runtime/exports';
 import { buildSrcdoc } from '../runtime/srcdoc';
 import type { SkillSummary, Surface } from '../types';
 import { Icon } from './Icon';
@@ -527,6 +527,7 @@ function ExampleCard({
   const { locale, t } = useI18n();
   const [hovered, setHovered] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
   const [intersected, setIntersected] = useState(false);
   const shareRef = useRef<HTMLDivElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
@@ -698,7 +699,10 @@ function ExampleCard({
                   role="menuitem"
                   onClick={() => {
                     setShareOpen(false);
-                    void exportAsPdf(html, exportTitle, { deck: isDeck }).catch(() => {});
+                    setExportNotice(null);
+                    void Promise.resolve(exportAsPdf(html, exportTitle, { deck: isDeck })).catch((err) => {
+                      setExportNotice(formatExportFailureMessageForUser(err));
+                    });
                   }}
                 >
                   <span className="share-menu-icon">📄</span>
@@ -749,6 +753,18 @@ function ExampleCard({
             ) : null}
           </div>
         </div>
+        {exportNotice ? (
+          <div
+            className="example-export-banner"
+            data-testid={`example-export-error-banner-${skill.id}`}
+            role="alert"
+          >
+            <span>{exportNotice}</span>
+            <button type="button" onClick={() => setExportNotice(null)}>
+              {t('common.close')}
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

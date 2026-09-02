@@ -8,6 +8,7 @@ const fileWorkspace = readFileSync(join(here, '../../src/components/FileWorkspac
 const chatPane = readFileSync(join(here, '../../src/components/ChatPane.tsx'), 'utf8');
 const designFiles = readFileSync(join(here, '../../src/components/DesignFilesPanel.tsx'), 'utf8');
 const previewModal = readFileSync(join(here, '../../src/components/PreviewModal.tsx'), 'utf8');
+const examplesTab = readFileSync(join(here, '../../src/components/ExamplesTab.tsx'), 'utf8');
 const exportsSrc = readFileSync(join(here, '../../src/runtime/exports.ts'), 'utf8');
 
 describe('Teamver embed native dialog replacements', () => {
@@ -41,6 +42,13 @@ describe('Teamver embed native dialog replacements', () => {
     expect(previewModal).toContain('common.exportImageFailed');
     expect(previewModal).toContain('formatExportFailureMessageForUser');
     expect(previewModal).toContain('preview-export-error-banner');
+  });
+
+  it('ExamplesTab surfaces PDF export failures in a banner', () => {
+    expect(examplesTab).not.toMatch(/\.catch\(\(\) => \{\}\)/);
+    expect(examplesTab).toContain('setExportNotice');
+    expect(examplesTab).toContain('formatExportFailureMessageForUser');
+    expect(examplesTab).toContain('example-export-error-banner');
   });
 
   it('ChatPane deletes a conversation from a viewer modal', () => {
