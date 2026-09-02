@@ -139,9 +139,9 @@ import {
 } from './teamver/createProjectStreamHandoff';
 import { rememberTeamverProjectConversation } from './teamver/teamverProjectConversationMemory';
 import {
-  buildTemplateCloneContentFillSeed,
+  buildTemplateClonePromptFillSeed,
   clearTemplateCloneContentFillQueue,
-  queueTemplateCloneContentFill,
+  queueTemplateClonePromptFill,
   withoutCanonicalDeckAttachments,
 } from './teamver/templateCloneContentFill';
 import {
@@ -2735,7 +2735,7 @@ function AppInner() {
                 ? input.metadata.selectedDeckTemplateTitle.trim()
                 : '';
             const userFacingRequest = extractUserFacingCreateRequest(derivedPendingPrompt);
-            queuedFillSeed = buildTemplateCloneContentFillSeed({
+            queuedFillSeed = buildTemplateClonePromptFillSeed({
               userInstruction: userFacingRequest || null,
               sourceBrief,
               pendingPrompt: derivedPendingPrompt ?? null,
@@ -2743,7 +2743,7 @@ function AppInner() {
               hasSourceMaterial: true,
               slideCountHint: slideCountHintFromInputs,
             });
-            queueTemplateCloneContentFill({
+            queueTemplateClonePromptFill({
               projectId: result.project.id,
               seed: queuedFillSeed,
               attachments: firstMessageAttachments,
@@ -2872,7 +2872,7 @@ function AppInner() {
           || sanitizeTemplateCloneDeckTitle(userFacingRequest.split('\n')[0])
           || sanitizeTemplateCloneDeckTitle(homeDriveSourceAsset?.filename)
           || null;
-        queuedFillSeed = buildTemplateCloneContentFillSeed({
+        queuedFillSeed = buildTemplateClonePromptFillSeed({
           userInstruction: userFacingRequest || null,
           sourceBrief,
           pendingPrompt: derivedPendingPrompt ?? null,
@@ -2880,7 +2880,7 @@ function AppInner() {
           hasSourceMaterial,
           slideCountHint: slideCountHintFromInputs,
         });
-        queueTemplateCloneContentFill({
+        queueTemplateClonePromptFill({
           projectId: result.project.id,
           seed: queuedFillSeed,
           attachments: firstMessageAttachments,

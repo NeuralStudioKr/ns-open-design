@@ -13924,17 +13924,13 @@ export function ProjectView({
       /* sessionStorage may be unavailable; treat as manual flow. */
     }
     autoSendFirstMessageRef.current = isAutoSend;
+    const queuedSeedAtMount = readQueuedAutoSendSeed(project.id);
     const fillQueuedAtMount =
       isTemplateCloneContentFillQueued(project.id)
-      || (
-        project.metadata
-        && typeof project.metadata === 'object'
-        && (project.metadata as { templateCloneContentFillPending?: unknown })
-          .templateCloneContentFillPending === true
-      );
+      || isTemplateCloneContentFillPrompt(queuedSeedAtMount);
     autoSendSeedRef.current = isAutoSend
       ? resolveTemplateCloneAutoSendSeed({
-          queuedFillSeed: readQueuedAutoSendSeed(project.id),
+          queuedFillSeed: queuedSeedAtMount,
           pendingPrompt: project.pendingPrompt,
           fillQueued: fillQueuedAtMount,
         })
@@ -14156,12 +14152,7 @@ export function ProjectView({
       isTemplateCloneContentFillQueued(project.id)
       || isTemplateCloneContentFillPrompt(queuedFillSeed)
       || isTemplateCloneContentFillPrompt(autoSendSeedRef.current)
-      || (
-        project.metadata
-        && typeof project.metadata === 'object'
-        && (project.metadata as { templateCloneContentFillPending?: unknown })
-          .templateCloneContentFillPending === true
-      );
+      || isTemplateCloneContentFillPrompt(project.pendingPrompt);
     const seed = resolveTemplateCloneAutoSendSeed({
       queuedFillSeed:
         autoSendSeedRef.current
@@ -14236,7 +14227,13 @@ export function ProjectView({
         autoSendInFlightRef.current = false;
         clearTemplateCloneContentFillQueue(project.id);
         autoSendAttachmentsRef.current = [];
-        if (fillQueued) {
+        if (
+          (fillQueued || queuedFillSeed || autoSendSeedRef.current)
+          && project.metadata
+          && typeof project.metadata === 'object'
+          && (project.metadata as { templateCloneContentFillPending?: unknown })
+            .templateCloneContentFillPending === true
+        ) {
           void patchProject(project.id, {
             metadata: {
               ...(project.metadata && typeof project.metadata === 'object' ? project.metadata : {}),

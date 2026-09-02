@@ -1,4 +1,4 @@
-# 2026-09-01 현재 판단 — 템플릿 Clone Content-Fill 롤백 스위치
+# 2026-09-02 현재 판단 — 템플릿 Clone Content-Fill 롤백 스위치
 
 ## 배경
 
@@ -9,15 +9,16 @@
 
 - 기존 경로: `POST /api/projects/:id/template-clone-deck`
   - 기본값이며 `prompt-fill`로 metadata를 남긴다.
-  - FE는 기존처럼 compact content-fill AI turn을 이어서 보낸다.
+  - 2026-09-02 기준 FE는 JSON outline marker를 붙이지 않는 `prompt-fill` 후속 AI turn을 보낸다.
+  - 이 후속 turn은 완성된 `<artifact type="deck" identifier="deck">` HTML을 생성하게 하며, ProjectView의 JSON slot-fill terminal recovery를 타지 않는다.
 - 신규 opt-in 경로: `POST /api/projects/:id/template-clone-content-fill`
   - `contentFillMode=deterministic-fill`로 metadata를 남긴다.
   - `deck.html.artifact.json`과 project metadata에 `templateCloneContentFilled=true`, `templateCloneContentFillPending=false`, `templateCloneFillMode=deterministic`을 기록한다.
   - FE는 후속 AI fill turn을 건너뛰고 바로 `deck.html`을 연다.
 - FE 스위치:
   - 기본값: `prompt`
-- `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=deterministic`이면 신규 경로 사용.
-- env가 비어 있는 로컬/QA 빌드에서는 `localStorage.od:template-clone-fill-mode=deterministic`으로도 신규 경로를 켤 수 있다. 단, env가 `prompt`로 명시된 배포 빌드에서는 env가 우선한다.
+  - `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=deterministic`이면 신규 경로 사용.
+  - env가 비어 있는 로컬/QA 빌드에서는 `localStorage.od:template-clone-fill-mode=deterministic`으로도 신규 경로를 켤 수 있다. 단, env가 `prompt`로 명시된 배포 빌드에서는 env가 우선한다.
 
 ## 롤백
 
@@ -34,7 +35,7 @@
 
 ## 검증 항목
 
-- 기본값에서 기존 prompt-fill 경로가 유지되는지 확인.
+- 기본값에서 기존 prompt-fill 경로가 JSON outline marker 없이 완성 deck artifact를 요청하는지 확인.
 - deterministic opt-in에서 후속 AI fill turn이 자동 전송되지 않는지 확인.
 - metadata stamp가 `templateCloneContentFilled=true`로 남아 재진입/새로고침 시 다시 fill을 시작하지 않는지 확인.
 - 템플릿 preview clone 실패 시 기존 복구 로직과 단건 retry가 유지되는지 확인.
