@@ -43,8 +43,9 @@ article[data-screen-label] {
   box-sizing: border-box !important;
   overflow: visible !important;
   contain: layout size;
-  /* Transparent slides show the dark Teamver letterbox. Kit --bg wins when set. */
-  background-color: var(--bg, #ffffff);
+  /* Size-only pin — do not paint. Kit .slide-N washes and inline per-slide
+   * backgrounds must win. Letterbox paper is data-od-slide-surface-bleed on
+   * html/body (loop379). */
 }
 /* Pitch-deck / studio full-bleed wash. Compact flatten used to force
    cover-bg to position:relative with no box — the gradient collapsed

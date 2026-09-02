@@ -780,6 +780,24 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(salvaged).toMatch(/width:48px;height:48px/);
   });
 
+  it('reparents orphan cards into early-closed repeat() grids (루프379)', () => {
+    const html = [
+      '<section class="slide" data-screen-label="05 How it works">',
+      '<div style="display:grid;grid-template-columns:repeat(3, minmax(0,1fr));gap:24px">',
+      '<div style="background:#FFFDF5;border:4px solid #000;padding:28px"><h3>워크스페이스 생성</h3><p>팀 구성</p></div>',
+      '<div style="background:#FFFDF5;border:4px solid #000;padding:28px"><h3>대화 업로드</h3><p>파일 공유</p></div>',
+      '</div>',
+      '<div style="background:#FFFDF5;border:4px solid #000;padding:28px"><h3>AI에게 질문</h3><p>맥락 답변</p></div>',
+      '<div style="background:#FFFDF5;border:4px solid #000;padding:28px"><h3>결과물 생성</h3><p>회의록</p></div>',
+      '<h2>Teamver는 이렇게 작동합니다</h2>',
+      '</section>',
+    ].join('');
+    const salvaged = salvageMalformedMiniMaxSlideMarkup(html);
+    expect(salvaged).toMatch(/grid-template-columns:repeat\(4,/);
+    expect(salvaged).toMatch(/워크스페이스 생성[\s\S]*대화 업로드[\s\S]*AI에게 질문[\s\S]*결과물 생성[\s\S]*<\/div>/);
+    expect(salvaged).toMatch(/결과물 생성[\s\S]*<\/div>\s*<h2>Teamver는 이렇게 작동합니다<\/h2>/);
+  });
+
   it('strips empty class-only ribbon shells without Motif attrs', () => {
     const html = '<section class="slide"><span class="ribbon"></span><h1>개요</h1></section>';
     const cleaned = stripEmptyOfficialMotifInstances(html);

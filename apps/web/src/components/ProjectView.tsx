@@ -175,6 +175,7 @@ import {
   pinDeckSlidesToFixedCanvas,
   renderPluginBlock,
   repairArtifactStyleSheets,
+  salvageMalformedMiniMaxSlideMarkup,
   slimTemplateVisualKitForFill,
   looksLikeLeftoverTemplateDemoDeck,
   looksLikeScrubbedCatalogExampleShell,
@@ -5951,6 +5952,7 @@ export function ProjectView({
           htmlBody,
           runVisiblePromptRef.current || '',
         );
+        htmlBody = salvageMalformedMiniMaxSlideMarkup(htmlBody);
         htmlBody = healAiGeneratedDeckMarkup(
           htmlBody,
           runVisiblePromptRef.current || '',
@@ -8513,8 +8515,9 @@ export function ProjectView({
                           withSalvage,
                           runVisiblePromptRef.current || '',
                         );
+                        const withMalformed = salvageMalformedMiniMaxSlideMarkup(withMagazine);
                         const withAi = healAiGeneratedDeckMarkup(
-                          withMagazine,
+                          withMalformed,
                           runVisiblePromptRef.current || '',
                         );
                         const withSurface = repairDeckSlideSurfaceBleed(withAi);
@@ -10630,8 +10633,9 @@ export function ProjectView({
                       withSalvage,
                       runVisiblePromptRef.current || '',
                     );
+                    const withMalformed = salvageMalformedMiniMaxSlideMarkup(withMagazine);
                     const withAi = healAiGeneratedDeckMarkup(
-                      withMagazine,
+                      withMalformed,
                       runVisiblePromptRef.current || '',
                     );
                     const withSurface = repairDeckSlideSurfaceBleed(withAi);

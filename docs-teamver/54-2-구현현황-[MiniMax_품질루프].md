@@ -42,6 +42,10 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프379 — pin 배경 flatten · persist salvage · orphan repeat grid
+
+pin이 kit `.slide-N` wash를 흰색으로 덮고, salvage가 persist에 없어 깨진 HTML이 disk에 남음. size-only pin + persist salvage + `repeat(N)` 고아 카드 재부모.
+
 ### 루프378 — leftover host-nav 불변식 (첫 장 nudge 재발 봉쇄)
 
 지문 단위 가드(361·363·366·374) 뒤에도 deco residue · clone-size-only · `gotoIndex`가 translate/scroll로 떨어지면 ~800px iframe에서 첫 장만 밀린다. leftover는 `leftoverHostNavMustPaintByDisplay`가 display toggle을 먼저 강제한다. 공식 IB pin-only ROW는 마커/1920 leftover가 없어 F3 `translateX(-1920px)` 유지.

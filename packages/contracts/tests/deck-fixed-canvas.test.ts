@@ -45,6 +45,8 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).not.toMatch(/min-height:\s*100vh/i);
     expect(pinned).toContain(DECK_FIXED_CANVAS_PIN_ATTR);
     expect(pinned).toMatch(/\.slide,[\s\S]*\{[^}]*width:\s*1920px\s*!important/i);
+    // Pin is size-only — kit .slide-N washes must not be flattened to white.
+    expect(pinned).not.toMatch(/background-color:\s*var\(--bg,\s*#ffffff\)/);
     // Motif corner hangs must not be clipped by a forced overflow:hidden pin.
     expect(pinned).not.toMatch(/\.slide\s*\{[^}]*overflow:\s*hidden\s*!important/i);
   });
@@ -191,7 +193,7 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).toMatch(/class="cover-bg"[^>]*position:absolute/);
     expect(pinned).toMatch(/class="cover-bg"[^>]*inset:0/);
     expect(pinned).toMatch(/\.slide \.cover-bg[\s\S]*position:\s*absolute\s*!important/);
-    expect(pinned).toMatch(/background-color:\s*var\(--bg,\s*#ffffff\)/);
+    expect(pinned).not.toMatch(/background-color:\s*var\(--bg,\s*#ffffff\)/);
     expect(pinned).not.toMatch(/translateY\(-50%\)/);
     expect(pinned).toMatch(/class="cover-blob"[^>]*position:absolute/);
     expect(pinned).toContain('삼각함수의 언어와 형상');

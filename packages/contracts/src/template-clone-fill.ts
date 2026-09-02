@@ -1662,6 +1662,7 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string): string {
   next = repairBareHeadingCloses(next);
   next = unwrapBlocksFromHeadings(next);
   next = stripEmptyBorderPadCardShells(next);
+  next = salvageOrphanRepeatGridCards(next);
   next = collapseSparseRepeatGrids(next);
   next = pinDecorativeGradientOverlays(next);
   next = healOrphanRadialCircles(next);
@@ -1716,6 +1717,81 @@ function listDirectChildRanges(html: string, innerStart: number, innerEnd: numbe
     i = closeEnd;
   }
   return ranges;
+}
+
+/**
+ * MiniMax edit turns open `display:grid;grid-template-columns:repeat(N,…)`
+ * then close early and dump the remaining cards as siblings. Reparent those
+ * orphans and bump `repeat(N)` to the filled count (루프379).
+ * Do not swallow PAGE / footer chrome or empty pad shells.
+ */
+function declaredRepeatColumnCount(attrs: string): number {
+  const match = /grid-template-columns\s*:\s*repeat\(\s*(\d+)\s*,/i.exec(attrs);
+  return match ? Number(match[1]) : 0;
+}
+
+function looksLikeBorderPadCard(html: string): boolean {
+  const open = /^<div\b[^>]*>/i.exec(html)?.[0] ?? '';
+  if (!open) return false;
+  if (isSlideChromeFooterCard(html)) return false;
+  const hasBorder = /border\s*:\s*[^;]*solid/i.test(open);
+  const hasPad = /padding\s*:\s*\d/i.test(open);
+  const hasCardClass = /\b(?:card|feature-card|intro-card|team-card|stat-card|step|timeline-step)\b/i.test(open);
+  if (!(hasCardClass || (hasBorder && hasPad))) return false;
+  return visibleCardText(html).length >= 8;
+}
+
+function salvageOrphanRepeatGridCards(html: string): string {
+  return String(html ?? '').replace(
+    /<section\b([^>]*)>([\s\S]*?)<\/section>/gi,
+    (block, attrs: string, inner: string) => {
+      if (!/\bslide\b/i.test(attrs) && !/\bdata-screen-label\b/i.test(attrs)) return block;
+      const gridOpenRe = /<div\b([^>]*grid-template-columns\s*:\s*repeat\(\s*\d+\s*,[^>]*)>/gi;
+      let match: RegExpExecArray | null;
+      while ((match = gridOpenRe.exec(inner)) !== null) {
+        const gridAttrs = match[1] ?? '';
+        const declared = declaredRepeatColumnCount(gridAttrs);
+        if (declared < 2 || declared > 6) continue;
+        const gridStart = match.index;
+        const openEnd = gridStart + match[0].length;
+        const gridCloseEnd = findMatchingClose(inner, openEnd, 'div');
+        if (gridCloseEnd < 0) continue;
+        const closeTag = /<\/div\s*>$/i.exec(inner.slice(0, gridCloseEnd))?.[0] ?? '</div>';
+        const gridInnerEnd = gridCloseEnd - closeTag.length;
+        const children = listDirectChildRanges(inner, openEnd, gridInnerEnd);
+        if (children.length >= declared && children.length >= 2) continue;
+        const orphans: string[] = [];
+        let cursor = gridCloseEnd;
+        let rest = inner.slice(cursor);
+        const cap = Math.max(declared, 6);
+        while (children.length + orphans.length < cap) {
+          const trimmed = rest.replace(/^\s+/, '');
+          const skipped = rest.length - trimmed.length;
+          if (!trimmed.startsWith('<div')) break;
+          const open = /^<div\b[^>]*>/i.exec(trimmed);
+          if (!open) break;
+          const closeEnd = findMatchingClose(trimmed, open[0].length, 'div');
+          if (closeEnd < 0) break;
+          const card = trimmed.slice(0, closeEnd);
+          if (!looksLikeBorderPadCard(card)) break;
+          orphans.push(card);
+          cursor += skipped + closeEnd;
+          rest = inner.slice(cursor);
+        }
+        if (orphans.length < 1) continue;
+        const filled = children.length + orphans.length;
+        const openTag = match[0].replace(
+          /grid-template-columns\s*:\s*repeat\(\s*\d+\s*,/i,
+          `grid-template-columns:repeat(${filled},`,
+        );
+        const before = inner.slice(0, gridStart);
+        const gridInner = inner.slice(openEnd, gridInnerEnd);
+        const after = inner.slice(cursor);
+        return `<section${attrs}>${before}${openTag}${gridInner}${orphans.join('')}${closeTag}${after}</section>`;
+      }
+      return block;
+    },
+  );
 }
 
 /**
