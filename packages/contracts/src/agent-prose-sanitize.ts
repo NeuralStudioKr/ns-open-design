@@ -1196,6 +1196,14 @@ const FAKE_TOOL_NARRATION_RE = new RegExp(
   "gi",
 );
 
+/**
+ * Model self-talk after a failed emit, e.g.
+ * `[Note: A previous tool call returned an internal error. I'll retry emitting the new slides 8–10 now.]`
+ * Bare `Note:` labels (CDN fixture) stay.
+ */
+const AGENT_TOOL_RETRY_BRACKET_NOTE_RE =
+  /\[Note:\s+[^\]]*(?:previous tool call|tool call returned|internal error|retry emitting|I(?:'ll| will) retry)[^\]]*\]/gi;
+
 const FAKE_FILE_READ_NARRATION_RE = /\[(?:读取|Reading|reading)\s+[^\]]{1,240}\]/gi;
 
 const AGENT_RUNTIME_STATUS_LINE_RE =
@@ -1853,6 +1861,7 @@ export function sanitizeLeakedAgentProse(
   out = out.replace(CLOSED_SUFFIX_OPERATOR_RE, "");
   out = out.replace(CLOSED_SUFFIX_ANALYSIS_RE, "");
   out = out.replace(FAKE_TOOL_NARRATION_RE, "");
+  out = out.replace(AGENT_TOOL_RETRY_BRACKET_NOTE_RE, "");
   out = out.replace(FAKE_FILE_READ_NARRATION_RE, "");
   out = out.replace(AGENT_RUNTIME_STATUS_LINE_RE, "");
   out = stripLeakedApiModeFilesystemProse(out);

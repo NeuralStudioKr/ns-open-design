@@ -1301,6 +1301,20 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(sanitizeAssistantProseForDisplay(input)).toBe("Note:\n\nDone");
   });
 
+  it("strips bracketed tool-retry self-notes without dropping Note: labels", () => {
+    const leak =
+      "[Note: A previous tool call returned an internal error. I'll retry emitting the new slides 8–10 now.]";
+    expect(sanitizeLeakedAgentProse(leak)).toBe("");
+    expect(sanitizeAssistantProseForDisplay(`${leak}\n\n${leak}\n\n작성 중.`)).toBe(
+      "작성 중.",
+    );
+    expect(
+      sanitizeAssistantProseForDisplay(
+        'Note:\n<script src="https://cdn.jsdelivr.net/npm/foo"></script>\nDone',
+      ),
+    ).toBe("Note:\n\nDone");
+  });
+
   it("strips closed style/script/html skeleton from chat prose", () => {
     expect(sanitizeAssistantProseForDisplay("Hi <style>.x{color:red}</style> Bye")).toBe(
       "Hi  Bye",
