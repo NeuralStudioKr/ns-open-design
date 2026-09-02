@@ -14,6 +14,7 @@ import { attrsLookLikeDeckOrTemplateSlideHost } from './deck-slide-class.js';
 import {
   catalogExampleShouldBeScrubbed,
   scrubLeftoverCatalogExampleHtml,
+  stripLeafEmptyListAndParagraphShells,
 } from '../template-clone-fill.js';
 
 function destHasHangulTopic(html: string): boolean {
@@ -4078,7 +4079,7 @@ export function scrubTemplatePlaceholderSlots(html: string): string {
 }
 
 /**
- * 루프378 — Unwrap trivial single-child `display:flex`/`display:grid`
+ * 루프379 — Unwrap trivial single-child `display:flex`/`display:grid`
  * `<div>` wrappers.
  *
  * MiniMax edit-turn output for slot-fill decks often wraps a real grid inside
@@ -4282,6 +4283,13 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // an empty outer shell plus a leftover </div>.
   out = unwrapRedundantNestedPeerCards(out, brief);
   out = closeUnclosedSiblingCardsInSlides(out);
+  // 루프379 — Unwrap trivial single-child flex/grid wrappers BEFORE the
+  // orphan / spill pulls. The wrapper hides the real grid one level deeper
+  // and prevents `pullOrphanChromeCardsIntoPrecedingGrid` from seeing a
+  // sibling badge as an orphan on the first pass, breaking idempotency.
+  // Loop380 (leaf-empty strip) then runs late so mid-pipeline temporary
+  // empty leaves are cleaned up after the pulls finish.
+  out = unwrapTrivialSingleChildLayoutWrappers(out);
   // 루프293 — class 없는 크롬 카드의 조기 close가 제목·본문을 그리드
   // 형제로 남기면 shrink가 열을 늘린다. shrink 전에 카드 안으로 되돌린다.
   out = absorbSpilledChromeCardSiblings(out, brief);
@@ -4315,12 +4323,16 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // 루프354 — 본문 있는 행에서 heading-only 카드만 제거.
   out = dropTitleOnlyCardPeersInAllocatedRows(out, brief);
   out = unnestHeadingBlockChildren(out);
-  // 루프378 — MiniMax edit turns wrap grids inside a single-child
-  // `display:flex` (or `display:grid`) `<div>` that has no width/height/
-  // padding/border/background — the wrapper adds margin-bottom but no
-  // meaningful layout. Unwrap so the enclosed grid renders at the correct
-  // vertical position. Only touches wrappers with exactly one block-level
-  // child so authored decks with real flex layouts are never modified.
+  // 루프380 — Edit-turn output also leaves leaf `<ul>` / `<ol>` shells
+  // whose `<li>` children are all empty (`content-list` on split-content
+  // slides) and empty `<p class="hero-subtitle"></p>` shells. The
+  // template's list-num counter still paints orphan numbered pills, and
+  // the subtitle gap pushes hero decorations. Same helper as slot-fill
+  // (loop376), now applied in the general heal pipeline so modify-turn
+  // HTML gets the same cleanup.
+  out = stripLeafEmptyListAndParagraphShells(out);
+  // Second unwrap pass — earlier peer trims may collapse a grid down to
+  // a single card, leaving another trivial wrapper. Idempotent.
   out = unwrapTrivialSingleChildLayoutWrappers(out);
   out = polishTruncatedInstructionTitles(out);
   // 루프197 — empty leftover card shells keep 3-track rows alive so

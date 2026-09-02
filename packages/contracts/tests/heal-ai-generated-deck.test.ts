@@ -5048,7 +5048,7 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
     });
   });
 
-  describe('루프378 unwrapTrivialSingleChildLayoutWrappers', () => {
+  describe('루프379 unwrapTrivialSingleChildLayoutWrappers', () => {
     it('unwraps a flex <div> that only holds a single grid child', () => {
       const html = [
         '<div style="display:flex;align-items:center;gap:16px;margin-bottom:24px">',

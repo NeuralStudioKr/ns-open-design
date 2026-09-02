@@ -68,7 +68,21 @@ repair auto-send 600ms 창에 사용자가 Retry/Continue를 눌러 repair send�
 
 검증: web ChatPane.resume-failed 루프370 · contracts redacted_thinking parse.
 
-### 루프378 — 단일 자식 flex/grid wrapper unwrap (Clone slot-fill 후처리)
+### 루프380 — modify-turn `<ul>`/`<p>` 빈 shell heal + fixture 회귀 봉쇄
+
+**reproduce:** neubrutalism 첨부 HTML (2026-09-02 사용자 리포트) fixture 저장. 최초 fill 이후 "수정 반영" 턴이 만든 HTML을 `salvageMalformedMiniMaxSlideMarkup + healAiGeneratedDeckMarkup` 전체에 통과시켜 결과가 사용자 눈에 얼마나 정리되는지 정밀 검증.
+
+**수정:**
+1. `healAiGeneratedDeckMarkup` — `unwrapTrivialSingleChildLayoutWrappers`를 `closeUnclosedSiblingCardsInSlides` 직후로 옮겨 orphan-pull이 실제 grid 구조를 볼 수 있게 함. 첫 pass에서 idempotency 확보.
+2. `stripLeafEmptyListAndParagraphShells`를 `heal-ai-generated-deck.ts`로 import + pipeline 후반부에 배치. modify-turn (slot-fill이 아닌 경로)의 `<ul class="content-list"><li></li>...</ul>`와 `<p class="hero-subtitle"></p>` shell을 정리.
+3. Peer trim이 grid를 단일 카드로 줄이면 새로 trivial wrapper가 생기므로 leaf-empty strip 뒤에 unwrap 2회차.
+4. `packages/contracts/tests/teamver-neubrutalism-modify-turn.integration.test.ts` — 사용자 HTML fixture 9개 회귀 (empty ul/p drop / flex wrapper unwrap / broken h3 typo repair / real body copy / kit color 유지 / lecture copy invention 방지 / brief leak 방지 / idempotency).
+
+Motif / 데모 카드 트림 / brief 가드는 기존 heal이 계속 담당. 사용자 본문 (팀의 일이 너무 많이 흩어져 있습니다 · Channels & DM · Shared Drive 등) 그대로 유지.
+
+**검증:** contracts heal-ai-generated-deck + neubrutalism fixture 9개 신규 · 전체 스위트 2890/2890 · web templateCloneContentFill / clone-look-seed-recovery / deck-patch-structure / comment-remap 71/71.
+
+### 루프379 — 단일 자식 flex/grid wrapper unwrap (Clone slot-fill 후처리)
 
 reproduce: MiniMax edit-turn이 실제 grid를 그 자체로는 아무 layout도 안 하는 flex `<div>` 안에 감쌈. 예:
 
