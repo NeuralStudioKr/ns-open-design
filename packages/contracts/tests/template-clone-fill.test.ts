@@ -1636,6 +1636,99 @@ describe('0901-N02-C7 *-stat / kpi peer heuristic', () => {
   });
 });
 
+describe('0901-N02-C8 process/timeline host allowlist + orphan arrows', () => {
+  it('trims process-flow process-steps and drops trailing process-arrows', () => {
+    const html = [
+      '<div class="process-flow">',
+      '<div class="process-step"><div class="step-title">Discover</div><div class="step-desc">a</div></div>',
+      '<div class="process-arrow">&rarr;</div>',
+      '<div class="process-step"><div class="step-title">Practice</div><div class="step-desc">b</div></div>',
+      '<div class="process-arrow">&rarr;</div>',
+      '<div class="process-step"><div class="step-title">Reflect</div><div class="step-desc">c</div></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['발견', '연습']);
+    expect([...(next.matchAll(/\bprocess-step\b/gi))].length).toBe(2);
+    expect([...(next.matchAll(/\bprocess-arrow\b/gi))].length).toBe(1);
+    expect(next).toContain('발견');
+    expect(next).toContain('연습');
+    expect(next).not.toContain('Reflect');
+    expect(next).not.toContain('Discover');
+  });
+
+  it('trims timeline-track and kb-pipeline via named hosts', () => {
+    const timeline = [
+      '<div class="timeline-track">',
+      '<div class="timeline-step"><div class="step-title">A</div><div class="step-desc">a</div></div>',
+      '<div class="timeline-step"><div class="step-title">B</div><div class="step-desc">b</div></div>',
+      '<div class="timeline-step"><div class="step-title">C</div><div class="step-desc">c</div></div>',
+      '</div>',
+    ].join('');
+    const tNext = fillAndTrimCardPeers(timeline, ['평가', '보호']);
+    expect([...(tNext.matchAll(/\btimeline-step\b/gi))].length).toBe(2);
+    expect(tNext).toContain('평가');
+    expect(tNext).not.toContain('>C<');
+
+    const pipeline = [
+      '<div class="kb-pipeline">',
+      '<div class="kb-step"><div class="kb-step-title">采集</div><div class="kb-step-body">a</div></div>',
+      '<div class="kb-step"><div class="kb-step-title">去噪</div><div class="kb-step-body">b</div></div>',
+      '<div class="kb-step"><div class="kb-step-title">Wiki</div><div class="kb-step-body">c</div></div>',
+      '</div>',
+    ].join('');
+    const pNext = fillAndTrimCardPeers(pipeline, ['수집', '정제']);
+    expect([...(pNext.matchAll(/\bclass="kb-step(?:\s|")/gi))].length).toBe(2);
+    expect(pNext).toContain('수집');
+    expect(pNext).not.toContain('Wiki');
+  });
+});
+
+describe('0901-N02 heal↔clone integration', () => {
+  it('Daisy LOOK seed → slot-fill → heal keeps motif and drops demo peers', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-daisy-days/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const brief = '분기 전략 KPI와 실행 단계';
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      [
+        { title: '분기 전략', roleHint: 'cover' },
+        { title: '핵심 KPI', body: '매출\n리텐션', roleHint: 'cards' },
+        { title: '실행 단계', body: '발견\n연습', roleHint: 'process' },
+      ],
+      {
+        title: '분기 전략',
+        templateId: 'example-html-ppt-zhangzara-daisy-days',
+      },
+    );
+    expect(cloned).toBeTruthy();
+    const healed = pinDeckSlidesToFixedCanvas(
+      healAiGeneratedDeckMarkup(cloned!, brief),
+    );
+    expect(healed).toContain('핵심 KPI');
+    expect(healed).toContain('매출');
+    expect(healed).toContain('리텐션');
+    expect(healed).not.toContain('Creative Expression');
+    expect(healed).not.toContain('Critical Thinking');
+    expect(healed).toContain('발견');
+    expect(healed).toContain('연습');
+    expect(healed).not.toContain('Discover');
+    expect(healed).not.toContain('Reflect');
+    // Motif / daisy chrome should survive heal.
+    expect(healed).toMatch(/deco-daisy|daisy|slide-cards|process-flow/i);
+    const cardsSlide = listTemplateCloneSlideShells(healed).find((shell) => (
+      /\bslide-cards\b/i.test(shell.attrs)
+    ));
+    if (cardsSlide) {
+      expect([...(cardsSlide.body.matchAll(/\binfo-card\b/gi))].length).toBe(2);
+    }
+  });
+});
+
 describe('hoistCloneSlidesOutOfFlexTrack', () => {
   it('unwraps leftover <section id="stage"> and <main class="stage"> slide tracks', () => {
     const sectionStage = [

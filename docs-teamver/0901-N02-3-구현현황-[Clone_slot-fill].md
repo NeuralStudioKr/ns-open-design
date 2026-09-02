@@ -1,6 +1,6 @@
 # 0901-N02-3 구현현황 — Clone slot-fill
 
-상위: [0901-N02-1](./0901-N02-1-상위설계-[Clone_slot-fill].md) · 설계: [0901-N02-2](./0901-N02-2-구현설계-[Clone_slot-fill].md) · slot map: [0901-N02-4](./0901-N02-4-구현설계-[Clone_slot-map].md) · D: [0901-N02-5](./0901-N02-5-구현설계-[Clone_slot-fill-D].md) · C2: [0901-N02-6](./0901-N02-6-구현설계-[Clone_slot-map-C2].md) · C3: [0901-N02-7](./0901-N02-7-구현설계-[Clone_slot-map-C3].md) · C4: [0901-N02-8](./0901-N02-8-구현설계-[Clone_slot-map-C4].md) · C5: [0901-N02-9](./0901-N02-9-구현설계-[Clone_slot-map-C5].md) · C6: [0901-N02-10](./0901-N02-10-구현설계-[Clone_slot-map-C6].md) · C7: [0901-N02-11](./0901-N02-11-구현설계-[Clone_slot-map-C7].md)
+상위: [0901-N02-1](./0901-N02-1-상위설계-[Clone_slot-fill].md) · 설계: [0901-N02-2](./0901-N02-2-구현설계-[Clone_slot-fill].md) · slot map: [0901-N02-4](./0901-N02-4-구현설계-[Clone_slot-map].md) · D: [0901-N02-5](./0901-N02-5-구현설계-[Clone_slot-fill-D].md) · C2: [0901-N02-6](./0901-N02-6-구현설계-[Clone_slot-map-C2].md) · C3: [0901-N02-7](./0901-N02-7-구현설계-[Clone_slot-map-C3].md) · C4: [0901-N02-8](./0901-N02-8-구현설계-[Clone_slot-map-C4].md) · C5: [0901-N02-9](./0901-N02-9-구현설계-[Clone_slot-map-C5].md) · C6: [0901-N02-10](./0901-N02-10-구현설계-[Clone_slot-map-C6].md) · C7: [0901-N02-11](./0901-N02-11-구현설계-[Clone_slot-map-C7].md) · C8: [0901-N02-12](./0901-N02-12-구현설계-[Clone_slot-map-C8].md)
 
 ## 진행
 
@@ -20,6 +20,7 @@
 | **C5** prefixed `*-step` / bare `step` heuristic | ☑ kb/timeline/xw-step · `.t`/`.d` · `five-step` 섹션 제외 |
 | **C6** multi-host card/step trim | ☑ cards-grid+timeline 동시 · oversize 우선 · idempotent |
 | **C7** `*-stat` / `kpi` peer heuristic | ☑ grove/mini/bare stat·kpi · slide/card/gc deny |
+| **C8** process/timeline host + orphan arrows · heal↔clone | ☑ process-flow/timeline-track/kb-pipeline · Daisy fill→heal |
 | **D** hybrid fallback 제거 | ☑ |
 | **루프359** HTML dump → seed-fallback 즉시 · repair AC abort시 seed 유지 | ☑ |
 | **루프360** repair 판단 messagesRef 레이스 · sendNow synchronous reject 회복 | ☑ |
@@ -39,6 +40,7 @@
 - [x] C5: kb-step · timeline-step · xw-step · bare step · five-step 비대상
 - [x] C6: cards-grid+timeline multi-host · idempotent
 - [x] C7: grove-stat · kpi · bare stat · slide/s/card-stat 비대상
+- [x] C8: process-flow/timeline-track/kb-pipeline · orphan arrow drop · Daisy fill→heal
 - [x] 루프364: soft-invalid → seed-fallback · `isCloneContentFillLookSeedRecoverablePersistReason`
 - [x] MiniMax live: 키 없으면 skip (가짜 live 금지)
 
@@ -51,6 +53,7 @@
 - C5: letter-led `*-step` + bare `step` · `4-step`/`five-step` 섹션 제외 · host `*-steps`.
 - C6: multi-pass · oversize host 우선 · 동일 줄을 각 host에 적용.
 - C7: `stat`/`kpi` + letter-led `*-stat` · deny slide/s/card/gc/split/big-stat · host `stats-row`.
+- C8: named process/timeline hosts · arrow keep iff next peer kept · heal↔clone Daisy fixture.
 - MiniMax 키(`MINIMAX_API_KEY` / `OD_MINIMAX_API_KEY`) 있으면 live smoke 슬롯 활성화.
 - 루프362: `isCloneContentFillLowSubstancePersistReason(reason)` (`low-substance deck artifact` / `unfilled-catalog-example` / `incomplete-html-document-shell`). Clone 첫 채우기 턴에서만 발동, LOOK seed 있으면 `skipped-duplicate`로 재작성 + `CLONE_LOOK_SEED_FALLBACK_STATUS_CODE` 경고. 비-Clone 실행은 그대로 low-substance gate 유지.
 - 루프364: LOOK seed가 있으면 soft-invalid JSON도 queue-repair/AC 없이 즉시 seed-fallback. `pendingSlotFillRepair` arm 상태에서도 seed가 있으면 incomplete_output을 강제하지 않고 LOOK seed로 succeeded. `reason=template-clone-slot-fill-json-repair`도 recoverable set에 포함.

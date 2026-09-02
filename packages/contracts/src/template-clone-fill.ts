@@ -1712,6 +1712,12 @@ function hostClassSet(slotMap: TemplateCloneSlotMap | null | undefined): Set<str
     'cards-row',
     'pricing-grid',
     'timeline-wrap',
+    // 0901-N02-C8: process / timeline hosts (peer-driven still works; class path is faster).
+    'process-flow',
+    'timeline-track',
+    'timeline',
+    'kb-pipeline',
+    'flow',
   ]);
   for (const token of slotMap?.hostClasses ?? []) {
     const t = String(token ?? '').trim().toLowerCase();
@@ -1839,6 +1845,14 @@ function attrsLookLikeCardPeer(
   return classTokensFromAttrs(attrs).some((token) => tokenLooksLikeCardPeer(token, peers));
 }
 
+/** Process/flow/cycle arrows between step peers — not content peers (0901-N02-C8). */
+function attrsLookLikeStepArrow(attrs: string): boolean {
+  return classTokensFromAttrs(attrs).some((token) => {
+    const t = token.toLowerCase();
+    return /^(?:process|flow|cycle)-arrow$/.test(t) || t === 'arrow';
+  });
+}
+
 function shellBodyLooksLikeCardGrid(
   html: string,
   slotMap?: TemplateCloneSlotMap | null,
@@ -1875,8 +1889,22 @@ function rebuildHostWithPeers(
   const keepCount = Math.min(Math.max(0, lines.length), peers.length);
   const keepPeerStarts = new Set(peers.slice(0, keepCount).map((span) => span.start));
   const rebuilt: string[] = [];
-  for (const child of children) {
-    if (!peers.some((peer) => peer.start === child.start)) {
+  for (let index = 0; index < children.length; index += 1) {
+    const child = children[index]!;
+    const isPeer = peers.some((peer) => peer.start === child.start);
+    if (!isPeer) {
+      const open = /^<([a-zA-Z][\w:-]*)\b([^>]*)>/.exec(source.slice(child.start, child.end));
+      if (open && attrsLookLikeStepArrow(open[2] ?? '')) {
+        // Keep arrow only when the next peer sibling is kept (no trailing/orphan arrows).
+        let nextPeerKept = false;
+        for (let j = index + 1; j < children.length; j += 1) {
+          const later = children[j]!;
+          if (!peers.some((peer) => peer.start === later.start)) continue;
+          nextPeerKept = keepPeerStarts.has(later.start);
+          break;
+        }
+        if (!nextPeerKept) continue;
+      }
       rebuilt.push(source.slice(child.start, child.end));
       continue;
     }
