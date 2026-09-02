@@ -809,4 +809,29 @@ describe('deck slide class tokens', () => {
     )).toBe(-1);
     expect(indexOfFirstDeckSlideHost(html)).toBe(hostAt);
   });
+
+  it('pins block-frame hero/split with centered flow + row split CSS (루프375)', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide slide-1">',
+      '<div class="hero-frame"><h1 class="hero-title">Teamver</h1></div>',
+      '<div class="deco-dots"></div>',
+      '</section>',
+      '<section class="slide slide-6">',
+      '<div class="split-visual"><div class="visual-box">X</div></div>',
+      '<div class="split-content"><h2>How</h2><ul class="content-list"><li>a</li></ul></div>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).toContain(DECK_FIXED_CANVAS_PIN_ATTR);
+    expect(pinned).toMatch(/\[data-od-slide-flow\]:has\(\.hero-frame\)/);
+    expect(pinned).toMatch(/\[data-od-slide-flow\]:has\(\.split-visual\)/);
+    expect(pinned).toMatch(/justify-content:\s*center/);
+    expect(pinned).toContain('split-visual');
+    expect(pinned).toContain('hero-frame');
+    const slide1 = pinned.match(/<section class="slide slide-1"[\s\S]*?<\/section>/i)?.[0] ?? '';
+    expect(slide1).toContain(DECK_SLIDE_FLOW_ATTR);
+    expect(slide1).toContain('hero-frame');
+  });
 });

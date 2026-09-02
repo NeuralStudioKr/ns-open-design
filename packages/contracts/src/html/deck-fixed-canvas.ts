@@ -92,10 +92,30 @@ article[data-screen-label] {
 .slide > [data-od-slide-flow]:has(.split-left),
 .slide > [data-od-slide-flow]:has(.split-right),
 .slide > [data-od-slide-flow]:has(.split-pane),
+.slide > [data-od-slide-flow]:has(.split-visual),
+.slide > [data-od-slide-flow]:has(.split-content),
 .slide > [data-od-slide-flow]:has(.col-left):has(.col-right),
 .slide > [data-od-slide-flow]:has(.left-col):has(.right-col) {
   flex-direction: row;
   align-items: stretch;
+}
+/* Block-frame / neo-brutalism: host .slide-1 centers via class CSS, but the
+ * absolute flow wrapper is a fresh flex column — without this the hero-frame
+ * parks in the top-left of the 16:9 canvas (user report 2026-09-02). */
+.slide > [data-od-slide-flow]:has(.hero-frame),
+.slide > [data-od-slide-flow]:has(.quote-frame),
+.slide > [data-od-slide-flow]:has(.close-frame),
+.slide.slide-1 > [data-od-slide-flow],
+.slide.slide-title > [data-od-slide-flow],
+.slide.slide-5 > [data-od-slide-flow],
+.slide.slide-10 > [data-od-slide-flow] {
+  justify-content: center;
+  align-items: center;
+}
+/* slide-6 padding is 0 — do not double-pad the flow over the split halves. */
+.slide.slide-6 > [data-od-slide-flow]:has(.split-visual),
+.slide.slide-6 > [data-od-slide-flow]:has(.split-content) {
+  padding: 0 !important;
 }
 .slide > [data-od-slide-flow]:has(.split-top),
 .slide > [data-od-slide-flow]:has(.split-bottom) {
@@ -492,13 +512,17 @@ const KIT_SAFE_FRAME_COLOR_RE = /\b(?:var\s*\(|currentColor|inherit|transparent)
 const EXPLICIT_PAINT_COLOR_RE =
   /#(?:[0-9a-f]{3,8})\b|\b(?:rgba?|hsla?|hwb|oklch|oklab|lch|lab|color-mix|color|light-dark|device-cmyk)\s*\(|\b(?:navy|royalblue|mediumblue|indigo|skyblue|teal|cyan|blue|darkblue|purple|violet|fuchsia|magenta|crimson|emerald|amber|lime|limegreen|rose|orange|pink|coral|tomato|chocolate|rebeccapurple|deepskyblue|mediumvioletred|slateblue|darkorchid|turquoise|gold|salmon|orchid|hotpink|dodgerblue|steelblue|seagreen|darkcyan|cadetblue|firebrick|indianred|lightcoral|darksalmon|lightsalmon|orangered|darkorange|peachpuff|khaki|moccasin|wheat|burlywood|tan|rosybrown|sienna|saddlebrown|peru|darkgoldenrod|goldenrod|lavender|thistle|plum|mediumorchid|blueviolet|darkviolet|mediumpurple|mediumslateblue|slategray|dimgray|aliceblue|antiquewhite|aquamarine|azure|beige|bisque|blanchedalmond|blueviolet|chartreuse|cornflowerblue|cornsilk|crimson|darkgray|darkgrey|darkgreen|darkkhaki|darkmagenta|darkolivegreen|darkred|darkseagreen|darkslateblue|darkslategray|darkslategrey|darkturquoise|deeppink|floralwhite|forestgreen|gainsboro|ghostwhite|greenyellow|honeydew|ivory|lavenderblush|lawngreen|lemonchiffon|lightblue|lightcyan|lightgoldenrodyellow|lightgray|lightgrey|lightgreen|lightpink|lightseagreen|lightskyblue|lightslategray|lightslategrey|lightsteelblue|lightyellow|linen|maroon|mediumaquamarine|mediumseagreen|mediumspringgreen|mediumturquoise|midnightblue|mintcream|mistyrose|navajowhite|oldlace|olive|olivedrab|palegoldenrod|palegreen|paleturquoise|palevioletred|papayawhip|powderblue|seashell|silver|springgreen|teal|whitesmoke|snow|brown|sandybrown|dimgrey|slategrey|yellow|yellowgreen|aqua|fuchsia|gray|grey|green|red|white|black)\b/i;
 const FAKE_RING_SHADOW_RE = /(?:^|;)\s*box-shadow\s*:[^;]*\b0\s+0\s+0\s+(?:1px|2px)\b[^;]*/i;
-const SPLIT_ROW_LAYOUT_RE = /\bsplit-(?:left|right|pane)\b/i;
+const SPLIT_ROW_LAYOUT_RE = /\bsplit-(?:left|right|pane|visual|content)\b/i;
 const SPLIT_COL_LAYOUT_RE = /\bsplit-(?:top|bottom)\b/i;
 const COL_LEFT_RE = /\b(?:col-left|left-col)\b/i;
 const COL_RIGHT_RE = /\b(?:col-right|right-col)\b/i;
 
 function looksLikeSiblingColumnRow(inner: string): boolean {
-  return SPLIT_ROW_LAYOUT_RE.test(inner) || (COL_LEFT_RE.test(inner) && COL_RIGHT_RE.test(inner));
+  return (
+    SPLIT_ROW_LAYOUT_RE.test(inner)
+    || (COL_LEFT_RE.test(inner) && COL_RIGHT_RE.test(inner))
+    || (/\bsplit-visual\b/i.test(inner) && /\bsplit-content\b/i.test(inner))
+  );
 }
 
 function findMatchingClose(html: string, from: number, tag: string): number {

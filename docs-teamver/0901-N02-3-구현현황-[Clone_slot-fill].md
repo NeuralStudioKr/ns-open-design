@@ -37,6 +37,8 @@
 | **루프370** repair pending UX — ChatPane Retry 이중 클릭 방지 | ☑ (371에서 repair loop 제거) |
 | **루프371** JSON repair auto-send loop 차단 — seed-fallback 즉시 LOOK seed | ☑ |
 | **루프372** stuck repair notice reload → LOOK seed 안내 | ☑ |
+| **루프373** brief 패러디 제목·cards instruction body 가드 | ☑ |
+| **루프375** block-frame hero/split flow 레이아웃 복구 | ☑ |
 | **루프366** section `#stage` hoist · contracts dist rebuild | ☑ web transform-driven 19/19 |
 | MiniMax 실키 E2E | ☑ 가드 있음 · 키 없으면 skip (`template-clone-minimax-live.e2e`) |
 

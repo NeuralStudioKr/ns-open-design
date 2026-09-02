@@ -2634,10 +2634,9 @@ function fillSlideShell(
       // 0901-N02-C: empty outline → drop demo card peers (카드 수 = 0).
       body = fillAndTrimCardPeers(body, [], slotMap);
     } else if (/<[uo]l\b/i.test(body)) {
-      const existingCount = [...body.matchAll(/<li\b/gi)].length;
-      if (existingCount > 0) {
-        body = replaceListItems(body, Array.from({ length: existingCount }, () => ''));
-      }
+      // Drop demo rows entirely — empty <li></li> leaves a blank half-slide
+      // (block-frame slide-6 / content-list user report 2026-09-02).
+      body = body.replace(/<li\b[^>]*>[\s\S]*?<\/li>/gi, '');
     } else if (/<p\b/i.test(body)) {
       body = replaceFirstTagText(body, 'p', '');
     }
@@ -2675,10 +2674,7 @@ function fillSlideShell(
     }
   } else if (/<[uo]l\b/i.test(body)) {
     // Title-only pad shells: wipe leftover template English list copy.
-    const existingCount = [...body.matchAll(/<li\b/gi)].length;
-    if (existingCount > 0) {
-      body = replaceListItems(body, Array.from({ length: existingCount }, () => ''));
-    }
+    body = body.replace(/<li\b[^>]*>[\s\S]*?<\/li>/gi, '');
   } else if (/<p\b/i.test(body)) {
     // Title-only: wipe leftover template marketing paragraphs ("Daisy Days", …).
     body = replaceFirstTagText(body, 'p', '');
@@ -3298,6 +3294,12 @@ function synthesizeCardsBodyFromBrief(brief: string, slideTitle: string): string
   return [topic, '핵심 기능', '차별점'].join('\n');
 }
 
+function synthesizeListBodyFromBrief(brief: string, slideTitle: string): string | undefined {
+  const topic = deriveDeckCoverTitleFromBrief(brief, slideTitle);
+  if (!topic || topic === '슬라이드') return undefined;
+  return [`${topic} 개요`, '핵심 기능', '사용 흐름', '다음 단계'].join('\n');
+}
+
 function rewriteInstructionParrotingSlideTitles(
   slides: TemplateCloneSlideContent[],
   options: { brief?: string | null; deckTitle?: string | null },
@@ -3318,6 +3320,13 @@ function rewriteInstructionParrotingSlideTitles(
     if (instructionBody && brief) {
       if (slide.roleHint === 'cards') {
         body = synthesizeCardsBodyFromBrief(brief, title) ?? undefined;
+      } else if (
+        slide.roleHint === 'process'
+        || slide.roleHint === 'list'
+        || slide.roleHint === 'body'
+        || slide.roleHint === 'timeline'
+      ) {
+        body = synthesizeListBodyFromBrief(brief, title) ?? undefined;
       } else {
         body = undefined;
       }

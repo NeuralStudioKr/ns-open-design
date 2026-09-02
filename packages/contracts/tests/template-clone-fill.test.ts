@@ -40,9 +40,9 @@ import {
   resolveTemplateCloneSlotMap,
   stripLeafEmptyListAndParagraphShells,
 } from '../src/template-clone-fill.js';
+import { pinDeckSlidesToFixedCanvas } from '../src/html/deck-fixed-canvas.js';
 import { hoistDeckHostStylesToHead } from '../src/html/deck-template-look-css.js';
 import { healAiGeneratedDeckMarkup } from '../src/html/heal-ai-generated-deck.js';
-import { pinDeckSlidesToFixedCanvas } from '../src/html/deck-fixed-canvas.js';
 
 describe('buildTemplateClonedDeckHtml', () => {
   it('clones Daisy Days look and swaps Source headings', async () => {
@@ -1439,6 +1439,39 @@ describe('0901-N02-C3 additional template slot maps', () => {
     const slide3 = listTemplateCloneSlideShells(filled!.html).find((s) => /\bslide-3\b/.test(s.attrs));
     expect(slide3?.body).toMatch(/<div class="pillar-card">[\s\S]*<div class="card-icon/);
     expect(slide3?.body).toContain('핵심 기능');
+  });
+
+  it('block-frame hero fill keeps deco and drops empty list rows (루프375)', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-block-frame/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const brief = 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.';
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      [
+        { title: 'Teamver와 AI를 하나의 워크스페이스로', roleHint: 'cover' },
+        {
+          title: 'Teamver — Smarter & Faster',
+          body: brief,
+          roleHint: 'process',
+        },
+        { title: '핵심 가치', body: '대화\n파일\nAI', roleHint: 'cards' },
+      ],
+      {
+        title: 'Teamver와 AI를 하나의 워크스페이스로',
+        templateId: 'html-ppt-zhangzara-block-frame',
+        brief,
+      },
+    );
+    expect(cloned).toBeTruthy();
+    const pinned = pinDeckSlidesToFixedCanvas(cloned!);
+    expect(pinned).toMatch(/hero-frame/);
+    expect(pinned).not.toMatch(/<li>\s*<\/li>/);
+    expect(pinned).toMatch(/split-visual|col-left|feature-card|cards-row/i);
   });
 });
 
