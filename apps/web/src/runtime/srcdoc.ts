@@ -4925,7 +4925,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     if (list.length) {
       // Delayed ready retries (400ms) used to always forceReveal(initial=0).
       // After the host/user already moved pages, that snap-back made a 9-slide
-      // compact deck look like a single page (loop382 / Teamver Block Frame).
+      // compact deck look like a single page (loop383 / Teamver Block Frame).
       var target;
       if (hostSlideNavigationSeen) {
         target = activeIndex(list);
