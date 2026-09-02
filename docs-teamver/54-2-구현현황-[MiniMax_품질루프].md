@@ -94,6 +94,31 @@ repair auto-send 600ms 창에 사용자가 Retry/Continue를 눌러 repair send�
 
 검증: web ChatPane.resume-failed 루프370 · contracts redacted_thinking parse.
 
+### 루프387 — URL-brief cover leak + non-IB kit IB-magazine rebuild 오탐
+
+reproduce (2026-09-02 사용자 리포트): 사용자 brief `www.teamver.com 사이(트)…`가 잘려 표지 h1·footer에 그대로 노출됨. neubrutalism 템플릿 사용인데 표지가 IB magazine kit shape (`h1.display`, `.mast`, `.ribbon`, `--paper`/`--ink`)으로 렌더링되어 완전히 unstyled. neubrutalism kit CSS는 `--paper`/`--ink`를 정의하지 않아 fallback 됨.
+
+두 층의 원인:
+1. `looksLikeInstructionCopy`가 URL-only/URL+짧은 fragment brief를 걸러내지 못해서 `deriveTitleFromBrief` → `sanitizeTemplateCloneDeckTitle` → `synthesizeTemplateCloneOutlineFromBrief`가 URL을 cover 제목으로 그대로 승격.
+2. `healSparseDeckCoverLayout` guard가 `officialLookIsIbMagazine(dest)`를 look CSS 기준으로 검사하는데, 이 heal은 `mergeOfficialLookCssForTemplate` **이전**에 실행됨 → look CSS 아직 없음 → guard 통과 → IB magazine shell을 rebuild → 나중에 neubrutalism kit CSS가 주입되면서 shape/vars 불일치.
+
+수정:
+1. **`looksLikeInstructionCopy` + `titleIsUrlOnlyOrUrlFragment`** — 새로운 helper 추가. `www.example.com [short korean fragment]` 형태를 instruction으로 분류. cover 후보에서 제외. 이후 `sanitizeTemplateCloneDeckTitle`은 null 반환, `synthesizeTemplateCloneOutlineFromBrief`는 null 반환 (SYNTH_GENERIC_TITLE_RE 필터), `decideTemplateCloneSlotFillTerminal`은 seed-fallback 유지.
+2. **`destHasNonIbKitSignals`** — 새로운 guard signal detector. `healSparseDeckCoverLayout`에서 다음 signal 중 하나라도 있으면 IB rebuild skip:
+   - Numbered slide role class (`.slide-1`, ..., `.slide-10`)
+   - Named layout wrapper (`.hero-frame`, `.split-visual`, `.split-content`, `.close-frame`, `.quote-frame`)
+   - Neubrutal utility prefix (`.nb-heading-*`, `.nb-card`, `.nb-label`, `.nb-btn`, `.nb-body`, `.nb-mono`)
+   - Kit token vars (`--cream`, `--pink`, `--yellow`, `--offwhite`, `--hc-bg`, `--gd-bg`, ...)
+   - Motif deco CSS block with kit-specific rules (`.deco-pink-rect`, `.deco-green-circle`, `.deco-yellow-bar`, `.deco-dots`)
+
+카피 발명 없음. IB magazine rebuild는 여전히 IB stub (kit signal 없는 순수 h1-only cover)에서 동작.
+
+**결과 (사용자 fixture):**
+- Before: IB shell rebuild (h1.display, mast, ribbon, --paper/--ink 미정의) → 완전 unstyled
+- After: heal skip → neubrutalism seed cover 그대로 유지 (해결 완료는 아니지만 unstyled로 붕괴 방지)
+
+**검증:** contracts sanitize 4개 신규 · URL-brief fixture 6개 신규 · 전체 스위트 2926/2926 · web focused 118/118.
+
 ### 루프385 — grid 안 loose pill+h3+p 삼중항을 sibling chrome shell 스타일로 wrap
 
 reproduce: 사용자 fixture slide 4에서 loop381+382가 3개 chrome shell을 grid 안으로 넣어도, 첫 번째 카드(Channels & DM)만 wrapper 없이 `pill, h3, p`가 grid의 3개 개별 셀에 흩어져 있음. 2-col grid는 pill을 왼쪽에, h3를 오른쪽에 배치해 카드가 안 보임.

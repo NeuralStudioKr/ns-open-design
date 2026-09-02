@@ -1077,6 +1077,48 @@ function destHasPosterSlideKinds(html: string): boolean {
   return POSTER_SLIDE_KIND_RE.test(html);
 }
 
+/**
+ * 루프387 — Detect signals that the destination HTML belongs to a template
+ * kit OTHER than IB magazine (kami). `healSparseDeckCoverLayout` was
+ * designed to rebuild an IB-magazine cover shape (h1.display + .mast +
+ * --paper/--ink vars) from a sparse stub — when the deck actually belongs
+ * to neubrutalism / capsule / block-frame / studio / hermes / etc., the
+ * rebuilt cover collides with the kit CSS injected AFTER heal
+ * (`mergeOfficialLookCssForTemplate` runs later) and the result renders
+ * unstyled (undefined `--paper`/`--ink` vars + IB shape on a neubrutalism
+ * palette).
+ *
+ * Signals of a non-IB kit deck:
+ *   - Numbered slide role classes (`.slide-1`, `.slide-2`, …) — the
+ *     neubrutalism kit's slide selectors.
+ *   - Named layout wrappers (`.hero-frame`, `.split-visual`, `.split-
+ *     content`, `.close-frame`, `.quote-frame`) — neubrutalism/block-frame
+ *     shells.
+ *   - `nb-heading-*` / `nb-card-*` / `nb-label-*` / `nb-btn` — neubrutal
+ *     utility prefix.
+ *   - Inline usage of neubrutalism / studio / capsule / hermes design
+ *     tokens (`--cream`, `--pink`, `--yellow`, `--pill`, `--offwhite`,
+ *     `--noise`, `--accent-pink`, etc.).
+ *   - `<style data-od-official-motif-deco-css>` motif rules containing
+ *     `.deco-pink-rect` / `.deco-green-circle` / `.deco-yellow-bar` /
+ *     `.card-deco` (neubrutalism motif decorations).
+ */
+function destHasNonIbKitSignals(html: string): boolean {
+  const source = String(html ?? '');
+  if (!source) return false;
+  // Numbered slide role classes with a token boundary — do NOT match `slide-1080` etc.
+  if (/\bslide-(?:1|2|3|4|5|6|7|8|9|10)\b(?!\d)/.test(source)) return true;
+  // Neubrutalism / block-frame named layout wrappers.
+  if (/\bclass\s*=\s*["'][^"']*\b(?:hero-frame|split-visual|split-content|close-frame|quote-frame)\b/i.test(source)) return true;
+  // Neubrutal utility prefix.
+  if (/\bclass\s*=\s*["'][^"']*\bnb-(?:heading-|card|label|btn|body|mono)/i.test(source)) return true;
+  // Neubrutalism / studio / capsule / hermes tokens in inline style or CSS.
+  if (/var\(\s*--(?:cream|pink|yellow|offwhite|hc-bg|hc-fg|gd-bg|noise|accent-pink|studio-bg|capsule-bg)/i.test(source)) return true;
+  // Motif deco CSS block emitted for non-IB kits.
+  if (/data-od-official-motif-deco-css[\s\S]{0,4000}\.deco-(?:pink-rect|green-circle|yellow-bar|dots)\b/i.test(source)) return true;
+  return false;
+}
+
 function officialLookIsBiennaleYellow(html: string): boolean {
   const css = lookCssWithoutNeutralize(html);
   if (/\.sunglow\b/i.test(css) && /\.s-cover\b/i.test(css)) return true;
@@ -3726,7 +3768,26 @@ export function looksLikeInstructionCopy(text: string): boolean {
   if (/(?:만들어|작성|생성)\s*(?:줘|주세요)|설명해?\s*(?:줘|주세요)/i.test(t)) return true;
   if (/^(?:please\s+)?(?:make|create|build|write|generate)\s+/i.test(t)) return true;
   if (/피피티|PPT|슬라이드\s*덱/i.test(t) && /(?:만들어|작성|생성|설명)/i.test(t)) return true;
+  // 루프387 — URL-only brief / URL + short trailing fragment (`www.teamver.com
+  // 사이`) is a user-typed reference, not a real deck title. Rejecting these
+  // stops the URL from parroting the cover heading + footer via
+  // `deriveDeckCoverTitleFromBrief` → `synthesizeTemplateCloneOutlineFromBrief`.
+  if (titleIsUrlOnlyOrUrlFragment(t)) return true;
   return false;
+}
+
+/**
+ * 루프387 — True when `title` is essentially a URL with at most a short
+ * trailing fragment (< 5 non-URL chars). Model briefs pasted from a browser
+ * or truncated at input often look like this and must not land on slide
+ * headings.
+ */
+export function titleIsUrlOnlyOrUrlFragment(title: string): boolean {
+  const t = String(title ?? '').trim();
+  if (!t) return false;
+  if (!/^(?:https?:\/\/|www\.)\S+/i.test(t)) return false;
+  const withoutUrl = t.replace(/^(?:https?:\/\/|www\.)\S+\s*/i, '').trim();
+  return withoutUrl.length < 5;
 }
 
 /** Slide title that mirrors the start of a user brief / URL instruction fragment. */
@@ -4131,6 +4192,14 @@ export function healSparseDeckCoverLayout(
   if (officialLookIsNeoBrutalBlockFrame(dest)) return dest;
   if (destHasPosterSlideKinds(dest) && !officialLookIsIbMagazine(dest)) return dest;
   if (lookCssWithoutNeutralize(dest).trim() && !officialLookIsIbMagazine(dest)) return dest;
+  // 루프387 — LOOK CSS is merged AFTER this heal, so the `lookCssWithout
+  // Neutralize` guard fails to detect non-IB kits when heal runs early in
+  // the pipeline. Signal-based fallback: if the destination already carries
+  // neubrutalism / block-frame / studio / capsule / hermes markers (slide
+  // role classes, named layout wrappers, kit tokens, motif deco rules),
+  // skip the IB magazine rebuild — its `h1.display` / `.mast` shape and
+  // `--paper`/`--ink` vars would collide with the kit CSS merged later.
+  if (destHasNonIbKitSignals(dest)) return dest;
 
   const spans = listHealSlideHostSpans(dest);
   if (spans.length === 0) return dest;

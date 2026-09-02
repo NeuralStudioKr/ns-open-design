@@ -320,6 +320,12 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(sanitizeTemplateCloneDeckTitle('첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.')).toBeNull();
     expect(sanitizeTemplateCloneDeckTitle('expo에 대해서 설명하는 피피티 만들어줘.')).toBeNull();
     expect(sanitizeTemplateCloneDeckTitle('Html Ppt Zhangzara Daisy Days')).toBeNull();
+    // 루프387 — URL / URL-fragment briefs must not parrot as cover titles.
+    expect(sanitizeTemplateCloneDeckTitle('www.teamver.com 사이')).toBeNull();
+    expect(sanitizeTemplateCloneDeckTitle('https://www.example.com')).toBeNull();
+    expect(sanitizeTemplateCloneDeckTitle('www.foo.com')).toBeNull();
+    // Real domain + real deck topic (>=5 non-URL chars) is a legit title.
+    expect(sanitizeTemplateCloneDeckTitle('www.teamver.com 서비스 소개 슬라이드')).not.toBeNull();
     expect(looksLikeInstructionCopy('[Deliverable instruction] Build a deck')).toBe(true);
     expect(looksLikeLeakedApiModeFilesystemProse(
       'Since this workspace is in API mode without filesystem write tools, here is the complete deck HTML. You can save this as deck.html and it will render as a self-contained slide deck.',
