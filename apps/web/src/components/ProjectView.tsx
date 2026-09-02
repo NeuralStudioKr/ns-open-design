@@ -320,6 +320,7 @@ import {
 import {
   attemptEmergencySlideDeckRecovery,
   attemptFinalOutlineDeckFallback,
+  attemptCloneContentFillLookSeedReloadRecovery,
   canFireAutoContinueForConversation,
   collectSlideReferencePathsFromMessages,
   extractRequestedSlideCountHintFromMessages,
@@ -329,6 +330,7 @@ import {
   OUTLINE_DECK_FALLBACK_STATUS_CODE,
   resolveSlideProducedHtmlToOpen,
   syncAutoContinueCountFromMessages,
+  tryRecoverCloneContentFillLookSeed,
   verifySlideProducedHtmlDeliverable,
 } from '../runtime/slide-deliverable-recovery';
 import { tryPersistClientVisualMarksOnSend } from '../runtime/client-visual-mark-persist';
@@ -3050,18 +3052,7 @@ export function findTemplateCloneFillSlideCountIncomplete(input: {
   return null;
 }
 
-/** 루프365 — Clone fill: open the LOOK seed already on disk from Clone. */
-export async function tryRecoverCloneContentFillLookSeed(input: {
-  readProjectHtml: (name: string) => Promise<string | null>;
-}): Promise<{ kind: 'skipped-duplicate'; fileName: string } | null> {
-  try {
-    const seedOnDisk = String(await input.readProjectHtml('deck.html') ?? '').trim();
-    if (!seedOnDisk) return null;
-    return { kind: 'skipped-duplicate', fileName: 'deck.html' };
-  } catch {
-    return null;
-  }
-}
+export { tryRecoverCloneContentFillLookSeed } from '../runtime/slide-deliverable-recovery';
 
 export function ProjectView({
   project,
@@ -4368,6 +4359,50 @@ export function ProjectView({
               scopedCommentAttachmentCount: recoveryCommentAttachments.length,
               visualMarkOnly: visualAnnotationAutoContinueFlags(recoveryCommentAttachments).visualMarkOnly,
             });
+            // Prefer Clone LOOK seed reload recovery before stream salvage or
+            // auto-continue when a persisted incomplete_output row still has
+            // deck.html on disk (루프367).
+            if (incompleteAssistant && slideOnlyMvp) {
+              const cloneLookSeedReload = await attemptCloneContentFillLookSeedReloadRecovery({
+                incompleteAssistant,
+                messages: mergedMessages,
+                readProjectHtml,
+                producedFiles:
+                  computeProducedFiles(
+                    resolveTurnStartFileBaseline(
+                      incompleteAssistant.preTurnFileNames,
+                      filesForRecovery,
+                    ),
+                    filesForRecovery,
+                  ) ?? [],
+              });
+              if (
+                cloneLookSeedReload.recovered
+                && cloneLookSeedReload.htmlToOpen
+                && cloneLookSeedReload.updatedAssistant
+              ) {
+                const updatedAssistant = cloneLookSeedReload.updatedAssistant;
+                setMessages((current) =>
+                  current.map((message) =>
+                    message.id === updatedAssistant.id ? updatedAssistant : message,
+                  ),
+                );
+                void saveMessage(project.id, activeConversationId, updatedAssistant, {
+                  telemetryFinalized: true,
+                });
+                const filesAfterLookSeed = await refreshProjectFiles();
+                await finalizeSlideOnlyDeckArtifactsRef.current(
+                  filesAfterLookSeed,
+                  cloneLookSeedReload.htmlToOpen,
+                );
+                maybeArmTeamverPublishMenuAfterRunSuccess(
+                  project.id,
+                  cloneLookSeedReload.htmlToOpen,
+                );
+                requestOpenFile(cloneLookSeedReload.htmlToOpen);
+                return;
+              }
+            }
             // Prefer emergency salvage BEFORE burning auto-continue slots when
             // the stream already contains model-authored HTML (matches live finalize).
             if (incompleteAssistant && slideOnlyMvp) {

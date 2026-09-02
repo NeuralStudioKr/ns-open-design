@@ -28,6 +28,17 @@ import {
   SLIDE_COUNT_REQUEST_MAX,
   isSlideCountTopUpPrompt,
 } from '../teamver/slideCountTopUp';
+import { findPrecedingUserMessage } from './auto-continue-comment-scope';
+import {
+  historyHasTemplateCloneContentFill,
+  isTemplateCloneContentFillPrompt,
+} from '../teamver/templateCloneContentFill';
+import {
+  appendWarningStatusEvent,
+  clearDurableDeliverableErrorsAfterRecovery,
+} from './chat-events';
+import { CLONE_LOOK_SEED_FALLBACK_STATUS_CODE } from './deliverable-lifecycle-codes';
+import { formatCloneLookSeedFallbackNotice } from '../teamver/projectErrorMessages';
 
 /**
  * Status-event code for the "auto-continue cap exhausted and we synthesized a
@@ -580,6 +591,93 @@ export async function attemptFinalOutlineDeckFallback(options: {
     recovered: Boolean(htmlToOpen),
     produced,
     htmlToOpen,
+  };
+}
+
+/** 루프365 — Clone fill: LOOK seed already on disk from Clone. */
+export async function tryRecoverCloneContentFillLookSeed(input: {
+  readProjectHtml: (name: string) => Promise<string | null>;
+}): Promise<{ kind: 'skipped-duplicate'; fileName: string } | null> {
+  try {
+    const seedOnDisk = String(await input.readProjectHtml('deck.html') ?? '').trim();
+    if (!seedOnDisk) return null;
+    return { kind: 'skipped-duplicate', fileName: 'deck.html' };
+  } catch {
+    return null;
+  }
+}
+
+/** True when a failed assistant row belongs to a Clone content-fill lineage. */
+export function isCloneContentFillReloadRecoveryCandidate(
+  messages: readonly ChatMessage[],
+  incompleteAssistant: ChatMessage,
+): boolean {
+  const precedingUser = findPrecedingUserMessage(messages, incompleteAssistant.id);
+  return isTemplateCloneContentFillPrompt(precedingUser?.content)
+    || historyHasTemplateCloneContentFill(messages);
+}
+
+export function buildCloneLookSeedReloadRecoveredAssistant(
+  incompleteAssistant: ChatMessage,
+  producedFiles: readonly ProjectFile[],
+): ChatMessage {
+  const lookSeedNotice = formatCloneLookSeedFallbackNotice();
+  let produced = [...producedFiles];
+  if (!produced.some((file) => file.name === 'deck.html')) {
+    produced = [
+      ...produced,
+      {
+        name: 'deck.html',
+        size: 0,
+        mtime: Date.now(),
+        kind: 'html',
+        mime: 'text/html',
+      },
+    ];
+  }
+  return {
+    ...appendWarningStatusEvent(
+      clearDurableDeliverableErrorsAfterRecovery(incompleteAssistant),
+      lookSeedNotice,
+      CLONE_LOOK_SEED_FALLBACK_STATUS_CODE,
+    ),
+    producedFiles: produced,
+    runStatus: 'succeeded',
+    resumable: true,
+    endedAt: incompleteAssistant.endedAt ?? Date.now(),
+  };
+}
+
+/**
+ * 루프367 — On conversation load, promote persisted Clone fill
+ * `incomplete_output` to succeeded when LOOK seed deck.html already exists.
+ */
+export async function attemptCloneContentFillLookSeedReloadRecovery(options: {
+  incompleteAssistant: ChatMessage;
+  messages: readonly ChatMessage[];
+  readProjectHtml: (name: string) => Promise<string | null>;
+  producedFiles: readonly ProjectFile[];
+}): Promise<{
+  recovered: boolean;
+  htmlToOpen: string | null;
+  updatedAssistant: ChatMessage | null;
+}> {
+  if (!isCloneContentFillReloadRecoveryCandidate(options.messages, options.incompleteAssistant)) {
+    return { recovered: false, htmlToOpen: null, updatedAssistant: null };
+  }
+  const persistHint = await tryRecoverCloneContentFillLookSeed({
+    readProjectHtml: options.readProjectHtml,
+  });
+  if (!persistHint) {
+    return { recovered: false, htmlToOpen: null, updatedAssistant: null };
+  }
+  return {
+    recovered: true,
+    htmlToOpen: persistHint.fileName,
+    updatedAssistant: buildCloneLookSeedReloadRecoveredAssistant(
+      options.incompleteAssistant,
+      options.producedFiles,
+    ),
   };
 }
 

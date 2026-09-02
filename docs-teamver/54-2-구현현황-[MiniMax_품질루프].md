@@ -33,6 +33,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프367 — hard reload Clone fill incomplete_output → LOOK seed
+
+루프365는 턴 종료 시 LOOK seed 복구를 닫았지만 DB에 `failed`/`incomplete_output`로 persist된 assistant는 reload 후에도 실패 카드가 남았다. conversation load에서 Clone fill lineage + deck.html on disk면 succeeded + `clone_look_seed_fallback` warning으로 승격하고 deck를 연다 (emergency/AC 전). 카피 발명 없음.
+
+검증: web clone-look-seed-recovery 루프367.
+
 ### 루프366 — 1920 leftover `#stage` + 잔여 swipe 지문 첫 장 nudge
 
 author `<script>`가 있으면 preview hoist가 `#stage`를 건너뛰고, `<section id="stage">`는 unwrap 대상이 아니었다. `scroll-snap-x`/body overflow-x leftover도 1920 캔버스면 swipe가 아니다. hoist + 분류 + vw nudge 거부. Zhangzara `#deck` 100vw는 compact 유지. 공식 IB swipe `#stage`는 유지. 카피 발명 없음.
