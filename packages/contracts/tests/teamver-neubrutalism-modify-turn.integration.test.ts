@@ -123,6 +123,38 @@ describe('teamver neubrutalism modify-turn fixture (2026-09-02 user report)', ()
     }
   });
 
+  it('pulls every filled orphan chrome card into the preceding empty grid (loop382)', () => {
+    // With loop381 filling all 3 shells, loop382 lifts the per-row cap
+    // when the grid started empty and pulls ALL 3 shells into the grid
+    // — the h2 slide title stays as the ONLY loose sibling between the
+    // grid and the closing `</div>` of the slide flow.
+    const slide4Match = out.match(
+      /<section[^>]*data-screen-label="04 Product"[\s\S]*?<\/section>/,
+    );
+    expect(slide4Match).not.toBeNull();
+    const slide4 = slide4Match![0];
+    const gridMatch = slide4.match(
+      /<div style="display:grid;grid-template-columns:repeat\(2[^"]*"[^>]*>([\s\S]*?)<\/div>\s*(?:<h2|<\/div>)/,
+    );
+    expect(gridMatch).not.toBeNull();
+    const gridInner = gridMatch![1] ?? '';
+    // All 3 filled chrome shells now live inside the grid.
+    expect((gridInner.match(/box-shadow:8px 8px 0 #000;padding:32px/g) ?? []).length).toBe(3);
+    // Product headings live inside the grid, not as loose siblings after it.
+    for (const productName of ['Shared Drive', 'AI Chat', 'AI Apps']) {
+      expect(gridInner).toContain(productName);
+    }
+  });
+
+  it('unwraps the .split-content wrapper on the heading-only slide 2 so heading centers full-slide (loop383)', () => {
+    // Slide 2 had `<div class="split-content"><h2>Teamver — Smarter & Faster</h2></div>`
+    // — the split-content padding + border-left made the heading look like an
+    // empty half-slide box. Loop383 unwraps split-content when it holds only a
+    // heading, letting slide-flow centering present the heading as a hero.
+    expect(out).not.toMatch(/<div\s+class="split-content"[^>]*>\s*<h[1-6][^>]*>[^<]+<\/h[1-6]>\s*<\/div>/);
+    expect(out).toContain('Teamver — Smarter &amp; Faster');
+  });
+
   it('keeps the h2 slide title intact when pull-orphan reparents siblings (loop381 offset fix)', () => {
     // Preexisting `pullOrphanChromeCardsIntoPrecedingGrid` bug: when
     // multiple orphan chrome cards followed the grid, each insertion at

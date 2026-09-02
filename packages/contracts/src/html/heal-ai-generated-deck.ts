@@ -3131,6 +3131,12 @@ export function stripDuplicatedHeadingTailAfterClose(html: string): string {
 
 const CROSS_GRID_SPILL_BODY_MIN = 4;
 const CROSS_GRID_SPILL_BODY_MAX = 200;
+/**
+ * 루프382 — Max chrome-card orphans to reparent into an empty grid.
+ * Cap at 8 so a truly runaway modify-turn cannot chain a full slide of
+ * chrome content into a single grid; typical broken decks hit 3–4.
+ */
+const PULL_ORPHAN_EMPTY_GRID_CARD_CAP = 8;
 
 function looksLikeCrossGridSpillBody(
   html: string,
@@ -3348,7 +3354,17 @@ export function pullOrphanChromeCardsIntoPrecedingGrid(
         (c) => c.tag === 'div' && looksLikeChromeCardStyle(c.style),
       ).length;
       if (chromeInside >= decl.count) continue;
-      let slotsLeft = decl.count - chromeInside;
+      // 루프382 — When the grid has ZERO chrome cards inside (a
+      // modify-turn broken pattern where every card leaked out as a
+      // loose sibling), lift the per-row cap to a full-slide cap so
+      // all subsequent orphan chrome cards land inside the grid, not
+      // just enough to fill one row. Existing chrome siblings inside
+      // the grid keep the original per-column cap so authored fills
+      // that intentionally left a spare column stay intact.
+      const cap = chromeInside === 0
+        ? PULL_ORPHAN_EMPTY_GRID_CARD_CAP
+        : decl.count - chromeInside;
+      let slotsLeft = cap;
       for (let j = i + 1; j < parentChildren.length && slotsLeft > 0; j += 1) {
         const orphan = parentChildren[j]!;
         if (orphan.tag !== 'div') break;
@@ -4100,6 +4116,92 @@ export function scrubTemplatePlaceholderSlots(html: string): string {
 }
 
 /**
+ * 루프383 — Unwrap slide-body layout wrappers (`.split-content`, `.hero-frame`,
+ * `.split-pane`, `.card`, `.slide-inner`, etc.) that hold only a heading with
+ * no accompanying body block. The wrapper's padding / border / half-width flex
+ * bleed makes the lone heading look like an empty box; unwrapping lets the
+ * slide-flow centering CSS present the heading full-slide as a proper hero.
+ *
+ * Only unwraps when the wrapper's ONLY visible child is a single heading
+ * (h1–h6) with real text; skips wrappers that also carry a list, paragraph,
+ * grid, or any other body content. Never invents copy.
+ */
+const HEADING_ONLY_LAYOUT_WRAPPER_CLASSES = new Set<string>([
+  'split-content',
+  'split-visual',
+  'split-pane',
+  'hero-frame',
+  'quote-frame',
+  'close-frame',
+  'feature-card',
+  'info-card',
+  'intro-card',
+  'stat-card',
+  'team-card',
+  'timeline-step',
+  'card',
+  'slide-inner',
+  'slide-body',
+]);
+
+export function unwrapHeadingOnlyLayoutWrappers(html: string): string {
+  const source = String(html ?? '');
+  if (!source) return source;
+  const openRe = /<div\b([^>]*)>/gi;
+  const edits: Array<{ openStart: number; openEnd: number; closeStart: number; closeEnd: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(source)) !== null) {
+    const attrs = match[1] ?? '';
+    const cls = classAttrValue(attrs).trim().split(/\s+/).filter(Boolean);
+    if (cls.length === 0) continue;
+    const hasHeadingOnlyClass = cls.some(
+      (token) => HEADING_ONLY_LAYOUT_WRAPPER_CLASSES.has(token.toLowerCase()),
+    );
+    if (!hasHeadingOnlyClass) continue;
+    const openStart = match.index;
+    const openEnd = openStart + match[0]!.length;
+    const closeInfo = findSameTagClose(source, 'div', openEnd);
+    if (!closeInfo) continue;
+    const closeStart = closeInfo.closeStart;
+    const innerHtml = source.slice(openEnd, closeStart);
+    if (!wrapperHoldsOnlyHeading(innerHtml)) continue;
+    const closeEnd = closeStart + closeTagLength(source, closeStart);
+    edits.push({ openStart, openEnd, closeStart, closeEnd });
+  }
+  if (edits.length === 0) return source;
+  const outer: typeof edits = [];
+  let cursor = -1;
+  const sorted = [...edits].sort((a, b) => a.openStart - b.openStart);
+  for (const edit of sorted) {
+    if (edit.openStart < cursor) continue;
+    outer.push(edit);
+    cursor = edit.closeEnd;
+  }
+  let out = source;
+  for (let i = outer.length - 1; i >= 0; i -= 1) {
+    const edit = outer[i]!;
+    out = out.slice(0, edit.closeStart) + out.slice(edit.closeEnd);
+    out = out.slice(0, edit.openStart) + out.slice(edit.openEnd);
+  }
+  return out;
+}
+
+function wrapperHoldsOnlyHeading(inner: string): boolean {
+  const stripped = String(inner ?? '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .trim();
+  if (!stripped) return false;
+  const headingMatch = /^<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>\s*$/i.exec(stripped);
+  if (!headingMatch) return false;
+  const headingText = String(headingMatch[2] ?? '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;|&#160;|&#xa0;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return headingText.length > 0;
+}
+
+/**
  * 루프379 — Unwrap trivial single-child `display:flex`/`display:grid`
  * `<div>` wrappers.
  *
@@ -4352,6 +4454,11 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // (loop376), now applied in the general heal pipeline so modify-turn
   // HTML gets the same cleanup.
   out = stripLeafEmptyListAndParagraphShells(out);
+  // 루프383 — heading-only 슬라이드에서 layout wrapper (.split-content,
+  // .hero-frame, .card 등)가 heading을 감싸 slide-flow의 hero-centering을
+  // 못 받게 만든다. leaf-empty strip 이후에 실행해 방금 빈 <ul>/<p>를 걷어낸
+  // wrapper도 잡을 수 있게 한다.
+  out = unwrapHeadingOnlyLayoutWrappers(out);
   // Second unwrap pass — earlier peer trims may collapse a grid down to
   // a single card, leaving another trivial wrapper. Idempotent.
   out = unwrapTrivialSingleChildLayoutWrappers(out);

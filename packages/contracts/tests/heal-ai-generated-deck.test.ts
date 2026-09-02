@@ -21,6 +21,7 @@ import {
   relaxUniformPeerCardFixedMainSize,
   unwrapRedundantNestedPeerCards,
   unnestHeadingBlockChildren,
+  unwrapHeadingOnlyLayoutWrappers,
   unwrapTrivialSingleChildLayoutWrappers,
 } from '../src/html/heal-ai-generated-deck.js';
 
@@ -5150,6 +5151,60 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).toContain('Slack');
       expect(out).toContain('ChatGPT');
       expect(out).toContain('팀의 일이 너무 많이 흩어져 있습니다');
+    });
+  });
+
+  describe('루프383 unwrapHeadingOnlyLayoutWrappers', () => {
+    it('unwraps a .split-content <div> when it only holds a heading', () => {
+      const html = '<div class="split-content"><h2>Only Heading</h2></div>';
+      expect(unwrapHeadingOnlyLayoutWrappers(html)).toBe('<h2>Only Heading</h2>');
+    });
+
+    it('unwraps .hero-frame with only a heading', () => {
+      const html = '<div class="hero-frame"><h1>Big Title</h1></div>';
+      expect(unwrapHeadingOnlyLayoutWrappers(html)).toBe('<h1>Big Title</h1>');
+    });
+
+    it('keeps a .split-content that also holds body content', () => {
+      const html = '<div class="split-content"><h2>Title</h2><ul><li>a</li></ul></div>';
+      expect(unwrapHeadingOnlyLayoutWrappers(html)).toBe(html);
+    });
+
+    it('keeps a wrapper whose heading is empty (nothing to promote)', () => {
+      const html = '<div class="hero-frame"><h1></h1></div>';
+      expect(unwrapHeadingOnlyLayoutWrappers(html)).toBe(html);
+    });
+
+    it('keeps wrappers without a recognized layout class', () => {
+      const html = '<div class="custom-wrap"><h2>Only</h2></div>';
+      expect(unwrapHeadingOnlyLayoutWrappers(html)).toBe(html);
+    });
+
+    it('unwraps nested heading-only wrappers, outer-first per pass', () => {
+      const html = '<div class="split-pane"><div class="hero-frame"><h1>Deep</h1></div></div>';
+      // Outer wrapper's only child is inner wrapper (not a heading directly)
+      // → outer stays. Inner unwrap runs → outer becomes trivial wrapper
+      // with heading only → outer unwraps next.
+      const once = unwrapHeadingOnlyLayoutWrappers(html);
+      const twice = unwrapHeadingOnlyLayoutWrappers(once);
+      expect(twice).toBe('<h1>Deep</h1>');
+    });
+
+    it('runs through healAiGeneratedDeckMarkup on a broken split-content slide', () => {
+      const html = [
+        '<section class="slide slide-6">',
+        '<div data-od-slide-flow>',
+        '<div class="split-content">',
+        '<h2 class="nb-heading-md">Teamver — Smarter &amp; Faster</h2>',
+        '</div>',
+        '</div>',
+        '</section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, 'Teamver 소개');
+      // .split-content wrapper is gone; heading survives.
+      expect(out).not.toMatch(/class="split-content"/);
+      expect(out).toContain('Teamver — Smarter');
+      expect(out).toContain('nb-heading-md');
     });
   });
 });

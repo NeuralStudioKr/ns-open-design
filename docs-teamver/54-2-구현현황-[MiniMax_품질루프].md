@@ -76,6 +76,26 @@ repair auto-send 600ms 창에 사용자가 Retry/Continue를 눌러 repair send�
 
 검증: web ChatPane.resume-failed 루프370 · contracts redacted_thinking parse.
 
+### 루프382 — pull-orphan 슬롯 확장 (빈 grid는 최대 8개 카드까지 pull)
+
+reproduce: loop381로 3개 chrome shell이 콘텐츠와 함께 복구됐지만 `pullOrphanChromeCardsIntoPrecedingGrid`의 기존 슬롯 캡(`decl.count - chromeInside` = 2)이 걸려 세 번째 shell(결과물+AI Apps)이 grid 밖으로 남았다.
+
+수정: grid 안에 chrome card가 0개면(broken modify-turn 패턴) 캡을 `PULL_ORPHAN_EMPTY_GRID_CARD_CAP=8`로 올림. 그리드는 `grid-auto-rows`로 자동 확장. 기존 chrome cards가 있는 authored grid는 원래 캡 유지(intentional 여분 slot 보호).
+
+검증: fixture slide 4가 이제 3장 모두 grid 안 · contracts 2902/2902.
+
+### 루프383 — heading-only layout wrapper unwrap (hero centering)
+
+reproduce: 사용자 fixture slide 2 = `<div class="split-content"><h2>Teamver — Smarter & Faster</h2></div>` — split-content padding + border-left가 heading을 half-width empty box처럼 보이게 함.
+
+수정: `unwrapHeadingOnlyLayoutWrappers` — `.split-content`, `.hero-frame`, `.quote-frame`, `.close-frame`, `.split-visual`, `.split-pane`, `.slide-inner`, `.slide-body`, `.feature-card`, `.info-card`, `.intro-card`, `.stat-card`, `.team-card`, `.timeline-step`, `.card` 15개 layout wrapper 클래스 안에 오직 heading (h1-h6, 실제 텍스트 있음) 하나만 있으면 wrapper 제거. Body content (list/p/grid 등)가 함께 있으면 유지.
+
+Pipeline 배치: `stripLeafEmptyListAndParagraphShells` 이후에 실행 → 빈 `<ul>` / `<p>` shell을 걷어낸 뒤 남은 heading-only wrapper도 잡음.
+
+Nested wrappers는 pass당 outermost non-overlapping만, `unwrapTrivialSingleChildLayoutWrappers`의 2회차가 이어서 정리.
+
+검증: contracts heal-ai-generated-deck 7개 신규 (basic unwrap / hero-frame / with-body 유지 / empty-heading 유지 / non-recognized-class 유지 / nested unwrap / healAiGeneratedDeckMarkup 통합) · integration fixture 신규 assertion `.split-content` 제거 · 전체 스위트 2910/2910.
+
 ### 루프381 — chrome shell 콘텐츠 흡수 · inline-block pill cardish 오탐 봉쇄 · orphan pull offset 버그
 
 **reproduce:** neubrutalism 사용자 fixture 슬라이드 4 여전히 무너짐 — 4개 제품 카드 중 첫 번째만 반쯤 grid 안에 있고, 나머지 3개는 chrome shell **빈 껍데기**(padding+border)와 loose `pill+h3+p` 삼중항으로 슬라이드 flow에 흩어져 있음. `stripEmptyBorderPadCardShells`가 빈 shell을 드랍한 뒤 pill/h3/p가 아무 wrapper 없이 남아 layout이 완전 붕괴.
