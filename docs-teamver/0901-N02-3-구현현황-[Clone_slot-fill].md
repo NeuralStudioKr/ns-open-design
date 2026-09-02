@@ -29,7 +29,9 @@
 | **루프364** soft-invalid JSON도 queue-repair 없이 seed-fallback · pending+seed 복구 | ☑ |
 | **루프365** seed-fallback persist 생략 · skipped-incomplete 전 reason LOOK seed 복구 · repair dead path 제거 · policy echo UI | ☑ |
 | **루프367** hard reload incomplete_output → LOOK seed 복구 | ☑ |
-| MiniMax 실키 E2E | ☐ 키 없음 (`template-clone-minimax-live.e2e` skip 가드) |
+| **루프368** JSON 파싱 강화 + FE 1회 auto-repair (LOOK seed 경고 전) | ☑ |
+| **루프369** JSON 본문 section 오탐 · repair send 실패 fallback · brief 전달 | ☑ |
+| MiniMax 실키 E2E | ☑ `template-clone-minimax-live.e2e` · `minimax-live-e2e.gate` (키 없으면 skip) |
 
 ## 검증
 
@@ -44,7 +46,9 @@
 - [x] C8: process-flow/timeline-track/kb-pipeline · orphan arrow drop · Daisy fill→heal
 - [x] C9: hc-card `.lbl` · feature-postit · statement-postit deny · flow arrows
 - [x] 루프364: soft-invalid → seed-fallback · `isCloneContentFillLookSeedRecoverablePersistReason`
-- [x] MiniMax live: 키 없으면 skip (가짜 live 금지)
+- [x] MiniMax live: 키 없으면 skip · `deploy/teamver/.env`에서 키 로드
+- [x] MiniMax live clone-fill: slot-fill 또는 seed-fallback
+- [x] 루프368/369: policy echo JSON 추출 · repair 1회 auto-send · section.slide 본문 오탐 제거
 
 ## 메모
 
@@ -65,4 +69,5 @@
 
 | 일자 | 내용 |
 |------|------|
+| 2026-09-02 | 루프368/369 — JSON 파싱 + FE repair 1회 auto-send · live E2E 복원 |
 | 2026-09-01 19:22 | 루프364 — soft-invalid → seed-fallback · pending+seed incomplete_output 복구 |

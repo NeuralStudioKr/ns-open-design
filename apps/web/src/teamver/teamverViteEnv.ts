@@ -62,15 +62,18 @@ const STATIC_TEAMVER_VITE_ENV: Record<string, string | undefined> = {
 };
 
 export function readTeamverViteEnv(key: string): string | undefined {
-  if (
-    typeof process !== "undefined" &&
-    process.env.VITEST &&
-    key === "VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED"
-  ) {
+  if (typeof process !== "undefined" && process.env.VITEST) {
     const fromProcess = process.env[key];
-    return typeof fromProcess === "string" && fromProcess.trim()
-      ? fromProcess.trim()
-      : undefined;
+    if (typeof fromProcess === "string" && fromProcess.trim()) {
+      return fromProcess.trim();
+    }
+    // Vitest: ignore STATIC snapshot captured at module load (deploy .env leak).
+    const metaEnv = typeof import.meta !== "undefined" ? import.meta.env : undefined;
+    const fromMeta = metaEnv?.[key];
+    if (typeof fromMeta === "string" && fromMeta.trim()) {
+      return fromMeta.trim();
+    }
+    return undefined;
   }
 
   const fromStatic = STATIC_TEAMVER_VITE_ENV[key];

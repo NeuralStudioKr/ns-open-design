@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
   TEMPLATE_CLONE_CONTENT_FILL_MARKER,
@@ -6,6 +6,7 @@ import {
   TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER,
   buildTemplateCloneContentFillSeed,
   buildTemplateCloneSlotFillRepairPrompt,
+  cloneFillJsonRepairAlreadyAttempted,
   compactTemplateCloneFillSourceBrief,
   deriveTemplateCloneTopicLabel,
   ensureTemplateCloneContentFillContinuePrompt,
@@ -21,11 +22,16 @@ import {
   queueTemplateCloneContentFill,
   resolveTemplateCloneAutoSendSeed,
   shouldUseDeterministicTemplateCloneFill,
+  shouldQueueCloneSlotFillJsonRepair,
   templateCloneFillSlideCountOverrideNotice,
   withTemplateCloneFillPluginInputs,
   withoutCanonicalDeckAttachments,
 } from '../../src/teamver/templateCloneContentFill';
 import { promptWithTemplateCloneContentFillInstruction } from '../../src/components/ProjectView';
+
+beforeEach(() => {
+  delete process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE;
+});
 
 afterEach(() => {
   delete process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE;
@@ -443,6 +449,14 @@ describe('templateCloneContentFill', () => {
     expect(historyHasTemplateCloneSlotFillRepair([
       { role: 'user', content: repair },
     ])).toBe(true);
+  });
+
+  it('cloneFillJsonRepairAlreadyAttempted includes in-flight repair user turn (루프369)', () => {
+    const repair = buildTemplateCloneSlotFillRepairPrompt({ userBrief: 'expo 설명' });
+    expect(repair).toContain('expo');
+    expect(cloneFillJsonRepairAlreadyAttempted([], repair)).toBe(true);
+    expect(shouldQueueCloneSlotFillJsonRepair([], repair)).toBe(false);
+    expect(shouldQueueCloneSlotFillJsonRepair([], 'fill prompt')).toBe(true);
   });
 
   it('drops cloned deck.html from fill-queue attachments', () => {

@@ -98,12 +98,18 @@ P0: FE가 seed된 `deck.html`을 읽어 outline으로 재치환해도 됨(제목
 
 ### 결정표 (`decideTemplateCloneSlotFillTerminal`)
 
-| 조건 | 결과 |
+> **루프364+ (현행):** contracts는 LOOK seed가 있으면 soft-invalid/HTML dump 모두 **`seed-fallback`만** 반환 (`queue-repair` 제거). **루프368:** JSON 파싱 강화 후에도 실패하면 **FE ProjectView**가 repair prompt **1회 auto-send** (600ms)하고, repair turn도 실패할 때만 LOOK seed 경고.
+
+| 조건 | 결과 (contracts) |
 |------|------|
 | seed + valid outline → `applyTemplateCloneSlotFill` ok | `slot-fill` |
-| 위 실패 ∧ repair 미시도 | `queue-repair` |
-| 위 실패 ∧ repair 이미 있음 ∧ seed 있음 | `seed-fallback` |
-| 위 실패 ∧ repair 이미 있음 ∧ seed 없음 | `abort` |
+| 위 실패 ∧ seed 있음 | `seed-fallback` |
+| 위 실패 ∧ seed 없음 | `abort` |
+
+| 조건 | 결과 (FE — 루프368) |
+|------|------|
+| seed-fallback ∧ repair 미시도 | repair auto-send 1회 (LOOK seed 경고 **지연**) |
+| seed-fallback ∧ repair 이미 시도 | LOOK seed succeeded + warning |
 
 ### Repair prompt
 
@@ -113,9 +119,9 @@ P0: FE가 seed된 `deck.html`을 읽어 outline으로 재치환해도 됨(제목
 
 ### ProjectView 배선
 
-1. terminal onDone, B4 직후 `decide…`.
-2. `queue-repair`: `artifactToPersist = null`, emergency HTML salvage 억제, incomplete AC 타이머로 repair prompt `handleSend` (fill meta 유지).
-3. `seed-fallback`: LOOK seed HTML persist, metadata `templateCloneSlotFillFallback: true`.
+1. terminal onDone, B4 직후 `decide…` + `prepareTemplateCloneSlotFillAssistantText` 정규화.
+2. **루프368** seed-fallback + repair 미시도: `cloneSlotFillRepairTimerRef` 600ms → `buildTemplateCloneSlotFillRepairPrompt` `handleSend` (`CLONE_SLOT_FILL_REPAIR_ENTRY_FROM`). send 실패/stream busy → LOOK seed warning.
+3. seed-fallback + repair 이미 시도: LOOK seed succeeded + `formatCloneLookSeedFallbackNotice`.
 4. `abort`: persist 없음 (모델 HTML resolve 폐기).
 5. `slot-fill`: 기존 B4와 동일.
 

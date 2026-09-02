@@ -46,6 +46,9 @@ export const TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER = '[Template clone content 
 /** One-shot JSON repair after invalid outline (0901-N02 B5). */
 export const TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER = '[Template clone slot-fill JSON repair]';
 
+/** handleSend entryFrom for the one-shot JSON repair auto-send (루프368). */
+export const CLONE_SLOT_FILL_REPAIR_ENTRY_FROM = 'clone_slot_fill_json_repair';
+
 export type TemplateCloneFillMode = 'prompt' | 'deterministic';
 
 export function normalizeTemplateCloneFillMode(value: unknown): TemplateCloneFillMode {
@@ -109,9 +112,31 @@ export function historyHasTemplateCloneSlotFillRepair(
   return false;
 }
 
+/**
+ * Repair already attempted on this fill lineage — includes the in-flight user
+ * turn (messagesRef may lag behind the local `userMsg` during finalize).
+ */
+export function cloneFillJsonRepairAlreadyAttempted(
+  messages: readonly { role?: string; content?: string | null }[],
+  currentUserContent?: string | null,
+): boolean {
+  if (isTemplateCloneSlotFillRepairPrompt(currentUserContent)) return true;
+  return historyHasTemplateCloneSlotFillRepair(messages);
+}
+
+/** True when a one-shot JSON repair auto-send should run before LOOK seed warning. */
+export function shouldQueueCloneSlotFillJsonRepair(
+  messages: readonly { role?: string; content?: string | null }[],
+  currentUserContent?: string | null,
+): boolean {
+  return !cloneFillJsonRepairAlreadyAttempted(messages, currentUserContent);
+}
+
 /** Short repair user turn — not the long incomplete-output auto-continue essay. */
-export function buildTemplateCloneSlotFillRepairPrompt(): string {
-  return [
+export function buildTemplateCloneSlotFillRepairPrompt(options?: {
+  userBrief?: string | null;
+}): string {
+  const parts = [
     TEMPLATE_CLONE_CONTENT_FILL_MARKER,
     TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
     TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER,
@@ -120,7 +145,12 @@ export function buildTemplateCloneSlotFillRepairPrompt(): string {
     'Shape: {"title":"...","slides":[{"title":"...","body":"line\\nline","roleHint":"cover|list|cards|timeline|stat|quote|team|process|closing|body"}]}',
     'FORBIDDEN: <!doctype, <html, <head, <style, <section class="slide">, Motif <svg>.',
     'Host slot-fills the LOOK seed. Do not regenerate deck HTML.',
-  ].join('\n');
+  ];
+  const brief = String(options?.userBrief ?? '').trim();
+  if (brief && !looksLikeInstructionNotSlideCopy(brief)) {
+    parts.push(`Original brief (fill REAL topical copy): ${brief.slice(0, 400)}`);
+  }
+  return parts.join('\n');
 }
 
 /** True when the most recent user turn is still a Clone content-fill. */

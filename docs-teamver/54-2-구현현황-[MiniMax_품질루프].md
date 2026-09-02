@@ -38,6 +38,18 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프369 — JSON 본문 section.slide 오탐 · repair send 실패 · brief 전달
+
+JSON outline 문자열 안의 `<section class="slide">` 멘션이 HTML dump로 오탐되던 문제 수정. repair auto-send 실패/stream busy 시 LOOK seed 경고로 fallback. repair prompt에 원 brief 포함.
+
+검증: contracts template-clone-outline 루프369 · web templateCloneContentFill · live E2E slot-fill.
+
+### 루프368 — JSON outline 파싱 + FE 1회 auto-repair
+
+MiniMax policy echo / mid-text fenced JSON 혼합 응답에서 JSON 추출 강화. contracts `decide`는 seed-fallback 유지; **FE ProjectView**가 첫 JSON 실패 시 repair prompt 1회 auto-send (600ms) 후에만 LOOK seed 경고.
+
+검증: contracts template-clone-outline 루프368 · web ProjectView finalize.
+
 ### 루프367 — hard reload Clone fill incomplete_output → LOOK seed
 
 루프365는 턴 종료 시 LOOK seed 복구를 닫았지만 DB에 `failed`/`incomplete_output`로 persist된 assistant는 reload 후에도 실패 카드가 남았다. conversation load에서 Clone fill lineage + deck.html on disk면 succeeded + `clone_look_seed_fallback` warning으로 승격하고 deck를 연다 (emergency/AC 전). 카피 발명 없음.

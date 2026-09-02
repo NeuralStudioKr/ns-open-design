@@ -147,7 +147,7 @@ export function isTemplateCloneShellRole(value: unknown): value is TemplateClone
 
 /** True when model text looks like a full deck HTML dump instead of JSON outline. */
 export function outlineLooksLikeHtmlDump(text: string): boolean {
-  const sample = String(text ?? '').slice(0, 8000);
+  const sample = stripTemplateCloneOutlineNoise(String(text ?? '')).slice(0, 8000);
   if (/<!doctype\b/i.test(sample) || /<html\b/i.test(sample)) return true;
   if (/<section\b[^>]*\b(?:slide|s-[\w-]+)\b/i.test(sample)) return true;
   if (/<div\b[^>]*\b(?:slide|s-[\w-]+)\b/i.test(sample)) return true;
@@ -155,15 +155,17 @@ export function outlineLooksLikeHtmlDump(text: string): boolean {
   return false;
 }
 
-function extractJsonObjectText(raw: string): string | null {
-  const trimmed = String(raw ?? '').trim();
-  if (!trimmed) return null;
-  let text = trimmed;
-  const fence = text.match(/^```(?:json)?\s*([\s\S]*?)```/i);
-  if (fence?.[1]) text = fence[1].trim();
-  if (outlineLooksLikeHtmlDump(text)) return null;
-  if (text.startsWith('{') && text.endsWith('}')) return text;
-  const start = text.indexOf('{');
+/** Strip model policy echo / thinking blocks before JSON outline extraction. */
+export function stripTemplateCloneOutlineNoise(text: string): string {
+  return String(text ?? '')
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, '')
+    .replace(/<think>[\s\S]*?<\/redacted_thinking>/gi, '')
+    .replace(/[\s\S]*?<\/think>/gi, '')
+    .trim();
+}
+
+function extractBalancedJsonObject(text: string, startIndex = 0): string | null {
+  const start = text.indexOf('{', startIndex);
   if (start < 0) return null;
   let depth = 0;
   let inString = false;
@@ -195,6 +197,28 @@ function extractJsonObjectText(raw: string): string | null {
   return null;
 }
 
+function extractJsonObjectText(raw: string): string | null {
+  const trimmed = stripTemplateCloneOutlineNoise(String(raw ?? ''));
+  if (!trimmed) return null;
+
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) {
+    const inner = fenced[1].trim();
+    const fromFence =
+      (inner.startsWith('{') && inner.endsWith('}') ? inner : null)
+      ?? extractBalancedJsonObject(inner);
+    if (fromFence) return fromFence;
+  }
+
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) return trimmed;
+  return extractBalancedJsonObject(trimmed);
+}
+
+/** Normalize assistant text before Clone slot-fill terminal decision (루프368/369). */
+export function prepareTemplateCloneSlotFillAssistantText(raw: string): string {
+  return stripTemplateCloneOutlineNoise(String(raw ?? ''));
+}
+
 /**
  * Parse AI JSON outline for Clone slot-fill (0901-N02).
  * Returns null on HTML dumps, invalid shape, or empty slides after sanitize.
@@ -204,9 +228,12 @@ export function parseTemplateCloneDeckOutline(
 ): TemplateCloneDeckOutline | null {
   let value: unknown = raw;
   if (typeof raw === 'string') {
-    if (outlineLooksLikeHtmlDump(raw)) return null;
-    const jsonText = extractJsonObjectText(raw);
-    if (!jsonText) return null;
+    const cleaned = stripTemplateCloneOutlineNoise(raw);
+    const jsonText = extractJsonObjectText(cleaned);
+    if (!jsonText) {
+      if (outlineLooksLikeHtmlDump(cleaned)) return null;
+      return null;
+    }
     try {
       value = JSON.parse(jsonText) as unknown;
     } catch {

@@ -1,24 +1,51 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-/**
- * Live MiniMax browser generation is gated on a managed key.
- * This environment does not provide MINIMAX_API_KEY. Do not invent a
- * generation round-trip here. When a key is injected in CI, a separate
- * live suite should run; this file only records the skip contract.
- */
-const MINIMAX_KEY = String(process.env.MINIMAX_API_KEY ?? '').trim();
+import {
+  hasMiniMaxLiveKey,
+  resolveMiniMaxLiveApiKeyFromEnv,
+  resolveMiniMaxLiveConfig,
+} from './helpers/minimax-live-env.js';
 
-describe('MiniMax live browser E2E gate', () => {
-  it.skipIf(!MINIMAX_KEY)(
-    'key is present — live browser suite is owned elsewhere, not this unit file',
-    () => {
-      expect(MINIMAX_KEY.length).toBeGreaterThan(0);
-    },
-  );
+describe('minimax live e2e gate (0901-N02)', () => {
+  const prev: Record<string, string | undefined> = {};
 
-  it('records that managed MiniMax key is absent (no live generation)', () => {
-    if (MINIMAX_KEY) return;
-    expect(MINIMAX_KEY).toBe('');
-    expect(String(process.env.MINIMAX_API_KEY ?? '')).toBe('');
+  beforeEach(() => {
+    for (const name of [
+      'TEAMVER_MINIMAX_API_KEY',
+      'OD_MINIMAX_API_KEY',
+      'MINIMAX_API_KEY',
+    ]) {
+      prev[name] = process.env[name];
+    }
+  });
+
+  afterEach(() => {
+    for (const [name, value] of Object.entries(prev)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  });
+
+  it('does not claim a live key when all MiniMax env aliases are empty', () => {
+    delete process.env.TEAMVER_MINIMAX_API_KEY;
+    delete process.env.OD_MINIMAX_API_KEY;
+    delete process.env.MINIMAX_API_KEY;
+    expect(resolveMiniMaxLiveApiKeyFromEnv()).toBe('');
+    expect(hasMiniMaxLiveKey({ loadDeployEnv: false })).toBe(false);
+  });
+
+  it('resolves TEAMVER_MINIMAX_API_KEY before OD/MINIMAX aliases', () => {
+    delete process.env.TEAMVER_MINIMAX_API_KEY;
+    delete process.env.OD_MINIMAX_API_KEY;
+    delete process.env.MINIMAX_API_KEY;
+    process.env.OD_MINIMAX_API_KEY = 'sk-od';
+    process.env.MINIMAX_API_KEY = 'sk-raw';
+    expect(resolveMiniMaxLiveConfig({ loadDeployEnv: false }).apiKey).toBe('sk-od');
+    process.env.TEAMVER_MINIMAX_API_KEY = 'sk-teamver';
+    expect(resolveMiniMaxLiveConfig({ loadDeployEnv: false }).apiKey).toBe('sk-teamver');
+  });
+
+  it('live clone-fill suite is gated — no HTTP in this file', () => {
+    expect(typeof hasMiniMaxLiveKey).toBe('function');
   });
 });

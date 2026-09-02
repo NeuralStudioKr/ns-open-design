@@ -421,6 +421,13 @@ export function formatCloneLookSeedFallbackNotice(): string {
     : "Slide fill did not complete — kept the template draft (LOOK seed). Use the retry button to regenerate the full deck.";
 }
 
+/** 루프368 — JSON repair auto-send 진행 중 (LOOK seed 경고 전). */
+export function formatCloneSlotFillRepairInProgressNotice(): string {
+  return isTeamverEmbedMode()
+    ? 'JSON outline 형식을 다시 요청하는 중입니다. 잠시만 기다려 주세요.'
+    : 'Retrying for a valid JSON outline. Please wait a moment.';
+}
+
 function mapHttpStatusToProjectRunErrorCode(status: number): string {
   if (status === 401) return "UNAUTHORIZED";
   if (status === 403) return "FORBIDDEN";
