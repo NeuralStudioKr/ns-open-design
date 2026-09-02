@@ -1824,6 +1824,32 @@ describe('0901-N02 heal↔clone integration', () => {
       expect([...(cardsSlide.body.matchAll(/\binfo-card\b/gi))].length).toBe(2);
     }
   });
+
+  it('hermes hc-grid fragment → fill → heal keeps lbl titles', () => {
+    const slideBody = [
+      '<h2>핵심 지표</h2>',
+      '<div class="hc-grid-3">',
+      '<div class="hc-card"><div class="lbl">install time</div><div class="val">42s</div><div class="desc">demo a</div></div>',
+      '<div class="hc-card"><div class="lbl">first token</div><div class="val">1.8s</div><div class="desc">demo b</div></div>',
+      '<div class="hc-card"><div class="lbl">first PR</div><div class="val">3d</div><div class="desc">demo c</div></div>',
+      '</div>',
+    ].join('');
+    const trimmed = fillAndTrimCardPeers(slideBody, ['설치 시간', '첫 토큰']);
+    const deck = [
+      '<!doctype html><html><body class="tpl-hermes-cyber-terminal">',
+      `<section class="slide">${trimmed}</section>`,
+      '</body></html>',
+    ].join('');
+    const healed = pinDeckSlidesToFixedCanvas(
+      healAiGeneratedDeckMarkup(deck, '에이전트 설치 지표'),
+    );
+    expect(healed).toContain('설치 시간');
+    expect(healed).toContain('첫 토큰');
+    expect(healed).not.toContain('first PR');
+    expect(healed).not.toContain('install time');
+    expect([...(healed.matchAll(/\bhc-card\b/gi))].length).toBe(2);
+    expect(healed).toMatch(/tpl-hermes|hc-grid/i);
+  });
 });
 
 describe('hoistCloneSlidesOutOfFlexTrack', () => {
