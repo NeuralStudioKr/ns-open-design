@@ -1315,6 +1315,46 @@ describe("agent-prose-sanitize SSOT", () => {
     ).toBe("Note:\n\nDone");
   });
 
+  it("strips tool-retry self-talk variants and hides an open [Note: tail", () => {
+    expect(
+      sanitizeLeakedAgentProse(
+        "[System: retrying the artifact after an internal error]\n작성 중.",
+      ),
+    ).toBe("작성 중.");
+    expect(
+      sanitizeLeakedAgentProse(
+        "(Note: A previous tool call returned an internal error.)\n수정 반영 중.",
+      ),
+    ).toBe("수정 반영 중.");
+    expect(
+      sanitizeLeakedAgentProse(
+        "**Note:** I'll retry emitting the new slides 8–10 now.\n작성 중.",
+      ),
+    ).toBe("작성 중.");
+    expect(
+      sanitizeLeakedAgentProse(
+        "A previous tool call returned an internal error.\nI'll retry emitting the new slides 8–10 now.\n작성 중.",
+      ),
+    ).toBe("작성 중.");
+    expect(sanitizeAssistantProseForDisplay("문제가 있으면 다시 시도해 주세요.")).toBe(
+      "문제가 있으면 다시 시도해 주세요.",
+    );
+
+    const open = stripTrailingOpenInternalMarkup(
+      "작성 중.\n[Note: A previous tool call returned an intern",
+    );
+    expect(open.hadOpenInternalMarkup).toBe(true);
+    expect(open.text).toBe("작성 중.");
+
+    const guard = createStreamingAssistantProseGuard();
+    expect(guard.feed("[Note: A previous tool call")).toBe("");
+    expect(
+      guard.feed(
+        " returned an internal error. I'll retry emitting the new slides 8–10 now.]\n작성 중.",
+      ),
+    ).toBe("작성 중.");
+  });
+
   it("strips closed style/script/html skeleton from chat prose", () => {
     expect(sanitizeAssistantProseForDisplay("Hi <style>.x{color:red}</style> Bye")).toBe(
       "Hi  Bye",

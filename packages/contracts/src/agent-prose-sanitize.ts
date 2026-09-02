@@ -1197,12 +1197,57 @@ const FAKE_TOOL_NARRATION_RE = new RegExp(
 );
 
 /**
- * Model self-talk after a failed emit, e.g.
- * `[Note: A previous tool call returned an internal error. I'll retry emitting the new slides 8–10 now.]`
- * Bare `Note:` labels (CDN fixture) stay.
+ * Model self-talk after a failed emit / tool blip.
+ * Bare `Note:` labels (CDN fixture) stay unless the line is tool-retry talk.
  */
-const AGENT_TOOL_RETRY_BRACKET_NOTE_RE =
-  /\[Note:\s+[^\]]*(?:previous tool call|tool call returned|internal error|retry emitting|I(?:'ll| will) retry)[^\]]*\]/gi;
+const AGENT_TOOL_SELF_TALK_HINT =
+  "(?:previous tool call|tool call (?:returned|failed)|internal error|retry emitting|retrying (?:the )?(?:emit|tool|slides|artifact)|I(?:'ll| will) retry|failed to emit|emit(?:ting)? the new slides|another attempt|이전 도구|내부 오류|다시 (?:출력|생성|시도))";
+
+const AGENT_TOOL_SELF_TALK_BRACKET_RE = new RegExp(
+  `\\[(?:Note|System|Internal|Warning|Aside|Reminder)\\s*:\\s*[^\\]]*(?:${AGENT_TOOL_SELF_TALK_HINT})[^\\]]*\\]`,
+  "gi",
+);
+
+const AGENT_TOOL_SELF_TALK_PAREN_RE = new RegExp(
+  `\\((?:Note|System|Internal)\\s*:\\s*[^)]*(?:${AGENT_TOOL_SELF_TALK_HINT})[^)]*\\)`,
+  "gi",
+);
+
+const AGENT_TOOL_SELF_TALK_LABELED_LINE_RE = new RegExp(
+  `^\\s*\\*{0,2}(?:Note|System|Internal)\\s*:\\*{0,2}\\s+[^\\n]*(?:${AGENT_TOOL_SELF_TALK_HINT})[^\\n]*$`,
+  "gim",
+);
+
+const AGENT_TOOL_SELF_TALK_BARE_LINE_RE =
+  /^\s*(?:A previous tool call returned an internal error\.?|I(?:'ll| will) retry emitting (?:the )?(?:new )?slides?\b[^\n]*)\s*$/gim;
+
+const AGENT_TOOL_SELF_TALK_OPENER_RE =
+  /\[(?:Note|System|Internal|Warning|Aside|Reminder)\s*:/gi;
+
+function stripAgentToolSelfTalkNotes(input: string): string {
+  if (!input) return input;
+  return input
+    .replace(AGENT_TOOL_SELF_TALK_BRACKET_RE, "")
+    .replace(AGENT_TOOL_SELF_TALK_PAREN_RE, "")
+    .replace(AGENT_TOOL_SELF_TALK_LABELED_LINE_RE, "")
+    .replace(AGENT_TOOL_SELF_TALK_BARE_LINE_RE, "");
+}
+
+function stripTrailingOpenToolSelfTalkNote(input: string): {
+  text: string;
+  hadOpenInternalMarkup: boolean;
+} {
+  AGENT_TOOL_SELF_TALK_OPENER_RE.lastIndex = 0;
+  let last = -1;
+  let match: RegExpExecArray | null;
+  while ((match = AGENT_TOOL_SELF_TALK_OPENER_RE.exec(input))) {
+    last = match.index;
+  }
+  if (last < 0) return { text: input, hadOpenInternalMarkup: false };
+  const tail = input.slice(last);
+  if (tail.includes("]")) return { text: input, hadOpenInternalMarkup: false };
+  return { text: input.slice(0, last).trimEnd(), hadOpenInternalMarkup: true };
+}
 
 const FAKE_FILE_READ_NARRATION_RE = /\[(?:读取|Reading|reading)\s+[^\]]{1,240}\]/gi;
 
@@ -1861,7 +1906,7 @@ export function sanitizeLeakedAgentProse(
   out = out.replace(CLOSED_SUFFIX_OPERATOR_RE, "");
   out = out.replace(CLOSED_SUFFIX_ANALYSIS_RE, "");
   out = out.replace(FAKE_TOOL_NARRATION_RE, "");
-  out = out.replace(AGENT_TOOL_RETRY_BRACKET_NOTE_RE, "");
+  out = stripAgentToolSelfTalkNotes(out);
   out = out.replace(FAKE_FILE_READ_NARRATION_RE, "");
   out = out.replace(AGENT_RUNTIME_STATUS_LINE_RE, "");
   out = stripLeakedApiModeFilesystemProse(out);
@@ -2119,6 +2164,12 @@ export function stripTrailingOpenInternalMarkup(
   if (markdownFence.hadOpenInternalMarkup) {
     hadOpenInternalMarkup = true;
     text = markdownFence.text;
+  }
+
+  const toolSelfTalk = stripTrailingOpenToolSelfTalkNote(text);
+  if (toolSelfTalk.hadOpenInternalMarkup) {
+    hadOpenInternalMarkup = true;
+    text = toolSelfTalk.text;
   }
 
   const bareJson = stripTrailingBareToolJson(text);
