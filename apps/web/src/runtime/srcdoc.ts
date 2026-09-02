@@ -54,7 +54,7 @@ import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
 import {
   injectStackedDeckViewport,
   looksLikeCompactApiStackedDeck,
-  looksLikeFixedCanvasSlideDeck,
+  looksLikeLeftoverHostNavCanvasDeck,
   prepareCompactStackedDeckPreviewHtml,
   wrapPreviewHtmlShell,
 } from './compact-api-stacked-deck';
@@ -265,7 +265,7 @@ function buildSrcdocUnsafe(
     // strip (no 1920 canvas) are left intact. 1920 leftovers plus a dead
     // 100vw script must still hoist — otherwise host next only nudges page 1.
     try {
-      if (!/<script\b/i.test(html) || looksLikeFixedCanvasSlideDeck(html)) {
+      if (!/<script\b/i.test(html) || looksLikeLeftoverHostNavCanvasDeck(html)) {
         html = hoistCloneSlidesOutOfFlexTrack(html);
       }
     } catch (_) {
@@ -3473,9 +3473,9 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
   }
   function leftoverAuthoredCanvasPx(list){
     try {
-      var first = list && list[0];
-      if (first) {
-        var st = String(first.getAttribute && first.getAttribute('style') || '');
+      for (var s = 0; list && s < list.length; s++) {
+        if (list[s].getAttribute && list[s].getAttribute('data-od-deck-fixed-canvas-pin') != null) continue;
+        var st = String(list[s].getAttribute && list[s].getAttribute('style') || '');
         var m = st.match(/(?:min-)?width\\s*:\\s*(\\d+(?:\\.\\d+)?)px/i);
         if (m) {
           var authored = parseFloat(m[1]);
@@ -3488,9 +3488,14 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
       for (var i = 0; i < sheets.length; i++) {
         var el = sheets[i];
         if (el.getAttribute && el.getAttribute('data-od-deck-fixed-canvas-pin') != null) continue;
+        if (el.getAttribute && el.getAttribute('data-teamver-template-clone-size') != null) return 1920;
         var t = String(el.textContent || '');
         if (/[.#]?slide[^{]*\\{[^}]*(?:min-)?width\\s*:\\s*1920px/i.test(t)) return 1920;
+        if (/data-teamver-template-clone-size/i.test(t) && /1920px/i.test(t)) return 1920;
       }
+    } catch (_) {}
+    try {
+      if (document.querySelector && document.querySelector('[data-teamver-template-clone-size]')) return 1920;
     } catch (_) {}
     return 0;
   }
@@ -4100,11 +4105,23 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     // Neutralized leftover columns are not IB swipe strips.
     return !isHorizontalStageTrack(track);
   }
+  /**
+   * Leftover host-nav invariant: leftover canvases in a narrower iframe,
+   * and neutralized leftover #stage columns, must paint the target page
+   * with display toggle. translateX(-100vw|-1920px) / scrollGo(innerWidth)
+   * only nudges page 1. Official IB pin-only ROW strips stay on translate.
+   */
+  function leftoverHostNavMustPaintByDisplay(list){
+    if (leftoverStageShouldCollapse(transformTrack(list), list)) return true;
+    // Clone leftovers stamp data-teamver-template-clone-size. Official IB
+    // catalogs never ship that marker — pin-only ROW strips stay on translate.
+    try {
+      if (document.querySelector && document.querySelector('[data-teamver-template-clone-size]')) return true;
+    } catch (_) {}
+    return false;
+  }
   function preferStackedOverStageTranslate(track, list){
-    // Authored 1920 leftovers keep a swipe <script> on #stage. Pin-only
-    // official IB must still translate; leftover canvas + narrow iframe
-    // only pans page 1, so forceReveal even when that script is present.
-    if (leftoverStageShouldCollapse(track, list)) return true;
+    if (leftoverHostNavMustPaintByDisplay(list)) return true;
     if (!stageTranslateWouldNudge(track, list)) return false;
     if (hasAuthorSwipeScript()) return false;
     return true;
@@ -4462,7 +4479,11 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     // Exception: dead #stage leftover (no author swipe script) in a
     // narrower iframe — translateX(-1920px) only nudges page 1 (0826-N01 F3).
     var liveTrack = !stacked ? transformTrack(slides()) : null;
-    if (liveTrack && !preferStackedOverStageTranslate(liveTrack, slides())) {
+    if (
+      liveTrack
+      && !leftoverHostNavMustPaintByDisplay(slides())
+      && !preferStackedOverStageTranslate(liveTrack, slides())
+    ) {
       clearInlineSlideHide(el);
       return;
     }
@@ -4619,6 +4640,8 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     var prevGo = activeIndex(list);
     try {
     if (webComponentDeckGo(target)) return;
+    // Leftover host-nav invariant — display toggle before any translate/scroll.
+    if (leftoverHostNavMustPaintByDisplay(list) && forceRevealSlide(target)) return;
     // #stage strips first — compact forceReveal + native 100vw only nudge page 1
     // when the canvas is pinned to 1920 and the iframe is ~800 wide.
     var pxTrack = transformTrack(list);
@@ -4654,6 +4677,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
     var prev = activeIndex(list);
     try {
     if (webComponentDeckGo(target)) return;
+    if (leftoverHostNavMustPaintByDisplay(list) && forceRevealSlide(target)) return;
     var pxTrackGo = transformTrack(list);
     if (preferStackedOverStageTranslate(pxTrackGo, list) && forceRevealSlide(target)) return;
     if (isHorizontalStageTrack(pxTrackGo) && transformGo(target)) return;

@@ -2228,6 +2228,33 @@ describe('hoistCloneSlidesOutOfFlexTrack', () => {
     expect(out).toContain('One');
     expect(out).toContain('Two');
   });
+
+  it('unwraps leftover #stage when the only residue is empty MiniMax deco', () => {
+    const emptyDeco = [
+      '<!doctype html><html><body>',
+      '<div class="stage" id="stage">',
+      '<div class="deco-orbit" aria-hidden="true"></div>',
+      '<section class="slide" style="width:1920px;height:1080px">One</section>',
+      '<section class="slide" style="width:1920px;height:1080px">Two</section>',
+      '</div>',
+      '</body></html>',
+    ].join('');
+    const commentDeco = [
+      '<!doctype html><html><body>',
+      '<div class="stage" id="stage">',
+      '<div class="deco-orbit" aria-hidden="true"><!-- motif --></div>',
+      '<section class="slide" style="width:1920px;height:1080px">One</section>',
+      '<section class="slide" style="width:1920px;height:1080px">Two</section>',
+      '</div>',
+      '</body></html>',
+    ].join('');
+    for (const html of [emptyDeco, commentDeco]) {
+      const out = hoistCloneSlidesOutOfFlexTrack(html);
+      expect(out).not.toMatch(/\bid\s*=\s*["']stage["']/i);
+      expect(out).not.toMatch(/deco-orbit/i);
+      expect([...(out.matchAll(/<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b/gi))].length).toBe(2);
+    }
+  });
 });
 
 describe('루프376 stripLeafEmptyListAndParagraphShells', () => {
