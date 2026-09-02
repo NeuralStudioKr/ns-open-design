@@ -203,6 +203,17 @@ export function looksLikeFixedCanvasSlideDeck(html: string): boolean {
   return false;
 }
 
+/**
+ * Leftover host-nav canvas: hoist + display toggle, never 100vw nudge.
+ * Official IB swipe catalogs have no 1920 / clone-size marker.
+ */
+export function looksLikeLeftoverHostNavCanvasDeck(html: string): boolean {
+  if (!html) return false;
+  if (looksLikeFixedCanvasSlideDeck(html)) return true;
+  if (countSlideElements(html) < 2) return false;
+  return /data-teamver-template-clone-size/i.test(html);
+}
+
 function looksLikeSlideViewportSized(html: string): boolean {
   for (const style of extractSlideInlineStyles(html)) {
     if (/(?:min-)?height\s*:[^;]*100(?:vh|dvh|svh|lvh)/i.test(style)) return true;

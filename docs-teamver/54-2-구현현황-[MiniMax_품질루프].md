@@ -42,6 +42,10 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프378 — leftover host-nav 불변식 (첫 장 nudge 재발 봉쇄)
+
+지문 단위 가드(361·363·366·374) 뒤에도 deco residue · clone-size-only · `gotoIndex`가 translate/scroll로 떨어지면 ~800px iframe에서 첫 장만 밀린다. leftover는 `leftoverHostNavMustPaintByDisplay`가 display toggle을 먼저 강제한다. 공식 IB pin-only ROW는 마커/1920 leftover가 없어 F3 `translateX(-1920px)` 유지.
+
 ### 루프377 — MiniMax 깨진 heading / 빈 카드 / orphan split
 
 편집 턴이 `</p>/h3>` · 중첩 heading · 빈 border 카드를 남기고, `split-content`만 있으면 flow가 row로 좌반만 씀. salvage + column-center CSS.
@@ -63,6 +67,35 @@ invalid JSON outline 시 contracts는 이미 seed-fallback인데 FE가 repair au
 repair auto-send 600ms 창에 사용자가 Retry/Continue를 눌러 repair send와 경쟁하던 문제. `cloneSlotFillRepairPending`으로 ChatPane manual recovery를 auto-continue와 동일하게 억제.
 
 검증: web ChatPane.resume-failed 루프370 · contracts redacted_thinking parse.
+
+### 루프378 — 단일 자식 flex/grid wrapper unwrap (Clone slot-fill 후처리)
+
+reproduce: MiniMax edit-turn이 실제 grid를 그 자체로는 아무 layout도 안 하는 flex `<div>` 안에 감쌈. 예:
+
+```html
+<div style="display:flex;align-items:center;gap:16px;margin-bottom:24px">
+  <div style="display:grid;grid-template-columns:repeat(4, minmax(0,1fr));gap:24px">
+    ...4 cards...
+  </div>
+</div>
+```
+
+외곽 wrapper는 자식이 하나뿐이라 flex가 아무 것도 안 하고, `margin-bottom:24px`만 카드 위로 24px 밀어 올려 heading과 카드 사이가 어색하게 벌어진다.
+
+원인: 모델이 이전 turn의 icon row + grid 구조를 카피하다가 icon row를 지우면서도 flex wrapper는 그대로 두어 grid만 남긴 케이스.
+
+수정:
+1. `unwrapTrivialSingleChildLayoutWrappers` — inline style에 `display:flex|grid|inline-flex|inline-grid`만 있고, 다음이 하나도 없으며, 직접 자식이 정확히 1개인 `<div>`만 통째로 unwrap.
+   - reject props: width/height/padding/border/background/box-shadow/outline/filter/backdrop-filter/transform/clip-path/mask/position/inset/top/right/bottom/left/z-index/grid-template*/grid-auto*/grid-column/grid-row/grid-area/flex*
+   - reject: `class=`가 있으면 저자 CSS가 layout을 담당할 수 있으므로 유지
+   - reject: wrapper open과 자식 open 사이, 자식 close와 wrapper close 사이에 텍스트가 있으면 유지
+2. `healAiGeneratedDeckMarkup` pipeline에 `unnestHeadingBlockChildren` 다음 · leftover peer 정리 이전에 배치.
+3. 스타일 파싱은 정규식 substring이 아닌 `parseStyleDeclarations`로 property 단위 매칭 (예전 `\bbottom\b`가 `margin-bottom`도 매칭한 버그 방지).
+4. Nested wrapper는 outermost non-overlapping만 한 pass 안에서 처리, 최대 4회 재실행.
+
+Motif / 데모 카드 트림 / 각 슬라이드 배경은 기존 heal이 계속 담당. `class`가 있는 wrapper와 padding/border 있는 wrapper는 절대 unwrap하지 않음.
+
+검증: contracts heal-ai-generated-deck 신규 7개 케이스 (unwrap flex-with-grid / padding+background 유지 / multi-child 유지 / inline text 유지 / grid-template 유지 / class 유지 / idempotent 3-nested / healAiGeneratedDeckMarkup 통합) · 전체 스위트 2880/2880.
 
 ### 루프376 — 빈 leaf `<ul>` / `<p>` shells 제거 (Clone slot-fill 후처리)
 
@@ -1180,6 +1213,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
+- **완료 (루프378):** leftover host-nav는 display toggle이 translate/scroll보다 앞선다. clone-size hoist · 빈 deco unwrap. F3/IB ROW · Zhangzara · simple-deck 유지.
 - **완료 (루프374):** leftover `#stage`+swipe script는 authored 1920/column이면 forceReveal가 실제로 숨김. deco residue · `div.slide` hoist · `min-width:1920`. F3/IB ROW 유지.
 - **완료 (루프366):** 1920 leftover는 script가 있어도 `#stage` hoist. section/main unwrap. snap/overflow-x+1920은 swipe 아님. vw nudge 거부. Zhangzara `#deck`·공식 IB 유지.
 - **완료 (루프363):** 1920 leftover + leaked `min-width:100vw`는 swipe가 아님. forceReveal 숨김 · scrollGo nudge 거부 · pan reset은 이동 후.
@@ -1627,6 +1661,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | heal: 제목만 있는 카드 형제 제거 | ☑ 루프354 |
 | persist/preview: 칸 번호만 있는 3열 카드(스무 번째) | ☑ 루프355 |
 | preview: neutralize column `#stage` leftover host ←/→ nudge | ☑ 루프361 |
+| preview: leftover host-nav 불변식 (clone-size · deco · gotoIndex) | ☑ 루프378 |
 | preview: leftover `#stage`+swipe script deco residue host ←/→ nudge | ☑ 루프374 |
 | preview: 1920 leftover `#stage`+script / section unwrap / snap leftover host ←/→ nudge | ☑ 루프366 |
 | preview: 1920 leftover + leaked 100vw host ←/→ nudge | ☑ 루프363 |
@@ -1659,7 +1694,16 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프374 · leftover `#stage`+swipe forceReveal)
+## 이번 루프 (루프378 · leftover host-nav 불변식)
+
+- [x] `leftoverHostNavMustPaintByDisplay`가 `go()`/`gotoIndex()`에서 translate/scroll보다 먼저
+- [x] clone-size leftover · 빈/주석 deco hoist · leftover `#stage` 잔여도 2장 표시
+- [x] 공식 IB pin-only F3 · Zhangzara `#deck` · simple-deck swipe 유지
+- [x] srcdoc-leftover-host-nav-invariant · transform-driven · compact-api · contracts hoist
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+- [ ] FileViewer 브라우저 클릭 (이 환경에서 불가 — 유지)
+
+## 직전 루프 (루프374 · leftover `#stage`+swipe forceReveal)
 
 - [x] authored 1920 leftover는 swipe script가 있어도 display toggle
 - [x] deco residue `#stage` · neutralized 100vw column leftover도 2장 표시

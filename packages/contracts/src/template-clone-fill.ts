@@ -3019,7 +3019,7 @@ function unwrapSlideOnlyContainer(source: string, wrapperOpenRe: RegExp, tag: st
   // the container is "slide-only" — those are dead links after
   // `stripScriptsAndNav`. Depth-strip them so we don't leak the raw counter
   // text or the button HTML into `<body>` after unwrap.
-  const chromeStripped = stripSlideNavChromeBlocks(inner);
+  const chromeStripped = stripInertLeftoverDecoBlocks(stripSlideNavChromeBlocks(inner));
   let residue = chromeStripped;
   for (const block of collectSlideHostBlocks(chromeStripped)) {
     residue = residue.replace(block, '');
@@ -3060,6 +3060,19 @@ function collectSlideHostBlocks(html: string): string[] {
     openRe.lastIndex = closeEnd;
   }
   return blocks;
+}
+
+function stripInertLeftoverDecoBlocks(html: string): string {
+  return String(html ?? '').replace(
+    /<(div|span|i|em)\b[^>]*>\s*(?:<!--[\s\S]*?-->\s*)*<\/\1\s*>/gi,
+    (full) => {
+      if (/aria-hidden\s*=\s*['"]true['"]/i.test(full)) return '';
+      if (/\bclass\s*=\s*['"][^'"]*\b(?:deco|orbit|watermark|bg-glow|noise)\b/i.test(full)) {
+        return '';
+      }
+      return full;
+    },
+  );
 }
 
 function stripSlideNavChromeBlocks(html: string): string {

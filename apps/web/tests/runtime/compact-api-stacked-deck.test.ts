@@ -12,6 +12,7 @@ import {
   looksLikeAuthoredScrollNavigateDeck,
   looksLikeCompactApiStackedDeck,
   looksLikeCompactApiStackedDeckForPreview,
+  looksLikeLeftoverHostNavCanvasDeck,
   normalizeCompactStackedDeckForExport,
   wrapPreviewHtmlShell,
 } from '../../src/runtime/compact-api-stacked-deck';
@@ -55,6 +56,27 @@ describe('looksLikeCompactApiStackedDeck', () => {
   it('rejects framework decks with #deck-stage', () => {
     const html = readFileSync(resolve(repoRoot, 'templates/deck-framework.html'), 'utf8');
     expect(looksLikeCompactApiStackedDeck(html)).toBe(false);
+  });
+
+  it('treats clone-size leftovers as leftover host-nav canvases', () => {
+    const html = [
+      '<!doctype html><html><head>',
+      '<style data-teamver-template-clone-size>.slide{min-height:100vh}</style>',
+      '</head><body>',
+      '<section class="slide">One</section>',
+      '<section class="slide">Two</section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeLeftoverHostNavCanvasDeck(html)).toBe(true);
+  });
+
+  it('does not treat official IB example.html as a leftover host-nav canvas', () => {
+    const html = readFileSync(
+      resolve(repoRoot, 'plugins/_official/examples/ib-pitch-book/example.html'),
+      'utf8',
+    );
+    expect(looksLikeLeftoverHostNavCanvasDeck(html)).toBe(false);
+    expect(looksLikeAuthoredHorizontalSwipeDeck(html)).toBe(true);
   });
 
   it('treats min-width:1920 leftover slides as a fixed canvas, not a swipe strip', () => {

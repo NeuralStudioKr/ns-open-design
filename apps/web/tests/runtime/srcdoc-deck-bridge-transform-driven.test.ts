@@ -905,7 +905,7 @@ h1.display { font-size: 72px; }
       userBrief: '영어 회화 표현 공부 팁, 예시에 대한 발표자료 만들어줘',
     });
     expect(srcdoc).toContain('compactStackedDeckEnabled = true');
-    expect(srcdoc).toMatch(/id\s*=\s*["']stage["']/i);
+    // Empty deco residue is stripped so hoist may unwrap leftover #stage.
     const script = extractDeckBridgeScript(srcdoc);
     const dom = new JSDOM(srcdoc, { runScripts: 'outside-only', pretendToBeVisual: true });
     const win = dom.window;
