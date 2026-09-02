@@ -14234,6 +14234,16 @@ function HtmlViewer({
       Math.max(0, slideState?.active ?? 0),
       htmlSlideCount - 1,
     );
+    requestDeleteSlideAt(active, htmlSlideCount);
+  }
+
+  function requestDeleteSlideAt(index: number, slideCount?: number) {
+    if (!effectiveDeck || deckStructureBusy) return;
+    const html = sourceRef.current ?? source;
+    if (typeof html !== 'string' || !html.trim()) return;
+    const htmlSlideCount = slideCount ?? extractTopLevelSlideSections(html).length;
+    if (htmlSlideCount <= 1) return;
+    const active = Math.min(Math.max(0, index), htmlSlideCount - 1);
     setPendingDeleteSlide({ active, count: htmlSlideCount });
   }
 
@@ -14390,6 +14400,16 @@ function HtmlViewer({
       Math.max(0, slideState?.active ?? 0),
       htmlSlideCount - 1,
     );
+    await handleDuplicateSlideAt(active);
+  }
+
+  async function handleDuplicateSlideAt(index: number) {
+    if (!effectiveDeck || deckStructureBusy) return;
+    const html = sourceRef.current ?? source;
+    if (typeof html !== 'string' || !html.trim()) return;
+    const htmlSlideCount = extractTopLevelSlideSections(html).length;
+    if (htmlSlideCount === 0) return;
+    const active = Math.min(Math.max(0, index), htmlSlideCount - 1);
     const result = duplicateDeckSlideAt(html, active);
     if (!result.ok) {
       const duplicateError = embedUiLabel(
@@ -17677,6 +17697,13 @@ function HtmlViewer({
             onGo={handleFilmstripGo}
             onReorder={handleReorderSlide}
             disabled={deckStructureBusy}
+            chipActions={{
+              deleteLabel: t('fileViewer.deleteSlide'),
+              duplicateLabel: t('fileViewer.duplicateSlide'),
+              deleteEnabled: (slideState?.count ?? 0) > 1,
+              onDelete: (index) => requestDeleteSlideAt(index),
+              onDuplicate: (index) => void handleDuplicateSlideAt(index),
+            }}
           />
         );
       })()}

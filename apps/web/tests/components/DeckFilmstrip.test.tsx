@@ -326,3 +326,103 @@ describe("DeckFilmstrip (0901-N01-C)", () => {
     expect(chips[1]!.textContent).toBe("2Agenda");
   });
 });
+
+describe("DeckFilmstrip (0901-N01-C3)", () => {
+  const items = [
+    { index: 0, label: "Cover" },
+    { index: 1, label: "Body" },
+    { index: 2, label: "Close" },
+  ];
+  const chipActions = {
+    deleteLabel: "Delete page",
+    duplicateLabel: "Duplicate page",
+    deleteEnabled: true,
+    onDelete: vi.fn(),
+    onDuplicate: vi.fn(),
+  };
+
+  afterEach(() => {
+    chipActions.onDelete.mockClear();
+    chipActions.onDuplicate.mockClear();
+  });
+
+  it("ArrowRight moves focus and calls onGo", () => {
+    const onGo = vi.fn();
+    render(
+      <DeckFilmstrip
+        items={items}
+        currentSlideIndex={0}
+        ariaLabel="Slides"
+        slideLabelTemplate="Slide {{n}}"
+        onGo={onGo}
+        onReorder={vi.fn()}
+      />,
+    );
+    const chips = screen.getAllByRole("button");
+    chips[0]!.focus();
+    fireEvent.keyDown(chips[0]!, { key: "ArrowRight" });
+    expect(onGo).toHaveBeenCalledWith(1);
+    expect(chips[1]!.tabIndex).toBe(0);
+  });
+
+  it("Shift+ArrowLeft reorders the focused chip one step earlier", () => {
+    const onReorder = vi.fn();
+    render(
+      <DeckFilmstrip
+        items={items}
+        currentSlideIndex={1}
+        ariaLabel="Slides"
+        slideLabelTemplate="Slide {{n}}"
+        onGo={vi.fn()}
+        onReorder={onReorder}
+      />,
+    );
+    const chips = screen.getAllByRole("button");
+    chips[1]!.focus();
+    fireEvent.keyDown(chips[1]!, { key: "ArrowLeft", shiftKey: true });
+    expect(onReorder).toHaveBeenCalledWith(1, 0);
+  });
+
+  it("Delete key triggers onDelete for the focused chip", () => {
+    render(
+      <DeckFilmstrip
+        items={items}
+        currentSlideIndex={2}
+        ariaLabel="Slides"
+        slideLabelTemplate="Slide {{n}}"
+        onGo={vi.fn()}
+        onReorder={vi.fn()}
+        chipActions={chipActions}
+      />,
+    );
+    const chips = screen.getAllByRole("button");
+    chips[2]!.focus();
+    fireEvent.keyDown(chips[2]!, { key: "Delete" });
+    expect(chipActions.onDelete).toHaveBeenCalledWith(2);
+  });
+
+  it("opens a context menu and runs duplicate/delete actions", () => {
+    render(
+      <DeckFilmstrip
+        items={items}
+        currentSlideIndex={1}
+        ariaLabel="Slides"
+        slideLabelTemplate="Slide {{n}}"
+        onGo={vi.fn()}
+        onReorder={vi.fn()}
+        chipActions={chipActions}
+      />,
+    );
+    const chips = screen.getAllByRole("button");
+    fireEvent.contextMenu(chips[1]!);
+    const menu = screen.getByTestId("deck-filmstrip-menu");
+    expect(menu).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Duplicate page" }));
+    expect(chipActions.onDuplicate).toHaveBeenCalledWith(1);
+    expect(screen.queryByTestId("deck-filmstrip-menu")).toBeNull();
+
+    fireEvent.contextMenu(chips[2]!);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete page" }));
+    expect(chipActions.onDelete).toHaveBeenCalledWith(2);
+  });
+});

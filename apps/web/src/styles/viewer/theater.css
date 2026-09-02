@@ -879,6 +879,40 @@
   min-width: 0;
   font-weight: 500;
 }
+.deck-filmstrip__chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.deck-filmstrip__menu {
+  position: fixed;
+  z-index: 120;
+  min-width: 148px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-panel);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--text) 12%, transparent);
+}
+.deck-filmstrip__menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: calc(var(--radius-sm, 6px) - 2px);
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.deck-filmstrip__menu-item:hover,
+.deck-filmstrip__menu-item:focus-visible {
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+  outline: none;
+}
+.deck-filmstrip__menu-item--danger {
+  color: var(--danger, #c0392b);
+}
 
 /* ============================================================
    Composer rename input style for inline conversation rename.

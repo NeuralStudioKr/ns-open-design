@@ -4,11 +4,22 @@ import {
   useRef,
   useState,
   type DragEvent,
+  type KeyboardEvent,
+  type MouseEvent,
 } from "react";
 
 export type DeckFilmstripItem = {
   index: number;
   label: string;
+};
+
+export type DeckFilmstripChipActions = {
+  deleteLabel: string;
+  duplicateLabel: string;
+  onDelete?: (index: number) => void;
+  onDuplicate?: (index: number) => void;
+  /** When false, delete is hidden/disabled (e.g. only one page left). */
+  deleteEnabled?: boolean;
 };
 
 /**
@@ -49,6 +60,12 @@ export function scrollFilmstripChipIntoView(
 const EDGE_PX = 28;
 const EDGE_SCROLL_STEP = 14;
 
+type ContextMenuState = {
+  index: number;
+  x: number;
+  y: number;
+};
+
 export function DeckFilmstrip({
   items,
   currentSlideIndex,
@@ -56,6 +73,7 @@ export function DeckFilmstrip({
   slideLabelTemplate,
   onGo,
   onReorder,
+  chipActions,
   disabled = false,
 }: {
   items: DeckFilmstripItem[];
@@ -64,12 +82,15 @@ export function DeckFilmstrip({
   slideLabelTemplate: string;
   onGo: (index: number) => void;
   onReorder: (fromIndex: number, toIndex: number) => void | Promise<void>;
+  chipActions?: DeckFilmstripChipActions;
   disabled?: boolean;
 }) {
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   /** Insert-before slot in 0..items.length while dragging. */
   const [dropSlot, setDropSlot] = useState<number | null>(null);
-  const navRef = useRef<HTMLNavElement | null>(null);
+  const [focusedIndex, setFocusedIndex] = useState(currentSlideIndex);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const navRef = useRef<HTMLElement | null>(null);
   const chipRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const edgeRafRef = useRef<number | null>(null);
   const edgeDirRef = useRef<-1 | 0 | 1>(0);
@@ -135,7 +156,24 @@ export function DeckFilmstrip({
     const chip = chipRefs.current[currentSlideIndex];
     if (!nav || !chip) return;
     scrollFilmstripChipIntoView(nav, chip);
+    setFocusedIndex(currentSlideIndex);
   }, [currentSlideIndex, items.length, disabled, draggingIndex]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    window.addEventListener("mousedown", close);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [contextMenu]);
 
   const resolveSlotFromPoint = useCallback((clientX: number, overIndex: number): number => {
     const chip = chipRefs.current[overIndex];
@@ -162,6 +200,55 @@ export function DeckFilmstrip({
     return n;
   }, [items.length]);
 
+  const handleChipKeyDown = useCallback((index: number) => (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (disabled) return;
+    const last = items.length - 1;
+    let nextFocus: number | null = null;
+
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      if (event.shiftKey && index > 0) {
+        void onReorder(index, index - 1);
+        nextFocus = index - 1;
+      } else if (!event.shiftKey && index > 0) {
+        nextFocus = index - 1;
+        onGo(index - 1);
+      }
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      if (event.shiftKey && index < last) {
+        void onReorder(index, index + 1);
+        nextFocus = index + 1;
+      } else if (!event.shiftKey && index < last) {
+        nextFocus = index + 1;
+        onGo(index + 1);
+      }
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      nextFocus = 0;
+      onGo(0);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      nextFocus = last;
+      onGo(last);
+    } else if (event.key === "Delete" || event.key === "Backspace") {
+      if (!chipActions?.onDelete || chipActions.deleteEnabled === false) return;
+      event.preventDefault();
+      chipActions.onDelete(index);
+    }
+
+    if (nextFocus != null) {
+      setFocusedIndex(nextFocus);
+    }
+  }, [chipActions, disabled, items.length, onGo, onReorder]);
+
+  const handleContextMenu = useCallback((index: number) => (event: MouseEvent<HTMLButtonElement>) => {
+    if (disabled || !chipActions) return;
+    event.preventDefault();
+    setContextMenu({ index, x: event.clientX, y: event.clientY });
+    setFocusedIndex(index);
+  }, [chipActions, disabled]);
+
   const handleDragStart = useCallback((index: number) => (event: DragEvent<HTMLButtonElement>) => {
     if (disabled) {
       event.preventDefault();
@@ -172,6 +259,7 @@ export function DeckFilmstrip({
     suppressClickRef.current = true;
     setDraggingIndex(index);
     setDropSlotBoth(null);
+    setContextMenu(null);
   }, [disabled, setDropSlotBoth]);
 
   const handleChipDragOver = useCallback((index: number) => (event: DragEvent<HTMLButtonElement>) => {
@@ -221,7 +309,6 @@ export function DeckFilmstrip({
     stopEdgeScroll();
     setDraggingIndex(null);
     setDropSlotBoth(null);
-    // Consume the synthetic post-drag click, then allow the next real click.
     window.setTimeout(() => {
       suppressClickRef.current = false;
     }, 0);
@@ -229,73 +316,119 @@ export function DeckFilmstrip({
 
   if (items.length === 0) return null;
 
+  const showContextMenu = contextMenu && chipActions && !disabled;
+  const contextDeleteEnabled = chipActions?.deleteEnabled !== false;
+
   return (
-    <nav
-      ref={navRef}
-      className={["deck-filmstrip", disabled ? "is-disabled" : ""].filter(Boolean).join(" ")}
-      aria-label={ariaLabel}
-      data-testid="deck-filmstrip"
-      aria-disabled={disabled ? "true" : undefined}
-      onDragOver={handleNavDragOver}
-      onDrop={handleNavDrop}
-    >
-      <ol className="deck-filmstrip__list">
-        {items.map((item) => {
-          const slideNumber = item.index + 1;
-          const title = slideLabelTemplate.replace("{{n}}", String(slideNumber));
-          const heading = item.label.replace(/\s+/g, " ").trim();
-          const showHeading = Boolean(heading) && heading !== String(slideNumber);
-          const current = item.index === currentSlideIndex;
-          const showGapBefore =
-            draggingIndex != null && dropSlot === item.index;
-          return (
-            <li
-              key={item.index}
-              className={showGapBefore ? "is-drop-before" : undefined}
-              data-drop-before={showGapBefore ? "true" : undefined}
-            >
-              <button
-                type="button"
-                ref={(node) => {
-                  chipRefs.current[item.index] = node;
-                }}
-                className={[
-                  "deck-filmstrip__chip",
-                  showHeading ? "has-title" : "",
-                  current ? "is-current" : "",
-                  draggingIndex === item.index ? "is-dragging" : "",
-                ].filter(Boolean).join(" ")}
-                draggable={!disabled}
-                disabled={disabled}
-                aria-current={current ? "true" : undefined}
-                aria-label={showHeading ? `${title} · ${heading}` : title}
-                title={showHeading ? heading : title}
-                data-testid={current ? "deck-filmstrip-current" : undefined}
-                onClick={() => {
-                  if (disabled) return;
-                  if (suppressClickRef.current) {
-                    suppressClickRef.current = false;
-                    return;
-                  }
-                  onGo(item.index);
-                }}
-                onDragStart={handleDragStart(item.index)}
-                onDragOver={handleChipDragOver(item.index)}
-                onDrop={handleDrop(item.index)}
-                onDragEnd={handleDragEnd}
+    <>
+      <nav
+        ref={navRef}
+        className={["deck-filmstrip", disabled ? "is-disabled" : ""].filter(Boolean).join(" ")}
+        aria-label={ariaLabel}
+        data-testid="deck-filmstrip"
+        aria-disabled={disabled ? "true" : undefined}
+        onDragOver={handleNavDragOver}
+        onDrop={handleNavDrop}
+      >
+        <ol className="deck-filmstrip__list">
+          {items.map((item) => {
+            const slideNumber = item.index + 1;
+            const title = slideLabelTemplate.replace("{{n}}", String(slideNumber));
+            const heading = item.label.replace(/\s+/g, " ").trim();
+            const showHeading = Boolean(heading) && heading !== String(slideNumber);
+            const current = item.index === currentSlideIndex;
+            const showGapBefore =
+              draggingIndex != null && dropSlot === item.index;
+            return (
+              <li
+                key={item.index}
+                className={showGapBefore ? "is-drop-before" : undefined}
+                data-drop-before={showGapBefore ? "true" : undefined}
               >
-                <span className="deck-filmstrip__num" aria-hidden="true">{slideNumber}</span>
-                {showHeading ? (
-                  <span className="deck-filmstrip__title" aria-hidden="true">{heading}</span>
-                ) : null}
-              </button>
-            </li>
-          );
-        })}
-        {draggingIndex != null && dropSlot === items.length ? (
-          <li className="is-drop-before is-drop-tail" data-drop-before="true" aria-hidden="true" />
-        ) : null}
-      </ol>
-    </nav>
+                <button
+                  type="button"
+                  ref={(node) => {
+                    chipRefs.current[item.index] = node;
+                  }}
+                  className={[
+                    "deck-filmstrip__chip",
+                    showHeading ? "has-title" : "",
+                    current ? "is-current" : "",
+                    draggingIndex === item.index ? "is-dragging" : "",
+                  ].filter(Boolean).join(" ")}
+                  draggable={!disabled}
+                  disabled={disabled}
+                  tabIndex={item.index === focusedIndex ? 0 : -1}
+                  aria-current={current ? "true" : undefined}
+                  aria-label={showHeading ? `${title} · ${heading}` : title}
+                  title={showHeading ? heading : title}
+                  data-testid={current ? "deck-filmstrip-current" : undefined}
+                  onClick={() => {
+                    if (disabled) return;
+                    if (suppressClickRef.current) {
+                      suppressClickRef.current = false;
+                      return;
+                    }
+                    setFocusedIndex(item.index);
+                    onGo(item.index);
+                  }}
+                  onFocus={() => setFocusedIndex(item.index)}
+                  onKeyDown={handleChipKeyDown(item.index)}
+                  onContextMenu={chipActions ? handleContextMenu(item.index) : undefined}
+                  onDragStart={handleDragStart(item.index)}
+                  onDragOver={handleChipDragOver(item.index)}
+                  onDrop={handleDrop(item.index)}
+                  onDragEnd={handleDragEnd}
+                >
+                  <span className="deck-filmstrip__num" aria-hidden="true">{slideNumber}</span>
+                  {showHeading ? (
+                    <span className="deck-filmstrip__title" aria-hidden="true">{heading}</span>
+                  ) : null}
+                </button>
+              </li>
+            );
+          })}
+          {draggingIndex != null && dropSlot === items.length ? (
+            <li className="is-drop-before is-drop-tail" data-drop-before="true" aria-hidden="true" />
+          ) : null}
+        </ol>
+      </nav>
+      {showContextMenu ? (
+        <div
+          className="deck-filmstrip__menu"
+          role="menu"
+          data-testid="deck-filmstrip-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          {chipActions.onDuplicate ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="deck-filmstrip__menu-item"
+              onClick={() => {
+                chipActions.onDuplicate?.(contextMenu.index);
+                setContextMenu(null);
+              }}
+            >
+              {chipActions.duplicateLabel}
+            </button>
+          ) : null}
+          {chipActions.onDelete && contextDeleteEnabled ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="deck-filmstrip__menu-item deck-filmstrip__menu-item--danger"
+              onClick={() => {
+                chipActions.onDelete?.(contextMenu.index);
+                setContextMenu(null);
+              }}
+            >
+              {chipActions.deleteLabel}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </>
   );
 }
