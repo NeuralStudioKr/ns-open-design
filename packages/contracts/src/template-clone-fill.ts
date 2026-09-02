@@ -2888,9 +2888,7 @@ function unwrapSlideOnlyContainer(source: string, wrapperOpenRe: RegExp, tag: st
   if (closeStart < 0) return source;
 
   const inner = source.slice(openEnd, closeStart);
-  const fullSlideRe =
-    /<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b[^"']*["'][^>]*>[\s\S]*?<\/section\s*>/gi;
-  const slideBlocks = inner.match(fullSlideRe) ?? [];
+  const slideBlocks = collectSlideHostBlocks(inner);
   if (slideBlocks.length < 2) return source;
 
   // Ignore native prev/next/counter chrome wrappers when deciding whether
@@ -2898,12 +2896,46 @@ function unwrapSlideOnlyContainer(source: string, wrapperOpenRe: RegExp, tag: st
   // `stripScriptsAndNav`. Depth-strip them so we don't leak the raw counter
   // text or the button HTML into `<body>` after unwrap.
   const chromeStripped = stripSlideNavChromeBlocks(inner);
-  const residue = chromeStripped
-    .replace(fullSlideRe, '')
-    .replace(/<!--[\s\S]*?-->/g, '');
+  let residue = chromeStripped;
+  for (const block of collectSlideHostBlocks(chromeStripped)) {
+    residue = residue.replace(block, '');
+  }
+  residue = residue.replace(/<!--[\s\S]*?-->/g, '');
   if (/<[a-zA-Z]/.test(residue)) return source;
 
   return `${source.slice(0, openStart)}${chromeStripped}${source.slice(closeEnd)}`;
+}
+
+function collectSlideHostBlocks(html: string): string[] {
+  const blocks: string[] = [];
+  const openRe =
+    /<(section|div|article|main)\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b[^"']*["'][^>]*>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = openRe.exec(html)) !== null) {
+    const tag = m[1] ?? 'section';
+    const start = m.index;
+    const openEnd = start + m[0].length;
+    const tagRe = new RegExp(`</?${tag}\\b[^>]*>`, 'gi');
+    tagRe.lastIndex = openEnd;
+    let depth = 1;
+    let closeEnd = -1;
+    let tm: RegExpExecArray | null;
+    while ((tm = tagRe.exec(html)) !== null) {
+      if (tm[0]!.startsWith('</')) {
+        depth -= 1;
+        if (depth === 0) {
+          closeEnd = tm.index + tm[0]!.length;
+          break;
+        }
+      } else if (!tm[0]!.endsWith('/>')) {
+        depth += 1;
+      }
+    }
+    if (closeEnd < 0) break;
+    blocks.push(html.slice(start, closeEnd));
+    openRe.lastIndex = closeEnd;
+  }
+  return blocks;
 }
 
 function stripSlideNavChromeBlocks(html: string): string {

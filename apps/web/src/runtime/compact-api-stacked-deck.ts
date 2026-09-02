@@ -53,7 +53,7 @@ const SLIDE_VIEWPORT_RE = /100(?:vh|dvh|svh|lvh)/i;
 
 function hasFixedCanvasSizing(style: string): boolean {
   if (!style) return false;
-  const has1920Width = /(?:^|[;{\s])width\s*:\s*1920px\b/i.test(style);
+  const has1920Width = /(?:^|[;{\s])(?:min-)?width\s*:\s*1920px\b/i.test(style);
   const has1080Height = /(?:^|[;{\s])(?:min-)?height\s*:\s*1080px\b/i.test(style);
   return has1920Width && has1080Height;
 }
