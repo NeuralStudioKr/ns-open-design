@@ -80,6 +80,23 @@ repair auto-send 600ms 창에 사용자가 Retry/Continue를 눌러 repair send�
 
 검증: web ChatPane.resume-failed 루프370 · contracts redacted_thinking parse.
 
+### 루프385 — grid 안 loose pill+h3+p 삼중항을 sibling chrome shell 스타일로 wrap
+
+reproduce: 사용자 fixture slide 4에서 loop381+382가 3개 chrome shell을 grid 안으로 넣어도, 첫 번째 카드(Channels & DM)만 wrapper 없이 `pill, h3, p`가 grid의 3개 개별 셀에 흩어져 있음. 2-col grid는 pill을 왼쪽에, h3를 오른쪽에 배치해 카드가 안 보임.
+
+수정: `wrapLoosePillHeadingTriplesInsideMixedGrid` — grid 안에 chrome shell peer(pill+heading 포함)와 loose `pill + heading + optional paragraph` 삼중항이 섞여 있으면 그 chrome shell의 스타일을 그대로 복사해 loose 삼중항을 wrap.
+
+- style은 sibling에서 복사, 새로 발명 안 함
+- 모든 자식이 이미 chrome shell이면 no-op
+- chrome shell peer가 없으면 no-op (wrap 스타일을 결정할 근거 없음)
+- Heading-aware child scanner (`listDirectHeadingAwareChildOpens`) 신규 — 기존 `listDirectBlockChildOpens`는 h1-h6를 스킵해서 삼중항 감지 불가
+
+`pullOrphanChromeCardsIntoPrecedingGrid` 직후에 배치 → pull이 모든 shell을 grid로 넣은 뒤 이 wrap이 이어서 loose 삼중항까지 정리.
+
+결과 (fixture slide 4): grid 안 4개 chrome shell 모두 uniform (Channels & DM + Shared Drive + AI Chat + AI Apps).
+
+검증: contracts heal-ai-generated-deck 5개 신규 (basic wrap / no chrome peer no-op / all-shells no-op / no paragraph triple / healAiGeneratedDeckMarkup 통합) · integration fixture 2 신규 (grid에 shell 4개 · loop385 chrome mirror) · 전체 스위트 2917/2917.
+
 ### 루프382 — pull-orphan 슬롯 확장 (빈 grid는 최대 8개 카드까지 pull)
 
 reproduce: loop381로 3개 chrome shell이 콘텐츠와 함께 복구됐지만 `pullOrphanChromeCardsIntoPrecedingGrid`의 기존 슬롯 캡(`decl.count - chromeInside` = 2)이 걸려 세 번째 shell(결과물+AI Apps)이 grid 밖으로 남았다.

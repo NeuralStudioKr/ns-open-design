@@ -123,11 +123,11 @@ describe('teamver neubrutalism modify-turn fixture (2026-09-02 user report)', ()
     }
   });
 
-  it('pulls every filled orphan chrome card into the preceding empty grid (loop382)', () => {
-    // With loop381 filling all 3 shells, loop382 lifts the per-row cap
-    // when the grid started empty and pulls ALL 3 shells into the grid
-    // — the h2 slide title stays as the ONLY loose sibling between the
-    // grid and the closing `</div>` of the slide flow.
+  it('pulls every filled orphan chrome card into the preceding empty grid (loop382 + loop385)', () => {
+    // Loop381 filled 3 chrome shells from empty; loop382 pulled them into the
+    // grid; loop385 wrapped the 4th loose `pill + h3 + p` triple ("Channels &
+    // DM") into a matching chrome shell using the sibling shell's style. All
+    // 4 product cards now render as uniform chrome shells inside the grid.
     const slide4Match = out.match(
       /<section[^>]*data-screen-label="04 Product"[\s\S]*?<\/section>/,
     );
@@ -138,12 +138,23 @@ describe('teamver neubrutalism modify-turn fixture (2026-09-02 user report)', ()
     );
     expect(gridMatch).not.toBeNull();
     const gridInner = gridMatch![1] ?? '';
-    // All 3 filled chrome shells now live inside the grid.
-    expect((gridInner.match(/box-shadow:8px 8px 0 #000;padding:32px/g) ?? []).length).toBe(3);
-    // Product headings live inside the grid, not as loose siblings after it.
-    for (const productName of ['Shared Drive', 'AI Chat', 'AI Apps']) {
+    // All 4 chrome shells now live inside the grid (3 model-emitted + 1
+    // wrapped by loop385 for the Channels & DM triple).
+    expect((gridInner.match(/box-shadow:8px 8px 0 #000;padding:32px/g) ?? []).length).toBe(4);
+    for (const productName of ['Channels &amp; DM', 'Shared Drive', 'AI Chat', 'AI Apps']) {
       expect(gridInner).toContain(productName);
     }
+  });
+
+  it('wraps the loose Channels & DM triple with the same chrome style as its siblings (loop385)', () => {
+    // Explicit check that loop385's wrap mirrors the neubrutalism chrome
+    // (cream background + 4px border + 8px shadow + 32px padding) rather than
+    // inventing a novel style.
+    const chromeStyle = 'background:#FFFDF5;border:4px solid #000;box-shadow:8px 8px 0 #000;padding:32px';
+    const wrapped = new RegExp(
+      `<div style="${chromeStyle.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}"><div style="background:#FE90E8[^"]*inline-block[^"]*"[^>]*>대화</div>[\\s\\S]{0,200}Channels &amp; DM`,
+    );
+    expect(out).toMatch(wrapped);
   });
 
   it('unwraps the .split-content wrapper on the heading-only slide 2 so heading centers full-slide (loop383)', () => {

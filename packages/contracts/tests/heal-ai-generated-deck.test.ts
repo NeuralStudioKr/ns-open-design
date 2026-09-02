@@ -23,6 +23,7 @@ import {
   unnestHeadingBlockChildren,
   unwrapHeadingOnlyLayoutWrappers,
   unwrapTrivialSingleChildLayoutWrappers,
+  wrapLoosePillHeadingTriplesInsideMixedGrid,
 } from '../src/html/heal-ai-generated-deck.js';
 
 describe('heal-ai-generated-deck (0826-N01 F7)', () => {
@@ -5205,6 +5206,90 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).not.toMatch(/class="split-content"/);
       expect(out).toContain('Teamver — Smarter');
       expect(out).toContain('nb-heading-md');
+    });
+  });
+
+  describe('루프385 wrapLoosePillHeadingTriplesInsideMixedGrid', () => {
+    const CHROME_STYLE = 'background:#FFFDF5;border:4px solid #000;box-shadow:8px 8px 0 #000;padding:32px';
+    const PILL_STYLE = 'background:#FE90E8;border:3px solid #000;display:inline-block;padding:4px 14px';
+
+    it('wraps a loose pill+h3+p triple that sits alongside a proper chrome shell peer', () => {
+      const html = [
+        `<div style="display:grid;grid-template-columns:repeat(2, 1fr);gap:28px">`,
+        `<div style="${PILL_STYLE}">대화</div>`,
+        `<h3>Channels &amp; DM</h3>`,
+        `<p>Body copy A</p>`,
+        `<div style="${CHROME_STYLE}"><div style="${PILL_STYLE}">파일</div><h3>Shared Drive</h3><p>Body B</p></div>`,
+        `</div>`,
+      ].join('');
+      const out = wrapLoosePillHeadingTriplesInsideMixedGrid(html);
+      // Loose triple is wrapped in the SAME chrome style as the sibling shell.
+      expect(out).toMatch(
+        new RegExp(
+          `<div style="${CHROME_STYLE.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}"><div style="${PILL_STYLE.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}">대화</div><h3>Channels &amp; DM</h3><p>Body copy A</p></div>`,
+        ),
+      );
+      // Sibling shell stays intact.
+      expect(out).toContain('Shared Drive');
+    });
+
+    it('does nothing when the grid has no chrome shell peer to mirror', () => {
+      const html = [
+        `<div style="display:grid;grid-template-columns:repeat(2, 1fr);gap:28px">`,
+        `<div style="${PILL_STYLE}">A</div>`,
+        `<h3>Title A</h3>`,
+        `<p>Body A</p>`,
+        `<div style="${PILL_STYLE}">B</div>`,
+        `<h3>Title B</h3>`,
+        `<p>Body B</p>`,
+        `</div>`,
+      ].join('');
+      // No chrome peer → we cannot decide the wrap style. Leave alone.
+      expect(wrapLoosePillHeadingTriplesInsideMixedGrid(html)).toBe(html);
+    });
+
+    it('leaves a grid whose children are all already chrome shells alone', () => {
+      const html = [
+        `<div style="display:grid;grid-template-columns:repeat(2, 1fr);gap:28px">`,
+        `<div style="${CHROME_STYLE}"><div style="${PILL_STYLE}">A</div><h3>T1</h3><p>B1</p></div>`,
+        `<div style="${CHROME_STYLE}"><div style="${PILL_STYLE}">B</div><h3>T2</h3><p>B2</p></div>`,
+        `</div>`,
+      ].join('');
+      expect(wrapLoosePillHeadingTriplesInsideMixedGrid(html)).toBe(html);
+    });
+
+    it('wraps a triple without a paragraph (pill+h3 only)', () => {
+      const html = [
+        `<div style="display:grid;grid-template-columns:repeat(2, 1fr);gap:28px">`,
+        `<div style="${PILL_STYLE}">대화</div>`,
+        `<h3>Title only</h3>`,
+        `<div style="${CHROME_STYLE}"><div style="${PILL_STYLE}">파일</div><h3>Card 2</h3><p>Body</p></div>`,
+        `</div>`,
+      ].join('');
+      const out = wrapLoosePillHeadingTriplesInsideMixedGrid(html);
+      expect(out).toContain(`<div style="${CHROME_STYLE}"><div style="${PILL_STYLE}">대화</div><h3>Title only</h3></div>`);
+    });
+
+    it('runs through healAiGeneratedDeckMarkup and covers the user fixture pattern', () => {
+      const html = [
+        '<section class="slide" data-screen-label="04 Product">',
+        '<div data-od-slide-flow>',
+        `<div style="display:grid;grid-template-columns:repeat(2, minmax(0,1fr));gap:28px">`,
+        `<div style="${PILL_STYLE}">대화</div>`,
+        `<h3>Channels &amp; DM</h3>`,
+        `<p>Body copy 1</p>`,
+        `<div style="${CHROME_STYLE}"><div style="${PILL_STYLE}">파일</div><h3>Shared Drive</h3><p>Body 2</p></div>`,
+        `<div style="${CHROME_STYLE}"><div style="${PILL_STYLE}">AI</div><h3>AI Chat</h3><p>Body 3</p></div>`,
+        `</div>`,
+        '</div>',
+        '</section>',
+      ].join('');
+      const out = healAiGeneratedDeckMarkup(html, 'teamver 소개');
+      // 3 chrome shells inside the grid (loose triple got wrapped + 2 existing).
+      const chromeShells = [...(out.matchAll(new RegExp(CHROME_STYLE, 'g')))].length;
+      expect(chromeShells).toBe(3);
+      expect(out).toContain('Channels');
+      expect(out).toContain('Shared Drive');
     });
   });
 });

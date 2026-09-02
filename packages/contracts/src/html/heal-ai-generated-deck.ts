@@ -4116,6 +4116,247 @@ export function scrubTemplatePlaceholderSlots(html: string): string {
 }
 
 /**
+ * 루프385 — Inside a grid whose direct children are a mix of proper chrome
+ * shells (`<div style="border+padding+background">…</div>` wrapping pill +
+ * heading + paragraph) and LOOSE pill / heading / paragraph siblings without
+ * a wrapper, gather each loose `pill + heading + paragraph?` triple into a
+ * chrome shell that mirrors the STYLE of the grid's existing chrome peer.
+ *
+ * User fixture 2026-09-02 slide 4: the model wrapped 3 of 4 product cards in
+ * matching neubrutalism chrome shells and emitted the 4th (Channels & DM) as
+ * bare pill + h3 + p directly under the grid — the missing wrapper made that
+ * card render as 3 disjoint grid cells instead of a single card. Wrapping
+ * copies the same author-emitted chrome style (background/border/box-shadow/
+ * padding) — pure structural mirror, never invents novel styling.
+ *
+ * Guards:
+ *   - Grid must have `display:grid` (inline or inline-grid) with 2+ tracks.
+ *   - Grid must contain at least one chrome shell that itself holds a
+ *     pill + heading pair (proof of the template's card format).
+ *   - Only wrap consecutive `pill, heading, paragraph?` triples where the
+ *     pill is inline-block + padding + short text and the heading has real
+ *     text — same detector as loop381 chrome shell absorb.
+ *   - Skip if all children are already chrome shells (nothing to fix).
+ */
+export function wrapLoosePillHeadingTriplesInsideMixedGrid(html: string): string {
+  const source = String(html ?? '');
+  if (!source) return source;
+  const openRe = /<div\b([^>]*)>/gi;
+  const edits: Array<{ start: number; end: number; replacement: string }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(source)) !== null) {
+    const attrs = match[1] ?? '';
+    const style = extractInlineStyle(attrs);
+    if (!/(?:^|;)\s*display\s*:\s*(?:inline-)?grid\b/i.test(style)) continue;
+    const colsRaw = /grid-template-columns\s*:\s*([^;]+)/i.exec(style)?.[1];
+    if (!colsRaw) continue;
+    const decl = parseDeclaredEqualColumns(colsRaw.trim());
+    if (!decl || decl.count < 2) continue;
+    const openStart = match.index;
+    const openEnd = openStart + match[0]!.length;
+    const closeInfo = findSameTagClose(source, 'div', openEnd);
+    if (!closeInfo) continue;
+    const gridInnerStart = openEnd;
+    const gridInnerEnd = closeInfo.closeStart;
+    // Loop385 needs headings among direct children — GRID_BLOCK_CHILD_RE
+    // used by `listDirectBlockChildOpens` skips h1–h6. Use a widened
+    // scanner scoped to this pass so grid heals that rely on the block-
+    // only list are unaffected.
+    const children = listDirectHeadingAwareChildOpens(source, gridInnerStart, gridInnerEnd);
+    if (children.length === 0) continue;
+    const shellStyleHint = detectChromeShellPeerStyle(source, children, gridInnerEnd);
+    if (!shellStyleHint) continue;
+    const rewritten = wrapLoosePillHeadingTriplesInGridInner(
+      source,
+      children,
+      gridInnerStart,
+      gridInnerEnd,
+      shellStyleHint,
+    );
+    if (rewritten == null) continue;
+    edits.push({ start: gridInnerStart, end: gridInnerEnd, replacement: rewritten });
+  }
+  if (edits.length === 0) return source;
+  edits.sort((a, b) => b.start - a.start);
+  let out = source;
+  for (const edit of edits) {
+    out = out.slice(0, edit.start) + edit.replacement + out.slice(edit.end);
+  }
+  return out;
+}
+
+const HEADING_AWARE_CHILD_RE =
+  /^(div|section|article|li|figure|aside|header|footer|main|nav|ul|ol|p|table|h1|h2|h3|h4|h5|h6|blockquote)$/;
+
+function listDirectHeadingAwareChildOpens(
+  html: string,
+  innerStart: number,
+  innerEnd: number,
+): DirectChildOpen[] {
+  const inner = html.slice(innerStart, innerEnd);
+  const tokenRe = /<(\/?)([a-zA-Z][\w-]*)\b[^>]*(\/)?>/gi;
+  let depth = 0;
+  const opens: DirectChildOpen[] = [];
+  let tok: RegExpExecArray | null;
+  while ((tok = tokenRe.exec(inner)) !== null) {
+    const closing = tok[1] === '/';
+    const tagName = (tok[2] ?? '').toLowerCase();
+    const selfClose = tok[3] === '/'
+      || /\/>\s*$/.test(tok[0] ?? '')
+      || HTML_VOID_ELEMENTS.has(tagName);
+    if (closing) {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+    if (depth === 0 && HEADING_AWARE_CHILD_RE.test(tagName)) {
+      const absStart = innerStart + tok.index;
+      const absEnd = absStart + tok[0]!.length;
+      const attrs = tok[0]!.replace(/^<[a-zA-Z][\w-]*/i, '').replace(/\/?>$/, '');
+      opens.push({
+        absStart,
+        absEnd,
+        open: tok[0]!,
+        attrs,
+        style: extractInlineStyle(attrs),
+      });
+    }
+    if (!selfClose) depth += 1;
+  }
+  return opens;
+}
+
+function detectChromeShellPeerStyle(
+  html: string,
+  children: DirectChildOpen[],
+  gridInnerEnd: number,
+): string | null {
+  for (const child of children) {
+    if (!looksLikeChromeCardStyle(child.style)) continue;
+    // Verify the chrome shell holds a pill + heading pair (matches loop381's
+    // triple detector) so this is a template-emitted card, not a stray box.
+    const shellClose = findSameTagClose(html, 'div', child.absEnd);
+    if (!shellClose || shellClose.closeStart > gridInnerEnd) continue;
+    const inner = html.slice(child.absEnd, shellClose.closeStart);
+    if (!chromeShellInnerHoldsPillAndHeading(inner)) continue;
+    return child.style;
+  }
+  return null;
+}
+
+function chromeShellInnerHoldsPillAndHeading(inner: string): boolean {
+  const openRe = /<([a-zA-Z][\w-]*)\b([^>]*)>/g;
+  let sawPill = false;
+  let sawHeading = false;
+  let tok: RegExpExecArray | null;
+  while ((tok = openRe.exec(inner)) !== null) {
+    const tag = (tok[1] ?? '').toLowerCase();
+    const attrs = tok[2] ?? '';
+    if (/^h[1-6]$/.test(tag)) sawHeading = true;
+    else if (tag === 'div') {
+      const style = /\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(attrs);
+      const value = (style?.[1] ?? style?.[2] ?? '').trim();
+      if (/(?:^|;)\s*display\s*:\s*inline-block\b/i.test(value)) sawPill = true;
+    }
+    if (sawPill && sawHeading) return true;
+  }
+  return false;
+}
+
+type LooseTriple = {
+  pillIdx: number;
+  headingIdx: number;
+  paragraphIdx: number | null;
+  absStart: number;
+  absCloseEnd: number;
+};
+
+function wrapLoosePillHeadingTriplesInGridInner(
+  html: string,
+  children: DirectChildOpen[],
+  gridInnerStart: number,
+  gridInnerEnd: number,
+  shellStyle: string,
+): string | null {
+  const spans = childOpensToSpans(html, children, gridInnerEnd);
+  const triples: LooseTriple[] = [];
+  const consumed = new Set<number>();
+  for (let i = 0; i < spans.length; i += 1) {
+    if (consumed.has(i)) continue;
+    const pill = spans[i]!;
+    if (!spanLooksLikeLoosePill(html, pill)) continue;
+    const heading = spans[i + 1];
+    if (!heading || !isHeadingSpan(heading)) continue;
+    const paragraph = spans[i + 2];
+    const hasParagraph = paragraph && paragraph.tag === 'p' && spanHasVisibleText(html, paragraph);
+    triples.push({
+      pillIdx: i,
+      headingIdx: i + 1,
+      paragraphIdx: hasParagraph ? i + 2 : null,
+      absStart: pill.absStart,
+      absCloseEnd: hasParagraph ? paragraph!.absCloseEnd : heading.absCloseEnd,
+    });
+    consumed.add(i);
+    consumed.add(i + 1);
+    if (hasParagraph) consumed.add(i + 2);
+  }
+  if (triples.length === 0) return null;
+  const pieces: string[] = [];
+  let cursor = gridInnerStart;
+  for (const triple of triples) {
+    pieces.push(html.slice(cursor, triple.absStart));
+    const wrapped = `<div style="${shellStyle}">${html.slice(triple.absStart, triple.absCloseEnd)}</div>`;
+    pieces.push(wrapped);
+    cursor = triple.absCloseEnd;
+  }
+  pieces.push(html.slice(cursor, gridInnerEnd));
+  return pieces.join('');
+}
+
+function childOpensToSpans(
+  html: string,
+  children: DirectChildOpen[],
+  parentEnd: number,
+): DirectChildSpan[] {
+  const spans: DirectChildSpan[] = [];
+  for (const open of children) {
+    const tag = tagNameFromOpen(open.open);
+    if (!tag) continue;
+    if (/\/\s*>$/.test(open.open)) {
+      spans.push({ ...open, tag, inner: '', absCloseEnd: open.absEnd });
+      continue;
+    }
+    const close = findSameTagClose(html, tag, open.absEnd);
+    if (!close || close.closeStart > parentEnd) continue;
+    const closeTok = html.slice(close.closeStart).match(new RegExp(`^</${tag}\\s*>`, 'i'));
+    if (!closeTok) continue;
+    spans.push({
+      ...open,
+      tag,
+      inner: html.slice(open.absEnd, close.closeStart),
+      absCloseEnd: close.closeStart + closeTok[0].length,
+    });
+  }
+  return spans;
+}
+
+function spanLooksLikeLoosePill(html: string, span: DirectChildSpan): boolean {
+  if (span.tag !== 'div') return false;
+  const style = span.style;
+  if (!/(?:^|;)\s*display\s*:\s*inline-block\b/i.test(style)) return false;
+  if (!/(?:^|;)\s*padding\s*:/i.test(style)) return false;
+  const text = visibleText(html.slice(span.absEnd, span.absCloseEnd));
+  return text.length > 0 && text.length <= 40;
+}
+
+function isHeadingSpan(span: DirectChildSpan): boolean {
+  return /^h[1-6]$/i.test(span.tag);
+}
+
+function spanHasVisibleText(html: string, span: DirectChildSpan): boolean {
+  return visibleText(html.slice(span.absEnd, span.absCloseEnd)).length > 0;
+}
+
+/**
  * 루프383 — Unwrap slide-body layout wrappers (`.split-content`, `.hero-frame`,
  * `.split-pane`, `.card`, `.slide-inner`, etc.) that hold only a heading with
  * no accompanying body block. The wrapper's padding / border / half-width flex
@@ -4425,6 +4666,11 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // 루프348 — 선언 열 수보다 그리드 안 카드가 적을 때 바로 뒤 orphan 카드를
   // 그리드 안으로 되돌린다 (로드맵 3열 등).
   out = pullOrphanChromeCardsIntoPrecedingGrid(out, brief);
+  // 루프385 — Grid 안에 pill+h3+p 삼중항이 wrapper 없이 loose로 남아
+  // 다른 자매 카드는 chrome shell로 감싸져 있으면 그 shell 스타일을
+  // 그대로 복사해 loose 삼중항을 카드로 승격. 완성된 grid는 4장이
+  // uniform하게 보임.
+  out = wrapLoosePillHeadingTriplesInsideMixedGrid(out);
   // 루프333 — 조기 종료된 카드 뒤에 남은 orphan `<b>tail</b></div>` 제거.
   out = stripDuplicatedInlineTailAfterSiblingClose(out);
   // 루프331 — `</h1..6>` 다음 heading 꼬리 텍스트가 그대로 중복된 경우 제거.
