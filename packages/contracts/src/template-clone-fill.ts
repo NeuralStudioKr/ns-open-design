@@ -1737,6 +1737,8 @@ function peerClassSet(slotMap: TemplateCloneSlotMap | null | undefined): Set<str
     'pillar',
     'day-card',
     'timeline-card',
+    // 0901-N02-C5: bare `.step` (creative-mode / soft-editorial).
+    'step',
   ]);
   for (const token of slotMap?.peerClasses ?? []) {
     const t = String(token ?? '').trim().toLowerCase();
@@ -1745,8 +1747,13 @@ function peerClassSet(slotMap: TemplateCloneSlotMap | null | undefined): Set<str
   return set;
 }
 
+/** Section chrome like `4-step` / `five-step` — not trim peers. */
+function isCountedStepSectionToken(token: string): boolean {
+  return /^(?:\d+|two|three|four|five|six|seven|eight|nine)-step$/.test(token);
+}
+
 /**
- * 0901-N02-C4: prefixed hosts (`hc-grid-3`, `xp-grid-2`, `columns-grid`) without
+ * 0901-N02-C4/C5: prefixed hosts (`hc-grid-3`, `xp-grid-2`, `oc-steps`) without
  * per-template maps. Exact allowlist still wins; do not invent leftover peers.
  */
 function tokenLooksLikeCardHost(
@@ -1759,12 +1766,15 @@ function tokenLooksLikeCardHost(
   // foo-grid / foo-grid-3 — not nav-arrow, not bare "grid" (too broad alone).
   if (/^[a-z0-9][a-z0-9_-]*-grid(?:-\d+)?$/.test(t)) return true;
   if (/^grid-\d+$/.test(t)) return true;
+  // oc-steps / xw-steps host rows (C5).
+  if (/^[a-z][a-z0-9_-]*-steps$/.test(t)) return true;
   return false;
 }
 
 /**
- * 0901-N02-C4: prefixed peers (`xp-card`, `hc-card`, `column-card`).
- * Matches `*-card` only — never `card-icon` / `card-title` / `card-text`.
+ * 0901-N02-C4/C5: prefixed peers (`xp-card`, `kb-step`, `timeline-step`).
+ * `*-card` never matches `card-icon` / `card-title`.
+ * `*-step` requires a letter start and rejects `4-step` / `five-step` section chrome.
  */
 function tokenLooksLikeCardPeer(
   token: string,
@@ -1774,6 +1784,9 @@ function tokenLooksLikeCardPeer(
   if (!t) return false;
   if (peers.has(t)) return true;
   if (/^[a-z0-9][a-z0-9_-]*-card$/.test(t)) return true;
+  if (isCountedStepSectionToken(t)) return false;
+  // Letter-led `*-step` only — excludes digit `4-step` and inner `step-title`.
+  if (/^[a-z][a-z0-9_-]*-step$/.test(t)) return true;
   return false;
 }
 
@@ -1799,13 +1812,13 @@ function shellBodyLooksLikeCardGrid(
 ): boolean {
   const hosts = [...hostClassSet(slotMap)].map(escapeRegExp).join('|');
   const peers = [...peerClassSet(slotMap)].map(escapeRegExp).join('|');
-  // (?!-) blocks prefix hits inside `kb-grid-bg` / `my-card-icon`.
+  // (?!-) blocks prefix hits inside `kb-grid-bg` / `my-card-icon` / `kb-step-title`.
   const hostRe = new RegExp(
-    `<(?:div|ul|ol|section)\\b[^>]*\\bclass\\s*=\\s*["'][^"']*(?:\\b(?:${hosts})\\b|\\b[a-z0-9][\\w-]*-grid(?:-\\d+)?\\b(?!-)|\\bgrid-\\d+\\b)[^"']*["']`,
+    `<(?:div|ul|ol|section)\\b[^>]*\\bclass\\s*=\\s*["'][^"']*(?:\\b(?:${hosts})\\b|\\b[a-z0-9][\\w-]*-grid(?:-\\d+)?\\b(?!-)|\\bgrid-\\d+\\b|\\b[a-z][\\w-]*-steps\\b(?!-))[^"']*["']`,
     'i',
   );
   const peerRe = new RegExp(
-    `<(?:div|article|aside|li|section)\\b[^>]*\\bclass\\s*=\\s*["'][^"']*(?:\\b(?:${peers})\\b|\\b[a-z0-9][\\w-]*-card\\b(?!-))[^"']*["']`,
+    `<(?:div|article|aside|li|section)\\b[^>]*\\bclass\\s*=\\s*["'][^"']*(?:\\b(?:${peers})\\b|\\b[a-z0-9][\\w-]*-card\\b(?!-)|\\b[a-z][\\w-]*-step\\b(?!-))[^"']*["']`,
     'i',
   );
   return hostRe.test(html) || peerRe.test(html);
@@ -1856,11 +1869,11 @@ function collectPeersAmongChildren(
 
 /**
  * Fill card peers from outline lines and drop unfilled siblings.
- * 0901-N02-C/C2/C3/C4: 카드 수 = 내용 수. Never invent leftover column labels.
+ * 0901-N02-C/C2/C3/C4/C5: 카드 수 = 내용 수. Never invent leftover column labels.
  *
  * Host discovery order:
- * 1) known host class tokens (+ C4 `*-grid` / `grid-N` suffix)
- * 2) peer-driven: any container with ≥2 direct peer children (`*-card` incl.)
+ * 1) known host class tokens (+ C4 `*-grid` / `grid-N` · C5 `*-steps`)
+ * 2) peer-driven: any container with ≥2 direct peer children (`*-card`/`*-step`)
  * 3) top-level peer siblings (no wrapper)
  */
 export function fillAndTrimCardPeers(
@@ -2005,6 +2018,38 @@ function fillOneCardPeer(cardHtml: string, line: string): string {
     );
     next = next.replace(
       /(<[^>]*\bmember-role\b[^>]*>)([\s\S]*?)(<\/)/gi,
+      (_m, open: string, _inner: string, close: string) => `${open}${close}`,
+    );
+    return next;
+  }
+  // 0901-N02-C5 step title slots (kb / process / timeline / cycle / flow).
+  if (/\b(?:kb-step-title|step-title|cycle-title|flow-title)\b/i.test(next)) {
+    next = next.replace(
+      /(<[^>]*\b(?:kb-step-title|step-title|cycle-title|flow-title)\b[^>]*>)([\s\S]*?)(<\/)/i,
+      (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(text)}${close}`,
+    );
+    next = next.replace(
+      /(<[^>]*\b(?:kb-step-body|step-desc|cycle-desc|flow-desc)\b[^>]*>)([\s\S]*?)(<\/)/gi,
+      (_m, open: string, _inner: string, close: string) => `${open}${close}`,
+    );
+    return next;
+  }
+  // xhs-white-editorial: `.xw-txt` body line on xw-step.
+  if (/\bxw-txt\b/i.test(next)) {
+    next = next.replace(
+      /(<[^>]*\bxw-txt\b[^>]*>)([\s\S]*?)(<\/)/i,
+      (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(text)}${close}`,
+    );
+    return next;
+  }
+  // creative-mode: `.t` title + `.d` demo body inside bare `.step`.
+  if (/<[^>]*\bclass\s*=\s*["'][^"']*\bt\b[^"']*["'][^>]*>/i.test(next)) {
+    next = next.replace(
+      /(<[^>]*\bclass\s*=\s*["'][^"']*\bt\b[^"']*["'][^>]*>)([\s\S]*?)(<\/)/i,
+      (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(text)}${close}`,
+    );
+    next = next.replace(
+      /(<[^>]*\bclass\s*=\s*["'][^"']*\bd\b[^"']*["'][^>]*>)([\s\S]*?)(<\/)/gi,
       (_m, open: string, _inner: string, close: string) => `${open}${close}`,
     );
     return next;

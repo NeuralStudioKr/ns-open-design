@@ -1426,6 +1426,87 @@ describe('0901-N02-C4 prefixed *-card peer heuristic', () => {
   });
 });
 
+describe('0901-N02-C5 prefixed *-step peer heuristic', () => {
+  it('trims kb-step peers and fills kb-step-title', () => {
+    const html = [
+      '<div class="kb-pipeline">',
+      '<div class="kb-step"><div class="kb-step-num">01</div><div class="kb-step-title">采集</div><div class="kb-step-body">a</div></div>',
+      '<div class="kb-step"><div class="kb-step-num">02</div><div class="kb-step-title">去噪</div><div class="kb-step-body">b</div></div>',
+      '<div class="kb-step"><div class="kb-step-num">03</div><div class="kb-step-title">Wiki</div><div class="kb-step-body">c</div></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['수집', '정제']);
+    expect([...(next.matchAll(/\bclass="kb-step(?:\s|")/gi))].length).toBe(2);
+    expect(next).toContain('수집');
+    expect(next).toContain('정제');
+    expect(next).not.toContain('Wiki');
+    expect(next).not.toContain('采集');
+    expect(next).not.toMatch(/kb-step-body">[^<]/i);
+  });
+
+  it('trims timeline-step peers via step-title', () => {
+    const html = [
+      '<div class="timeline">',
+      '<div class="timeline-step"><div class="step-title">Research</div><div class="step-desc">a</div></div>',
+      '<div class="timeline-step"><div class="step-title">Build</div><div class="step-desc">b</div></div>',
+      '<div class="timeline-step"><div class="step-title">Launch</div><div class="step-desc">c</div></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['조사', '구축']);
+    expect([...(next.matchAll(/\btimeline-step\b/gi))].length).toBe(2);
+    expect(next).toContain('조사');
+    expect(next).toContain('구축');
+    expect(next).not.toContain('Launch');
+    expect(next).not.toContain('Research');
+  });
+
+  it('trims xw-step peers inside xw-steps host', () => {
+    const html = [
+      '<div class="xw-steps">',
+      '<div class="xw-step"><div class="xw-num">1</div><div class="xw-txt">生产会更便宜</div></div>',
+      '<div class="xw-step"><div class="xw-num">2</div><div class="xw-txt">复制会更快</div></div>',
+      '<div class="xw-step"><div class="xw-num">3</div><div class="xw-txt">AI 做错</div></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['비용 하락', '복제 가속']);
+    expect([...(next.matchAll(/\bxw-step\b/gi))].length).toBe(2);
+    expect(next).toContain('비용 하락');
+    expect(next).toContain('복제 가속');
+    expect(next).not.toContain('AI 做错');
+  });
+
+  it('trims bare step peers with .t/.d slots', () => {
+    const html = [
+      '<div class="flow">',
+      '<div class="step s-1"><div class="n">01</div><div class="t">Discover</div><div class="d">aa</div></div>',
+      '<div class="step s-2"><div class="n">02</div><div class="t">Define</div><div class="d">bb</div></div>',
+      '<div class="step s-3"><div class="n">03</div><div class="t">Deliver</div><div class="d">cc</div></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['발견', '정의']);
+    expect([...(next.matchAll(/\bclass="step\b/gi))].length).toBe(2);
+    expect(next).toContain('발견');
+    expect(next).toContain('정의');
+    expect(next).not.toContain('Deliver');
+    expect(next).not.toContain('Discover');
+    expect(next).not.toContain('>aa<');
+  });
+
+  it('does not treat counted section tokens like five-step as peers', () => {
+    const html = [
+      '<div class="wrap">',
+      '<div class="five-step"><h4>One</h4><p>a</p></div>',
+      '<div class="five-step"><h4>Two</h4><p>b</p></div>',
+      '<div class="five-step"><h4>Three</h4><p>c</p></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, ['하나', '둘']);
+    expect([...(next.matchAll(/\bfive-step\b/gi))].length).toBe(3);
+    expect(next).toContain('One');
+    expect(next).not.toContain('하나');
+  });
+});
+
 describe('hoistCloneSlidesOutOfFlexTrack', () => {
   it('unwraps leftover <section id="stage"> and <main class="stage"> slide tracks', () => {
     const sectionStage = [
