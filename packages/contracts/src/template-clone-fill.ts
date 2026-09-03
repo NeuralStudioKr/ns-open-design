@@ -486,6 +486,111 @@ export function recoverPartialTemplateCloneOutline(
 const SYNTH_GENERIC_TITLE_RE =
   /^(?:슬라이드|deck|slides?|presentation|발표\s*자료|untitled|artifact)$/i;
 
+function extractSlideCountFromTemplateCloneBrief(text: string): number | null {
+  const raw = String(text ?? '');
+  const range = /(\d{1,2})\s*(?:-|~|–|—)\s*(\d{1,2})\s*(?:장|slides?|pages?)?/i.exec(raw);
+  if (range?.[1] && range[2]) {
+    const max = Number(range[2]);
+    if (Number.isFinite(max) && max >= 1) {
+      return Math.min(TEMPLATE_CLONE_OUTLINE_MAX_SLIDES, Math.floor(max));
+    }
+  }
+  const single = /(?:정확히\s*)?(\d{1,2})\s*(?:장|slides?|pages?)/i.exec(raw);
+  if (single?.[1]) {
+    const count = Number(single[1]);
+    if (Number.isFinite(count) && count >= 1) {
+      return Math.min(TEMPLATE_CLONE_OUTLINE_MAX_SLIDES, Math.floor(count));
+    }
+  }
+  return null;
+}
+
+function topicKeywordForSynthBody(title: string): string {
+  return String(title ?? '')
+    .replace(/\s*(?:사이트|서비스|소개|슬라이드|덱|발표\s*자료)$/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    || '핵심 주제';
+}
+
+function synthesizeTemplateCloneSlideBody(
+  cover: string,
+  label: string,
+  index: number,
+): { body: string; roleHint: TemplateCloneShellRole } {
+  const topic = topicKeywordForSynthBody(cover);
+  const templates: Array<{ roleHint: TemplateCloneShellRole; lines: string[] }> = [
+    {
+      roleHint: 'list',
+      lines: [
+        `${label}: ${topic}이 해결하려는 사용자 문제와 도입 배경`,
+        '기존 업무 흐름에서 반복되는 병목과 비효율',
+        '슬라이드 전체에서 검증할 핵심 판단 기준',
+      ],
+    },
+    {
+      roleHint: 'cards',
+      lines: [
+        '핵심 기능과 사용자가 얻는 직접적인 가치',
+        '팀 단위 협업에서 맥락을 유지하는 방식',
+        '결과물 생성, 공유, 재사용까지 이어지는 흐름',
+      ],
+    },
+    {
+      roleHint: 'process',
+      lines: [
+        '입력 자료와 요청 의도를 구조화',
+        '초안 생성 후 템플릿 레이아웃에 맞게 정리',
+        '검토, 수정, 내보내기로 실무 결과물 완성',
+      ],
+    },
+    {
+      roleHint: 'cards',
+      lines: [
+        '개인 생산성보다 팀 전체의 반복 업무 절감에 초점',
+        '문서, 슬라이드, 드라이브 연동을 하나의 작업선으로 연결',
+        '권한과 워크스페이스 기준으로 결과물을 관리',
+      ],
+    },
+    {
+      roleHint: 'list',
+      lines: [
+        '사용자 역할별 주요 사용 장면',
+        '기획, 세일즈, 운영, 개발 조직에서의 적용 포인트',
+        '처음 도입할 때 확인해야 할 성공 조건',
+      ],
+    },
+    {
+      roleHint: 'timeline',
+      lines: [
+        '1단계: 작은 업무 단위에서 파일과 대화를 연결',
+        '2단계: 반복 산출물을 템플릿화하고 공유',
+        '3단계: 팀 워크플로우와 권한 체계에 정착',
+      ],
+    },
+    {
+      roleHint: 'stat',
+      lines: [
+        '평가 지표: 초안 작성 시간, 수정 횟수, 공유 속도',
+        '품질 기준: 메시지 맥락 유지와 결과물 재현성',
+        '운영 기준: 저장 안정성, 접근 권한, 감사 가능성',
+      ],
+    },
+    {
+      roleHint: 'closing',
+      lines: [
+        `${topic}은 단일 기능이 아니라 팀 작업 방식을 바꾸는 기반입니다.`,
+        '다음 단계는 실제 업무 시나리오에 맞춘 파일, 템플릿, 권한 흐름 검증입니다.',
+      ],
+    },
+  ];
+  const picked = templates[(index - 1) % templates.length]!;
+  return {
+    roleHint: picked.roleHint,
+    body: picked.lines.join('\n'),
+  };
+}
+
 export function synthesizeTemplateCloneOutlineFromBrief(input: {
   userBrief?: string | null;
   deckTitle?: string | null;
@@ -509,9 +614,10 @@ export function synthesizeTemplateCloneOutlineFromBrief(input: {
       && !SYNTH_GENERIC_TITLE_RE.test(candidate),
   );
   if (!cover) return null;
+  const requestedCount = input.slideCount ?? extractSlideCountFromTemplateCloneBrief(brief);
   const target = Math.max(
     3,
-    Math.min(TEMPLATE_CLONE_OUTLINE_MAX_SLIDES, Math.floor(input.slideCount ?? 5)),
+    Math.min(TEMPLATE_CLONE_OUTLINE_MAX_SLIDES, Math.floor(requestedCount ?? 5)),
   );
   const genericSections: string[] = [
     '개요',
@@ -527,7 +633,10 @@ export function synthesizeTemplateCloneOutlineFromBrief(input: {
   const slides: TemplateCloneSlideContent[] = [{ title: cover, roleHint: 'cover' }];
   for (let i = 1; i < target; i += 1) {
     const label = genericSections[i - 1] ?? `핵심 ${i}`;
-    slides.push({ title: label });
+    slides.push({
+      title: label,
+      ...synthesizeTemplateCloneSlideBody(cover, label, i),
+    });
   }
   return { title: cover, slides };
 }

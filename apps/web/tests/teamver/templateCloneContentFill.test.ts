@@ -47,14 +47,14 @@ afterEach(() => {
 });
 
 describe('templateCloneContentFill', () => {
-  it('loop409 — defaults to pure-prompt when env is empty; deterministic and prompt are explicit opt-ins', () => {
-    // Empty / undefined / unknown → env-empty default = `pure-prompt` (loop409).
-    expect(normalizeTemplateCloneFillMode(undefined)).toBe('pure-prompt');
-    expect(normalizeTemplateCloneFillMode('')).toBe('pure-prompt');
-    expect(normalizeTemplateCloneFillMode('nonsense')).toBe('pure-prompt');
-    expect(getTemplateCloneFillMode()).toBe('pure-prompt');
-    expect(shouldSkipTemplateCloneSeed()).toBe(true);
-    expect(shouldUseDeterministicTemplateCloneFill()).toBe(false);
+  it('loop413 — defaults to deterministic so explicit template picks preserve their shell/motifs', () => {
+    // Empty / undefined / unknown → env-empty default = `deterministic` (loop413).
+    expect(normalizeTemplateCloneFillMode(undefined)).toBe('deterministic');
+    expect(normalizeTemplateCloneFillMode('')).toBe('deterministic');
+    expect(normalizeTemplateCloneFillMode('nonsense')).toBe('deterministic');
+    expect(getTemplateCloneFillMode()).toBe('deterministic');
+    expect(shouldSkipTemplateCloneSeed()).toBe(false);
+    expect(shouldUseDeterministicTemplateCloneFill()).toBe(true);
 
     // Explicit `prompt` / clone-fill aliases opt BACK IN to the clone flow.
     expect(normalizeTemplateCloneFillMode('prompt')).toBe('prompt');
@@ -75,10 +75,10 @@ describe('templateCloneContentFill', () => {
     expect(normalizeTemplateCloneFillMode('server')).toBe('deterministic');
   });
 
-  it('accepts the loop401 `pure-prompt` mode via env and multiple aliases (post-loop409: same as env-empty default)', () => {
-    // Env-empty default is now pure-prompt (loop409).
-    expect(getTemplateCloneFillMode()).toBe('pure-prompt');
-    expect(shouldSkipTemplateCloneSeed()).toBe(true);
+  it('accepts the loop401 `pure-prompt` rollback mode via env and multiple aliases', () => {
+    // Env-empty default is deterministic again (loop413); pure-prompt is explicit rollback.
+    expect(getTemplateCloneFillMode()).toBe('deterministic');
+    expect(shouldSkipTemplateCloneSeed()).toBe(false);
 
     // Direct alias.
     expect(normalizeTemplateCloneFillMode('pure-prompt')).toBe('pure-prompt');
@@ -100,18 +100,17 @@ describe('templateCloneContentFill', () => {
     expect(normalizeTemplateCloneFillMode('NO-CLONE')).toBe('pure-prompt');
   });
 
-  it('loop409 — an explicit `=prompt` env keeps legacy clone-fill regardless of the new default', () => {
-    // Production deployments that had =prompt explicit stay unchanged
-    // through the loop409 default flip.
+  it('keeps explicit `=prompt` legacy clone-fill as a rollback mode', () => {
+    // Production/deployments that set =prompt explicitly stay unchanged.
     process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = 'prompt';
     expect(getTemplateCloneFillMode()).toBe('prompt');
     expect(shouldSkipTemplateCloneSeed()).toBe(false);
     expect(shouldUseDeterministicTemplateCloneFill()).toBe(false);
   });
 
-  it('loop410 — App still guards clone seed with shouldSkipTemplateCloneSeed (kit id retained)', () => {
-    // Staging env =pure-prompt; FE must skip LOOK seed on both Canvas and
-    // Home create branches while still threading selectedDeckTemplateId.
+  it('loop410/413 — App still gates clone seed with shouldSkipTemplateCloneSeed (kit id retained)', () => {
+    // The gate must remain so explicit pure-prompt rollback can skip LOOK seed
+    // while deterministic default still threads selectedDeckTemplateId.
     const app = readFileSync(
       new URL('../../src/App.tsx', import.meta.url),
       'utf8',
@@ -119,7 +118,7 @@ describe('templateCloneContentFill', () => {
     expect(app).toContain('!shouldSkipTemplateCloneSeed()');
     expect((app.match(/!shouldSkipTemplateCloneSeed\(\)/g) ?? []).length).toBeGreaterThanOrEqual(2);
     expect(app).toContain('selectedDeckTemplateId');
-    expect(app).toContain('루프401/409/410');
+    expect(app).toMatch(/루프401\/409\/410|루프401\/407|shouldSkipTemplateCloneSeed/);
   });
 
   it('does not treat Canvas boilerplate as the visible request', () => {

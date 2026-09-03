@@ -374,8 +374,19 @@ describe('루프373 synthesizeTemplateCloneOutlineFromBrief', () => {
     expect(outline!.slides[0]?.roleHint).toBe('cover');
     // generic section labels — never leaks demo template captions
     for (const slide of outline!.slides.slice(1)) {
-      expect(slide.title).toMatch(/^(?:개요|핵심 포인트|근거와 사례|실행 방안|요약|핵심 \d+)$/);
+      expect(slide.title).toMatch(/^(?:개요|핵심 포인트|근거와 사례|실행 방안|고객 경험|운영과 보안|도입 로드맵|성과 지표|요약|핵심 \d+)$/);
+      expect(slide.body?.split('\n').filter(Boolean).length).toBeGreaterThanOrEqual(2);
+      expect(slide.roleHint).toBeTruthy();
     }
+  });
+
+  it('extracts requested slide count from brief when caller has no parsed count', () => {
+    const outline = synthesizeTemplateCloneOutlineFromBrief({
+      userBrief: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장',
+      deckTitle: '슬라이드',
+    });
+    expect(outline?.slides).toHaveLength(10);
+    expect(outline?.slides.at(-1)?.title).toBe('요약');
   });
 
   it('returns null when brief cannot yield a cover title', () => {
@@ -543,6 +554,7 @@ describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
     if (decision.kind === 'seed-fallback') {
       expect(listTemplateCloneSlideShells(decision.html).length).toBe(10);
       expect(decision.html).toContain('성과 지표');
+      expect(decision.html).toContain('평가 지표');
       expect(decision.html).not.toContain('Demo');
     }
   });

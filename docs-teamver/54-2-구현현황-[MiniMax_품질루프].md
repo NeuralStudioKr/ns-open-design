@@ -42,6 +42,18 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프413 — 명시 템플릿은 deterministic slot-fill 기본 복구
+
+체감: `www.teamver.com ... 8~10장`, Capsule/Daisy/Zhangzara 계열에서 결과가 6장으로 끝나거나, 썸네일의 대표 SVG/도형/색상/비율이 실제 결과물에 충분히 살아나지 않음. 일부 장은 제목/카드가 빈약하고, 사용자의 요청 문구가 그대로 표지에 가까운 copy로 들어감.
+
+현재 시점 기준 판단(2026-09-03): loop409~410의 `pure-prompt` 기본값은 Clone 이중지시로 인한 자연스러움 저하를 피하려던 응급 우회였지만, 명시 템플릿 선택 UX에서는 실제 `example.html` shell을 재사용하지 않아 motif fidelity가 더 크게 손상된다. 사용자가 원하는 “템플릿 샘플에서 내용만 대체”에 더 가까운 경로는 deterministic Clone/slot-fill이다.
+
+수정: `TEMPLATE_CLONE_FILL_DEFAULT_MODE`와 staging env/example을 `deterministic`으로 복구. `pure-prompt`/`prompt`는 rollback 모드로 유지. JSON outline 실패 시 fallback이 제목-only 5~6장으로 떨어지지 않도록 `synthesizeTemplateCloneOutlineFromBrief`가 브리프의 `8~10장` 등을 직접 읽고 각 본문 슬라이드에 2~3줄 body와 `roleHint`를 채운다.
+
+검증: web `templateCloneContentFill` 기본 모드/rollback · contracts `template-clone-outline`/`template-clone-fill`.
+
+다음: 실제 `www.teamver.com + Capsule + 8~10장` fixture 기반 E2E 품질 게이트(장수, 본문 밀도, motif token/SVG, 1920x1080, heading-grid 구조)를 추가한다.
+
 ### 루프412 — MiniMax `AGENT_EXECUTION_STALLED` (SSE idle 5분 과단)
 
 체감: BYOK MiniMax 생성 중 `error_code: AGENT_EXECUTION_STALLED` / 「생성이 응답하지 않아 중단했습니다」. run_id n/a는 API 경로 정상. pure-prompt 풀 덱은 장 사이·thinking에 SSE가 수 분 멈출 수 있는데 FE/daemon idle이 5분이라 조기 절단.

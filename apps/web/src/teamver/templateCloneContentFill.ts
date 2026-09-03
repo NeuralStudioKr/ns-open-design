@@ -54,58 +54,46 @@ export const CLONE_SLOT_FILL_REPAIR_ENTRY_FROM = 'clone_slot_fill_json_repair';
 /**
  * Fill mode for explicit-template deck creates.
  *
- *   `pure-prompt` (**default since loop409, 2026-09-03**): SKIP daemon
- *     LOOK seeding entirely and SKIP the clone-fill marker on the
- *     outgoing user turn. `selectedDeckTemplateId` / skillIds are
- *     still carried, so `composeTeamverSlideApiPrompt` emits the
- *     `## Selected deck template — X — MUST MATCH THIS VISUAL SPEC`
- *     kit block. Model receives a plain user brief + kit spec with
- *     no clone-mode language.
+ *   `deterministic` (**default again since loop413, 2026-09-03**):
+ *     daemon seeds the real template LOOK, then the host fills/reuses those
+ *     shells from a JSON outline. This is the safest path for explicit
+ *     template picks because SVG motifs, colors, slide chrome, and 1920x1080
+ *     layout come from example.html instead of being re-invented by the model.
  *
- *     Rationale: through loops 379-406 salvage/heal was iterated for
- *     3+ days on the clone-fill path and quality remained noticeably
- *     worse than the pre-Clone prompt-only flow (per user report
- *     "clone 방식이 아니라 프롬프트일 때가 완성도 측면에서 더 나았던
- *     것 같다"). Making the safer path the default cuts the visible
- *     defect surface while clone is being improved in a separate
- *     track. Clone infrastructure (daemon `/template-clone-deck`
- *     endpoint, prompt-fill contract, salvage pipeline) is fully
- *     preserved and reachable via explicit opt-in.
+ *   `pure-prompt` (explicit rollback option): SKIP daemon LOOK seeding
+ *     entirely and SKIP the clone-fill marker on the outgoing user turn.
+ *     `selectedDeckTemplateId` / skillIds are still carried, so
+ *     `composeTeamverSlideApiPrompt` emits the kit block. Useful as a quick
+ *     demo rollback if Clone/slot-fill regresses, but weaker for motif
+ *     fidelity because the model must recreate the template DOM.
  *
- *   `prompt` (explicit opt-in since loop409): daemon seeds LOOK
+ *   `prompt`: daemon seeds LOOK
  *     `deck.html` from the template example, then the AI turn is
  *     armed with `templateClonePromptFill: true` and the
  *     `TEAMVER_TEMPLATE_CLONE_PROMPT_FILL_CONTRACT` hint. Model emits
- *     full HTML, salvage/heals clean it, persist keeps the seed as
- *     fallback. Production deployments that had `=prompt` explicitly
- *     set continue to use this path — the default flip only affects
- *     env-empty environments.
- *
- *   `deterministic`: daemon runs a server content-fill endpoint
- *     (no AI turn) or falls through to JSON slot-fill after the
- *     seed. Same LOOK seed on disk before the AI runs.
+ *     full HTML. Kept as another rollback mode, but weaker than
+ *     deterministic for motif fidelity because the model can still rebuild
+ *     the DOM.
  */
 export type TemplateCloneFillMode = 'prompt' | 'deterministic' | 'pure-prompt';
 
 /**
- * 루프409 — Env-empty default. Before loop409 this was `'prompt'`; users
- * reported the clone-fill path produced consistently lower-quality decks
- * across 3+ days of salvage/heal iteration (loops 379-406). Flipping the
- * env-empty default to `'pure-prompt'` cuts the visible defect surface
- * for new deployments while clone infrastructure is improved separately.
- * Production deployments that had `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE
- * =prompt` explicitly set are UNAFFECTED — the explicit env still wins.
+ * 루프413 — Env-empty default returns to deterministic Clone/slot-fill.
+ * The loop409 pure-prompt default improved some model-quality cases but made
+ * explicit template picks drift from their thumbnail/example motifs. The
+ * rollback switch remains: set `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE
+ * =pure-prompt` or browser `localStorage.od:template-clone-fill-mode`.
  */
-export const TEMPLATE_CLONE_FILL_DEFAULT_MODE: TemplateCloneFillMode = 'pure-prompt';
+export const TEMPLATE_CLONE_FILL_DEFAULT_MODE: TemplateCloneFillMode = 'deterministic';
 
 export function normalizeTemplateCloneFillMode(value: unknown): TemplateCloneFillMode {
   const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
   if (raw === 'deterministic' || raw === 'content-fill' || raw === 'server') {
     return 'deterministic';
   }
-  // 루프401/407 — `pure-prompt` (or aliases) matches the pre-Clone flow.
-  // As of loop409, `pure-prompt` is also the env-empty default (see
-  // `getTemplateCloneFillMode`).
+  // 루프401/407/413 — `pure-prompt` (or aliases) matches the pre-Clone
+  // prompt-only rollback. It is explicit opt-in again; empty/unknown now
+  // falls through to the deterministic default below.
   if (
     raw === 'pure-prompt'
     || raw === 'no-seed'
