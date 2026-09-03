@@ -42,6 +42,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프395 — 중첩 `<b>N <b>N,NNN` 숫자 typo 접두 · 문장 종결 부호 스터터
+
+체감: 루프394 이후 구조는 안정. 그러나 슬라이드 3에서 `자체 큐레이션한 1 1,200+개 문화 콘텐츠를…`(브라우저 렌더는 `11,200+개`로 붙어보임)와 슬라이드 4 Step 01의 `30분 . .` 스터터가 남음. 모두 모델 오타/스터터.
+
+수정: 신규 `stripNestedBoldNumberTypoPrefix`(outer `<b>N ` 접두가 즉시 nested `<b>N,NNN…</b>` 앞이면 outer 접두만 drop, 강조 체인 `<b>1위 <b>SaaS</b></b>`는 inner가 숫자 패턴이 아니므로 보전) · 신규 `dedupeAdjacentSentencePunctuation`(`.`/`!`/`?` + optional 닫힘태그 + 공백 + 같은 부호 stutter collapse, negative look-behind/-ahead로 `...`/`!!!`/`????` 보전) · salvage 파이프라인에 `unwrapStrayBoldShells` 후 typo prefix, `collapseAdjacentDuplicateLabelDivs` 후 punct dedupe wire.
+
+검증: 신규 11 pass · contracts 2964 pass · 시각 pre/post — `11,200+개`→`1,200+개`, `30분..`→`30분.`, 4단계 카드 안에 설명이 완전 재봉합됨(루프394 flex 재조립과 결합).
+
 ### 루프394-후속 — 8-bit orbit `.starfield` idempotency + 사용자 리포트 fixture
 
 체감: 루프394 병렬 커밋이 사용자 리포트 3개 결함(empty leading slot · `<b>` orphan · duplicate label)을 잡았으나 별도 재현 케이스 발견: 루프390 `restyleForeignIbMagazineCover` 8-bit orbit 분기가 만드는 `.starfield`에 style 속성이 없어 `restoreAtmosphericOverlayPositioning`(loop392)가 2회차 salvage에서 재-styling → salvage idempotency 깨짐.

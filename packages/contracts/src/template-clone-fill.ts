@@ -1789,6 +1789,69 @@ export function unwrapStrayBoldShells(html: string): string {
   return out;
 }
 
+/**
+ * 루프395 — MiniMax typo: model starts typing a formatted number in bold
+ * (`<b>1 `), realizes the leading fragment is wrong, and re-opens another
+ * `<b>` with the correct full number (`<b>1,200+개 문화 콘텐츠</b>`), then
+ * closes both. Renders as "자체 큐레이션한 1 1,200+개 문화 콘텐츠…" — an extra
+ * `1 ` prefix reader has to mentally strip.
+ *
+ * Detect nested `<b>` where the outer's leading text is exactly a short
+ * digit fragment ("1 ", "12 ", "3 ") followed immediately by an inner
+ * `<b>digit,digit-triplet…</b>` (real number) and drop the outer wrapper,
+ * keeping the inner bold plus any trailing outer text.
+ *
+ *   `<b>1 <b>1,200+개 문화 콘텐츠</b>를 카테고리별로…</b>`
+ *   → `<b>1,200+개 문화 콘텐츠</b>를 카테고리별로…`
+ *
+ * Guardrails: outer prefix must be ≤ 3 digits + whitespace only, inner
+ * must start with a comma-separated or decimal number so we never merge a
+ * genuine `<b>1위 <b>SaaS</b></b>` emphasis chain.
+ */
+const NESTED_BOLD_NUMBER_TYPO_RE =
+  /<b\b[^>]*>\s*\d{1,3}\s+(<b\b[^>]*>\s*\d{1,3}(?:[.,]\d+)+[^<]*<\/b>[^<]*?)<\/b>/gi;
+
+export function stripNestedBoldNumberTypoPrefix(html: string): string {
+  const out = String(html ?? '');
+  if (!out || !/<b\b/i.test(out)) return out;
+  return out.replace(NESTED_BOLD_NUMBER_TYPO_RE, (_match, keep: string) => keep);
+}
+
+/**
+ * 루프395 — MiniMax stutter: paragraphs frequently end with `<b>30분</b>.`
+ * followed by another `.` (from the model closing bold with a period and
+ * then writing the sentence-final period). Renders as "…초기 셋업 평균 30분 . ."
+ * with a visible double stutter.
+ *
+ * Collapse "punctuation + optional whitespace + same punctuation" that
+ * spans a close tag (inline OR block) or straddles pure whitespace. Only
+ * handle `.` / `!` / `?`. Never touch ellipses (`...`) — the negative
+ * lookbehind and lookahead reject any match adjacent to another of the
+ * same mark so `...`, `!!!`, `????` all stay intact.
+ *
+ *   "30분</b>."           → "30분</b>." (unchanged, valid)
+ *   "30분.</b>."          → "30분.</b>"
+ *   "30분</b> ."          → "30분</b>."
+ *   "30분</b>.</div>."    → "30분</b>.</div>"
+ *   "그래.  ."            → "그래."
+ *   "그런데... 그래."       → "그런데... 그래." (unchanged, ellipsis)
+ */
+const DUPE_ADJACENT_SENTENCE_PUNCT_RE =
+  /(?<![.!?])([.!?])((?:<\/\w+>)?)\s*\1(?!\1)/g;
+
+export function dedupeAdjacentSentencePunctuation(html: string): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  for (let pass = 0; pass < 3; pass += 1) {
+    const before = out;
+    out = out.replace(DUPE_ADJACENT_SENTENCE_PUNCT_RE, (_match, punct: string, closeTag: string) => (
+      closeTag ? `${punct}${closeTag}` : `${punct}`
+    ));
+    if (out === before) break;
+  }
+  return out;
+}
+
 const NEO_DECO_PAINT_RE =
   /background(?:-color)?\s*:\s*(?:#(?:FE90E8|C0F7FE|99E885|F7CB46|FFDC8B|000000|FFFDF5|FFFFFF)|var\(\s*--(?:pink|blue|green|yellow|cream|black|offwhite|white))/i;
 
@@ -2682,9 +2745,17 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = flattenNestedComparisonGridRows(next);
   next = absorbOrphanComparisonTrackCells(next);
   next = unwrapStrayBoldShells(next);
+  // 루프395 — Drop the model's "typed the number twice" prefix
+  // (`<b>1 <b>1,200+개…</b>`) *after* stray bold shells are cleaned so the
+  // inner bold count is stable, and *before* dedupe punctuation so trailing
+  // `.` inside the leftover shell can then collapse cleanly.
+  next = stripNestedBoldNumberTypoPrefix(next);
   next = rejoinPrematureFlexStepRows(next);
   next = absorbOrphanFlexStepDescriptions(next);
   next = collapseAdjacentDuplicateLabelDivs(next);
+  // 루프395 — Model stutter (`30분</b>.` then another `.`) becomes visible
+  // as ". ." at the end of a description; collapse.
+  next = dedupeAdjacentSentencePunctuation(next);
   next = pinDecorativeGradientOverlays(next);
   next = restoreAtmosphericOverlayPositioning(next);
   next = pinNeoBrutalEmptyDecoBlocks(next);
