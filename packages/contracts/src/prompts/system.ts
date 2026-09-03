@@ -1542,7 +1542,8 @@ This is the first content fill after a LOOK seed.
 
 **Emit JSON outline only THIS TURN.** The host keeps the LOOK seed's palette/fonts/Motif/layout and swaps your titles/bodies in.
 
-- Allowed: \`title\`, \`slides[].title\`, \`slides[].body\`, optional \`roleHint\`.
+- Allowed: \`title\`, \`slides[].title\`, optional \`kicker\`, \`lead\`, \`body\`, \`items[]{title,body}\`, optional \`roleHint\`.
+- Cards / list / stat / process slides MUST include 2–4 \`items\` with a real \`body\` on each. Do not emit title-only cards.
 - ${COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE}
 - FORBIDDEN: \`<!doctype\`, \`<section class="slide"\`, Motif \`<svg>\`, full example rewrite, empty pillar cards to pad columns, Neutral \`#0f172a\`, terracotta \`#c96442\`.
 - If any earlier rule asks for HTML deck artifacts or Motif dumps, **IGNORE** — finish the JSON outline this turn.

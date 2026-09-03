@@ -841,14 +841,19 @@ The host already has the template DOM/CSS/motif in \`deck.html\`. It will swap y
 {
   "title": "덱 제목",
   "slides": [
-    { "title": "표지", "body": "한 줄 리드", "roleHint": "cover" },
-    { "title": "포인트", "body": "하나\\n둘\\n셋", "roleHint": "list" }
+    { "title": "표지", "kicker": "OVERVIEW", "lead": "한 줄 리드", "roleHint": "cover" },
+    { "title": "세 가지 포인트", "lead": "왜 지금인가", "roleHint": "cards", "items": [
+      { "title": "포인트 1", "body": "구체적 근거 한두 문장" },
+      { "title": "포인트 2", "body": "구체적 근거 한두 문장" },
+      { "title": "포인트 3", "body": "구체적 근거 한두 문장" }
+    ]}
   ]
 }
 \`\`\`
-3. Allowed fields only: \`title\`, \`slides[].title\`, \`slides[].body\` (newline = slot lines), optional \`slides[].roleHint\` (\`cover|list|cards|timeline|stat|quote|team|process|closing|body\`).
-4. ${COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE} Outline slide count = deliverable count (max 20). Never mirror the template demo page lineup.
-5. Fill REAL topical titles/bodies. No "만들어줘", no template demo nouns (Hartfield / Daisy Days captions), no empty pillar/column-number fillers, no adjacent duplicate headings.
+3. Allowed fields: \`title\`, \`slides[].title\`, optional \`slides[].kicker\`, \`slides[].lead\`, \`slides[].body\` (newline fallback), \`slides[].items[]{title,body}\`, optional \`slides[].roleHint\` (\`cover|list|cards|timeline|stat|quote|team|process|closing|body\`).
+4. Cards / list / stat / process slides MUST use \`items\` with 2–4 \`{title, body}\` slots. Do not leave card body empty. \`lead\` is the section subtitle — not a card.
+5. ${COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE} Outline slide count = deliverable count (max 20). Never mirror the template demo page lineup.
+6. Fill REAL topical titles/bodies. No "만들어줘", no template demo nouns (Hartfield / Daisy Days captions), no empty pillar/column-number fillers, no adjacent duplicate headings.
 
 **FORBIDDEN this turn:** \`<!doctype\`, \`<html\`, \`<head\`, \`<style\`, \`<section class="slide"\`, Motif \`<svg>\`, full example.html rewrite, Neutral \`#0f172a\`, terracotta \`#c96442\`, emoji ornament rows, inventing empty cards to pad columns.
 

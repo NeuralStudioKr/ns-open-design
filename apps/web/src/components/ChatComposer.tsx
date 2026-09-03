@@ -110,10 +110,10 @@ import {
   seedTemplateClonedDeck,
 } from '../teamver/seedTemplateClonedDeck';
 import {
-  buildTemplateCloneContentFillSeed,
-  buildTemplateClonePromptFillSeed,
+  buildTemplateCloneFillSeedForCurrentMode,
   shouldSkipTemplateCloneSeed,
   shouldUseDeterministicTemplateCloneFill,
+  shouldUseJsonTemplateCloneFill,
   withTemplateCloneFillPluginInputs,
   withoutCanonicalDeckAttachments,
 } from '../teamver/templateCloneContentFill';
@@ -2283,6 +2283,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               ),
             };
             const deterministicFill = shouldUseDeterministicTemplateCloneFill();
+            const jsonFill = shouldUseJsonTemplateCloneFill();
             const seeded = deterministicFill
               ? await fillTemplateClonedDeckDeterministically(cloneRequest)
               : await seedTemplateClonedDeck(cloneRequest);
@@ -2312,25 +2313,15 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             // so a clone miss cannot fall through to Neutral / instruction dump.
             // Do NOT attach deck.html (truncated mid-CSS anchors a max_tokens hang).
             // Preview still opens via onRequestOpenFile when clone succeeded.
-            const fillSeed = deterministicFill
-              ? buildTemplateCloneContentFillSeed({
-                userInstruction: promptForRun,
-                sourceBrief,
-                templateTitle: selectedCanvasSlideTemplate.title,
-                hasSourceMaterial: true,
-                slideCountHint: canvasSlideQuickLengthToSlideCount(
-                  canvasSlideQuickSettings.length,
-                ),
-              })
-              : buildTemplateClonePromptFillSeed({
-                userInstruction: promptForRun,
-                sourceBrief,
-                templateTitle: selectedCanvasSlideTemplate.title,
-                hasSourceMaterial: true,
-                slideCountHint: canvasSlideQuickLengthToSlideCount(
-                  canvasSlideQuickSettings.length,
-                ),
-              });
+            const fillSeed = buildTemplateCloneFillSeedForCurrentMode({
+              userInstruction: promptForRun,
+              sourceBrief,
+              templateTitle: selectedCanvasSlideTemplate.title,
+              hasSourceMaterial: true,
+              slideCountHint: canvasSlideQuickLengthToSlideCount(
+                canvasSlideQuickSettings.length,
+              ),
+            }).seed;
             const baseMeta = currentRunContextMeta();
             const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
               designSystemId: designSystemIdForRun,
@@ -2347,7 +2338,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 ...baseMeta,
                 ...canvasMeta,
                 skipDiscoveryBrief: true,
-                ...(deterministicFill
+                ...(jsonFill
                   ? {
                       templateCloneContentFill: true,
                       pluginInputs: withTemplateCloneFillPluginInputs(
@@ -2542,6 +2533,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             ),
           };
           const deterministicFill = shouldUseDeterministicTemplateCloneFill();
+          const jsonFill = shouldUseJsonTemplateCloneFill();
           const seeded = deterministicFill
             ? await fillTemplateClonedDeckDeterministically(cloneRequest)
             : await seedTemplateClonedDeck(cloneRequest);
@@ -2569,25 +2561,15 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           }
           // Clone LOOK seed is optional. Fill always runs as compact CREATE
           // so a clone miss cannot fall through to Neutral / instruction dump.
-          const fillSeed = deterministicFill
-            ? buildTemplateCloneContentFillSeed({
-              userInstruction: promptForRun,
-              sourceBrief,
-              templateTitle: selectedCanvasSlideTemplate.title,
-              hasSourceMaterial: true,
-              slideCountHint: canvasSlideQuickLengthToSlideCount(
-                canvasSlideQuickSettings.length,
-              ),
-            })
-            : buildTemplateClonePromptFillSeed({
-              userInstruction: promptForRun,
-              sourceBrief,
-              templateTitle: selectedCanvasSlideTemplate.title,
-              hasSourceMaterial: true,
-              slideCountHint: canvasSlideQuickLengthToSlideCount(
-                canvasSlideQuickSettings.length,
-              ),
-            });
+          const fillSeed = buildTemplateCloneFillSeedForCurrentMode({
+            userInstruction: promptForRun,
+            sourceBrief,
+            templateTitle: selectedCanvasSlideTemplate.title,
+            hasSourceMaterial: true,
+            slideCountHint: canvasSlideQuickLengthToSlideCount(
+              canvasSlideQuickSettings.length,
+            ),
+          }).seed;
           const baseMeta = currentRunContextMeta();
           const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
             designSystemId: designSystemIdForRun,
@@ -2604,7 +2586,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               ...baseMeta,
               ...canvasMeta,
               skipDiscoveryBrief: true,
-              ...(deterministicFill
+              ...(jsonFill
                 ? {
                     templateCloneContentFill: true,
                     pluginInputs: withTemplateCloneFillPluginInputs(

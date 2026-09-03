@@ -42,17 +42,13 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
-### 루프413 — 명시 템플릿은 deterministic slot-fill 기본 복구
+### 루프413 — Clone을 LOOK seed + dense JSON slot-fill로 복구
 
-체감: `www.teamver.com ... 8~10장`, Capsule/Daisy/Zhangzara 계열에서 결과가 6장으로 끝나거나, 썸네일의 대표 SVG/도형/색상/비율이 실제 결과물에 충분히 살아나지 않음. 일부 장은 제목/카드가 빈약하고, 사용자의 요청 문구가 그대로 표지에 가까운 copy로 들어감.
+체감: 명시 템플릿 motif가 사라지고 카드 본문이 비며 HTML rewrite는 배치가 무너짐. `pure-prompt`는 우회.
 
-현재 시점 기준 판단(2026-09-03): loop409~410의 `pure-prompt` 기본값은 Clone 이중지시로 인한 자연스러움 저하를 피하려던 응급 우회였지만, 명시 템플릿 선택 UX에서는 실제 `example.html` shell을 재사용하지 않아 motif fidelity가 더 크게 손상된다. 사용자가 원하는 “템플릿 샘플에서 내용만 대체”에 더 가까운 경로는 deterministic Clone/slot-fill이다.
+수정: 기본 모드 `deterministic` · 스키마 `kicker`/`lead`/`items[]{title,body}`로 카드·스탯 본문 충전 · `=prompt`는 JSON slot-fill로 재매핑 · HTML rewrite는 `prompt-fill`만. 설계: [0901-N02-17](./0901-N02-17-구현설계-[Clone_dense-json-slot-fill].md).
 
-수정: `TEMPLATE_CLONE_FILL_DEFAULT_MODE`와 staging env/example을 `deterministic`으로 복구. `pure-prompt`/`prompt`는 rollback 모드로 유지. JSON outline 실패 시 fallback이 제목-only 5~6장으로 떨어지지 않도록 `synthesizeTemplateCloneOutlineFromBrief`가 브리프의 `8~10장` 등을 직접 읽고 각 본문 슬라이드에 2~3줄 body와 `roleHint`를 채운다.
-
-검증: web `templateCloneContentFill` 기본 모드/rollback · contracts `template-clone-outline`/`template-clone-fill`.
-
-다음: 실제 `www.teamver.com + Capsule + 8~10장` fixture 기반 E2E 품질 게이트(장수, 본문 밀도, motif token/SVG, 1920x1080, heading-grid 구조)를 추가한다.
+검증: web mode 정규화 · contracts dense items/outline/fill.
 
 ### 루프412 — MiniMax `AGENT_EXECUTION_STALLED` (SSE idle 5분 과단)
 
@@ -2060,7 +2056,15 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프412 · MiniMax AGENT_EXECUTION_STALLED idle 완화)
+## 이번 루프 (루프413 · Clone LOOK seed + dense JSON slot-fill)
+
+- [x] env-empty default `deterministic` (LOOK seed + slot-fill)
+- [x] schema `kicker` / `lead` / `items[]{title,body}` — 카드·스탯 본문 충전
+- [x] `=prompt` / `clone` → `json`; HTML rewrite는 `prompt-fill`만
+- [x] web mode 정규화 · contracts dense items/outline/fill
+- [ ] `www.teamver.com + Capsule + 8~10장` E2E 품질 게이트
+
+## 직전 루프 (루프412 · MiniMax AGENT_EXECUTION_STALLED idle 완화)
 
 - [x] FE `PROXY_STREAM_IDLE_TIMEOUT_DECK_MS` 10m (minOutputTokens)
 - [x] daemon BYOK inactivity default 10m · staging env `OD_BYOK_PROXY_INACTIVITY_TIMEOUT_MS=600000`

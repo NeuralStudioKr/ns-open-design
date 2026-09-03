@@ -2130,6 +2130,44 @@ describe('0901-N02-C4 prefixed *-card peer heuristic', () => {
     expect([...(next.matchAll(/\bcard-icon\b/gi))].length).toBe(2);
   });
 
+  it('루프413: dense items fill card-title AND card-text', () => {
+    const html = [
+      '<div class="columns-grid">',
+      '<div class="column-card"><div class="card-title">EXPAND</div><div class="card-text">reach demo</div></div>',
+      '<div class="column-card"><div class="card-title">DEPTH</div><div class="card-text">depth demo</div></div>',
+      '<div class="column-card"><div class="card-title">SPEED</div><div class="card-text">speed demo</div></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, [
+      { title: '확장', body: '새 시장에 빠르게 들어간다' },
+      { title: '깊이', body: '핵심 워크플로를 끝까지 붙인다' },
+    ]);
+    expect([...(next.matchAll(/\bcolumn-card\b/gi))].length).toBe(2);
+    expect(next).toContain('확장');
+    expect(next).toContain('새 시장에 빠르게 들어간다');
+    expect(next).toContain('깊이');
+    expect(next).toContain('핵심 워크플로를 끝까지 붙인다');
+    expect(next).not.toContain('EXPAND');
+    expect(next).not.toContain('reach demo');
+    expect(next).not.toContain('SPEED');
+  });
+
+  it('루프413: metric title lands in the value slot and body becomes the label', () => {
+    const html = [
+      '<div class="stats-row">',
+      '<div class="grove-stat"><div class="grove-stat-val">99</div><div class="grove-stat-label">NPS</div></div>',
+      '<div class="grove-stat"><div class="grove-stat-val">12</div><div class="grove-stat-label">weeks</div></div>',
+      '</div>',
+    ].join('');
+    const next = fillAndTrimCardPeers(html, [
+      { title: '1,200+', body: '활성 사용자' },
+    ]);
+    expect(next).toContain('1,200+');
+    expect(next).toContain('활성 사용자');
+    expect(next).not.toContain('NPS');
+    expect(next).not.toContain('>99<');
+  });
+
   it('trims team-member peers and fills member-name', () => {
     const html = [
       '<div class="team-grid">',

@@ -1,6 +1,6 @@
 # 0901-N02-3 구현현황 — Clone slot-fill
 
-상위: [0901-N02-1](./0901-N02-1-상위설계-[Clone_slot-fill].md) · 설계: [0901-N02-2](./0901-N02-2-구현설계-[Clone_slot-fill].md) · slot map: [0901-N02-4](./0901-N02-4-구현설계-[Clone_slot-map].md) · D: [0901-N02-5](./0901-N02-5-구현설계-[Clone_slot-fill-D].md) · C2: [0901-N02-6](./0901-N02-6-구현설계-[Clone_slot-map-C2].md) · C3: [0901-N02-7](./0901-N02-7-구현설계-[Clone_slot-map-C3].md) · C4: [0901-N02-8](./0901-N02-8-구현설계-[Clone_slot-map-C4].md) · C5: [0901-N02-9](./0901-N02-9-구현설계-[Clone_slot-map-C5].md) · C6: [0901-N02-10](./0901-N02-10-구현설계-[Clone_slot-map-C6].md) · C7: [0901-N02-11](./0901-N02-11-구현설계-[Clone_slot-map-C7].md) · C8: [0901-N02-12](./0901-N02-12-구현설계-[Clone_slot-map-C8].md) · C9: [0901-N02-13](./0901-N02-13-구현설계-[Clone_slot-map-C9].md) · C10: [0901-N02-14](./0901-N02-14-구현설계-[Clone_slot-map-C10].md) · C11: [0901-N02-15](./0901-N02-15-구현설계-[Clone_slot-map-C11].md) · C12: [0901-N02-16](./0901-N02-16-구현설계-[Clone_slot-map-C12].md)
+상위: [0901-N02-1](./0901-N02-1-상위설계-[Clone_slot-fill].md) · 설계: [0901-N02-2](./0901-N02-2-구현설계-[Clone_slot-fill].md) · slot map: [0901-N02-4](./0901-N02-4-구현설계-[Clone_slot-map].md) · D: [0901-N02-5](./0901-N02-5-구현설계-[Clone_slot-fill-D].md) · C2: [0901-N02-6](./0901-N02-6-구현설계-[Clone_slot-map-C2].md) · C3: [0901-N02-7](./0901-N02-7-구현설계-[Clone_slot-map-C3].md) · C4: [0901-N02-8](./0901-N02-8-구현설계-[Clone_slot-map-C4].md) · C5: [0901-N02-9](./0901-N02-9-구현설계-[Clone_slot-map-C5].md) · C6: [0901-N02-10](./0901-N02-10-구현설계-[Clone_slot-map-C6].md) · C7: [0901-N02-11](./0901-N02-11-구현설계-[Clone_slot-map-C7].md) · C8: [0901-N02-12](./0901-N02-12-구현설계-[Clone_slot-map-C8].md) · C9: [0901-N02-13](./0901-N02-13-구현설계-[Clone_slot-map-C9].md) · C10: [0901-N02-14](./0901-N02-14-구현설계-[Clone_slot-map-C10].md) · C11: [0901-N02-15](./0901-N02-15-구현설계-[Clone_slot-map-C11].md) · C12: [0901-N02-16](./0901-N02-16-구현설계-[Clone_slot-map-C12].md) · dense JSON: [0901-N02-17](./0901-N02-17-구현설계-[Clone_dense-json-slot-fill].md)
 
 ## 진행
 
@@ -59,6 +59,7 @@
 | **루프400** Spec/Hint 통일 · Motif 보존 · SVG/flex/heading salvage | ☑ |
 | **루프403** 중첩 카드 flatten · 표지 pill · badge 오핀 · stutter | ☑ |
 | **루프404** 장수 게이트 → save+top-up · prompt-fill LOOK seed | ☑ |
+| **루프413** dense JSON slot-fill 기본 복원 · `kicker`/`lead`/`items[]` · `=prompt`→json | ☑ |
 | **루프366** section `#stage` hoist · contracts dist rebuild | ☑ web transform-driven 19/19 |
 | MiniMax 실키 E2E | ☑ 가드 있음 · 키 없으면 skip (`template-clone-minimax-live.e2e`) |
 
@@ -107,6 +108,7 @@
 
 | 일자 | 내용 |
 |------|------|
+| 2026-09-03 | 루프413 — dense JSON slot-fill을 기본 clone 경로로 복원. `items[]{title,body}`가 카드/스탯 본문까지 채움. HTML rewrite는 `prompt-fill` opt-in만. |
 | 2026-09-03 | 루프403 — 중첩 카드 flatten · 표지 pill · badge 오핀 · stutter |
 | 2026-09-03 | 루프400 — Spec/Hint 통일 · Motif 보존 · SVG/flex/heading salvage |
 | 2026-09-03 | 루프399 — bare 8–10 hint · merge cap · Capsule h1/deco/rotated |

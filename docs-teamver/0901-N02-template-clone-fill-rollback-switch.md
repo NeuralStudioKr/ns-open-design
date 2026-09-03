@@ -52,6 +52,21 @@
 2. deterministic 결과가 충분하지 않은 템플릿은 해당 템플릿 fixture를 추가해 원인 분석한다.
 3. 품질과 복구 UX가 확인된 뒤에만 staging env를 `deterministic`으로 다시 올린다.
 
+## 2026-09-03 — dense JSON slot-fill 기본 복원(루프413)
+
+**결정:** clone 기본 경로를 LOOK seed + slot-fill(`deterministic`)로 되돌린다. 모델은 HTML을 다시 쓰지 않고, 카드 본문은 dense JSON extras로 채운다.
+
+**재매핑:**
+- empty / unknown → `deterministic`
+- `prompt` / `clone` / `clone-fill` / `slot-fill` / `json-fill` → `json` (LOOK seed + AI dense JSON)
+- `prompt-fill` / `html` / `html-fill` / `legacy-html` → HTML rewrite (`prompt`)
+- `pure-prompt` 및 기존 alias 유지
+- `deterministic` / `content-fill` / `server` → `deterministic`
+
+**스키마:** `kicker`, `lead`, `items[]{title, body}`. 카드 본문을 비우지 않음.
+
+**롤백:** `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=prompt-fill` 또는 `pure-prompt`.
+
 ## 2026-09-03 — `pure-prompt` 기본 승격(루프409)
 
 **결정:** env-empty 시 기본 fill 모드를 `'prompt'`(Clone LOOK seed + prompt-fill 마커)에서 `'pure-prompt'`(Clone 스킵, 순수 프롬프트)로 승격.

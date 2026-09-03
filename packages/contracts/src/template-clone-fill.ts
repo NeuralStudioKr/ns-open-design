@@ -31,12 +31,27 @@ export {
   resolveTemplateCloneSlotMap,
 } from './template-clone-slot-maps.js';
 
+/** One card / list / stat / step slot (0901-N02-17 dense outline). */
+export type TemplateCloneSlideItem = {
+  title: string;
+  body?: string;
+};
+
 export type TemplateCloneSlideContent = {
   title: string;
   body?: string;
+  /** Eyebrow / pill above the heading. */
+  kicker?: string;
+  /** Section lead / subtitle. Distinct from card `items`. */
+  lead?: string;
+  /** Structured slots for cards / list / stats / steps. */
+  items?: TemplateCloneSlideItem[];
   /** Optional layout hint from JSON outline (0901-N02). Invalid values ignored. */
   roleHint?: TemplateCloneShellRole;
 };
+
+/** Card-peer fill line: plain title, or title+body item. */
+export type TemplateCloneCardFillLine = string | TemplateCloneSlideItem;
 
 export type TemplateCloneDeckOutline = {
   title: string;
@@ -340,6 +355,103 @@ export function prepareTemplateCloneSlotFillAssistantText(raw: string): string {
   return stripTemplateCloneOutlineNoise(String(raw ?? ''));
 }
 
+const TEMPLATE_CLONE_KICKER_MAX = 40;
+const TEMPLATE_CLONE_LEAD_MAX = 240;
+const TEMPLATE_CLONE_ITEM_TITLE_MAX = 120;
+const TEMPLATE_CLONE_ITEM_BODY_MAX = 400;
+const TEMPLATE_CLONE_ITEMS_MAX = 8;
+
+export function sanitizeTemplateCloneSlideKicker(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const text = raw.replace(/\s+/g, ' ').trim();
+  if (!text) return undefined;
+  return text.slice(0, TEMPLATE_CLONE_KICKER_MAX);
+}
+
+export function sanitizeTemplateCloneSlideLead(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const text = raw.replace(/\r\n/g, '\n').trim();
+  if (!text) return undefined;
+  return text.slice(0, TEMPLATE_CLONE_LEAD_MAX);
+}
+
+export function parseTemplateCloneSlideItems(raw: unknown): TemplateCloneSlideItem[] {
+  if (!Array.isArray(raw)) return [];
+  const items: TemplateCloneSlideItem[] = [];
+  for (const entry of raw) {
+    if (items.length >= TEMPLATE_CLONE_ITEMS_MAX) break;
+    if (typeof entry === 'string') {
+      const title = entry.replace(/\s+/g, ' ').trim();
+      if (!title) continue;
+      items.push({ title: title.slice(0, TEMPLATE_CLONE_ITEM_TITLE_MAX) });
+      continue;
+    }
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const record = entry as Record<string, unknown>;
+    const title = typeof record.title === 'string'
+      ? record.title.replace(/\s+/g, ' ').trim()
+      : '';
+    if (!title) continue;
+    const item: TemplateCloneSlideItem = {
+      title: title.slice(0, TEMPLATE_CLONE_ITEM_TITLE_MAX),
+    };
+    const body = typeof record.body === 'string'
+      ? record.body.replace(/\r\n/g, '\n').trim()
+      : '';
+    if (body) item.body = body.slice(0, TEMPLATE_CLONE_ITEM_BODY_MAX);
+    items.push(item);
+  }
+  return items;
+}
+
+function copyTemplateCloneSlideExtras(
+  source: TemplateCloneSlideContent,
+  dest: TemplateCloneSlideContent,
+): TemplateCloneSlideContent {
+  if (source.kicker) dest.kicker = source.kicker;
+  if (source.lead) dest.lead = source.lead;
+  if (source.items && source.items.length > 0) dest.items = source.items;
+  if (source.roleHint && isTemplateCloneShellRole(source.roleHint)) {
+    dest.roleHint = source.roleHint;
+  }
+  return dest;
+}
+
+/** Split a dense "Title — body" / "Title: body" line. Returns null when no split. */
+export function splitDenseTemplateCloneTitleBodyLine(
+  line: string,
+): { title: string; body: string } | null {
+  const raw = String(line ?? '').trim();
+  if (!raw) return null;
+  const em = /^(.{1,48}?)\s+[—–]\s+(.{8,})$/.exec(raw);
+  if (em?.[1] && em[2]) return { title: em[1].trim(), body: em[2].trim() };
+  const colon = /^(.{1,40}?)\s*[:：]\s+(.{8,})$/.exec(raw);
+  if (colon?.[1] && colon[2]) return { title: colon[1].trim(), body: colon[2].trim() };
+  return null;
+}
+
+export function resolveTemplateCloneCardFill(
+  line: TemplateCloneCardFillLine,
+): { title: string; body: string } {
+  if (typeof line === 'string') {
+    const split = splitDenseTemplateCloneTitleBodyLine(line);
+    if (split) return split;
+    return { title: line.trim(), body: '' };
+  }
+  const title = String(line.title ?? '').trim();
+  const body = String(line.body ?? '').trim();
+  return { title, body };
+}
+
+export function templateCloneSlideFillLines(
+  content: TemplateCloneSlideContent,
+): TemplateCloneCardFillLine[] {
+  if (content.items && content.items.length > 0) return content.items;
+  const bodyText = content.body?.trim() ?? '';
+  if (!bodyText) return [];
+  return bodyText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
+
 /**
  * Parse AI JSON outline for Clone slot-fill (0901-N02).
  * Returns null on HTML dumps, invalid shape, or empty slides after sanitize.
@@ -375,6 +487,12 @@ export function parseTemplateCloneDeckOutline(
       : undefined;
     const next: TemplateCloneSlideContent = { title };
     if (body !== undefined && body.length > 0) next.body = body;
+    const kicker = sanitizeTemplateCloneSlideKicker(slide.kicker);
+    if (kicker) next.kicker = kicker;
+    const lead = sanitizeTemplateCloneSlideLead(slide.lead);
+    if (lead) next.lead = lead;
+    const items = parseTemplateCloneSlideItems(slide.items);
+    if (items.length > 0) next.items = items;
     if (roleHint) next.roleHint = roleHint;
     slides.push(next);
   }
@@ -4248,7 +4366,7 @@ function rebuildHostWithPeers(
   openTag: string,
   children: HtmlSpan[],
   peers: HtmlSpan[],
-  lines: string[],
+  lines: TemplateCloneCardFillLine[],
 ): string {
   const keepCount = Math.min(Math.max(0, lines.length), peers.length);
   const keepPeerStarts = new Set(peers.slice(0, keepCount).map((span) => span.start));
@@ -4311,7 +4429,7 @@ function collectPeersAmongChildren(
  */
 export function fillAndTrimCardPeers(
   html: string,
-  lines: string[],
+  lines: TemplateCloneCardFillLine[],
   slotMap?: TemplateCloneSlotMap | null,
 ): string {
   let next = String(html ?? '');
@@ -4327,7 +4445,7 @@ export function fillAndTrimCardPeers(
 
 function fillAndTrimCardPeersOnce(
   source: string,
-  lines: string[],
+  lines: TemplateCloneCardFillLine[],
   slotMap?: TemplateCloneSlotMap | null,
 ): string {
   if (!source) return source;
@@ -4456,84 +4574,126 @@ function fillAndTrimCardPeersOnce(
   return source;
 }
 
-function fillOneCardPeer(cardHtml: string, line: string): string {
-  const text = String(line ?? '').trim();
+function fillClassInner(
+  html: string,
+  classRe: RegExp,
+  text: string,
+): string {
+  const escaped = text ? escapeHtml(text) : '';
+  return html.replace(
+    classRe,
+    (_m, open: string, _inner: string, close: string) => `${open}${escaped}${close}`,
+  );
+}
+
+function titleLooksLikeMetric(title: string): boolean {
+  const raw = String(title ?? '').trim();
+  if (!raw) return false;
+  return /^(?:[\d$€£¥₩+\-.,%xX×~/\s]|K|M|B|만|억)+$/i.test(raw)
+    || /^(?:\d|\$|€|£|¥|₩)/.test(raw);
+}
+
+function assignStatSlots(title: string, body: string): { label: string; value: string } {
+  if (!body) return { label: title, value: '' };
+  if (titleLooksLikeMetric(title)) return { label: body, value: title };
+  return { label: title, value: body };
+}
+
+function fillOneCardPeer(cardHtml: string, line: TemplateCloneCardFillLine): string {
+  const { title, body } = resolveTemplateCloneCardFill(line);
+  const text = title;
   let next = cardHtml;
   // Daisy weekly: `.day-header` is the title slot (0901-N02-C2).
   if (/\bday-header\b/i.test(next)) {
-    next = next.replace(
+    next = fillClassInner(
+      next,
       /(<[^>]*\bday-header\b[^>]*>)([\s\S]*?)(<\/)/i,
-      (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(text)}${close}`,
+      text,
     );
     // Wipe demo list items under the day — do not invent Reading/Writing leftovers.
     next = next.replace(/<li\b[^>]*>[\s\S]*?<\/li>/gi, '');
+    if (body && /<[uo]l\b/i.test(next)) {
+      next = next.replace(/(<[uo]l\b[^>]*>)/i, `$1<li>${escapeHtml(body)}</li>`);
+    }
     return next;
   }
-  // Coral / column-card: `.card-title` (+ clear `.card-text` demo).
+  // Coral / column-card: `.card-title` + `.card-text`.
   if (/\bcard-title\b/i.test(next)) {
-    next = next.replace(
+    next = fillClassInner(
+      next,
       /(<[^>]*\bcard-title\b[^>]*>)([\s\S]*?)(<\/)/i,
-      (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(text)}${close}`,
+      text,
     );
-    next = next.replace(
+    next = fillClassInner(
+      next,
       /(<[^>]*\bcard-text\b[^>]*>)([\s\S]*?)(<\/)/gi,
-      (_m, open: string, _inner: string, close: string) => `${open}${close}`,
+      body,
     );
     return next;
   }
   // team-member: `.member-name` title slot (0901-N02-C4).
   if (/\bmember-name\b/i.test(next)) {
-    next = next.replace(
+    next = fillClassInner(
+      next,
       /(<[^>]*\bmember-name\b[^>]*>)([\s\S]*?)(<\/)/i,
-      (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(text)}${close}`,
+      text,
     );
-    next = next.replace(
+    next = fillClassInner(
+      next,
       /(<[^>]*\bmember-role\b[^>]*>)([\s\S]*?)(<\/)/gi,
-      (_m, open: string, _inner: string, close: string) => `${open}${close}`,
+      body,
     );
     return next;
   }
   // 0901-N02-C5 step title slots (kb / process / timeline / cycle / flow).
   if (/\b(?:kb-step-title|step-title|cycle-title|flow-title)\b/i.test(next)) {
-    next = next.replace(
+    next = fillClassInner(
+      next,
       /(<[^>]*\b(?:kb-step-title|step-title|cycle-title|flow-title)\b[^>]*>)([\s\S]*?)(<\/)/i,
-      (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(text)}${close}`,
+      text,
     );
-    next = next.replace(
+    next = fillClassInner(
+      next,
       /(<[^>]*\b(?:kb-step-body|step-desc|cycle-desc|flow-desc)\b[^>]*>)([\s\S]*?)(<\/)/gi,
-      (_m, open: string, _inner: string, close: string) => `${open}${close}`,
+      body,
     );
     return next;
   }
   // xhs-white-editorial: `.xw-txt` body line on xw-step.
   if (/\bxw-txt\b/i.test(next)) {
-    next = next.replace(
+    next = fillClassInner(
+      next,
       /(<[^>]*\bxw-txt\b[^>]*>)([\s\S]*?)(<\/)/i,
-      (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(text)}${close}`,
+      body || text,
     );
     return next;
   }
   // creative-mode: `.t` title + `.d` demo body inside bare `.step`.
   if (/<[^>]*\bclass\s*=\s*["'][^"']*\bt\b[^"']*["'][^>]*>/i.test(next)) {
-    next = next.replace(
+    next = fillClassInner(
+      next,
       /(<[^>]*\bclass\s*=\s*["'][^"']*\bt\b[^"']*["'][^>]*>)([\s\S]*?)(<\/)/i,
-      (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(text)}${close}`,
+      text,
     );
-    next = next.replace(
+    next = fillClassInner(
+      next,
       /(<[^>]*\bclass\s*=\s*["'][^"']*\bd\b[^"']*["'][^>]*>)([\s\S]*?)(<\/)/gi,
-      (_m, open: string, _inner: string, close: string) => `${open}${close}`,
+      body,
     );
     return next;
   }
   // 0901-N02-C9: hermes/ts `.lbl` when there is no h3–h5 title slot.
   if (/\blbl\b/i.test(next) && !/<h([3-5])\b/i.test(next)) {
-    next = next.replace(
+    const slots = assignStatSlots(text, body);
+    next = fillClassInner(
+      next,
       /(<[^>]*\blbl\b[^>]*>)([\s\S]*?)(<\/)/i,
-      (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(text)}${close}`,
+      slots.label,
     );
-    next = next.replace(
+    next = fillClassInner(
+      next,
       /(<[^>]*\b(?:val|desc|value)\b[^>]*>)([\s\S]*?)(<\/)/gi,
-      (_m, open: string, _inner: string, close: string) => `${open}${close}`,
+      slots.value,
     );
     return next;
   }
@@ -4542,35 +4702,43 @@ function fillOneCardPeer(cardHtml: string, line: string): string {
     /\bclass\s*=\s*["'][^"']*\blab\b[^"']*["']/i.test(next)
     && /\bclass\s*=\s*["'][^"']*\bstat\b/i.test(cardHtml)
   )) {
+    const slots = assignStatSlots(text, body);
     if (/\b(?:[\w-]+-stat-label|mini-label)\b/i.test(next)) {
-      next = next.replace(
+      next = fillClassInner(
+        next,
         /(<[^>]*\b(?:[\w-]+-stat-label|mini-label)\b[^>]*>)([\s\S]*?)(<\/)/i,
-        (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(text)}${close}`,
+        slots.label,
       );
     } else {
-      next = next.replace(
+      next = fillClassInner(
+        next,
         /(<[^>]*\bclass\s*=\s*["'][^"']*\blab\b[^"']*["'][^>]*>)([\s\S]*?)(<\/)/i,
-        (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(text)}${close}`,
+        slots.label,
       );
     }
-    next = next.replace(
+    next = fillClassInner(
+      next,
       /(<[^>]*\b(?:[\w-]+-stat-val|mini-val)\b[^>]*>)([\s\S]*?)(<\/)/gi,
-      (_m, open: string, _inner: string, close: string) => `${open}${close}`,
+      slots.value,
     );
-    next = next.replace(
+    next = fillClassInner(
+      next,
       /(<[^>]*\bclass\s*=\s*["'][^"']*\bv\b[^"']*["'][^>]*>)([\s\S]*?)(<\/)/gi,
-      (_m, open: string, _inner: string, close: string) => `${open}${close}`,
+      slots.value,
     );
     return next;
   }
   if (/\bclass\s*=\s*["'][^"']*\bkpi\b/i.test(cardHtml) && /\blabel\b/i.test(next)) {
-    next = next.replace(
+    const slots = assignStatSlots(text, body);
+    next = fillClassInner(
+      next,
       /(<[^>]*\blabel\b[^>]*>)([\s\S]*?)(<\/)/i,
-      (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(text)}${close}`,
+      slots.label,
     );
-    next = next.replace(
+    next = fillClassInner(
+      next,
       /(<[^>]*\b(?:value|v|delta)\b[^>]*>)([\s\S]*?)(<\/)/gi,
-      (_m, open: string, _inner: string, close: string) => `${open}${close}`,
+      slots.value,
     );
     return next;
   }
@@ -4581,8 +4749,12 @@ function fillOneCardPeer(cardHtml: string, line: string): string {
         `${open}${escapeHtml(text)}${close}`
       ),
     );
-    // Drop template demo body under the card title — do not invent a second line.
-    next = next.replace(/(<p\b[^>]*>)([\s\S]*?)(<\/p>)/gi, '$1$3');
+    let replaced = false;
+    next = next.replace(/(<p\b[^>]*>)([\s\S]*?)(<\/p>)/gi, (_m, open: string, _inner: string, close: string) => {
+      if (replaced) return `${open}${close}`;
+      replaced = true;
+      return `${open}${body ? escapeHtml(body) : ''}${close}`;
+    });
     return next;
   }
   if (/<p\b/i.test(next)) {
@@ -4590,7 +4762,7 @@ function fillOneCardPeer(cardHtml: string, line: string): string {
     return next.replace(/(<p\b[^>]*>)([\s\S]*?)(<\/p>)/gi, (_match, open: string, _inner: string, close: string) => {
       if (!replaced) {
         replaced = true;
-        return `${open}${escapeHtml(text)}${close}`;
+        return `${open}${escapeHtml(body || text)}${close}`;
       }
       return `${open}${close}`;
     });
@@ -4602,6 +4774,35 @@ function fillOneCardPeer(cardHtml: string, line: string): string {
   );
 }
 
+const KICKER_SLOT_CLASSES = [
+  'kicker',
+  'eyebrow',
+  'header-pill',
+  'title-pill',
+  'section-label',
+  'section-kicker',
+  'cover-kicker',
+  'slide-kicker',
+] as const;
+
+function fillFirstKickerSlot(html: string, kicker: string): string {
+  const text = String(kicker ?? '').trim();
+  if (!text) return html;
+  for (const name of KICKER_SLOT_CLASSES) {
+    if (!firstExactClassRange(html, name)) continue;
+    return replaceFirstExactClassText(html, name, text);
+  }
+  return html;
+}
+
+function listLinesFromCardFills(lines: TemplateCloneCardFillLine[]): string[] {
+  return lines.map((line) => {
+    const { title, body } = resolveTemplateCloneCardFill(line);
+    if (!title) return '';
+    return body ? `${title} — ${body}` : title;
+  }).filter(Boolean);
+}
+
 function fillSlideShell(
   shell: SlideShell,
   content: TemplateCloneSlideContent,
@@ -4611,9 +4812,17 @@ function fillSlideShell(
   let body = shell.body;
   const title = content.title.trim() || `Slide ${index + 1}`;
   const bodyText = content.body?.trim() ?? '';
-  const bodyLines = bodyText
-    ? bodyText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
-    : [];
+  const rawLead = content.lead?.trim() ?? '';
+  const lead = rawLead && !isPlaceholderCloneBody(rawLead) ? rawLead : '';
+  const kicker = content.kicker?.trim() ?? '';
+  const fillLines = templateCloneSlideFillLines(content).filter((line) => {
+    const resolved = resolveTemplateCloneCardFill(line);
+    return Boolean(resolved.title) && !isPlaceholderCloneBody(resolved.title);
+  });
+  const bodyLines = fillLines.map((line) => (
+    typeof line === 'string' ? line : line.title
+  )).filter(Boolean);
+  const listLines = listLinesFromCardFills(fillLines);
 
   if (/<h1\b/i.test(body)) {
     body = replaceHeadingText(body, 'h1', title);
@@ -4628,15 +4837,25 @@ function fillSlideShell(
     }
   }
 
-  const placeholderBody = isPlaceholderCloneBody(bodyText);
+  if (kicker) {
+    body = fillFirstKickerSlot(body, kicker);
+  }
+
+  const placeholderBody = isPlaceholderCloneBody(bodyText)
+    && fillLines.length === 0
+    && !lead;
 
   // Always clear template marketing subtitle when we own this shell's title.
   if (/<p\b[^>]*class\s*=\s*["'][^"']*subtitle/i.test(body)) {
-    const subtitle = placeholderBody ? '' : (bodyLines[0] || bodyText || '');
+    const subtitle = placeholderBody
+      ? ''
+      : (lead || (content.items?.length ? '' : (bodyLines[0] || bodyText)) || '');
     body = body.replace(
       /(<p\b[^>]*class\s*=\s*["'][^"']*subtitle[^"']*["'][^>]*>)([\s\S]*?)(<\/p>)/i,
       `$1${escapeHtml(subtitle)}$3`,
     );
+  } else if (lead && /<p\b/i.test(body) && !shellBodyLooksLikeCardGrid(body, slotMap)) {
+    body = replaceFirstTagText(body, 'p', lead);
   }
 
   const role = classifyTemplateCloneShellRole(shell);
@@ -4654,7 +4873,7 @@ function fillSlideShell(
       // Drop demo rows entirely — empty <li></li> leaves a blank half-slide
       // (block-frame slide-6 / content-list user report 2026-09-02).
       body = body.replace(/<li\b[^>]*>[\s\S]*?<\/li>/gi, '');
-    } else if (/<p\b/i.test(body)) {
+    } else if (/<p\b/i.test(body) && !lead) {
       body = replaceFirstTagText(body, 'p', '');
     }
     body = stripLeftoverTemplateDemoCopy(body);
@@ -4671,21 +4890,21 @@ function fillSlideShell(
   } else if (cardsGridBody && shellBodyLooksLikeCardGrid(body, slotMap)) {
     // Prefer card-peer fill over first-<p> so unused columns are removed.
     const before = body;
-    body = fillAndTrimCardPeers(body, bodyLines, slotMap);
+    body = fillAndTrimCardPeers(body, fillLines, slotMap);
     // weekly-grid hosts without mapped peers are a no-op — fall through
     // to list/`p` fill so day-card demo copy is not left untouched when map missing.
-    if (body === before && bodyLines.length > 0 && /<[uo]l\b/i.test(body)) {
-      body = replaceListItems(body, bodyLines);
-    } else if (body === before && (bodyLines[0] || bodyText)) {
-      const paragraph = bodyLines[0] || bodyText;
+    if (body === before && listLines.length > 0 && /<[uo]l\b/i.test(body)) {
+      body = replaceListItems(body, listLines);
+    } else if (body === before && (lead || listLines[0] || bodyText)) {
+      const paragraph = lead || listLines[0] || bodyText;
       if (!/<p\b[^>]*class\s*=\s*["'][^"']*subtitle/i.test(shell.body) && /<p\b/i.test(body)) {
         body = replaceFirstTagText(body, 'p', paragraph);
       }
     }
-  } else if (bodyLines.length > 0 && /<[uo]l\b/i.test(body)) {
-    body = replaceListItems(body, bodyLines);
-  } else if (bodyLines[0] || bodyText) {
-    const paragraph = bodyLines[0] || bodyText;
+  } else if (listLines.length > 0 && /<[uo]l\b/i.test(body)) {
+    body = replaceListItems(body, listLines);
+  } else if (lead || listLines[0] || bodyText) {
+    const paragraph = lead || listLines[0] || bodyText;
     if (!/<p\b[^>]*class\s*=\s*["'][^"']*subtitle/i.test(shell.body) && /<p\b/i.test(body)) {
       body = replaceFirstTagText(body, 'p', paragraph);
     }
@@ -4802,10 +5021,8 @@ export function buildTemplateClonedDeckHtml(
     if (!title) continue;
     const body = slide.body?.trim();
     const next: TemplateCloneSlideContent = body ? { title, body } : { title };
-    // 0901-N02: roleHint must survive seed fill (was dropped and broke cards pick).
-    if (slide.roleHint && isTemplateCloneShellRole(slide.roleHint)) {
-      next.roleHint = slide.roleHint;
-    }
+    // 0901-N02 / N02-17: roleHint + dense extras must survive seed fill.
+    copyTemplateCloneSlideExtras(slide, next);
     cleanedSlides.push(next);
   }
   // Slide-count policy (NOT template fidelity):
@@ -5433,7 +5650,11 @@ function rewriteInstructionParrotingSlideTitles(
     if (!needsTitleRewrite && body === slide.body) return slide;
     const next: TemplateCloneSlideContent = { title };
     if (body !== undefined && String(body).trim()) next.body = body;
-    if (slide.roleHint) next.roleHint = slide.roleHint;
+    copyTemplateCloneSlideExtras(slide, next);
+    if (instructionBody) {
+      delete next.items;
+      if (next.lead && looksLikeInstructionCopy(next.lead)) delete next.lead;
+    }
     return next;
   });
 }

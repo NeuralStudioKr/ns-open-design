@@ -437,6 +437,12 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
       'Emit a JSON outline',
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toContain(
+      'items',
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toMatch(
+      /Cards \/ list \/ stat \/ process slides MUST use `items`/i,
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toContain(
       'FORBIDDEN this turn',
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toContain(

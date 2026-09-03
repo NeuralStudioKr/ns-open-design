@@ -52,6 +52,38 @@ describe('0901-N02 parseTemplateCloneDeckOutline', () => {
     });
   });
 
+  it('루프413: parses dense kicker / lead / items without dropping the legacy body', () => {
+    const outline = parseTemplateCloneDeckOutline({
+      title: '팀버',
+      slides: [
+        { title: '팀버 소개', kicker: 'OVERVIEW', lead: '한 줄 리드', roleHint: 'cover' },
+        {
+          title: '세 가지 포인트',
+          lead: '왜 지금인가',
+          roleHint: 'cards',
+          items: [
+            { title: '속도', body: '초안을 분 단위로 만든다' },
+            { title: '품질', body: '템플릿 뼈대를 유지한다' },
+            '한 줄 아이템',
+          ],
+        },
+      ],
+    });
+    expect(outline?.title).toBe('팀버');
+    expect(outline?.slides[0]).toEqual({
+      title: '팀버 소개',
+      kicker: 'OVERVIEW',
+      lead: '한 줄 리드',
+      roleHint: 'cover',
+    });
+    expect(outline?.slides[1]?.items).toEqual([
+      { title: '속도', body: '초안을 분 단위로 만든다' },
+      { title: '품질', body: '템플릿 뼈대를 유지한다' },
+      { title: '한 줄 아이템' },
+    ]);
+    expect(outline?.slides[1]?.lead).toBe('왜 지금인가');
+  });
+
   it('parses fenced JSON and ignores invalid roleHint', () => {
     const raw = [
       '여기 JSON입니다:',
@@ -326,6 +358,47 @@ describe('0901-N02 applyTemplateCloneSlotFill', () => {
     expect(filled!.html).not.toContain('Creative Expression');
     expect(filled!.html).not.toContain('Critical Thinking');
     expect(filled!.html).not.toContain('Collaboration');
+    expect(filled!.html).not.toContain('Explore imagination');
+  });
+
+  it('루프413: dense items keep card titles and bodies inside the LOOK seed', () => {
+    const seed = [
+      '<!doctype html><html><head><style>.motif{color:#FCDF6C}.cards-grid{display:grid}</style></head><body>',
+      '<section class="slide slide-title cover"><div class="kicker">KIT</div><h1>Demo Cover</h1><p class="subtitle">Lead</p></section>',
+      '<section class="slide slide-cards"><h2>Demo Cards</h2>',
+      '<div class="cards-grid">',
+      '<div class="info-card"><h4>Creative Expression</h4><p>Explore imagination.</p></div>',
+      '<div class="info-card"><h4>Critical Thinking</h4><p>Develop skills.</p></div>',
+      '<div class="info-card"><h4>Collaboration</h4><p>Build teamwork.</p></div>',
+      '</div></section>',
+      '</body></html>',
+    ].join('');
+    const filled = applyTemplateCloneSlotFill(seed, {
+      title: '팀버',
+      slides: [
+        { title: '팀버 소개', kicker: 'OVERVIEW', lead: '초안을 분 단위로', roleHint: 'cover' },
+        {
+          title: '세 가지 포인트',
+          roleHint: 'cards',
+          items: [
+            { title: '속도', body: '초안을 분 단위로 만든다' },
+            { title: '품질', body: '템플릿 뼈대를 유지한다' },
+          ],
+        },
+      ],
+    });
+    expect(filled).not.toBeNull();
+    expect(filled!.html).toContain('팀버 소개');
+    expect(filled!.html).toContain('OVERVIEW');
+    expect(filled!.html).toContain('초안을 분 단위로');
+    expect(filled!.html).toContain('속도');
+    expect(filled!.html).toContain('초안을 분 단위로 만든다');
+    expect(filled!.html).toContain('품질');
+    expect(filled!.html).toContain('템플릿 뼈대를 유지한다');
+    expect(filled!.html).toContain('.motif{color:#FCDF6C}');
+    expect([...(filled!.html.matchAll(/\binfo-card\b/gi))].length).toBe(2);
+    expect(filled!.html).not.toContain('Demo Cover');
+    expect(filled!.html).not.toContain('Creative Expression');
     expect(filled!.html).not.toContain('Explore imagination');
   });
 });

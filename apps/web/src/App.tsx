@@ -139,8 +139,9 @@ import {
 } from './teamver/createProjectStreamHandoff';
 import { rememberTeamverProjectConversation } from './teamver/teamverProjectConversationMemory';
 import {
-  buildTemplateClonePromptFillSeed,
+  buildTemplateCloneFillSeedForCurrentMode,
   clearTemplateCloneContentFillQueue,
+  queueTemplateCloneContentFill,
   queueTemplateClonePromptFill,
   shouldSkipTemplateCloneSeed,
   withoutCanonicalDeckAttachments,
@@ -2727,7 +2728,7 @@ function AppInner() {
           // The actual user request must still auto-send so the AI reads the
           // attachment/source and generates real content from the prompt.
           //
-          // 루프401/409/410 — `pure-prompt` (env-empty default + staging)
+          // 루프401/409/410/413 — skip seed only in `pure-prompt`; default is LOOK seed + slot-fill
           // skips clone seeding + clone-fill marker. Outgoing turn still
           // carries `selectedDeckTemplateId`, so composeTeamverSlideApiPrompt
           // emits the kit spec — plain create + kit context (pre-Clone flow).
@@ -2742,7 +2743,7 @@ function AppInner() {
                 ? input.metadata.selectedDeckTemplateTitle.trim()
                 : '';
             const userFacingRequest = extractUserFacingCreateRequest(derivedPendingPrompt);
-            queuedFillSeed = buildTemplateClonePromptFillSeed({
+            const canvasFill = buildTemplateCloneFillSeedForCurrentMode({
               userInstruction: userFacingRequest || null,
               sourceBrief,
               pendingPrompt: derivedPendingPrompt ?? null,
@@ -2750,7 +2751,11 @@ function AppInner() {
               hasSourceMaterial: true,
               slideCountHint: slideCountHintFromInputs,
             });
-            queueTemplateClonePromptFill({
+            queuedFillSeed = canvasFill.seed;
+            const queueCanvasFill = canvasFill.jsonFill
+              ? queueTemplateCloneContentFill
+              : queueTemplateClonePromptFill;
+            queueCanvasFill({
               projectId: result.project.id,
               seed: queuedFillSeed,
               attachments: firstMessageAttachments,
@@ -2842,7 +2847,7 @@ function AppInner() {
       // Drive import failure must NOT skip Clone — otherwise Daisy is never
       // applied and the user only sees an empty project (auto-send also blocked).
       //
-      // 루프401/409/410 — Same `pure-prompt` skip as the Canvas branch above.
+      // 루프401/409/410/413 — Same `pure-prompt` skip as the Canvas branch above.
       if (
         !workingDirHandoffFailed
         && !canvasImportFailed
@@ -2882,7 +2887,7 @@ function AppInner() {
           || sanitizeTemplateCloneDeckTitle(userFacingRequest.split('\n')[0])
           || sanitizeTemplateCloneDeckTitle(homeDriveSourceAsset?.filename)
           || null;
-        queuedFillSeed = buildTemplateClonePromptFillSeed({
+        const homeFill = buildTemplateCloneFillSeedForCurrentMode({
           userInstruction: userFacingRequest || null,
           sourceBrief,
           pendingPrompt: derivedPendingPrompt ?? null,
@@ -2890,7 +2895,11 @@ function AppInner() {
           hasSourceMaterial,
           slideCountHint: slideCountHintFromInputs,
         });
-        queueTemplateClonePromptFill({
+        queuedFillSeed = homeFill.seed;
+        const queueHomeFill = homeFill.jsonFill
+          ? queueTemplateCloneContentFill
+          : queueTemplateClonePromptFill;
+        queueHomeFill({
           projectId: result.project.id,
           seed: queuedFillSeed,
           attachments: firstMessageAttachments,

@@ -54,35 +54,32 @@ export const CLONE_SLOT_FILL_REPAIR_ENTRY_FROM = 'clone_slot_fill_json_repair';
 /**
  * Fill mode for explicit-template deck creates.
  *
- *   `deterministic` (**default again since loop413, 2026-09-03**):
- *     daemon seeds the real template LOOK, then the host fills/reuses those
- *     shells from a JSON outline. This is the safest path for explicit
- *     template picks because SVG motifs, colors, slide chrome, and 1920x1080
- *     layout come from example.html instead of being re-invented by the model.
+ *   `deterministic` (**env-empty default since loop413**): daemon seeds
+ *     the real template LOOK, then the host fills those shells from a
+ *     JSON outline. SVG motifs, colors, slide chrome, and 1920x1080
+ *     layout come from example.html. ChatComposer prefers the server
+ *     content-fill endpoint; App/home still queues an AI JSON fill
+ *     against the same LOOK seed.
  *
- *   `pure-prompt` (explicit rollback option): SKIP daemon LOOK seeding
- *     entirely and SKIP the clone-fill marker on the outgoing user turn.
- *     `selectedDeckTemplateId` / skillIds are still carried, so
- *     `composeTeamverSlideApiPrompt` emits the kit block. Useful as a quick
- *     demo rollback if Clone/slot-fill regresses, but weaker for motif
- *     fidelity because the model must recreate the template DOM.
+ *   `json`: LOOK seed + AI dense JSON outline
+ *     (`kicker` / `lead` / `items[]{title,body}`). The model never
+ *     rewrites HTML. Aliases: `slot-fill`, `clone`, `clone-fill`,
+ *     `json-fill`, and the former HTML-rewrite token `prompt`.
  *
- *   `prompt`: daemon seeds LOOK
- *     `deck.html` from the template example, then the AI turn is
- *     armed with `templateClonePromptFill: true` and the
- *     `TEAMVER_TEMPLATE_CLONE_PROMPT_FILL_CONTRACT` hint. Model emits
- *     full HTML. Kept as another rollback mode, but weaker than
- *     deterministic for motif fidelity because the model can still rebuild
- *     the DOM.
+ *   `prompt` (HTML rewrite, explicit opt-in only): LOOK seed then the
+ *     model emits full HTML. Dual-instruction path from loops 379-406.
+ *     Reachable only via `prompt-fill` / `html` / `html-fill` /
+ *     `legacy-html`.
+ *
+ *   `pure-prompt`: SKIP LOOK seeding. Kit spec still lands in the
+ *     system prompt. Rollback via `pure-prompt` / `no-seed` / `no-clone`.
  */
-export type TemplateCloneFillMode = 'prompt' | 'deterministic' | 'pure-prompt';
+export type TemplateCloneFillMode = 'json' | 'prompt' | 'deterministic' | 'pure-prompt';
 
 /**
- * 루프413 — Env-empty default returns to deterministic Clone/slot-fill.
- * The loop409 pure-prompt default improved some model-quality cases but made
- * explicit template picks drift from their thumbnail/example motifs. The
- * rollback switch remains: set `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE
- * =pure-prompt` or browser `localStorage.od:template-clone-fill-mode`.
+ * 루프413 — Env-empty default is deterministic Clone/slot-fill.
+ * Dense JSON extras (kicker/lead/items) fill card/stat bodies so the
+ * shell stays immutable and content is not title-only.
  */
 export const TEMPLATE_CLONE_FILL_DEFAULT_MODE: TemplateCloneFillMode = 'deterministic';
 
@@ -91,9 +88,8 @@ export function normalizeTemplateCloneFillMode(value: unknown): TemplateCloneFil
   if (raw === 'deterministic' || raw === 'content-fill' || raw === 'server') {
     return 'deterministic';
   }
-  // 루프401/407/413 — `pure-prompt` (or aliases) matches the pre-Clone
-  // prompt-only rollback. It is explicit opt-in again; empty/unknown now
-  // falls through to the deterministic default below.
+  // 루프401/407/413 — `pure-prompt` is explicit rollback. Empty/unknown
+  // falls through to the deterministic default.
   if (
     raw === 'pure-prompt'
     || raw === 'no-seed'
@@ -104,11 +100,27 @@ export function normalizeTemplateCloneFillMode(value: unknown): TemplateCloneFil
   ) {
     return 'pure-prompt';
   }
-  // Explicit `prompt` / `clone` opts back into the clone-fill path.
-  if (raw === 'prompt' || raw === 'clone' || raw === 'clone-fill' || raw === 'prompt-fill') {
+  // HTML rewrite is opt-in only. `prompt` itself now means JSON slot-fill
+  // so existing `=prompt` production env gets the fundamental clone fix.
+  if (
+    raw === 'prompt-fill'
+    || raw === 'html'
+    || raw === 'html-fill'
+    || raw === 'legacy-html'
+    || raw === 'legacy-prompt-fill'
+  ) {
     return 'prompt';
   }
-  // Unknown / empty falls through to the env-empty default.
+  if (
+    raw === 'json'
+    || raw === 'slot-fill'
+    || raw === 'json-fill'
+    || raw === 'prompt'
+    || raw === 'clone'
+    || raw === 'clone-fill'
+  ) {
+    return 'json';
+  }
   return TEMPLATE_CLONE_FILL_DEFAULT_MODE;
 }
 
@@ -132,6 +144,29 @@ export function getTemplateCloneFillMode(): TemplateCloneFillMode {
 
 export function shouldUseDeterministicTemplateCloneFill(): boolean {
   return getTemplateCloneFillMode() === 'deterministic';
+}
+
+/** LOOK seed + JSON outline slot-fill (default clone path since loop413). */
+export function shouldUseJsonTemplateCloneFill(): boolean {
+  const mode = getTemplateCloneFillMode();
+  return mode === 'json' || mode === 'deterministic';
+}
+
+/** LOOK seed + model HTML rewrite (legacy dual-instruction path). */
+export function shouldUsePromptTemplateCloneFill(): boolean {
+  return getTemplateCloneFillMode() === 'prompt';
+}
+
+export function buildTemplateCloneFillSeedForCurrentMode(
+  options: Parameters<typeof buildTemplateCloneContentFillSeed>[0],
+): { seed: string; jsonFill: boolean } {
+  const jsonFill = shouldUseJsonTemplateCloneFill();
+  return {
+    jsonFill,
+    seed: jsonFill
+      ? buildTemplateCloneContentFillSeed(options)
+      : buildTemplateClonePromptFillSeed(options),
+  };
 }
 
 /**
@@ -454,7 +489,8 @@ export function templateCloneContentFillHardRules(): string[] {
     `- ${SLIDE_DECK_QUALITY_BAR_INSTRUCTION}`,
     `- ${SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION}`,
     '- Expand THIS turn\'s brief only. Do not copy host-contract examples or the user instruction onto slides.',
-    '- JSON shape: {"title":"...","slides":[{"title":"...","body":"line\\nline","roleHint":"cover|list|cards|timeline|stat|quote|team|process|closing|body"}]}',
+    '- JSON shape: {"title":"...","slides":[{"title":"...","kicker":"...","lead":"...","roleHint":"cover|list|cards|timeline|stat|quote|team|process|closing|body","items":[{"title":"...","body":"..."}]}]}',
+    '- Cards / list / stat / process slides MUST use items[] with 2–4 {title, body} slots. lead = section subtitle, not a card. Do not emit title-only cards.',
     `- ${FIRST_FILL_SLIDE_COUNT_GUIDANCE} Outline length = requested count this turn (8-10 → 8–10, hard cap 10, never 15/20). Hidden top-up only when the user asked for ${FIRST_FILL_TOP_UP_FROM}+.`,
     '- Treat the daemon Clone seed as the visual baseline the host will keep. You only supply titles/bodies/roleHint.',
     `- If the brief is only a topic, use a default ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}-slide outline (cover, why it matters, key concepts, evidence, next steps, close). Adapt labels to the topic and audience.`,
