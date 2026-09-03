@@ -42,6 +42,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프412 — MiniMax `AGENT_EXECUTION_STALLED` (SSE idle 5분 과단)
+
+체감: BYOK MiniMax 생성 중 `error_code: AGENT_EXECUTION_STALLED` / 「생성이 응답하지 않아 중단했습니다」. run_id n/a는 API 경로 정상. pure-prompt 풀 덱은 장 사이·thinking에 SSE가 수 분 멈출 수 있는데 FE/daemon idle이 5분이라 조기 절단.
+
+수정: deck `minOutputTokens` 런은 FE idle **10분** · daemon `OD_BYOK_PROXY_INACTIVITY` default 10분 · staging env 명시 600000 · stale API force-fail 11분(idle보다 위).
+
+검증: web api-proxy idle · backgroundChatRecovery stale API constants.
+
 ### 루프411 — 8–10→15 잔여 경로
 
 체감: 루프405 이후에도 LOOK 시드/`close this turn` 미파싱 · prompt-fill 시드 복사 · persist 후단 재증가로 15장이 남을 수 있음. honor shrink가 Source 제목 5장을 캡 3으로 자름.
@@ -2040,7 +2048,15 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프411 · 8–10→15 잔여 경로)
+## 이번 루프 (루프412 · MiniMax AGENT_EXECUTION_STALLED idle 완화)
+
+- [x] FE `PROXY_STREAM_IDLE_TIMEOUT_DECK_MS` 10m (minOutputTokens)
+- [x] daemon BYOK inactivity default 10m · staging env `OD_BYOK_PROXY_INACTIVITY_TIMEOUT_MS=600000`
+- [x] stale API force-fail 11m
+- [x] web api-proxy · backgroundChatRecovery tests
+- [ ] Staging 재배포 후 장시간 MiniMax 생성 QA
+
+## 직전 루프 (루프411 · 8–10→15 잔여 경로)
 
 - [x] LOOK 시드 honor max · `8-10 (close this turn)` 파싱 · 11+ 시드 패딩 금지
 - [x] honor≥5만 outline shrink (Source 제목 캡 3 유지)

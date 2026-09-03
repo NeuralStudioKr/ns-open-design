@@ -37,7 +37,24 @@ import {
 import { loadAuthenticatedProjectFileBlob } from '../hooks/useAuthenticatedProjectFileObjectUrl';
 
 /** No SSE bytes for this long → surface a retryable stall error instead of infinite Working UI. */
-const PROXY_STREAM_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+export const PROXY_STREAM_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+/**
+ * Slide/deck BYOK (minOutputTokens floor): MiniMax often pauses mid-artifact
+ * while planning the next section. 5 minutes cut live decks as AGENT_EXECUTION_STALLED.
+ */
+export const PROXY_STREAM_IDLE_TIMEOUT_DECK_MS = 10 * 60 * 1000;
+
+/** @internal vitest + ProjectView deck runs */
+export function resolveProxyStreamIdleTimeoutMs(context?: ProxyContext): number {
+  const override = context?.streamIdleTimeoutMs;
+  if (typeof override === 'number' && Number.isFinite(override) && override > 0) {
+    return override;
+  }
+  if (typeof context?.minOutputTokens === 'number' && context.minOutputTokens > 0) {
+    return PROXY_STREAM_IDLE_TIMEOUT_DECK_MS;
+  }
+  return PROXY_STREAM_IDLE_TIMEOUT_MS;
+}
 
 async function readProxyStreamChunk(
   reader: ReadableStreamDefaultReader<Uint8Array>,
@@ -116,6 +133,11 @@ export interface ProxyContext {
    * maxTokens override is still saved in localStorage/runtime config.
    */
   minOutputTokens?: number;
+  /**
+   * Override SSE idle timeout (ms). Deck runs normally use
+   * {@link PROXY_STREAM_IDLE_TIMEOUT_DECK_MS} via minOutputTokens.
+   */
+  streamIdleTimeoutMs?: number;
 }
 
 /** Embed never ships browser secrets — always request daemon-managed BYOK. */
@@ -346,7 +368,7 @@ async function streamProxyEndpointOnce(
     while (true) {
       const { value, done } = await readProxyStreamChunk(
         reader,
-        PROXY_STREAM_IDLE_TIMEOUT_MS,
+        resolveProxyStreamIdleTimeoutMs(context),
         signal,
       );
       if (done) break;

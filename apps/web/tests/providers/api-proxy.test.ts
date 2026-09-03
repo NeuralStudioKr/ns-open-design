@@ -16,7 +16,10 @@ import {
   filterAnthropicImageCandidatesByProjectFiles,
   isValidAnthropicImageBytes,
   MAX_ANTHROPIC_PROXY_IMAGE_BYTES,
+  PROXY_STREAM_IDLE_TIMEOUT_DECK_MS,
+  PROXY_STREAM_IDLE_TIMEOUT_MS,
   normalizeAnthropicProxyMessageRoles,
+  resolveProxyStreamIdleTimeoutMs,
   shouldSoftRetryProxyFailure,
   streamProxyEndpoint,
 } from '../../src/providers/api-proxy';
@@ -1163,20 +1166,28 @@ describe('streamProxyEndpoint Motif-SVG dump abort', () => {
   });
 });
 
-// loop184 (AGENT_EXECUTION_STALLED)
+// loop184 / loop411 (AGENT_EXECUTION_STALLED)
 //
 // `readProxyStreamChunk` rejects with `code === "AGENT_EXECUTION_STALLED"` when
-// the SSE body goes idle past `PROXY_STREAM_IDLE_TIMEOUT_MS` (5 min). That code
-// must survive the outer `catch` block un-remapped, and the "no tokens streamed
-// yet" gate must keep `retryable: true` (so the soft-retry loop covers a stall
-// on a still-empty connection) while the "tokens already streamed" gate flips
-// `retryable: false` (so a mid-stream stall doesn't duplicate the assistant
-// message UI across retries).
+// the SSE body goes idle past the resolved timeout (5 min default, 10 min for
+// deck minOutputTokens). That code must survive the outer `catch` block
+// un-remapped, and the "no tokens streamed yet" gate must keep `retryable: true`
+// while the "tokens already streamed" gate flips `retryable: false`.
 describe('streamProxyEndpoint idle-timeout stall (AGENT_EXECUTION_STALLED)', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it('uses a longer idle window for deck minOutputTokens runs (loop411)', () => {
+    expect(PROXY_STREAM_IDLE_TIMEOUT_MS).toBe(5 * 60 * 1000);
+    expect(PROXY_STREAM_IDLE_TIMEOUT_DECK_MS).toBe(10 * 60 * 1000);
+    expect(resolveProxyStreamIdleTimeoutMs()).toBe(PROXY_STREAM_IDLE_TIMEOUT_MS);
+    expect(resolveProxyStreamIdleTimeoutMs({ minOutputTokens: 16_000 })).toBe(
+      PROXY_STREAM_IDLE_TIMEOUT_DECK_MS,
+    );
+    expect(resolveProxyStreamIdleTimeoutMs({ streamIdleTimeoutMs: 90_000 })).toBe(90_000);
   });
 
   it('surfaces AGENT_EXECUTION_STALLED as non-retryable after a substantive delta', async () => {

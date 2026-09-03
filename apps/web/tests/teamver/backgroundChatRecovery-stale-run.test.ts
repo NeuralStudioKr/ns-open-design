@@ -52,6 +52,9 @@ describe("backgroundChatRecovery stale run helpers", () => {
   });
 
   it("polls and forces failure for stale API-mode assistant rows without runId", () => {
+    // Loop411 — force-fail stays above deck SSE idle (10m).
+    expect(TEAMVER_STALE_API_RUN_RECONCILE_MS).toBe(10 * 60 * 1000);
+    expect(TEAMVER_STALE_API_RUN_FORCE_FAIL_MS).toBe(11 * 60 * 1000);
     const now = Date.now();
     const apiAssistant = assistant({
       runId: undefined,

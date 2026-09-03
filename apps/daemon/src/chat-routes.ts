@@ -703,7 +703,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     let buffer = '';
     const idleTimeoutMs = (() => {
       const raw = Number(process.env.OD_BYOK_PROXY_INACTIVITY_TIMEOUT_MS);
-      return Number.isFinite(raw) && raw > 0 ? raw : 5 * 60 * 1000;
+      return Number.isFinite(raw) && raw > 0 ? raw : 10 * 60 * 1000;
     })();
 
     const readChunk = () =>
@@ -767,7 +767,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     let buffer = '';
     const idleTimeoutMs = (() => {
       const raw = Number(process.env.OD_BYOK_PROXY_INACTIVITY_TIMEOUT_MS);
-      return Number.isFinite(raw) && raw > 0 ? raw : 5 * 60 * 1000;
+      return Number.isFinite(raw) && raw > 0 ? raw : 10 * 60 * 1000;
     })();
 
     const readChunk = () =>
