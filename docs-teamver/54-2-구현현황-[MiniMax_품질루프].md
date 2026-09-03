@@ -42,6 +42,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프406 — letterbox로 새어 나가는 장식 shape 재부모화
+
+체감: 슬라이드 밖 어두운 letterbox에 pink/blue 회전 사각형(위) + yellow 사각형·purple 원(아래)이 그려짐. `.slide { overflow: visible }`(Motif chrome용)에 의해 non-Motif ad-hoc `position:absolute` shape가 slide sibling으로 escape.
+
+수정: 신규 `reparentEscapedDecoIntoSlideFlow` — non-Motif · background paint 있음 · 리프 텍스트 40자 이하 · 중첩 block 없음 조건의 shape div를 `[data-od-slide-flow]` 앞부분에 재부모화. Flow의 `overflow:hidden` + `inset:0`이 shape를 1920×1080에서 클리핑하되 원래 좌표는 유지되어 시각 위치 보존. Motif chrome(`data-od-official-motif-html`/`.deco-*`/`.pill`/`.stamp`/`.ribbon`/`.corner-bracket`/`.starfield`/등)은 절대 손대지 않음. `salvage`의 `normalizeRotatedInlinePills`와 `healOrphanRadialCircles` 사이에 wire.
+
+검증: 신규 9/9 pass · 사용자 리포트 fixture 재현 · Motif control 보전 · idempotent · flow 없으면 no-op · background/텍스트/motif class 각각 skip · end-to-end salvage 검증. contracts 2989 pass / 1 skip / 2 pre-existing fail(무관). 시각 pre/post 비교로 letterbox의 escape shape 완전 clipping 확인.
+
+**참고:** 앞서 loop405가 병렬 에이전트에 의해 “8–10 요청 15장 오버슈트”에 사용되어 이 heal은 loop406으로 재번호. 코드·doc·rollback switch 문서 모두 loop406으로 통일.
+
 ### 루프405 — 8–10 요청 15장 오버슈트
 
 체감: 8–10을 요청했는데 15장까지 생성. 루프402가 “6장 정지 금지”만 강조하고 10장 상한이 없음. JSON max 20 · expansion 아크 · 템플릿 15장 데모가 합쳐짐.

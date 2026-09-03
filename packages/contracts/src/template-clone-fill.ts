@@ -1920,6 +1920,165 @@ export function absorbTrailingContentIntoSlideFlow(html: string): string {
   return out;
 }
 
+/**
+ * 루프406 — MiniMax often emits ad-hoc decorative shapes (colored rects,
+ * circles, rotated tabs) as DIRECT children of `<section class="slide">`
+ * — siblings of `[data-od-slide-flow]` — with `position:absolute` and
+ * offsets that push them beyond the 1920×1080 canvas. Canvas-pin CSS
+ * intentionally keeps `.slide { overflow: visible }` so Motif chrome
+ * can paint outside the box; the same rule lets these ad-hoc shapes
+ * escape into the dark letterbox around the slide (user report
+ * 2026-09-03: pink/blue shapes above the slide, yellow rect + purple
+ * circle below).
+ *
+ * Reparent qualifying shapes INTO the flow wrapper as the FIRST children
+ * so `[data-od-slide-flow] { overflow: hidden }` clips them within the
+ * slide. Same `position:absolute` + inset values inside the flow paint
+ * at the same visual location because the flow wrapper spans the full
+ * 1920×1080 (`inset:0`).
+ *
+ * Guardrails — never touch legitimate Motif / kit chrome:
+ *   - Skip anything with `[data-od-official-motif-html]`.
+ *   - Skip class names matching the shared motif/deco list (.deco-*,
+ *     .motif-*, .pill, .stamp, .ribbon, .corner-bracket, .starfield,
+ *     .scanlines, .grain, .crt-glow, .bg-grid, .sunglow, .cover-blob,
+ *     .cover-bg, .pixel-*, .hc-*, .gd-orb, .xp-blob, .post-it,
+ *     .floating-pills, .petals, etc.).
+ *   - Only touch divs with `position:absolute` and a paint signal
+ *     (`background`, `background-color`, or `background-image`).
+ *   - Only touch near-leaf shapes: no nested block-level content
+ *     (`<div>`/`<section>`/`<ul>`/`<h1-6>`/`<p>`), and text content ≤ 40 chars.
+ *   - Never insert an escaped shape twice: run only once, skip when
+ *     shape's original spot is already inside a flow wrapper.
+ */
+const MOTIF_DECO_SAFE_CLASSES_RE =
+  /\b(?:deco|motif|petal|blob|pill|doodle|pin-|scanline|grain|starfield|crt-glow|bg-grid|sunglow|yblock|haze|ribbon|pixel-|hc-|gd-orb|xp-blob|post-it|stamp|tape|corner-bracket|ts-stripe|zigzag|hero-shot|card-deco|title-accent|closing-accent|mini-note|floating-pills|cover-blob|cover-bg|geo-decoration|cover-decoration)\b/i;
+
+function decoShapeHasContent(block: string): boolean {
+  const source = String(block ?? '');
+  // Strip the outer open + close tags before inspecting INNER content — we
+  // only care whether the shape contains nested blocks or long text, not
+  // whether the shape itself is a `<div>`.
+  const innerStart = source.indexOf('>');
+  const innerEnd = source.lastIndexOf('</');
+  const inner = innerStart >= 0 && innerEnd > innerStart
+    ? source.slice(innerStart + 1, innerEnd)
+    : source;
+  if (/<(?:div|section|article|ul|ol|li|h[1-6]|p|blockquote|figure|table|nav)\b/i.test(inner)) {
+    return true;
+  }
+  const text = inner.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim();
+  return text.length > 40;
+}
+
+function looksLikeReparentableDecoShape(open: string, block: string): boolean {
+  if (/\bdata-od-official-motif-html\b/i.test(open)) return false;
+  const classAttr = /\bclass\s*=\s*(['"])([^'"]*)\1/i.exec(open)?.[2] ?? '';
+  if (classAttr && MOTIF_DECO_SAFE_CLASSES_RE.test(classAttr)) return false;
+  const style = /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i.exec(open)?.[2] ?? '';
+  if (!style) return false;
+  if (!/position\s*:\s*absolute/i.test(style)) return false;
+  // Paint signal: colored background OR image OR gradient.
+  const paints =
+    /\bbackground(?:-color)?\s*:/i.test(style)
+    || /\bbackground-image\s*:/i.test(style)
+    || /\bbackground\s*:\s*(?:linear|radial|repeating|conic)-gradient/i.test(style);
+  if (!paints) return false;
+  if (decoShapeHasContent(block)) return false;
+  return true;
+}
+
+/**
+ * 루프406 — For each slide, walk its direct children and reparent any
+ * qualifying ad-hoc decorative absolute-positioned shape into the
+ * `[data-od-slide-flow]` wrapper (prepended so it stays behind content
+ * that carries `z-index:2` via the canvas-pin CSS).
+ */
+export function reparentEscapedDecoIntoSlideFlow(html: string): string {
+  let out = String(html ?? '');
+  const spans = listHealSlideHostSpans(out);
+  if (spans.length === 0) return out;
+  for (let s = spans.length - 1; s >= 0; s -= 1) {
+    const span = spans[s]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    const flowOpen = /<div\b[^>]*\bdata-od-slide-flow\b[^>]*>/i.exec(body);
+    if (!flowOpen || flowOpen.index == null) continue;
+    const flowAbs = span.bodyStart + flowOpen.index;
+    const flowBalanced = extractBalancedFrom(out, flowAbs);
+    if (!flowBalanced) continue;
+    const flowEndAbs = flowAbs + flowBalanced.length;
+
+    // Collect qualifying decorative shape blocks that sit OUTSIDE the flow
+    // wrapper (before it or after it) as direct children of this section.
+    const escaped: Array<{ start: number; end: number; block: string }> = [];
+
+    const scanRegion = (regionStart: number, regionEnd: number) => {
+      let cursor = regionStart;
+      while (cursor < regionEnd) {
+        const slice = out.slice(cursor, regionEnd);
+        const wsLen = /^\s*/.exec(slice)?.[0].length ?? 0;
+        cursor += wsLen;
+        if (cursor >= regionEnd) break;
+        if (out[cursor] !== '<') { cursor += 1; continue; }
+        // Only inspect <div> siblings; skip other tags to avoid touching flow-
+        // level structure. Advance past the block regardless so we make progress.
+        const openMatch = /^<([a-zA-Z][\w-]*)\b/i.exec(out.slice(cursor, regionEnd));
+        if (!openMatch) break;
+        const tag = (openMatch[1] ?? '').toLowerCase();
+        const block = extractBalancedFrom(out, cursor);
+        if (!block) break;
+        if (tag === 'div') {
+          const openTag = /^<div\b[^>]*>/i.exec(block)?.[0] ?? '';
+          if (openTag && looksLikeReparentableDecoShape(openTag, block)) {
+            escaped.push({ start: cursor, end: cursor + block.length, block });
+          }
+        }
+        cursor += block.length;
+      }
+    };
+
+    scanRegion(span.bodyStart, flowAbs);
+    scanRegion(flowEndAbs, span.bodyEnd);
+
+    if (escaped.length === 0) continue;
+
+    // Prepend escaped shapes into the flow wrapper as background layer.
+    // Delete from original positions in reverse so offsets stay valid.
+    const flowOpenTag = /^<div\b[^>]*>/i.exec(flowBalanced)?.[0] ?? '';
+    if (!flowOpenTag) continue;
+    const flowCloseLen = /<\/div\s*>$/i.exec(flowBalanced)?.[0].length ?? 6;
+    const flowInner = flowBalanced.slice(flowOpenTag.length, flowBalanced.length - flowCloseLen);
+    const prependedBlocks = escaped.map((entry) => entry.block).join('');
+    const newFlow = `${flowOpenTag}${prependedBlocks}${flowInner}</div>`;
+
+    // Apply removals in reverse order so earlier indexes are unaffected.
+    let nextOut = out.slice(0, flowAbs) + newFlow + out.slice(flowEndAbs);
+    // Recompute offsets relative to nextOut. All escaped positions were
+    // ORIGINAL absolute offsets in `out`; the removal must translate them.
+    // Because we replaced the flow region in-place with a longer/shorter block,
+    // positions AFTER flowEndAbs shift by (newFlow.length - flowBalanced.length).
+    const flowDelta = newFlow.length - flowBalanced.length;
+    // Sort escaped by descending start so we splice from tail to head safely.
+    const orderedEscaped = [...escaped].sort((a, b) => b.start - a.start);
+    for (const entry of orderedEscaped) {
+      let entryStart = entry.start;
+      let entryEnd = entry.end;
+      if (entryStart >= flowEndAbs) {
+        entryStart += flowDelta;
+        entryEnd += flowDelta;
+      }
+      // Trim leading whitespace of the escaped block so we don't leave a
+      // dangling gap when it was already whitespace-padded in HTML.
+      const before = nextOut.slice(0, entryStart);
+      const after = nextOut.slice(entryEnd);
+      const trimmedBefore = before.replace(/\s+$/, '');
+      nextOut = trimmedBefore + after;
+    }
+    out = nextOut;
+  }
+  return out;
+}
+
 function collapseSparseRepeatGrids(html: string): string {
   let out = String(html ?? '');
   const openRe = /<div\b[^>]*grid-template-columns:\s*repeat\(\s*(\d+)\s*,[^)]*\)[^>]*>/gi;
@@ -3170,6 +3329,12 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   // inline-block so a `transform:rotate` pill (`OVERVIEW`) does not
   // stretch full-width and paint a giant diagonal bar across the slide.
   next = normalizeRotatedInlinePills(next);
+  // 루프406 — Reparent ad-hoc absolute-positioned decorative shapes
+  // that sit as direct-children of a slide (siblings of the flow
+  // wrapper) INTO the flow wrapper so its `overflow:hidden` clips
+  // them to the 1920×1080 canvas. Prevents pink/blue/yellow/circle
+  // shapes from painting into the dark letterbox between slides.
+  next = reparentEscapedDecoIntoSlideFlow(next);
   next = healOrphanRadialCircles(next);
   next = dropEmptyDeckSlides(next);
   next = restyleForeignIbMagazineCover(next);
