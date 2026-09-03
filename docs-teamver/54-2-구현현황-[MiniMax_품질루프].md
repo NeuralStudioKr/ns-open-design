@@ -42,6 +42,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프400 — Spec/Hint 통일 · Capsule Motif 보존 · SVG stub · flex/heading salvage
+
+체감: auto-continue Hint와 top-up Spec 우선순위 불일치 · Capsule IB restyle이 Motif/floating-pills 폐기 · Motif SVG만 있는 장이 drop 안 됨 · flex 카드가 chrome-pill에 잔존 · `<span style=flex>` 앞 orphan h2 · sibling `<b>1</b><b>99+` · Capsule fingerprint/neo cream 재주입.
+
+수정: Hint→Spec 공유 · Motif chrome 재부착 · SVG 비텍스트 empty · flex chrome extract · orphan heading flex host · sibling bold · Capsule soft fingerprint · ensureNeoBrutal soft skip · visible seed-line strip.
+
+검증: contracts 루프400 · web recovery/topUp.
+
 ### 루프399 — bare slideCount hint · merge cap · Capsule h1/deco/rotated
 
 체감: brief-only `runContext.slideCountHint="8-10"`이 auto-continue phrase 경로에서 단위 없어 null · server stability-cap이 local durable 8–10을 덮음 · Capsule `h1` without `.display` IB leftover 미restyle · relative deco-pill flex 공간 강탈 · `<span>OVERVIEW</span>` 회전 pill 미정규화 · coral+neo cream without `--bg` 노란 letterbox.

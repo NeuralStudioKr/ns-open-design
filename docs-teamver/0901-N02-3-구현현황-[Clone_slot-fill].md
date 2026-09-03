@@ -56,6 +56,7 @@
 | **루프396** Capsule IB 표지 · heading/pill salvage · runContext 8–10 top-up | ☑ |
 | **루프398** Capsule soft wash · chrome-pill · 표지 stub · durable count | ☑ |
 | **루프399** bare hint/Spec · merge cap · Capsule h1/deco/rotated | ☑ |
+| **루프400** Spec/Hint 통일 · Motif 보존 · SVG/flex/heading salvage | ☑ |
 | **루프366** section `#stage` hoist · contracts dist rebuild | ☑ web transform-driven 19/19 |
 | MiniMax 실키 E2E | ☑ 가드 있음 · 키 없으면 skip (`template-clone-minimax-live.e2e`) |
 
@@ -104,6 +105,7 @@
 
 | 일자 | 내용 |
 |------|------|
+| 2026-09-03 | 루프400 — Spec/Hint 통일 · Motif 보존 · SVG/flex/heading salvage |
 | 2026-09-03 | 루프399 — bare 8–10 hint · merge cap · Capsule h1/deco/rotated |
 | 2026-09-03 | 루프398 — Capsule soft wash · chrome-pill · 표지 stub · durable count |
 | 2026-09-02 | C12 — peer-fit feature-postit×3 · timeline-row · 루프366 chrome/srcdoc bake |

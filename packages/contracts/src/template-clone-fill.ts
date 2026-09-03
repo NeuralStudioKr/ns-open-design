@@ -1172,8 +1172,13 @@ export function officialLookIsCapsule(html: string): boolean {
   const source = String(html ?? '');
   const css = lookCssWithoutNeutralize(source);
   if (css.trim()) {
-    // Soft coral kit token is enough — look CSS may omit Bodoni in truncated sheets.
-    if (/--coral\s*:\s*#E85D4E/i.test(css)) return true;
+    // Soft coral kit token — accept truncated sheets / near-hex / rgb.
+    if (
+      /--coral\s*:/i.test(css)
+      && /(?:#E85D4E|#E85\b|rgb\s*\(\s*232\s*,\s*93\s*,\s*78|title-pill|main-title|Bodoni)/i.test(css + source)
+    ) {
+      return true;
+    }
     if (/\.title-pill\b/i.test(css) && /(?:Bodoni Moda|--font-display|\.main-title\b)/i.test(css)) {
       return true;
     }
@@ -1181,8 +1186,8 @@ export function officialLookIsCapsule(html: string): boolean {
   }
   // Pre-look-merge / MiniMax body: coral paint + Capsule chrome classes.
   if (
-    /(?:#E85D4E|var\(\s*--coral\b)/i.test(source)
-    && /\b(?:title-pill|main-title|header-pill|deco-pill|deco-pills)\b/i.test(source)
+    /(?:#E85D4E|#E85\b|var\(\s*--coral\b)/i.test(source)
+    && /\b(?:title-pill|main-title|header-pill|deco-pill|deco-pills|floating-pills)\b/i.test(source)
   ) {
     return true;
   }
@@ -1190,7 +1195,7 @@ export function officialLookIsCapsule(html: string): boolean {
     /<style\b[^>]*\bdata-od-official-motif-deco-css\b[^>]*>([\s\S]*?)<\/style>/gi,
   )].map((match) => match[1] ?? '').join('\n');
   return /\.deco-pills-closing\b|\.f-pill\b/i.test(deco)
-    && /Bodoni Moda|--coral\b|\.deco-pill\b|#E85D4E/i.test(source);
+    && /Bodoni Moda|--coral\b|\.deco-pill\b|#E85/i.test(source);
 }
 
 function officialLookIsBiennaleYellow(html: string): boolean {
@@ -1766,9 +1771,16 @@ export function closeOrphanHeadingsBeforeBlocks(html: string): string {
     const after = out.slice(index + len);
     const closeMatch = new RegExp(`</${level}\\s*>`, 'i').exec(after);
     const blockMatch = /<(div|ul|ol|section|article|aside|table|header|footer|p)\b/i.exec(after);
-    if (!blockMatch || blockMatch.index == null) continue;
-    if (closeMatch && closeMatch.index < blockMatch.index) continue;
-    const insertAt = index + len + blockMatch.index;
+    // 루프400 — MiniMax wraps card grids in <span style="display:flex|grid"> / <b>.
+    const flexHost = /<(span|b|strong)\b[^>]*(?:style\s*=\s*["'][^"']*\b(?:display\s*:\s*(?:flex|grid)|grid-template)[^"']*["'])[^>]*>/i
+      .exec(after);
+    const nestedHost = /<(span|b|strong)\b[^>]*>\s*<(?:div|ul|ol|section|article)\b/i.exec(after);
+    const candidates = [blockMatch?.index, flexHost?.index, nestedHost?.index]
+      .filter((value): value is number => typeof value === 'number');
+    if (candidates.length === 0) continue;
+    const blockIndex = Math.min(...candidates);
+    if (closeMatch && closeMatch.index < blockIndex) continue;
+    const insertAt = index + len + blockIndex;
     out = `${out.slice(0, insertAt).replace(/[ \t\r\n]+$/u, '')}</${level}>${out.slice(insertAt)}`;
   }
   return out;
@@ -1799,7 +1811,11 @@ export function extractBlocksFromChromePills(html: string): string {
     if (!label || label.length > 40) continue;
     const rest = inner.slice(block.index);
     // Grid/list hosts often ship short KR card copy ("카드" + one line) — 24 was too high.
-    if (!/display\s*:\s*grid|grid-template|<(?:ul|ol|h[1-6])\b/i.test(rest)) continue;
+    // 루프400 — flex card rows nested in chrome pills (no grid-template).
+    const hasGridOrList = /display\s*:\s*grid|grid-template|<(?:ul|ol|h[1-6])\b/i.test(rest);
+    const hasFlexCards = /display\s*:\s*flex/i.test(rest)
+      && ((rest.match(/<div\b/gi) ?? []).length >= 2);
+    if (!hasGridOrList && !hasFlexCards) continue;
     if (stripTagsToText(rest).length < 8) continue;
     const replacement = `${open}${escapeHtml(label)}</${tag}>${rest}`;
     out = `${out.slice(0, start)}${replacement}${out.slice(start + balanced.length)}`;
@@ -1963,7 +1979,12 @@ export function stripNestedBoldNumberTypoPrefix(html: string): string {
   );
   // 루프398 — also `<b>1 <b>1200+개…` without thousands separators.
   next = next.replace(
-    /<b\b[^>]*>\s*\d{1,3}\s+(<b\b[^>]*>\s*\d{3,}(?:\+|개|명|장|건)?[^<]*<\/b>[^<]*?)<\/b>/gi,
+    /<b\b[^>]*>\s*\d{1,3}\s+(<b\b[^>]*>\s*\d{2,}(?:\+|개|명|장|건|만)?[^<]*<\/b>[^<]*?)<\/b>/gi,
+    (_match, keep: string) => keep,
+  );
+  // 루프400 — sibling typo `<b>1</b><b>1,200+개…</b>` (not nested).
+  next = next.replace(
+    /<b\b[^>]*>\s*\d{1,3}\s*<\/b>\s*(<b\b[^>]*>\s*\d{2,}(?:[.,]\d+)*(?:\+|개|명|장|건|만)?[^<]*<\/b>)/gi,
     (_match, keep: string) => keep,
   );
   return next;
@@ -2085,14 +2106,19 @@ export function pinNeoBrutalEmptyDecoBlocks(html: string): string {
   );
   // Capsule class chrome may be <span class="deco-pill" style="position:relative">…
   out = out.replace(
-    /<(span|div)\b([^>]*\b(?:deco-pill|floating-pills|f-pill)\b[^>]*)>/gi,
+    /<(span|div)\b([^>]*\b(?:deco-pill|deco-pills|floating-pills|f-pill)\b[^>]*)>/gi,
     (full, tag: string, attrs: string) => {
       const style = /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i.exec(attrs)?.[2] ?? '';
-      if (!style || /position\s*:\s*absolute/i.test(style)) return full;
-      if (!/position\s*:\s*relative/i.test(style) && !/\b(?:top|left|right|bottom)\s*:/i.test(style)) {
-        return full;
+      if (/position\s*:\s*absolute/i.test(style)) return full;
+      if (style) {
+        if (!/position\s*:\s*relative/i.test(style) && !/\b(?:top|left|right|bottom)\s*:/i.test(style)) {
+          return full;
+        }
+        return `<${tag}${pinNeoDecoOpenAttrs(attrs)}>`;
       }
-      return `<${tag}${pinNeoDecoOpenAttrs(attrs)}>`;
+      // 루프400 — class-only Capsule deco still steals flex; pin with absolute style.
+      const sep = attrs.trim() ? (attrs.endsWith(' ') ? '' : ' ') : '';
+      return `<${tag}${attrs}${sep}style="position:absolute;top:48px;right:64px;pointer-events:none;z-index:1">`;
     },
   );
   return out;
@@ -2144,7 +2170,7 @@ export function normalizeRotatedInlinePills(html: string): string {
   const rewritePill = (full: string, attrs: string, innerHtml: string): string => {
     const style = /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i.exec(attrs)?.[2] ?? '';
     if (!style) return full;
-    if (!/transform\s*:\s*rotate\s*\(/i.test(style)) return full;
+    if (!/transform\s*:\s*rotate(?:Z)?\s*\(/i.test(style)) return full;
     if (/\bdisplay\s*:\s*(?:inline(?:-block|-flex)?|flex|grid)\b/i.test(style)) return full;
     if (/\bwidth\s*:\s*(?:\d|auto|fit-content|max-content|min-content|100%|calc\()/i.test(style)) {
       return full;
@@ -2511,10 +2537,13 @@ function healOrphanRadialCircles(html: string): string {
 }
 
 function slideBodyLooksEmpty(body: string): boolean {
-  const content = String(body ?? '')
+  const raw = String(body ?? '');
+  // 루프400 — Motif-only SVG must not become text "SVG" and keep the stub slide.
+  const hasMedia = /<(?:img|video|canvas|iframe|table|svg)\b/i.test(raw);
+  const content = raw
     .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
     .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<svg\b[\s\S]*?<\/svg>/gi, ' SVG ');
+    .replace(/<svg\b[\s\S]*?<\/svg>/gi, ' ');
   // 루프394 — top-up sentinel alone is not real slide copy.
   const withoutSentinel = content
     .replace(/\[od:slide_count_top_up\]/gi, ' ')
@@ -2527,11 +2556,13 @@ function slideBodyLooksEmpty(body: string): boolean {
   // 루프398 — generic cover chrome labels alone ("표지"/"Cover") are stubs.
   // JS `\b` does not bound Hangul, so match chrome-only text explicitly.
   if (!text || /^(?:표지|Cover|Title|슬라이드)(?:\s+(?:표지|Cover|Title|슬라이드))*$/i.test(text)) {
-    if (/<(?:img|video|canvas|iframe|table|svg)\b/i.test(withoutSentinel)) return false;
+    // Decorative Motif SVG alone is still empty for drop purposes.
+    if (hasMedia && !/<svg\b/i.test(raw)) return false;
+    if (hasMedia && /<(?:img|video|canvas|iframe|table)\b/i.test(raw)) return false;
     return true;
   }
   if (text.length >= 2) return false;
-  if (/<(?:img|video|canvas|iframe|table|svg)\b/i.test(withoutSentinel)) return false;
+  if (hasMedia && /<(?:img|video|canvas|iframe|table)\b/i.test(raw)) return false;
   return true;
 }
 
@@ -2589,6 +2620,22 @@ function coverHasIbMagazineChrome(attrs: string, body: string): boolean {
 
 function coverAlreadyBiennalePoster(attrs: string, body: string): boolean {
   return /\bs-cover\b/i.test(attrs) && /\b(?:titlewrap|sunglow)\b/i.test(body);
+}
+
+/** 루프400 — Reattach Motif / floating deco when Capsule restyle replaces IB cover. */
+function collectPreservedCapsuleCoverChrome(body: string): string {
+  const chunks: string[] = [];
+  const seen = new Set<number>();
+  const openRe = /<(div|span)\b[^>]*(?:\bdata-od-official-motif-html\b|\bfloating-pills\b|\bdeco-pills\b)[^>]*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(body)) !== null) {
+    if (seen.has(match.index)) continue;
+    const balanced = extractBalancedFrom(body, match.index);
+    if (!balanced) continue;
+    seen.add(match.index);
+    chunks.push(balanced);
+  }
+  return chunks.join('');
 }
 
 /**
@@ -2661,8 +2708,11 @@ export function restyleForeignIbMagazineCover(html: string): string {
     const subtitle = subline
       ? `<span class="subtitle">${escapeHtml(subline)}</span>`
       : '';
+    // 루프400 — keep Motif / floating-pills chrome that persist already merged.
+    const preservedChrome = collectPreservedCapsuleCoverChrome(body);
     const inner =
-      `<div class="title-pill">${escapeHtml(pill)}</div>`
+      `${preservedChrome}`
+      + `<div class="title-pill">${escapeHtml(pill)}</div>`
       + `<h1 class="main-title">${escapeHtml(title)}${subtitle}</h1>`;
     return (
       `${dest.slice(0, first.start)}<${first.tag} class="slide slide-1" `

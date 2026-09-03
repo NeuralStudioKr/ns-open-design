@@ -894,6 +894,49 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(rotated).toContain('<span>OVERVIEW</span>');
   });
 
+  it('루프400: Motif keep, SVG stub drop, flex chrome extract, orphan heading, sibling bold', () => {
+    const withMotif = restyleForeignIbMagazineCover(`<!doctype html><html><body>
+<section class="slide cover">
+<div data-od-official-motif-html class="floating-pills" aria-hidden="true"><span class="deco-pill"></span></div>
+<div class="body"><h1 class="display">팀버 소개</h1></div>
+</section>
+<section class="slide"><h2>Why</h2><p>본문 카피가 있습니다.</p></section>
+<style data-od-official-look-css="">:root{--coral:#E85D4E;--bg:#F5F5F0}
+.slide-1 .title-pill{}</style>
+</body></html>`);
+    expect(withMotif).toMatch(/data-od-official-motif-html|floating-pills/);
+    expect(withMotif).toMatch(/title-pill|main-title/);
+
+    const svgOnly = dropEmptyDeckSlides([
+      '<section class="slide"><svg xmlns="http://www.w3.org/2000/svg"><circle/></svg></section>',
+      '<section class="slide"><h1>실제</h1><p>본문입니다.</p></section>',
+    ].join(''));
+    expect(svgOnly).not.toMatch(/<circle/);
+    expect(svgOnly).toContain('실제');
+
+    const flexPill = extractBlocksFromChromePills(
+      '<div class="header-pill">04'
+      + '<div style="display:flex;gap:16px">'
+      + '<div><h3>카드A</h3><p>설명 문장이 충분히 깁니다.</p></div>'
+      + '<div><h3>카드B</h3><p>두번째 카드 설명입니다.</p></div></div></div>',
+    );
+    expect(flexPill).toMatch(/header-pill[^>]*>04<\/div>/);
+    expect(flexPill).toMatch(/display:flex[\s\S]*카드A/);
+
+    const closed = closeOrphanHeadingsBeforeBlocks(
+      '<h2>Use Cases<span style="display:flex"><div><h3>A</h3></div></span>',
+    );
+    expect(closed).toMatch(/Use Cases<\/h2><span/);
+
+    expect(stripNestedBoldNumberTypoPrefix(
+      '<b>1</b><b>99+개 콘텐츠</b>',
+    )).toBe('<b>99+개 콘텐츠</b>');
+
+    expect(officialLookIsCapsule(
+      '<style data-od-official-look-css="">:root{--coral:#E85;--bg:#F5F5F0}.title-pill{}</style>',
+    )).toBe(true);
+  });
+
   it('루프396: Capsule IB cover restyle, unclosed heading/pill salvage', () => {
     const capsuleLook = `<style data-od-official-look-css="">:root{--coral:#E85D4E;--bg:#F5F5F0;--fg:#1A1A1A}
 .slide-1 .title-pill{background:var(--yellow)}.slide-10 .closing-content{}</style>`;

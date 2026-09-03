@@ -173,6 +173,21 @@ describe('extractRequestedSlideCountHintFromMessages', () => {
     expect(extractRequestedSlideCountHintFromMessages(messages)).toContain('정확히 10장');
   });
 
+  it('루프400: prefers visible exact count over runContext range (Spec-aligned)', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'u1',
+        role: 'user',
+        content: '정확히 12장으로 만들어줘',
+        createdAt: 1,
+        runContext: { slideCountHint: '8-10' },
+      },
+      assistantMessage('a1'),
+    ];
+    expect(extractRequestedSlideCountHintFromMessages(messages)).toContain('정확히 12장');
+    expect(extractRequestedSlideCountHintFromMessages(messages)).not.toContain('8–10');
+  });
+
   it('prefers the latest non-auto-continue user turn', () => {
     const messages: ChatMessage[] = [
       { id: 'u1', role: 'user', content: '8장짜리 덱', createdAt: 1 },

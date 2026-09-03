@@ -26,7 +26,7 @@ import {
 } from './resume';
 import {
   SLIDE_COUNT_REQUEST_MAX,
-  isSlideCountTopUpPrompt,
+  extractRequestedSlideCountSpecFromMessages,
 } from '../teamver/slideCountTopUp';
 import { findPrecedingUserMessage } from './auto-continue-comment-scope';
 import {
@@ -128,11 +128,6 @@ export function collectSlideReferencePathsFromMessages(
   return out.slice(0, max);
 }
 
-const SLIDE_COUNT_FORM_LABEL_RE =
-  /^\s*-\s*(?:슬라이드\s*분량|slide\s*count|Slide count|scale|slides?|pageCount)\s*:\s*(.+)$/i;
-const SLIDE_COUNT_PLUGIN_INPUT_RE =
-  /\b(?:slideCount|slides|pageCount)\s*:\s*["']?([^"'\n]+)["']?/i;
-
 function formatSlideCountPhraseHint(min: number, max: number): string {
   if (min === max) return `정확히 ${max}장의 슬라이드를 출력하세요.`;
   return `정확히 ${max}장의 슬라이드를 출력하세요 (사용자 요청 범위 ${min}–${max}, 상한 적용).`;
@@ -194,44 +189,15 @@ export function parseSlideCountPhrase(text: string): string | null {
 /**
  * Recover an explicit slide-count constraint from user turns so auto-continue
  * does not fall back to generic 6–8 when the brief already named a count.
+ * 루프400 — share Spec priority (visible exact > seed line > visible > runContext
+ * > plugin/form) so incomplete-recovery and top-up never disagree.
  */
 export function extractRequestedSlideCountHintFromMessages(
   messages: readonly ChatMessage[],
 ): string | null {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]!;
-    if (message.role !== 'user') continue;
-    const content = message.content ?? '';
-    if (isAutoContinueIncompleteOutputPrompt(content)) continue;
-    if (isSlideCountTopUpPrompt(content)) continue;
-
-    // 루프398 — brief-only persist: honor runContext.slideCountHint first.
-    const fromRunContext = message.runContext?.slideCountHint
-      ? parseSlideCountPhrase(String(message.runContext.slideCountHint))
-      : null;
-    if (fromRunContext) return fromRunContext;
-
-    const pluginMatch = content.match(SLIDE_COUNT_PLUGIN_INPUT_RE);
-    if (pluginMatch?.[1]) {
-      const parsed = parseSlideCountPhrase(pluginMatch[1]);
-      if (parsed) return parsed;
-    }
-
-    for (const line of content.split(/\r?\n/)) {
-      const formMatch = line.match(SLIDE_COUNT_FORM_LABEL_RE);
-      if (formMatch?.[1]) {
-        const parsed = parseSlideCountPhrase(formMatch[1]);
-        if (parsed) return parsed;
-      }
-    }
-
-    const visibleUserText = (content.split(/\n\n\[Deliverable instruction\]/i)[0] ?? content)
-      .replace(/^User requested slide count:.*$/gmi, "");
-    const parsed = parseSlideCountPhrase(visibleUserText);
-    if (parsed) return parsed;
-  }
-
-  return null;
+  const spec = extractRequestedSlideCountSpecFromMessages(messages);
+  if (!spec) return null;
+  return formatSlideCountPhraseHint(spec.min, spec.max);
 }
 
 /** Sync the in-memory cap tracker from persisted conversation history. */

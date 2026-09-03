@@ -4311,9 +4311,19 @@ const NEO_BRUTAL_ROOT_VARS =
 export function ensureNeoBrutalCssVariableFallback(html: string): string {
   const source = String(html ?? '');
   if (!source) return source;
-  // 루프390/395 — IB magazine leftovers use var(--ink)/var(--paper) on
+  // 루프390/395/400 — IB magazine leftovers use var(--ink)/var(--paper) on
   // 8-bit / Capsule decks; do not inject cream neo :root that fights kit wash.
-  if (officialLookIsEightBitOrbit(source) || officialLookIsCapsule(source)) return source;
+  // Soft Capsule signal (coral + chrome) even when officialLookIsCapsule is weak.
+  if (
+    officialLookIsEightBitOrbit(source)
+    || officialLookIsCapsule(source)
+    || (
+      /--coral\s*:/i.test(source)
+      && /\b(?:title-pill|main-title|deco-pill|deco-pills|floating-pills)\b/i.test(source)
+    )
+  ) {
+    return source;
+  }
   // Do not treat bare magazine `--ink` alone as a neo kit token.
   const usesNeoToken = /var\(\s*--(?:pink|blue|green|yellow|cream|offwhite)\b/i.test(source);
   const usesMagazineOnNeo =

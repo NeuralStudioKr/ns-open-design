@@ -155,7 +155,8 @@ export function parseSlideCountTarget(
 function visibleUserSlideCountSource(content: string): string {
   return (content.split(/\n\n\[Deliverable instruction\]/i)[0] ?? content)
     .split(/\[Template clone (?:content fill|prompt fill)\]/i)[0]
-    ?? content;
+    // Seed/meta line is handled separately via USER_REQUESTED_SLIDE_COUNT_RE.
+    .replace(/^User requested slide count:.*$/gmi, "");
 }
 
 /**

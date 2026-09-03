@@ -78,6 +78,18 @@ describe("slideCountTopUp", () => {
     ])).toEqual({ min: 8, max: 10 });
   });
 
+  it("루프400: visible exact 12장 beats seed-line 8-10 in the same turn", () => {
+    expect(extractRequestedSlideCountSpecFromMessages([
+      {
+        id: "u-exact",
+        role: "user",
+        content: "정확히 12장으로 만들어줘\n\nUser requested slide count: 8-10",
+        createdAt: 1,
+        runContext: { slideCountHint: "8-10" },
+      },
+    ])).toEqual({ min: 12, max: 12 });
+  });
+
   it("루프396: reads 8-10 from runContext when brief-only persist dropped the seed line", () => {
     const messages: ChatMessage[] = [
       {
