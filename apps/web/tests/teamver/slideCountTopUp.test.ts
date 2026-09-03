@@ -57,6 +57,52 @@ describe("slideCountTopUp", () => {
     expect(extractRequestedSlideCountTargetFromMessages(messages)).toBe(15);
   });
 
+  it("루프396: reads 8-10 from runContext when brief-only persist dropped the seed line", () => {
+    const messages: ChatMessage[] = [
+      {
+        id: "u1",
+        role: "user",
+        content: "www.teamver.com 분석해서 서비스 소개 슬라이드 만들어줘",
+        createdAt: 1,
+        runContext: { slideCountHint: "8-10", templateCloneFill: "prompt" },
+      },
+    ];
+    expect(extractRequestedSlideCountSpecFromMessages(messages)).toEqual({ min: 8, max: 10 });
+    expect(shouldQueueSlideCountTopUp({
+      produced: 6,
+      requested: 10,
+      requestedMin: 8,
+      topUpCount: 0,
+      defaultRequested: 6,
+    })).toBe(true);
+    // Without runContext, brief-only + default 6 must NOT top up a closed 6-slide deck.
+    expect(extractRequestedSlideCountSpecFromMessages([
+      userMessage("u2", "www.teamver.com 분석해서 서비스 소개 슬라이드 만들어줘"),
+    ])).toBeNull();
+  });
+
+  it("reads the requested range from prompt-fill seeds so a 6-slide fallback can top up", () => {
+    const messages: ChatMessage[] = [
+      userMessage(
+        "u1",
+        [
+          "www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.",
+          "",
+          "[Template clone prompt fill]",
+          "User requested slide count: 8-10.",
+          "Slide count: 8-10 (close this turn). Emit 8-10 complete slides in THIS artifact.",
+        ].join("\n"),
+      ),
+    ];
+    expect(extractRequestedSlideCountSpecFromMessages(messages)).toEqual({ min: 8, max: 10 });
+    expect(shouldQueueSlideCountTopUp({
+      produced: 6,
+      requested: 10,
+      requestedMin: 8,
+      topUpCount: 0,
+    })).toBe(true);
+  });
+
   it("lets a typed 5-page brief beat a quick-length 6-8 range in the fill seed", () => {
     const messages: ChatMessage[] = [
       userMessage(

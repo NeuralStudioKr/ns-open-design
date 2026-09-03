@@ -140,11 +140,17 @@ describe('templateCloneContentFill', () => {
     expect(seed).toContain('www.teamver.com');
     expect(seed).toContain('[Template clone prompt fill]');
     expect(seed).toContain('Selected template: Html Ppt Zhangzara 블록 프레임');
+    expect(seed).toContain('User requested slide count: 8-10.');
+    expect(seed).toContain('Emit 8-10 complete slides in THIS artifact');
+    expect(seed).toContain('A 6-slide artifact is incomplete for this request');
     expect(seed).toContain('Never claim 9 slides while emitting only a cover');
     expect(seed).toContain('Do not invent quantitative KPIs');
     expect(seed).toContain('complete card (number + label');
     expect(seed).toContain('Do not emit IB magazine chrome');
     expect(seed).toContain('never a raw URL or truncated host crumb');
+    expect(seed).toContain('real service-introduction deck');
+    expect(seed).toContain('close badges, section labels, header pills');
+    expect(seed).toContain('Never nest the whole slide grid inside');
     expect(seed).not.toMatch(/Worked example — brief/i);
     expect(seed).not.toMatch(/Expo for Senior Engineers|expo-modules-core|EAS Build|EXPO_PUBLIC_/i);
     expect(seed).not.toMatch(/Content expansion contract/i);

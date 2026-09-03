@@ -452,6 +452,10 @@ function pickPreferredSurfaceFromVars(vars: Record<string, string>): string | nu
       && /(?:^|-)(?:dark|deep|void|navy|hc|gd|studio|capsule)/i.test(name)
     ));
   if (namedDarkBg) return vars[namedDarkBg]!.trim();
+  // Capsule: --coral + --bg beat neo cream leftovers from IB cover fallback (루프395).
+  if (vars.coral?.trim() && vars.bg?.trim() && !isWhiteOrEmptyBackground(vars.bg)) {
+    return vars.bg.trim();
+  }
   if (vars.cream?.trim()) return vars.cream.trim();
   if (vars.paper?.trim()) return vars.paper.trim();
   const namedBg = Object.keys(vars)

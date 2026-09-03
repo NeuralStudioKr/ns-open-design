@@ -173,6 +173,12 @@ export function extractRequestedSlideCountSpecFromMessages(
     if (isAutoContinueIncompleteOutputPrompt(content)) continue;
     if (isSlideCountTopUpPrompt(content)) continue;
 
+    // 루프395 — brief-only persist drops "User requested slide count"; honor
+    // the fill/Quick-settings hint stored on runContext.
+    const fromRunContext = message.runContext?.slideCountHint
+      ? parseSlideCountSpec(String(message.runContext.slideCountHint), { allowBareNumber: true })
+      : null;
+
     const visible = visibleUserSlideCountSource(content);
     const fromVisible = parseSlideCountSpec(visible);
     const visibleIsExact = fromVisible != null && fromVisible.min === fromVisible.max;
@@ -185,6 +191,7 @@ export function extractRequestedSlideCountSpecFromMessages(
     if (visibleIsExact && (lineIsRange || fromLine == null)) return fromVisible;
     if (fromLine != null) return fromLine;
     if (fromVisible != null) return fromVisible;
+    if (fromRunContext != null) return fromRunContext;
 
     const pluginMatch = content.match(SLIDE_COUNT_PLUGIN_INPUT_RE);
     if (pluginMatch?.[1] && !/stability cap/i.test(pluginMatch[1])) {

@@ -50,6 +50,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: 신규 11 pass · contracts 2964 pass · 시각 pre/post — `11,200+개`→`1,200+개`, `30분..`→`30분.`, 4단계 카드 안에 설명이 완전 재봉합됨(루프394 flex 재조립과 결합).
 
+### 루프396 — Capsule IB 표지 · heading/pill salvage · runContext 8–10 top-up
+
+체감: Capsule인데 IB 매거진 표지 · header-pill/미닫힌 h2에 카드 중첩 · 8–10이 6장으로 끝(brief-only persist).
+
+수정: Capsule restyle · closeOrphanHeadings · extractBlocksFromChromePills · absorbTrailingContentIntoSlideFlow · runContext.slideCountHint · Capsule --bg surface.
+
 ### 루프394-후속 — 8-bit orbit `.starfield` idempotency + 사용자 리포트 fixture
 
 체감: 루프394 병렬 커밋이 사용자 리포트 3개 결함(empty leading slot · `<b>` orphan · duplicate label)을 잡았으나 별도 재현 케이스 발견: 루프390 `restyleForeignIbMagazineCover` 8-bit orbit 분기가 만드는 `.starfield`에 style 속성이 없어 `restoreAtmosphericOverlayPositioning`(loop392)가 2회차 salvage에서 재-styling → salvage idempotency 깨짐.

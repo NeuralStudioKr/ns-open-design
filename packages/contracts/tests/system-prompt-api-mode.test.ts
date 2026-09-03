@@ -851,6 +851,10 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('The user message is THIS turn\'s brief/topic only');
       expect(prompt).toContain('Do not paste the user brief, this contract, or any worked example onto slides');
       expect(prompt).toContain('Emit ONE complete');
+      expect(prompt).toContain('The default 6-slide compact deck is only for unspecified counts');
+      expect(prompt).toContain('incomplete for an 8–10 request');
+      expect(prompt).toContain('website/product briefs need a real service deck');
+      expect(prompt).toContain('Never nest the whole slide grid inside');
       expect(prompt).not.toContain('Emit JSON outline only');
       expect(prompt).not.toContain('# Final authority (READ LAST)');
       expect(prompt).not.toMatch(/Expo for Senior Engineers|EAS Build|expo-modules-core/i);

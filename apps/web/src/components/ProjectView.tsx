@@ -9901,6 +9901,28 @@ export function ProjectView({
             ? String(meta.pluginInputs.slideCount)
             : null
         );
+      // 루프395 — Persist Quick settings / fill count on runContext so top-up
+      // still sees 8–10 after brief-only chat content (루프391).
+      const durableSlideCountHint =
+        fillSlideCountHint
+        ?? (
+          typeof retryTarget?.userMsg?.runContext?.slideCountHint === 'string'
+            ? retryTarget.userMsg.runContext.slideCountHint
+            : null
+        )
+        ?? (
+          typeof baseRunContext?.slideCountHint === 'string'
+            ? baseRunContext.slideCountHint
+            : null
+        );
+      const runContextForPersist = runContext || durableSlideCountHint
+        ? {
+            ...(runContext ?? {}),
+            ...(durableSlideCountHint
+              ? { slideCountHint: String(durableSlideCountHint) }
+              : {}),
+          }
+        : undefined;
       const fillPluginInputs = isCloneHostFillTurn
         ? withTemplateCloneFillPluginInputs(meta?.pluginInputs, fillSlideCountHint)
         : meta?.pluginInputs;
@@ -10121,6 +10143,14 @@ export function ProjectView({
             attachments: instructionAttachments.length > 0
               ? instructionAttachments
               : retryTarget.userMsg.attachments,
+            ...(runContextForPersist
+              ? {
+                  runContext: {
+                    ...(retryTarget.userMsg.runContext ?? {}),
+                    ...runContextForPersist,
+                  },
+                }
+              : {}),
             ...(scopedCommentAttachments.length > 0 && !isAutoContinueSend
               ? { commentAttachments: scopedCommentAttachments }
               : {}),
@@ -10134,7 +10164,7 @@ export function ProjectView({
             ...(meta?.appliedPluginSnapshot
               ? { appliedPluginSnapshot: meta.appliedPluginSnapshot }
               : {}),
-            ...(runContext ? { runContext } : {}),
+            ...(runContextForPersist ? { runContext: runContextForPersist } : {}),
             attachments: effectiveAttachments.length > 0 ? effectiveAttachments : undefined,
             ...(scopedCommentAttachments.length > 0 && !isAutoContinueSend
               ? { commentAttachments: scopedCommentAttachments }

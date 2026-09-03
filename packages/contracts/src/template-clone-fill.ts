@@ -1153,14 +1153,34 @@ function formatEightBitCoverTitle(title: string): string {
   return escapeHtml(title);
 }
 
-/** Drop cream neo :root fallback when the deck is actually 8-Bit Orbit. */
+/** Drop cream neo :root fallback when the deck is actually 8-Bit Orbit or Capsule. */
 export function stripNeoBrutalVarFallbackOnEightBit(html: string): string {
   const source = String(html ?? '');
-  if (!source || !officialLookIsEightBitOrbit(source)) return source;
+  if (!source) return source;
+  if (!officialLookIsEightBitOrbit(source) && !officialLookIsCapsule(source)) return source;
   return source.replace(
     /<style\b[^>]*\bdata-od-neobrutal-var-fallback\b[^>]*>[\s\S]*?<\/style>/gi,
     '',
   );
+}
+
+/**
+ * 루프395 — Capsule (Bodoni + coral pills) look fingerprint.
+ * 루프396 — used for IB cover restyle + neo cream fallback skip.
+ */
+export function officialLookIsCapsule(html: string): boolean {
+  const css = lookCssWithoutNeutralize(html);
+  if (css.trim()) {
+    if (/--coral\s*:\s*#E85D4E/i.test(css) && /Bodoni Moda|\.title-pill\b|\.deco-pill\b/i.test(css)) {
+      return true;
+    }
+    if (/\.slide-1\s+\.title-pill\b/i.test(css) && /\.slide-10\b/i.test(css)) return true;
+  }
+  const deco = [...String(html ?? '').matchAll(
+    /<style\b[^>]*\bdata-od-official-motif-deco-css\b[^>]*>([\s\S]*?)<\/style>/gi,
+  )].map((match) => match[1] ?? '').join('\n');
+  return /\.deco-pills-closing\b|\.f-pill\b/i.test(deco)
+    && /Bodoni Moda|--coral\b|\.deco-pill\b/i.test(String(html ?? ''));
 }
 
 function officialLookIsBiennaleYellow(html: string): boolean {
@@ -1717,6 +1737,119 @@ function unwrapBlocksFromHeadings(html: string): string {
       return `<h${level}${attrs}>${head}</h${level}>${rest}`;
     },
   );
+}
+
+/**
+ * 루프396 — MiniMax often omits `</h2>` so the following card grid is parsed
+ * as heading children (Use Cases / Closing). Close before the first block.
+ */
+export function closeOrphanHeadingsBeforeBlocks(html: string): string {
+  let out = String(html ?? '');
+  const openRe = /<(h[1-3])\b([^>]*)>/gi;
+  const opens: Array<{ index: number; level: string; len: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) {
+    opens.push({ index: match.index, level: match[1]!, len: match[0].length });
+  }
+  for (let i = opens.length - 1; i >= 0; i -= 1) {
+    const { index, level, len } = opens[i]!;
+    const after = out.slice(index + len);
+    const closeMatch = new RegExp(`</${level}\\s*>`, 'i').exec(after);
+    const blockMatch = /<(div|ul|ol|section|article|aside|table|header|footer|p)\b/i.exec(after);
+    if (!blockMatch || blockMatch.index == null) continue;
+    if (closeMatch && closeMatch.index < blockMatch.index) continue;
+    const insertAt = index + len + blockMatch.index;
+    out = `${out.slice(0, insertAt).replace(/[ \t\r\n]+$/u, '')}</${level}>${out.slice(insertAt)}`;
+  }
+  return out;
+}
+
+/**
+ * 루프396 — Feature grids nested inside `header-pill` / short chrome pills
+ * (label "04" + entire card grid). Keep the label; emit the block as a sibling.
+ */
+export function extractBlocksFromChromePills(html: string): string {
+  let out = String(html ?? '');
+  const openRe = /<(div|span)\b[^>]*\b(?:header-pill|orbit-pill)\b[^>]*>/gi;
+  const starts: number[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) starts.push(match.index);
+  for (let i = starts.length - 1; i >= 0; i -= 1) {
+    const start = starts[i]!;
+    const balanced = extractBalancedFrom(out, start);
+    if (!balanced) continue;
+    const open = /^<(div|span)\b[^>]*>/i.exec(balanced)?.[0] ?? '';
+    const tag = /^<(div|span)\b/i.exec(open)?.[1] ?? 'div';
+    const closeLen = new RegExp(`</${tag}\\s*>$`, 'i').exec(balanced)?.[0].length ?? 6;
+    const inner = balanced.slice(open.length, balanced.length - closeLen);
+    const block = /<(div|ul|ol|section|article)\b/i.exec(inner);
+    if (!block || block.index == null) continue;
+    const label = inner.slice(0, block.index).replace(/\s+/g, ' ').trim();
+    if (!label || label.length > 16) continue;
+    const rest = inner.slice(block.index);
+    if (stripTagsToText(rest).length < 24) continue;
+    const replacement = `${open}${escapeHtml(label)}</${tag}>${rest}`;
+    out = `${out.slice(0, start)}${replacement}${out.slice(start + balanced.length)}`;
+  }
+  return out;
+}
+
+/**
+ * 루프396 — After extract, card grids often sit as siblings AFTER
+ * `[data-od-slide-flow]` while the flow only holds the title. Pull content
+ * hosts back into the flow (Motif/header-pill stay siblings).
+ */
+export function absorbTrailingContentIntoSlideFlow(html: string): string {
+  let out = String(html ?? '');
+  const spans = listHealSlideHostSpans(out);
+  for (let s = spans.length - 1; s >= 0; s -= 1) {
+    const span = spans[s]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    const flowOpen = /<div\b[^>]*\bdata-od-slide-flow\b[^>]*>/i.exec(body);
+    if (!flowOpen || flowOpen.index == null) continue;
+    const flowAbs = span.bodyStart + flowOpen.index;
+    const flowBalanced = extractBalancedFrom(out, flowAbs);
+    if (!flowBalanced) continue;
+    const afterFlowStart = flowAbs + flowBalanced.length;
+    const afterFlow = out.slice(afterFlowStart, span.bodyEnd);
+    const trailing: string[] = [];
+    const skippedChrome: string[] = [];
+    let cursor = 0;
+    while (cursor < afterFlow.length) {
+      const ws = /^\s*/.exec(afterFlow.slice(cursor))?.[0].length ?? 0;
+      cursor += ws;
+      if (cursor >= afterFlow.length) break;
+      if (!/^<(?:div|ul|ol|section|article|h[1-6]|p)\b/i.test(afterFlow.slice(cursor))) break;
+      const block = extractBalancedFrom(afterFlow, cursor);
+      if (!block) break;
+      const open = /^<[a-zA-Z][\w-]*\b[^>]*>/i.exec(block)?.[0] ?? '';
+      if (
+        /\bdata-od-official-motif-html\b/i.test(open)
+        || /\b(?:header-pill|orbit-pill|deco-pill|deco-pills|floating-pills)\b/i.test(open)
+        || /\bclass\s*=\s*["'][^"']*\bpill\b/i.test(open) && /position\s*:\s*absolute/i.test(open)
+      ) {
+        skippedChrome.push(block);
+        cursor += block.length;
+        continue;
+      }
+      // Absolute deco with no real body copy stays outside.
+      if (/position\s*:\s*absolute/i.test(open) && stripTagsToText(block).length < 8) {
+        skippedChrome.push(block);
+        cursor += block.length;
+        continue;
+      }
+      trailing.push(block);
+      cursor += block.length;
+    }
+    if (trailing.length === 0) continue;
+    const flowOpenTag = /^<div\b[^>]*>/i.exec(flowBalanced)?.[0] ?? '';
+    const flowCloseLen = /<\/div\s*>$/i.exec(flowBalanced)?.[0].length ?? 6;
+    const flowInner = flowBalanced.slice(flowOpenTag.length, flowBalanced.length - flowCloseLen);
+    const newFlow = `${flowOpenTag}${flowInner}${trailing.join('')}</div>`;
+    const keptTail = `${skippedChrome.join('')}${afterFlow.slice(cursor)}`;
+    out = `${out.slice(0, flowAbs)}${newFlow}${keptTail}${out.slice(span.bodyEnd)}`;
+  }
+  return out;
 }
 
 function collapseSparseRepeatGrids(html: string): string {
@@ -2343,6 +2476,7 @@ function coverAlreadyBiennalePoster(attrs: string, body: string): boolean {
  * MiniMax often copies ribbon/`h1.display`/cover-meta without `.mast`.
  * 루프387 — Block Frame must become `.slide-1` + `.hero-frame`, not IB paper.
  * 루프390 — 8-Bit Orbit must become `.bg-grid.scanlines.grain` + `.pixel-hero-text`.
+ * 루프395 — Capsule must become `.slide-1` + `.title-pill` + `.main-title`.
  */
 export function restyleForeignIbMagazineCover(html: string): string {
   const dest = String(html ?? '');
@@ -2350,7 +2484,8 @@ export function restyleForeignIbMagazineCover(html: string): string {
   const biennale = officialLookIsBiennaleYellow(dest);
   const neo = officialLookIsNeoBrutalBlockFrame(dest);
   const eightBit = officialLookIsEightBitOrbit(dest);
-  if (!biennale && !neo && !eightBit && !destHasPosterSlideKinds(dest)) return dest;
+  const capsule = officialLookIsCapsule(dest);
+  if (!biennale && !neo && !eightBit && !capsule && !destHasPosterSlideKinds(dest)) return dest;
   const spans = listHealSlideHostSpans(dest);
   if (spans.length === 0) return dest;
   const first = spans[0]!;
@@ -2360,12 +2495,12 @@ export function restyleForeignIbMagazineCover(html: string): string {
   if (/\bpixel-hero-text\b/i.test(body) && /\b(?:bg-grid|scanlines|grain)\b/i.test(first.attrs + body)) {
     return dest;
   }
+  if (/\btitle-pill\b/i.test(body) && /\bmain-title\b/i.test(body) && capsule) return dest;
   if (!coverHasIbDisplayHeading(body) || !coverHasIbMagazineChrome(first.attrs, body)) {
     return dest;
   }
-  // No-mast leftover chrome is Biennale/neo/8-bit. Poster-kind alone is too
-  // broad for Daisy/Studio decks that also happen to have s-chapter.
-  if (!/\bmast\b/i.test(body) && !biennale && !neo && !eightBit) return dest;
+  // No-mast leftover chrome is kit-owned. Poster-kind alone is too broad.
+  if (!/\bmast\b/i.test(body) && !biennale && !neo && !eightBit && !capsule) return dest;
   const title = polishUrlSiteCoverTitle(
     polishInstructionCoverTitle(
       (body.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '')
@@ -2385,6 +2520,30 @@ export function restyleForeignIbMagazineCover(html: string): string {
   const subline = attachHangulParticles(subhead);
   const close = dest.slice(first.bodyEnd).match(new RegExp(`^</${first.tag}\\s*>`, 'i'));
   const end = first.bodyEnd + (close?.[0].length ?? 0);
+
+  if (capsule) {
+    const ribbonRaw = (
+      (body.match(/<(?:span|div)\b[^>]*\bribbon\b[^>]*>([\s\S]*?)<\/(?:span|div)>/i)?.[1] ?? '')
+      || (body.match(/<(?:span|div)\b[^>]*\bbrand\b[^>]*>([\s\S]*?)<\/(?:span|div)>/i)?.[1] ?? '')
+    ).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const pill = ribbonRaw && !magazineLeftoverRibbonLabel(ribbonRaw)
+      ? ribbonRaw.slice(0, 28)
+      : (/[가-힣]/.test(title) ? 'SERVICE INTRO' : 'SERVICE INTRO');
+    const subtitle = subline
+      ? `<span class="subtitle">${escapeHtml(subline)}</span>`
+      : '';
+    const inner =
+      `<div class="title-pill">${escapeHtml(pill)}</div>`
+      + `<h1 class="main-title">${escapeHtml(title)}${subtitle}</h1>`;
+    return (
+      `${dest.slice(0, first.start)}<${first.tag} class="slide slide-1" `
+      + `style="width:1920px;height:1080px;box-sizing:border-box;overflow:visible;`
+      + `position:relative;background:var(--bg,#F5F5F0);color:var(--fg,#1A1A1A);`
+      + `display:flex;flex-direction:column;justify-content:center;align-items:center;`
+      + `padding:80px 96px">`
+      + `${inner}</${first.tag}>${dest.slice(end)}`
+    );
+  }
 
   if (eightBit) {
     const ribbonRaw = (
@@ -2734,6 +2893,7 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = next.replace(EARLY_NUMBERED_OL_CLOSE_RE, '$2</ol>$1');
   next = repairBrokenHeadingTypos(next);
   next = repairBareHeadingCloses(next);
+  next = closeOrphanHeadingsBeforeBlocks(next);
   next = unwrapBlocksFromHeadings(next);
   // 루프381 — Model often emits an empty chrome card shell followed by the
   // pill/heading/paragraph triple that should live INSIDE it. Reparent first
@@ -2756,6 +2916,8 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   // 루프395 — Model stutter (`30분</b>.` then another `.`) becomes visible
   // as ". ." at the end of a description; collapse.
   next = dedupeAdjacentSentencePunctuation(next);
+  next = extractBlocksFromChromePills(next);
+  next = absorbTrailingContentIntoSlideFlow(next);
   next = pinDecorativeGradientOverlays(next);
   next = restoreAtmosphericOverlayPositioning(next);
   next = pinNeoBrutalEmptyDecoBlocks(next);
@@ -4994,6 +5156,7 @@ export function healSparseDeckCoverLayout(
   if (!coverTitle || isGenericDeckArtifactTitle(coverTitle) || !dest.trim()) return dest;
   if (officialLookIsNeoBrutalBlockFrame(dest)) return dest;
   if (officialLookIsEightBitOrbit(dest)) return dest;
+  if (officialLookIsCapsule(dest)) return dest;
   if (destHasPosterSlideKinds(dest) && !officialLookIsIbMagazine(dest)) return dest;
   if (lookCssWithoutNeutralize(dest).trim() && !officialLookIsIbMagazine(dest)) return dest;
   // 루프387/390 — LOOK CSS is merged AFTER this heal, so the `lookCssWithout

@@ -21,7 +21,7 @@ import {
   HOME_FILL_SLIDES_PROMPT_LEGACY,
   isSlideCreateBoilerplateLine,
 } from './slideCreateBoilerplate';
-import { isSlideCountRangeHint, parseSlideCountTarget } from './slideCountTopUp';
+import { isSlideCountRangeHint, parseSlideCountSpec, parseSlideCountTarget } from './slideCountTopUp';
 import { readTeamverViteEnv } from './teamverViteEnv';
 
 /** Keep local — contracts barrel can be undefined during web test init. */
@@ -518,6 +518,31 @@ export function formatUserRequestedSlideCountLine(
   return `User requested slide count: ${raw}.`;
 }
 
+function formatSlideCountRange(spec: { min: number; max: number }): string {
+  return spec.min === spec.max ? String(spec.max) : `${spec.min}-${spec.max}`;
+}
+
+function templateClonePromptFillSlideCountInstruction(input: {
+  slideCountHint?: string | null;
+  slideCountHintSource?: string | number | null;
+}): string {
+  const slideCountHint = String(input.slideCountHint ?? '').trim();
+  const source = String(input.slideCountHintSource ?? slideCountHint).trim();
+  const spec = parseSlideCountSpec(source, { allowBareNumber: true })
+    ?? parseSlideCountSpec(slideCountHint, { allowBareNumber: true });
+  if (spec && spec.max <= FIRST_FILL_HONOR_MAX) {
+    const range = formatSlideCountRange(spec);
+    const missClause = spec.min > FIRST_FILL_SLIDE_COUNT_THIS_TURN
+      ? ` A ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}-slide artifact is incomplete for this request and must trigger/avoid a repair.`
+      : '';
+    return [
+      `Slide count: ${slideCountHint || range}.`,
+      `Emit ${range} complete slides in THIS artifact; do not stop at a default ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}-slide compact deck.${missClause}`,
+    ].join(' ');
+  }
+  return `Slide count: ${slideCountHint || FIRST_FILL_SLIDE_COUNT_GUIDANCE}.`;
+}
+
 export function extractTemplateCloneFillSlideCountHintFromPrompt(
   prompt: string | null | undefined,
 ): string | null {
@@ -612,6 +637,7 @@ export function buildTemplateClonePromptFillSeed(options: {
       ? visibleSlideCount
       : (options.slideCountHint ?? visibleSlideCount);
   const slideCountHint = normalizeTemplateCloneFillSlideCountHint(slideCountHintSource);
+  const requestedLine = formatUserRequestedSlideCountLine(slideCountHintSource);
   const parts = [
     visible,
     '',
@@ -632,7 +658,11 @@ export function buildTemplateClonePromptFillSeed(options: {
     'The visible request above is THIS turn\'s brief/topic. Do NOT paste the user instruction, this host contract, or any system-prompt worked example onto the cover or body slides.',
     topic ? `Cover topic (use as the title, not the instruction): ${topic}.` : '',
     SLIDE_DECK_QUALITY_BAR_INSTRUCTION,
-    `Slide count: ${slideCountHint || FIRST_FILL_SLIDE_COUNT_GUIDANCE}.`,
+    requestedLine,
+    templateClonePromptFillSlideCountInstruction({ slideCountHint, slideCountHintSource }),
+    'If the source is a website or product URL, build a real service-introduction deck: problem/context, product promise, core workflow, key features, user/team use cases, integration/security/operation notes, adoption path, and closing. Do not stop at a shallow brand intro.',
+    'Every content slide needs 2-4 concrete cards/bullets/paragraphs derived from the brief/source. A slide with only a section number and one generic title is incomplete.',
+    'HTML structure guard: close badges, section labels, header pills, and number pills before opening grids/cards. Never nest the whole slide grid inside a `.header-pill`, `.title-pill`, `.tag`, or badge element.',
     'Every slide must be 1920x1080, fixed-size, overflow hidden, and navigable as a deck, not a scrolling article.',
     'Do not stop after a status sentence, outline, or partial `<head>`; close `</html></artifact>`.',
   ].filter((line) => line !== '');

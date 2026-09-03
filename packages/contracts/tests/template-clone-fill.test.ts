@@ -40,6 +40,10 @@ import {
   rejoinPrematureFlexStepRows,
   absorbOrphanFlexStepDescriptions,
   collapseAdjacentDuplicateLabelDivs,
+  closeOrphanHeadingsBeforeBlocks,
+  extractBlocksFromChromePills,
+  absorbTrailingContentIntoSlideFlow,
+  officialLookIsCapsule,
   stripLeafEmptyListAndParagraphShells,
   restyleBiennaleSparseChapterBodies,
   restyleBiennaleSparseDataBodies,
@@ -821,6 +825,82 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     );
     expect(salvaged).toMatch(/class="starfield"[^>]*position:absolute/);
     expect(salvaged.match(/grid-template-columns:0\.4fr 0\.3fr 0\.3fr/g)?.length).toBe(2);
+  });
+
+  it('루프396: Capsule IB cover restyle, unclosed heading/pill salvage', () => {
+    const capsuleLook = `<style data-od-official-look-css="">:root{--coral:#E85D4E;--bg:#F5F5F0;--fg:#1A1A1A}
+.slide-1 .title-pill{background:var(--yellow)}.slide-10 .closing-content{}</style>`;
+    expect(officialLookIsCapsule(capsuleLook)).toBe(true);
+
+    const ibCover = `<!doctype html><html><body>
+<section class="slide cover" style="background:var(--paper)">
+<header class="mast"><span class="brand">표지</span></header>
+<div class="body"><span class="ribbon">표지</span><h1 class="display">팀버 소개</h1></div>
+<footer class="foot"><span class="conf">팀버 소개</span></footer>
+</section>
+<section class="slide"><h2>본문</h2><p>캡슐 본문 카피입니다.</p></section>
+${capsuleLook}
+</body></html>`;
+    const restyled = restyleForeignIbMagazineCover(ibCover);
+    expect(restyled).toMatch(/class="slide slide-1"/);
+    expect(restyled).toMatch(/title-pill/);
+    expect(restyled).toMatch(/main-title/);
+    expect(restyled).not.toMatch(/h1 class="display"|class="mast"/);
+    expect(restyled).toContain('팀버 소개');
+
+    const unclosed = closeOrphanHeadingsBeforeBlocks(
+      '<h2 style="font-size:84px">이렇게 사용합니다'
+      + '<div style="display:grid;grid-template-columns:repeat(4,1fr)"><div>A</div></div>',
+    );
+    expect(unclosed).toMatch(/<\/h2>\s*<div style="display:grid/);
+
+    const pillNested = extractBlocksFromChromePills(
+      '<div class="header-pill pill-sky" style="position:absolute">04'
+      + '<div style="display:grid;grid-template-columns:repeat(3,1fr)">'
+      + '<div style="padding:32px"><h3>AI 기반 매칭</h3><p>역할·기술·일정을 분석합니다.</p></div>'
+      + '</div></div>',
+    );
+    expect(pillNested).toMatch(/header-pill[^>]*>04<\/div>/);
+    expect(pillNested).toMatch(/display:grid[\s\S]*AI 기반 매칭/);
+
+    const trailing = absorbTrailingContentIntoSlideFlow(
+      '<section class="slide"><div data-od-slide-flow><h2>네 가지 핵심 기능</h2></div>'
+      + '<div class="header-pill" style="position:absolute">04</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(3,1fr)">'
+      + '<div><h3>카드</h3><p>설명 문장이 충분히 깁니다.</p></div></div></section>',
+    );
+    expect(trailing).toMatch(
+      /data-od-slide-flow[\s\S]*네 가지 핵심 기능[\s\S]*display:grid[\s\S]*카드[\s\S]*<\/div>\s*<div class="header-pill"/,
+    );
+
+    const endToEnd = salvageMalformedMiniMaxSlideMarkup(
+      `<!doctype html><html><body>
+<section class="slide cover" style="background:var(--paper)">
+<header class="mast"><span class="brand">표지</span></header>
+<div class="body"><h1 class="display">팀버 소개</h1></div>
+</section>
+<section class="slide">
+<div data-od-slide-flow><h2>네 가지 핵심 기능</h2></div>
+<div class="header-pill">04<div style="display:grid;grid-template-columns:repeat(2,1fr)">
+<div style="padding:24px"><h3>매칭</h3><p>검증된 팀원을 빠르게 연결합니다.</p></div>
+<div style="padding:24px"><h3>정산</h3><p>에스크로로 안전하게 정산합니다.</p></div>
+</div></div>
+</section>
+<section class="slide">
+<div data-od-slide-flow>
+<h2>이렇게 사용합니다<div style="display:grid;grid-template-columns:repeat(2,1fr)">
+<div><h3>스타트업</h3><p>초기 팀을 빠르게 구성합니다.</p></div>
+</div>
+</div>
+</section>
+${capsuleLook}
+<style data-od-neobrutal-var-fallback="">:root{--cream:#FFDC8B;--paper:var(--cream)}</style>
+</body></html>`,
+    );
+    expect(endToEnd).toMatch(/title-pill|main-title/);
+    expect(endToEnd).not.toMatch(/data-od-neobrutal-var-fallback/);
+    expect(endToEnd).toMatch(/data-od-slide-flow[\s\S]*매칭/);
+    expect(endToEnd).toMatch(/<\/h2>\s*<div[^>]*display:grid/);
   });
 
   it('루프394: drops empty first slide, pins neo deco, rejoins broken flex steps', () => {
