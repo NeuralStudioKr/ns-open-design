@@ -50,6 +50,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: 신규 11 pass · contracts 2964 pass · 시각 pre/post — `11,200+개`→`1,200+개`, `30분..`→`30분.`, 4단계 카드 안에 설명이 완전 재봉합됨(루프394 flex 재조립과 결합).
 
+### 루프397 — 회전 pill의 inline-block 정규화
+
+체감: 슬라이드 2 `OVERVIEW` 라벨이 `display:inline-block`/`width` 없이 `transform:rotate(4deg)`만 걸린 block-level `<div>`라 부모 전체 폭을 차지하고 회전하여 슬라이드를 가로지르는 거대한 분홍 대각선 바로 렌더, 콘텐츠 압도. 같은 모델이 커버의 `SERVICE INTRODUCTION`은 `display:inline-block;width:fit-content;`로 올바르게 emit — 케이스마다 일관성 없음.
+
+수정: 신규 `normalizeRotatedInlinePills` — `transform:rotate` + `padding` + `background` + `border|box-shadow` + leaf 텍스트 2–120자 + `display:inline*|flex|grid` 없음 + `width:` 없음 조건 모두 충족 시 `display:inline-block;width:fit-content;`를 style 뒤에 추가. `salvage` 파이프라인에 deco pin 직후 wire. 회전 없는 CTA bar, 이미 inline-block, width 지정, 긴 문단은 노-op.
+
+검증: 신규 10/10 pass · contracts 2975 pass · 시각 pre/post — 분홍 대각선 바 → 좌상단 소형 회전 pill, 하단 콘텐츠 정상.
+
 ### 루프396 — Capsule IB 표지 · heading/pill salvage · runContext 8–10 top-up
 
 체감: Capsule인데 IB 매거진 표지 · header-pill/미닫힌 h2에 카드 중첩 · 8–10이 6장으로 끝(brief-only persist).

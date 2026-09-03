@@ -2060,6 +2060,58 @@ export function pinNeoBrutalEmptyDecoBlocks(html: string): string {
 }
 
 /**
+ * 루프397 — MiniMax often emits a tilted decorative pill as
+ * `<div style="padding:...;background:...;border:...;transform:rotate(4deg)">
+ * OVERVIEW</div>` — a block-level element with no explicit width and no
+ * `display:inline-block`. `<div>` defaults to full-parent-width, so the
+ * pill fills the slide edge-to-edge and the `transform:rotate` turns it
+ * into a giant diagonal bar that swallows the slide content underneath
+ * (user report 2026-09-03 slide 02).
+ *
+ * Cover-side pills the same model writes correctly include
+ * `display:inline-block;width:fit-content;` — this heal just normalizes
+ * the missed ones. Only touch divs that:
+ *   - carry `transform:rotate(…)` in their inline style (strong signal
+ *     of a decorative label; unrotated full-width bars like the CTA
+ *     rows on slide 6 are intentional and stay untouched),
+ *   - contain only leaf text (no nested block elements) up to ~120
+ *     chars so we never wrap a paragraph or card body,
+ *   - do NOT already declare `display:inline-block|inline-flex|flex|
+ *     grid|inline` and do NOT declare a `width:` value.
+ *
+ * Add `display:inline-block;width:fit-content;` so the pill shrinks to
+ * its content and the rotation stays local.
+ */
+const ROTATED_PILL_LEAF_RE = /<div\b([^>]*)>([^<]{2,120})<\/div>/gi;
+
+export function normalizeRotatedInlinePills(html: string): string {
+  const out = String(html ?? '');
+  if (!out || !/transform\s*:\s*rotate/i.test(out)) return out;
+  return out.replace(
+    ROTATED_PILL_LEAF_RE,
+    (full, attrs: string, text: string) => {
+      const style = /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i.exec(attrs)?.[2] ?? '';
+      if (!style) return full;
+      if (!/transform\s*:\s*rotate\s*\(/i.test(style)) return full;
+      if (/\bdisplay\s*:\s*(?:inline(?:-block|-flex)?|flex|grid)\b/i.test(style)) return full;
+      if (/\bwidth\s*:\s*(?:\d|auto|fit-content|max-content|min-content|100%|calc\()/i.test(style)) return full;
+      // Pill signal: padding + background + border/box-shadow.
+      if (!/\bpadding\s*:/i.test(style)) return full;
+      if (!/\bbackground(?:-color)?\s*:/i.test(style)) return full;
+      if (!/\b(?:border|box-shadow)\s*:/i.test(style)) return full;
+      // Text must be non-empty.
+      if (!text.trim()) return full;
+      const rewritten = rewriteStyleAttr(`<div${attrs}>`, (prev) => {
+        const cleaned = String(prev).replace(/;;+/g, ';').replace(/^;|;$/g, '').trim();
+        const sep = cleaned && !cleaned.endsWith(';') ? ';' : '';
+        return `${cleaned}${sep}display:inline-block;width:fit-content;`;
+      });
+      return `${rewritten}${text}</div>`;
+    },
+  );
+}
+
+/**
  * 루프394 — How-it-works row often closes after step 01; remaining `flex:1`
  * cards leak as siblings under the slide flow. Pull them back into the row.
  */
@@ -2921,6 +2973,10 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = pinDecorativeGradientOverlays(next);
   next = restoreAtmosphericOverlayPositioning(next);
   next = pinNeoBrutalEmptyDecoBlocks(next);
+  // 루프397 — Constrain rotated block-level decorative pills to
+  // inline-block so a `transform:rotate` pill (`OVERVIEW`) does not
+  // stretch full-width and paint a giant diagonal bar across the slide.
+  next = normalizeRotatedInlinePills(next);
   next = healOrphanRadialCircles(next);
   next = dropEmptyDeckSlides(next);
   next = restyleForeignIbMagazineCover(next);
