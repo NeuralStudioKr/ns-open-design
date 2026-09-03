@@ -154,6 +154,21 @@ describe("slideCountTopUp", () => {
     expect(extractRequestedSlideCountTargetFromMessages(messages)).toBe(5);
   });
 
+  it("does not queue hidden top-up when 8 of an 8-10 honor already closed", () => {
+    expect(shouldQueueSlideCountTopUp({
+      produced: 8,
+      requested: 10,
+      requestedMin: 8,
+      topUpCount: 0,
+    })).toBe(false);
+    expect(shouldQueueSlideCountTopUp({
+      produced: 6,
+      requested: 10,
+      requestedMin: 8,
+      topUpCount: 0,
+    })).toBe(true);
+  });
+
   it("treats a 5-6 short preset as done at 5 pages", () => {
     const messages: ChatMessage[] = [
       userMessage(

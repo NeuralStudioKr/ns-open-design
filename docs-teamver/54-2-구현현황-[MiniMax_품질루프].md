@@ -42,6 +42,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프402 — 명시 8–10 first-fill 한 턴
+
+체감: Standard 8–10을 골라도 첫 턴이 6장 + 숨김 top-up. 계보/`slideCountHint`는 루프395–400이 고쳤지만 스트리밍 READ LAST가 `at least 6` / `close 6 THIS TURN`을 그대로 가르침(백틱 있는 문구만 바꿔서 교체가 빗나감).
+
+수정: honor hint로 스트리밍·compact 장수 문구를 8–10으로 교체 · honor READ LAST · `firstFillSlideCountHint`에 durable/plugin slideCount · auto-continue 7–10 OVERRIDE. 8장 마감은 top-up 없음. 6장 미스는 salvage.
+
+검증: contracts compact/system-prompt · web topUp/resume/recovery/project-view pin.
+
 ### 루프401 — `pure-prompt` opt-in 세 번째 fill 모드
 
 체감: 루프390~397 salvage/heal 개선과 루프398~400 Capsule/Spec-Hint 정합 이후에도 사용자가 "결과가 부자연스럽다, Clone 이전의 프롬프트 방식이 완성도 측면에서 더 나았다"고 명시적으로 언급. `prompt` 모드도 daemon LOOK seed + `TEAMVER_TEMPLATE_CLONE_PROMPT_FILL_CONTRACT` 이중 지시(LOOK seed 참고 + 새 콘텐츠 생성)로 모델의 자연스러운 출력을 저해한다는 가설.
@@ -1909,6 +1917,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | persist/preview: 칸 번호만 있는 3열 카드(스무 번째) | ☑ 루프355 |
 | preview: neutralize column `#stage` leftover host ←/→ nudge | ☑ 루프361 |
 | chat/persist: Clone 호스트 계약은 시스템 프롬프트 · user turn brief-only · runContext 계보 | ☑ 루프391 |
+| prompts: 명시 8–10 first-fill 한 턴 · streaming/compact "close 6" 덮어쓰기 | ☑ 루프402 |
 | chat/persist: Clone prompt-fill 호스트 계약 숨김 · Expo 예시 user-turn 제거 | ☑ 루프382 |
 | preview: leftover host-nav 불변식 (clone-size · deco · gotoIndex) | ☑ 루프378 |
 | preview: leftover `#stage`+swipe script deco residue host ←/→ nudge | ☑ 루프374 |
@@ -1943,7 +1952,24 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프391 · 호스트 계약은 시스템 프롬프트)
+## 이번 루프 (루프402 · 명시 8–10 first-fill 한 턴)
+
+- [x] `applyFirstFillArtifactCountPhrase` — 백틱 없는 `at least 6` + `close 6 THIS TURN` 교체
+- [x] honor READ LAST — stopping at 6 is a failed deliverable, no hidden top-up
+- [x] `firstFillSlideCountHint` ← durable/`pluginInputs.slideCount` (8-10)
+- [x] auto-continue honor 7–10 OVERRIDE
+- [x] produced 8 of 8–10 → top-up 없음 · 6장 미스는 salvage
+- [x] contracts compact/system-prompt · web topUp/resume/recovery
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+- [ ] FileViewer/채팅 브라우저 클릭 (이 환경에서 불가 — 유지)
+
+## 직전 루프 (루프401 · `pure-prompt` opt-in)
+
+- [x] `TemplateCloneFillMode` `'pure-prompt'` · `shouldSkipTemplateCloneSeed`
+- [x] 홈/Canvas/Drive clone-seed 4곳 가드
+- [x] kit spec은 시스템 프롬프트에 유지
+
+## 직전 루프 (루프391 · 호스트 계약은 시스템 프롬프트)
 
 - [x] persistableUserMessageContent — user turn은 brief만
 - [x] `templateClonePromptFill` 시스템 프롬프트 HTML-fill 계약 (JSON과 상호 배타)

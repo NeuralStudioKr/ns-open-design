@@ -132,6 +132,8 @@ describe("ProjectView message loading", () => {
     expect(block).not.toContain("handlers.onError(new TeamverDaemonUnauthorizedError())");
     expect((source.match(/skipEmbedAuthRecovery: true/g) ?? []).length).toBeGreaterThanOrEqual(2);
     expect(source).not.toContain("fetch('/api/memory/extract'");
+    expect(source).toContain("firstFillSlideCountHint:");
+    expect(source).toContain("slideCountHint:");
     expect(source).toContain("const persistedUserContent = persistableUserMessageContent(");
     expect(source).toContain("const userText = stripUserVisibleUserMessageText(prompt).trim()");
     expect(source).not.toContain("const userText = (userMsg.content ?? '').trim()");

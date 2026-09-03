@@ -202,6 +202,20 @@ describe('extractRequestedSlideCountHintFromMessages', () => {
     ];
     expect(extractRequestedSlideCountHintFromMessages(messages)).toContain('정확히 15장');
   });
+
+  it('reads 8-10 from runContext after persist stores the brief only', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'u1',
+        role: 'user',
+        content: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+        createdAt: 1,
+        runContext: { slideCountHint: '8-10' },
+      },
+    ];
+    expect(extractRequestedSlideCountHintFromMessages(messages)).toContain('8–10');
+    expect(extractRequestedSlideCountHintFromMessages(messages)).toContain('정확히 10장');
+  });
 });
 
 describe('syncAutoContinueCountFromMessages', () => {

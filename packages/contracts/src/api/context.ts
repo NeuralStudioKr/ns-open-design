@@ -18,8 +18,8 @@ export interface RunContextSelection {
   templateCloneFill?: 'prompt' | 'json';
   /**
    * 루프395 — Quick settings / fill seed slide count. Persistable content is
-   * brief-only (루프391), so top-up must read this instead of
-   * `User requested slide count:` lines stripped from chat.
+   * brief-only (루프391), so top-up / first-fill compose must read this
+   * instead of `User requested slide count:` lines stripped from chat.
    */
   slideCountHint?: string;
   /** Design system pin for this turn — chip restore after reload. */

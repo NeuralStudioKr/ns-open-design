@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  applyFirstFillArtifactCountPhrase,
+  compactFirstFillArtifactCountPhrase,
+  compactFirstFillHonorReadLast,
+  COMPACT_FIRST_FILL_DEFAULT_ARTIFACT_COUNT_PHRASE,
+  COMPACT_FIRST_FILL_DEFAULT_ARTIFACT_COUNT_PHRASE_PLAIN,
   COMPACT_FIRST_FILL_HONOR_MAX,
   COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE,
   COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN,
@@ -351,6 +356,47 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
       /honor an explicit user count of 1–6/i,
     );
     expect(COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE).not.toContain('7 or more');
+    expect(compactFirstFillArtifactCountPhrase('8-10')).toMatch(/8–10 filled/);
+    expect(compactFirstFillArtifactCountPhrase('8-10')).toMatch(/stopping at 6 is a failed deliverable/i);
+    expect(compactFirstFillArtifactCountPhrase('8-10')).toMatch(/no hidden top-up/i);
+    expect(compactFirstFillArtifactCountPhrase('8-10')).not.toBe(
+      COMPACT_FIRST_FILL_DEFAULT_ARTIFACT_COUNT_PHRASE,
+    );
+    expect(compactFirstFillArtifactCountPhrase(undefined)).toBe(
+      COMPACT_FIRST_FILL_DEFAULT_ARTIFACT_COUNT_PHRASE,
+    );
+    expect(compactFirstFillArtifactCountPhrase('6-8')).toBe(
+      COMPACT_FIRST_FILL_DEFAULT_ARTIFACT_COUNT_PHRASE,
+    );
+    expect(compactFirstFillHonorReadLast('8-10')).toMatch(/Close 8–10 complete body-first slides/);
+    expect(compactFirstFillHonorReadLast('8-10')).toMatch(/beats "close 6 THIS TURN"/);
+    expect(compactFirstFillHonorReadLast('8-10 (close this turn)')).toMatch(/Close 8–10 complete body-first slides/);
+    expect(compactFirstFillHonorReadLast(undefined)).toBeNull();
+    expect(compactFirstFillHonorReadLast('6-8')).toBeNull();
+    expect(
+      applyFirstFillArtifactCountPhrase(
+        `…${COMPACT_FIRST_FILL_DEFAULT_ARTIFACT_COUNT_PHRASE_PLAIN}… close 6 THIS TURN`,
+        '8-10',
+      ),
+    ).toMatch(/8–10 filled <section class="slide">/);
+    expect(
+      applyFirstFillArtifactCountPhrase(
+        `…${COMPACT_FIRST_FILL_DEFAULT_ARTIFACT_COUNT_PHRASE_PLAIN}… close 6 THIS TURN`,
+        '8-10',
+      ),
+    ).toContain('close 8–10 THIS TURN');
+    expect(
+      applyFirstFillArtifactCountPhrase(
+        `…${COMPACT_FIRST_FILL_DEFAULT_ARTIFACT_COUNT_PHRASE_PLAIN}… close 6 THIS TURN`,
+        '8-10',
+      ),
+    ).not.toContain(COMPACT_FIRST_FILL_DEFAULT_ARTIFACT_COUNT_PHRASE_PLAIN);
+    expect(
+      applyFirstFillArtifactCountPhrase(
+        `…${COMPACT_FIRST_FILL_DEFAULT_ARTIFACT_COUNT_PHRASE_PLAIN}… close 6 THIS TURN`,
+        '6-8',
+      ),
+    ).toContain(COMPACT_FIRST_FILL_DEFAULT_ARTIFACT_COUNT_PHRASE_PLAIN);
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toContain(
       COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE,
     );

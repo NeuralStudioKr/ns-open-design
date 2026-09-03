@@ -837,6 +837,28 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(fill.length).toBeLessThan(42_000);
     });
 
+    it('honors an 8-10 first-fill in one turn — no close-6 / top-up 11+ example', () => {
+      const prompt = composeTeamverSlideApiPrompt({
+        skillName: 'Html Ppt Zhangzara 블록 프레임',
+        metadata: {
+          kind: 'deck',
+          skipDiscoveryBrief: true,
+          selectedDeckTemplateId: 'example-html-ppt-zhangzara-block-frame',
+        },
+        firstFillSlideCountHint: '8-10',
+      });
+      expect(prompt).toContain('8–10 filled');
+      expect(prompt).toContain('stopping at 6 is a failed deliverable');
+      expect(prompt).toContain('Close 8–10 complete body-first slides in THIS response');
+      expect(prompt).toContain('Do not leave remaining pages for hidden top-up');
+      expect(prompt).toContain('close 8–10 THIS TURN');
+      expect(prompt).not.toContain('close 6 THIS TURN');
+      expect(prompt).not.toMatch(/at least 6 filled `<section class="slide">` blocks this turn \(top-up only for 11\+/);
+      expect(prompt).not.toContain(
+        'at least 6 filled <section class="slide"> blocks this turn (top-up only for 11+)',
+      );
+    });
+
     it('routes prompt-fill to the HTML host contract, not JSON slot-fill', () => {
       const prompt = composeTeamverSlideApiPrompt({
         skillName: 'Html Ppt Zhangzara 블록 프레임',

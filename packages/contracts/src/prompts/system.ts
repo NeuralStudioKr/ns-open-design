@@ -44,6 +44,8 @@ import {
   COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE,
   COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN,
   COMPACT_FIRST_FILL_TOP_UP_FROM,
+  applyFirstFillArtifactCountPhrase,
+  compactFirstFillHonorReadLast,
 } from './deck-framework.js';
 import {
   SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE,
@@ -484,6 +486,11 @@ export interface ComposeInput {
    * when this is true, JSON fill rules must not apply.
    */
   templateClonePromptFill?: boolean | undefined;
+  /**
+   * Plugin/user slideCount for this first-fill (e.g. `8-10`). When set,
+   * streaming rules must not keep the default "close 6 / top-up 11+" example.
+   */
+  firstFillSlideCountHint?: string | undefined;
 }
 
 /**
@@ -537,6 +544,7 @@ export function composeSystemPrompt({
   includeExistingDeckImageEditRule,
   templateCloneContentFill,
   templateClonePromptFill,
+  firstFillSlideCountHint,
 }: ComposeInput): string {
   // Discovery + philosophy goes FIRST so its hard rules ("emit a form on
   // turn 1", "branch on brand on turn 2", "TodoWrite on turn 3", run
@@ -585,6 +593,7 @@ export function composeSystemPrompt({
       includeExistingDeckImageEditRule,
       templateCloneContentFill,
       templateClonePromptFill,
+      firstFillSlideCountHint,
     });
   }
 
@@ -1586,6 +1595,7 @@ export function composeTeamverSlideApiPrompt({
   includeExistingDeckImageEditRule,
   templateCloneContentFill,
   templateClonePromptFill,
+  firstFillSlideCountHint,
 }: Pick<
   ComposeInput,
   | 'skillBody'
@@ -1604,6 +1614,7 @@ export function composeTeamverSlideApiPrompt({
   | 'includeExistingDeckImageEditRule'
   | 'templateCloneContentFill'
   | 'templateClonePromptFill'
+  | 'firstFillSlideCountHint'
 >): string {
   const htmlPromptFill = templateClonePromptFill === true;
   const jsonSlotFill = templateCloneContentFill === true && !htmlPromptFill;
@@ -1785,11 +1796,14 @@ export function composeTeamverSlideApiPrompt({
   // compact wireframe (`#0f172a` / Inter). Models overweight the last concrete
   // HTML samples and rewrite Daisy Days / Zhangzara kits into sparse corporate.
   parts.push(
-    jsonSlotFill
-      ? DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL
-      : hasSelectedTemplate
-      ? DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE
-      : DECK_FRAMEWORK_DIRECTIVE_COMPACT,
+    applyFirstFillArtifactCountPhrase(
+      jsonSlotFill
+        ? DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL
+        : hasSelectedTemplate
+        ? DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE
+        : DECK_FRAMEWORK_DIRECTIVE_COMPACT,
+      firstFillSlideCountHint,
+    ),
   );
   parts.push(TEAMVER_API_DECK_FRAMEWORK_OVERRIDE.trim());
   if (!directDeckGeneration) {
@@ -1812,9 +1826,12 @@ export function composeTeamverSlideApiPrompt({
       parts.push(TEAMVER_TEMPLATE_CLONE_PROMPT_FILL_CONTRACT);
     }
     parts.push(
-      directDeckGeneration
-        ? TEAMVER_SLIDE_API_DIRECT_STREAMING_RULE
-        : TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE,
+      applyFirstFillArtifactCountPhrase(
+        directDeckGeneration
+          ? TEAMVER_SLIDE_API_DIRECT_STREAMING_RULE
+          : TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE,
+        firstFillSlideCountHint,
+      ),
     );
     // Edit contracts are turn-gated: greenfield Canvas→Slide creates must not
     // pay ~3–4KB of patch/image READ LAST rules. FE sets these when the turn
@@ -1835,6 +1852,8 @@ export function composeTeamverSlideApiPrompt({
       );
     }
   }
+  const honorCount = compactFirstFillHonorReadLast(firstFillSlideCountHint);
+  if (honorCount) parts.push(honorCount);
 
   return parts.join('\n\n---\n\n');
 }

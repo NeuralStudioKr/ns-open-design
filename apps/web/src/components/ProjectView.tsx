@@ -6803,6 +6803,7 @@ export function ProjectView({
       /** Clone LOOK → fill: strip Motif SVG dumps from the system kit. */
       templateCloneContentFill?: boolean;
       templateClonePromptFill?: boolean;
+      firstFillSlideCountHint?: string;
     } | null,
   ): Promise<string> => {
     let skillBody: string | undefined;
@@ -7135,6 +7136,9 @@ export function ProjectView({
         : {}),
       ...(slideEditContracts?.templateClonePromptFill === true
         ? { templateClonePromptFill: true }
+        : {}),
+      ...(slideEditContracts?.firstFillSlideCountHint
+        ? { firstFillSlideCountHint: slideEditContracts.firstFillSlideCountHint }
         : {}),
     });
   }, [
@@ -9919,6 +9923,16 @@ export function ProjectView({
           || typeof meta?.pluginInputs?.slideCount === 'number'
             ? String(meta.pluginInputs.slideCount)
             : null
+        )
+        ?? (
+          typeof retryTarget?.userMsg.runContext?.slideCountHint === 'string'
+            ? retryTarget.userMsg.runContext.slideCountHint
+            : null
+        )
+        ?? (
+          typeof baseRunContext?.slideCountHint === 'string'
+            ? baseRunContext.slideCountHint
+            : null
         );
       // 루프398 — Persist the *uncapped* user/quick-settings count (e.g. "8-10"),
       // never a first-fill stability-cap string. brief-only chat (루프391) drops
@@ -12170,7 +12184,7 @@ export function ProjectView({
           appliedSnapshotPluginId = snap?.pluginId ?? null;
           if (snap) pluginBlock = renderPluginBlock(snap, { role: pluginBlockRole });
         }
-        if (isCloneContentFillTurn) {
+        if (isCloneHostFillTurn) {
           const override = templateCloneFillSlideCountOverrideNotice(
             fillSlideCountHint
             ?? (
@@ -12231,6 +12245,9 @@ export function ProjectView({
                 ),
               templateCloneContentFill: isCloneContentFillTurn,
               templateClonePromptFill: isClonePromptFillTurn,
+              ...(durableSlideCountHint || fillSlideCountHint
+                ? { firstFillSlideCountHint: durableSlideCountHint || fillSlideCountHint }
+                : {}),
             },
           );
           const kitMissTemplateId = shouldNotifyTemplateVisualKitMiss({

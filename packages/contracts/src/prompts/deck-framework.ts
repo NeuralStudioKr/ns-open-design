@@ -594,6 +594,137 @@ export const COMPACT_FIRST_FILL_TOP_UP_FROM = 11;
 export const COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE =
   `Slide count THIS TURN: honor an explicit user count of 1–${COMPACT_FIRST_FILL_HONOR_MAX} (5-6/5~6 → close ≥5 this turn; 8-10 → close this turn). If the user asked for ${COMPACT_FIRST_FILL_TOP_UP_FROM} or more, close ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} this turn. Never close after a single cover or after 3 slides when the target is 5+ — no 3+3+3 split.`;
 
+export const COMPACT_FIRST_FILL_DEFAULT_ARTIFACT_COUNT_PHRASE =
+  `at least ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} filled \`<section class="slide">\` blocks this turn (top-up only for ${COMPACT_FIRST_FILL_TOP_UP_FROM}+)`;
+
+/** Streaming READ LAST examples omit the markdown backticks around the tag. */
+export const COMPACT_FIRST_FILL_DEFAULT_ARTIFACT_COUNT_PHRASE_PLAIN =
+  `at least ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} filled <section class="slide"> blocks this turn (top-up only for ${COMPACT_FIRST_FILL_TOP_UP_FROM}+)`;
+
+const COMPACT_FIRST_FILL_CLOSE_THIS_TURN_DEFAULT =
+  `close ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} THIS TURN`;
+
+export type FirstFillHonorKind =
+  | 'honor-range'
+  | 'honor-exact'
+  | 'short-5-6'
+  | 'unspecified'
+  | 'top-up-11-plus';
+
+export type FirstFillHonor = {
+  kind: FirstFillHonorKind;
+  min?: number;
+  max?: number;
+};
+
+/** Plugin/user slideCount for this first-fill turn. 6-8 auto stays unspecified. */
+export function resolveFirstFillHonor(hint?: string | null): FirstFillHonor {
+  const raw = String(hint ?? '').trim();
+  if (!raw) return { kind: 'unspecified' };
+  if (/^5\s*[-~–—]\s*6\b/.test(raw)) return { kind: 'short-5-6', min: 5, max: 6 };
+  if (/^6\s*[-~–—]\s*8\b/.test(raw)) return { kind: 'unspecified' };
+  const range = raw.match(/(\d{1,2})\s*[-~–—]\s*(\d{1,2})/);
+  if (range?.[1] && range[2]) {
+    const min = Number(range[1]);
+    const max = Number(range[2]);
+    if (Number.isFinite(min) && Number.isFinite(max) && max >= min) {
+      if (max >= COMPACT_FIRST_FILL_TOP_UP_FROM) {
+        return { kind: 'top-up-11-plus', min, max };
+      }
+      if (max <= COMPACT_FIRST_FILL_HONOR_MAX) {
+        return { kind: 'honor-range', min, max };
+      }
+    }
+  }
+  const exact = raw.match(/(?:exactly|정확히)\s*(\d{1,2})|^(\d{1,2})\b/i);
+  const n = Number(exact?.[1] || exact?.[2] || NaN);
+  if (Number.isFinite(n) && n >= 1) {
+    if (n >= COMPACT_FIRST_FILL_TOP_UP_FROM) return { kind: 'top-up-11-plus', min: n, max: n };
+    if (n <= COMPACT_FIRST_FILL_HONOR_MAX) return { kind: 'honor-exact', min: n, max: n };
+  }
+  return { kind: 'unspecified' };
+}
+
+/**
+ * Concrete artifact-count phrase. The default "at least 6 / top-up 11+" line
+ * must not stay when the user asked for 8–10 — models treat that example as
+ * permission to stop at 6 and leave a hidden top-up.
+ */
+export function compactFirstFillArtifactCountPhrase(hint?: string | null): string {
+  const honor = resolveFirstFillHonor(hint);
+  if (honor.kind === 'honor-range' && honor.min != null && honor.max != null) {
+    return (
+      `${honor.min}–${honor.max} filled \`<section class="slide">\` blocks this turn ` +
+      `(close the requested range; stopping at ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} is a failed deliverable; no hidden top-up)`
+    );
+  }
+  if (honor.kind === 'honor-exact' && honor.max != null) {
+    return (
+      `exactly ${honor.max} filled \`<section class="slide">\` blocks this turn ` +
+      `(no hidden top-up)`
+    );
+  }
+  if (honor.kind === 'short-5-6') {
+    return (
+      `at least 5 filled \`<section class="slide">\` blocks this turn ` +
+      `(5–6 short preset; no hidden top-up after 5)`
+    );
+  }
+  return COMPACT_FIRST_FILL_DEFAULT_ARTIFACT_COUNT_PHRASE;
+}
+
+/** Trailing override so compact "close 6 THIS TURN" cannot beat an 8–10 honor. */
+export function compactFirstFillHonorReadLast(hint?: string | null): string | null {
+  const honor = resolveFirstFillHonor(hint);
+  if (honor.kind === 'honor-range' && honor.min != null && honor.max != null) {
+    return (
+      `# First-fill slide count (READ LAST — beats "close 6 THIS TURN" above)\n\n` +
+      `The user/plugin requested ${honor.min}–${honor.max} slides. ` +
+      `Close ${honor.min}–${honor.max} complete body-first slides in THIS response. ` +
+      `Stopping at ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} is a failed deliverable. ` +
+      `Do not leave remaining pages for hidden top-up.`
+    );
+  }
+  if (honor.kind === 'honor-exact' && honor.max != null && honor.max !== COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN) {
+    return (
+      `# First-fill slide count (READ LAST — beats "close 6 THIS TURN" above)\n\n` +
+      `The user/plugin requested ${honor.max} slides. ` +
+      `Close exactly ${honor.max} complete body-first slides in THIS response. ` +
+      `Stopping at ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} is a failed deliverable. ` +
+      `Do not leave remaining pages for hidden top-up.`
+    );
+  }
+  return null;
+}
+
+export function applyFirstFillArtifactCountPhrase(rule: string, hint?: string | null): string {
+  const next = compactFirstFillArtifactCountPhrase(hint);
+  const honor = resolveFirstFillHonor(hint);
+  let out = rule;
+  if (next !== COMPACT_FIRST_FILL_DEFAULT_ARTIFACT_COUNT_PHRASE) {
+    const nextPlain = next.replace(/`(<section class="slide">)`/g, '$1');
+    out = out
+      .split(COMPACT_FIRST_FILL_DEFAULT_ARTIFACT_COUNT_PHRASE).join(next)
+      .split(COMPACT_FIRST_FILL_DEFAULT_ARTIFACT_COUNT_PHRASE_PLAIN).join(nextPlain);
+  }
+  const closeThisTurn = compactFirstFillCloseThisTurnPhrase(honor);
+  if (closeThisTurn) {
+    out = out.split(COMPACT_FIRST_FILL_CLOSE_THIS_TURN_DEFAULT).join(closeThisTurn);
+  }
+  return out;
+}
+
+/** Compact wireframe "close 6 THIS TURN" must not stay on an 8–10 honor. */
+export function compactFirstFillCloseThisTurnPhrase(honor: FirstFillHonor): string | null {
+  if (honor.kind === 'honor-range' && honor.min != null && honor.max != null) {
+    return `close ${honor.min}–${honor.max} THIS TURN`;
+  }
+  if (honor.kind === 'honor-exact' && honor.max != null && honor.max !== COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN) {
+    return `close ${honor.max} THIS TURN`;
+  }
+  return null;
+}
+
 /** MiniMax (and any rewrite-last-block model) must not echo a finished heading/paragraph/badge. */
 export const DECK_NO_ADJACENT_DUPLICATE_COPY_RULE =
   'Never emit the same heading, paragraph, or badge twice in a row as adjacent sibling tags — each sibling must add new copy.';

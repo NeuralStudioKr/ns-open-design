@@ -197,6 +197,17 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(prompt).toContain('커버는 eyebrow·제목·리드 한 줄만');
   });
 
+  it('overrides the exactly-6 auto-continue line when the honor count is 8-10', () => {
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      partialHtml: '<!doctype html><html lang="ko"><head>',
+      slideCountHint: '8-10 (close this turn)',
+    });
+    expect(prompt).toContain('8-10 (close this turn)');
+    expect(prompt).toContain('close the requested 8–10 slides this turn');
+    expect(prompt).toContain('The "exactly 6" line above does not apply');
+  });
+
   it('keeps Clone content-fill CREATE contract on auto-continue', () => {
     const prompt = buildAutoContinueIncompleteOutputPrompt({
       attempt: 1,

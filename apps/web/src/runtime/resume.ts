@@ -339,6 +339,15 @@ export function buildAutoContinueIncompleteOutputPrompt(
       '\n\n[이 대화의 슬라이드 분량 — 반드시 준수:]\n'
         + slideCountHint,
     );
+    const honorRange = slideCountHint.match(/(\d{1,2})\s*[-~–—]\s*(\d{1,2})/);
+    const honorHi = honorRange ? Number(honorRange[2]) : NaN;
+    if (Number.isFinite(honorHi) && honorHi >= 7 && honorHi <= FIRST_FILL_HONOR_MAX) {
+      parts.push(
+        `\nOVERRIDE: close the requested ${honorRange![1]}–${honorHi} slides this turn. ` +
+          `The "exactly ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}" line above does not apply. ` +
+          `Stopping at ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} is a failed deliverable.`,
+      );
+    }
   }
 
   const existingDeckPath = context.templateCloneContentFill || context.templateClonePromptFill
