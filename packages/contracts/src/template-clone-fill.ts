@@ -1103,7 +1103,8 @@ function destHasNonIbKitSignals(html: string): boolean {
   // Neubrutal utility prefix.
   if (/\bclass\s*=\s*["'][^"']*\bnb-(?:heading-|card|label|btn|body|mono)/i.test(source)) return true;
   // 8-bit orbit / pixel kit body chrome (often present while cover is still IB).
-  if (/\bclass\s*=\s*["'][^"']*\b(?:pixel-box|pixel-hero-text|pixel-label|starfield|bg-grid|crt-glow)\b/i.test(source)) {
+  // 루프390-후속: pixel-corners / pixel-btn / pixel-face / pixel-avatar-zone도 감지.
+  if (/\bclass\s*=\s*["'][^"']*\b(?:pixel-box|pixel-hero-text|pixel-label|pixel-corners|pixel-btn|pixel-face|pixel-avatar-zone|starfield|bg-grid|crt-glow)\b/i.test(source)) {
     return true;
   }
   if (/\bclass\s*=\s*["'][^"']*\b(?:scanlines|grain)\b/i.test(source)
@@ -1111,14 +1112,19 @@ function destHasNonIbKitSignals(html: string): boolean {
     return true;
   }
   // Neubrutalism / studio / capsule / hermes / 8-bit tokens.
-  if (/var\(\s*--(?:cream|pink|yellow|offwhite|hc-bg|hc-fg|gd-bg|noise|accent-pink|studio-bg|capsule-bg|neon-pink|neon-cyan|neon-yellow|dark-void|deep-navy)/i.test(source)) {
+  if (/var\(\s*--(?:cream|pink|yellow|offwhite|hc-bg|hc-fg|gd-bg|noise|accent-pink|studio-bg|capsule-bg|neon-pink|neon-cyan|neon-yellow|dark-void|deep-navy|soft-lavender)/i.test(source)) {
     return true;
   }
-  if (/--(?:neon-pink|dark-void|deep-navy|neon-cyan)\s*:/i.test(source)) return true;
-  // Motif deco CSS block emitted for non-IB kits.
-  if (/data-od-official-motif-deco-css[\s\S]{0,6000}\.(?:deco-(?:pink-rect|green-circle|yellow-bar|dots)|pixel-particles)\b/i.test(source)) {
+  if (/--(?:neon-pink|dark-void|deep-navy|neon-cyan|neon-yellow|soft-lavender)\s*:/i.test(source)) return true;
+  // Motif deco CSS block emitted for non-IB kits (루프390-후속: pixel-particles와
+  // hermes-cyber / gd-orb / xp-blob / post-it / floating-pills / petals까지 포함).
+  if (/data-od-official-motif-deco-css[\s\S]{0,6000}\.(?:deco-(?:pink-rect|green-circle|yellow-bar|dots)|pixel-particles|starfield|hc-scanlines|hc-grid|xp-blob|gd-orb|post-it|floating-pills|petals)\b/i.test(source)) {
     return true;
   }
+  // loop386 neo-brutal var fallback style is only injected when the deck
+  // already uses non-IB kit tokens; its presence alone is a strong signal
+  // that this deck is not IB magazine (루프390-후속).
+  if (/\bdata-od-neobrutal-var-fallback\b/i.test(source)) return true;
   return false;
 }
 

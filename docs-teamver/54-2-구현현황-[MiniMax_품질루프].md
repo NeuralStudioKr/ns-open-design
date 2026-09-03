@@ -42,6 +42,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프390-후속 — non-IB 시그널 확장 · 사용자 리포트 fixture 통합 테스트
+
+체감: 루프390이 사용자 리포트 표지 leak를 잡았으나 신호 감지가 8-bit / neubrutal 위주. `.pixel-corners`/`.pixel-face`/`.pixel-avatar-zone`/`--soft-lavender`/`.hc-scanlines`/`.gd-orb`/`.post-it` 같은 확장 kit이 스캔 밖. 또 사용자 리포트 fixture가 없어 다음 회귀 감지가 어려움.
+
+수정: `destHasNonIbKitSignals`에 (1) pixel chrome 확장(`.pixel-corners`/`.pixel-btn`/`.pixel-face`/`.pixel-avatar-zone`) (2) 추가 kit 토큰(`--soft-lavender`/`--neon-yellow` 정의/사용) (3) 확장 motif deco(`.starfield`/`.hc-scanlines`/`.hc-grid`/`.xp-blob`/`.gd-orb`/`.post-it`/`.floating-pills`/`.petals`) (4) `data-od-neobrutal-var-fallback` 자체 존재 신호. 사용자 리포트 fixture `teamver-8bit-orbit-ib-cover-leak.html` + 통합 테스트 8/8(officialLookIs8BitOrbit 지문 · heal skip · restyle 결과 shape · 후속 pixel-orbit 슬라이드 보존 · idempotent · neo fallback strip · salvage end-to-end + idempotent).
+
+검증: 신규 8 pass · contracts 전체 2939 pass / 1 skip / 0 fail (baseline 대비 URL-brief 회귀도 회복).
+
 ### 루프390 — 8-Bit Orbit 위 IB 매거진 표지
 
 체감: 본문은 8-bit dark pixel인데 표지만 cream `학습 노트` 매거진 + neo cream var fallback.
