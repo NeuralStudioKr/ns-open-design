@@ -62,6 +62,14 @@ opt-in: `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=pure-prompt` (alias: `no-seed` / 
 
 한계: opt-in mechanism일 뿐 기본값 변경/clone 경로 제거는 아님. salvage/heal 자체 개선은 별개 loop.
 
+### 루프402 — template-fill 최소 장수·구조 품질 게이트 복구
+
+체감: 사용자가 `8~10장`을 요청했는데 6장으로 완료되고, 일부 장은 `h2`/pill 내부에 grid/card가 들어가 본문 배치가 무너졌다. 화면에는 완료로 보이지만 실제로는 “장수 부족 + 구조 붕괴” 결과였다.
+
+수정: template clone content-fill/prompt-fill 저장 전 게이트를 다시 활성화하되, 1~3장 소형 요청/초안은 기존처럼 허용한다. 명시 최소 4장 이상 요청에서 produced count가 최소치보다 작으면 `skipped-incomplete`로 보내고, salvage 이후에도 heading 안에 block/grid가 남으면 저장하지 않는다. JSON/outline fallback이 `slideCount`를 최대 6장으로 자르던 cap도 제거해 요청 장수를 `TEMPLATE_CLONE_OUTLINE_MAX_SLIDES`까지 보존한다.
+
+검증: web `project-view-message-merge` · `templateCloneContentFill` · `slideCountTopUp`, contracts `template-clone-outline` · `template-clone-fill` · `system-prompt-api-mode`.
+
 ### 루프400 — Spec/Hint 통일 · Capsule Motif 보존 · SVG stub · flex/heading salvage
 
 체감: auto-continue Hint와 top-up Spec 우선순위 불일치 · Capsule IB restyle이 Motif/floating-pills 폐기 · Motif SVG만 있는 장이 drop 안 됨 · flex 카드가 chrome-pill에 잔존 · `<span style=flex>` 앞 orphan h2 · sibling `<b>1</b><b>99+` · Capsule fingerprint/neo cream 재주입.

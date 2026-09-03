@@ -7,6 +7,7 @@ import {
   imageAttachmentPathsForSlideEmbed,
   chatAttachmentsForAutoContinueImageEmbed,
   findClientSlideCountRegression,
+  findTemplateCloneFillStructureIncomplete,
   findTemplateCloneFillSlideCountIncomplete,
   promptWithExistingDeckEditInstruction,
   resolveCanonicalDeckFileForEdit,
@@ -498,6 +499,65 @@ describe("findTemplateCloneFillSlideCountIncomplete", () => {
         fileName: "deck.html",
         htmlBody: '<section class="slide"><p>placeholder</p></section>',
         requestedSlideCount: 2,
+      }),
+    ).toBeNull();
+  });
+
+  it("blocks a completed clone fill below an explicit requested range floor", () => {
+    const sixSlides = Array.from(
+      { length: 6 },
+      (_, index) => `<section class="slide"><h2>Slide ${index + 1}</h2><p>body</p></section>`,
+    ).join("");
+    expect(
+      findTemplateCloneFillSlideCountIncomplete({
+        fileName: "deck.html",
+        htmlBody: sixSlides,
+        requestedSlideCount: 10,
+        requestedSlideCountMin: 8,
+      }),
+    ).toMatchObject({
+      producedCount: 6,
+      expectedCount: 8,
+      reason: expect.stringContaining("below requested minimum 8"),
+    });
+  });
+});
+
+describe("findTemplateCloneFillStructureIncomplete", () => {
+  it("blocks heading tags that still contain card/grid blocks after salvage", () => {
+    const malformed = [
+      '<section class="slide">',
+      '<h2 style="font-size:64px">네 가지 핵심 서비스 라인업',
+      '<div style="display:grid;grid-template-columns:repeat(2,1fr)">',
+      '<div><h3>도메인 LLM</h3><p>구축</p></div>',
+      '</div>',
+      '</h2>',
+      '</section>',
+    ].join("");
+    expect(
+      findTemplateCloneFillStructureIncomplete({
+        fileName: "deck.html",
+        htmlBody: malformed,
+      }),
+    ).toMatchObject({
+      fileName: "deck.html",
+      reason: expect.stringContaining("heading contains block"),
+    });
+  });
+
+  it("allows normal headings followed by sibling grids", () => {
+    const valid = [
+      '<section class="slide">',
+      '<h2>네 가지 핵심 서비스 라인업</h2>',
+      '<div style="display:grid;grid-template-columns:repeat(2,1fr)">',
+      '<div><h3>도메인 LLM</h3><p>구축</p></div>',
+      '</div>',
+      '</section>',
+    ].join("");
+    expect(
+      findTemplateCloneFillStructureIncomplete({
+        fileName: "deck.html",
+        htmlBody: valid,
       }),
     ).toBeNull();
   });

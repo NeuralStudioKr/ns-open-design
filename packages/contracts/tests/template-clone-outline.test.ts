@@ -10,6 +10,7 @@ import {
   isCloneContentFillJsonRepairPersistReason,
   isCloneContentFillLookSeedRecoverablePersistReason,
   isCloneContentFillLowSubstancePersistReason,
+  listTemplateCloneSlideShells,
   outlineLooksLikeHtmlDump,
   parseTemplateCloneDeckOutline,
   recoverPartialTemplateCloneOutline,
@@ -467,6 +468,30 @@ describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
       expect(decision.title).not.toBe('슬라이드');
       // At least one generic body section landed in the seed
       expect(/개요|핵심 포인트|근거와 사례|실행 방안|요약/.test(decision.html)).toBe(true);
+    }
+  });
+
+  it('honors explicit slide count when synth fallback builds from the brief', () => {
+    const tenSeed = Array.from(
+      { length: 10 },
+      (_, index) =>
+        index === 0
+          ? '<section class="slide slide-title cover"><h1>Demo</h1></section>'
+          : `<section class="slide"><h2>Body ${index}</h2><p>x</p></section>`,
+    ).join('');
+    const decision = decideTemplateCloneSlotFillTerminal({
+      rawFinalText: 'sorry, could not build the deck',
+      seedHtml: tenSeed,
+      repairAlreadyAttempted: false,
+      userBrief: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장',
+      deckTitle: '슬라이드',
+      slideCount: 10,
+    });
+    expect(decision.kind).toBe('seed-fallback');
+    if (decision.kind === 'seed-fallback') {
+      expect(listTemplateCloneSlideShells(decision.html).length).toBe(10);
+      expect(decision.html).toContain('성과 지표');
+      expect(decision.html).not.toContain('Demo');
     }
   });
 

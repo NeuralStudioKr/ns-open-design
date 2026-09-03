@@ -539,7 +539,6 @@ import {
   SLIDE_COUNT_TOP_UP_ENTRY_FROM,
   buildSlideCountTopUpPrompt,
   extractRequestedSlideCountSpecFromMessages,
-  extractRequestedSlideCountTargetFromMessages,
   isSlideCountTopUpPrompt,
   looksLikeSlideCountExpansionRequest,
   parseSlideCountSpec,
@@ -3078,16 +3077,44 @@ export function findTemplateCloneFillSlideCountIncomplete(input: {
   fileName: string;
   htmlBody: string;
   requestedSlideCount: number | null;
+  requestedSlideCountMin?: number | null;
 }): { fileName: string; producedCount: number; expectedCount: number; reason: string } | null {
   const fileName = input.fileName.trim();
   if (!fileName.toLowerCase().endsWith('.html')) return null;
   const producedCount = countDeckSlideSections(input.htmlBody);
   if (producedCount <= 0) return null;
 
-  // Any 1+ slide draft persists. Blocking short fills caused
-  // incomplete_output, then auto-continue rewrote from `<head>` and
-  // failed as incomplete-html-document-shell. Slide-count top-up appends.
-  void input.requestedSlideCount;
+  const expectedMin = input.requestedSlideCountMin ?? input.requestedSlideCount;
+  if (expectedMin != null && expectedMin >= 4 && producedCount < expectedMin) {
+    return {
+      fileName,
+      producedCount,
+      expectedCount: expectedMin,
+      reason: `template-clone-fill produced ${producedCount} slides, below requested minimum ${expectedMin}`,
+    };
+  }
+
+  return null;
+}
+
+export function findTemplateCloneFillStructureIncomplete(input: {
+  fileName: string;
+  htmlBody: string;
+}): { fileName: string; reason: string } | null {
+  const fileName = input.fileName.trim();
+  if (!fileName.toLowerCase().endsWith('.html')) return null;
+  const html = String(input.htmlBody ?? '');
+  const headingRe = /<h([1-3])\b[^>]*>([\s\S]*?)<\/h\1\s*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = headingRe.exec(html)) !== null) {
+    const inner = match[2] ?? '';
+    if (/<(?:div|ul|ol|section|article|aside|table|header|footer)\b/i.test(inner)) {
+      return {
+        fileName,
+        reason: 'template-clone-fill heading contains block/grid content after salvage',
+      };
+    }
+  }
   return null;
 }
 
@@ -5944,25 +5971,6 @@ export function ProjectView({
         htmlBody = sanitizeManualEditFullSource(htmlBody);
       }
       if (ext === '.html') {
-        if (runTemplateCloneContentFillRef.current) {
-          const slideCountIncomplete = findTemplateCloneFillSlideCountIncomplete({
-            fileName,
-            htmlBody,
-            requestedSlideCount: extractRequestedSlideCountTargetFromMessages(messagesRef.current),
-          });
-          if (slideCountIncomplete) {
-            devLog.warn('[teamver] blocked incomplete template fill before save', {
-              fileName: slideCountIncomplete.fileName,
-              producedCount: slideCountIncomplete.producedCount,
-              expectedCount: slideCountIncomplete.expectedCount,
-            });
-            return {
-              kind: 'skipped-incomplete',
-              fileName: slideCountIncomplete.fileName,
-              reason: slideCountIncomplete.reason,
-            };
-          }
-        }
         // Heal model-emitted <img src> that used a human/original filename
         // (or sanitized basename without the upload timestamp prefix) instead
         // of the real on-disk path from /upload. Union turn attachments so
@@ -6010,6 +6018,42 @@ export function ProjectView({
         // Motif bind can re-inject Hartfield stamps after the leftover gate.
         // Top-up sentinels / empty <artifact> tags must never persist as copy.
         htmlBody = sanitizePersistedDeckHostLeaks(htmlBody);
+        if (runTemplateCloneContentFillRef.current || runTemplateClonePromptFillRef.current) {
+          const requestedSpec = extractRequestedSlideCountSpecFromMessages(messagesRef.current);
+          const slideCountIncomplete = findTemplateCloneFillSlideCountIncomplete({
+            fileName,
+            htmlBody,
+            requestedSlideCount: requestedSpec?.max ?? null,
+            requestedSlideCountMin: requestedSpec?.min ?? null,
+          });
+          if (slideCountIncomplete) {
+            devLog.warn('[teamver] blocked incomplete template fill before save', {
+              fileName: slideCountIncomplete.fileName,
+              producedCount: slideCountIncomplete.producedCount,
+              expectedCount: slideCountIncomplete.expectedCount,
+            });
+            return {
+              kind: 'skipped-incomplete',
+              fileName: slideCountIncomplete.fileName,
+              reason: slideCountIncomplete.reason,
+            };
+          }
+          const structureIncomplete = findTemplateCloneFillStructureIncomplete({
+            fileName,
+            htmlBody,
+          });
+          if (structureIncomplete) {
+            devLog.warn('[teamver] blocked malformed template fill before save', {
+              fileName: structureIncomplete.fileName,
+              reason: structureIncomplete.reason,
+            });
+            return {
+              kind: 'skipped-incomplete',
+              fileName: structureIncomplete.fileName,
+              reason: structureIncomplete.reason,
+            };
+          }
+        }
       }
       if (ext === '.html' && persistCommentAttachments.length > 0) {
         const currentScopedHtml = await readDiskHtml(fileName);
@@ -10676,6 +10720,8 @@ export function ProjectView({
             if (runTemplateCloneContentFillRef.current) {
               try {
                 const seedHtml = await readProjectHtml('deck.html');
+                const requestedSlideCountSpec =
+                  extractRequestedSlideCountSpecFromMessages(messagesRef.current);
                 const decision = decideTemplateCloneSlotFillTerminal({
                   rawFinalText,
                   seedHtml,
@@ -10689,6 +10735,7 @@ export function ProjectView({
                     ?? null,
                   userBrief: runVisiblePromptRef.current || '',
                   deckTitle: project.name || '슬라이드',
+                  slideCount: requestedSlideCountSpec?.max ?? null,
                 });
                 if (decision.kind === 'slot-fill') {
                   runTemplateCloneSlotFillFallbackRef.current = false;
