@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useT } from '../i18n';
 import { conversationMetaLabel } from './ChatPane';
 import type { Conversation } from '../types';
+import { ViewerConfirmModal } from './ViewerConfirmModal';
 
 interface Props {
   conversations: Conversation[];
@@ -26,6 +27,7 @@ export function ConversationsMenu({
 }: Props) {
   const t = useT();
   const [open, setOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Conversation | null>(null);
   const pillRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -83,12 +85,28 @@ export function ConversationsMenu({
                 setOpen(false);
                 onCreate();
               }}
-              onDelete={onDelete}
+              onRequestDelete={(conversation) => setPendingDelete(conversation)}
               onRename={onRename}
             />,
             document.body,
           )
         : null}
+      {pendingDelete ? (
+        <ViewerConfirmModal
+          title={t('conv.delete')}
+          message={t('conv.deleteConfirm', {
+            title: pendingDelete.title || t('conv.untitled'),
+          })}
+          confirmLabel={t('common.delete')}
+          cancelLabel={t('common.cancel')}
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => {
+            const id = pendingDelete.id;
+            setPendingDelete(null);
+            onDelete(id);
+          }}
+        />
+      ) : null}
     </>
   );
 }
@@ -101,7 +119,7 @@ function ConversationsDropdown({
   onClose: _onClose,
   onSelect,
   onCreate,
-  onDelete,
+  onRequestDelete,
   onRename,
 }: {
   menuRef: React.MutableRefObject<HTMLDivElement | null>;
@@ -111,7 +129,7 @@ function ConversationsDropdown({
   onClose: () => void;
   onSelect: (id: string) => void;
   onCreate: () => void;
-  onDelete: (id: string) => void;
+  onRequestDelete: (conversation: Conversation) => void;
   onRename: (id: string, title: string) => void;
 }) {
   const t = useT();
@@ -198,15 +216,7 @@ function ConversationsDropdown({
                 title={t('conv.delete')}
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (
-                    confirm(
-                      t('conv.deleteConfirm', {
-                        title: c.title || t('conv.untitled'),
-                      }),
-                    )
-                  ) {
-                    onDelete(c.id);
-                  }
+                  onRequestDelete(c);
                 }}
               >
                 ×

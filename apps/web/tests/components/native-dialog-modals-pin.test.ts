@@ -14,6 +14,7 @@ const routinesSection = readFileSync(join(here, '../../src/components/RoutinesSe
 const memorySection = readFileSync(join(here, '../../src/components/MemorySection.tsx'), 'utf8');
 const designSystemsTab = readFileSync(join(here, '../../src/components/DesignSystemsTab.tsx'), 'utf8');
 const settingsDialog = readFileSync(join(here, '../../src/components/SettingsDialog.tsx'), 'utf8');
+const conversationsMenu = readFileSync(join(here, '../../src/components/ConversationsMenu.tsx'), 'utf8');
 const exportsSrc = readFileSync(join(here, '../../src/runtime/exports.ts'), 'utf8');
 
 describe('Teamver embed native dialog replacements', () => {
@@ -68,6 +69,9 @@ describe('Teamver embed native dialog replacements', () => {
     expect(designSystemsTab).toContain('ViewerConfirmModal');
     expect(settingsDialog).toContain('ViewerConfirmModal');
     expect(settingsDialog).toContain('settings.mediaProviderClearConfirm');
+    expect(conversationsMenu).not.toMatch(/\bconfirm\(/);
+    expect(conversationsMenu).toContain('ViewerConfirmModal');
+    expect(conversationsMenu).toContain('conv.deleteConfirm');
   });
 
   it('ChatPane deletes a conversation from a viewer modal', () => {
