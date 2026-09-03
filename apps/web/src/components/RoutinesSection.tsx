@@ -10,6 +10,7 @@ import type {
 } from '@open-design/contracts';
 
 import { Icon } from './Icon';
+import { ViewerConfirmModal } from './ViewerConfirmModal';
 import { navigate } from '../router';
 import { useT } from '../i18n';
 import { localizeRunFailureReason } from '../i18n/runErrors';
@@ -476,6 +477,7 @@ export function RoutinesSection({ onClose }: RoutinesSectionProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [historyTick, setHistoryTick] = useState(0);
 
@@ -608,7 +610,6 @@ export function RoutinesSection({ onClose }: RoutinesSectionProps) {
   };
 
   const remove = async (id: string) => {
-    if (!window.confirm(t('routines.confirmDelete'))) return;
     setBusyId(id);
     try {
       const res = await fetch(`/api/routines/${id}`, { method: 'DELETE' });
@@ -839,7 +840,7 @@ export function RoutinesSection({ onClose }: RoutinesSectionProps) {
                     <button
                       type="button"
                       className="btn btn-ghost btn-danger"
-                      onClick={() => { fireAutomation('delete'); remove(r.id); }}
+                      onClick={() => { fireAutomation('delete'); setPendingDeleteId(r.id); }}
                       disabled={isBusy}
                       title={t('routines.deleteTitle')}
                     >
@@ -857,6 +858,20 @@ export function RoutinesSection({ onClose }: RoutinesSectionProps) {
           })}
         </ul>
       )}
+      {pendingDeleteId ? (
+        <ViewerConfirmModal
+          title={t('routines.deleteTitle')}
+          message={t('routines.confirmDelete')}
+          confirmLabel={t('routines.delete')}
+          cancelLabel={t('common.cancel')}
+          onCancel={() => setPendingDeleteId(null)}
+          onConfirm={() => {
+            const id = pendingDeleteId;
+            setPendingDeleteId(null);
+            void remove(id);
+          }}
+        />
+      ) : null}
     </section>
   );
 }

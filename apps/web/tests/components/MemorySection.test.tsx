@@ -1259,7 +1259,6 @@ describe('MemorySection', () => {
   it('clears extraction history after clicking Clear', async () => {
     globalThis.EventSource = StubEventSource as unknown as typeof EventSource;
     const deletedUrls: string[] = [];
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
 
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = input.toString();
@@ -1303,19 +1302,17 @@ describe('MemorySection', () => {
     expect(await screen.findByText('Remember I prefer dark mode')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    fireEvent.click(screen.getByTestId('viewer-confirm-accept'));
 
     await waitFor(() => {
       expect(screen.queryByText('Remember I prefer dark mode')).toBeNull();
     });
     expect(deletedUrls).toEqual(['/api/memory/extractions']);
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
-    confirmSpy.mockRestore();
   });
 
   it('does not clear extraction history when Clear is cancelled', async () => {
     globalThis.EventSource = StubEventSource as unknown as typeof EventSource;
     const deletedUrls: string[] = [];
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
 
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = input.toString();
@@ -1359,11 +1356,10 @@ describe('MemorySection', () => {
     expect(await screen.findByText('Remember I prefer dark mode')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
     expect(deletedUrls).toEqual([]);
     expect(screen.getByText('Remember I prefer dark mode')).toBeTruthy();
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
-    confirmSpy.mockRestore();
   });
 
   it('loads preview, edits an entry, and refreshes the saved content', async () => {

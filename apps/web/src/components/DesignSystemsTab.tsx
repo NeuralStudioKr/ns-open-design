@@ -23,6 +23,8 @@ import {
 } from '../providers/registry';
 import { buildSrcdoc } from '../runtime/srcdoc';
 import { Icon } from './Icon';
+import { ViewerConfirmModal } from './ViewerConfirmModal';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 import type { DesignSystemSummary, ProjectTemplate, Surface } from '../types';
 
 interface Props {
@@ -135,6 +137,7 @@ export function DesignSystemsTab({
   const [filter, setFilter] = useState('');
   const [userFilter, setUserFilter] = useState<UserListFilter>('all');
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [pendingDeleteSystem, setPendingDeleteSystem] = useState<DesignSystemSummary | null>(null);
   const [primaryCollection, setPrimaryCollection] = useState<PrimaryCollection>('design-system');
   const [designSystemCollection, setDesignSystemCollection] = useState<DesignSystemCollection>('mine');
   const [templateCollection, setTemplateCollection] = useState<TemplateCollection>('mine');
@@ -298,23 +301,30 @@ export function DesignSystemsTab({
     }
   }
 
+  function requestDeleteSystem(system: DesignSystemSummary) {
+    setPendingDeleteSystem(system);
+  }
+
+  function cancelDeleteSystem() {
+    const system = pendingDeleteSystem;
+    setPendingDeleteSystem(null);
+    if (!system) return;
+    trackDesignSystemStatusResult(analytics.track, {
+      page_name: 'design_systems',
+      area: 'design_system_status',
+      action: 'delete',
+      result: 'cancelled',
+      design_system_id: system.id,
+      status_before: mapStatusToTracking(system.status),
+      status_after: mapStatusToTracking(system.status),
+      is_default_before: system.id === selectedId,
+      is_default_after: system.id === selectedId,
+      duration_ms: 0,
+    });
+  }
+
   async function deleteSystem(system: DesignSystemSummary) {
-    const ok = window.confirm(`Delete "${system.title}"? This removes the draft design system from this device.`);
-    if (!ok) {
-      trackDesignSystemStatusResult(analytics.track, {
-        page_name: 'design_systems',
-        area: 'design_system_status',
-        action: 'delete',
-        result: 'cancelled',
-        design_system_id: system.id,
-        status_before: mapStatusToTracking(system.status),
-        status_after: mapStatusToTracking(system.status),
-        is_default_before: system.id === selectedId,
-        is_default_after: system.id === selectedId,
-        duration_ms: 0,
-      });
-      return;
-    }
+    setPendingDeleteSystem(null);
     setBusyId(system.id);
     const startedAt = performance.now();
     const statusBefore = mapStatusToTracking(system.status);
@@ -556,7 +566,7 @@ export function DesignSystemsTab({
                       type="button"
                       className="icon-btn danger"
                       aria-label={t('dsManager.deleteSystemAria', { title: system.title })}
-                      onClick={() => void deleteSystem(system)}
+                      onClick={() => requestDeleteSystem(system)}
                       disabled={busy}
                     >
                       <Icon name="close" />
@@ -731,6 +741,19 @@ export function DesignSystemsTab({
           title={t('dsManager.enterpriseTplTitle')}
           body={t('dsManager.enterpriseTplBody')}
           comingSoonLabel={t('dsManager.comingSoonBadge')}
+        />
+      ) : null}
+      {pendingDeleteSystem ? (
+        <ViewerConfirmModal
+          title={t('dsManager.deleteSystemAria', { title: pendingDeleteSystem.title })}
+          message={embedUiLabel(
+            `Delete "${pendingDeleteSystem.title}"? This removes the draft design system from this device.`,
+            `"${pendingDeleteSystem.title}"을(를) 삭제할까요? 이 기기의 초안 디자인 시스템이 제거됩니다.`,
+          )}
+          confirmLabel={t('common.delete')}
+          cancelLabel={t('common.cancel')}
+          onCancel={cancelDeleteSystem}
+          onConfirm={() => void deleteSystem(pendingDeleteSystem)}
         />
       ) : null}
     </div>

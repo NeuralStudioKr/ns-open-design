@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { Button } from '@open-design/components';
 import { Icon, type IconName } from './Icon';
+import { ViewerConfirmModal } from './ViewerConfirmModal';
 import { ConnectorLogo, useResolvedTheme } from './ConnectorLogo';
 import { useT } from '../i18n';
 import { embedUiLabel } from '../teamver/embedUiLabels';
@@ -714,6 +715,7 @@ export function MemorySection({
   const [previewBody, setPreviewBody] = useState<string | null>(null);
   const [editing, setEditing] = useState<DraftEntry | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pendingClearExtractions, setPendingClearExtractions] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [filter, setFilter] = useState<'all' | MemoryType>('all');
   const [activeTab, setActiveTab] = useState<MemoryTab>('manual');
@@ -1392,13 +1394,17 @@ export function MemorySection({
   }, [reloadExtractions]);
 
   const onClearExtractions = useCallback(async () => {
-    if (!window.confirm(t('settings.memoryExtractionsClearConfirm'))) return;
+    setPendingClearExtractions(true);
+  }, []);
+
+  const confirmClearExtractions = useCallback(async () => {
+    setPendingClearExtractions(false);
     setExtractions([]);
     const ok = await clearExtractionHistory();
     if (!ok) {
       void reloadExtractions();
     }
-  }, [reloadExtractions, t]);
+  }, [reloadExtractions]);
 
 	  const memoryTabs: ReadonlyArray<{
 	    id: MemoryTab;
@@ -2453,6 +2459,16 @@ export function MemorySection({
           </div>
         </details>
       </section>
+      {pendingClearExtractions ? (
+        <ViewerConfirmModal
+          title={t('settings.memoryExtractionsClearTitle')}
+          message={t('settings.memoryExtractionsClearConfirm')}
+          confirmLabel={t('settings.memoryExtractionsClear')}
+          cancelLabel={t('common.cancel')}
+          onCancel={() => setPendingClearExtractions(false)}
+          onConfirm={() => void confirmClearExtractions()}
+        />
+      ) : null}
     </>
   );
 }

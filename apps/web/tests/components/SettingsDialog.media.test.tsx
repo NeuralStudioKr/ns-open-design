@@ -442,7 +442,6 @@ describe('SettingsDialog media providers', () => {
 
   it('clears saved media keys only through the explicit Clear action', async () => {
     const onPersist = vi.fn();
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     renderDialog(
       {
         ...saveableConfig(),
@@ -461,6 +460,7 @@ describe('SettingsDialog media providers', () => {
     const openaiRow = screen.getByText('OpenAI').closest('.media-provider-row') as HTMLElement | null;
     if (!openaiRow) throw new Error('Expected OpenAI media provider row');
     fireEvent.click(within(openaiRow).getByRole('button', { name: 'Clear' }));
+    fireEvent.click(screen.getByTestId('viewer-confirm-accept'));
 
     await waitFor(() => {
       expect(onPersist).toHaveBeenCalledWith(
@@ -468,14 +468,10 @@ describe('SettingsDialog media providers', () => {
         expect.objectContaining({ forceMediaProviderSync: true }),
       );
     });
-
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
-    confirmSpy.mockRestore();
   });
 
   it('clears saved marker state and custom model fields together for custom-model providers', async () => {
     const onPersist = vi.fn();
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     renderDialog(
       {
         ...saveableConfig(),
@@ -501,6 +497,7 @@ describe('SettingsDialog media providers', () => {
     );
 
     fireEvent.click(within(row).getByRole('button', { name: 'Clear' }));
+    fireEvent.click(screen.getByTestId('viewer-confirm-accept'));
 
     await waitFor(() => {
       expect(onPersist).toHaveBeenCalledWith(
@@ -510,8 +507,6 @@ describe('SettingsDialog media providers', () => {
     });
 
     expect((screen.getByLabelText('Nano Banana model') as HTMLInputElement).value).toBe('');
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
-    confirmSpy.mockRestore();
   });
 });
 

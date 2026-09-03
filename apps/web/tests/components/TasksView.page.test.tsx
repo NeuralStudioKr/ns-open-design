@@ -349,7 +349,6 @@ describe('TasksView page shell', () => {
       },
     ];
     const deletedUrls: string[] = [];
-    window.confirm = vi.fn(() => true);
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = input.toString();
       if (url === '/api/routines' && (!init || init.method === undefined)) {
@@ -394,6 +393,7 @@ describe('TasksView page shell', () => {
 
     const row = (await screen.findByText('Daily digest')).closest('li')!;
     fireEvent.click(within(row).getByRole('button', { name: 'Delete automation' }));
+    fireEvent.click(screen.getByTestId('viewer-confirm-accept'));
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /No automations yet/i })).toBeTruthy();

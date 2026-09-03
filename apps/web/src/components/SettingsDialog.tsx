@@ -44,6 +44,7 @@ import {
 import { amrProfileBadgeLabel } from '../runtime/amr-guidance';
 import { ExportDiagnosticsRow } from './ExportDiagnosticsButton';
 import { Icon } from './Icon';
+import { ViewerConfirmModal } from './ViewerConfirmModal';
 import {
   CUSTOM_MODEL_SENTINEL,
   SearchableModelSelect,
@@ -6125,6 +6126,7 @@ function MediaProvidersSection({
   const analytics = useAnalytics();
   const [reloadRunning, setReloadRunning] = useState(false);
   const [reloadNotice, setReloadNotice] = useState<{ kind: 'error' | 'success'; message: string } | null>(null);
+  const [pendingClearProvider, setPendingClearProvider] = useState<MediaProvider | null>(null);
   const [visibleApiKeys, setVisibleApiKeys] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -6413,27 +6415,8 @@ function MediaProvidersSection({
                         // dashboard cares about the intent signal.
                         is_configured: clearable,
                       });
-                      // Match the existing window.confirm guard the rest of
-                      // the app uses for destructive actions (conversation
-                      // delete, design delete, file delete in FileWorkspace).
-                      // Without this a stray click on the row's Clear button
-                      // wipes the saved key with no recovery. Issue #737.
-                      if (
-                        !confirm(
-                          t('settings.mediaProviderClearConfirm', {
-                            name: provider.label,
-                          }),
-                        )
-                      ) {
-                        return;
-                      }
-                      updateProvider(provider, {
-                        apiKey: '',
-                        baseUrl: '',
-                        model: '',
-                        apiKeyConfigured: false,
-                        apiKeyTail: '',
-                      });
+                      // Issue #737 — confirm before wiping a saved key.
+                      setPendingClearProvider(provider);
                     }}
                   >
                     {t('settings.mediaProviderClear')}
@@ -6496,6 +6479,28 @@ function MediaProvidersSection({
             })}
           </ul>
         </details>
+      ) : null}
+      {pendingClearProvider ? (
+        <ViewerConfirmModal
+          title={t('settings.mediaProviderClear')}
+          message={t('settings.mediaProviderClearConfirm', {
+            name: pendingClearProvider.label,
+          })}
+          confirmLabel={t('settings.mediaProviderClear')}
+          cancelLabel={t('common.cancel')}
+          onCancel={() => setPendingClearProvider(null)}
+          onConfirm={() => {
+            const provider = pendingClearProvider;
+            setPendingClearProvider(null);
+            updateProvider(provider, {
+              apiKey: '',
+              baseUrl: '',
+              model: '',
+              apiKeyConfigured: false,
+              apiKeyTail: '',
+            });
+          }}
+        />
       ) : null}
     </section>
   );

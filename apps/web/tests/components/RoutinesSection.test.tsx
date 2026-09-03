@@ -321,7 +321,6 @@ describe('RoutinesSection', () => {
       updatedAt: Date.now(),
     }];
     const deletedUrls: string[] = [];
-    window.confirm = vi.fn(() => true);
 
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = input.toString();
@@ -349,6 +348,7 @@ describe('RoutinesSection', () => {
 
     const row = (await screen.findByText('Morning briefing')).closest('li')!;
     fireEvent.click(within(row).getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByTestId('viewer-confirm-accept'));
 
     await waitFor(() => {
       expect(screen.getByText('No automations yet.')).toBeTruthy();
@@ -847,8 +847,6 @@ describe('RoutinesSection', () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
     }];
-    window.confirm = vi.fn(() => true);
-
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = input.toString();
       if (url === '/api/routines' && (!init || init.method === undefined)) {
@@ -876,6 +874,7 @@ describe('RoutinesSection', () => {
 
     const row = (await screen.findByText('Morning briefing')).closest('li')!;
     fireEvent.click(within(row).getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByTestId('viewer-confirm-accept'));
 
     expect(await screen.findByRole('alert')).toBeTruthy();
     expect(screen.getByRole('alert').textContent).toContain('delete failed upstream');

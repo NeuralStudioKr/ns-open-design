@@ -9,6 +9,11 @@ const chatPane = readFileSync(join(here, '../../src/components/ChatPane.tsx'), '
 const designFiles = readFileSync(join(here, '../../src/components/DesignFilesPanel.tsx'), 'utf8');
 const previewModal = readFileSync(join(here, '../../src/components/PreviewModal.tsx'), 'utf8');
 const examplesTab = readFileSync(join(here, '../../src/components/ExamplesTab.tsx'), 'utf8');
+const tasksView = readFileSync(join(here, '../../src/components/TasksView.tsx'), 'utf8');
+const routinesSection = readFileSync(join(here, '../../src/components/RoutinesSection.tsx'), 'utf8');
+const memorySection = readFileSync(join(here, '../../src/components/MemorySection.tsx'), 'utf8');
+const designSystemsTab = readFileSync(join(here, '../../src/components/DesignSystemsTab.tsx'), 'utf8');
+const settingsDialog = readFileSync(join(here, '../../src/components/SettingsDialog.tsx'), 'utf8');
 const exportsSrc = readFileSync(join(here, '../../src/runtime/exports.ts'), 'utf8');
 
 describe('Teamver embed native dialog replacements', () => {
@@ -49,6 +54,20 @@ describe('Teamver embed native dialog replacements', () => {
     expect(examplesTab).toContain('setExportNotice');
     expect(examplesTab).toContain('formatExportFailureMessageForUser');
     expect(examplesTab).toContain('example-export-error-banner');
+  });
+
+  it('desktop leftover confirms use ViewerConfirmModal', () => {
+    expect(tasksView).not.toMatch(/\bwindow\.confirm\(/);
+    expect(routinesSection).not.toMatch(/\bwindow\.confirm\(/);
+    expect(memorySection).not.toMatch(/\bwindow\.confirm\(/);
+    expect(designSystemsTab).not.toMatch(/\bwindow\.confirm\(/);
+    expect(settingsDialog).not.toMatch(/\bconfirm\(/);
+    expect(tasksView).toContain('ViewerConfirmModal');
+    expect(routinesSection).toContain('ViewerConfirmModal');
+    expect(memorySection).toContain('ViewerConfirmModal');
+    expect(designSystemsTab).toContain('ViewerConfirmModal');
+    expect(settingsDialog).toContain('ViewerConfirmModal');
+    expect(settingsDialog).toContain('settings.mediaProviderClearConfirm');
   });
 
   it('ChatPane deletes a conversation from a viewer modal', () => {

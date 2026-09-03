@@ -16,6 +16,7 @@ import type {
 } from '@open-design/contracts';
 
 import { Icon, type IconName } from './Icon';
+import { ViewerConfirmModal } from './ViewerConfirmModal';
 import { navigate } from '../router';
 import { useT } from '../i18n';
 import type { SkillSummary } from '../types';
@@ -392,6 +393,7 @@ export function TasksView({ skills = [], designTemplates = [], connectors = [] }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [modal, setModal] = useState<Modal>(null);
   const [templateFilter, setTemplateFilter] = useState<TemplateFilter>('all');
   const [automationCatalog, setAutomationCatalog] = useState<ContractAutomationTemplate[]>([]);
@@ -575,8 +577,6 @@ export function TasksView({ skills = [], designTemplates = [], connectors = [] }
   };
 
   const remove = async (id: string) => {
-    if (!window.confirm(t('automations.deleteConfirm')))
-      return;
     setBusyId(id);
     try {
       const res = await fetch(`/api/routines/${id}`, { method: 'DELETE' });
@@ -768,7 +768,7 @@ export function TasksView({ skills = [], designTemplates = [], connectors = [] }
                       className="automation-row__btn automation-row__btn--danger"
                       onClick={() => {
                         fireClick('delete');
-                        remove(r.id);
+                        setPendingDeleteId(r.id);
                       }}
                       disabled={isBusy}
                       aria-label={t('automations.deleteAria')}
@@ -969,6 +969,20 @@ export function TasksView({ skills = [], designTemplates = [], connectors = [] }
           })();
         }}
       />
+      {pendingDeleteId ? (
+        <ViewerConfirmModal
+          title={t('automations.deleteTitle')}
+          message={t('automations.deleteConfirm')}
+          confirmLabel={t('common.delete')}
+          cancelLabel={t('common.cancel')}
+          onCancel={() => setPendingDeleteId(null)}
+          onConfirm={() => {
+            const id = pendingDeleteId;
+            setPendingDeleteId(null);
+            void remove(id);
+          }}
+        />
+      ) : null}
     </section>
   );
 }
