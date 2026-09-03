@@ -17,7 +17,7 @@ Clone의 원래 계약은 "모델은 JSON만, 서버가 템플릿 shell에 치�
 - LOOK seed는 **불변 뼈대**. 모델은 HTML을 쓰지 않는다.
 - 기본 fill 모드를 **`json`** 으로 되돌린다.
 - JSON 스키마를 밀도 있게 확장한다: `kicker`, `lead`, `items[]{title, body}`.
-- 기존 `=prompt` env는 JSON slot-fill로 재매핑한다. HTML rewrite는 `prompt-fill` / `html` 명시 opt-in만.
+- 기존 `=prompt` env는 HTML rewrite를 유지한다. AI JSON은 `json` / `slot-fill` 명시 opt-in만. 기본은 서버 deterministic slot-fill.
 
 ## 스키마
 
@@ -39,7 +39,7 @@ type TemplateCloneSlideContent = {
 
 | 계층 | 동작 |
 |------|------|
-| `normalizeTemplateCloneFillMode` | empty/unknown/`prompt`/`clone` → `json` |
+| `normalizeTemplateCloneFillMode` | empty/unknown → `deterministic`; `prompt`/`clone` → HTML rewrite; `json`/`slot-fill` → AI JSON |
 | `App.tsx` / `ChatComposer` | json이면 `buildTemplateCloneContentFillSeed` + `queueTemplateCloneContentFill` |
 | persist | 기존 `applyTemplateCloneSlotFill` / `decideTemplateCloneSlotFillTerminal` |
 

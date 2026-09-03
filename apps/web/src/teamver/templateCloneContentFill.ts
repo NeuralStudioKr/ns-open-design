@@ -55,21 +55,20 @@ export const CLONE_SLOT_FILL_REPAIR_ENTRY_FROM = 'clone_slot_fill_json_repair';
  * Fill mode for explicit-template deck creates.
  *
  *   `deterministic` (**env-empty default since loop413**): daemon seeds
- *     the real template LOOK, then the host fills those shells from a
- *     JSON outline. SVG motifs, colors, slide chrome, and 1920x1080
- *     layout come from example.html. ChatComposer prefers the server
- *     content-fill endpoint; App/home still queues an AI JSON fill
- *     against the same LOOK seed.
+ *     the real template LOOK and fills those shells on the server.
+ *     SVG motifs, colors, slide chrome, and 1920x1080 layout come from
+ *     example.html. Home and ChatComposer both skip the MiniMax fill
+ *     turn (loop414).
  *
  *   `json`: LOOK seed + AI dense JSON outline
  *     (`kicker` / `lead` / `items[]{title,body}`). The model never
- *     rewrites HTML. Aliases: `slot-fill`, `clone`, `clone-fill`,
- *     `json-fill`, and the former HTML-rewrite token `prompt`.
+ *     rewrites HTML. Aliases: `slot-fill`, `json-fill` only.
+ *     Do not use this as the default — MiniMax JSON-only turns fail as
+ *     AGENT_EXECUTION_FAILED (loop414).
  *
- *   `prompt` (HTML rewrite, explicit opt-in only): LOOK seed then the
- *     model emits full HTML. Dual-instruction path from loops 379-406.
- *     Reachable only via `prompt-fill` / `html` / `html-fill` /
- *     `legacy-html`.
+ *   `prompt` (HTML rewrite): LOOK seed then the model emits full HTML.
+ *     Existing staging/production `=prompt` / `clone` / `clone-fill`
+ *     stay here. Also `prompt-fill` / `html` / `html-fill`.
  *
  *   `pure-prompt`: SKIP LOOK seeding. Kit spec still lands in the
  *     system prompt. Rollback via `pure-prompt` / `no-seed` / `no-clone`.
@@ -100,14 +99,18 @@ export function normalizeTemplateCloneFillMode(value: unknown): TemplateCloneFil
   ) {
     return 'pure-prompt';
   }
-  // HTML rewrite is opt-in only. `prompt` itself now means JSON slot-fill
-  // so existing `=prompt` production env gets the fundamental clone fix.
+  // 루프414 — Keep existing `=prompt` / `clone` as HTML rewrite.
+  // Remapping those to JSON sent MiniMax a JSON-only turn and surfaced
+  // AGENT_EXECUTION_FAILED. JSON slot-fill is explicit `json` only.
   if (
-    raw === 'prompt-fill'
+    raw === 'prompt'
+    || raw === 'prompt-fill'
     || raw === 'html'
     || raw === 'html-fill'
     || raw === 'legacy-html'
     || raw === 'legacy-prompt-fill'
+    || raw === 'clone'
+    || raw === 'clone-fill'
   ) {
     return 'prompt';
   }
@@ -115,9 +118,6 @@ export function normalizeTemplateCloneFillMode(value: unknown): TemplateCloneFil
     raw === 'json'
     || raw === 'slot-fill'
     || raw === 'json-fill'
-    || raw === 'prompt'
-    || raw === 'clone'
-    || raw === 'clone-fill'
   ) {
     return 'json';
   }
@@ -146,10 +146,15 @@ export function shouldUseDeterministicTemplateCloneFill(): boolean {
   return getTemplateCloneFillMode() === 'deterministic';
 }
 
-/** LOOK seed + JSON outline slot-fill (default clone path since loop413). */
+/** LOOK seed + AI JSON outline. Explicit `json` only — not the default. */
 export function shouldUseJsonTemplateCloneFill(): boolean {
+  return getTemplateCloneFillMode() === 'json';
+}
+
+/** Home/App should queue a MiniMax fill turn after LOOK seed. */
+export function shouldQueueAiTemplateCloneFill(): boolean {
   const mode = getTemplateCloneFillMode();
-  return mode === 'json' || mode === 'deterministic';
+  return mode === 'json' || mode === 'prompt';
 }
 
 /** LOOK seed + model HTML rewrite (legacy dual-instruction path). */

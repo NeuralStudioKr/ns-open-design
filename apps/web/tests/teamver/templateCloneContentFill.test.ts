@@ -32,6 +32,7 @@ import {
   shouldUseDeterministicTemplateCloneFill,
   shouldUseJsonTemplateCloneFill,
   shouldUsePromptTemplateCloneFill,
+  shouldQueueAiTemplateCloneFill,
   shouldQueueCloneSlotFillJsonRepair,
   templateCloneFillSlideCountOverrideNotice,
   withTemplateCloneFillPluginInputs,
@@ -49,34 +50,37 @@ afterEach(() => {
 });
 
 describe('templateCloneContentFill', () => {
-  it('loop413 — defaults to deterministic slot-fill; HTML rewrite and pure-prompt are explicit opt-ins', () => {
+  it('loop413/414 — defaults to deterministic slot-fill; MiniMax JSON fill is explicit opt-in', () => {
     expect(normalizeTemplateCloneFillMode(undefined)).toBe('deterministic');
     expect(normalizeTemplateCloneFillMode('')).toBe('deterministic');
     expect(normalizeTemplateCloneFillMode('nonsense')).toBe('deterministic');
     expect(getTemplateCloneFillMode()).toBe('deterministic');
     expect(shouldSkipTemplateCloneSeed()).toBe(false);
-    expect(shouldUseJsonTemplateCloneFill()).toBe(true);
+    expect(shouldUseJsonTemplateCloneFill()).toBe(false);
+    expect(shouldQueueAiTemplateCloneFill()).toBe(false);
     expect(shouldUsePromptTemplateCloneFill()).toBe(false);
     expect(shouldUseDeterministicTemplateCloneFill()).toBe(true);
 
-    // Former HTML-rewrite tokens `prompt` / `clone` now mean JSON slot-fill.
-    expect(normalizeTemplateCloneFillMode('prompt')).toBe('json');
-    expect(normalizeTemplateCloneFillMode('clone')).toBe('json');
-    expect(normalizeTemplateCloneFillMode('clone-fill')).toBe('json');
-    expect(normalizeTemplateCloneFillMode('slot-fill')).toBe('json');
-    expect(normalizeTemplateCloneFillMode('json-fill')).toBe('json');
-
-    // HTML rewrite requires an explicit prompt-fill / html alias.
+    // Existing env tokens stay on HTML rewrite — remapping them to JSON
+    // caused MiniMax AGENT_EXECUTION_FAILED (loop414).
+    expect(normalizeTemplateCloneFillMode('prompt')).toBe('prompt');
+    expect(normalizeTemplateCloneFillMode('clone')).toBe('prompt');
+    expect(normalizeTemplateCloneFillMode('clone-fill')).toBe('prompt');
     expect(normalizeTemplateCloneFillMode('prompt-fill')).toBe('prompt');
     expect(normalizeTemplateCloneFillMode('html')).toBe('prompt');
     expect(normalizeTemplateCloneFillMode('html-fill')).toBe('prompt');
     expect(normalizeTemplateCloneFillMode('legacy-html')).toBe('prompt');
 
+    expect(normalizeTemplateCloneFillMode('slot-fill')).toBe('json');
+    expect(normalizeTemplateCloneFillMode('json-fill')).toBe('json');
+    expect(normalizeTemplateCloneFillMode('json')).toBe('json');
+
     process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = 'prompt';
-    expect(getTemplateCloneFillMode()).toBe('json');
+    expect(getTemplateCloneFillMode()).toBe('prompt');
     expect(shouldSkipTemplateCloneSeed()).toBe(false);
-    expect(shouldUseJsonTemplateCloneFill()).toBe(true);
-    expect(shouldUsePromptTemplateCloneFill()).toBe(false);
+    expect(shouldUseJsonTemplateCloneFill()).toBe(false);
+    expect(shouldUsePromptTemplateCloneFill()).toBe(true);
+    expect(shouldQueueAiTemplateCloneFill()).toBe(true);
 
     process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = 'prompt-fill';
     expect(getTemplateCloneFillMode()).toBe('prompt');
@@ -86,7 +90,8 @@ describe('templateCloneContentFill', () => {
     process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = 'deterministic';
     expect(getTemplateCloneFillMode()).toBe('deterministic');
     expect(shouldUseDeterministicTemplateCloneFill()).toBe(true);
-    expect(shouldUseJsonTemplateCloneFill()).toBe(true);
+    expect(shouldUseJsonTemplateCloneFill()).toBe(false);
+    expect(shouldQueueAiTemplateCloneFill()).toBe(false);
     expect(normalizeTemplateCloneFillMode('content-fill')).toBe('deterministic');
     expect(normalizeTemplateCloneFillMode('server')).toBe('deterministic');
   });
@@ -111,16 +116,17 @@ describe('templateCloneContentFill', () => {
     expect(normalizeTemplateCloneFillMode('NO-CLONE')).toBe('pure-prompt');
   });
 
-  it('loop413 — an explicit `=prompt` env now selects JSON slot-fill, not HTML rewrite', () => {
+  it('loop414 — an explicit `=prompt` env stays on HTML rewrite, not JSON slot-fill', () => {
     process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = 'prompt';
-    expect(getTemplateCloneFillMode()).toBe('json');
+    expect(getTemplateCloneFillMode()).toBe('prompt');
     expect(shouldSkipTemplateCloneSeed()).toBe(false);
-    expect(shouldUseJsonTemplateCloneFill()).toBe(true);
-    expect(shouldUsePromptTemplateCloneFill()).toBe(false);
+    expect(shouldUseJsonTemplateCloneFill()).toBe(false);
+    expect(shouldUsePromptTemplateCloneFill()).toBe(true);
     expect(shouldUseDeterministicTemplateCloneFill()).toBe(false);
+    expect(shouldQueueAiTemplateCloneFill()).toBe(true);
   });
 
-  it('loop410/413 — App still gates clone seed with shouldSkipTemplateCloneSeed (kit id retained)', () => {
+  it('loop410/413/414 — App still gates clone seed with shouldSkipTemplateCloneSeed (kit id retained)', () => {
     // The gate must remain so explicit pure-prompt rollback can skip LOOK seed
     // while deterministic default still threads selectedDeckTemplateId.
     const app = readFileSync(
@@ -130,6 +136,8 @@ describe('templateCloneContentFill', () => {
     expect(app).toContain('!shouldSkipTemplateCloneSeed()');
     expect((app.match(/!shouldSkipTemplateCloneSeed\(\)/g) ?? []).length).toBeGreaterThanOrEqual(2);
     expect(app).toContain('selectedDeckTemplateId');
+    expect(app).toContain('fillTemplateClonedDeckDeterministically');
+    expect(app).toContain('usedDeterministicCloneFill');
     expect(app).toMatch(/루프401\/409\/410\/413|shouldSkipTemplateCloneSeed/);
   });
 

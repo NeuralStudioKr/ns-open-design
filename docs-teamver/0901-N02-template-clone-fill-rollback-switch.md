@@ -56,10 +56,10 @@
 
 **결정:** clone 기본 경로를 LOOK seed + slot-fill(`deterministic`)로 되돌린다. 모델은 HTML을 다시 쓰지 않고, 카드 본문은 dense JSON extras로 채운다.
 
-**재매핑:**
-- empty / unknown → `deterministic`
-- `prompt` / `clone` / `clone-fill` / `slot-fill` / `json-fill` → `json` (LOOK seed + AI dense JSON)
-- `prompt-fill` / `html` / `html-fill` / `legacy-html` → HTML rewrite (`prompt`)
+**재매핑 (루프414):**
+- empty / unknown → `deterministic` (서버 slot-fill, MiniMax fill 없음)
+- `json` / `slot-fill` / `json-fill` → `json` (LOOK seed + AI dense JSON, 명시 opt-in)
+- `prompt` / `clone` / `clone-fill` / `prompt-fill` / `html` → HTML rewrite (`prompt`)
 - `pure-prompt` 및 기존 alias 유지
 - `deterministic` / `content-fill` / `server` → `deterministic`
 

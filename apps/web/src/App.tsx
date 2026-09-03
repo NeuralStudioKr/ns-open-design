@@ -132,7 +132,10 @@ import {
   driveCreateSlidesSourceBrief,
   isExplicitCanvasSlideVisualTemplate,
 } from './teamver/canvasSlideLaunch';
-import { seedTemplateClonedDeck } from './teamver/seedTemplateClonedDeck';
+import {
+  fillTemplateClonedDeckDeterministically,
+  seedTemplateClonedDeck,
+} from './teamver/seedTemplateClonedDeck';
 import {
   writeCreateConversationHandoff,
   setPendingTemplateClone,
@@ -144,6 +147,7 @@ import {
   queueTemplateCloneContentFill,
   queueTemplateClonePromptFill,
   shouldSkipTemplateCloneSeed,
+  shouldUseDeterministicTemplateCloneFill,
   withoutCanonicalDeckAttachments,
 } from './teamver/templateCloneContentFill';
 import {
@@ -2690,6 +2694,9 @@ function AppInner() {
       let seededDeckFileName: string | null = null;
       let preservedFilledDeck = false;
       let queuedFillSeed: string | null = null;
+      // 루프414 — Home must not auto-send MiniMax JSON fill when the
+      // server already slot-filled the LOOK seed.
+      let usedDeterministicCloneFill = false;
       if (!workingDirHandoffFailed && pendingCanvasHandoff) {
         try {
           const canvasResult = await importTeamverCanvas(result.project.id, {
@@ -2743,62 +2750,91 @@ function AppInner() {
                 ? input.metadata.selectedDeckTemplateTitle.trim()
                 : '';
             const userFacingRequest = extractUserFacingCreateRequest(derivedPendingPrompt);
-            const canvasFill = buildTemplateCloneFillSeedForCurrentMode({
-              userInstruction: userFacingRequest || null,
-              sourceBrief,
-              pendingPrompt: derivedPendingPrompt ?? null,
-              templateTitle: templateTitle || selectedDeckTemplateId,
-              hasSourceMaterial: true,
-              slideCountHint: slideCountHintFromInputs,
-            });
-            queuedFillSeed = canvasFill.seed;
-            const queueCanvasFill = canvasFill.jsonFill
-              ? queueTemplateCloneContentFill
-              : queueTemplateClonePromptFill;
-            queueCanvasFill({
+            const cloneRequest = {
               projectId: result.project.id,
-              seed: queuedFillSeed,
-              attachments: firstMessageAttachments,
-            });
-            // Navigate without awaiting Clone; auto-send waits via waitPendingTemplateClone.
-            setPendingTemplateClone(
-              result.project.id,
-              seedTemplateClonedDeck({
-                projectId: result.project.id,
-                pluginId: selectedDeckTemplateId,
-                templateTitle: templateTitle || selectedDeckTemplateId,
-                sourceBrief,
+              pluginId: selectedDeckTemplateId,
+              templateTitle: templateTitle || selectedDeckTemplateId,
+              sourceBrief,
+              userInstruction: userFacingRequest || null,
+              deckTitle:
+                sanitizeTemplateCloneDeckTitle(pendingCanvasHandoff.title)
+                || sanitizeTemplateCloneDeckTitle(pendingCanvasHandoff.threadTitle)
+                || (isUsableDeckCoverTitle(result.project.name)
+                  ? sanitizeTemplateCloneDeckTitle(result.project.name)
+                  : null)
+                || sanitizeTemplateCloneDeckTitle(
+                  summarizeProjectNameFromUserTurn(derivedPendingPrompt ?? ''),
+                )
+                || sanitizeTemplateCloneDeckTitle(userFacingRequest.split('\n')[0])
+                || null,
+              slideCountHint: slideCountHintFromInputs,
+            };
+            if (shouldUseDeterministicTemplateCloneFill()) {
+              usedDeterministicCloneFill = true;
+              setPendingTemplateClone(
+                result.project.id,
+                fillTemplateClonedDeckDeterministically(cloneRequest).then(async (seeded) => {
+                  if (seeded.ok) {
+                    seededDeckFileName = seeded.fileName;
+                    preservedFilledDeck = true;
+                    return seeded;
+                  }
+                  const look = await seedTemplateClonedDeck(cloneRequest);
+                  if (look.ok) {
+                    seededDeckFileName = look.fileName;
+                    preservedFilledDeck = look.preservedFilled === true;
+                  } else {
+                    devLog.warn(
+                      'Home Canvas deterministic fill failed; LOOK seed also missed',
+                      { seeded, look },
+                    );
+                    setWorkingDirError(
+                      '템플릿 미리보기 준비에 실패했습니다. 선택한 템플릿 컨텍스트로 슬라이드 생성을 계속합니다.',
+                    );
+                  }
+                  return look;
+                }),
+              );
+            } else {
+              const canvasFill = buildTemplateCloneFillSeedForCurrentMode({
                 userInstruction: userFacingRequest || null,
-                deckTitle:
-                  sanitizeTemplateCloneDeckTitle(pendingCanvasHandoff.title)
-                  || sanitizeTemplateCloneDeckTitle(pendingCanvasHandoff.threadTitle)
-                  || (isUsableDeckCoverTitle(result.project.name)
-                    ? sanitizeTemplateCloneDeckTitle(result.project.name)
-                    : null)
-                  || sanitizeTemplateCloneDeckTitle(
-                    summarizeProjectNameFromUserTurn(derivedPendingPrompt ?? ''),
-                  )
-                  || sanitizeTemplateCloneDeckTitle(userFacingRequest.split('\n')[0])
-                  || null,
+                sourceBrief,
+                pendingPrompt: derivedPendingPrompt ?? null,
+                templateTitle: templateTitle || selectedDeckTemplateId,
+                hasSourceMaterial: true,
                 slideCountHint: slideCountHintFromInputs,
-              }).then((seeded) => {
-                if (seeded.ok) {
-                  seededDeckFileName = seeded.fileName;
-                  preservedFilledDeck = seeded.preservedFilled === true;
-                } else {
-                  // Clone LOOK seed failed — still run kit-driven CREATE fill so
-                  // the first turn is not a Neutral/instruction dump.
-                  devLog.warn(
-                    'Home Canvas template clone seed failed; continuing with selected-template AI fill',
-                    seeded,
-                  );
-                  setWorkingDirError(
-                    '템플릿 미리보기 준비에 실패했습니다. 선택한 템플릿 컨텍스트로 슬라이드 생성을 계속합니다.',
-                  );
-                }
-                return seeded;
-              }),
-            );
+              });
+              queuedFillSeed = canvasFill.seed;
+              const queueCanvasFill = canvasFill.jsonFill
+                ? queueTemplateCloneContentFill
+                : queueTemplateClonePromptFill;
+              queueCanvasFill({
+                projectId: result.project.id,
+                seed: queuedFillSeed,
+                attachments: firstMessageAttachments,
+              });
+              // Navigate without awaiting Clone; auto-send waits via waitPendingTemplateClone.
+              setPendingTemplateClone(
+                result.project.id,
+                seedTemplateClonedDeck(cloneRequest).then((seeded) => {
+                  if (seeded.ok) {
+                    seededDeckFileName = seeded.fileName;
+                    preservedFilledDeck = seeded.preservedFilled === true;
+                  } else {
+                    // Clone LOOK seed failed — still run kit-driven CREATE fill so
+                    // the first turn is not a Neutral/instruction dump.
+                    devLog.warn(
+                      'Home Canvas template clone seed failed; continuing with selected-template AI fill',
+                      seeded,
+                    );
+                    setWorkingDirError(
+                      '템플릿 미리보기 준비에 실패했습니다. 선택한 템플릿 컨텍스트로 슬라이드 생성을 계속합니다.',
+                    );
+                  }
+                  return seeded;
+                }),
+              );
+            }
           }
           // Drop URL handoff once import succeeded so ProjectView does not
           // re-open one-confirm while auto-send is queued.
@@ -2887,50 +2923,79 @@ function AppInner() {
           || sanitizeTemplateCloneDeckTitle(userFacingRequest.split('\n')[0])
           || sanitizeTemplateCloneDeckTitle(homeDriveSourceAsset?.filename)
           || null;
-        const homeFill = buildTemplateCloneFillSeedForCurrentMode({
-          userInstruction: userFacingRequest || null,
-          sourceBrief,
-          pendingPrompt: derivedPendingPrompt ?? null,
-          templateTitle: templateTitle || selectedDeckTemplateId,
-          hasSourceMaterial,
-          slideCountHint: slideCountHintFromInputs,
-        });
-        queuedFillSeed = homeFill.seed;
-        const queueHomeFill = homeFill.jsonFill
-          ? queueTemplateCloneContentFill
-          : queueTemplateClonePromptFill;
-        queueHomeFill({
+        const cloneRequest = {
           projectId: result.project.id,
-          seed: queuedFillSeed,
-          attachments: firstMessageAttachments,
-        });
-        // Navigate without awaiting Clone; auto-send waits via waitPendingTemplateClone.
-        setPendingTemplateClone(
-          result.project.id,
-          seedTemplateClonedDeck({
-            projectId: result.project.id,
-            pluginId: selectedDeckTemplateId,
-            templateTitle: templateTitle || selectedDeckTemplateId,
-            sourceBrief,
+          pluginId: selectedDeckTemplateId,
+          templateTitle: templateTitle || selectedDeckTemplateId,
+          sourceBrief,
+          userInstruction: userFacingRequest || null,
+          deckTitle: clonedDeckCoverTitle,
+          slideCountHint: slideCountHintFromInputs,
+        };
+        if (shouldUseDeterministicTemplateCloneFill()) {
+          usedDeterministicCloneFill = true;
+          setPendingTemplateClone(
+            result.project.id,
+            fillTemplateClonedDeckDeterministically(cloneRequest).then(async (seeded) => {
+              if (seeded.ok) {
+                seededDeckFileName = seeded.fileName;
+                preservedFilledDeck = true;
+                return seeded;
+              }
+              const look = await seedTemplateClonedDeck(cloneRequest);
+              if (look.ok) {
+                seededDeckFileName = look.fileName;
+                preservedFilledDeck = look.preservedFilled === true;
+              } else {
+                devLog.warn(
+                  'Home deterministic fill failed; LOOK seed also missed',
+                  { seeded, look },
+                );
+                setWorkingDirError(
+                  '템플릿 미리보기 준비에 실패했습니다. 선택한 템플릿 컨텍스트로 슬라이드 생성을 계속합니다.',
+                );
+              }
+              return look;
+            }),
+          );
+        } else {
+          const homeFill = buildTemplateCloneFillSeedForCurrentMode({
             userInstruction: userFacingRequest || null,
-            deckTitle: clonedDeckCoverTitle,
+            sourceBrief,
+            pendingPrompt: derivedPendingPrompt ?? null,
+            templateTitle: templateTitle || selectedDeckTemplateId,
+            hasSourceMaterial,
             slideCountHint: slideCountHintFromInputs,
-          }).then((seeded) => {
-            if (seeded.ok) {
-              seededDeckFileName = seeded.fileName;
-              preservedFilledDeck = seeded.preservedFilled === true;
-            } else {
-              devLog.warn(
-                'Home template clone seed failed; continuing with selected-template AI fill',
-                seeded,
-              );
-              setWorkingDirError(
-                '템플릿 미리보기 준비에 실패했습니다. 선택한 템플릿 컨텍스트로 슬라이드 생성을 계속합니다.',
-              );
-            }
-            return seeded;
-          }),
-        );
+          });
+          queuedFillSeed = homeFill.seed;
+          const queueHomeFill = homeFill.jsonFill
+            ? queueTemplateCloneContentFill
+            : queueTemplateClonePromptFill;
+          queueHomeFill({
+            projectId: result.project.id,
+            seed: queuedFillSeed,
+            attachments: firstMessageAttachments,
+          });
+          // Navigate without awaiting Clone; auto-send waits via waitPendingTemplateClone.
+          setPendingTemplateClone(
+            result.project.id,
+            seedTemplateClonedDeck(cloneRequest).then((seeded) => {
+              if (seeded.ok) {
+                seededDeckFileName = seeded.fileName;
+                preservedFilledDeck = seeded.preservedFilled === true;
+              } else {
+                devLog.warn(
+                  'Home template clone seed failed; continuing with selected-template AI fill',
+                  seeded,
+                );
+                setWorkingDirError(
+                  '템플릿 미리보기 준비에 실패했습니다. 선택한 템플릿 컨텍스트로 슬라이드 생성을 계속합니다.',
+                );
+              }
+              return seeded;
+            }),
+          );
+        }
       }
       trackProjectCreateResult(
         analytics.track,
@@ -2956,9 +3021,10 @@ function AppInner() {
       // structure turn (no source attach → Neutral look risk).
       const suppressAutoSendForFailedDriveImport =
         pendingDriveAssets.length > 0 && !homeDriveImportSucceeded;
-      if (suppressAutoSendForFailedDriveImport) {
+      if (suppressAutoSendForFailedDriveImport || usedDeterministicCloneFill) {
         // queueTemplateCloneContentFill may have run above — drop fill + any
         // residual auto-send so Neutral structure turns never fire without source.
+        // 루프414 — deterministic Home fill must not auto-send MiniMax.
         clearTemplateCloneContentFillQueue(result.project.id);
         queuedFillSeed = null;
         try {
@@ -2971,6 +3037,7 @@ function AppInner() {
         !workingDirHandoffFailed &&
         !canvasImportFailed &&
         !suppressAutoSendForFailedDriveImport &&
+        !usedDeterministicCloneFill &&
         input.autoSendFirstMessage &&
         (derivedPendingPrompt !== undefined || firstMessageAttachments.length > 0)
       ) {
@@ -3003,7 +3070,24 @@ function AppInner() {
             appliedPluginSnapshotId: result.appliedPluginSnapshotId,
           }
         : result.project;
-      const projectForNav = queuedFillSeed
+      const projectForNav = usedDeterministicCloneFill
+        ? {
+            ...project,
+            metadata: {
+              ...(project.metadata && typeof project.metadata === 'object'
+                ? project.metadata
+                : { kind: 'deck' as const }),
+              kind: project.metadata?.kind ?? 'deck',
+              templateClonedDeckSeeded: !preservedFilledDeck,
+              templateCloneContentFilled: true,
+              templateCloneContentFillPending: false,
+              templateCloneFillMode: 'deterministic',
+              ...(selectedDeckTemplateId
+                ? { selectedDeckTemplateId }
+                : {}),
+            },
+          }
+        : queuedFillSeed
         ? {
             ...project,
             // Replace the create-time pendingPrompt (full canvas run dump)
@@ -3015,7 +3099,7 @@ function AppInner() {
                 ? project.metadata
                 : { kind: 'deck' as const }),
               kind: project.metadata?.kind ?? 'deck',
-              templateClonedDeckSeeded: !preservedFilledDeck,
+              templateClonedDeckSeeded: Boolean(seededDeckFileName) && !preservedFilledDeck,
               templateCloneContentFillPending: true,
               ...(selectedDeckTemplateId
                 ? { selectedDeckTemplateId }
@@ -3036,7 +3120,8 @@ function AppInner() {
       });
       // Overlap preview-url mint with ProjectView mount so FileViewer can peek
       // a cached prefix (srcDoc hold) instead of waiting for post-mount remint.
-      const navDeckFile = seededDeckFileName ?? (queuedFillSeed ? 'deck.html' : null);
+      const navDeckFile = seededDeckFileName
+        ?? ((queuedFillSeed || usedDeterministicCloneFill) ? 'deck.html' : null);
       warmTeamverProjectPreviewPrefixSoon(
         projectForNav.id,
         navDeckFile ?? 'deck.html',

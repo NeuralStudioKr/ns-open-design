@@ -42,6 +42,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프414 — deterministic Home MiniMax JSON fill 제거
+
+체감: 생성 직후 MiniMax `AGENT_EXECUTION_FAILED`. Home이 서버 slot-fill 뒤에도 JSON-only fill을 자동 전송.
+
+수정: Home은 서버 content-fill만. `=prompt`는 HTML rewrite 유지. `json`은 명시 opt-in.
+
 ### 루프413 — Clone을 LOOK seed + dense JSON slot-fill로 복구
 
 체감: 명시 템플릿 motif가 사라지고 카드 본문이 비며 HTML rewrite는 배치가 무너짐. `pure-prompt`는 우회.
@@ -2056,7 +2062,15 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프413 · Clone LOOK seed + dense JSON slot-fill)
+## 이번 루프 (루프414 · Home MiniMax JSON fill 제거)
+
+- [x] Home/Canvas deterministic = 서버 content-fill, MiniMax fill 턴 없음
+- [x] `=prompt` / `clone` → HTML rewrite 유지 (`json`만 AI JSON)
+- [x] staging/production example `deterministic`
+- [x] web mode 정규화 · App pin
+- [ ] staging 재배포 후 동일 브리프 재생성
+
+## 직전 루프 (루프413 · Clone LOOK seed + dense JSON slot-fill)
 
 - [x] env-empty default `deterministic` (LOOK seed + slot-fill)
 - [x] schema `kicker` / `lead` / `items[]{title,body}` — 카드·스탯 본문 충전
