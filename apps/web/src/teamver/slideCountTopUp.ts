@@ -22,6 +22,9 @@ export const SLIDE_COUNT_TOP_UP_ENTRY_FROM = "slide_count_top_up";
 /** One remaining-all batch finishes a default-6 miss; two batches cover 15. */
 export const SLIDE_COUNT_TOP_UP_MAX_PER_CONVERSATION = 2;
 export const SLIDE_COUNT_TOP_UP_BATCH = 6;
+/** Live-stream busy retries before giving up on a scheduled top-up (loop408). */
+export const SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX = 3;
+export const SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS = 900;
 
 const USER_REQUESTED_SLIDE_COUNT_RE = /User requested slide count:\s*([^\n]+)/i;
 const SLIDE_COUNT_PLUGIN_INPUT_RE =

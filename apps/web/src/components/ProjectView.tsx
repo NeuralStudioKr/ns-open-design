@@ -540,6 +540,8 @@ import {
 import { subscribeTeamverEmbedSessionChanged } from '../teamver/teamverEmbedSession';
 import { consumeTeamverPublishMenuArm, maybeArmTeamverPublishMenuAfterRunSuccess } from '../teamver/teamverPostRunNavigation';
 import {
+  SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX,
+  SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
   SLIDE_COUNT_TOP_UP_ENTRY_FROM,
   buildSlideCountTopUpPrompt,
   extractRequestedSlideCountSpecFromMessages,
@@ -10223,6 +10225,12 @@ export function ProjectView({
         && !bypassBusyForQueuedDrain
         && !bypassBusyForHomeCreateAutoSend
       ) {
+        // Loop408: model-only recovery/top-up must never land in the editable
+        // "대기 중" queue (raw English APPEND / auto-continue). Callers retry
+        // or roll back; user follow-ups still queue as before.
+        if (isHiddenAutomationQueuedSend({ prompt: modelPrompt, meta })) {
+          return false;
+        }
         queueChatSendForCurrentConversation({
           conversationId: activeConversationId,
           prompt: modelPrompt,
@@ -12541,7 +12549,21 @@ export function ProjectView({
         const scheduledProjectId = project.id;
         const scheduledConversationId = activeConversationId;
         pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
-        slideCountTopUpTimerRef.current = window.setTimeout(() => {
+        const topUpTarget = requested ?? (allowDefaultShortDeckTopUp ? 6 : null);
+        if (topUpTarget == null) {
+          rollbackSlideCountTopUpCount(
+            conversationSlideCountTopUpCountRef.current,
+            scheduledConversationId,
+          );
+          pendingSlideCountTopUpConversationIdRef.current = null;
+          return;
+        }
+        const topUpPrompt = buildSlideCountTopUpPrompt({
+          produced,
+          requested: topUpTarget,
+        });
+        let busyRetries = 0;
+        const fireTopUp = () => {
           slideCountTopUpTimerRef.current = null;
           pendingSlideCountTopUpConversationIdRef.current = null;
           if (project.id !== scheduledProjectId) {
@@ -12565,9 +12587,36 @@ export function ProjectView({
             );
             return;
           }
+          // Mirror auto-continue: drop phantom BYOK recovery "streaming" so
+          // React busy does not reject this send. Real local streams keep
+          // abortRef and are retried below (never parked in the user queue).
+          if (!abortRef.current) {
+            if (apiBackgroundRecoveryRef.current) {
+              apiBackgroundRecoveryRef.current = false;
+              clearApiBackgroundRecoveryBanner();
+            }
+            if (streamingConversationIdRef.current === scheduledConversationId) {
+              clearStreamingMarker(scheduledConversationId);
+            }
+          }
+          if (abortRef.current) {
+            if (busyRetries < SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX) {
+              busyRetries += 1;
+              pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
+              slideCountTopUpTimerRef.current = window.setTimeout(
+                fireTopUp,
+                SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
+              );
+              return;
+            }
+            rollbackSlideCountTopUpCount(
+              conversationSlideCountTopUpCountRef.current,
+              scheduledConversationId,
+            );
+            return;
+          }
           const sendNow = handleSendRef.current;
-          const topUpTarget = requested ?? (allowDefaultShortDeckTopUp ? 6 : null);
-          if (!sendNow || topUpTarget == null) {
+          if (!sendNow) {
             rollbackSlideCountTopUpCount(
               conversationSlideCountTopUpCountRef.current,
               scheduledConversationId,
@@ -12575,23 +12624,35 @@ export function ProjectView({
             return;
           }
           const started = sendNow(
-            buildSlideCountTopUpPrompt({ produced, requested: topUpTarget }),
+            topUpPrompt,
             [],
             [],
             { entryFrom: SLIDE_COUNT_TOP_UP_ENTRY_FROM as ChatAnalyticsEntryFrom },
           );
           void Promise.resolve(started).then((ok) => {
-            if (ok === false) {
-              rollbackSlideCountTopUpCount(
-                conversationSlideCountTopUpCountRef.current,
-                scheduledConversationId,
+            if (ok !== false) return;
+            if (
+              busyRetries < SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX
+              && slideCountTopUpTimerRef.current === null
+            ) {
+              busyRetries += 1;
+              pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
+              slideCountTopUpTimerRef.current = window.setTimeout(
+                fireTopUp,
+                SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
               );
+              return;
             }
+            rollbackSlideCountTopUpCount(
+              conversationSlideCountTopUpCountRef.current,
+              scheduledConversationId,
+            );
           });
-        }, 700);
+        };
+        slideCountTopUpTimerRef.current = window.setTimeout(fireTopUp, 700);
       })();
     };
-  }, [handleSend, activeConversationId, project.id, readProjectHtml, slideOnlyMvp]);
+  }, [handleSend, activeConversationId, project.id, readProjectHtml, slideOnlyMvp, clearApiBackgroundRecoveryBanner, clearStreamingMarker]);
 
   // Cancel every in-flight run for the current conversation (the user's own
   // streaming turn plus any reattached runs), mark their assistant messages
@@ -15218,7 +15279,16 @@ function loadQueuedChatSends(projectId: string): QueuedChatSend[] {
     const raw = window.localStorage.getItem(queuedChatSendsStorageKey(projectId));
     const parsed = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isQueuedChatSend).slice(0, 100);
+    // Loop408: drop leaked model-only top-up / auto-continue rows from older
+    // sessions so they never reappear in "대기 중" or auto-drain after reload.
+    const restored = parsed
+      .filter(isQueuedChatSend)
+      .filter((item) => !isHiddenAutomationQueuedSend(item))
+      .slice(0, 100);
+    if (restored.length !== parsed.filter(isQueuedChatSend).length) {
+      saveQueuedChatSends(projectId, restored);
+    }
+    return restored;
   } catch {
     return [];
   }

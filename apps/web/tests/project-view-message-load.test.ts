@@ -724,6 +724,8 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM");
     expect(source).toContain("meta?.entryFrom === SLIDE_COUNT_TOP_UP_ENTRY_FROM");
     expect(source).toContain("isHiddenAutomationQueuedSend(item)");
+    expect(source).toContain("isHiddenAutomationQueuedSend({ prompt: modelPrompt, meta })");
+    expect(source).toContain("SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX");
     expect(source).toContain("!abortRef.current");
     // Keep this path quiet in production DevTools. The user-facing assistant
     // status event is the observable signal; console noise made previous demo

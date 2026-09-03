@@ -3,6 +3,8 @@ import type { ChatMessage } from "../../src/types";
 import {
   SLIDE_COUNT_REQUEST_MAX,
   SLIDE_COUNT_TOP_UP_BATCH,
+  SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX,
+  SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
   SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL,
   SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL_LEGACY,
   buildSlideCountTopUpPrompt,
@@ -341,6 +343,8 @@ describe("slideCountTopUp", () => {
 
   it("appends the remaining default-6 pages in one top-up", () => {
     expect(SLIDE_COUNT_TOP_UP_BATCH).toBe(6);
+    expect(SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX).toBe(3);
+    expect(SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS).toBe(900);
     expect(slideCountTopUpAppendUntil(1, 6)).toBe(6);
     expect(buildSlideCountTopUpPrompt({ produced: 1, requested: 6 })).toContain(
       "APPEND only new slides 2 through 6",

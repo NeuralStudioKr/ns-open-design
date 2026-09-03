@@ -42,6 +42,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프408 — 숨은 top-up이 busy 시 유저 대기열에 주차되던 배수
+
+체감: 루프407로 스트립은 숨겼지만, live abort busy면 `handleSend`가 top-up을 일반 대기열에 넣고 `false`를 반환해 count rollback + 숨은 큐 잔류가 남음. 실패 직후 「대기 중」에 sentinel이 보이던 경로의 근본.
+
+수정: busy 시 model-only는 **큐에 넣지 않음** · top-up은 phantom streaming 정리 + abort 중 busy retry(최대 3) · localStorage restore 시 automation 행 purge.
+
+검증: web `project-view-message-load` · `slideCountTopUp` · `chat-message-render`.
+
 ### 루프407 — 숨은 top-up이 채팅 대기열에 노출
 
 체감: 생성 실패 직후 사용자가 조작하지 않았는데 「1 대기 중」에 `[od:slide_count_top_up] The curre...` + 스킬 칩이 보임. 채팅 말풍선은 숨기지만 busy 시 `handleSend`가 동일 프롬프트를 일반 대기열에 넣어 노출.
@@ -2003,7 +2011,16 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프407 · 숨은 top-up 대기열 비노출)
+## 이번 루프 (루프408 · top-up busy 재예약·대기열 비주차)
+
+- [x] handleSend: hidden automation은 busy 시 queue 금지
+- [x] top-up: phantom busy clear + abort busy retry (max 3)
+- [x] loadQueuedChatSends: automation purge
+- [x] web pin / slideCountTopUp constants
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+- [ ] FileViewer/채팅 브라우저 클릭 (이 환경에서 불가 — 유지)
+
+## 직전 루프 (루프407 · 숨은 top-up 대기열 비노출)
 
 - [x] `isHiddenAutomationUserPrompt` / `isHiddenAutomationQueuedSend` export
 - [x] ProjectView `currentConversationQueuedItems`에서 automation 제외
