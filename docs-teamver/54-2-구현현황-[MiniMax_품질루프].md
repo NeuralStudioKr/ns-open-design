@@ -70,6 +70,14 @@ opt-in: `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=pure-prompt` (alias: `no-seed` / 
 
 검증: web `project-view-message-merge` · `templateCloneContentFill` · `slideCountTopUp`, contracts `template-clone-outline` · `template-clone-fill` · `system-prompt-api-mode`.
 
+### 루프403 — Capsule 중첩 카드·표지 pill·badge 오핀·stutter salvage
+
+체감(사용자 HTML): Capsule 결과에서 카드가 `</div>` 누락으로 중첩되어 1열 붕괴 · title-pill `표지` · A/1 콘텐츠 badge가 Motif deco로 absolute 핀 · stray `AI`/`LLM` · 미닫힌 h2·중첩 h4 · closing stutter · `neuralstudio.kr 회사` 표지.
+
+수정: flattenNestedBorderPadCards · scrubGenericTitlePills · deco pin min-width/flex badge 제외 · stripStrayInlineAcronyms · dedupeHeadingPhraseStutter · h4 typo repair · repeat(1)→N · host crumb 제목 polish.
+
+검증: contracts 루프403 fixture.
+
 ### 루프400 — Spec/Hint 통일 · Capsule Motif 보존 · SVG stub · flex/heading salvage
 
 체감: auto-continue Hint와 top-up Spec 우선순위 불일치 · Capsule IB restyle이 Motif/floating-pills 폐기 · Motif SVG만 있는 장이 drop 안 됨 · flex 카드가 chrome-pill에 잔존 · `<span style=flex>` 앞 orphan h2 · sibling `<b>1</b><b>99+` · Capsule fingerprint/neo cream 재주입.

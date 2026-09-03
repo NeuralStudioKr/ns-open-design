@@ -508,8 +508,21 @@ export function synthesizeTemplateCloneOutlineFromBrief(input: {
       && !SYNTH_GENERIC_TITLE_RE.test(candidate),
   );
   if (!cover) return null;
-  const target = Math.max(3, Math.min(6, Math.floor(input.slideCount ?? 5)));
-  const genericSections: string[] = ['개요', '핵심 포인트', '근거와 사례', '실행 방안', '요약'];
+  const target = Math.max(
+    3,
+    Math.min(TEMPLATE_CLONE_OUTLINE_MAX_SLIDES, Math.floor(input.slideCount ?? 5)),
+  );
+  const genericSections: string[] = [
+    '개요',
+    '핵심 포인트',
+    '근거와 사례',
+    '실행 방안',
+    '고객 경험',
+    '운영과 보안',
+    '도입 로드맵',
+    '성과 지표',
+    '요약',
+  ];
   const slides: TemplateCloneSlideContent[] = [{ title: cover, roleHint: 'cover' }];
   for (let i = 1; i < target; i += 1) {
     const label = genericSections[i - 1] ?? `핵심 ${i}`;
@@ -535,6 +548,7 @@ export function decideTemplateCloneSlotFillTerminal(input: {
   seedHtml: string | null | undefined;
   repairAlreadyAttempted: boolean;
   templateId?: string | null;
+  slideCount?: number | null;
   /** User brief / topic + resolved deck title used to synthesize a topical
    *  outline when the model output is unusable — so seed-fallback shows the
    *  user's topic instead of raw template demo copy (Hartfield / Daisy). */
@@ -577,6 +591,7 @@ export function decideTemplateCloneSlotFillTerminal(input: {
   const synth = synthesizeTemplateCloneOutlineFromBrief({
     userBrief: input.userBrief ?? null,
     deckTitle: input.deckTitle ?? fallbackTitleGuess,
+    slideCount: input.slideCount ?? null,
   });
   if (synth) {
     const filledSynth = buildTemplateClonedDeckHtml(seed, synth.slides, {
@@ -1382,7 +1397,7 @@ export function enrichSparseCobaltCover(
 }
 
 function magazineLeftoverRibbonLabel(text: string): boolean {
-  return /^(?:학습\s*노트|Study Notes|Working notes|Notes)$/i.test(
+  return /^(?:학습\s*노트|Study Notes|Working notes|Notes|표지|Cover|Title|슬라이드)$/i.test(
     String(text ?? '').replace(/\s+/g, ' ').trim(),
   );
 }
@@ -1416,6 +1431,20 @@ export function polishUrlSiteCoverTitle(title: string, brief?: string | null): s
       return /[가-힣]/.test(source) ? '팀버' : 'Teamver';
     }
     return host.charAt(0).toUpperCase() + host.slice(1).toLowerCase();
+  }
+  // 루프403 — bare host crumb titles: `neuralstudio.kr 회사` → brand label.
+  const hostCrumb = next.match(
+    /^(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+)\.(?:com|co\.kr|kr|io|net|ai|app)(?:\s+회사|\s+소개)?$/i,
+  );
+  if (hostCrumb?.[1]) {
+    const brand = hostCrumb[1];
+    if (/^neuralstudio$/i.test(brand)) {
+      return /회사|소개/u.test(next) && /[가-힣]/.test(next)
+        ? 'NeuralStudio 소개'
+        : 'NeuralStudio';
+    }
+    const titled = brand.charAt(0).toUpperCase() + brand.slice(1).toLowerCase();
+    return /회사/u.test(next) ? `${titled} 소개` : titled;
   }
   return next;
 }
@@ -1495,9 +1524,9 @@ function repairBrokenHeadingTypos(html: string): string {
   next = next.replace(/<\/p>\s*\/h([1-6])>/gi, '</h$1>');
   // Bare `/h3>` (missing `<`) after text
   next = next.replace(/([^<\s/])\s*\/h([1-6])>/gi, '$1</h$2>');
-  // Nested same-level open: `<h3>Title <h3>Title` → close outer then reopen
+  // Nested same-level open: `<h3>Title <h3>Title` → close outer then reopen (h1–h6).
   next = next.replace(
-    /<h([1-3])(\b[^>]*)>([^<]{0,240}?)\s*<h\1(\b[^>]*)>/gi,
+    /<h([1-6])(\b[^>]*)>([^<]{0,240}?)\s*<h\1(\b[^>]*)>/gi,
     (_full, level: string, attrs1: string, text: string, attrs2: string) => {
       const trimmed = String(text ?? '').trim();
       return trimmed
@@ -1507,14 +1536,14 @@ function repairBrokenHeadingTypos(html: string): string {
   );
   // Heading body closed with `</p>` instead of `</hN>`
   next = next.replace(
-    /<h([1-3])(\b[^>]*)>([^<]{1,240}?)\s*<\/p>/gi,
+    /<h([1-6])(\b[^>]*)>([^<]{1,240}?)\s*<\/p>/gi,
     '<h$1$2>$3</h$1>',
   );
   // Double close leftovers
-  next = next.replace(/<\/h([1-3])>\s*<\/h\1>/gi, '</h$1>');
+  next = next.replace(/<\/h([1-6])>\s*<\/h\1>/gi, '</h$1>');
   // Adjacent duplicate identical headings (edit-turn echo)
   next = next.replace(
-    /(<h([1-3])\b[^>]*>)\s*([^<]{1,160}?)\s*<\/h\2>\s*<h\2\b[^>]*>\s*\3\s*<\/h\2>/gi,
+    /(<h([1-6])\b[^>]*>)\s*([^<]{1,160}?)\s*<\/h\2>\s*<h\2\b[^>]*>\s*\3\s*<\/h\2>/gi,
     '$1$3</h$2>',
   );
   return next;
@@ -1891,16 +1920,26 @@ function collapseSparseRepeatGrids(html: string): string {
   }
   for (let i = starts.length - 1; i >= 0; i -= 1) {
     const { start, count } = starts[i]!;
-    if (!(count >= 2)) continue;
+    if (!(count >= 1)) continue;
     const block = extractBalancedFrom(out, start);
     if (!block) continue;
     const open = /^<div\b[^>]*>/i.exec(block)?.[0] ?? '';
     const inner = block.slice(open.length).replace(/<\/div\s*>$/i, '');
     const children = countDirectChildOpens(inner);
-    if (children < 1 || children >= count) continue;
+    if (children < 1) continue;
+    // Shrink over-declared grids (3 cols / 1 child) OR expand MiniMax
+    // `repeat(1,1fr)` stacks that actually hold 2–4 sibling cards (루프403).
+    let nextCount = count;
+    if (count >= 2 && children < count) nextCount = children;
+    else if (count === 1 && children >= 2) {
+      nextCount = children === 3 ? 3 : Math.min(4, children === 4 ? 2 : children);
+    } else {
+      continue;
+    }
+    if (nextCount === count) continue;
     const nextOpen = open.replace(
       /grid-template-columns:\s*repeat\(\s*\d+\s*,/i,
-      `grid-template-columns:repeat(${children},`,
+      `grid-template-columns:repeat(${nextCount},`,
     );
     out = `${out.slice(0, start)}${nextOpen}${block.slice(open.length)}${out.slice(start + block.length)}`;
   }
@@ -2044,11 +2083,16 @@ function neoDecoAbsolutePlacement(style: string): string {
 }
 
 function looksLikeNeoBrutalDecoStyle(style: string): boolean {
-  const width = Number(/width\s*:\s*(\d+)px/i.exec(style)?.[1] ?? 0);
-  const height = Number(/height\s*:\s*(\d+)px/i.exec(style)?.[1] ?? 0);
+  // Prefer explicit width — do not match `min-width:` (루프403 content badges).
+  const width = Number(/(?:^|;)\s*width\s*:\s*(\d+)px/i.exec(style)?.[1] ?? 0);
+  const height = Number(/(?:^|;)\s*height\s*:\s*(\d+)px/i.exec(style)?.[1] ?? 0);
   if (width < 24 || height < 24 || width > 360 || height > 360) return false;
   if (/padding\s*:\s*[2-9]\d/i.test(style)) return false;
   if (/position\s*:\s*absolute/i.test(style)) return false;
+  // Content letter/number badges use flex + min-width — never treat as deco.
+  if (/display\s*:\s*flex/i.test(style) && /(?:^|;)\s*(?:min-width|flex-shrink)\s*:/i.test(style)) {
+    return false;
+  }
   const paint = NEO_DECO_PAINT_RE.test(style) || /radial-gradient|repeating-linear-gradient/i.test(style);
   if (!paint) return false;
   // Dot grids often omit a solid border; color chips usually have one.
@@ -2096,6 +2140,10 @@ export function pinNeoBrutalEmptyDecoBlocks(html: string): string {
     (full, attrs: string, text: string) => {
       const style = /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i.exec(attrs)?.[2] ?? '';
       if (!style) return full;
+      // 루프403 — single letter/digit flex badges are content, not Motif deco.
+      if (/^[\dA-Za-z]$/.test(String(text).trim()) && /display\s*:\s*flex/i.test(style)) {
+        return full;
+      }
       if (looksLikeCapsuleRelativeDeco(attrs, style)) {
         return `<div${pinNeoDecoOpenAttrs(attrs)}>${text}</div>`;
       }
@@ -2126,11 +2174,15 @@ export function pinNeoBrutalEmptyDecoBlocks(html: string): string {
 
 function looksLikeCapsuleRelativeDeco(attrs: string, style: string): boolean {
   if (/position\s*:\s*absolute/i.test(style)) return false;
+  // Content badges (A/B/1/2 in flex rows) must stay in flow (루프403).
+  if (/display\s*:\s*flex/i.test(style) && /(?:^|;)\s*(?:min-width|flex-shrink)\s*:/i.test(style)) {
+    return false;
+  }
   if (/\b(?:deco-pill|deco-pills|floating-pills|f-pill)\b/i.test(attrs)) {
     return /position\s*:\s*relative/i.test(style) || /border-radius\s*:/i.test(style);
   }
-  const width = Number(/width\s*:\s*(\d+)px/i.exec(style)?.[1] ?? 0);
-  const height = Number(/height\s*:\s*(\d+)px/i.exec(style)?.[1] ?? 0);
+  const width = Number(/(?:^|;)\s*width\s*:\s*(\d+)px/i.exec(style)?.[1] ?? 0);
+  const height = Number(/(?:^|;)\s*height\s*:\s*(\d+)px/i.exec(style)?.[1] ?? 0);
   if (width < 24 || height < 24 || width > 420 || height > 420) return false;
   if (!/#E85D4E|var\(\s*--coral|#FFE66D|#FFB703|#F5F5F0|var\(\s*--bg/i.test(style)) return false;
   if (!/border\s*:/i.test(style) && !/border-radius\s*:/i.test(style)) return false;
@@ -3074,11 +3126,15 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = repairBareHeadingCloses(next);
   next = closeOrphanHeadingsBeforeBlocks(next);
   next = unwrapBlocksFromHeadings(next);
+  next = dedupeHeadingPhraseStutter(next);
+  next = stripStrayInlineAcronyms(next);
   // 루프381 — Model often emits an empty chrome card shell followed by the
   // pill/heading/paragraph triple that should live INSIDE it. Reparent first
   // so `stripEmptyBorderPadCardShells` does not drop the intended wrapper.
   next = absorbFollowingPillHeadingIntoEmptyChromeShell(next);
   next = stripEmptyBorderPadCardShells(next);
+  // 루프403 — Close omitted card wrappers so siblings stop nesting.
+  next = flattenNestedBorderPadCards(next);
   next = salvageOrphanRepeatGridCards(next);
   next = collapseSparseRepeatGrids(next);
   next = flattenNestedComparisonGridRows(next);
@@ -3107,6 +3163,7 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = healOrphanRadialCircles(next);
   next = dropEmptyDeckSlides(next);
   next = restyleForeignIbMagazineCover(next);
+  next = scrubGenericTitlePills(next);
   next = stripNeoBrutalVarFallbackOnEightBit(next);
   next = dropStudyNotesChromeOnNonIbKits(next);
   next = enrichSparseCobaltCover(next, brief);
@@ -3170,6 +3227,106 @@ function listDirectChildRanges(html: string, innerStart: number, innerEnd: numbe
 function declaredRepeatColumnCount(attrs: string): number {
   const match = /grid-template-columns\s*:\s*repeat\(\s*(\d+)\s*,/i.exec(attrs);
   return match ? Number(match[1]) : 0;
+}
+
+function looksLikeCardOpenAttrs(attrs: string): boolean {
+  const a = String(attrs ?? '');
+  if (!/border\s*:\s*[^;]*solid/i.test(a)) return false;
+  if (!/padding\s*:\s*\d/i.test(a)) return false;
+  if (!/border-radius\s*:\s*\d/i.test(a)) return false;
+  // White / light fill cards — Capsule feature / reference shells.
+  return /background(?:-color)?\s*:\s*(?:#fff(?:fff)?|#F5F5F0|#ffffff|white|rgba?\(\s*255)/i.test(a)
+    || /background(?:-color)?\s*:\s*#1A1A1A/i.test(a);
+}
+
+/**
+ * 루프403 — MiniMax often omits `</div>` between sibling cards, so card 02
+ * nests inside card 01. Insert a close before each nested peer card that
+ * follows real copy (h3/p/pill).
+ */
+export function flattenNestedBorderPadCards(html: string): string {
+  let out = String(html ?? '');
+  for (let pass = 0; pass < 8; pass += 1) {
+    const before = out;
+    const openRe = /<div\b([^>]*)>/gi;
+    const starts: number[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = openRe.exec(out)) !== null) {
+      if (looksLikeCardOpenAttrs(match[1] ?? '')) starts.push(match.index);
+    }
+    let lifted = false;
+    for (let i = starts.length - 1; i >= 0; i -= 1) {
+      const start = starts[i]!;
+      const balanced = extractBalancedFrom(out, start);
+      if (!balanced) continue;
+      const open = /^<div\b[^>]*>/i.exec(balanced)?.[0] ?? '';
+      const closeLen = /<\/div\s*>$/i.exec(balanced)?.[0].length ?? 6;
+      const inner = balanced.slice(open.length, balanced.length - closeLen);
+      const nestedRe = /<div\b([^>]*)>/gi;
+      let nested: RegExpExecArray | null;
+      let nestedAt = -1;
+      while ((nested = nestedRe.exec(inner)) !== null) {
+        if (!looksLikeCardOpenAttrs(nested[1] ?? '')) continue;
+        const lead = inner.slice(0, nested.index);
+        if (stripTagsToText(lead).length < 10 && !/<h[1-6]\b/i.test(lead)) continue;
+        nestedAt = nested.index;
+        break;
+      }
+      if (nestedAt < 0) continue;
+      const insertAt = start + open.length + nestedAt;
+      out = `${out.slice(0, insertAt)}</div>${out.slice(insertAt)}`;
+      lifted = true;
+      break;
+    }
+    if (!lifted || out === before) break;
+  }
+  return out;
+}
+
+/** 루프403 — IB leftover "표지" must not become Capsule title-pill copy. */
+export function scrubGenericTitlePills(html: string): string {
+  return String(html ?? '').replace(
+    /<(div|span)\b([^>]*\btitle-pill\b[^>]*)>\s*(표지|Cover|Title|슬라이드)\s*<\/\1>/gi,
+    '<$1$2>SERVICE INTRO</$1>',
+  );
+}
+
+/**
+ * 루프403 — MiniMax leaks bare acronyms between tags (`</h3> AI <p`, `</h3> LLM <p`).
+ */
+export function stripStrayInlineAcronyms(html: string): string {
+  return String(html ?? '').replace(
+    /(<\/(?:h[1-6]|div|span|p)>)\s*(?:AI|LLM|ML|API|KPI|RAG|STT|TTS)\s*(?=<(?:p|div|h[1-6]|span|ul|ol)\b)/gi,
+    '$1',
+  );
+}
+
+/**
+ * 루프403 — Closing stutter inside headings:
+ * `함께 만들 AI,<br>지금 시작하세요 AI,<br>지금 시작하세요`
+ */
+export function dedupeHeadingPhraseStutter(html: string): string {
+  return String(html ?? '').replace(
+    /<h([1-6])\b([^>]*)>([\s\S]*?)<\/h\1>/gi,
+    (full, level: string, attrs: string, inner: string) => {
+      let next = String(inner);
+      // Exact phrase repeat with optional <br> between.
+      next = next.replace(
+        /([^<>]{8,80}?)(?:\s*<br\s*\/?\s*>\s*)?\s*\1/gi,
+        '$1',
+      );
+      // Trailing stutter that includes a <br>: `AI,<br>지금 시작하세요 AI,<br>지금 시작하세요`
+      next = next.replace(
+        /((?:[A-Za-z가-힣0-9][^<>]{0,40})?<br\s*\/?\s*>[^<>]{4,60})\s+\1/gi,
+        '$1',
+      );
+      next = next.replace(
+        /(AI[,，]?\s*<br\s*\/?\s*>\s*[^<]{4,40})\s+\1/gi,
+        '$1',
+      );
+      return next === inner ? full : `<h${level}${attrs}>${next}</h${level}>`;
+    },
+  );
 }
 
 function looksLikeBorderPadCard(html: string): boolean {

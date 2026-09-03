@@ -46,6 +46,10 @@ import {
   officialLookIsCapsule,
   stripNestedBoldNumberTypoPrefix,
   normalizeRotatedInlinePills,
+  flattenNestedBorderPadCards,
+  scrubGenericTitlePills,
+  stripStrayInlineAcronyms,
+  dedupeHeadingPhraseStutter,
   stripLeafEmptyListAndParagraphShells,
   restyleBiennaleSparseChapterBodies,
   restyleBiennaleSparseDataBodies,
@@ -935,6 +939,41 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(officialLookIsCapsule(
       '<style data-od-official-look-css="">:root{--coral:#E85;--bg:#F5F5F0}.title-pill{}</style>',
     )).toBe(true);
+  });
+
+  it('루프403: nested cards flatten, 표지 pill scrub, badge not pinned, stray AI', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const fixture = await readFile(
+      new URL('./fixtures/loop403-capsule-nested-cards.html', import.meta.url),
+      'utf8',
+    );
+    const flat = flattenNestedBorderPadCards(fixture);
+    expect(flat).toMatch(/도메인 LLM 구축[\s\S]*?<\/div>\s*<div[^>]*border-radius:28px/);
+    expect(flat.match(/border-radius:28px/g)?.length).toBeGreaterThanOrEqual(4);
+
+    expect(scrubGenericTitlePills('<div class="title-pill">표지</div>'))
+      .toBe('<div class="title-pill">SERVICE INTRO</div>');
+
+    const badge = pinNeoBrutalEmptyDecoBlocks(
+      '<div style="min-width:56px;height:56px;border-radius:28px;background:#E85D4E;'
+      + 'color:#fff;display:flex;align-items:center;justify-content:center;'
+      + 'font-weight:700;flex-shrink:0">A</div>',
+    );
+    expect(badge).not.toMatch(/position:absolute/);
+    expect(badge).toContain('>A</div>');
+
+    expect(stripStrayInlineAcronyms('<h3>음성·대화 AI</h3> AI <p>본문</p>'))
+      .toBe('<h3>음성·대화 AI</h3><p>본문</p>');
+
+    expect(dedupeHeadingPhraseStutter(
+      '<h2>함께 만들 AI,<br>지금 시작하세요 AI,<br>지금 시작하세요</h2>',
+    )).toMatch(/함께 만들 AI,<br>지금 시작하세요<\/h2>/);
+
+    const salvaged = salvageMalformedMiniMaxSlideMarkup(fixture);
+    expect(salvaged).toMatch(/title-pill[^>]*>SERVICE INTRO</);
+    expect(salvaged).toMatch(/전담 조직<\/h2>/);
+    expect(salvaged).not.toMatch(/position:absolute[^>]*>A</);
+    expect(salvaged).toMatch(/grid-template-columns:repeat\([2-4],/);
   });
 
   it('루프396: Capsule IB cover restyle, unclosed heading/pill salvage', () => {
