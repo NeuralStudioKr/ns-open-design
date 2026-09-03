@@ -165,6 +165,7 @@ import {
   healInstructionCopyCoverHeading,
   healOfficialMagazineLayoutDensity,
   healAiGeneratedDeckMarkup,
+  trimDeckHtmlToMaxSlides,
   scrubLeftoverCatalogExampleHtml,
   catalogExampleShouldBeScrubbed,
   htmlHasDeckSlideHost,
@@ -539,6 +540,8 @@ import {
   SLIDE_COUNT_TOP_UP_ENTRY_FROM,
   buildSlideCountTopUpPrompt,
   extractRequestedSlideCountSpecFromMessages,
+  honorSlideCountCeiling,
+  honorSlideCountCeilingFromMessages,
   isSlideCountTopUpPrompt,
   looksLikeSlideCountExpansionRequest,
   parseSlideCountSpec,
@@ -2909,6 +2912,13 @@ function countDeckSlideSections(html: string): number {
   // Same hosts as top-up append (`section|div.slide`). Section-only counts
   // made Capsule fills look empty so hidden top-up never scheduled.
   return countAppendableDeckSlides(html);
+}
+
+/** 8–10 honor → drop trailing 11–15. 12–15 requests stay uncapped. */
+function applyHonorSlideCeiling(html: string, messages: readonly ChatMessage[]): string {
+  const ceiling = honorSlideCountCeilingFromMessages(messages);
+  if (ceiling == null) return html;
+  return trimDeckHtmlToMaxSlides(html, ceiling);
 }
 
 const SUBSTANCE_RICH_REPLACEMENT_MIN_SLIDES = 4;
@@ -6004,6 +6014,7 @@ export function ProjectView({
           htmlBody,
           runVisiblePromptRef.current || '',
         );
+        htmlBody = applyHonorSlideCeiling(htmlBody, messagesRef.current);
         htmlBody = repairDeckSlideSurfaceBleed(htmlBody);
         // MiniMax rewrite-echo: drop adjacent twin headings/paragraphs/badges
         // before the 16:9 pin so deck.html never stores stacked copy.
@@ -8611,9 +8622,12 @@ export function ProjectView({
                           withMagazine,
                           runVisiblePromptRef.current || '',
                         );
-                        const withAi = healAiGeneratedDeckMarkup(
-                          withMalformed,
-                          runVisiblePromptRef.current || '',
+                        const withAi = applyHonorSlideCeiling(
+                          healAiGeneratedDeckMarkup(
+                            withMalformed,
+                            runVisiblePromptRef.current || '',
+                          ),
+                          messagesRef.current,
                         );
                         const withSurface = repairDeckSlideSurfaceBleed(withAi);
                         const withCanvas = sanitizePersistedDeckHostLeaks(
@@ -10718,6 +10732,7 @@ export function ProjectView({
                 const seedHtml = await readProjectHtml('deck.html');
                 const requestedSlideCountSpec =
                   extractRequestedSlideCountSpecFromMessages(messagesRef.current);
+                const honorCeiling = honorSlideCountCeiling(requestedSlideCountSpec);
                 const decision = decideTemplateCloneSlotFillTerminal({
                   rawFinalText,
                   seedHtml,
@@ -10732,6 +10747,7 @@ export function ProjectView({
                   userBrief: runVisiblePromptRef.current || '',
                   deckTitle: project.name || '슬라이드',
                   slideCount: requestedSlideCountSpec?.max ?? null,
+                  ...(honorCeiling != null ? { maxSlides: honorCeiling } : {}),
                 });
                 if (decision.kind === 'slot-fill') {
                   runTemplateCloneSlotFillFallbackRef.current = false;
@@ -10831,9 +10847,12 @@ export function ProjectView({
                       withMagazine,
                       runVisiblePromptRef.current || '',
                     );
-                    const withAi = healAiGeneratedDeckMarkup(
-                      withMalformed,
-                      runVisiblePromptRef.current || '',
+                    const withAi = applyHonorSlideCeiling(
+                      healAiGeneratedDeckMarkup(
+                        withMalformed,
+                        runVisiblePromptRef.current || '',
+                      ),
+                      messagesRef.current,
                     );
                     const withSurface = repairDeckSlideSurfaceBleed(withAi);
                     const withCanvas = sanitizePersistedDeckHostLeaks(

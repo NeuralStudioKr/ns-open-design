@@ -396,7 +396,7 @@ export function parseTemplateCloneDeckOutline(
 export function applyTemplateCloneSlotFill(
   seedHtml: string,
   rawOutline: unknown,
-  options: { templateId?: string | null; brief?: string | null } = {},
+  options: { templateId?: string | null; brief?: string | null; maxSlides?: number } = {},
 ): { html: string; title: string } | null {
   const outline = parseTemplateCloneDeckOutline(rawOutline);
   if (!outline) return null;
@@ -404,6 +404,7 @@ export function applyTemplateCloneSlotFill(
     title: outline.title,
     ...(options.templateId != null ? { templateId: options.templateId } : {}),
     ...(options.brief != null ? { brief: options.brief } : {}),
+    ...(options.maxSlides != null ? { maxSlides: options.maxSlides } : {}),
   });
   if (!html?.trim()) return null;
   return { html, title: outline.title };
@@ -554,6 +555,8 @@ export function decideTemplateCloneSlotFillTerminal(input: {
    *  user's topic instead of raw template demo copy (Hartfield / Daisy). */
   userBrief?: string | null;
   deckTitle?: string | null;
+  /** Honor ceiling (8–10 → 10). Caps overshoot outlines; 11+ omits this. */
+  maxSlides?: number;
 }): TemplateCloneSlotFillTerminalDecision {
   const seed = String(input.seedHtml ?? '').trim();
   const raw = String(input.rawFinalText ?? '');
@@ -561,11 +564,18 @@ export function decideTemplateCloneSlotFillTerminal(input: {
     void input.repairAlreadyAttempted;
     return { kind: 'abort' };
   }
+  const honorCeiling =
+    input.maxSlides != null && input.maxSlides >= 1 && input.maxSlides <= 10
+      ? input.maxSlides
+      : input.slideCount != null && input.slideCount >= 1 && input.slideCount <= 10
+        ? input.slideCount
+        : undefined;
   const templateOpts = {
     ...(input.templateId !== undefined ? { templateId: input.templateId } : {}),
     ...(input.userBrief != null && String(input.userBrief).trim()
       ? { brief: input.userBrief }
       : {}),
+    ...(honorCeiling != null ? { maxSlides: honorCeiling } : {}),
   };
   const filled = applyTemplateCloneSlotFill(seed, raw, templateOpts);
   if (filled) return { kind: 'slot-fill', html: filled.html, title: filled.title };
@@ -4526,7 +4536,9 @@ export function buildTemplateClonedDeckHtml(
   }
   // Slide-count policy (NOT template fidelity):
   // - Content outline / synthesized brief wins.
-  // - Explicit user maxSlides hint may expand (never shrink below outline).
+  // - Explicit user maxSlides may expand a short outline.
+  // - Honor ceiling (8–10 → 10) MUST shrink overshoot outlines — 15 is not
+  //   a deliverable when the user asked for 8–10.
   // - Never default to the template's natural page count/order.
   const hint = options.maxSlides != null
     ? Math.min(20, Math.max(1, options.maxSlides))
@@ -4538,10 +4550,13 @@ export function buildTemplateClonedDeckHtml(
 
   let workingSlides: TemplateCloneSlideContent[];
   if (cleanedSlides.length > 0) {
-    workingSlides = rewriteInstructionParrotingSlideTitles(cleanedSlides.slice(0, 20), {
-      ...(options.brief !== undefined ? { brief: options.brief } : {}),
-      deckTitle: options.title ?? cleanedSlides[0]?.title ?? null,
-    });
+    workingSlides = rewriteInstructionParrotingSlideTitles(
+      cleanedSlides.slice(0, hint ?? 20),
+      {
+        ...(options.brief !== undefined ? { brief: options.brief } : {}),
+        deckTitle: options.title ?? cleanedSlides[0]?.title ?? null,
+      },
+    );
     if (
       hint != null
       && hint > workingSlides.length
@@ -4554,6 +4569,9 @@ export function buildTemplateClonedDeckHtml(
           body: '',
         });
       }
+    }
+    if (hint != null && workingSlides.length > hint) {
+      workingSlides = workingSlides.slice(0, hint);
     }
   } else {
     // Empty brief: short starter deck with role-diverse shells — not all

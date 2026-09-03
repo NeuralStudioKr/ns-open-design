@@ -187,6 +187,22 @@ export function listAiSlideSpans(html: string): SlideSpan[] {
  * Never drop the FIRST slide — even an empty cover is preferable to a deck
  * starting mid-body.
  */
+/**
+ * Drop trailing slides after an explicit honor ceiling (8–10 → 10).
+ * Never drops the cover. 11+ requests keep their pages (top-up target).
+ */
+export function trimDeckHtmlToMaxSlides(html: string, maxSlides: number): string {
+  const source = String(html ?? '');
+  const max = Math.floor(maxSlides);
+  if (!source || !Number.isFinite(max) || max < 2) return source;
+  const slides = listAiSlideSpans(source);
+  if (slides.length <= max) return source;
+  const firstDrop = slides[max];
+  const last = slides[slides.length - 1];
+  if (!firstDrop || !last) return source;
+  return `${source.slice(0, firstDrop.start)}${source.slice(last.end)}`;
+}
+
 export function dropEmptyLikelyDeckSlides(html: string): string {
   let out = String(html ?? '');
   if (!out) return out;

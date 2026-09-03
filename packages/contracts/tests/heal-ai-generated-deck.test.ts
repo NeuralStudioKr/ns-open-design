@@ -4,6 +4,7 @@ import {
   balanceClassBoundFlexCardRow,
   closeUnclosedSiblingCardsInSlides,
   dropEmptyLikelyDeckSlides,
+  trimDeckHtmlToMaxSlides,
   healAiGeneratedDeckMarkup,
   listAiSlideSpans,
   polishTruncatedInstructionTitles,
@@ -91,6 +92,17 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       ].join('');
       const out = dropEmptyLikelyDeckSlides(html);
       expect(out).toMatch(/s-motif/);
+    });
+
+    it('trims an 8-10 honor overshoot from 15 slides down to 10', () => {
+      const slides = Array.from({ length: 15 }, (_, i) => (
+        `<section class="slide"><h2>장 ${i + 1}</h2><p>본문</p></section>`
+      )).join('');
+      const out = trimDeckHtmlToMaxSlides(`<body>${slides}</body>`, 10);
+      expect((out.match(/class="slide"/g) ?? []).length).toBe(10);
+      expect(out).toContain('장 10');
+      expect(out).not.toContain('장 11');
+      expect(out).not.toContain('장 15');
     });
 
     it('keeps slides with svg-only motif chrome', () => {

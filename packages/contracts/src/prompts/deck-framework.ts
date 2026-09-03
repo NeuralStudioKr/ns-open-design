@@ -592,7 +592,12 @@ export const COMPACT_FIRST_FILL_TOP_UP_FROM = 11;
  * only for 11+ or a short miss.
  */
 export const COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE =
-  `Slide count THIS TURN: honor an explicit user count of 1–${COMPACT_FIRST_FILL_HONOR_MAX} (5-6/5~6 → close ≥5 this turn; 8-10 → close this turn). If the user asked for ${COMPACT_FIRST_FILL_TOP_UP_FROM} or more, close ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} this turn. Never close after a single cover or after 3 slides when the target is 5+ — no 3+3+3 split.`;
+  `Slide count THIS TURN: honor an explicit user count of 1–${COMPACT_FIRST_FILL_HONOR_MAX} (5-6/5~6 → close ≥5 this turn; 8-10 → close 8–10 this turn, hard cap 10 — never 15). If the user asked for ${COMPACT_FIRST_FILL_TOP_UP_FROM} or more, close ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} this turn. Never close after a single cover or after 3 slides when the target is 5+ — no 3+3+3 split. Never exceed the requested max.`;
+
+const COMPACT_FIRST_FILL_OUTLINE_MAX_20 =
+  'Outline slide count = deliverable count (max 20)';
+const COMPACT_FIRST_FILL_OUTLINE_LENGTH_MAX_20 =
+  'Outline length = deliverable count this turn (max 20)';
 
 export const COMPACT_FIRST_FILL_DEFAULT_ARTIFACT_COUNT_PHRASE =
   `at least ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} filled \`<section class="slide">\` blocks this turn (top-up only for ${COMPACT_FIRST_FILL_TOP_UP_FROM}+)`;
@@ -655,7 +660,7 @@ export function compactFirstFillArtifactCountPhrase(hint?: string | null): strin
   if (honor.kind === 'honor-range' && honor.min != null && honor.max != null) {
     return (
       `${honor.min}–${honor.max} filled \`<section class="slide">\` blocks this turn ` +
-      `(close the requested range; stopping at ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} is a failed deliverable; no hidden top-up)`
+      `(close the requested range; hard cap ${honor.max}; stopping at ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} or emitting 15 is a failed deliverable; no hidden top-up)`
     );
   }
   if (honor.kind === 'honor-exact' && honor.max != null) {
@@ -681,6 +686,8 @@ export function compactFirstFillHonorReadLast(hint?: string | null): string | nu
       `# First-fill slide count (READ LAST — beats "close 6 THIS TURN" above)\n\n` +
       `The user/plugin requested ${honor.min}–${honor.max} slides. ` +
       `Close ${honor.min}–${honor.max} complete body-first slides in THIS response. ` +
+      `Hard cap ${honor.max}: do not emit ${honor.max + 1}+ slides. ` +
+      `15 slides (the request ceiling) is a failed overshoot. ` +
       `Stopping at ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} is a failed deliverable. ` +
       `Do not leave remaining pages for hidden top-up.`
     );
@@ -690,6 +697,7 @@ export function compactFirstFillHonorReadLast(hint?: string | null): string | nu
       `# First-fill slide count (READ LAST — beats "close 6 THIS TURN" above)\n\n` +
       `The user/plugin requested ${honor.max} slides. ` +
       `Close exactly ${honor.max} complete body-first slides in THIS response. ` +
+      `Hard cap ${honor.max}: do not emit ${honor.max + 1}+ slides. ` +
       `Stopping at ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} is a failed deliverable. ` +
       `Do not leave remaining pages for hidden top-up.`
     );
@@ -711,7 +719,36 @@ export function applyFirstFillArtifactCountPhrase(rule: string, hint?: string | 
   if (closeThisTurn) {
     out = out.split(COMPACT_FIRST_FILL_CLOSE_THIS_TURN_DEFAULT).join(closeThisTurn);
   }
+  const outlineCap = compactFirstFillOutlineCapPhrase(honor);
+  if (outlineCap) {
+    out = out
+      .split(COMPACT_FIRST_FILL_OUTLINE_MAX_20).join(outlineCap)
+      .split(COMPACT_FIRST_FILL_OUTLINE_LENGTH_MAX_20).join(outlineCap);
+  }
   return out;
+}
+
+/** Honor 1–10 is a hard ceiling — 15/20-slide outlines are overshoot. */
+export function firstFillHonorCeiling(hint?: string | null): number | null {
+  const honor = resolveFirstFillHonor(hint);
+  if (
+    (honor.kind === 'honor-range' || honor.kind === 'honor-exact' || honor.kind === 'short-5-6')
+    && honor.max != null
+    && honor.max <= COMPACT_FIRST_FILL_HONOR_MAX
+  ) {
+    return honor.max;
+  }
+  return null;
+}
+
+function compactFirstFillOutlineCapPhrase(honor: FirstFillHonor): string | null {
+  if (honor.kind === 'honor-range' && honor.min != null && honor.max != null) {
+    return `Outline slide count = ${honor.min}–${honor.max} (hard cap ${honor.max}; never 15 or 20)`;
+  }
+  if (honor.kind === 'honor-exact' && honor.max != null) {
+    return `Outline slide count = exactly ${honor.max} (hard cap ${honor.max}; never 15 or 20)`;
+  }
+  return null;
 }
 
 /** Compact wireframe "close 6 THIS TURN" must not stay on an 8–10 honor. */

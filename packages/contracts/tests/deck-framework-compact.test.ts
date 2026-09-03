@@ -4,6 +4,7 @@ import {
   applyFirstFillArtifactCountPhrase,
   compactFirstFillArtifactCountPhrase,
   compactFirstFillHonorReadLast,
+  firstFillHonorCeiling,
   COMPACT_FIRST_FILL_DEFAULT_ARTIFACT_COUNT_PHRASE,
   COMPACT_FIRST_FILL_DEFAULT_ARTIFACT_COUNT_PHRASE_PLAIN,
   COMPACT_FIRST_FILL_HONOR_MAX,
@@ -347,7 +348,7 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE).toMatch(
       /honor an explicit user count of 1–10/i,
     );
-    expect(COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE).toContain('8-10 → close this turn');
+    expect(COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE).toContain('8-10 → close 8–10 this turn, hard cap 10');
     expect(COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE).toContain(
       'If the user asked for 11 or more, close 6 complete body-first slides this turn',
     );
@@ -357,8 +358,13 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     );
     expect(COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE).not.toContain('7 or more');
     expect(compactFirstFillArtifactCountPhrase('8-10')).toMatch(/8–10 filled/);
-    expect(compactFirstFillArtifactCountPhrase('8-10')).toMatch(/stopping at 6 is a failed deliverable/i);
+    expect(compactFirstFillArtifactCountPhrase('8-10')).toMatch(/stopping at 6/);
+    expect(compactFirstFillArtifactCountPhrase('8-10')).toMatch(/failed deliverable/i);
+    expect(compactFirstFillArtifactCountPhrase('8-10')).toMatch(/hard cap 10/);
+    expect(compactFirstFillArtifactCountPhrase('8-10')).toMatch(/emitting 15/);
     expect(compactFirstFillArtifactCountPhrase('8-10')).toMatch(/no hidden top-up/i);
+    expect(compactFirstFillHonorReadLast('8-10')).toMatch(/Hard cap 10/);
+    expect(compactFirstFillHonorReadLast('8-10')).toMatch(/15 slides \(the request ceiling\) is a failed overshoot/);
     expect(compactFirstFillArtifactCountPhrase('8-10')).not.toBe(
       COMPACT_FIRST_FILL_DEFAULT_ARTIFACT_COUNT_PHRASE,
     );
@@ -373,6 +379,18 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(compactFirstFillHonorReadLast('8-10 (close this turn)')).toMatch(/Close 8–10 complete body-first slides/);
     expect(compactFirstFillHonorReadLast(undefined)).toBeNull();
     expect(compactFirstFillHonorReadLast('6-8')).toBeNull();
+    expect(firstFillHonorCeiling('8-10')).toBe(10);
+    expect(firstFillHonorCeiling('8-10 (close this turn)')).toBe(10);
+    expect(firstFillHonorCeiling('5-6')).toBe(6);
+    expect(firstFillHonorCeiling('6-8')).toBeNull();
+    expect(firstFillHonorCeiling('12-15')).toBeNull();
+    expect(firstFillHonorCeiling(undefined)).toBeNull();
+    expect(
+      applyFirstFillArtifactCountPhrase(
+        'Outline slide count = deliverable count (max 20)',
+        '8-10',
+      ),
+    ).toContain('hard cap 10; never 15 or 20');
     expect(
       applyFirstFillArtifactCountPhrase(
         `…${COMPACT_FIRST_FILL_DEFAULT_ARTIFACT_COUNT_PHRASE_PLAIN}… close 6 THIS TURN`,

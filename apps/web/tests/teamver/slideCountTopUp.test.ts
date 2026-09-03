@@ -16,6 +16,8 @@ import {
   parseSlideCountSpec,
   parseSlideCountTarget,
   shouldQueueSlideCountTopUp,
+  honorSlideCountCeiling,
+  honorSlideCountCeilingFromMessages,
 } from "../../src/teamver/slideCountTopUp";
 
 function userMessage(id: string, content: string): ChatMessage {
@@ -152,6 +154,25 @@ describe("slideCountTopUp", () => {
     ];
     expect(extractRequestedSlideCountSpecFromMessages(messages)).toEqual({ min: 5, max: 5 });
     expect(extractRequestedSlideCountTargetFromMessages(messages)).toBe(5);
+  });
+
+  it("caps explicit 8-10 at 10 and leaves 12-15 uncapped", () => {
+    expect(honorSlideCountCeiling({ min: 8, max: 10 })).toBe(10);
+    expect(honorSlideCountCeiling({ min: 5, max: 6 })).toBe(6);
+    expect(honorSlideCountCeiling({ min: 10, max: 10 })).toBe(10);
+    expect(honorSlideCountCeiling({ min: 12, max: 15 })).toBeNull();
+    expect(honorSlideCountCeiling({ min: 6, max: 8 })).toBe(8);
+    expect(honorSlideCountCeiling(null)).toBeNull();
+    expect(
+      honorSlideCountCeilingFromMessages([
+        userMessage("u-honor-8-10", 'slideCount: "8-10"\n8~10장으로 만들어줘'),
+      ]),
+    ).toBe(10);
+    expect(
+      honorSlideCountCeilingFromMessages([
+        userMessage("u-honor-12-15", 'slideCount: "12-15"\n12-15 pages'),
+      ]),
+    ).toBeNull();
   });
 
   it("does not queue hidden top-up when 8 of an 8-10 honor already closed", () => {

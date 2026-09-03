@@ -29,7 +29,7 @@ const FIRST_FILL_SLIDE_COUNT_THIS_TURN = 6;
 const FIRST_FILL_HONOR_MAX = 10;
 const FIRST_FILL_TOP_UP_FROM = 11;
 const FIRST_FILL_SLIDE_COUNT_GUIDANCE =
-  `Slide count THIS TURN: honor an explicit user count of 1–${FIRST_FILL_HONOR_MAX} (5-6/5~6 → close ≥5 this turn; 8-10 → close this turn). If the user asked for ${FIRST_FILL_TOP_UP_FROM} or more, close ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} this turn. Never close after a single cover or after 3 slides when the target is 5+ — no 3+3+3 split.`;
+  `Slide count THIS TURN: honor an explicit user count of 1–${FIRST_FILL_HONOR_MAX} (5-6/5~6 → close ≥5 this turn; 8-10 → close 8–10 this turn, hard cap 10 — never 15). If the user asked for ${FIRST_FILL_TOP_UP_FROM} or more, close ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} this turn. Never close after a single cover or after 3 slides when the target is 5+ — no 3+3+3 split. Never exceed the requested max.`;
 
 /** Keep local — importing canvasSlideLaunch here caused circular init of expansion consts. */
 const SLIDE_DECK_QUALITY_BAR_INSTRUCTION =
@@ -441,7 +441,7 @@ export function templateCloneContentFillHardRules(): string[] {
     `- ${SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION}`,
     '- Expand THIS turn\'s brief only. Do not copy host-contract examples or the user instruction onto slides.',
     '- JSON shape: {"title":"...","slides":[{"title":"...","body":"line\\nline","roleHint":"cover|list|cards|timeline|stat|quote|team|process|closing|body"}]}',
-    `- ${FIRST_FILL_SLIDE_COUNT_GUIDANCE} Outline length = deliverable count this turn (max 20). Hidden top-up only when the user asked for ${FIRST_FILL_TOP_UP_FROM}+.`,
+    `- ${FIRST_FILL_SLIDE_COUNT_GUIDANCE} Outline length = requested count this turn (8-10 → 8–10, hard cap 10, never 15/20). Hidden top-up only when the user asked for ${FIRST_FILL_TOP_UP_FROM}+.`,
     '- Treat the daemon Clone seed as the visual baseline the host will keep. You only supply titles/bodies/roleHint.',
     `- If the brief is only a topic, use a default ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}-slide outline (cover, why it matters, key concepts, evidence, next steps, close). Adapt labels to the topic and audience.`,
     '- Do not invent empty pillar/column-number cards to pad a 3-column look. Card count = content count.',

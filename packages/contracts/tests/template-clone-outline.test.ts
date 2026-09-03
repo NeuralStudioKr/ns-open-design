@@ -237,6 +237,58 @@ describe('0901-N02 applyTemplateCloneSlotFill', () => {
     expect(filled!.html).not.toContain('Demo Cover');
   });
 
+  it('caps an 8-10 honor so a 15-slide outline cannot land 15 pages', () => {
+    const seed = [
+      '<!doctype html><html><body>',
+      '<section class="slide cover"><h1>Cover</h1><p>Lead</p></section>',
+      '<section class="slide"><h2>Body</h2><p>Copy</p></section>',
+      '</body></html>',
+    ].join('');
+    const slides = Array.from({ length: 15 }, (_, i) => ({
+      title: `서비스 포인트 ${i + 1}`,
+      body: `본문 ${i + 1}`,
+    }));
+    const filled = applyTemplateCloneSlotFill(
+      seed,
+      { title: '서비스 소개', slides },
+      { maxSlides: 10 },
+    );
+    expect(filled).not.toBeNull();
+    expect((filled!.html.match(/<section class="slide/g) ?? []).length).toBe(10);
+    expect(filled!.html).toContain('서비스 포인트 10');
+    expect(filled!.html).not.toContain('서비스 포인트 11');
+    expect(filled!.html).not.toContain('서비스 포인트 15');
+  });
+
+  it('does not treat a 12-15 request as a first-fill honor cap', () => {
+    const seed = [
+      '<!doctype html><html><body>',
+      '<section class="slide cover"><h1>Cover</h1><p>Lead</p></section>',
+      '<section class="slide"><h2>Body</h2><p>Copy</p></section>',
+      '</body></html>',
+    ].join('');
+    const slides = Array.from({ length: 15 }, (_, i) => ({
+      title: `성장 포인트 ${i + 1}`,
+      body: `본문 ${i + 1}`,
+    }));
+    const kept = applyTemplateCloneSlotFill(
+      seed,
+      { title: '성장 전략', slides },
+    );
+    expect(kept).not.toBeNull();
+    expect((kept!.html.match(/<section class="slide/g) ?? []).length).toBe(15);
+    const decision = decideTemplateCloneSlotFillTerminal({
+      rawFinalText: JSON.stringify({ title: '성장 전략', slides }),
+      seedHtml: seed,
+      repairAlreadyAttempted: false,
+      slideCount: 15,
+    });
+    expect(decision.kind).toBe('slot-fill');
+    if (decision.kind === 'slot-fill') {
+      expect((decision.html.match(/<section class="slide/g) ?? []).length).toBe(15);
+    }
+  });
+
   it('returns null for HTML dumps', () => {
     expect(
       applyTemplateCloneSlotFill(

@@ -42,6 +42,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프405 — 8–10 요청 15장 오버슈트
+
+체감: 8–10을 요청했는데 15장까지 생성. 루프402가 “6장 정지 금지”만 강조하고 10장 상한이 없음. JSON max 20 · expansion 아크 · 템플릿 15장 데모가 합쳐짐.
+
+수정: honor hard cap 10 · outline/slot-fill shrink · persist trim(1–10만) · 15장은 failed overshoot.
+
+검증: contracts compact/system-prompt/outline/heal · web ceiling.
+
 ### 루프404 — 장수 게이트 incomplete_output 회귀
 
 체감: `produced 1, min 8` → persist `skipped-incomplete` → durable `incomplete_output`. 루프402 장수 게이트가 디스크 쓰기를 막아 top-up이 예약되지 않았고 prompt-fill LOOK seed 복구도 없음.
@@ -1942,6 +1950,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | preview: neutralize column `#stage` leftover host ←/→ nudge | ☑ 루프361 |
 | chat/persist: Clone 호스트 계약은 시스템 프롬프트 · user turn brief-only · runContext 계보 | ☑ 루프391 |
 | prompts: 명시 8–10 first-fill 한 턴 · streaming/compact "close 6" 덮어쓰기 | ☑ 루프402 |
+| prompts/persist: 8–10 hard cap 10 · 15장 오버슈트 trim | ☑ 루프405 |
 | chat/persist: Clone prompt-fill 호스트 계약 숨김 · Expo 예시 user-turn 제거 | ☑ 루프382 |
 | preview: leftover host-nav 불변식 (clone-size · deco · gotoIndex) | ☑ 루프378 |
 | preview: leftover `#stage`+swipe script deco residue host ←/→ nudge | ☑ 루프374 |
@@ -1976,7 +1985,22 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프402 · 명시 8–10 first-fill 한 턴)
+## 이번 루프 (루프405 · 8–10 요청 15장 오버슈트)
+
+- [x] honor hard cap 10 · 15장은 failed overshoot
+- [x] JSON outline max 20 → 8–10이면 cap 10
+- [x] slot-fill / buildTemplateClonedDeckHtml shrink
+- [x] persist `trimDeckHtmlToMaxSlides` (1–10만, 12–15 유지)
+- [x] contracts compact/system-prompt/outline/heal · web ceiling
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+- [ ] FileViewer/채팅 브라우저 클릭 (이 환경에서 불가 — 유지)
+
+## 직전 루프 (루프404 · 장수 게이트 save+top-up)
+
+- [x] 장수 shortfall persist 허용 · top-up salvage
+- [x] 구조 게이트 유지 · prompt-fill LOOK seed recovery
+
+## 직전 루프 (루프402 · 명시 8–10 first-fill 한 턴)
 
 - [x] `applyFirstFillArtifactCountPhrase` — 백틱 없는 `at least 6` + `close 6 THIS TURN` 교체
 - [x] honor READ LAST — stopping at 6 is a failed deliverable, no hidden top-up

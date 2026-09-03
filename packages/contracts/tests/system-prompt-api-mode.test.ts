@@ -492,7 +492,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       );
       expect(prompt).not.toContain('Do not paste this exact headline');
       // Ceiling grew for first-fill honor 1–10 / top-up 11+.
-      expect(prompt.length).toBeLessThan(30_200);
+      expect(prompt.length).toBeLessThan(30_600);
     });
 
     it('keeps quick brief available when a selected template supplies style but not content brief', () => {
@@ -553,7 +553,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         prompt.indexOf('Slide deck — API compact contract'),
       );
       // Ceiling grew for first-fill honor 1–10 / top-up 11+.
-      expect(prompt.length).toBeLessThan(30_200);
+      expect(prompt.length).toBeLessThan(30_600);
     });
 
     it('keeps richer visual template rules while stripping unavailable copy workflows', () => {
@@ -582,7 +582,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('Read assets/template.html and copy the skeleton');
       expect(prompt).not.toContain('Use references/layouts.md for exact slots');
       // Ceiling grew for first-fill honor 1–10 / top-up 11+.
-      expect(prompt.length).toBeLessThan(30_000);
+      expect(prompt.length).toBeLessThan(30_400);
     });
 
     it('appends a single Final authority READ LAST on template clone fill turns', () => {
@@ -848,8 +848,11 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         firstFillSlideCountHint: '8-10',
       });
       expect(prompt).toContain('8–10 filled');
-      expect(prompt).toContain('stopping at 6 is a failed deliverable');
+      expect(prompt).toMatch(/stopping at 6/i);
+      expect(prompt).toMatch(/failed deliverable/i);
       expect(prompt).toContain('Close 8–10 complete body-first slides in THIS response');
+      expect(prompt).toContain('Hard cap 10');
+      expect(prompt).toContain('15 slides (the request ceiling) is a failed overshoot');
       expect(prompt).toContain('Do not leave remaining pages for hidden top-up');
       expect(prompt).toContain('close 8–10 THIS TURN');
       expect(prompt).not.toMatch(/Stopping after 3 slides is a failure — close 6 THIS TURN/);

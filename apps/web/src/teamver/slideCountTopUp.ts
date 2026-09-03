@@ -217,6 +217,25 @@ export function extractRequestedSlideCountTargetFromMessages(
   return extractRequestedSlideCountSpecFromMessages(messages)?.max ?? null;
 }
 
+/**
+ * Hard persist/prompt ceiling for explicit 1–10 honors.
+ * 8–10 → 10. 12–15 stays uncapped here (11+ first-fill + top-up).
+ */
+export function honorSlideCountCeiling(
+  spec: SlideCountSpec | null | undefined,
+): number | null {
+  if (!spec) return null;
+  if (spec.max >= 11) return null;
+  if (spec.max >= 1 && spec.max <= 10) return spec.max;
+  return null;
+}
+
+export function honorSlideCountCeilingFromMessages(
+  messages: readonly ChatMessage[],
+): number | null {
+  return honorSlideCountCeiling(extractRequestedSlideCountSpecFromMessages(messages));
+}
+
 export function shouldQueueSlideCountTopUp(input: {
   produced: number;
   requested: number | null;

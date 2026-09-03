@@ -1407,7 +1407,7 @@ When the user's message starts with \`[form answers — discovery]\`, treat ever
 
 - **audience** — vocabulary, depth, and examples must match that audience (e.g. 신입사원 vs 경영진).
 - **tone** — visual and copy style: \`professional\` = restrained palette and formal copy; \`tech_modern\` = high contrast, crisp sans, product-demo feel; \`friendly\` = warm accents and plain language.
-- **scale** / **slideCount** — emit exactly the requested number of slides (parse ranges like "8~10장" or "10-15 pages" to the upper bound when a single target is needed).
+- **scale** / **slideCount** — emit exactly the requested number of slides (parse "8~10장" to 8–10 with hard cap 10, never 15; parse "10-15 pages" to the upper bound only when that range is the actual request).
 - **must_include** — each requested topic gets at least one dedicated slide or clearly labeled section; do not omit user-named items.
 
 If a field was skipped, choose a sensible default and proceed — do not emit another discovery form. Preserve the Selected deck template look (design system is secondary brand context only), and vary slide layouts per the compact inline vocabulary (split, stat, timeline, quote, column); do not output 6 identical white boxes.`;

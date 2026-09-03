@@ -21,7 +21,7 @@ const FIRST_FILL_SLIDE_COUNT_THIS_TURN = 6;
 const FIRST_FILL_HONOR_MAX = 10;
 const FIRST_FILL_TOP_UP_FROM = 11;
 const FIRST_FILL_SLIDE_COUNT_GUIDANCE =
-  `Slide count THIS TURN: honor an explicit user count of 1–${FIRST_FILL_HONOR_MAX} (5-6/5~6 → close ≥5 this turn; 8-10 → close this turn). If the user asked for ${FIRST_FILL_TOP_UP_FROM} or more, close ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} this turn. Never close after a single cover or after 3 slides when the target is 5+ — no 3+3+3 split.`;
+  `Slide count THIS TURN: honor an explicit user count of 1–${FIRST_FILL_HONOR_MAX} (5-6/5~6 → close ≥5 this turn; 8-10 → close 8–10 this turn, hard cap 10 — never 15). If the user asked for ${FIRST_FILL_TOP_UP_FROM} or more, close ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} this turn. Never close after a single cover or after 3 slides when the target is 5+ — no 3+3+3 split. Never exceed the requested max.`;
 
 // Canonical prompt sent by the "Continue the run" affordance on a resumable
 // failed run. The daemon resumes the persisted CLI session for this
