@@ -1078,30 +1078,20 @@ function destHasPosterSlideKinds(html: string): boolean {
 }
 
 /**
- * 루프387 — Detect signals that the destination HTML belongs to a template
+ * 루프387/390 — Detect signals that the destination HTML belongs to a template
  * kit OTHER than IB magazine (kami). `healSparseDeckCoverLayout` was
  * designed to rebuild an IB-magazine cover shape (h1.display + .mast +
  * --paper/--ink vars) from a sparse stub — when the deck actually belongs
- * to neubrutalism / capsule / block-frame / studio / hermes / etc., the
- * rebuilt cover collides with the kit CSS injected AFTER heal
- * (`mergeOfficialLookCssForTemplate` runs later) and the result renders
- * unstyled (undefined `--paper`/`--ink` vars + IB shape on a neubrutalism
- * palette).
+ * to neubrutalism / 8-bit orbit / capsule / block-frame / etc., the
+ * rebuilt cover collides with the kit CSS injected AFTER heal.
  *
  * Signals of a non-IB kit deck:
- *   - Numbered slide role classes (`.slide-1`, `.slide-2`, …) — the
- *     neubrutalism kit's slide selectors.
- *   - Named layout wrappers (`.hero-frame`, `.split-visual`, `.split-
- *     content`, `.close-frame`, `.quote-frame`) — neubrutalism/block-frame
- *     shells.
- *   - `nb-heading-*` / `nb-card-*` / `nb-label-*` / `nb-btn` — neubrutal
- *     utility prefix.
- *   - Inline usage of neubrutalism / studio / capsule / hermes design
- *     tokens (`--cream`, `--pink`, `--yellow`, `--pill`, `--offwhite`,
- *     `--noise`, `--accent-pink`, etc.).
- *   - `<style data-od-official-motif-deco-css>` motif rules containing
- *     `.deco-pink-rect` / `.deco-green-circle` / `.deco-yellow-bar` /
- *     `.card-deco` (neubrutalism motif decorations).
+ *   - Numbered slide role classes (`.slide-1`…`.slide-10`)
+ *   - Named layout wrappers (`.hero-frame`, `.split-visual`, …)
+ *   - `nb-*` utility prefix
+ *   - Kit tokens (`--cream` / `--pink` / `--neon-pink` / `--dark-void` / …)
+ *   - Motif deco rules (`.deco-pink-rect` / `.pixel-particles` / …)
+ *   - 8-bit orbit body chrome (`.pixel-box` / `.scanlines` / `.starfield`)
  */
 function destHasNonIbKitSignals(html: string): boolean {
   const source = String(html ?? '');
@@ -1112,11 +1102,55 @@ function destHasNonIbKitSignals(html: string): boolean {
   if (/\bclass\s*=\s*["'][^"']*\b(?:hero-frame|split-visual|split-content|close-frame|quote-frame)\b/i.test(source)) return true;
   // Neubrutal utility prefix.
   if (/\bclass\s*=\s*["'][^"']*\bnb-(?:heading-|card|label|btn|body|mono)/i.test(source)) return true;
-  // Neubrutalism / studio / capsule / hermes tokens in inline style or CSS.
-  if (/var\(\s*--(?:cream|pink|yellow|offwhite|hc-bg|hc-fg|gd-bg|noise|accent-pink|studio-bg|capsule-bg)/i.test(source)) return true;
+  // 8-bit orbit / pixel kit body chrome (often present while cover is still IB).
+  if (/\bclass\s*=\s*["'][^"']*\b(?:pixel-box|pixel-hero-text|pixel-label|starfield|bg-grid|crt-glow)\b/i.test(source)) {
+    return true;
+  }
+  if (/\bclass\s*=\s*["'][^"']*\b(?:scanlines|grain)\b/i.test(source)
+    && /(?:#0A0E27|#0F1B3D|--dark-void|--neon-pink|--neon-cyan)/i.test(source)) {
+    return true;
+  }
+  // Neubrutalism / studio / capsule / hermes / 8-bit tokens.
+  if (/var\(\s*--(?:cream|pink|yellow|offwhite|hc-bg|hc-fg|gd-bg|noise|accent-pink|studio-bg|capsule-bg|neon-pink|neon-cyan|neon-yellow|dark-void|deep-navy)/i.test(source)) {
+    return true;
+  }
+  if (/--(?:neon-pink|dark-void|deep-navy|neon-cyan)\s*:/i.test(source)) return true;
   // Motif deco CSS block emitted for non-IB kits.
-  if (/data-od-official-motif-deco-css[\s\S]{0,4000}\.deco-(?:pink-rect|green-circle|yellow-bar|dots)\b/i.test(source)) return true;
+  if (/data-od-official-motif-deco-css[\s\S]{0,6000}\.(?:deco-(?:pink-rect|green-circle|yellow-bar|dots)|pixel-particles)\b/i.test(source)) {
+    return true;
+  }
   return false;
+}
+
+/** 루프390 — 8-Bit Orbit kit fingerprint (look CSS or body chrome). */
+export function officialLookIsEightBitOrbit(html: string): boolean {
+  const source = String(html ?? '');
+  const css = lookCssWithoutNeutralize(source);
+  if (css.trim()) {
+    if (/--neon-pink\s*:/i.test(css) && /--dark-void\s*:/i.test(css)) return true;
+    if (/\.pixel-hero-text\b/i.test(css) && /\.pixel-box\b/i.test(css)) return true;
+  }
+  return /\bpixel-box\b/i.test(source)
+    && /\b(?:scanlines|grain|starfield|pixel-hero-text)\b/i.test(source)
+    && /(?:#0A0E27|--dark-void|--neon-pink)/i.test(source);
+}
+
+function formatEightBitCoverTitle(title: string): string {
+  const parts = String(title ?? '').split(/\s+/).filter(Boolean);
+  if (parts.length === 2) {
+    return `${escapeHtml(parts[0]!)}<br>${escapeHtml(parts[1]!)}`;
+  }
+  return escapeHtml(title);
+}
+
+/** Drop cream neo :root fallback when the deck is actually 8-Bit Orbit. */
+export function stripNeoBrutalVarFallbackOnEightBit(html: string): string {
+  const source = String(html ?? '');
+  if (!source || !officialLookIsEightBitOrbit(source)) return source;
+  return source.replace(
+    /<style\b[^>]*\bdata-od-neobrutal-var-fallback\b[^>]*>[\s\S]*?<\/style>/gi,
+    '',
+  );
 }
 
 function officialLookIsBiennaleYellow(html: string): boolean {
@@ -1809,29 +1843,34 @@ function coverAlreadyBiennalePoster(attrs: string, body: string): boolean {
 }
 
 /**
- * Persist stamps IB magazine chrome onto Biennale/poster/neo-brutal kits
+ * Persist stamps IB magazine chrome onto Biennale/poster/neo-brutal/8-bit kits
  * before look CSS lands. Restyle that cover with the official kit slots only.
  * MiniMax often copies ribbon/`h1.display`/cover-meta without `.mast`.
  * 루프387 — Block Frame must become `.slide-1` + `.hero-frame`, not IB paper.
+ * 루프390 — 8-Bit Orbit must become `.bg-grid.scanlines.grain` + `.pixel-hero-text`.
  */
 export function restyleForeignIbMagazineCover(html: string): string {
   const dest = String(html ?? '');
   if (!dest.trim() || officialLookIsIbMagazine(dest)) return dest;
   const biennale = officialLookIsBiennaleYellow(dest);
   const neo = officialLookIsNeoBrutalBlockFrame(dest);
-  if (!biennale && !neo && !destHasPosterSlideKinds(dest)) return dest;
+  const eightBit = officialLookIsEightBitOrbit(dest);
+  if (!biennale && !neo && !eightBit && !destHasPosterSlideKinds(dest)) return dest;
   const spans = listHealSlideHostSpans(dest);
   if (spans.length === 0) return dest;
   const first = spans[0]!;
   const body = dest.slice(first.bodyStart, first.bodyEnd);
   if (coverAlreadyBiennalePoster(first.attrs, body)) return dest;
   if (/\bhero-frame\b/i.test(body) && /\bslide-1\b/i.test(first.attrs)) return dest;
+  if (/\bpixel-hero-text\b/i.test(body) && /\b(?:bg-grid|scanlines|grain)\b/i.test(first.attrs + body)) {
+    return dest;
+  }
   if (!coverHasIbDisplayHeading(body) || !coverHasIbMagazineChrome(first.attrs, body)) {
     return dest;
   }
-  // No-mast leftover chrome is Biennale/neo. Poster-kind alone is too
+  // No-mast leftover chrome is Biennale/neo/8-bit. Poster-kind alone is too
   // broad for Daisy/Studio decks that also happen to have s-chapter.
-  if (!/\bmast\b/i.test(body) && !biennale && !neo) return dest;
+  if (!/\bmast\b/i.test(body) && !biennale && !neo && !eightBit) return dest;
   const title = polishUrlSiteCoverTitle(
     polishInstructionCoverTitle(
       (body.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '')
@@ -1851,6 +1890,34 @@ export function restyleForeignIbMagazineCover(html: string): string {
   const subline = attachHangulParticles(subhead);
   const close = dest.slice(first.bodyEnd).match(new RegExp(`^</${first.tag}\\s*>`, 'i'));
   const end = first.bodyEnd + (close?.[0].length ?? 0);
+
+  if (eightBit) {
+    const ribbonRaw = (
+      (body.match(/<(?:span|div)\b[^>]*\bribbon\b[^>]*>([\s\S]*?)<\/(?:span|div)>/i)?.[1] ?? '')
+      || (body.match(/<(?:span|div)\b[^>]*\bbrand\b[^>]*>([\s\S]*?)<\/(?:span|div)>/i)?.[1] ?? '')
+    ).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const kicker = ribbonRaw && !magazineLeftoverRibbonLabel(ribbonRaw)
+      ? ribbonRaw.slice(0, 40)
+      : 'SERVICE INTRO';
+    const tagline = subline
+      ? `<p class="hero-tagline">${escapeHtml(subline)}</p>`
+      : '';
+    const inner =
+      `<div class="starfield" aria-hidden="true"></div>`
+      + `<div class="slide-content" style="z-index:10;position:relative">`
+      + `<div class="hero-subtitle">${escapeHtml(kicker)}</div>`
+      + `<h1 class="pixel-hero-text" style="text-align:center">${formatEightBitCoverTitle(title)}</h1>`
+      + tagline
+      + `</div>`;
+    return (
+      `${dest.slice(0, first.start)}<${first.tag} class="slide bg-grid scanlines grain crt-glow" `
+      + `style="width:1920px;height:1080px;box-sizing:border-box;overflow:visible;`
+      + `position:relative;background:var(--dark-void,#0A0E27);color:var(--neon-pink,#F0A6CA);`
+      + `display:flex;flex-direction:column;justify-content:center;align-items:center;`
+      + `padding:80px 96px">`
+      + `${inner}</${first.tag}>${dest.slice(end)}`
+    );
+  }
 
   if (neo) {
     const ribbonRaw = (
@@ -2179,6 +2246,7 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = healOrphanRadialCircles(next);
   next = dropEmptyDeckSlides(next);
   next = restyleForeignIbMagazineCover(next);
+  next = stripNeoBrutalVarFallbackOnEightBit(next);
   next = enrichSparseCobaltCover(next, brief);
   next = restyleBiennaleSparseChapterBodies(next);
   next = restyleBiennaleSparseDataBodies(next);
@@ -3866,7 +3934,14 @@ function extractUserFacingBrief(text: string): string {
 
 function deriveTitleFromBrief(brief: string, deckTitle?: string | null): string {
   const preferred = deckTitle?.trim() ?? '';
-  if (preferred && !looksLikeTemplateMarketingTitle(preferred) && !looksLikeInstructionCopy(preferred)) {
+  // 루프389/390 — generic "슬라이드"/Deck must not pin cover titles when the
+  // brief still carries a URL/brand topic (e.g. www.teamver.com → 팀버).
+  if (
+    preferred
+    && !looksLikeTemplateMarketingTitle(preferred)
+    && !looksLikeInstructionCopy(preferred)
+    && !isGenericDeckArtifactTitle(preferred)
+  ) {
     return polishUrlSiteCoverTitle(cleanCloneTitle(preferred).slice(0, 80), brief);
   }
   const first = brief.split(/\r?\n/).map((line) => line.trim()).find(Boolean) || brief;
@@ -4391,13 +4466,14 @@ export function healSparseDeckCoverLayout(
   );
   if (!coverTitle || isGenericDeckArtifactTitle(coverTitle) || !dest.trim()) return dest;
   if (officialLookIsNeoBrutalBlockFrame(dest)) return dest;
+  if (officialLookIsEightBitOrbit(dest)) return dest;
   if (destHasPosterSlideKinds(dest) && !officialLookIsIbMagazine(dest)) return dest;
   if (lookCssWithoutNeutralize(dest).trim() && !officialLookIsIbMagazine(dest)) return dest;
-  // 루프387 — LOOK CSS is merged AFTER this heal, so the `lookCssWithout
+  // 루프387/390 — LOOK CSS is merged AFTER this heal, so the `lookCssWithout
   // Neutralize` guard fails to detect non-IB kits when heal runs early in
   // the pipeline. Signal-based fallback: if the destination already carries
-  // neubrutalism / block-frame / studio / capsule / hermes markers (slide
-  // role classes, named layout wrappers, kit tokens, motif deco rules),
+  // neubrutalism / 8-bit / block-frame / studio / capsule / hermes markers
+  // (slide role classes, pixel-box, kit tokens, motif deco rules),
   // skip the IB magazine rebuild — its `h1.display` / `.mast` shape and
   // `--paper`/`--ink` vars would collide with the kit CSS merged later.
   if (destHasNonIbKitSignals(dest)) return dest;

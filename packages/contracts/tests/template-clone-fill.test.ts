@@ -29,7 +29,7 @@ import {
   restyleForeignIbMagazineCover,
   enrichSparseCobaltCover,
   rewriteRawUrlSiteCoverTitles,
-  salvageMalformedMiniMaxSlideMarkup,
+  healSparseDeckCoverLayout,
   restyleBiennaleSparseChapterBodies,
   restyleBiennaleSparseDataBodies,
   restyleBiennaleSparseQuoteBodies,
@@ -734,6 +734,43 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     )).toBe('팀버 소개');
     expect(deriveDeckCoverTitleFromBrief('www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘'))
       .toMatch(/팀버/);
+  });
+
+  it('루프390: restyles foreign IB magazine cover onto 8-Bit Orbit hero', () => {
+    const html = `<!doctype html><html lang="ko"><head>
+<style data-od-official-motif-deco-css="">.slide [data-od-official-motif-html].pixel-particles{position:absolute}</style>
+<style data-od-neobrutal-var-fallback="">:root{--pink:#FE90E8;--cream:#FFDC8B;--paper:var(--cream)}</style>
+</head><body style="margin:0">
+<section class="slide cover slide-title" style="background:var(--paper);color:var(--ink)">
+<header class="mast"><span class="brand">학습 노트</span></header>
+<div class="body"><span class="ribbon">학습 노트</span>
+<h1 class="display">팀버 소개</h1></div>
+<footer class="foot"><span class="conf">팀버 소개</span></footer>
+</section>
+<section class="slide" data-screen-label="02 WHAT IS TEAMVER" style="background:#0A0E27;color:#F0A6CA">
+<div class="pixel-box" style="background:#0F1B3D"><p>정의</p></div>
+<div class="scanlines"></div><div class="grain"></div>
+</section>
+<style data-od-official-look-css="">
+:root { --neon-pink: #F0A6CA; --neon-cyan: #5EDCF4; --dark-void: #0A0E27; --deep-navy: #0F1B3D; }
+.pixel-hero-text { font-family: 'Tektur', cursive; }
+.pixel-box { position: relative; }
+</style>
+</body></html>`;
+    const restyled = restyleForeignIbMagazineCover(html);
+    expect(restyled).toMatch(/class="slide bg-grid scanlines grain crt-glow"/);
+    expect(restyled).toMatch(/pixel-hero-text/);
+    expect(restyled).toMatch(/팀버<br>소개|팀버/);
+    expect(restyled).toMatch(/SERVICE INTRO|hero-subtitle/);
+    expect(restyled).toMatch(/--dark-void|#0A0E27/);
+    expect(restyled).not.toMatch(/학습 노트|class="mast"|class="ribbon"|h1 class="display"|var\(--paper\)/i);
+
+    const salvaged = salvageMalformedMiniMaxSlideMarkup(html, 'www.teamver.com 서비스 소개');
+    expect(salvaged).toMatch(/pixel-hero-text/);
+    expect(salvaged).not.toMatch(/학습 노트|data-od-neobrutal-var-fallback/i);
+    expect(salvaged).not.toMatch(/class="mast"/);
+
+    expect(healSparseDeckCoverLayout(html, '팀버 소개', null)).toBe(html);
   });
 
   it('루프388: rewrites raw URL cover titles on Cobalt Grid and fills sparse subkicker', () => {

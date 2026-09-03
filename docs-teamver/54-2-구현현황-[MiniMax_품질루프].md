@@ -42,6 +42,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프390 — 8-Bit Orbit 위 IB 매거진 표지
+
+체감: 본문은 8-bit dark pixel인데 표지만 cream `학습 노트` 매거진 + neo cream var fallback.
+
+수정: non-IB 신호에 pixel kit · restyle → pixel-hero 표지 · neo fallback strip/skip · generic `슬라이드`가 URL brief 브랜드를 덮지 않음.
+
 ### 루프389 — preview/salvage에 URL 표지 heal 연결
 
 체감: Cobalt 표지 URL 크럼이 persist heal 코드가 있어도 preview에 남음. srcdoc가 cover-title heal을 스킵.

@@ -13,6 +13,7 @@
 import { attrsLookLikeDeckOrTemplateSlideHost } from './deck-slide-class.js';
 import {
   catalogExampleShouldBeScrubbed,
+  officialLookIsEightBitOrbit,
   scrubLeftoverCatalogExampleHtml,
   stripLeafEmptyListAndParagraphShells,
 } from '../template-clone-fill.js';
@@ -4309,9 +4310,13 @@ const NEO_BRUTAL_ROOT_VARS =
 export function ensureNeoBrutalCssVariableFallback(html: string): string {
   const source = String(html ?? '');
   if (!source) return source;
-  const usesNeoToken = /var\(\s*--(?:pink|blue|green|yellow|cream|offwhite|ink)\b/i.test(source);
+  // 루프390 — IB magazine leftovers use var(--ink)/var(--paper) on 8-bit decks;
+  // do not inject cream neo :root that fights --dark-void look CSS.
+  if (officialLookIsEightBitOrbit(source)) return source;
+  // Do not treat bare magazine `--ink` alone as a neo kit token.
+  const usesNeoToken = /var\(\s*--(?:pink|blue|green|yellow|cream|offwhite)\b/i.test(source);
   const usesMagazineOnNeo =
-    /var\(\s*--(?:paper|rule)\b/i.test(source)
+    /var\(\s*--(?:paper|rule|ink)\b/i.test(source)
     && /(?:--pink\s*:|#FE90E8|var\(\s*--pink\b)/i.test(source);
   if (!usesNeoToken && !usesMagazineOnNeo) return source;
   if (new RegExp(`\\b${NEO_BRUTAL_VAR_FALLBACK_ATTR}\\b`, 'i').test(source)) {
