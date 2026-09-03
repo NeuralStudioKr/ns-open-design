@@ -42,6 +42,7 @@ import {
   pinDeckSlidesToFixedCanvas,
   healOfficialMagazineLayoutDensity,
   healAiGeneratedDeckMarkup,
+  healInstructionCopyCoverHeading,
   scrubLeftoverCatalogExampleHtml,
   stripHostProtocolLeakFromDeckHtml,
   stripLeftoverMotifDemoCopy,
@@ -224,7 +225,15 @@ function buildSrcdocUnsafe(
     }
     if (!authoredPresenterDeck) {
       try {
-        html = salvageMalformedMiniMaxSlideMarkup(html);
+        // 루프389 — Preview used to skip cover-title heal; URL crumbs stayed visible.
+        if (options.userBrief) {
+          html = healInstructionCopyCoverHeading(html, options.userBrief);
+        }
+      } catch (_) {
+        /* keep authored HTML */
+      }
+      try {
+        html = salvageMalformedMiniMaxSlideMarkup(html, options.userBrief);
       } catch (_) {
         /* keep authored HTML */
       }

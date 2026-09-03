@@ -1127,13 +1127,113 @@ function officialLookIsBiennaleYellow(html: string): boolean {
 }
 
 /**
- * 루프388 — Cobalt Grid look fingerprint (cream paper + electric cobalt ink).
+ * 루프388 — Cobalt Grid look fingerprint (cream paper + electric cobalt ink)
+ * or DOM cover chrome when look CSS is not merged yet (persist heal order).
  */
 function officialLookIsCobaltGrid(html: string): boolean {
+  const source = String(html ?? '');
+  const css = lookCssWithoutNeutralize(source);
+  if (css.trim() && /--ink\s*:\s*#1F2BE0/i.test(css)) {
+    if (/\.s-cover\s+\.(?:pixel-glitch|titlewrap|subkicker)\b/i.test(css)) return true;
+  }
+  // Pre-look-merge: Cobalt covers use s-cover + pixel-glitch (Biennale uses sunglow).
+  return /\bs-cover\b/i.test(source)
+    && /\bpixel-glitch\b/i.test(source)
+    && !/\bsunglow\b/i.test(source);
+}
+
+/**
+ * 루프389 — Rewrite raw URL / truncated-site crumbs in headings (and cover
+ * leaf chrome) even when preview/salvage never received a full brief.
+ * `www.teamver.com 사이` → `팀버` / `팀버 소개` without inventing kit shape.
+ */
+export function rewriteRawUrlSiteCoverTitles(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest || !/(?:www\.|https?:\/\/)/i.test(dest)) return dest;
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) {
+    return rewriteUrlTitlesInFragment(dest, brief, true);
+  }
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    const nextBody = rewriteUrlTitlesInFragment(body, brief, i === 0);
+    if (nextBody === body) continue;
+    out = out.slice(0, span.bodyStart) + nextBody + out.slice(span.bodyEnd);
+  }
+  return out;
+}
+
+function rewriteUrlTitlesInFragment(
+  fragment: string,
+  brief: string | null | undefined,
+  rewriteLeaves: boolean,
+): string {
+  let next = String(fragment ?? '');
+  next = next.replace(
+    /<h([1-3])\b([^>]*)>([\s\S]*?)<\/h\1>/gi,
+    (full, level: string, attrs: string, inner: string) => {
+      if (/<(?:div|ul|ol)\b/i.test(inner)) return full;
+      const text = visibleHeadingText(inner);
+      if (!looksLikeRawUrlSiteCoverTitle(text) && !titleIsUrlOnlyOrUrlFragment(text)) {
+        return full;
+      }
+      const polished = polishUrlSiteCoverTitle(text, brief);
+      if (
+        !polished
+        || polished === text
+        || looksLikeRawUrlSiteCoverTitle(polished)
+        || titleIsUrlOnlyOrUrlFragment(polished)
+      ) {
+        return full;
+      }
+      const htmlTitle = /\btitle\b/i.test(attrs) && /\s/.test(polished)
+        ? polished.split(/\s+/).map((part) => escapeHtml(part)).join('<br/>')
+        : escapeHtml(polished);
+      return `<h${level}${attrs}>${htmlTitle}</h${level}>`;
+    },
+  );
+  if (!rewriteLeaves) return next;
+  return next.replace(/>([^<]+)</g, (full, inner: string) => {
+    const text = String(inner).replace(/\s+/g, ' ').trim();
+    if (!looksLikeRawUrlSiteCoverTitle(text) && !titleIsUrlOnlyOrUrlFragment(text)) {
+      return full;
+    }
+    const polished = polishUrlSiteCoverTitle(text, brief);
+    if (
+      !polished
+      || polished === text
+      || looksLikeRawUrlSiteCoverTitle(polished)
+      || titleIsUrlOnlyOrUrlFragment(polished)
+    ) {
+      return full;
+    }
+    return `>${escapeHtml(polished)}<`;
+  });
+}
+
+/**
+ * 루프387 — Zhangzara Block Frame / neo-brutal look (or Motif deco sheet).
+ * IB magazine chrome must not be stamped onto these kits.
+ */
+function officialLookIsNeoBrutalBlockFrame(html: string): boolean {
   const css = lookCssWithoutNeutralize(html);
-  if (!css.trim()) return false;
-  if (!/--ink\s*:\s*#1F2BE0/i.test(css)) return false;
-  return /\.s-cover\s+\.(?:pixel-glitch|titlewrap|subkicker)\b/i.test(css);
+  if (css.trim()) {
+    if (/\.slide-1\s+\.hero-frame\b/i.test(css)) return true;
+    if (/--pink\s*:\s*#FE90E8/i.test(css) && /\.nb-heading-(?:xl|lg)\b/i.test(css)) {
+      return true;
+    }
+    if (/--pink\s*:\s*#FE90E8/i.test(css) && /\.feature-card\b/i.test(css)) return true;
+  }
+  const deco = [...String(html ?? '').matchAll(
+    /<style\b[^>]*\bdata-od-official-motif-deco-css\b[^>]*>([\s\S]*?)<\/style>/gi,
+  )].map((match) => match[1] ?? '').join('\n');
+  return /--pink\b|#FE90E8/i.test(deco)
+    && /\.deco-pink-rect|\.card-deco|\.deco-yellow-bar/i.test(deco);
 }
 
 /**
@@ -1145,7 +1245,7 @@ export function enrichSparseCobaltCover(
   brief?: string | null,
   deckTitle?: string | null,
 ): string {
-  const dest = String(html ?? '');
+  const dest = rewriteRawUrlSiteCoverTitles(String(html ?? ''), brief);
   if (!dest.trim() || !officialLookIsCobaltGrid(dest)) return dest;
   const spans = listHealSlideHostSpans(dest);
   if (spans.length === 0) return dest;
@@ -1155,15 +1255,23 @@ export function enrichSparseCobaltCover(
   const existingTitle = visibleHeadingText(
     body.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '',
   );
+  const fromBrief = deriveDeckCoverTitleFromBrief(brief ?? '', deckTitle);
   const title = polishUrlSiteCoverTitle(
     polishInstructionCoverTitle(
-      sanitizeTemplateCloneDeckTitle(
-        existingTitle || deriveDeckCoverTitleFromBrief(brief ?? '', deckTitle),
-      ) ?? existingTitle,
+      sanitizeTemplateCloneDeckTitle(existingTitle || fromBrief)
+        ?? (existingTitle || fromBrief),
     ),
     brief,
   );
-  if (title.length < 2) return dest;
+  if (
+    !title
+    || title.length < 2
+    || looksLikeRawUrlSiteCoverTitle(title)
+    || titleIsUrlOnlyOrUrlFragment(title)
+    || isGenericDeckArtifactTitle(title)
+  ) {
+    return dest;
+  }
 
   const titleHtml = /\s/.test(title)
     ? title.split(/\s+/).map((part) => escapeHtml(part)).join('<br/>')
@@ -1192,26 +1300,6 @@ export function enrichSparseCobaltCover(
   const close = dest.slice(first.bodyEnd).match(new RegExp(`^</${first.tag}\\s*>`, 'i'));
   const end = first.bodyEnd + (close?.[0].length ?? 0);
   return `${dest.slice(0, first.start)}<${first.tag}${first.attrs}>${body}</${first.tag}>${dest.slice(end)}`;
-}
-
-/**
- * 루프387 — Zhangzara Block Frame / neo-brutal look (or Motif deco sheet).
- * IB magazine chrome must not be stamped onto these kits.
- */
-function officialLookIsNeoBrutalBlockFrame(html: string): boolean {
-  const css = lookCssWithoutNeutralize(html);
-  if (css.trim()) {
-    if (/\.slide-1\s+\.hero-frame\b/i.test(css)) return true;
-    if (/--pink\s*:\s*#FE90E8/i.test(css) && /\.nb-heading-(?:xl|lg)\b/i.test(css)) {
-      return true;
-    }
-    if (/--pink\s*:\s*#FE90E8/i.test(css) && /\.feature-card\b/i.test(css)) return true;
-  }
-  const deco = [...String(html ?? '').matchAll(
-    /<style\b[^>]*\bdata-od-official-motif-deco-css\b[^>]*>([\s\S]*?)<\/style>/gi,
-  )].map((match) => match[1] ?? '').join('\n');
-  return /--pink\b|#FE90E8/i.test(deco)
-    && /\.deco-pink-rect|\.card-deco|\.deco-yellow-bar/i.test(deco);
 }
 
 function magazineLeftoverRibbonLabel(text: string): boolean {
@@ -2066,9 +2154,11 @@ export function injectBiennaleSparseFillCss(html: string): string {
  * before the body, or `</ol>` after step 01. Restore those tags only —
  * do not rewrite copy or reparent catalog TOC lists.
  */
-export function salvageMalformedMiniMaxSlideMarkup(html: string): string {
+export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string | null): string {
   let next = String(html ?? '');
   if (!next) return next;
+  // 루프389 — Preview/salvage often lack a full brief; still rewrite URL crumbs.
+  next = rewriteRawUrlSiteCoverTitles(next, brief);
   next = next.replace(BROKEN_EMPTY_ATTR_OPEN_RE, '<$1');
   next = next.replace(BROKEN_EMPTY_ATTR_CLOSE_RE, '</$1>');
   next = next.replace(LEAKED_LABEL_AFTER_TITLE_RE, '$1$2</div>');
@@ -2089,7 +2179,7 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string): string {
   next = healOrphanRadialCircles(next);
   next = dropEmptyDeckSlides(next);
   next = restyleForeignIbMagazineCover(next);
-  next = enrichSparseCobaltCover(next);
+  next = enrichSparseCobaltCover(next, brief);
   next = restyleBiennaleSparseChapterBodies(next);
   next = restyleBiennaleSparseDataBodies(next);
   next = restyleBiennaleSparseQuoteBodies(next);
@@ -3784,10 +3874,10 @@ function deriveTitleFromBrief(brief: string, deckTitle?: string | null): string 
   const aboutTopic = first.match(
     /^(.+?)\s*(?:에\s*대해(?:서)?|에\s*대한|에\s*관한)\s*(?:설명하는\s*)?(?:발표\s*자료|피피티|PPT|슬라이드|덱|프레젠테이션)/i,
   )?.[1]?.trim();
-  // "www.teamver.com 사이트 분석해서 …" → brand, not a truncated host crumb
+  // "www.teamver.com 사이트 분석해서 …" / truncated "… 사이" → brand
   const siteBrand = polishUrlSiteCoverTitle(
     first.match(
-      /^(?:https?:\/\/)?(?:www\.)?[a-z0-9.-]+\s*사이트(?:\s*분석\S*)?/i,
+      /^(?:https?:\/\/)?(?:www\.)?[a-z0-9.-]+\s*사이(?:트)?(?:\s*분석\S*)?/i,
     )?.[0] ?? '',
     brief,
   );
@@ -3806,9 +3896,20 @@ function deriveTitleFromBrief(brief: string, deckTitle?: string | null): string 
     || looksLikeInstructionCopy(title)
     || looksLikeTemplateMarketingTitle(title)
   ) {
-    title = aboutTopic && !looksLikeTemplateMarketingTitle(aboutTopic)
-      ? aboutTopic
-      : '슬라이드';
+    const rescued = polishUrlSiteCoverTitle(first, brief);
+    if (
+      rescued
+      && rescued.length >= 2
+      && !looksLikeInstructionCopy(rescued)
+      && !titleIsUrlOnlyOrUrlFragment(rescued)
+      && !looksLikeTemplateMarketingTitle(rescued)
+    ) {
+      title = rescued;
+    } else {
+      title = aboutTopic && !looksLikeTemplateMarketingTitle(aboutTopic)
+        ? aboutTopic
+        : '슬라이드';
+    }
   }
   return polishUrlSiteCoverTitle(
     polishInstructionCoverTitle(cleanCloneTitle(title).slice(0, 60)),

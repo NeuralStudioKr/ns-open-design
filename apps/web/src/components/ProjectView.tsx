@@ -5964,7 +5964,10 @@ export function ProjectView({
           htmlBody,
           runVisiblePromptRef.current || '',
         );
-        htmlBody = salvageMalformedMiniMaxSlideMarkup(htmlBody);
+        htmlBody = salvageMalformedMiniMaxSlideMarkup(
+          htmlBody,
+          runVisiblePromptRef.current || '',
+        );
         htmlBody = healAiGeneratedDeckMarkup(
           htmlBody,
           runVisiblePromptRef.current || '',
@@ -8528,7 +8531,10 @@ export function ProjectView({
                           withSalvage,
                           runVisiblePromptRef.current || '',
                         );
-                        const withMalformed = salvageMalformedMiniMaxSlideMarkup(withMagazine);
+                        const withMalformed = salvageMalformedMiniMaxSlideMarkup(
+                          withMagazine,
+                          runVisiblePromptRef.current || '',
+                        );
                         const withAi = healAiGeneratedDeckMarkup(
                           withMalformed,
                           runVisiblePromptRef.current || '',
@@ -10650,7 +10656,10 @@ export function ProjectView({
                       withSalvage,
                       runVisiblePromptRef.current || '',
                     );
-                    const withMalformed = salvageMalformedMiniMaxSlideMarkup(withMagazine);
+                    const withMalformed = salvageMalformedMiniMaxSlideMarkup(
+                      withMagazine,
+                      runVisiblePromptRef.current || '',
+                    );
                     const withAi = healAiGeneratedDeckMarkup(
                       withMalformed,
                       runVisiblePromptRef.current || '',

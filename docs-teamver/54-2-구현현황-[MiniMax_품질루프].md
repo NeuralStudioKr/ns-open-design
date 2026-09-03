@@ -42,6 +42,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프389 — preview/salvage에 URL 표지 heal 연결
+
+체감: Cobalt 표지 URL 크럼이 persist heal 코드가 있어도 preview에 남음. srcdoc가 cover-title heal을 스킵.
+
+수정: rewriteRawUrlSiteCoverTitles · salvage/srcdoc/preview remmerge 연결 · Cobalt DOM 감지 · URL brief → 팀버 rescue.
+
 ### 루프388 — Cobalt raw URL 커버 제목
 
 체감: Cobalt Grid 표지가 `www.teamver.com 사이` + sparse cream. instruction-copy 게이트가 URL 크럼을 놓침.

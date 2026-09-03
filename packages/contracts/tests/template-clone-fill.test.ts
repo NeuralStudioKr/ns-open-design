@@ -28,6 +28,8 @@ import {
   salvageMalformedMiniMaxSlideMarkup,
   restyleForeignIbMagazineCover,
   enrichSparseCobaltCover,
+  rewriteRawUrlSiteCoverTitles,
+  salvageMalformedMiniMaxSlideMarkup,
   restyleBiennaleSparseChapterBodies,
   restyleBiennaleSparseDataBodies,
   restyleBiennaleSparseQuoteBodies,
@@ -762,6 +764,21 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     const enriched = enrichSparseCobaltCover(html, brief);
     expect(enriched).toMatch(/팀버/);
     expect(enriched).toMatch(/subkicker/);
+  });
+
+  it('루프389: salvage + preview path rewrite URL titles without look CSS', () => {
+    const html = [
+      '<section class="slide s-cover hairlines">',
+      '<div class="titlewrap"><h1 class="title">www.teamver.com 사이</h1></div>',
+      '<div class="pixel-glitch" aria-hidden="true"><svg></svg></div>',
+      '<div class="cfooter"><div>www.teamver.com 사이</div></div>',
+      '</section>',
+    ].join('');
+    const salvaged = salvageMalformedMiniMaxSlideMarkup(html);
+    expect(salvaged).toMatch(/팀버/);
+    expect(salvaged).not.toMatch(/www\.teamver\.com 사이/);
+    expect(salvaged).toMatch(/subkicker/);
+    expect(rewriteRawUrlSiteCoverTitles(html)).toMatch(/팀버/);
   });
 
   it('does not wrap dense or already-stacked Biennale chapters', () => {

@@ -2,10 +2,12 @@ import {
   deckHtmlHasMotifOutsideCanvasHang,
   firstOfficialDeckTemplateId,
   healAiGeneratedDeckMarkup,
+  healInstructionCopyCoverHeading,
   healOfficialMagazineLayoutDensity,
   isArtifactHtmlStableForPreview,
   looksLikeDeckSlideHostAttrs,
   OFFICIAL_DECK_LOOK_STYLE_ATTR,
+  salvageMalformedMiniMaxSlideMarkup,
 } from '@open-design/contracts';
 import { fetchTeamverDaemon } from './teamverDaemonHeaders';
 import { mergeOfficialLookCssForTemplate } from './fetchPluginLocalSkill';
@@ -173,7 +175,10 @@ export async function healOfficialLookForDeckPreview(
     if (!templateId) return dest;
     const withLook = await mergeOfficialLookCssForTemplate(dest, templateId);
     try {
-      const aiHealed = healAiGeneratedDeckMarkup(withLook, brief);
+      // 루프389 — Preview remmerge must also rewrite URL cover crumbs.
+      const withHeadings = healInstructionCopyCoverHeading(withLook, brief ?? '');
+      const withSalvage = salvageMalformedMiniMaxSlideMarkup(withHeadings, brief);
+      const aiHealed = healAiGeneratedDeckMarkup(withSalvage, brief);
       return healOfficialMagazineLayoutDensity(aiHealed, brief);
     } catch {
       return withLook;

@@ -49,20 +49,22 @@ describe('teamver neubrutalism URL-brief cover fixture (2026-09-02 user report)'
     expect(sanitizeTemplateCloneDeckTitle('https://foo.bar')).toBeNull();
   });
 
-  it('synthesizeTemplateCloneOutlineFromBrief returns null for a URL-only brief so no cover parrots the URL', () => {
+  it('synthesizeTemplateCloneOutlineFromBrief rescues a URL-only brief to a brand title (루프389)', () => {
     const outline = synthesizeTemplateCloneOutlineFromBrief({
       userBrief: 'www.teamver.com 사이',
       deckTitle: '슬라이드',
     });
-    expect(outline).toBeNull();
+    expect(outline).not.toBeNull();
+    expect(outline!.title).toMatch(/팀버|Teamver/);
+    expect(outline!.title).not.toMatch(/www\.teamver\.com/);
+    expect(outline!.slides[0]?.title).toMatch(/팀버|Teamver/);
   });
 
-  it('healInstructionCopyCoverHeading does not stamp a URL-fragment title into the seed cover', () => {
+  it('healInstructionCopyCoverHeading rewrites URL-fragment titles without IB magazine rebuild', () => {
     const healed = healInstructionCopyCoverHeading(FIXTURE_HTML, BRIEF, '슬라이드');
-    // The bad h1 stays because heal skipped (no valid coverTitle to rewrite),
-    // but the pipeline avoided actively minting a corrupted IB shell — the
-    // upstream `stripEmptyBorderPadCardShells` / persist heal will handle the
-    // rest. Regardless: no IB magazine cover shape appears.
+    expect(healed).toMatch(/팀버|Teamver/);
+    expect(healed).not.toMatch(/www\.teamver\.com 사이/);
+    // No IB magazine cover shape appears.
     expect(healed).not.toMatch(/<h1\s+class="display">/);
     expect(healed).not.toMatch(/border-top:6px\s+solid\s+var\(--ink\)/);
     expect(healed).not.toMatch(/<span\s+class="conf">/);

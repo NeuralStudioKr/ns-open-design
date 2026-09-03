@@ -47,6 +47,7 @@
 | **루프386** Key Numbers loose stats wrap · neo-brutal CSS var fallback · KPI seed 가드 | ☑ |
 | **루프387** neo-brutal 위 IB magazine 커버 → hero-frame · URL 제목 polish | ☑ |
 | **루프388** Cobalt raw URL 커버 제목 heal · sparse subkicker | ☑ |
+| **루프389** preview/salvage URL 표지 heal 연결 · Cobalt DOM 감지 · brief rescue | ☑ |
 | **루프366** section `#stage` hoist · contracts dist rebuild | ☑ web transform-driven 19/19 |
 | MiniMax 실키 E2E | ☑ 가드 있음 · 키 없으면 skip (`template-clone-minimax-live.e2e`) |
 
