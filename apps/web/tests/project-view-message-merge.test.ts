@@ -503,7 +503,7 @@ describe("findTemplateCloneFillSlideCountIncomplete", () => {
     ).toBeNull();
   });
 
-  it("blocks a completed clone fill below an explicit requested range floor", () => {
+  it("allows a mid-range shortfall so slide-count top-up can append (loop404)", () => {
     const sixSlides = Array.from(
       { length: 6 },
       (_, index) => `<section class="slide"><h2>Slide ${index + 1}</h2><p>body</p></section>`,
@@ -515,11 +515,18 @@ describe("findTemplateCloneFillSlideCountIncomplete", () => {
         requestedSlideCount: 10,
         requestedSlideCountMin: 8,
       }),
-    ).toMatchObject({
-      producedCount: 6,
-      expectedCount: 8,
-      reason: expect.stringContaining("below requested minimum 8"),
-    });
+    ).toBeNull();
+  });
+
+  it("allows a one-slide truncation against an 8–10 floor so top-up can run (loop404)", () => {
+    expect(
+      findTemplateCloneFillSlideCountIncomplete({
+        fileName: "deck.html",
+        htmlBody: '<section class="slide"><h1>Cover only</h1></section>',
+        requestedSlideCount: 10,
+        requestedSlideCountMin: 8,
+      }),
+    ).toBeNull();
   });
 });
 

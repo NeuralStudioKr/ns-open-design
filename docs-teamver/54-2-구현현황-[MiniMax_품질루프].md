@@ -42,6 +42,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프404 — 장수 게이트 incomplete_output 회귀
+
+체감: `produced 1, min 8` → persist `skipped-incomplete` → durable `incomplete_output`. 루프402 장수 게이트가 디스크 쓰기를 막아 top-up이 예약되지 않았고 prompt-fill LOOK seed 복구도 없음.
+
+수정: 장수 shortfall은 저장 허용(top-up salvage) · 구조 게이트 유지 · LOOK seed recovery를 prompt-fill에도 적용.
+
+검증: web `project-view-message-merge` · `slideCountTopUp`.
+
 ### 루프402 — 명시 8–10 first-fill 한 턴
 
 체감: Standard 8–10을 골라도 첫 턴이 6장 + 숨김 top-up. 계보/`slideCountHint`는 루프395–400이 고쳤지만 스트리밍 READ LAST가 `at least 6` / `close 6 THIS TURN`을 그대로 가르침(백틱 있는 문구만 바꿔서 교체가 빗나감).

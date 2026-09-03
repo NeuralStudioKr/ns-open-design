@@ -58,6 +58,7 @@
 | **루프399** bare hint/Spec · merge cap · Capsule h1/deco/rotated | ☑ |
 | **루프400** Spec/Hint 통일 · Motif 보존 · SVG/flex/heading salvage | ☑ |
 | **루프403** 중첩 카드 flatten · 표지 pill · badge 오핀 · stutter | ☑ |
+| **루프404** 장수 게이트 → save+top-up · prompt-fill LOOK seed | ☑ |
 | **루프366** section `#stage` hoist · contracts dist rebuild | ☑ web transform-driven 19/19 |
 | MiniMax 실키 E2E | ☑ 가드 있음 · 키 없으면 skip (`template-clone-minimax-live.e2e`) |
 

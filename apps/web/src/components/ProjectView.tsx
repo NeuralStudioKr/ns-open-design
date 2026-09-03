@@ -3073,27 +3073,23 @@ export function findClientSlideCountRegression(input: {
   };
 }
 
+/**
+ * Slide-count shortfalls for Clone fill are **not** hard-incomplete.
+ *
+ * Loop402 re-armed a persist block when `produced < requestedMin` (min≥4).
+ * That wrote nothing to disk, so `shouldQueueSlideCountTopUp` never ran, and
+ * prompt-fill has no LOOK-seed fallback → durable `incomplete_output`
+ * (`produced 1, min 8` user report). Loop404: allow the partial deck through;
+ * first-fill honor still pushes same-turn close, and top-up salvages misses.
+ * {@link findTemplateCloneFillStructureIncomplete} remains the hard gate.
+ */
 export function findTemplateCloneFillSlideCountIncomplete(input: {
   fileName: string;
   htmlBody: string;
   requestedSlideCount: number | null;
   requestedSlideCountMin?: number | null;
 }): { fileName: string; producedCount: number; expectedCount: number; reason: string } | null {
-  const fileName = input.fileName.trim();
-  if (!fileName.toLowerCase().endsWith('.html')) return null;
-  const producedCount = countDeckSlideSections(input.htmlBody);
-  if (producedCount <= 0) return null;
-
-  const expectedMin = input.requestedSlideCountMin ?? input.requestedSlideCount;
-  if (expectedMin != null && expectedMin >= 4 && producedCount < expectedMin) {
-    return {
-      fileName,
-      producedCount,
-      expectedCount: expectedMin,
-      reason: `template-clone-fill produced ${producedCount} slides, below requested minimum ${expectedMin}`,
-    };
-  }
-
+  void input;
   return null;
 }
 
@@ -10912,19 +10908,23 @@ export function ProjectView({
               }
             }
 
-            // 루프362/364/365 — Clone content-fill LOOK seed recovery.
-            // Any skipped-incomplete on a Clone first-fill turn with a LOOK
-            // seed on disk → succeeded on the seed (warning notice). Non-Clone
-            // runs keep the substance gate as SSOT.
+            // 루프362/364/365 — Clone first-fill LOOK seed recovery.
+            // Any skipped-incomplete (e.g. structure gate) with a LOOK seed on
+            // disk → succeeded on the seed (warning notice). Loop404: include
+            // prompt-fill — count shortfalls now save+top-up, but structure
+            // skips still need the same seed path content-fill already had.
             if (
               !cloneLookSeedFallbackRecovered
-              && runTemplateCloneContentFillRef.current
+              && (
+                runTemplateCloneContentFillRef.current
+                || runTemplateClonePromptFillRef.current
+              )
               && terminalPersistResult?.kind === 'skipped-incomplete'
             ) {
               if (await recoverCloneLookSeedFallback()) {
                 runTemplateCloneSlotFillFallbackRef.current = true;
               } else {
-                devLog.warn('[teamver] clone content-fill LOOK seed recovery failed; seed missing');
+                devLog.warn('[teamver] clone fill LOOK seed recovery failed; seed missing');
               }
             }
 
