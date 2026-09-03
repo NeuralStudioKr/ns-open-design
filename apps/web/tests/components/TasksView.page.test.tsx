@@ -8,7 +8,6 @@ import { TasksView } from '../../src/components/TasksView';
 import * as router from '../../src/router';
 
 const originalFetch = globalThis.fetch;
-const originalConfirm = window.confirm;
 
 function mockTasksViewFetch({ routines = [] }: { routines?: Routine[] } = {}) {
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -51,7 +50,6 @@ describe('TasksView page shell', () => {
   afterEach(() => {
     cleanup();
     globalThis.fetch = originalFetch;
-    window.confirm = originalConfirm;
     vi.restoreAllMocks();
   });
 

@@ -27,7 +27,6 @@ vi.mock('../../src/analytics/provider', () => ({
 }));
 
 const originalFetch = globalThis.fetch;
-const originalConfirm = window.confirm;
 
 function routine(overrides: Partial<Routine> = {}): Routine {
   return {
@@ -112,7 +111,6 @@ describe('TasksView analytics', () => {
   afterEach(() => {
     cleanup();
     globalThis.fetch = originalFetch;
-    window.confirm = originalConfirm;
     vi.restoreAllMocks();
   });
 
@@ -147,7 +145,6 @@ describe('TasksView analytics', () => {
     { button: 'Edit', element: 'edit' },
     { button: 'Delete automation', element: 'delete' },
   ])('tracks the $element row action', async ({ button, element }) => {
-    window.confirm = vi.fn(() => true);
     mockFetch({ routines: [routine()] });
     render(<TasksView />);
     const row = (await screen.findByText('Orbit digest')).closest('li')!;

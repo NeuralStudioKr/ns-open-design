@@ -8,13 +8,11 @@ import { RoutinesSection } from '../../src/components/RoutinesSection';
 import * as router from '../../src/router';
 
 const originalFetch = globalThis.fetch;
-const originalConfirm = window.confirm;
 
 describe('RoutinesSection', () => {
   afterEach(() => {
     cleanup();
     globalThis.fetch = originalFetch;
-    window.confirm = originalConfirm;
     vi.restoreAllMocks();
   });
 
