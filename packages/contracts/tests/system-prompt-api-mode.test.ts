@@ -896,6 +896,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
           selectedDeckTemplateId: 'example-html-ppt-zhangzara-block-frame',
         },
         templateClonePromptFill: true,
+        firstFillSlideCountHint: '8-10',
       });
       expect(prompt).toContain('## Selected template — first HTML fill');
       expect(prompt).toContain('The user message is THIS turn\'s brief/topic only');
@@ -903,6 +904,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('Emit ONE complete');
       expect(prompt).toContain('The default 6-slide compact deck is only for unspecified counts');
       expect(prompt).toContain('incomplete for an 8–10 request');
+      expect(prompt).toContain('hard cap at the range max');
+      expect(prompt).toContain('Emitting 15 slides is a failed overshoot');
       expect(prompt).toContain('website/product briefs need a real service deck');
       expect(prompt).toContain('Never nest the whole slide grid inside');
       expect(prompt).not.toContain('Emit JSON outline only');

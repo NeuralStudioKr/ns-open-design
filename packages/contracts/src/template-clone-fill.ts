@@ -4700,14 +4700,16 @@ export function buildTemplateClonedDeckHtml(
     cleanedSlides.push(next);
   }
   // Slide-count policy (NOT template fidelity):
-  // - Content outline / synthesized brief wins.
+  // - Content outline / synthesized brief wins over a short stability cap
+  //   (maxSlides 1–4). Canvas Source headings must not be dropped.
+  // - Honor ceiling (5–10, including 8–10 → 10) MUST shrink overshoot
+  //   outlines — 15 is not a deliverable when the user asked for 8–10.
   // - Explicit user maxSlides may expand a short outline.
-  // - Honor ceiling (8–10 → 10) MUST shrink overshoot outlines — 15 is not
-  //   a deliverable when the user asked for 8–10.
   // - Never default to the template's natural page count/order.
   const hint = options.maxSlides != null
     ? Math.min(20, Math.max(1, options.maxSlides))
     : null;
+  const honorShrink = hint != null && hint >= 5;
   const deckTitle =
     sanitizeTemplateCloneDeckTitle(options.title)
     || cleanedSlides[0]?.title
@@ -4716,7 +4718,7 @@ export function buildTemplateClonedDeckHtml(
   let workingSlides: TemplateCloneSlideContent[];
   if (cleanedSlides.length > 0) {
     workingSlides = rewriteInstructionParrotingSlideTitles(
-      cleanedSlides.slice(0, hint ?? 20),
+      cleanedSlides.slice(0, honorShrink ? hint : 20),
       {
         ...(options.brief !== undefined ? { brief: options.brief } : {}),
         deckTitle: options.title ?? cleanedSlides[0]?.title ?? null,
@@ -4735,7 +4737,7 @@ export function buildTemplateClonedDeckHtml(
         });
       }
     }
-    if (hint != null && workingSlides.length > hint) {
+    if (honorShrink && workingSlides.length > hint) {
       workingSlides = workingSlides.slice(0, hint);
     }
   } else {
@@ -4947,26 +4949,38 @@ function syncClonedDeckChromeCount(html: string, count: number): string {
     .replace(/(<[^>]*\bid\s*=\s*["']deck-total["'][^>]*>)[\s\S]*?(<\/)/i, `$1${padded}$2`);
 }
 
-/** Parse a slide-count hint like "6-8" / "10" into a concrete target. */
+const SLIDE_COUNT_HINT_SUFFIX_RE =
+  /\s*\((?:close this turn|close at least \d+ this turn|stability cap(?: for first template fill)?)\)\s*$/i;
+
+/**
+ * LOOK-seed target from a user/plugin hint.
+ * Honor 1–10 (including `8-10 (close this turn)`) → the range max.
+ * 11+ first-fill stays uncapped here so the seed is not a 13–15 page demo
+ * the model then copies; hidden top-up owns the rest.
+ */
 export function resolveTemplateCloneSlideCountHint(
   hint: string | number | null | undefined,
 ): number | null {
   if (typeof hint === 'number' && Number.isFinite(hint)) {
     const n = Math.round(hint);
-    return n >= 1 && n <= 20 ? n : null;
+    if (n >= 11) return null;
+    return n >= 1 && n <= 10 ? n : null;
   }
-  const raw = String(hint ?? '').trim();
-  if (!raw) return null;
+  const raw = String(hint ?? '')
+    .replace(SLIDE_COUNT_HINT_SUFFIX_RE, '')
+    .trim();
+  if (!raw || /stability cap/i.test(raw)) return null;
   const range = raw.match(/^(\d{1,2})\s*[-~–—]\s*(\d{1,2})$/);
   if (range?.[1] && range[2]) {
     const a = Number(range[1]);
     const b = Number(range[2]);
     if (a >= 1 && b >= a && b <= 20) {
-      return Math.round((a + b) / 2);
+      if (b >= 11) return null;
+      return b;
     }
   }
   const n = Number(raw);
-  if (Number.isFinite(n) && n >= 1 && n <= 20) return Math.round(n);
+  if (Number.isFinite(n) && n >= 1 && n <= 10) return Math.round(n);
   return null;
 }
 

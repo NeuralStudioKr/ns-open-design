@@ -205,6 +205,8 @@ describe('templateCloneContentFill', () => {
     expect(seed).toContain('Selected template: Html Ppt Zhangzara 블록 프레임');
     expect(seed).toContain('User requested slide count: 8-10.');
     expect(seed).toContain('Emit 8-10 complete slides in THIS artifact');
+    expect(seed).toContain('hard cap 10');
+    expect(seed).toContain('emitting 15 is a failed overshoot');
     expect(seed).toContain('A 6-slide artifact is incomplete for this request');
     expect(seed).toContain('Never claim 9 slides while emitting only a cover');
     expect(seed).toContain('Do not invent quantitative KPIs');
@@ -464,6 +466,8 @@ describe('templateCloneContentFill', () => {
     expect(templateCloneFillSlideCountOverrideNotice('8-10')).toContain(
       'Do not leave remaining slides for a later turn',
     );
+    expect(templateCloneFillSlideCountOverrideNotice('8-10')).toContain('hard cap');
+    expect(templateCloneFillSlideCountOverrideNotice('8-10')).toContain('15 slides');
     expect(templateCloneFillSlideCountOverrideNotice('8-10')).not.toContain(
       'A later turn may append remaining slides',
     );

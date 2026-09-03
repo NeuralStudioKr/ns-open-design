@@ -1,3 +1,4 @@
+import { trimDeckHtmlToMaxSlides } from "@open-design/contracts";
 import type { ChatMessage } from "../types";
 import { isAutoContinueIncompleteOutputPrompt } from "../runtime/resume";
 
@@ -237,6 +238,28 @@ export function honorSlideCountCeilingFromMessages(
   messages: readonly ChatMessage[],
 ): number | null {
   return honorSlideCountCeiling(extractRequestedSlideCountSpecFromMessages(messages));
+}
+
+/**
+ * Persist-time hard cap. Honor 1–10 trims overshoot (8–10 → 10).
+ * 11+ stays uncapped. Clone first-fill with no spec cannot land 15.
+ * Top-up turns never use the unspecified-6 cap (they append toward the request).
+ */
+export function applyHonorSlideCeilingToHtml(
+  html: string,
+  messages: readonly ChatMessage[],
+  options?: { firstFill?: boolean },
+): string {
+  const spec = extractRequestedSlideCountSpecFromMessages(messages);
+  const honor = honorSlideCountCeiling(spec);
+  if (honor != null) return trimDeckHtmlToMaxSlides(html, honor);
+  if (spec && spec.max >= 11) return html;
+  const isTopUp = messages.some(
+    (message) => message.role === "user" && isSlideCountTopUpPrompt(message.content),
+  );
+  if (isTopUp) return html;
+  if (options?.firstFill) return trimDeckHtmlToMaxSlides(html, 6);
+  return html;
 }
 
 export function shouldQueueSlideCountTopUp(input: {

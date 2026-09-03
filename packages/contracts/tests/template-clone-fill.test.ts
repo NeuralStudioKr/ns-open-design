@@ -202,10 +202,19 @@ describe('buildTemplateClonedDeckHtml', () => {
 
 describe('resolveTemplateCloneSlideCountHint', () => {
   it('parses ranges and singles', () => {
-    expect(resolveTemplateCloneSlideCountHint('6-8')).toBe(7);
+    expect(resolveTemplateCloneSlideCountHint('6-8')).toBe(8);
     expect(resolveTemplateCloneSlideCountHint('10')).toBe(10);
     expect(resolveTemplateCloneSlideCountHint(5)).toBe(5);
     expect(resolveTemplateCloneSlideCountHint('')).toBeNull();
+  });
+
+  it('honors 8-10 at the max and ignores 11+ seed padding', () => {
+    expect(resolveTemplateCloneSlideCountHint('8-10')).toBe(10);
+    expect(resolveTemplateCloneSlideCountHint('8-10 (close this turn)')).toBe(10);
+    expect(resolveTemplateCloneSlideCountHint('5-6')).toBe(6);
+    expect(resolveTemplateCloneSlideCountHint('12-15')).toBeNull();
+    expect(resolveTemplateCloneSlideCountHint(15)).toBeNull();
+    expect(resolveTemplateCloneSlideCountHint('6 (stability cap for first template fill)')).toBe(6);
   });
 });
 

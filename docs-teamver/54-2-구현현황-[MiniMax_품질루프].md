@@ -42,6 +42,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프411 — 8–10→15 잔여 경로
+
+체감: 루프405 이후에도 LOOK 시드/`close this turn` 미파싱 · prompt-fill 시드 복사 · persist 후단 재증가로 15장이 남을 수 있음. honor shrink가 Source 제목 5장을 캡 3으로 자름.
+
+수정: 시드 힌트 honor max · 11+ 시드 패딩 금지 · honor≥5만 shrink · prompt-fill hard cap · persist 최종 trim · 미지정 first-fill 6.
+
+검증: contracts template-clone-fill / system-prompt · web ceiling / fill seed · daemon clone-deck.
+
 ### 루프410 — staging을 `pure-prompt`로 승격 + kit 스펙 pin
 
 체감: 루프409가 env-empty default만 바꿔도 staging은 `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=prompt`라 사용자 QA 경로가 여전히 Clone LOOK seed. pure-prompt 품질 가설을 staging에서 검증할 수 없음.
@@ -1997,6 +2005,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | chat/persist: Clone 호스트 계약은 시스템 프롬프트 · user turn brief-only · runContext 계보 | ☑ 루프391 |
 | prompts: 명시 8–10 first-fill 한 턴 · streaming/compact "close 6" 덮어쓰기 | ☑ 루프402 |
 | prompts/persist: 8–10 hard cap 10 · 15장 오버슈트 trim | ☑ 루프405 |
+| seed/persist: 8–10 잔여 15장 경로 · honor shrink Source 회귀 | ☑ 루프411 |
 | chat/persist: Clone prompt-fill 호스트 계약 숨김 · Expo 예시 user-turn 제거 | ☑ 루프382 |
 | preview: leftover host-nav 불변식 (clone-size · deco · gotoIndex) | ☑ 루프378 |
 | preview: leftover `#stage`+swipe script deco residue host ←/→ nudge | ☑ 루프374 |
@@ -2031,7 +2040,16 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프410 · staging pure-prompt + kit pin)
+## 이번 루프 (루프411 · 8–10→15 잔여 경로)
+
+- [x] LOOK 시드 honor max · `8-10 (close this turn)` 파싱 · 11+ 시드 패딩 금지
+- [x] honor≥5만 outline shrink (Source 제목 캡 3 유지)
+- [x] prompt-fill / override — hard cap 10, 15장 overshoot
+- [x] persist 최종 trim · 미지정 first-fill 6 · 12–15 유지
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+- [ ] FileViewer/채팅 브라우저 클릭 (이 환경에서 불가 — 유지)
+
+## 직전 루프 (루프410 · staging pure-prompt + kit pin)
 
 - [x] `.env.staging.example` → `pure-prompt` (production `=prompt` 유지)
 - [x] contracts composeTeamverSlideApiPrompt kit-without-clone-fill pin

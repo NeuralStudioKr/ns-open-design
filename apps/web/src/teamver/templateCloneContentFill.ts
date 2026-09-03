@@ -570,7 +570,7 @@ export function templateCloneFillSlideCountOverrideNotice(
     return [
       '# Template clone fill slideCount override',
       `For THIS first content-fill turn only, treat Plugin input slideCount as "${capped}".`,
-      'Close the requested range this turn. Do not leave remaining slides for a later turn.',
+      'Close the requested range this turn with a hard cap at the range max (8-10 → 10). Emitting 15 slides is a failed overshoot. Do not leave remaining slides for a later turn.',
     ].join('\n');
   }
   if (capped === FIRST_FILL_SLIDE_COUNT_STABILITY_CAP) {
@@ -616,7 +616,7 @@ function templateClonePromptFillSlideCountInstruction(input: {
       : '';
     return [
       `Slide count: ${slideCountHint || range}.`,
-      `Emit ${range} complete slides in THIS artifact; do not stop at a default ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}-slide compact deck.${missClause}`,
+      `Emit ${range} complete slides in THIS artifact (hard cap ${spec.max}; emitting 15 is a failed overshoot); do not stop at a default ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}-slide compact deck.${missClause}`,
     ].join(' ');
   }
   return `Slide count: ${slideCountHint || FIRST_FILL_SLIDE_COUNT_GUIDANCE}.`;

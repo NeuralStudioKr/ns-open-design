@@ -20,6 +20,7 @@ import {
   shouldQueueSlideCountTopUp,
   honorSlideCountCeiling,
   honorSlideCountCeilingFromMessages,
+  applyHonorSlideCeilingToHtml,
 } from "../../src/teamver/slideCountTopUp";
 
 function userMessage(id: string, content: string): ChatMessage {
@@ -175,6 +176,36 @@ describe("slideCountTopUp", () => {
         userMessage("u-honor-12-15", 'slideCount: "12-15"\n12-15 pages'),
       ]),
     ).toBeNull();
+  });
+
+  it("trims persist HTML to the honor ceiling and first-fill unspecified 6", () => {
+    const slides = Array.from({ length: 15 }, (_, i) => (
+      `<section class="slide"><h2>장 ${i + 1}</h2><p>본문</p></section>`
+    )).join("");
+    const html = `<body>${slides}</body>`;
+    const trimmed = applyHonorSlideCeilingToHtml(
+      html,
+      [userMessage("u-8-10", 'slideCount: "8-10"')],
+    );
+    expect((trimmed.match(/class="slide"/g) ?? []).length).toBe(10);
+    expect(trimmed).not.toContain("장 11");
+    const unspecified = applyHonorSlideCeilingToHtml(html, [], { firstFill: true });
+    expect((unspecified.match(/class="slide"/g) ?? []).length).toBe(6);
+    const detailed = applyHonorSlideCeilingToHtml(
+      html,
+      [userMessage("u-12-15", 'slideCount: "12-15"')],
+      { firstFill: true },
+    );
+    expect((detailed.match(/class="slide"/g) ?? []).length).toBe(15);
+    const topUp = applyHonorSlideCeilingToHtml(
+      html,
+      [
+        userMessage("u-none", "만들어줘"),
+        userMessage("u-top", `${SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL}\nAPPEND only new slides`),
+      ],
+      { firstFill: true },
+    );
+    expect((topUp.match(/class="slide"/g) ?? []).length).toBe(15);
   });
 
   it("does not queue hidden top-up when 8 of an 8-10 honor already closed", () => {

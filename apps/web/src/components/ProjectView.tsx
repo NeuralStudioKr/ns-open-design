@@ -165,7 +165,6 @@ import {
   healInstructionCopyCoverHeading,
   healOfficialMagazineLayoutDensity,
   healAiGeneratedDeckMarkup,
-  trimDeckHtmlToMaxSlides,
   scrubLeftoverCatalogExampleHtml,
   catalogExampleShouldBeScrubbed,
   htmlHasDeckSlideHost,
@@ -544,9 +543,9 @@ import {
   SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
   SLIDE_COUNT_TOP_UP_ENTRY_FROM,
   buildSlideCountTopUpPrompt,
+  applyHonorSlideCeilingToHtml,
   extractRequestedSlideCountSpecFromMessages,
   honorSlideCountCeiling,
-  honorSlideCountCeilingFromMessages,
   isSlideCountTopUpPrompt,
   looksLikeSlideCountExpansionRequest,
   parseSlideCountSpec,
@@ -2920,10 +2919,12 @@ function countDeckSlideSections(html: string): number {
 }
 
 /** 8–10 honor → drop trailing 11–15. 12–15 requests stay uncapped. */
-function applyHonorSlideCeiling(html: string, messages: readonly ChatMessage[]): string {
-  const ceiling = honorSlideCountCeilingFromMessages(messages);
-  if (ceiling == null) return html;
-  return trimDeckHtmlToMaxSlides(html, ceiling);
+function applyHonorSlideCeiling(
+  html: string,
+  messages: readonly ChatMessage[],
+  firstFill?: boolean,
+): string {
+  return applyHonorSlideCeilingToHtml(html, messages, { firstFill });
 }
 
 const SUBSTANCE_RICH_REPLACEMENT_MIN_SLIDES = 4;
@@ -6022,7 +6023,9 @@ export function ProjectView({
           htmlBody,
           runVisiblePromptRef.current || '',
         );
-        htmlBody = applyHonorSlideCeiling(htmlBody, messagesRef.current);
+        const honorFirstFill =
+          runTemplateCloneContentFillRef.current || runTemplateClonePromptFillRef.current;
+        htmlBody = applyHonorSlideCeiling(htmlBody, messagesRef.current, honorFirstFill);
         htmlBody = repairDeckSlideSurfaceBleed(htmlBody);
         // MiniMax rewrite-echo: drop adjacent twin headings/paragraphs/badges
         // before the 16:9 pin so deck.html never stores stacked copy.
@@ -6033,6 +6036,7 @@ export function ProjectView({
         // Motif bind can re-inject Hartfield stamps after the leftover gate.
         // Top-up sentinels / empty <artifact> tags must never persist as copy.
         htmlBody = sanitizePersistedDeckHostLeaks(htmlBody);
+        htmlBody = applyHonorSlideCeiling(htmlBody, messagesRef.current, honorFirstFill);
         if (runTemplateCloneContentFillRef.current || runTemplateClonePromptFillRef.current) {
           const requestedSpec = extractRequestedSlideCountSpecFromMessages(messagesRef.current);
           const slideCountIncomplete = findTemplateCloneFillSlideCountIncomplete({
@@ -8630,18 +8634,26 @@ export function ProjectView({
                           withMagazine,
                           runVisiblePromptRef.current || '',
                         );
+                        const honorFirstFill =
+                          runTemplateCloneContentFillRef.current
+                          || runTemplateClonePromptFillRef.current;
                         const withAi = applyHonorSlideCeiling(
                           healAiGeneratedDeckMarkup(
                             withMalformed,
                             runVisiblePromptRef.current || '',
                           ),
                           messagesRef.current,
+                          honorFirstFill,
                         );
                         const withSurface = repairDeckSlideSurfaceBleed(withAi);
-                        const withCanvas = sanitizePersistedDeckHostLeaks(
-                          pinDeckSlidesToFixedCanvas(
-                            collapseAdjacentDuplicateDeckSiblings(withSurface),
+                        const withCanvas = applyHonorSlideCeiling(
+                          sanitizePersistedDeckHostLeaks(
+                            pinDeckSlidesToFixedCanvas(
+                              collapseAdjacentDuplicateDeckSiblings(withSurface),
+                            ),
                           ),
+                          messagesRef.current,
+                          honorFirstFill,
                         );
                         const attachmentPaths = runAttachmentsRef.current
                           .map((attachment) => attachment.path.trim())
@@ -10861,27 +10873,35 @@ export function ProjectView({
                       withMagazine,
                       runVisiblePromptRef.current || '',
                     );
-                    const withAi = applyHonorSlideCeiling(
-                      healAiGeneratedDeckMarkup(
-                        withMalformed,
-                        runVisiblePromptRef.current || '',
-                      ),
-                      messagesRef.current,
-                    );
-                    const withSurface = repairDeckSlideSurfaceBleed(withAi);
-                    const withCanvas = sanitizePersistedDeckHostLeaks(
-                      pinDeckSlidesToFixedCanvas(
-                        collapseAdjacentDuplicateDeckSiblings(withSurface),
-                      ),
-                    );
-                    const attachmentPaths = runAttachmentsRef.current
-                      .map((attachment) => attachment.path.trim())
-                      .filter(Boolean);
-                    const projectPaths = [
-                      ...nextFiles.map((file) => String(file.path || file.name || '').trim()),
-                      ...attachmentPaths,
-                    ].filter(Boolean);
-                    const { html: healed, changed } = await healDiskHtmlAttachmentImageSrcs({
+                        const honorFirstFill =
+                          runTemplateCloneContentFillRef.current
+                          || runTemplateClonePromptFillRef.current;
+                        const withAi = applyHonorSlideCeiling(
+                          healAiGeneratedDeckMarkup(
+                            withMalformed,
+                            runVisiblePromptRef.current || '',
+                          ),
+                          messagesRef.current,
+                          honorFirstFill,
+                        );
+                        const withSurface = repairDeckSlideSurfaceBleed(withAi);
+                        const withCanvas = applyHonorSlideCeiling(
+                          sanitizePersistedDeckHostLeaks(
+                            pinDeckSlidesToFixedCanvas(
+                              collapseAdjacentDuplicateDeckSiblings(withSurface),
+                            ),
+                          ),
+                          messagesRef.current,
+                          honorFirstFill,
+                        );
+                        const attachmentPaths = runAttachmentsRef.current
+                          .map((attachment) => attachment.path.trim())
+                          .filter(Boolean);
+                        const projectPaths = [
+                          ...nextFiles.map((file) => String(file.path || file.name || '').trim()),
+                          ...attachmentPaths,
+                        ].filter(Boolean);
+                        const { html: healed, changed } = await healDiskHtmlAttachmentImageSrcs({
                       html: withCanvas,
                       projectFilePaths: projectPaths,
                       preferredAttachmentPaths: attachmentPaths,

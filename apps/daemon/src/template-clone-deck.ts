@@ -385,6 +385,9 @@ export async function seedTemplateClonedDeckOnServer(
     deckTitle: sanitizeTemplateCloneDeckTitle(input.deckTitle),
   });
   const countHint = resolveTemplateCloneSlideCountHint(input.slideCountHint);
+  const honorSlides = countHint != null && countHint <= 10 && slides.length > countHint
+    ? slides.slice(0, countHint)
+    : slides;
   // Content-derived title wins. Never fall back to plugin/template marketing
   // names — those used to land on the cover when the brief was empty.
   const deckTitle =
@@ -393,7 +396,7 @@ export async function seedTemplateClonedDeckOnServer(
     || '슬라이드';
   // Content length wins. Only pass maxSlides when the user explicitly hinted
   // a count — never pad to the template's demo page count (discouraged).
-  const cloned = buildTemplateClonedDeckHtml(loaded.html, slides, {
+  const cloned = buildTemplateClonedDeckHtml(loaded.html, honorSlides, {
     title: deckTitle,
     templateId: loaded.templateId,
     ...(countHint != null ? { maxSlides: countHint } : {}),

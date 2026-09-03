@@ -1530,7 +1530,7 @@ Emit ONE complete \`<artifact type="deck" identifier="deck">\` HTML document thi
 - Do not paste the user brief, this contract, or any worked example onto slides.
 - Use the selected template kit as visual authority (palette, type, motif, chrome).
 - Every slide is 1920×1080, overflow hidden, navigable as a deck.
-- Slide count: if the user or Plugin inputs request 1–${COMPACT_FIRST_FILL_HONOR_MAX} slides/range (for example 8–10), emit that requested count/range now. The default ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN}-slide compact deck is only for unspecified counts; it is incomplete for an 8–10 request.
+- Slide count: if the user or Plugin inputs request 1–${COMPACT_FIRST_FILL_HONOR_MAX} slides/range (for example 8–10), emit that requested count/range now with a hard cap at the range max (8–10 → 10). Emitting 15 slides is a failed overshoot. The default ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN}-slide compact deck is only for unspecified counts; it is incomplete for an 8–10 request. Never copy the LOOK seed's demo page count when it exceeds the requested max.
 - Content depth: website/product briefs need a real service deck (problem/context, product promise, core workflow, features, use cases, integration/security/operation notes, adoption path, closing), not a one-line brand intro.
 - HTML structure: close badges, header pills, tags, and number pills before opening grids/cards. Never nest the whole slide grid inside a small label/pill element.
 - Close \`</html></artifact>\` this turn.
@@ -1823,7 +1823,12 @@ export function composeTeamverSlideApiPrompt({
     parts.push(buildTeamverFillFinalAuthority(directDeckGeneration));
   } else {
     if (htmlPromptFill) {
-      parts.push(TEAMVER_TEMPLATE_CLONE_PROMPT_FILL_CONTRACT);
+      parts.push(
+        applyFirstFillArtifactCountPhrase(
+          TEAMVER_TEMPLATE_CLONE_PROMPT_FILL_CONTRACT,
+          firstFillSlideCountHint,
+        ),
+      );
     }
     parts.push(
       applyFirstFillArtifactCountPhrase(
