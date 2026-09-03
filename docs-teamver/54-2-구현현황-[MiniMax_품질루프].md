@@ -42,6 +42,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프407 — 숨은 top-up이 채팅 대기열에 노출
+
+체감: 생성 실패 직후 사용자가 조작하지 않았는데 「1 대기 중」에 `[od:slide_count_top_up] The curre...` + 스킬 칩이 보임. 채팅 말풍선은 숨기지만 busy 시 `handleSend`가 동일 프롬프트를 일반 대기열에 넣어 노출.
+
+수정: `isHiddenAutomationQueuedSend` — prompt/entryFrom으로 top-up·auto-continue·slot-fill repair 판별 · ProjectView 대기열 매핑 + ChatPane strip에서 제외(배수 큐는 유지) · summarize 안전망.
+
+검증: web `chat-message-render` · `project-view-message-load`.
+
 ### 루프406 — letterbox로 새어 나가는 장식 shape 재부모화
 
 체감: 슬라이드 밖 어두운 letterbox에 pink/blue 회전 사각형(위) + yellow 사각형·purple 원(아래)이 그려짐. `.slide { overflow: visible }`(Motif chrome용)에 의해 non-Motif ad-hoc `position:absolute` shape가 slide sibling으로 escape.
@@ -1995,7 +2003,21 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프405 · 8–10 요청 15장 오버슈트)
+## 이번 루프 (루프407 · 숨은 top-up 대기열 비노출)
+
+- [x] `isHiddenAutomationUserPrompt` / `isHiddenAutomationQueuedSend` export
+- [x] ProjectView `currentConversationQueuedItems`에서 automation 제외
+- [x] ChatPane `QueuedSendStrip` visible filter + summarize 안전망
+- [x] web chat-message-render · project-view-message-load
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+- [ ] FileViewer/채팅 브라우저 클릭 (이 환경에서 불가 — 유지)
+
+## 직전 루프 (루프406 · letterbox escape deco 재부모화)
+
+- [x] `reparentEscapedDecoIntoSlideFlow` · Motif chrome 보존
+- [x] contracts loop406 fixture 9/9
+
+## 직전 루프 (루프405 · 8–10 요청 15장 오버슈트)
 
 - [x] honor hard cap 10 · 15장은 failed overshoot
 - [x] JSON outline max 20 → 8–10이면 cap 10

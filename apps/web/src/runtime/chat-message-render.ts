@@ -4,11 +4,40 @@ import { stripDeckInFlightStatusResidue } from "../teamver/deckDeliverableProse"
 import { assistantMessageTextBody, messageHasVisibleProse } from "./chat-events";
 import { isEmptyAssistantShell } from "./conversation-message-dedupe";
 import { deriveFileOps } from "./file-ops";
-import { isAutoContinueIncompleteOutputPrompt } from "./resume";
-import { isSlideCountTopUpPrompt } from "../teamver/slideCountTopUp";
+import { AUTO_CONTINUE_ENTRY_FROM, isAutoContinueIncompleteOutputPrompt } from "./resume";
+import {
+  CLONE_SLOT_FILL_REPAIR_ENTRY_FROM,
+  isTemplateCloneSlotFillRepairPrompt,
+} from "../teamver/templateCloneContentFill";
+import {
+  SLIDE_COUNT_TOP_UP_ENTRY_FROM,
+  isSlideCountTopUpPrompt,
+} from "../teamver/slideCountTopUp";
 
-function isHiddenAutomationUserPrompt(content: string | null | undefined): boolean {
-  return isAutoContinueIncompleteOutputPrompt(content) || isSlideCountTopUpPrompt(content);
+/**
+ * Model-only user turns (auto-continue / slide-count top-up / slot-fill repair).
+ * Chat bubbles hide these; the send-queue strip must too.
+ */
+export function isHiddenAutomationUserPrompt(content: string | null | undefined): boolean {
+  return (
+    isAutoContinueIncompleteOutputPrompt(content)
+    || isSlideCountTopUpPrompt(content)
+    || isTemplateCloneSlotFillRepairPrompt(content)
+  );
+}
+
+/** Queued-send strip: hide by prompt fingerprint or analytics entryFrom. */
+export function isHiddenAutomationQueuedSend(item: {
+  prompt?: string | null;
+  meta?: { entryFrom?: string | null } | null;
+}): boolean {
+  if (isHiddenAutomationUserPrompt(item.prompt)) return true;
+  const entryFrom = String(item.meta?.entryFrom ?? "").trim();
+  return (
+    entryFrom === AUTO_CONTINUE_ENTRY_FROM
+    || entryFrom === SLIDE_COUNT_TOP_UP_ENTRY_FROM
+    || entryFrom === CLONE_SLOT_FILL_REPAIR_ENTRY_FROM
+  );
 }
 
 export type ChatMessageRenderContext = {

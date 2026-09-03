@@ -1,12 +1,22 @@
 import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "../../src/types";
-import { AUTO_CONTINUE_PROMPT_SENTINEL } from "../../src/runtime/resume";
+import {
+  AUTO_CONTINUE_ENTRY_FROM,
+  AUTO_CONTINUE_PROMPT_SENTINEL,
+} from "../../src/runtime/resume";
 import {
   hasEmbedVisibleAssistantBody,
+  isHiddenAutomationQueuedSend,
+  isHiddenAutomationUserPrompt,
   shouldIncludeMessageInChatRender,
   shouldOmitMessageFromChatRender,
   shouldOmitSupersededAutoContinueFailure,
 } from "../../src/runtime/chat-message-render";
+import { SLIDE_COUNT_TOP_UP_ENTRY_FROM, SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL } from "../../src/teamver/slideCountTopUp";
+import {
+  CLONE_SLOT_FILL_REPAIR_ENTRY_FROM,
+  TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER,
+} from "../../src/teamver/templateCloneContentFill";
 import { resolveLastAssistantMessageId } from "../../src/runtime/conversation-message-dedupe";
 import { buildChatRenderItems } from "../../src/components/ChatPane";
 
@@ -17,6 +27,39 @@ const embedCtx = {
 };
 
 describe("chat-message-render", () => {
+  it("treats slide-count top-up / auto-continue / slot-fill repair as hidden automation", () => {
+    expect(isHiddenAutomationUserPrompt(
+      `${SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL}\nAPPEND only new slides`,
+    )).toBe(true);
+    expect(isHiddenAutomationUserPrompt(
+      `${AUTO_CONTINUE_PROMPT_SENTINEL}\ncontinue`,
+    )).toBe(true);
+    expect(isHiddenAutomationUserPrompt(
+      `${TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER}\nrepair`,
+    )).toBe(true);
+    expect(isHiddenAutomationUserPrompt("슬라이드 8장으로 만들어줘")).toBe(false);
+
+    expect(isHiddenAutomationQueuedSend({
+      prompt: `${SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL}\nThe current deck`,
+    })).toBe(true);
+    expect(isHiddenAutomationQueuedSend({
+      prompt: "user follow-up",
+      meta: { entryFrom: SLIDE_COUNT_TOP_UP_ENTRY_FROM },
+    })).toBe(true);
+    expect(isHiddenAutomationQueuedSend({
+      prompt: "user follow-up",
+      meta: { entryFrom: AUTO_CONTINUE_ENTRY_FROM },
+    })).toBe(true);
+    expect(isHiddenAutomationQueuedSend({
+      prompt: "user follow-up",
+      meta: { entryFrom: CLONE_SLOT_FILL_REPAIR_ENTRY_FROM },
+    })).toBe(true);
+    expect(isHiddenAutomationQueuedSend({
+      prompt: "제목만 바꿔줘",
+      meta: { entryFrom: "composer" },
+    })).toBe(false);
+  });
+
   it("omits sanitized slide-count top-up leftovers on user and assistant rows", () => {
     const leftover = [
       "The",

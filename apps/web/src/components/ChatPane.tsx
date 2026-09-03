@@ -79,14 +79,15 @@ import {
   userFacingRunErrorDetail,
   extractPersistedRunErrorDiagnostic,
 } from '../teamver/projectErrorMessages';
-import { AUTO_CONTINUE_STATUS_CODE, RESUME_CONTINUE_PROMPT, isAutoContinueIncompleteOutputPrompt } from '../runtime/resume';
-import { isSlideCountTopUpPrompt } from '../teamver/slideCountTopUp';
+import { AUTO_CONTINUE_STATUS_CODE, RESUME_CONTINUE_PROMPT } from '../runtime/resume';
 import {
   looksLikeDeckTemplateSkillId,
   resolveSelectedDeckTemplateChipLabel,
 } from '../runtime/selected-deck-template';
 import { resolveLastAssistantMessageId } from '../runtime/conversation-message-dedupe';
 import {
+  isHiddenAutomationQueuedSend,
+  isHiddenAutomationUserPrompt,
   shouldIncludeMessageInChatRender,
   type ChatMessageRenderContext,
 } from '../runtime/chat-message-render';
@@ -1197,8 +1198,7 @@ export function ChatPane({
       messages.find(
         (m) =>
           m.role === 'user'
-          && !isAutoContinueIncompleteOutputPrompt(m.content)
-          && !isSlideCountTopUpPrompt(m.content),
+          && !isHiddenAutomationUserPrompt(m.content),
       )?.id,
     [messages],
   );
@@ -2733,7 +2733,7 @@ function ChatRows({
       // Automatic-continue recovery prompts are model-facing only. Showing
       // the long directive as a user bubble made brand-new projects look
       // like they were continuing another project's deck.
-      if (isAutoContinueIncompleteOutputPrompt(m.content) || isSlideCountTopUpPrompt(m.content)) {
+      if (isHiddenAutomationUserPrompt(m.content)) {
         return null;
       }
       return (
@@ -3179,9 +3179,12 @@ function QueuedSendStrip({
 }) {
   const t = useTeamverT();
   const [dragState, setDragState] = useState<QueuedSendDragState | null>(null);
-  if (items.length === 0) return null;
-  const canReorder = Boolean(onReorder && items.length > 1);
-  const overflowCount = Math.max(0, items.length - QUEUED_SEND_VISIBLE_ROW_COUNT);
+  // Model-only recovery/top-up turns stay in the drain queue but must not
+  // appear as editable "대기 중" rows (raw `[od:slide_count_top_up]` etc.).
+  const visibleItems = items.filter((item) => !isHiddenAutomationQueuedSend(item));
+  if (visibleItems.length === 0) return null;
+  const canReorder = Boolean(onReorder && visibleItems.length > 1);
+  const overflowCount = Math.max(0, visibleItems.length - QUEUED_SEND_VISIBLE_ROW_COUNT);
 
   const handleDragStart = (
     event: ReactDragEvent<HTMLButtonElement>,
@@ -3236,8 +3239,8 @@ function QueuedSendStrip({
     const edge = dragState?.overId === targetId && dragState.edge
       ? dragState.edge
       : queuedDropEdgeForEvent(event);
-    const nextIds = reorderQueuedSendIds(items, draggingId, targetId, edge);
-    if (nextIds.join('\0') !== items.map((item) => item.id).join('\0')) {
+    const nextIds = reorderQueuedSendIds(visibleItems, draggingId, targetId, edge);
+    if (nextIds.join('\0') !== visibleItems.map((item) => item.id).join('\0')) {
       onReorder?.(nextIds);
     }
     setDragState(null);
@@ -3257,14 +3260,14 @@ function QueuedSendStrip({
       <div className="chat-queued-send-header">
         <div className="chat-queued-send-heading">
           <strong>
-            {items.length} {t('chat.queuedHeader')}
+            {visibleItems.length} {t('chat.queuedHeader')}
           </strong>
           <span aria-hidden>↩</span>
           <span>{t('chat.queuedToSend')}</span>
         </div>
       </div>
       <div className={`chat-queued-send-list${overflowCount > 0 ? ' is-scrollable' : ''}`}>
-        {items.map((item, index) => {
+        {visibleItems.map((item, index) => {
           const isDragging = dragState?.draggingId === item.id;
           const dropClass = dragState?.overId === item.id
             && dragState.draggingId !== item.id
@@ -3385,6 +3388,9 @@ function reorderQueuedSendIds(
 }
 
 function summarizeQueuedPrompt(item: QueuedSendItem, t: TranslateFn): string {
+  if (isHiddenAutomationQueuedSend(item)) {
+    return t('chat.queuedFollowUpFallback');
+  }
   const normalized = stripUserVisibleUserMessageText(item.prompt).replace(/\s+/g, ' ').trim();
   const text = normalized || t('chat.queuedFollowUpFallback');
   return text.length > 58 ? `${text.slice(0, 57)}...` : text;

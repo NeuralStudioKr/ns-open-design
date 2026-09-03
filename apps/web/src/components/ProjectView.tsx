@@ -345,7 +345,10 @@ import {
   verifySlideProducedHtmlDeliverable,
 } from '../runtime/slide-deliverable-recovery';
 import { tryPersistClientVisualMarksOnSend } from '../runtime/client-visual-mark-persist';
-import { resolveSlideTurnKindForSend } from '../runtime/chat-message-render';
+import {
+  isHiddenAutomationQueuedSend,
+  resolveSlideTurnKindForSend,
+} from '../runtime/chat-message-render';
 import {
   buildDesignSystemPackageAuditRepairPrompt,
   summarizeDesignSystemPackageAudit,
@@ -4001,6 +4004,9 @@ export function ProjectView({
   const currentConversationQueuedItems = activeConversationId
     ? queuedChatSends
         .filter((item) => item.conversationId === activeConversationId)
+        // Hide model-only auto-continue / slide-count top-up / slot-fill repair
+        // from the user-facing "대기 중" strip (drain queue keeps them).
+        .filter((item) => !isHiddenAutomationQueuedSend(item))
         .map((item) => {
           const queuedItem = {
             id: item.id,
