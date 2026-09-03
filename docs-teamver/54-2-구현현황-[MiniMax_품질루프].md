@@ -42,6 +42,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프394-후속 — 8-bit orbit `.starfield` idempotency + 사용자 리포트 fixture
+
+체감: 루프394 병렬 커밋이 사용자 리포트 3개 결함(empty leading slot · `<b>` orphan · duplicate label)을 잡았으나 별도 재현 케이스 발견: 루프390 `restyleForeignIbMagazineCover` 8-bit orbit 분기가 만드는 `.starfield`에 style 속성이 없어 `restoreAtmosphericOverlayPositioning`(loop392)가 2회차 salvage에서 재-styling → salvage idempotency 깨짐.
+
+수정: `restyleForeignIbMagazineCover`의 새 `.starfield`에 `position:absolute;inset:0;pointer-events:none;` 인라인 style 미리 부착. 신규 사용자 리포트 fixture(`teamver-neubrutal-empty-lead-and-b-orphan.html`) + 통합 테스트 9/9 pass(dropEmptyDeckSlides leading drop · all-empty fallback · unwrapStrayBoldShells 드레인 · 컨텐츠 있는 `<b>` 보전 · collapseAdjacentDuplicateLabelDivs twin 접기 · end-to-end salvage · idempotency · `.starfield` 회귀 가드).
+
+검증: 신규 9 pass · 기존 8-bit orbit 통합 테스트도 idempotency 회복 · contracts 2953 pass / 1 skip / 1 pre-existing fail(무관).
+
 ### 루프394 — 빈 1페이지 · neo deco flatten · 깨진 flex step
 
 체감: filmstrip 1/N 빈 cream·sentinel · deco relative로 상단 몰림 · `<b>`/조기 close로 How-it-works 붕괴 · Impact 라벨 중복.

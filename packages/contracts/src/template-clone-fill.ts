@@ -2334,8 +2334,11 @@ export function restyleForeignIbMagazineCover(html: string): string {
     const tagline = subline
       ? `<p class="hero-tagline">${escapeHtml(subline)}</p>`
       : '';
+    // 루프394-후속 — pre-apply the same absolute+inset positioning that
+    // `restoreAtmosphericOverlayPositioning` would add on a second salvage
+    // pass so salvage stays idempotent when it runs after this restyle.
     const inner =
-      `<div class="starfield" aria-hidden="true"></div>`
+      `<div class="starfield" aria-hidden="true" style="position:absolute;inset:0;pointer-events:none;"></div>`
       + `<div class="slide-content" style="z-index:10;position:relative">`
       + `<div class="hero-subtitle">${escapeHtml(kicker)}</div>`
       + `<h1 class="pixel-hero-text" style="text-align:center">${formatEightBitCoverTitle(title)}</h1>`
