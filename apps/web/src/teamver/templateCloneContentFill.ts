@@ -51,12 +51,48 @@ export const TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER = '[Template clone slot-fill
 /** handleSend entryFrom for the one-shot JSON repair auto-send (루프368). */
 export const CLONE_SLOT_FILL_REPAIR_ENTRY_FROM = 'clone_slot_fill_json_repair';
 
-export type TemplateCloneFillMode = 'prompt' | 'deterministic';
+/**
+ * Fill mode for explicit-template deck creates.
+ *
+ *   `prompt` (default): daemon seeds LOOK `deck.html` from the template
+ *     example, then the AI turn is armed with `templateClonePromptFill:
+ *     true` and the `TEAMVER_TEMPLATE_CLONE_PROMPT_FILL_CONTRACT`
+ *     hint. Model emits full HTML, salvage/heals clean it, persist keeps
+ *     the seed as fallback.
+ *
+ *   `deterministic`: daemon runs a server content-fill endpoint (no AI
+ *     turn) or falls through to JSON slot-fill after the seed. Same
+ *     LOOK seed on disk before the AI runs.
+ *
+ *   `pure-prompt` (루프401): SKIP daemon LOOK seeding entirely and SKIP
+ *     the clone-fill marker on the outgoing user turn. Selected deck
+ *     template id / skillIds are still carried, so
+ *     `composeTeamverSlideApiPrompt` still emits the
+ *     `## Selected deck template — X — MUST MATCH THIS VISUAL SPEC`
+ *     kit block. The model receives a plain user brief + kit spec
+ *     with no clone-mode language, matching the pre-Clone deck flow
+ *     users report producing higher-quality decks.
+ */
+export type TemplateCloneFillMode = 'prompt' | 'deterministic' | 'pure-prompt';
 
 export function normalizeTemplateCloneFillMode(value: unknown): TemplateCloneFillMode {
   const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
   if (raw === 'deterministic' || raw === 'content-fill' || raw === 'server') {
     return 'deterministic';
+  }
+  // 루프401 — Explicit opt-out from clone seeding. Users report the
+  // pre-Clone prompt-only path produced more natural decks; this mode
+  // restores that flow while still carrying the template kit context
+  // into the system prompt.
+  if (
+    raw === 'pure-prompt'
+    || raw === 'no-seed'
+    || raw === 'skip-seed'
+    || raw === 'no-clone'
+    || raw === 'pre-clone'
+    || raw === 'legacy-prompt'
+  ) {
+    return 'pure-prompt';
   }
   return 'prompt';
 }
@@ -82,6 +118,23 @@ export function getTemplateCloneFillMode(): TemplateCloneFillMode {
 
 export function shouldUseDeterministicTemplateCloneFill(): boolean {
   return getTemplateCloneFillMode() === 'deterministic';
+}
+
+/**
+ * 루프401 — When true, callers must skip `seedTemplateClonedDeck` and
+ * `queueTemplateClonePromptFill` / `buildTemplateClonePromptFillSeed`.
+ * The user turn goes out through the standard create path but with
+ * `selectedDeckTemplateId` + `skillIds` preserved so the kit spec still
+ * lands in the system prompt. No LOOK seed is written; no clone marker
+ * is attached.
+ */
+export function shouldSkipTemplateCloneSeed(): boolean {
+  return getTemplateCloneFillMode() === 'pure-prompt';
+}
+
+/** True when the current fill mode is `pure-prompt` (see loop400). */
+export function isPurePromptTemplateCloneFill(): boolean {
+  return getTemplateCloneFillMode() === 'pure-prompt';
 }
 
 export function templateCloneContentFillFlagKey(projectId: string): string {

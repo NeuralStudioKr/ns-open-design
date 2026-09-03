@@ -42,6 +42,18 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프401 — `pure-prompt` opt-in 세 번째 fill 모드
+
+체감: 루프390~397 salvage/heal 개선과 루프398~400 Capsule/Spec-Hint 정합 이후에도 사용자가 "결과가 부자연스럽다, Clone 이전의 프롬프트 방식이 완성도 측면에서 더 나았다"고 명시적으로 언급. `prompt` 모드도 daemon LOOK seed + `TEAMVER_TEMPLATE_CLONE_PROMPT_FILL_CONTRACT` 이중 지시(LOOK seed 참고 + 새 콘텐츠 생성)로 모델의 자연스러운 출력을 저해한다는 가설.
+
+수정: `TemplateCloneFillMode`에 세 번째 값 `'pure-prompt'` 추가(6개 alias 정규화) · 신규 `shouldSkipTemplateCloneSeed()` · App.tsx 2곳 + ChatComposer.tsx 2곳 총 4개 clone-seeding 진입점에 `!shouldSkipTemplateCloneSeed()` 가드 추가. `true`이면 clone 전체 블록 skip, 표준 create 경로(`canvasCreateSlidesRunPrompt` / 홈 auto-send `derivedPendingPrompt`)로 폴백. `selectedDeckTemplateId` + `skillIds`는 outgoing meta에 유지 → 시스템 프롬프트에 kit spec은 그대로 로드. rollback-switch 문서에 3번째 모드 상세 명시.
+
+opt-in: `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=pure-prompt` (alias: `no-seed` / `skip-seed` / `no-clone` / `pre-clone` / `legacy-prompt`) 또는 `localStorage.od:template-clone-fill-mode=pure-prompt`. 기본값은 여전히 `'prompt'` (기존 UX 무영향).
+
+검증: `templateCloneContentFill.test.ts` 29/29 pass (기본 mode 검증 · 6개 alias · env 반영 · deterministic 상호배제 · 안전 폴백) · canvas-slide-launch web 테스트 회귀 없음.
+
+한계: opt-in mechanism일 뿐 기본값 변경/clone 경로 제거는 아님. salvage/heal 자체 개선은 별개 loop.
+
 ### 루프400 — Spec/Hint 통일 · Capsule Motif 보존 · SVG stub · flex/heading salvage
 
 체감: auto-continue Hint와 top-up Spec 우선순위 불일치 · Capsule IB restyle이 Motif/floating-pills 폐기 · Motif SVG만 있는 장이 drop 안 됨 · flex 카드가 chrome-pill에 잔존 · `<span style=flex>` 앞 orphan h2 · sibling `<b>1</b><b>99+` · Capsule fingerprint/neo cream 재주입.

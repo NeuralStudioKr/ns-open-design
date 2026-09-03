@@ -27,6 +27,7 @@ import {
   queueTemplateCloneContentFill,
   queueTemplateClonePromptFill,
   resolveTemplateCloneAutoSendSeed,
+  shouldSkipTemplateCloneSeed,
   shouldUseDeterministicTemplateCloneFill,
   shouldQueueCloneSlotFillJsonRepair,
   templateCloneFillSlideCountOverrideNotice,
@@ -57,6 +58,34 @@ describe('templateCloneContentFill', () => {
     expect(shouldUseDeterministicTemplateCloneFill()).toBe(true);
     expect(normalizeTemplateCloneFillMode('content-fill')).toBe('deterministic');
     expect(normalizeTemplateCloneFillMode('server')).toBe('deterministic');
+  });
+
+  it('accepts the loop400 `pure-prompt` mode via env and multiple aliases', () => {
+    // Default = prompt, never `pure-prompt` unless opted in.
+    expect(getTemplateCloneFillMode()).toBe('prompt');
+    expect(shouldSkipTemplateCloneSeed()).toBe(false);
+
+    // Direct alias.
+    expect(normalizeTemplateCloneFillMode('pure-prompt')).toBe('pure-prompt');
+    // Human-friendly aliases mapping to the same mode.
+    expect(normalizeTemplateCloneFillMode('no-seed')).toBe('pure-prompt');
+    expect(normalizeTemplateCloneFillMode('skip-seed')).toBe('pure-prompt');
+    expect(normalizeTemplateCloneFillMode('no-clone')).toBe('pure-prompt');
+    expect(normalizeTemplateCloneFillMode('pre-clone')).toBe('pure-prompt');
+    expect(normalizeTemplateCloneFillMode('legacy-prompt')).toBe('pure-prompt');
+
+    process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = 'pure-prompt';
+    expect(getTemplateCloneFillMode()).toBe('pure-prompt');
+    expect(shouldSkipTemplateCloneSeed()).toBe(true);
+    // `pure-prompt` is NOT deterministic — deterministic path stays off.
+    expect(shouldUseDeterministicTemplateCloneFill()).toBe(false);
+
+    // Casing / whitespace tolerated.
+    expect(normalizeTemplateCloneFillMode('  Pure-Prompt  ')).toBe('pure-prompt');
+    expect(normalizeTemplateCloneFillMode('NO-CLONE')).toBe('pure-prompt');
+
+    // Unknown strings still fall back to prompt (safe default).
+    expect(normalizeTemplateCloneFillMode('nonsense')).toBe('prompt');
   });
 
   it('does not treat Canvas boilerplate as the visible request', () => {

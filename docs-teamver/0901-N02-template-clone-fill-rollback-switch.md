@@ -51,3 +51,36 @@
 1. env가 비어 있는 로컬/QA 빌드에서 `localStorage.setItem('od:template-clone-fill-mode', 'deterministic')`로 제한 테스트 후 템플릿별 품질을 비교한다.
 2. deterministic 결과가 충분하지 않은 템플릿은 해당 템플릿 fixture를 추가해 원인 분석한다.
 3. 품질과 복구 UX가 확인된 뒤에만 staging env를 `deterministic`으로 다시 올린다.
+
+## 2026-09-03 — `pure-prompt` 세 번째 모드(루프401)
+
+**배경:** `prompt` (Clone LOOK seed + prompt-fill 마커) 및 `deterministic` (server content-fill / JSON slot-fill) 두 모드 모두 결과 품질이 "Clone 도입 이전의 순수 프롬프트 방식"보다 완성도가 부족하다는 사용자 리포트(2026-09-03). Clone LOOK seed의 존재 자체가 문제라기보다는, prompt-fill 마커와 clone contract(`TEAMVER_TEMPLATE_CLONE_PROMPT_FILL_CONTRACT`)가 모델에게 이중 지시("LOOK seed를 참고해라" + "새 콘텐츠를 만들어라")를 걸어 자연스러운 출력이 저해된다는 가설.
+
+**신규 세 번째 모드 `pure-prompt`(루프401):**
+
+- FE는 `seedTemplateClonedDeck` 호출과 `queueTemplateClonePromptFill` / `buildTemplateClonePromptFillSeed` 호출을 모두 건너뛴다. Daemon LOOK seed도 생성되지 않는다.
+- 대신 표준 create 경로(`canvasCreateSlidesRunPrompt` / 홈 auto-send `derivedPendingPrompt`)로 폴백하되, `selectedDeckTemplateId` + `selectedDeckTemplateTitle`(및 skillIds)는 그대로 outgoing meta에 유지한다.
+- 결과: `composeTeamverSlideApiPrompt`는 여전히 `## Selected deck template — X — MUST MATCH THIS VISUAL SPEC` + `## Template visual kit (from example.html)` 블록을 시스템 프롬프트에 포함한다(kit 색·폰트·모티프 유지). 그러나 clone 마커 / clone contract는 없어서 모델이 kit 스펙을 참고한 뒤 자유롭게 완성 deck HTML을 생성한다 — Clone 도입 이전의 프롬프트 방식과 동일한 흐름.
+- 후속 salvage / heal 파이프라인은 모드에 무관하게 동일하게 동작한다(`salvageMalformedMiniMaxSlideMarkup`, `healAiGeneratedDeckMarkup`, kit-specific restyle 등).
+
+**FE 스위치:**
+
+- `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=pure-prompt` 또는 aliases `no-seed` / `skip-seed` / `no-clone` / `pre-clone` / `legacy-prompt` 중 어느 것이든 opt-in 가능.
+- env가 비어 있는 로컬/QA 빌드에서는 `localStorage.od:template-clone-fill-mode=pure-prompt`도 동일하게 동작(env가 있으면 env가 우선).
+- 새 helper `shouldSkipTemplateCloneSeed()`가 `apps/web/src/App.tsx`(홈 Canvas import 및 홈 wizard/gallery/community 두 분기)와 `apps/web/src/components/ChatComposer.tsx`(Canvas confirm 및 Drive confirm 두 분기) 총 네 개 clone-seeding 진입점에서 가드 조건으로 사용된다. `true`이면 clone 관련 코드 블록 전체가 스킵되어 표준 create 경로로 자연스럽게 폴백한다.
+
+**롤백:**
+
+- env를 지우거나 `prompt`로 재설정하면 즉시 기존 Clone + prompt-fill 경로로 돌아온다. `pure-prompt` 모드는 절대 기본값이 아니며, 명시적 opt-in 시에만 동작한다.
+- daemon측 endpoint(`/template-clone-deck`)는 그대로 유지되며, `pure-prompt` 모드에서는 단순히 호출되지 않는다.
+
+**검증:**
+
+- `apps/web/tests/teamver/templateCloneContentFill.test.ts` — `pure-prompt`, `no-seed`, `no-clone`, `pre-clone`, `legacy-prompt` 등 alias가 모두 정규화되고, env 반영 시 `shouldSkipTemplateCloneSeed()`가 true를 반환하며, 그 상태에서도 `shouldUseDeterministicTemplateCloneFill()`은 false를 유지하는지 확인.
+- 관련 web / contracts 테스트에서 회귀 없음(pre-existing 실패만 유지).
+
+**다음 후속:**
+
+1. `pure-prompt` opt-in 후 실제 사용자 워크로드에서 완성도 비교(A/B) — 만족스러우면 문서화된 QA/staging 설정으로 승격.
+2. 개별 사용자·프로젝트 단위 opt-in UI(설정 토글)이 필요하면 추가 wiring 검토 — 현재는 env / localStorage로만 opt-in.
+3. `pure-prompt` 모드에서도 kit spec가 시스템 프롬프트에 실제로 실리는지 최소한의 통합 테스트로 pinning(FE→backend). 현 시점에서는 `composeTeamverSlideApiPrompt` 단위 테스트만 존재.

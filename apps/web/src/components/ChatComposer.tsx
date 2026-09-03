@@ -112,6 +112,7 @@ import {
 import {
   buildTemplateCloneContentFillSeed,
   buildTemplateClonePromptFillSeed,
+  shouldSkipTemplateCloneSeed,
   shouldUseDeterministicTemplateCloneFill,
   withTemplateCloneFillPluginInputs,
   withoutCanonicalDeckAttachments,
@@ -2256,10 +2257,16 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           // FS and content-swaps Source headings into deck.html as an initial
           // preview seed. Continue into the model run so the AI generates
           // real content from the source + user prompt.
+          //
+          // 루프401 — `pure-prompt` mode opts out of clone seeding + clone-
+          // fill marker; falls through to the standard create path below,
+          // which still forwards `selectedDeckTemplateId` so the kit spec
+          // lands in the system prompt.
           if (
             slideOnlyMvp
             && isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)
             && templateBinding.projectMetadata.selectedDeckTemplateId
+            && !shouldSkipTemplateCloneSeed()
           ) {
             const cloneRequest = {
               projectId: id,
@@ -2521,6 +2528,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           slideOnlyMvp
           && isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)
           && templateBinding.projectMetadata.selectedDeckTemplateId
+          && !shouldSkipTemplateCloneSeed()
         ) {
           const cloneRequest = {
             projectId: id,

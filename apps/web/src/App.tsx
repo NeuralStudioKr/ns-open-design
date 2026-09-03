@@ -142,6 +142,7 @@ import {
   buildTemplateClonePromptFillSeed,
   clearTemplateCloneContentFillQueue,
   queueTemplateClonePromptFill,
+  shouldSkipTemplateCloneSeed,
   withoutCanonicalDeckAttachments,
 } from './teamver/templateCloneContentFill';
 import {
@@ -2725,9 +2726,18 @@ function AppInner() {
           // Clones example.html + content-swap as an initial preview seed.
           // The actual user request must still auto-send so the AI reads the
           // attachment/source and generates real content from the prompt.
+          //
+          // 루프401 — When the user opts into `pure-prompt` fill mode
+          // (`VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=pure-prompt`), skip
+          // clone seeding + clone-fill marker entirely. The outgoing turn
+          // still carries `selectedDeckTemplateId`, so
+          // `composeTeamverSlideApiPrompt` emits the kit spec — model
+          // gets a plain create prompt with kit context, matching the
+          // pre-Clone flow users report producing higher-quality decks.
           if (
             slideOnlyMvp
             && isExplicitCanvasSlideVisualTemplate({ id: selectedDeckTemplateId })
+            && !shouldSkipTemplateCloneSeed()
           ) {
             const sourceBrief = canvasCreateSlidesSourceBrief(pendingCanvasHandoff);
             const templateTitle =
@@ -2834,12 +2844,15 @@ function AppInner() {
       // the selected visual template so look matches preview instead of Neutral.
       // Drive import failure must NOT skip Clone — otherwise Daisy is never
       // applied and the user only sees an empty project (auto-send also blocked).
+      //
+      // 루프401 — Same `pure-prompt` opt-out as the Canvas branch above.
       if (
         !workingDirHandoffFailed
         && !canvasImportFailed
         && !pendingCanvasHandoff
         && slideOnlyMvp
         && isExplicitCanvasSlideVisualTemplate({ id: selectedDeckTemplateId })
+        && !shouldSkipTemplateCloneSeed()
       ) {
         const templateTitle =
           typeof input.metadata?.selectedDeckTemplateTitle === 'string'
