@@ -1772,6 +1772,220 @@ function pinDecorativeGradientOverlays(html: string): string {
 }
 
 /**
+ * 루프394 — MiniMax wraps structural flex/card markup in stray `<b>` and leaves
+ * orphan `</b><b>` pairs that split step cards. Drop empty shells and unwrap
+ * bold that only wraps block hosts (real inline emphasis stays).
+ */
+export function unwrapStrayBoldShells(html: string): string {
+  let out = String(html ?? '');
+  if (!out || !/<b\b/i.test(out)) return out;
+  out = out.replace(/<b(?:\s[^>]*)?>\s*<\/b>/gi, '');
+  out = out.replace(/<\/b>\s*<b(?:\s[^>]*)?>/gi, '');
+  // `<b><div…>` … `</div></b>` → drop the bold wrappers around blocks.
+  out = out.replace(/<b(?:\s[^>]*)?>\s*(?=<(?:div|section|article|ul|ol|h[1-6])\b)/gi, '');
+  out = out.replace(/(<\/(?:div|section|article|ul|ol|h[1-6])>)\s*<\/b>/gi, '$1');
+  // Trailing orphan close after a block.
+  out = out.replace(/(<\/(?:div|section)>)\s*<\/b>/gi, '$1');
+  return out;
+}
+
+const NEO_DECO_PAINT_RE =
+  /background(?:-color)?\s*:\s*(?:#(?:FE90E8|C0F7FE|99E885|F7CB46|FFDC8B|000000|FFFDF5|FFFFFF)|var\(\s*--(?:pink|blue|green|yellow|cream|black|offwhite|white))/i;
+
+function neoDecoAbsolutePlacement(style: string): string {
+  if (/radial-gradient|repeating-linear-gradient|background-size\s*:\s*\d+px/i.test(style)) {
+    return 'top:60px;left:60px;';
+  }
+  if (/border-radius\s*:\s*50%/i.test(style) || /clip-path\s*:/i.test(style)) {
+    return 'bottom:60px;right:100px;';
+  }
+  const height = Number(/height\s*:\s*(\d+)px/i.exec(style)?.[1] ?? 0);
+  if (height > 0 && height <= 56 && /rotate\(\s*-/i.test(style)) {
+    return 'bottom:48px;left:80px;';
+  }
+  if (/rotate\(\s*[1-9]/i.test(style)) return 'top:40px;right:80px;';
+  return 'top:48px;right:64px;';
+}
+
+function looksLikeNeoBrutalDecoStyle(style: string): boolean {
+  const width = Number(/width\s*:\s*(\d+)px/i.exec(style)?.[1] ?? 0);
+  const height = Number(/height\s*:\s*(\d+)px/i.exec(style)?.[1] ?? 0);
+  if (width < 24 || height < 24 || width > 360 || height > 360) return false;
+  if (/padding\s*:\s*[2-9]\d/i.test(style)) return false;
+  if (/position\s*:\s*absolute/i.test(style)) return false;
+  const paint = NEO_DECO_PAINT_RE.test(style) || /radial-gradient|repeating-linear-gradient/i.test(style);
+  if (!paint) return false;
+  // Dot grids often omit a solid border; color chips usually have one.
+  if (!/border\s*:\s*[2-6]px\s+solid/i.test(style) && !/radial-gradient|repeating-linear-gradient|background-size\s*:\s*\d+px/i.test(style)) {
+    return false;
+  }
+  return true;
+}
+
+function pinNeoDecoOpenAttrs(attrs: string): string {
+  return rewriteStyleAttr(`<div${attrs}>`, (prev) => {
+    const cleaned = String(prev)
+      .replace(/(?:^|;)\s*position\s*:[^;]*/gi, '')
+      .replace(/(?:^|;)\s*(?:top|right|bottom|left|inset)\s*:[^;]*/gi, '')
+      .replace(/;;+/g, ';')
+      .replace(/^;|;$/g, '')
+      .trim();
+    const place = neoDecoAbsolutePlacement(cleaned);
+    return `${cleaned}${cleaned && !cleaned.endsWith(';') ? ';' : ''}position:absolute;${place}pointer-events:none;z-index:1`;
+  }).replace(/^<div/i, '').replace(/>$/, '');
+}
+
+/**
+ * 루프394 — Empty neo-brutal color chips (pink square / green circle / yellow
+ * tab / dot grid) emitted as `position:relative` steal flex column space and
+ * park the real title in the upper half of the 16:9. Park them absolute.
+ * Short mono labels ("TEAMVER · 2025") on the same chips also leave flow.
+ */
+export function pinNeoBrutalEmptyDecoBlocks(html: string): string {
+  let out = String(html ?? '').replace(
+    /<div\b([^>]*)>\s*<\/div>/gi,
+    (full, attrs: string) => {
+      const style = /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i.exec(attrs)?.[2] ?? '';
+      if (!style || !looksLikeNeoBrutalDecoStyle(style)) return full;
+      return `<div${pinNeoDecoOpenAttrs(attrs)}></div>`;
+    },
+  );
+  // Short leaf labels on deco chips (no nested tags).
+  out = out.replace(
+    /<div\b([^>]*)>([^<]{1,40})<\/div>/gi,
+    (full, attrs: string, text: string) => {
+      const style = /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i.exec(attrs)?.[2] ?? '';
+      if (!style || !looksLikeNeoBrutalDecoStyle(style)) return full;
+      if (!/Space Grotesk|monospace|font-weight\s*:\s*[67]00/i.test(style)) return full;
+      return `<div${pinNeoDecoOpenAttrs(attrs)}>${text}</div>`;
+    },
+  );
+  return out;
+}
+
+/**
+ * 루프394 — How-it-works row often closes after step 01; remaining `flex:1`
+ * cards leak as siblings under the slide flow. Pull them back into the row.
+ */
+export function rejoinPrematureFlexStepRows(html: string): string {
+  let out = String(html ?? '');
+  if (!/flex\s*:\s*1\b/i.test(out) || !/display\s*:\s*flex/i.test(out)) return out;
+
+  const openRe = /<div\b[^>]*>/gi;
+  const starts: number[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) {
+    const open = match[0] ?? '';
+    if (/display\s*:\s*flex/i.test(open) && /gap\s*:/i.test(open) && !/flex-direction\s*:\s*column/i.test(open)) {
+      starts.push(match.index);
+    }
+  }
+  for (let i = starts.length - 1; i >= 0; i -= 1) {
+    const start = starts[i]!;
+    const balanced = extractBalancedFrom(out, start);
+    if (!balanced) continue;
+    const open = /^<div\b[^>]*>/i.exec(balanced)?.[0] ?? '';
+    const closeLen = /<\/div\s*>$/i.exec(balanced)?.[0].length ?? 6;
+    const inner = balanced.slice(open.length, balanced.length - closeLen);
+    const kids = listTopLevelBlocks(inner).filter((part) => part.trim());
+    const flexKidCount = kids.filter((kid) => /flex\s*:\s*1\b/i.test(/^<div\b[^>]*>/i.exec(kid)?.[0] ?? '')).length;
+    if (flexKidCount >= 3) continue;
+
+    let cursor = start + balanced.length;
+    const extras: string[] = [];
+    while (cursor < out.length && extras.length < 8) {
+      const ws = /^\s*/.exec(out.slice(cursor))?.[0].length ?? 0;
+      cursor += ws;
+      if (cursor >= out.length || !/^<div\b/i.test(out.slice(cursor))) break;
+      const block = extractBalancedFrom(out, cursor);
+      if (!block) break;
+      const bOpen = /^<div\b[^>]*>/i.exec(block)?.[0] ?? '';
+      if (/display\s*:\s*flex/i.test(bOpen) && /gap\s*:/i.test(bOpen)) break;
+      const isFlex = /flex\s*:\s*1\b/i.test(bOpen);
+      const text = stripTagsToText(block);
+      const isDesc = !isFlex
+        && text.length >= 12
+        && text.length < 500
+        && !/border\s*:\s*[3-6]px\s+solid[^;]*padding\s*:\s*[2-9]\d/i.test(bOpen);
+      if (!isFlex && !isDesc) break;
+      extras.push(block);
+      cursor += block.length;
+    }
+    if (extras.length === 0) continue;
+    const replacement = `${open}${kids.map((part) => part.trim()).join('')}${extras.join('')}</div>`;
+    out = `${out.slice(0, start)}${replacement}${out.slice(cursor)}`;
+  }
+  return out;
+}
+
+/**
+ * 루프394 — Impact cards echo the same label div twice (edit-turn twin).
+ */
+export function collapseAdjacentDuplicateLabelDivs(html: string): string {
+  return String(html ?? '').replace(
+    /(<div\b[^>]*>)\s*([^<]{2,80}?)\s*<\/div>\s*<div\b[^>]*>\s*\2\s*<\/div>/gi,
+    (full, open1: string, text: string) => {
+      if (!/font-(?:family|size|weight)/i.test(open1)) return full;
+      return `${open1}${text}</div>`;
+    },
+  );
+}
+
+/**
+ * 루프394 — How-it-works rows close the `flex:1` card before the description
+ * paragraph, leaving orphan Inter copy as a flex sibling. Reparent the next
+ * non-flex text div into the preceding flex:1 card.
+ */
+export function absorbOrphanFlexStepDescriptions(html: string): string {
+  let out = String(html ?? '');
+  if (!/flex\s*:\s*1\b/i.test(out) || !/display\s*:\s*flex/i.test(out)) return out;
+
+  const openRe = /<div\b[^>]*>/gi;
+  const starts: number[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) {
+    const open = match[0] ?? '';
+    if (/display\s*:\s*flex/i.test(open) && /gap\s*:/i.test(open) && !/flex-direction\s*:\s*column/i.test(open)) {
+      starts.push(match.index);
+    }
+  }
+  for (let i = starts.length - 1; i >= 0; i -= 1) {
+    const start = starts[i]!;
+    const balanced = extractBalancedFrom(out, start);
+    if (!balanced) continue;
+    const open = /^<div\b[^>]*>/i.exec(balanced)?.[0] ?? '';
+    const close = /<\/div\s*>$/i.exec(balanced)?.[0] ?? '</div>';
+    const inner = balanced.slice(open.length, balanced.length - close.length);
+    const kids = listTopLevelBlocks(inner).filter((part) => part.trim());
+    if (kids.length < 2) continue;
+    const nextKids: string[] = [];
+    for (let k = 0; k < kids.length; k += 1) {
+      const kid = kids[k]!.trim();
+      const kidOpen = /^<div\b[^>]*>/i.exec(kid)?.[0] ?? '';
+      const isFlexCard = /flex\s*:\s*1\b/i.test(kidOpen);
+      if (!isFlexCard && nextKids.length > 0) {
+        const prev = nextKids[nextKids.length - 1]!;
+        const prevOpen = /^<div\b[^>]*>/i.exec(prev)?.[0] ?? '';
+        if (/flex\s*:\s*1\b/i.test(prevOpen) && !/flex\s*:\s*1\b/i.test(kidOpen)) {
+          const text = stripTagsToText(kid);
+          if (text.length >= 12 && !/flex\s*:\s*1\b/i.test(kid)) {
+            const prevClose = /<\/div\s*>$/i.exec(prev)?.[0] ?? '</div>';
+            const prevInner = prev.slice(prevOpen.length, prev.length - prevClose.length);
+            nextKids[nextKids.length - 1] = `${prevOpen}${prevInner}${kid}${prevClose}`;
+            continue;
+          }
+        }
+      }
+      nextKids.push(kid);
+    }
+    if (nextKids.join('') === kids.map((part) => part.trim()).join('')) continue;
+    const replacement = `${open}${nextKids.join('')}${close}`;
+    out = `${out.slice(0, start)}${replacement}${out.slice(start + balanced.length)}`;
+  }
+  return out;
+}
+
+/**
  * 루프392 — MiniMax / earlier pin flattened 8-bit atmospheric hosts
  * (`.starfield`, empty `.scanlines`/`.grain` overlays) to `position:relative`,
  * so kit absolute+inset paint never covered the 16:9. Restore overlay hosts.
@@ -1990,21 +2204,38 @@ function slideBodyLooksEmpty(body: string): boolean {
     .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
     .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
     .replace(/<svg\b[\s\S]*?<\/svg>/gi, ' SVG ');
-  const text = content.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim();
+  // 루프394 — top-up sentinel alone is not real slide copy.
+  const withoutSentinel = content
+    .replace(/\[od:slide_count_top_up\]/gi, ' ')
+    .replace(/<!--\s*od:slide_count_top_up\s*-->/gi, ' ');
+  const text = withoutSentinel
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
   if (text.length >= 2) return false;
-  if (/<(?:img|video|canvas|iframe|table|svg)\b/i.test(body)) return false;
+  if (/<(?:img|video|canvas|iframe|table|svg)\b/i.test(withoutSentinel)) return false;
   return true;
 }
 
+/**
+ * Drop slides whose body has no visible copy. 루프394 — also drop an empty
+ * *first* slide (top-up sentinel / empty `<h1>` stub) when a later real slide
+ * exists. Prior loop only removed empty slides from index ≥1, so filmstrip
+ * page 1 stayed `[od:slide_count_top_up]` / blank cream.
+ */
 export function dropEmptyDeckSlides(html: string): string {
   const dest = String(html ?? '');
   const spans = listHealSlideHostSpans(dest);
   if (spans.length < 2) return dest;
   let out = dest;
-  for (let i = spans.length - 1; i >= 1; i -= 1) {
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
     const span = spans[i]!;
     const body = out.slice(span.bodyStart, span.bodyEnd);
     if (!slideBodyLooksEmpty(body)) continue;
+    // Never delete the sole remaining slide.
+    const remaining = listHealSlideHostSpans(out);
+    if (remaining.length <= 1) break;
     const close = out.slice(span.bodyEnd).match(new RegExp(`^</${span.tag}\\s*>`, 'i'));
     const end = span.bodyEnd + (close?.[0].length ?? 0);
     out = `${out.slice(0, span.start)}${out.slice(end)}`;
@@ -2425,6 +2656,8 @@ export function injectBiennaleSparseFillCss(html: string): string {
 export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string | null): string {
   let next = String(html ?? '');
   if (!next) return next;
+  // 루프394 — Strip top-up sentinel before empty-slide drop so page-1 stubs die.
+  next = stripHostProtocolLeakFromDeckHtml(next);
   // 루프389 — Preview/salvage often lack a full brief; still rewrite URL crumbs.
   next = rewriteRawUrlSiteCoverTitles(next, brief);
   next = next.replace(BROKEN_EMPTY_ATTR_OPEN_RE, '<$1');
@@ -2445,8 +2678,13 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = collapseSparseRepeatGrids(next);
   next = flattenNestedComparisonGridRows(next);
   next = absorbOrphanComparisonTrackCells(next);
+  next = unwrapStrayBoldShells(next);
+  next = rejoinPrematureFlexStepRows(next);
+  next = absorbOrphanFlexStepDescriptions(next);
+  next = collapseAdjacentDuplicateLabelDivs(next);
   next = pinDecorativeGradientOverlays(next);
   next = restoreAtmosphericOverlayPositioning(next);
+  next = pinNeoBrutalEmptyDecoBlocks(next);
   next = healOrphanRadialCircles(next);
   next = dropEmptyDeckSlides(next);
   next = restyleForeignIbMagazineCover(next);

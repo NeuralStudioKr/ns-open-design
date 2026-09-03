@@ -42,6 +42,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프394 — 빈 1페이지 · neo deco flatten · 깨진 flex step
+
+체감: filmstrip 1/N 빈 cream·sentinel · deco relative로 상단 몰림 · `<b>`/조기 close로 How-it-works 붕괴 · Impact 라벨 중복.
+
+수정: dropEmpty 첫 슬라이드 포함 · salvage에서 sentinel strip 선행 · pinNeoBrutalEmptyDecoBlocks · unwrapStrayBold · rejoinPrematureFlex · absorbOrphanFlexStep · collapseAdjacentDuplicateLabelDivs.
+
 ### 루프393 — 학습 노트 drop · empty pricing li · 비교표 orphan
 
 체감: non-IB에 `학습 노트` leftover · pricing 빈 li · comparison orphan 셀.

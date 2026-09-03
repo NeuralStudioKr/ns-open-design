@@ -34,6 +34,12 @@ import {
   absorbOrphanComparisonTrackCells,
   restoreAtmosphericOverlayPositioning,
   dropStudyNotesChromeOnNonIbKits,
+  dropEmptyDeckSlides,
+  pinNeoBrutalEmptyDecoBlocks,
+  unwrapStrayBoldShells,
+  rejoinPrematureFlexStepRows,
+  absorbOrphanFlexStepDescriptions,
+  collapseAdjacentDuplicateLabelDivs,
   stripLeafEmptyListAndParagraphShells,
   restyleBiennaleSparseChapterBodies,
   restyleBiennaleSparseDataBodies,
@@ -49,7 +55,6 @@ import {
   fillAndTrimCardPeers,
   hoistCloneSlidesOutOfFlexTrack,
   resolveTemplateCloneSlotMap,
-  stripLeafEmptyListAndParagraphShells,
 } from '../src/template-clone-fill.js';
 import { pinDeckSlidesToFixedCanvas } from '../src/html/deck-fixed-canvas.js';
 import { hoistDeckHostStylesToHead } from '../src/html/deck-template-look-css.js';
@@ -816,6 +821,90 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     );
     expect(salvaged).toMatch(/class="starfield"[^>]*position:absolute/);
     expect(salvaged.match(/grid-template-columns:0\.4fr 0\.3fr 0\.3fr/g)?.length).toBe(2);
+  });
+
+  it('루프394: drops empty first slide, pins neo deco, rejoins broken flex steps', () => {
+    const stubFirst = [
+      '<!doctype html><html><body>',
+      '<section class="slide slide-title"><div data-od-slide-flow><h1></h1></div></section>',
+      '<section class="slide" data-screen-label="01 Cover"><h1>사람과 사람을 잇는 팀빌딩</h1>',
+      '<p>올인원 팀컬처 플랫폼입니다.</p></section>',
+      '</body></html>',
+    ].join('');
+    const droppedStub = dropEmptyDeckSlides(stubFirst);
+    expect(droppedStub).not.toMatch(/slide-title/);
+    expect(droppedStub).toContain('사람과 사람을 잇는');
+
+    const sentinelFirst = [
+      '<section class="slide"><p>[od:slide_count_top_up]</p></section>',
+      '<section class="slide"><h1>커버</h1><p>본문 카피가 충분히 있습니다.</p></section>',
+    ].join('');
+    const afterStrip = salvageMalformedMiniMaxSlideMarkup(sentinelFirst);
+    expect(afterStrip).not.toMatch(/od:slide_count_top_up/);
+    expect(afterStrip.match(/<section\b/gi)?.length).toBe(1);
+    expect(afterStrip).toContain('커버');
+
+    const deco = pinNeoBrutalEmptyDecoBlocks(
+      '<div style="position:relative;width:140px;height:140px;background:#FE90E8;border:4px solid #000;transform:rotate(12deg)"></div>'
+      + '<div style="position:relative;width:140px;height:90px;background-image:radial-gradient(circle,#000 2px,transparent 2px);background-size:22px 22px"></div>'
+      + '<div style="position:relative;width:180px;height:48px;background:#F7CB46;border:4px solid #000;transform:rotate(-3deg);font-family:\'Space Grotesk\',monospace;font-weight:700">TEAMVER · 2025</div>'
+      + '<h1>Title</h1>',
+    );
+    expect(deco).toMatch(/position:absolute;top:40px;right:80px/);
+    expect(deco).toMatch(/position:absolute;top:60px;left:60px/);
+    expect(deco).toMatch(/TEAMVER · 2025/);
+    expect(deco).toMatch(/position:absolute;bottom:48px;left:80px/);
+
+    const boldSoup = unwrapStrayBoldShells(
+      '<b><div style="flex:1;border:4px solid #000">01</div></b>'
+      + '<div>설명 문장이 여기 있습니다.</div><b> </b>',
+    );
+    expect(boldSoup).not.toMatch(/<b>/);
+    expect(boldSoup).toContain('01');
+
+    const premature = [
+      '<div style="display:flex;gap:28px">',
+      '<div style="flex:1;background:#C0F7FE;border:4px solid #000;padding:32px"><div>01</div><div>셋업</div></div>',
+      '<div style="font-family:\'Inter\',sans-serif;font-size:18px">SSO 연동과 조직도 임포트로 초기 셋업.</div>',
+      '</div>',
+      '<div style="flex:1;background:#99E885;border:4px solid #000;padding:32px"><div>02</div><div>매칭</div></div>',
+      '<div style="font-family:\'Inter\',sans-serif;font-size:18px">관심사 설문으로 매주 신규 동호회가 제안됩니다.</div>',
+      '<div style="flex:1;background:#F7CB46;border:4px solid #000;padding:32px"><div>03</div><div>운영</div></div>',
+      '<div style="font-family:\'Inter\',sans-serif;font-size:18px">검증 프로그램 중 선택하고 참석까지 관리합니다.</div>',
+    ].join('');
+    const rejoined = absorbOrphanFlexStepDescriptions(rejoinPrematureFlexStepRows(premature));
+    expect(rejoined.match(/display:flex;gap:28px/g)?.length).toBe(1);
+    expect(rejoined).toMatch(/flex:1[\s\S]*01[\s\S]*SSO 연동/);
+    expect(rejoined).toMatch(/flex:1[\s\S]*02[\s\S]*관심사 설문/);
+    expect(rejoined).toMatch(/flex:1[\s\S]*03[\s\S]*검증 프로그램/);
+
+    const dup = collapseAdjacentDuplicateLabelDivs(
+      '<div style="font-family:\'Space Grotesk\';font-size:24px;font-weight:700">HR 운영 시간 절감</div>'
+      + '<div style="font-family:\'Space Grotesk\';font-size:24px;font-weight:700">HR 운영 시간 절감</div>',
+    );
+    expect(dup.match(/HR 운영 시간 절감/g)?.length).toBe(1);
+
+    const endToEnd = salvageMalformedMiniMaxSlideMarkup([
+      '<!doctype html><html><body>',
+      '<section class="slide slide-title"><div data-od-slide-flow><h1></h1></div></section>',
+      '<section class="slide" style="background:#FFDC8B">',
+      '<div data-od-slide-flow>',
+      '<div style="position:relative;width:60px;height:60px;border:4px solid #000;background:#99E885;transform:rotate(15deg)"></div>',
+      '<h2>한 화면에서 끝내는 팀빌딩 운영.</h2>',
+      '<p>Console features and content library.</p>',
+      '<div style="display:flex;gap:28px">',
+      '<b><div style="flex:1;border:4px solid #000;padding:32px"><div>01</div><div>셋업</div></div></b>',
+      '<div style="font-family:Inter,sans-serif;font-size:18px">초기 셋업 평균 30분 소요.</div></div>',
+      '<div style="flex:1;border:4px solid #000;padding:32px"><div>02</div><div>매칭</div></div>',
+      '<div style="font-family:Inter,sans-serif;font-size:18px">관심사 기반 자동 제안이 발행됩니다.</div>',
+      '<div style="font-family:\'Space Grotesk\';font-size:24px;font-weight:700">동호회 참여율</div>',
+      '<div style="font-family:\'Space Grotesk\';font-size:24px;font-weight:700">동호회 참여율</div>',
+      '</div></section></body></html>',
+    ].join(''));
+    expect(endToEnd).not.toMatch(/slide-title/);
+    expect(endToEnd).toMatch(/position:absolute/);
+    expect(endToEnd.match(/동호회 참여율/g)?.length).toBe(1);
+    expect(endToEnd).toMatch(/flex:1[\s\S]*01[\s\S]*초기 셋업/);
   });
 
   it('루프393: drops study-notes chrome, empty pricing li, and absorbs comparison orphans', () => {
