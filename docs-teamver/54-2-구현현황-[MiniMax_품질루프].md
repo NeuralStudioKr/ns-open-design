@@ -42,6 +42,18 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프409 — env-empty 기본 fill 모드를 `pure-prompt`로 승격 (Clone은 명시 opt-in)
+
+체감: 루프379~406에서 clone-fill salvage/heal을 매 loop 다듬어도 사용자는 반복적으로 "결과가 부자연스럽다", 이번엔 "그냥 clone 쓰지 말아야하나?"라고 명시적으로 clone 사용 재검토 요청. 매 loop마다 새로운 결함 클래스 발견 = clone-fill의 이중 지시(LOOK seed 참고 + 새 콘텐츠 생성)가 근본 원인이라는 가설 강화.
+
+수정: 신규 `TEMPLATE_CLONE_FILL_DEFAULT_MODE = 'pure-prompt'` · `getTemplateCloneFillMode`가 env/localStorage/unknown 모두 이 default로 폴백 · `normalizeTemplateCloneFillMode`가 명시적 `'prompt'`/`'clone'`/`'clone-fill'`/`'prompt-fill'`을 여전히 legacy clone-fill로 매핑하여 opt-in 유지 · unknown/empty만 default로 폴백. Production env(`=prompt`)는 명시되어 있으므로 무영향, env-empty 배포(로컬/QA)만 자동 전환.
+
+검증: `templateCloneContentFill.test.ts` 30/30 pass — empty/unknown → pure-prompt, explicit prompt/clone aliases → prompt, 6개 pure-prompt aliases 정규화, explicit `=prompt` legacy 유지, deterministic 여전히 explicit. rollback-switch 문서에 결정 배경 · 수정 상세 · 롤백 방법 · 다음 후속 작업 문서화.
+
+의미: 사용자 로컬/QA(env 없음)에서 즉시 pure-prompt 활성. Production 무영향. Clone infra 완전 보전(daemon endpoint · prompt-fill contract · LOOK seed · 루프379~406 salvage/heal 모두 유지, pure-prompt 결과에도 그대로 적용).
+
+한계: default 정책만 바꿈. clone-fill 자체 품질 개선은 별개 track.
+
 ### 루프408 — 숨은 top-up이 busy 시 유저 대기열에 주차되던 배수
 
 체감: 루프407로 스트립은 숨겼지만, live abort busy면 `handleSend`가 top-up을 일반 대기열에 넣고 `false`를 반환해 count rollback + 숨은 큐 잔류가 남음. 실패 직후 「대기 중」에 sentinel이 보이던 경로의 근본.

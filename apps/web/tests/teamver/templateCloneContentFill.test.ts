@@ -46,13 +46,27 @@ afterEach(() => {
 });
 
 describe('templateCloneContentFill', () => {
-  it('defaults to prompt fill and only opts into deterministic mode explicitly', () => {
-    expect(normalizeTemplateCloneFillMode(undefined)).toBe('prompt');
-    expect(normalizeTemplateCloneFillMode('')).toBe('prompt');
-    expect(normalizeTemplateCloneFillMode('prompt')).toBe('prompt');
-    expect(getTemplateCloneFillMode()).toBe('prompt');
+  it('loop409 — defaults to pure-prompt when env is empty; deterministic and prompt are explicit opt-ins', () => {
+    // Empty / undefined / unknown → env-empty default = `pure-prompt` (loop409).
+    expect(normalizeTemplateCloneFillMode(undefined)).toBe('pure-prompt');
+    expect(normalizeTemplateCloneFillMode('')).toBe('pure-prompt');
+    expect(normalizeTemplateCloneFillMode('nonsense')).toBe('pure-prompt');
+    expect(getTemplateCloneFillMode()).toBe('pure-prompt');
+    expect(shouldSkipTemplateCloneSeed()).toBe(true);
     expect(shouldUseDeterministicTemplateCloneFill()).toBe(false);
 
+    // Explicit `prompt` / clone-fill aliases opt BACK IN to the clone flow.
+    expect(normalizeTemplateCloneFillMode('prompt')).toBe('prompt');
+    expect(normalizeTemplateCloneFillMode('clone')).toBe('prompt');
+    expect(normalizeTemplateCloneFillMode('clone-fill')).toBe('prompt');
+    expect(normalizeTemplateCloneFillMode('prompt-fill')).toBe('prompt');
+
+    process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = 'prompt';
+    expect(getTemplateCloneFillMode()).toBe('prompt');
+    expect(shouldSkipTemplateCloneSeed()).toBe(false);
+    expect(shouldUseDeterministicTemplateCloneFill()).toBe(false);
+
+    // Deterministic still reachable via explicit env.
     process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = 'deterministic';
     expect(getTemplateCloneFillMode()).toBe('deterministic');
     expect(shouldUseDeterministicTemplateCloneFill()).toBe(true);
@@ -60,10 +74,10 @@ describe('templateCloneContentFill', () => {
     expect(normalizeTemplateCloneFillMode('server')).toBe('deterministic');
   });
 
-  it('accepts the loop400 `pure-prompt` mode via env and multiple aliases', () => {
-    // Default = prompt, never `pure-prompt` unless opted in.
-    expect(getTemplateCloneFillMode()).toBe('prompt');
-    expect(shouldSkipTemplateCloneSeed()).toBe(false);
+  it('accepts the loop401 `pure-prompt` mode via env and multiple aliases (post-loop409: same as env-empty default)', () => {
+    // Env-empty default is now pure-prompt (loop409).
+    expect(getTemplateCloneFillMode()).toBe('pure-prompt');
+    expect(shouldSkipTemplateCloneSeed()).toBe(true);
 
     // Direct alias.
     expect(normalizeTemplateCloneFillMode('pure-prompt')).toBe('pure-prompt');
@@ -83,9 +97,15 @@ describe('templateCloneContentFill', () => {
     // Casing / whitespace tolerated.
     expect(normalizeTemplateCloneFillMode('  Pure-Prompt  ')).toBe('pure-prompt');
     expect(normalizeTemplateCloneFillMode('NO-CLONE')).toBe('pure-prompt');
+  });
 
-    // Unknown strings still fall back to prompt (safe default).
-    expect(normalizeTemplateCloneFillMode('nonsense')).toBe('prompt');
+  it('loop409 — an explicit `=prompt` env keeps legacy clone-fill regardless of the new default', () => {
+    // Production deployments that had =prompt explicit stay unchanged
+    // through the loop409 default flip.
+    process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = 'prompt';
+    expect(getTemplateCloneFillMode()).toBe('prompt');
+    expect(shouldSkipTemplateCloneSeed()).toBe(false);
+    expect(shouldUseDeterministicTemplateCloneFill()).toBe(false);
   });
 
   it('does not treat Canvas boilerplate as the visible request', () => {

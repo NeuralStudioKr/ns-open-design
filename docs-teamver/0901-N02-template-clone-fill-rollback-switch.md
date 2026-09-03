@@ -52,6 +52,36 @@
 2. deterministic 결과가 충분하지 않은 템플릿은 해당 템플릿 fixture를 추가해 원인 분석한다.
 3. 품질과 복구 UX가 확인된 뒤에만 staging env를 `deterministic`으로 다시 올린다.
 
+## 2026-09-03 — `pure-prompt` 기본 승격(루프409)
+
+**결정:** env-empty 시 기본 fill 모드를 `'prompt'`(Clone LOOK seed + prompt-fill 마커)에서 `'pure-prompt'`(Clone 스킵, 순수 프롬프트)로 승격.
+
+**배경:** 루프379~406 동안 clone-fill 파이프라인의 salvage/heal을 촘촘히 다듬었지만 (empty leading slot, `<b>` orphan, duplicate label, 회전 pill 폭 문제, 장식 shape letterbox escape 등 매 loop마다 새로운 결함 발견), 사용자는 반복적으로 "결과가 부자연스럽다, Clone 이전의 프롬프트 방식이 더 나았다"고 응답. 매 loop마다 새로운 결함 클래스가 발견되는 것은 clone-fill이 모델에게 이중 지시(LOOK seed 참고 + 새 콘텐츠 생성)를 주어 모델 출력 형태가 예측 불가능해지기 때문이라는 가설이 강화됨. 사용자 발언 요약: "그냥 clone 쓰지 말아야하나? 하지만 궁극적으로는 clone을 써야할 것 같은데" — 즉시 안정성과 장기 방향 사이의 실용적 절충으로 기본값 승격을 선택.
+
+**수정:**
+
+1. `TEMPLATE_CLONE_FILL_DEFAULT_MODE = 'pure-prompt'` 상수 신설(`apps/web/src/teamver/templateCloneContentFill.ts`). `getTemplateCloneFillMode()`가 env-empty 시 이 상수를 반환.
+2. `normalizeTemplateCloneFillMode(unknown)`이 unknown/empty를 `TEMPLATE_CLONE_FILL_DEFAULT_MODE`로 폴백. 명시적 `'prompt'` / `'clone'` / `'clone-fill'` / `'prompt-fill'`는 여전히 clone-fill 경로로 매핑되어 명시적 opt-in이 가능.
+3. Production 배포는 이미 `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=prompt`를 명시했으므로 이번 승격의 영향을 받지 않음(env가 명시되어 있으면 항상 env가 우선). 오직 env-empty 배포(로컬/QA/미설정 staging)만 자동으로 pure-prompt로 전환.
+4. `apps/web/tests/teamver/templateCloneContentFill.test.ts` 업데이트: 30 assertions pass — (a) empty/unknown → pure-prompt, (b) explicit `prompt` 및 aliases → prompt, (c) 6개 pure-prompt aliases 모두 정규화, (d) explicit `=prompt` env는 legacy 유지, (e) deterministic 여전히 explicit opt-in.
+
+**언제 clone-fill로 되돌리나:**
+
+- Production처럼 `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=prompt`를 명시하면 즉시 legacy clone-fill.
+- 로컬 A/B 테스트: `localStorage.od:template-clone-fill-mode=prompt`로도 opt-in 가능(env가 empty일 때만).
+- 세 번째 값 `deterministic`은 여전히 `=deterministic`으로만 opt-in.
+
+**롤백:**
+
+- 이 승격 자체를 되돌리려면 `TEMPLATE_CLONE_FILL_DEFAULT_MODE`를 `'prompt'`로 복원.
+- Clone infra(daemon `/template-clone-deck` endpoint, prompt-fill contract, LOOK seed builder, salvage/heal 파이프라인)는 하나도 삭제되지 않음. 언제든 opt-in 하나로 활성화.
+
+**다음 후속 작업:**
+
+1. Staging QA에서 pure-prompt 승격의 실제 사용자 만족도 재확인 후 Production env를 `=prompt`에서 empty(=pure-prompt)로 승격할지 결정.
+2. clone-fill 자체 품질 개선은 별도 track — salvage/heal의 defect surface가 여전히 크므로, 근본적 개선은 시스템 프롬프트 재설계(clone contract 단순화)와 slot-fill 스키마 강화에서 나올 가능성.
+3. 사용자용 in-app 토글(설정에서 clone/pure-prompt/deterministic 선택)이 필요한지 검토.
+
 ## 2026-09-03 — `pure-prompt` 세 번째 모드(루프401)
 
 **배경:** `prompt` (Clone LOOK seed + prompt-fill 마커) 및 `deterministic` (server content-fill / JSON slot-fill) 두 모드 모두 결과 품질이 "Clone 도입 이전의 순수 프롬프트 방식"보다 완성도가 부족하다는 사용자 리포트(2026-09-03). Clone LOOK seed의 존재 자체가 문제라기보다는, prompt-fill 마커와 clone contract(`TEAMVER_TEMPLATE_CLONE_PROMPT_FILL_CONTRACT`)가 모델에게 이중 지시("LOOK seed를 참고해라" + "새 콘텐츠를 만들어라")를 걸어 자연스러운 출력이 저해된다는 가설.
