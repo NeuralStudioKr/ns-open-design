@@ -42,6 +42,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프392 — 8-bit atmospheric flatten · 비교표 · dark surface
+
+체감: starfield relative flatten · nested comparison grid 붕괴 · cream letterbox on navy.
+
+수정: pin/neutralize starfield 제외 · restoreAtmospheric · flattenNestedComparisonGridRows · dark-void > cream surface pick.
+
 ### 루프391 — Clone 호스트 계약은 시스템 프롬프트 · user turn은 brief만
 
 채팅 숨김(382)만으로는 재발한다. persist는 brief만 남기고, HTML-fill 계약은 `templateClonePromptFill` 시스템 프롬프트가 맡는다. 계보는 `runContext.templateCloneFill`. Expo worked example은 주제 중립. strip은 안전망.

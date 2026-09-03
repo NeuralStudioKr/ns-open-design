@@ -30,6 +30,8 @@ import {
   enrichSparseCobaltCover,
   rewriteRawUrlSiteCoverTitles,
   healSparseDeckCoverLayout,
+  flattenNestedComparisonGridRows,
+  restoreAtmosphericOverlayPositioning,
   restyleBiennaleSparseChapterBodies,
   restyleBiennaleSparseDataBodies,
   restyleBiennaleSparseQuoteBodies,
@@ -771,6 +773,46 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(salvaged).not.toMatch(/class="mast"/);
 
     expect(healSparseDeckCoverLayout(html, '팀버 소개', null)).toBe(html);
+  });
+
+  it('루프392: flattens nested comparison-track rows and restores atmospheric overlays', () => {
+    const table = `<div class="pixel-box" style="padding:0">
+<div style="display:grid;grid-template-columns:0.4fr 0.3fr 0.3fr;background:#0A0E27">
+<div>CAPABILITY</div><div>GENERIC</div><div>TEAMVER</div>
+</div>
+<div style="display:grid;grid-template-columns:0.4fr 0.3fr 0.3fr">
+<div style="display:grid;grid-template-columns:0.4fr 0.3fr 0.3fr">
+<div>사내 데이터</div><div>수동 업로드</div><div>자동 연결</div>
+</div>
+<div style="display:grid;grid-template-columns:0.4fr 0.3fr 0.3fr">
+<div>업무 툴 실행</div><div>불가</div><div>네이티브</div>
+</div>
+</div>
+</div>`;
+    const flat = flattenNestedComparisonGridRows(table);
+    expect(flat).toContain('사내 데이터');
+    expect(flat).toContain('자동 연결');
+    expect(flat).toContain('네이티브');
+    // Nested row shells removed — cells sit directly under the body track.
+    expect(flat.match(/grid-template-columns:0\.4fr 0\.3fr 0\.3fr/g)?.length).toBe(2);
+    expect(flat).not.toMatch(
+      /grid-template-columns:0\.4fr 0\.3fr 0\.3fr[^>]*>\s*<div[^>]*grid-template-columns:0\.4fr 0\.3fr 0\.3fr/,
+    );
+
+    const atmos = restoreAtmosphericOverlayPositioning(
+      '<div class="starfield" style="position:relative;overflow:hidden;z-index:1"></div>'
+      + '<div class="scanlines" style="position:relative;opacity:0.05"></div>',
+    );
+    expect(atmos).toMatch(/class="starfield"[^>]*position:absolute;inset:0/);
+    expect(atmos).toMatch(/class="scanlines"[^>]*position:absolute;inset:0/);
+
+    const salvaged = salvageMalformedMiniMaxSlideMarkup(
+      `<!doctype html><html><body><section class="slide">${table}`
+      + '<div class="starfield" style="position:relative;z-index:1"></div>'
+      + '</section></body></html>',
+    );
+    expect(salvaged).toMatch(/class="starfield"[^>]*position:absolute/);
+    expect(salvaged.match(/grid-template-columns:0\.4fr 0\.3fr 0\.3fr/g)?.length).toBe(2);
   });
 
   it('루프388: rewrites raw URL cover titles on Cobalt Grid and fills sparse subkicker', () => {

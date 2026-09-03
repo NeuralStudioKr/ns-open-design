@@ -234,6 +234,26 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).toMatch(/class="haze"[^>]*position:absolute/);
   });
 
+  it('루프392: keeps 8-bit starfield/scanlines absolute after compact flow flatten', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" style="width:1920px;height:1080px;background:#0A0E27">',
+      '<div class="starfield" style="position:absolute;inset:0;overflow:hidden;z-index:1">',
+      '<span class="star" style="position:absolute;width:4px;height:4px;background:#5EDCF4"></span>',
+      '</div>',
+      '<div class="scanlines" style="position:absolute;inset:0;pointer-events:none;z-index:5"></div>',
+      '<div class="grain" style="position:absolute;inset:0;opacity:0.05;pointer-events:none;z-index:4"></div>',
+      '<h2 style="position:relative;z-index:10">팀버란?</h2>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).toMatch(/class="starfield"[^>]*position:absolute/);
+    expect(pinned).toMatch(/class="scanlines"[^>]*position:absolute/);
+    expect(pinned).toMatch(/class="grain"[^>]*position:absolute/);
+    expect(pinned).not.toMatch(/class="starfield"[^>]*position:relative/);
+  });
+
   it('flows MiniMax absolute labels so they cannot sit inside another card', () => {
     const html = [
       '<!doctype html><html><body>',

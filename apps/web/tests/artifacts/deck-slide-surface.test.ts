@@ -111,6 +111,25 @@ html, body, .slide, section.slide { background: #F5F0E6 !important; color: #2D2D
     );
   });
 
+  it('루프392: prefers --dark-void over leftover --cream for letterbox bleed', () => {
+    const html = `<!doctype html><html><head>
+<style data-od-neobrutal-var-fallback>:root{--cream:#FFDC8B;--paper:var(--cream)}</style>
+<style data-od-official-look-css>
+:root{--neon-pink:#F0A6CA;--dark-void:#0A0E27;--deep-navy:#0F1B3D;--cream:#FFDC8B}
+.slide{background:var(--dark-void);color:var(--neon-pink)}
+</style>
+</head>
+<body>
+<section class="slide" style="width:1920px;height:1080px;background:#0A0E27;color:#F0A6CA">
+<h1 class="pixel-hero-text">팀버</h1>
+</section>
+</body></html>`;
+    expect(inferDeckSlidePaperSurface(html)?.background.toLowerCase()).toBe('#0a0e27');
+    const repaired = repairDeckSlideSurfaceBleed(html);
+    expect(repaired).toMatch(/background:\s*#0A0E27\s*!important/i);
+    expect(repaired).not.toMatch(/background:\s*#FFDC8B\s*!important/i);
+  });
+
   it('flattens MiniMax Neutral navy/cream gradients once official look CSS is present', () => {
     const html = `<!doctype html><html><head>
 <style data-od-official-look-css>

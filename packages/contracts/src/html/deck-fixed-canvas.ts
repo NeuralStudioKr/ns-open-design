@@ -346,7 +346,7 @@ function flowAbsoluteSlideFooters(html: string): string {
 }
 
 const MOTIF_OR_DECO_CLASS_RE =
-  /deco|motif|petal|blob|pill|doodle|pin-|scanline|grain|sunglow|yblock|haze|ribbon|pixel-|hc-|gd-orb|xp-blob|post-it|stamp|tape|corner-bracket|ts-stripe|zigzag|hero-shot|card-deco|title-accent|closing-accent|mini-note|floating-pills|cover-blob|cover-bg|geo-decoration|cover-decoration/i;
+  /deco|motif|petal|blob|pill|doodle|pin-|scanline|grain|starfield|crt-glow|bg-grid|sunglow|yblock|haze|ribbon|pixel-|hc-|gd-orb|xp-blob|post-it|stamp|tape|corner-bracket|ts-stripe|zigzag|hero-shot|card-deco|title-accent|closing-accent|mini-note|floating-pills|cover-blob|cover-bg|geo-decoration|cover-decoration/i;
 
 // 루프158-A — MiniMax는 `<ul style="position:absolute">` / `<li>` / `<figure>`
 // 형태로 리스트/카드 트랙을 오프페이지에 park한다. div/span/heading만 평탄화

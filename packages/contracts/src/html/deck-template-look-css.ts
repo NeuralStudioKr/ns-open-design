@@ -180,7 +180,10 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
   position: relative !important;
   z-index: 2 !important;
 }
-.slide > div:not([data-od-slide-flow]):not([data-od-official-motif-html]):not(.deco):not([class*="deco-"]):not(.floating-pills):not(.petals):not(.gd-ambient):not(.pixel-glitch):not(.scanlines):not(.grain):not(.hc-scanlines):not(.hc-grid):not(.sunglow):not(.cover-blob):not([class*="cover-blob"]):not(.geo-decoration):not([class*="gd-orb"]):not(.xp-blob):not([class*="xp-blob"]):not([class*="post-it"]):not(.pin):not([class^="pin-"]):not([class*=" pin-"]):not([class*="doodle"]):not([class*="petal"]):not([class*="stamp"]):not([class*="tape"]):not([class*="pill"]):not([class*="corner-bracket"]):not([class*="ts-stripe"]):not([class*="zigzag"]):not(.ribbon):not(.ribbons):not(.rib):not([class*="ribbon"]):not([class^="win-"]):not([class*=" win-"]):not(.shape):not([class*="pixel-"]):not([class^="hc-"]):not([class*=" hc-"]):not([class*="title-accent"]):not([class*="closing-accent"]):not(.mini-note):not(.hero-shot):not([class*="card-deco"]) {
+/* 루프392 — Keep 8-bit atmospheric hosts absolute (starfield/crt-glow).
+ * scanlines/grain/pixel-* were already excluded; starfield was missing and
+ * pin+neutralize flattened kit overlays into document flow. */
+.slide > div:not([data-od-slide-flow]):not([data-od-official-motif-html]):not(.deco):not([class*="deco-"]):not(.floating-pills):not(.petals):not(.gd-ambient):not(.pixel-glitch):not(.scanlines):not(.grain):not(.starfield):not(.crt-glow):not(.bg-grid):not(.hc-scanlines):not(.hc-grid):not(.sunglow):not(.cover-blob):not([class*="cover-blob"]):not(.geo-decoration):not([class*="gd-orb"]):not(.xp-blob):not([class*="xp-blob"]):not([class*="post-it"]):not(.pin):not([class^="pin-"]):not([class*=" pin-"]):not([class*="doodle"]):not([class*="petal"]):not([class*="stamp"]):not([class*="tape"]):not([class*="pill"]):not([class*="corner-bracket"]):not([class*="ts-stripe"]):not([class*="zigzag"]):not(.ribbon):not(.ribbons):not(.rib):not([class*="ribbon"]):not([class^="win-"]):not([class*=" win-"]):not(.shape):not([class*="pixel-"]):not([class^="hc-"]):not([class*=" hc-"]):not([class*="title-accent"]):not([class*="closing-accent"]):not(.mini-note):not(.hero-shot):not([class*="card-deco"]) {
   position: relative !important;
   z-index: 2 !important;
 }

@@ -49,6 +49,7 @@
 | **루프388** Cobalt raw URL 커버 제목 heal · sparse subkicker | ☑ |
 | **루프389** preview/salvage URL 표지 heal 연결 · Cobalt DOM 감지 · brief rescue | ☑ |
 | **루프390** 8-Bit Orbit 위 IB magazine → pixel-hero · neo cream fallback skip | ☑ |
+| **루프392** starfield flatten 복구 · nested 비교표 salvage · dark surface > cream | ☑ |
 | **루프366** section `#stage` hoist · contracts dist rebuild | ☑ web transform-driven 19/19 |
 | MiniMax 실키 E2E | ☑ 가드 있음 · 키 없으면 skip (`template-clone-minimax-live.e2e`) |
 

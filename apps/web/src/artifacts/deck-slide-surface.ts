@@ -420,10 +420,38 @@ function extractCssVarMap(html: string): Record<string, string> {
 }
 
 /**
- * Prefer html-ppt identity surfaces (`--hc-bg`, `--gd-bg`, cream/paper) over
- * the shared light `:root --bg/#ffffff` every full-deck ships.
+ * Prefer dark kit identity (`--dark-void`, `--hc-bg`, `--gd-bg`, …) over
+ * cream/paper leftovers. Neo/IB magazine chrome often leaves `--cream` in
+ * :root while 8-bit / Hermes look CSS owns the real wash — cream-first pick
+ * painted a yellow letterbox behind navy slides (루프392).
  */
 function pickPreferredSurfaceFromVars(vars: Record<string, string>): string | null {
+  const darkIdentityKeys = [
+    'dark-void',
+    'darkvoid',
+    'deep-navy',
+    'deepnavy',
+    'void',
+    'hc-bg',
+    'gd-bg',
+    'studio-bg',
+    'capsule-bg',
+  ] as const;
+  for (const key of darkIdentityKeys) {
+    const value = vars[key]?.trim();
+    if (value && !isWhiteOrEmptyBackground(value)) return value;
+  }
+  const namedDarkBg = Object.keys(vars)
+    .sort()
+    .find((name) => (
+      /-(?:bg|background|void|navy)$/.test(name)
+      && name !== 'bg'
+      && name !== 'background'
+      && vars[name]?.trim()
+      && !isWhiteOrEmptyBackground(vars[name]!)
+      && /(?:^|-)(?:dark|deep|void|navy|hc|gd|studio|capsule)/i.test(name)
+    ));
+  if (namedDarkBg) return vars[namedDarkBg]!.trim();
   if (vars.cream?.trim()) return vars.cream.trim();
   if (vars.paper?.trim()) return vars.paper.trim();
   const namedBg = Object.keys(vars)

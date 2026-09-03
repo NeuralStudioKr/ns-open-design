@@ -1767,6 +1767,113 @@ function pinDecorativeGradientOverlays(html: string): string {
   );
 }
 
+/**
+ * 루프392 — MiniMax / earlier pin flattened 8-bit atmospheric hosts
+ * (`.starfield`, empty `.scanlines`/`.grain` overlays) to `position:relative`,
+ * so kit absolute+inset paint never covered the 16:9. Restore overlay hosts.
+ */
+export function restoreAtmosphericOverlayPositioning(html: string): string {
+  return String(html ?? '').replace(
+    /<(div|span)\b([^>]*\bclass\s*=\s*(?:"[^"]*"|'[^']*')[^>]*)>/gi,
+    (open) => {
+      if (!/\b(?:starfield|scanlines|grain|pixel-particles|crt-glow)\b/i.test(open)) {
+        return open;
+      }
+      // Content wrappers that reused scanlines on a filled host — leave alone.
+      const style = /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i.exec(open)?.[2] ?? '';
+      const looksEmptyHost =
+        /pointer-events\s*:\s*none/i.test(style)
+        || /inset\s*:\s*0/i.test(style)
+        || /(?:top|right|bottom|left)\s*:\s*0/i.test(style)
+        || !style
+        || /opacity\s*:\s*0?\.\d+/i.test(style);
+      if (!looksEmptyHost && /padding\s*:\s*[1-9]/i.test(style)) return open;
+      if (/position\s*:\s*absolute/i.test(style) && /inset\s*:\s*0/i.test(style)) {
+        return open;
+      }
+      return rewriteStyleAttr(open, (prev) => {
+        const cleaned = String(prev)
+          .replace(/(?:^|;)\s*position\s*:[^;]*/gi, '')
+          .replace(/(?:^|;)\s*(?:top|right|bottom|left|inset)\s*:[^;]*/gi, '')
+          .replace(/;;+/g, ';')
+          .replace(/^;|;$/g, '')
+          .trim();
+        const base = `${cleaned}${cleaned && !cleaned.endsWith(';') ? ';' : ''}`;
+        const withPointer = /pointer-events\s*:/i.test(cleaned)
+          ? ''
+          : 'pointer-events:none;';
+        return `${base}position:absolute;inset:0;${withPointer}`;
+      });
+    },
+  );
+}
+
+const COMPARISON_TRACK_COLS_RE =
+  /grid-template-columns\s*:\s*(?:0\.4fr\s+0\.3fr\s+0\.3fr|0\.3fr\s+0\.35fr\s+0\.35fr|repeat\(\s*3\s*,\s*(?:minmax\(\s*0\s*,\s*)?1fr\s*\)|1fr\s+1fr\s+1fr)/i;
+
+function openLooksLikeComparisonTrackGrid(open: string): boolean {
+  return /display\s*:\s*grid/i.test(open) && COMPARISON_TRACK_COLS_RE.test(open);
+}
+
+function nestedBlockIsComparisonRowShell(block: string): boolean {
+  const trimmed = String(block ?? '').trim();
+  const open = /^<div\b[^>]*>/i.exec(trimmed)?.[0] ?? '';
+  if (!openLooksLikeComparisonTrackGrid(open)) return false;
+  const inner = trimmed.replace(/^<div\b[^>]*>/i, '').replace(/<\/div\s*>$/i, '');
+  const kids = listTopLevelBlocks(inner).filter((part) => part.trim());
+  if (kids.length < 2 || kids.length > 4) return false;
+  return kids.every((kid) => {
+    const kidOpen = /^<div\b[^>]*>/i.exec(kid.trim())?.[0] ?? '';
+    return !openLooksLikeComparisonTrackGrid(kidOpen);
+  });
+}
+
+/**
+ * 루프392 — MiniMax comparison tables nest each data row as another
+ * `display:grid; grid-template-columns:0.4fr 0.3fr 0.3fr` inside the body
+ * track. Cells become nested grids / orphans and the table collapses.
+ * Unwrap one level so cells are direct children of the track (CSS auto-flow).
+ */
+export function flattenNestedComparisonGridRows(html: string): string {
+  let out = String(html ?? '');
+  if (!out || !COMPARISON_TRACK_COLS_RE.test(out)) return out;
+
+  for (let pass = 0; pass < 5; pass += 1) {
+    let changed = false;
+    const openRe = /<div\b[^>]*>/gi;
+    const starts: number[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = openRe.exec(out)) !== null) {
+      if (openLooksLikeComparisonTrackGrid(match[0] ?? '')) {
+        starts.push(match.index);
+      }
+    }
+    for (let i = starts.length - 1; i >= 0; i -= 1) {
+      const start = starts[i]!;
+      const balanced = extractBalancedFrom(out, start);
+      if (!balanced) continue;
+      const open = /^<div\b[^>]*>/i.exec(balanced)?.[0] ?? '';
+      if (!open) continue;
+      const close = /<\/div\s*>$/i.exec(balanced)?.[0] ?? '</div>';
+      const inner = balanced.slice(open.length, balanced.length - close.length);
+      const kids = listTopLevelBlocks(inner);
+      if (!kids.some((kid) => nestedBlockIsComparisonRowShell(kid))) continue;
+      const nextInner = kids.map((kid) => {
+        if (!nestedBlockIsComparisonRowShell(kid)) return kid;
+        const kidOpen = /^<div\b[^>]*>/i.exec(kid.trim())?.[0] ?? '';
+        const kidClose = /<\/div\s*>$/i.exec(kid.trim())?.[0] ?? '</div>';
+        return kid.trim().slice(kidOpen.length, kid.trim().length - kidClose.length);
+      }).join('');
+      const replacement = `${open}${nextInner}${close}`;
+      if (replacement === balanced) continue;
+      out = `${out.slice(0, start)}${replacement}${out.slice(start + balanced.length)}`;
+      changed = true;
+    }
+    if (!changed) break;
+  }
+  return out;
+}
+
 function healOrphanRadialCircles(html: string): string {
   let out = String(html ?? '').replace(
     /<div\b([^>]*border-radius\s*:\s*50%[^>]*)>/gi,
@@ -2248,7 +2355,9 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = stripEmptyBorderPadCardShells(next);
   next = salvageOrphanRepeatGridCards(next);
   next = collapseSparseRepeatGrids(next);
+  next = flattenNestedComparisonGridRows(next);
   next = pinDecorativeGradientOverlays(next);
+  next = restoreAtmosphericOverlayPositioning(next);
   next = healOrphanRadialCircles(next);
   next = dropEmptyDeckSlides(next);
   next = restyleForeignIbMagazineCover(next);
