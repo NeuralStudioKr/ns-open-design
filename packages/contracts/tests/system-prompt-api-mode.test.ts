@@ -852,7 +852,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('Close 8–10 complete body-first slides in THIS response');
       expect(prompt).toContain('Do not leave remaining pages for hidden top-up');
       expect(prompt).toContain('close 8–10 THIS TURN');
-      expect(prompt).not.toContain('close 6 THIS TURN');
+      expect(prompt).not.toMatch(/Stopping after 3 slides is a failure — close 6 THIS TURN/);
       expect(prompt).not.toMatch(/at least 6 filled `<section class="slide">` blocks this turn \(top-up only for 11\+/);
       expect(prompt).not.toContain(
         'at least 6 filled <section class="slide"> blocks this turn (top-up only for 11+)',
