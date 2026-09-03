@@ -920,13 +920,47 @@ function bytesToBase64(bytes: Uint8Array): string {
   return out;
 }
 
+function stringifyProxyErrorDetails(details: unknown): string {
+  if (details == null) return '';
+  if (typeof details === 'string') {
+    return details.replace(/\s+/g, ' ').trim().slice(0, 400);
+  }
+  try {
+    return JSON.stringify(details).replace(/\s+/g, ' ').trim().slice(0, 400);
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Prefer nested.message; when the daemon only sent "Upstream error: NNN"
+ * (or the FE ignored `details`), append the upstream body so classifiers
+ * and copy-diagnostics still see prompt-too-long / balance text.
+ */
 function proxyErrorMessage(data: Record<string, unknown>): string {
   const nested = data.error;
+  let message = '';
   if (nested && typeof nested === 'object' && 'message' in nested) {
-    const message = (nested as { message?: unknown }).message;
-    if (typeof message === 'string' && message) return message;
+    const nestedMessage = (nested as { message?: unknown }).message;
+    if (typeof nestedMessage === 'string' && nestedMessage.trim()) {
+      message = nestedMessage.trim();
+    }
   }
-  return String(data.message ?? 'proxy error');
+  if (!message) message = String(data.message ?? 'proxy error').trim() || 'proxy error';
+
+  const detailsRaw =
+    (nested && typeof nested === 'object'
+      ? (nested as { details?: unknown }).details
+      : undefined)
+    ?? data.details;
+  const detailsText = stringifyProxyErrorDetails(detailsRaw);
+  if (
+    detailsText
+    && /^(?:Upstream error|Provider error|Gemini error|Azure error):\s*\d{3}\s*$/i.test(message)
+  ) {
+    return `${message} — ${detailsText}`;
+  }
+  return message;
 }
 
 /**

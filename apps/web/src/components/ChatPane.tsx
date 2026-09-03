@@ -78,6 +78,7 @@ import {
   formatProjectRunErrorForUser,
   userFacingRunErrorDetail,
   extractPersistedRunErrorDiagnostic,
+  extractProjectRunErrorCodeFromDetail,
 } from '../teamver/projectErrorMessages';
 import { AUTO_CONTINUE_STATUS_CODE, RESUME_CONTINUE_PROMPT } from '../runtime/resume';
 import {
@@ -1084,7 +1085,11 @@ export function ChatPane({
         rawMessage: persistDiagnostic
           ? `${displayError}\n\n${persistDiagnostic}`
           : rawError,
-        errorCode: failedRunErrorEvent?.code ?? diagnosticRunErrorEvent?.code,
+        errorCode:
+          failedRunErrorEvent?.code
+          ?? diagnosticRunErrorEvent?.code
+          ?? extractProjectRunErrorCodeFromDetail(rawError)
+          ?? (rawError ? 'AGENT_EXECUTION_FAILED' : undefined),
         traceId: diagnosticAssistant?.runId,
         runId: diagnosticAssistant?.runId,
         projectId,
@@ -2665,7 +2670,10 @@ function ChatRows({
         ),
       );
       const persistDiagnostic = extractPersistedRunErrorDiagnostic(errorEvent?.detail);
-      const errorCode = errorEvent?.code ?? 'AGENT_EXECUTION_FAILED';
+      const errorCode =
+        errorEvent?.code
+        ?? extractProjectRunErrorCodeFromDetail(errorEvent?.detail)
+        ?? 'AGENT_EXECUTION_FAILED';
       cards.set(message.id, {
         message: detail,
         diagnosticText: buildRunErrorDiagnosticText({

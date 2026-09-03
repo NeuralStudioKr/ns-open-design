@@ -492,6 +492,7 @@ import {
   formatEmergencyDeckFallbackNotice,
   formatOutlineDeckFallbackNotice,
   formatPersistedProjectRunError,
+  extractProjectRunErrorCode,
   formatProjectRunStalledErrorForUser,
   formatProjectForkConversationError,
 } from '../teamver/projectErrorMessages';
@@ -12385,7 +12386,9 @@ export function ProjectView({
             ? err
             : new Error(String(err ?? 'compose_failed'));
           if (!(composeErr as Error & { code?: string }).code) {
-            (composeErr as Error & { code?: string }).code = 'AGENT_EXECUTION_FAILED';
+            const classified = extractProjectRunErrorCode(composeErr);
+            (composeErr as Error & { code?: string }).code =
+              classified || 'AGENT_EXECUTION_FAILED';
           }
           handlers.onError(composeErr);
           return true;

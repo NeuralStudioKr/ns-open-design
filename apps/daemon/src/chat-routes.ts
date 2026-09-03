@@ -589,6 +589,20 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
   const redactAuthTokens = (text: string) =>
     text.replace(/Bearer [A-Za-z0-9_\-.+/=]+/g, 'Bearer [REDACTED]');
 
+  /**
+   * Put a short redacted upstream body into the SSE `message` itself.
+   * FE `proxyErrorMessage` historically kept only "Upstream error: NNN", so
+   * MiniMax prompt-too-long / balance text never reached copy-diagnostics.
+   */
+  const formatUpstreamHttpErrorMessage = (status: number, errorText: string) => {
+    const base = `Upstream error: ${status}`;
+    const snippet = redactAuthTokens(String(errorText || ''))
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 400);
+    return snippet ? `${base} — ${snippet}` : base;
+  };
+
   // DNS-aware wrapper. The sync `validateBaseUrl` only inspects the literal
   // hostname string, so a public DNS name pointing at an internal address
   // (`internal.example.com → 10.0.0.5`) still passes. We delegate to
@@ -1135,7 +1149,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         console.error(
           `[${opts.logTag}] upstream error: ${response.status} ${redactAuthTokens(errorText)}`,
         );
-        sendProxyError(sse, `Upstream error: ${response.status}`, {
+        sendProxyError(sse, formatUpstreamHttpErrorMessage(response.status, errorText), {
           code: proxyErrorCode(response.status),
           details: errorText,
           retryable: proxyHttpRetryable(response.status),
@@ -1266,7 +1280,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         console.error(
           `[${opts.logTag}] upstream error: ${response.status} ${redactAuthTokens(errorText)}`,
         );
-        sendProxyError(sse, `Upstream error: ${response.status}`, {
+        sendProxyError(sse, formatUpstreamHttpErrorMessage(response.status, errorText), {
           code: proxyErrorCode(response.status),
           details: errorText,
           retryable: proxyHttpRetryable(response.status),
@@ -1582,7 +1596,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         console.error(
           `[proxy:openai] upstream error: ${response.status} ${redactAuthTokens(errorText)}`,
         );
-        sendProxyError(sse, `Upstream error: ${response.status}`, {
+        sendProxyError(sse, formatUpstreamHttpErrorMessage(response.status, errorText), {
           code: proxyErrorCode(response.status),
           details: errorText,
           retryable: proxyHttpRetryable(response.status),
@@ -1766,7 +1780,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           console.error(
             `[proxy:azure] upstream error: ${response.status} ${redactAuthTokens(errorText)}`,
           );
-          sendProxyError(sse, `Upstream error: ${response.status}`, {
+          sendProxyError(sse, formatUpstreamHttpErrorMessage(response.status, errorText), {
             code: proxyErrorCode(response.status),
             details: errorText,
             retryable: proxyHttpRetryable(response.status),
@@ -1925,7 +1939,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`[proxy:ollama] upstream error: ${response.status} ${redactAuthTokens(errorText)}`);
-        sendProxyError(sse, `Upstream error: ${response.status}`, {
+        sendProxyError(sse, formatUpstreamHttpErrorMessage(response.status, errorText), {
           code: proxyErrorCode(response.status),
           details: errorText,
           retryable: proxyHttpRetryable(response.status),
@@ -2252,7 +2266,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           turnUsage.outputTokens,
           model,
         );
-        sendProxyError(sse, `Upstream error: ${response.status}`, {
+        sendProxyError(sse, formatUpstreamHttpErrorMessage(response.status, errorText), {
           code: proxyErrorCode(response.status),
           details: errorText,
           retryable: proxyHttpRetryable(response.status),
@@ -2490,7 +2504,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           anthTurnUsage.outputTokens,
           model,
         );
-        sendProxyError(sse, `Upstream error: ${response.status}`, {
+        sendProxyError(sse, formatUpstreamHttpErrorMessage(response.status, errorText), {
           code: proxyErrorCode(response.status),
           details: errorText,
           retryable: proxyHttpRetryable(response.status),
@@ -2717,7 +2731,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           geminiTurnUsage.outputTokens,
           model,
         );
-        sendProxyError(sse, `Upstream error: ${response.status}`, {
+        sendProxyError(sse, formatUpstreamHttpErrorMessage(response.status, errorText), {
           code: proxyErrorCode(response.status),
           details: errorText,
           retryable: proxyHttpRetryable(response.status),

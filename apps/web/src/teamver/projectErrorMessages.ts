@@ -469,19 +469,51 @@ function anthropicLikeErrorStatus(err: unknown): number | undefined {
 }
 
 function messageImpliesContextLengthExceeded(message: string): boolean {
-  return /prompt.{0,16}too.?long|context[_ ]?length|too many tokens|maximum context|max_tokens/i.test(
+  return /prompt.{0,16}too.?long|context[_ ]?length|too many tokens|maximum context|max_tokens|max_input|input.?too.?long|token.?limit|context.?window|超出|过长|太长|输入过长/i.test(
     message,
   );
+}
+
+function messageImpliesInsufficientQuota(message: string): boolean {
+  return /insufficient.?quota|insufficient.?balance|payment.?required|billing|credit|余额不足|积分不足|quota.?exceeded/i.test(
+    message,
+  );
+}
+
+/**
+ * Pull `code=XYZ` from a persisted status:error detail (hidden marker), so
+ * copy-diagnostics does not show `error_code: n/a` when the event lost `.code`.
+ */
+export function extractProjectRunErrorCodeFromDetail(
+  detail: string | null | undefined,
+): string | undefined {
+  const diagnostic = extractPersistedRunErrorDiagnostic(detail);
+  if (diagnostic) {
+    const fromMarker = /\bcode=([A-Z][A-Z0-9_]{2,80})\b/.exec(diagnostic)?.[1];
+    if (fromMarker && fromMarker !== "AGENT_EXECUTION_FAILED") return fromMarker;
+    // Opaque catch-all in the marker — refine from reason / diagnostic text.
+    const refined = extractProjectRunErrorCode(new Error(diagnostic));
+    if (refined) return refined;
+    if (fromMarker) return fromMarker;
+  }
+  const plain = String(detail ?? "").trim();
+  if (!plain) return undefined;
+  return extractProjectRunErrorCode(new Error(plain));
 }
 
 /** Resolve structured proxy/daemon/provider error codes when `err.code` was not set. */
 export function extractProjectRunErrorCode(err: unknown): string | undefined {
   const direct = err instanceof Error ? (err as Error & { code?: string }).code?.trim() : "";
   if (direct === "TEAMVER_BROWSER_NETWORK_UNAVAILABLE") return "UPSTREAM_UNAVAILABLE";
-  if (direct) return direct;
+  // Opaque catch-all: keep refining from the message (compose stamps this when
+  // upstream MiniMax body still carries 529 / prompt-too-long / etc.).
+  if (direct && direct !== "AGENT_EXECUTION_FAILED") return direct;
   const message = err instanceof Error ? err.message : String(err);
   if (messageImpliesContextLengthExceeded(message)) {
     return "CONTEXT_LENGTH_EXCEEDED";
+  }
+  if (messageImpliesInsufficientQuota(message)) {
+    return "RATE_LIMITED";
   }
   const proxyMatch = /^(?:proxy|daemon) \d+: (\S+)/.exec(message);
   if (proxyMatch?.[1]?.trim() && /^[A-Z][A-Z0-9_]+$/.test(proxyMatch[1].trim())) {
@@ -573,6 +605,20 @@ export function formatProjectRunErrorForUser(err: unknown): string {
   }
   if (messageImpliesMissingApiKey(err)) {
     return "서버 API 키가 설정되지 않았습니다. 잠시 후 다시 시도하거나 관리자에게 문의하세요.";
+  }
+  // Last resort: still try message hints when code was the opaque catch-all
+  // (or missing) so MiniMax upstream bodies are not always "다시 시도하세요".
+  if (!code || code === "AGENT_EXECUTION_FAILED") {
+    const message = err instanceof Error ? err.message : String(err ?? "");
+    if (messageImpliesContextLengthExceeded(message)) {
+      return "입력/참고 자료가 너무 길어 모델 한도를 초과했습니다. 첨부를 줄이거나 슬라이드 장수를 줄인 뒤 다시 시도하세요.";
+    }
+    if (messageImpliesInsufficientQuota(message)) {
+      return "요청이 너무 많습니다. 잠시 후 다시 시도하세요.";
+    }
+    if (/overloaded|529|503|502|upstream unavailable|upstream error:\s*5/i.test(message)) {
+      return "AI 서비스에 연결하지 못했습니다. 잠시 후 다시 시도하세요.";
+    }
   }
   return "슬라이드 실행 중 오류가 발생했습니다. 다시 시도하세요.";
 }

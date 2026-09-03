@@ -2062,7 +2062,16 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프414 · Home MiniMax JSON fill 제거)
+## 이번 루프 (루프415 · MiniMax AGENT_EXECUTION_FAILED 진단·재분류)
+
+- [x] daemon Upstream SSE message에 redacted body snippet 포함
+- [x] FE `proxyErrorMessage`가 status-only일 때 `details` 본문 병합
+- [x] opaque `AGENT_EXECUTION_FAILED` → message로 CONTEXT/529 등 재분류
+- [x] ChatPane diagnostics `error_code: n/a` 방지 (detail marker / fallback)
+- [x] compose catch 분류 후 stamp
+- [ ] Staging 웹+daemon 재배포 후 동일 project 재현 시 raw_error/구체 문구 확인
+
+## 직전 루프 (루프414 · Home MiniMax JSON fill 제거)
 
 - [x] Home/Canvas deterministic = 서버 content-fill, MiniMax fill 턴 없음
 - [x] `=prompt` / `clone` → HTML rewrite 유지 (`json`만 AI JSON)

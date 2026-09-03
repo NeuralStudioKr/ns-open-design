@@ -65,6 +65,7 @@ describe("project conversation error messages", () => {
       extractPersistedRunErrorDiagnostic,
       formatAutoContinueIncompleteOutputNotice,
       extractProjectRunErrorCode,
+      extractProjectRunErrorCodeFromDetail,
       formatPersistedProjectRunError,
       formatProjectRunErrorForUser,
       formatProjectConversationErrorForUser,
@@ -257,6 +258,28 @@ describe("project conversation error messages", () => {
     );
     expect(extractProjectRunErrorCode(new Error("prompt is too long: 210000 tokens"))).toBe(
       "CONTEXT_LENGTH_EXCEEDED",
+    );
+    // Opaque AGENT_EXECUTION_FAILED must still refine from the upstream body
+    // (compose / soft-retry often stamp this catch-all before persist).
+    const stampedUpstream = Object.assign(
+      new Error("Upstream error: 400 — prompt is too long: 210000 tokens"),
+      { code: "AGENT_EXECUTION_FAILED" },
+    );
+    expect(extractProjectRunErrorCode(stampedUpstream)).toBe("CONTEXT_LENGTH_EXCEEDED");
+    expect(formatProjectRunErrorForUser(stampedUpstream)).toMatch(/모델 한도를 초과/);
+    expect(
+      extractProjectRunErrorCode(
+        new Error("Upstream error: 400 — invalid params, input too long / 输入过长"),
+      ),
+    ).toBe("CONTEXT_LENGTH_EXCEEDED");
+    const stamped529 = Object.assign(new Error("Upstream error: 529 — overloaded"), {
+      code: "AGENT_EXECUTION_FAILED",
+    });
+    expect(extractProjectRunErrorCode(stamped529)).toBe("OVERLOADED_ERROR");
+    const persistedOpaque = formatPersistedProjectRunError(stamped529);
+    expect(persistedOpaque.code).toBe("OVERLOADED_ERROR");
+    expect(extractProjectRunErrorCodeFromDetail(persistedOpaque.detail)).toBe(
+      "OVERLOADED_ERROR",
     );
     const anthropicContext = Object.assign(
       new Error("prompt is too long: 220000 tokens > 200000 maximum"),
