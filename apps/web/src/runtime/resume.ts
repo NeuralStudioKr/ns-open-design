@@ -195,6 +195,8 @@ export type AutoContinuePromptContext = {
    * `<head>` hang).
    */
   templateCloneContentFill?: boolean;
+  /** Prompt-mode HTML fill — do not stamp JSON slot-fill continue rules. */
+  templateClonePromptFill?: boolean;
   /** Same brief/title persist heal uses so AfterHeal matches the write path. */
   healBrief?: string | null;
   healTitle?: string | null;
@@ -278,6 +280,7 @@ export function buildAutoContinueIncompleteOutputPrompt(
     || partialShellOnly
     || motifSvgDump
     || context.templateCloneContentFill
+    || context.templateClonePromptFill
     || (context.truncatedByMaxTokens && partialShellOnly)
   ) {
     parts.push(AUTO_CONTINUE_HEAD_ONLY_BODY_FIRST);
@@ -299,6 +302,11 @@ export function buildAutoContinueIncompleteOutputPrompt(
       'Do not attach, read, or rewrite the cloned `deck.html`. Do not use "수정 반영 중".',
       ...templateCloneContentFillHardRules(),
     );
+  } else if (context.templateClonePromptFill) {
+    parts.push(
+      'OVERRIDE: this is still the Clone HTML fill CREATE — not an existing-deck edit.',
+      'Emit a complete deck artifact. Do not paste the user brief or this contract onto slides.',
+    );
   }
 
   const outline = context.planOutline?.trim();
@@ -313,7 +321,7 @@ export function buildAutoContinueIncompleteOutputPrompt(
     new Set((context.referenceFiles ?? []).map((path) => path.trim()).filter(Boolean)),
   )
     .filter((path) => {
-      if (!context.templateCloneContentFill) return true;
+      if (!context.templateCloneContentFill && !context.templateClonePromptFill) return true;
       const base = path.split('/').pop() ?? path;
       return !/^deck(?:[-_.].*)?\.html?$/i.test(base);
     })
@@ -333,7 +341,7 @@ export function buildAutoContinueIncompleteOutputPrompt(
     );
   }
 
-  const existingDeckPath = context.templateCloneContentFill
+  const existingDeckPath = context.templateCloneContentFill || context.templateClonePromptFill
     ? ''
     : context.existingDeckPath?.trim();
   if (existingDeckPath) {

@@ -283,6 +283,22 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(prompt).toContain('<h1>Cover only</h1>');
   });
 
+  it('keeps Clone prompt-fill CREATE without JSON slot-fill hard rules', () => {
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      partialHtml: '<!doctype html><html lang="ko"><head>',
+      existingDeckPath: 'deck.html',
+      templateClonePromptFill: true,
+    });
+    expect(prompt).toContain('Clone HTML fill CREATE');
+    expect(prompt).toContain('Do not paste the user brief or this contract onto slides');
+    expect(prompt).toContain('BODY-FIRST');
+    expect(prompt).not.toContain('[Template clone content fill]');
+    expect(prompt).not.toContain('JSON outline only');
+    expect(prompt).not.toContain('디스크의 덱을 기준으로');
+    expect(prompt).not.toContain('이미 저장된 슬라이드 덱');
+  });
+
   it('omits cloned deck.html from fill auto-continue reference files', () => {
     const prompt = buildAutoContinueIncompleteOutputPrompt({
       attempt: 1,

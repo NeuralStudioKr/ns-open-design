@@ -31,7 +31,7 @@ import {
 import { findPrecedingUserMessage } from './auto-continue-comment-scope';
 import {
   historyHasTemplateCloneContentFill,
-  isTemplateCloneContentFillPrompt,
+  templateCloneFillModeFromUserMessage,
 } from '../teamver/templateCloneContentFill';
 import {
   appendWarningStatusEvent,
@@ -613,7 +613,7 @@ export function isCloneContentFillReloadRecoveryCandidate(
   incompleteAssistant: ChatMessage,
 ): boolean {
   const precedingUser = findPrecedingUserMessage(messages, incompleteAssistant.id);
-  return isTemplateCloneContentFillPrompt(precedingUser?.content)
+  return templateCloneFillModeFromUserMessage(precedingUser) === 'json'
     || historyHasTemplateCloneContentFill(messages);
 }
 

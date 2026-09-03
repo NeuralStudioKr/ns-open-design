@@ -42,6 +42,10 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프391 — Clone 호스트 계약은 시스템 프롬프트 · user turn은 brief만
+
+채팅 숨김(382)만으로는 재발한다. persist는 brief만 남기고, HTML-fill 계약은 `templateClonePromptFill` 시스템 프롬프트가 맡는다. 계보는 `runContext.templateCloneFill`. Expo worked example은 주제 중립. strip은 안전망.
+
 ### 루프390-후속 — non-IB 시그널 확장 · 사용자 리포트 fixture 통합 테스트
 
 체감: 루프390이 사용자 리포트 표지 leak를 잡았으나 신호 감지가 8-bit / neubrutal 위주. `.pixel-corners`/`.pixel-face`/`.pixel-avatar-zone`/`--soft-lavender`/`.hc-scanlines`/`.gd-orb`/`.post-it` 같은 확장 kit이 스캔 밖. 또 사용자 리포트 fixture가 없어 다음 회귀 감지가 어려움.
@@ -1370,6 +1374,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 
 ### 다음 루프 후보 (2026-08-31 EOD 기준)
 
+- **완료 (루프391):** user turn은 brief만 persist. 호스트 계약은 시스템 프롬프트(`templateClonePromptFill` / JSON fill). 계보는 `runContext.templateCloneFill`. Expo 예시는 주제 중립.
 - **완료 (루프382):** prompt-fill 호스트 계약은 채팅에서 숨김. Expo worked example은 시스템 프롬프트에만. 덱 HTML 누수 heal.
 - **완료 (루프378):** leftover host-nav는 display toggle이 translate/scroll보다 앞선다. clone-size hoist · 빈 deco unwrap. F3/IB ROW · Zhangzara · simple-deck 유지.
 - **완료 (루프374):** leftover `#stage`+swipe script는 authored 1920/column이면 forceReveal가 실제로 숨김. deco residue · `div.slide` hoist · `min-width:1920`. F3/IB ROW 유지.
@@ -1819,6 +1824,7 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | heal: 제목만 있는 카드 형제 제거 | ☑ 루프354 |
 | persist/preview: 칸 번호만 있는 3열 카드(스무 번째) | ☑ 루프355 |
 | preview: neutralize column `#stage` leftover host ←/→ nudge | ☑ 루프361 |
+| chat/persist: Clone 호스트 계약은 시스템 프롬프트 · user turn brief-only · runContext 계보 | ☑ 루프391 |
 | chat/persist: Clone prompt-fill 호스트 계약 숨김 · Expo 예시 user-turn 제거 | ☑ 루프382 |
 | preview: leftover host-nav 불변식 (clone-size · deco · gotoIndex) | ☑ 루프378 |
 | preview: leftover `#stage`+swipe script deco residue host ←/→ nudge | ☑ 루프374 |
@@ -1853,7 +1859,18 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프382 · prompt-fill 호스트 계약 숨김)
+## 이번 루프 (루프391 · 호스트 계약은 시스템 프롬프트)
+
+- [x] persistableUserMessageContent — user turn은 brief만
+- [x] `templateClonePromptFill` 시스템 프롬프트 HTML-fill 계약 (JSON과 상호 배타)
+- [x] `runContext.templateCloneFill` 계보 · auto-continue/resume 복원
+- [x] auto-send prompt-fill에 JSON 스탬프 금지
+- [x] Expo worked example 주제 중립
+- [x] comments · templateCloneContentFill · resume · contracts compose · canvas-slide-launch
+- [ ] MiniMax 실키 브라우저 E2E (키 없음 — 유지)
+- [ ] FileViewer/채팅 브라우저 클릭 (이 환경에서 불가 — 유지)
+
+## 직전 루프 (루프382 · prompt-fill 호스트 계약 숨김)
 
 - [x] `[Template clone prompt fill]` 채팅 숨김
 - [x] user-turn seed에서 Expo worked example / expansion contract 제거

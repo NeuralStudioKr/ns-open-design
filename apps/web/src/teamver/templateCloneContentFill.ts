@@ -101,6 +101,37 @@ export function isTemplateCloneContentFillPrompt(text: string | null | undefined
   );
 }
 
+export type TemplateCloneFillModeFlag = 'prompt' | 'json';
+
+export function isTemplateCloneHostFillPrompt(text: string | null | undefined): boolean {
+  return isTemplateCloneContentFillPrompt(text) || isTemplateClonePromptFillPrompt(text);
+}
+
+export function templateCloneFillModeFromUserMessage(
+  message?: {
+    content?: string | null;
+    runContext?: { templateCloneFill?: string | null } | null;
+  } | null,
+): TemplateCloneFillModeFlag | null {
+  if (!message) return null;
+  if (isTemplateCloneContentFillPrompt(message.content)) return 'json';
+  if (isTemplateClonePromptFillPrompt(message.content)) return 'prompt';
+  const mode = message.runContext?.templateCloneFill;
+  return mode === 'prompt' || mode === 'json' ? mode : null;
+}
+
+/** Auto-continue / resume flags after persist stores the brief only. */
+export function templateCloneAutoContinueFlags(
+  originUser?: Parameters<typeof templateCloneFillModeFromUserMessage>[0],
+): { jsonFill: boolean; promptFill: boolean; hostFill: boolean } {
+  const mode = templateCloneFillModeFromUserMessage(originUser);
+  return {
+    jsonFill: mode === 'json',
+    promptFill: mode === 'prompt',
+    hostFill: mode != null,
+  };
+}
+
 export function isTemplateCloneSlotFillRepairPrompt(text: string | null | undefined): boolean {
   return String(text ?? '').includes(TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER);
 }
@@ -159,14 +190,18 @@ export function buildTemplateCloneSlotFillRepairPrompt(options?: {
   return parts.join('\n');
 }
 
-/** True when the most recent user turn is still a Clone content-fill. */
+/** True when the most recent user turn is still a Clone JSON content-fill. */
 export function historyHasTemplateCloneContentFill(
-  messages: readonly { role?: string; content?: string | null }[],
+  messages: readonly {
+    role?: string;
+    content?: string | null;
+    runContext?: { templateCloneFill?: string | null } | null;
+  }[],
 ): boolean {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const message = messages[i];
     if (message?.role === 'user') {
-      return isTemplateCloneContentFillPrompt(message.content);
+      return templateCloneFillModeFromUserMessage(message) === 'json';
     }
   }
   return false;

@@ -132,6 +132,7 @@ describe("ProjectView message loading", () => {
     expect(block).not.toContain("handlers.onError(new TeamverDaemonUnauthorizedError())");
     expect((source.match(/skipEmbedAuthRecovery: true/g) ?? []).length).toBeGreaterThanOrEqual(2);
     expect(source).not.toContain("fetch('/api/memory/extract'");
+    expect(source).toContain("const persistedUserContent = persistableUserMessageContent(");
     expect(source).toContain("const userText = stripUserVisibleUserMessageText(prompt).trim()");
     expect(source).not.toContain("const userText = (userMsg.content ?? '').trim()");
     expect(source).toContain("const assistantText = stripAllClosedArtifacts(accumulatedAssistantText).trim()");
@@ -312,7 +313,7 @@ describe("ProjectView message loading", () => {
     // preservation block. Keep just enough head-room; the block
     // still asserts the same ordering contract, only over slightly
     // more source.
-    const block = source.slice(start, start + 14000);
+    const block = source.slice(start, start + 22000);
 
     expect(block).toContain("attachAutoContinueIncompleteOutputNotice(");
     expect(block).toContain("syncAutoContinueCountFromMessages(");
@@ -772,12 +773,15 @@ describe("ProjectView message loading", () => {
 
     const resumeStart = source.indexOf("const handleResumeRun = useCallback");
     expect(resumeStart).toBeGreaterThan(0);
-    const resumeBlock = source.slice(resumeStart, resumeStart + 800);
+    const resumeBlock = source.slice(resumeStart, resumeStart + 1600);
     expect(resumeBlock).toContain("extractCommentAttachmentsForAutoContinue(");
-    expect(resumeBlock).toContain("findPrecedingUserMessage(messagesRef.current, assistantMessage.id)");
+    expect(resumeBlock).toContain("findPrecedingUserMessage(");
+    expect(resumeBlock).toContain("messagesRef.current");
     expect(resumeBlock).toContain("runCommentAttachmentsRef.current");
+    expect(resumeBlock).toContain("templateCloneAutoContinueFlags(resumeOriginUser)");
     expect(resumeBlock).toContain("RESUME_CONTINUE_PROMPT");
     expect(resumeBlock).toContain("entryFrom: 'resume_continue'");
+    expect(resumeBlock).toContain("templateClonePromptFill: true");
     // Do not pass an empty third arg — that was the regression shape.
     expect(resumeBlock).not.toMatch(/handleSend\(RESUME_CONTINUE_PROMPT, \[\], \[\],/);
   });

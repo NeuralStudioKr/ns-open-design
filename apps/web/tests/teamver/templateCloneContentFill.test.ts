@@ -19,6 +19,8 @@ import {
   isTemplateCloneContentFillPrompt,
   isTemplateClonePromptFillPrompt,
   isTemplateCloneSlotFillRepairPrompt,
+  templateCloneAutoContinueFlags,
+  templateCloneFillModeFromUserMessage,
   looksLikeInstructionNotSlideCopy,
   normalizeTemplateCloneFillMode,
   normalizeTemplateCloneFillSlideCountHint,
@@ -31,6 +33,7 @@ import {
   withTemplateCloneFillPluginInputs,
   withoutCanonicalDeckAttachments,
 } from '../../src/teamver/templateCloneContentFill';
+import { persistableUserMessageContent } from '../../src/comments';
 import { promptWithTemplateCloneContentFillInstruction } from '../../src/components/ProjectView';
 
 beforeEach(() => {
@@ -146,6 +149,26 @@ describe('templateCloneContentFill', () => {
     expect(seed).not.toMatch(/Expo for Senior Engineers|expo-modules-core|EAS Build|EXPO_PUBLIC_/i);
     expect(seed).not.toMatch(/Content expansion contract/i);
     expect(seed).not.toMatch(/Quality bar:\s*Quality bar:/);
+    expect(persistableUserMessageContent(seed)).toBe(
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+    );
+  });
+
+  it('recovers prompt-fill lineage from runContext after persist stores the brief only', () => {
+    const brief = 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.';
+    expect(templateCloneFillModeFromUserMessage({ content: brief })).toBeNull();
+    expect(templateCloneFillModeFromUserMessage({
+      content: brief,
+      runContext: { templateCloneFill: 'prompt' },
+    })).toBe('prompt');
+    expect(templateCloneAutoContinueFlags({
+      content: brief,
+      runContext: { templateCloneFill: 'prompt' },
+    })).toEqual({ jsonFill: false, promptFill: true, hostFill: true });
+    expect(templateCloneAutoContinueFlags({
+      content: brief,
+      runContext: { templateCloneFill: 'json' },
+    })).toEqual({ jsonFill: true, promptFill: false, hostFill: true });
   });
 
   it('adds a default 6-slide hint when no explicit count is provided', () => {
@@ -455,6 +478,24 @@ describe('templateCloneContentFill', () => {
         { role: 'user', content: `expo\n\n${TEMPLATE_CLONE_CONTENT_FILL_MARKER}` },
         { role: 'assistant', content: 'done' },
         { role: 'user', content: '제목만 바꿔줘' },
+      ]),
+    ).toBe(false);
+    expect(
+      historyHasTemplateCloneContentFill([
+        {
+          role: 'user',
+          content: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+          runContext: { templateCloneFill: 'json' },
+        },
+      ]),
+    ).toBe(true);
+    expect(
+      historyHasTemplateCloneContentFill([
+        {
+          role: 'user',
+          content: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+          runContext: { templateCloneFill: 'prompt' },
+        },
       ]),
     ).toBe(false);
   });

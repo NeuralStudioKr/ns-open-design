@@ -11,6 +11,11 @@ export interface RunContextSelection {
    */
   selectedDeckTemplateId?: string;
   selectedDeckTemplateTitle?: string;
+  /**
+   * Clone fill lineage on the persisted user message. Chat stores the brief
+   * only; this flag keeps prompt-fill vs JSON slot-fill after reload.
+   */
+  templateCloneFill?: 'prompt' | 'json';
   /** Design system pin for this turn — chip restore after reload. */
   designSystemId?: string;
   designSystemTitle?: string;

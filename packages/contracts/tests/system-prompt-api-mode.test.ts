@@ -836,5 +836,39 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(fill).not.toMatch(/<svg\s[^>]*viewBox/i);
       expect(fill.length).toBeLessThan(42_000);
     });
+
+    it('routes prompt-fill to the HTML host contract, not JSON slot-fill', () => {
+      const prompt = composeTeamverSlideApiPrompt({
+        skillName: 'Html Ppt Zhangzara 블록 프레임',
+        metadata: {
+          kind: 'deck',
+          skipDiscoveryBrief: true,
+          selectedDeckTemplateId: 'example-html-ppt-zhangzara-block-frame',
+        },
+        templateClonePromptFill: true,
+      });
+      expect(prompt).toContain('## Selected template — first HTML fill');
+      expect(prompt).toContain('The user message is THIS turn\'s brief/topic only');
+      expect(prompt).toContain('Do not paste the user brief, this contract, or any worked example onto slides');
+      expect(prompt).toContain('Emit ONE complete');
+      expect(prompt).not.toContain('Emit JSON outline only');
+      expect(prompt).not.toContain('# Final authority (READ LAST)');
+      expect(prompt).not.toMatch(/Expo for Senior Engineers|EAS Build|expo-modules-core/i);
+    });
+
+    it('keeps JSON slot-fill when only templateCloneContentFill is set', () => {
+      const prompt = composeTeamverSlideApiPrompt({
+        skillName: 'Html Ppt Zhangzara 블록 프레임',
+        metadata: {
+          kind: 'deck',
+          skipDiscoveryBrief: true,
+          selectedDeckTemplateId: 'example-html-ppt-zhangzara-block-frame',
+        },
+        templateCloneContentFill: true,
+      });
+      expect(prompt).toContain('Emit JSON outline only');
+      expect(prompt).toContain('# Final authority (READ LAST)');
+      expect(prompt).not.toContain('## Selected template — first HTML fill');
+    });
   });
 });

@@ -99,6 +99,24 @@ describe('attemptCloneContentFillLookSeedReloadRecovery (루프367)', () => {
     )).toBe(true);
     expect(buildCloneLookSeedReloadRecoveredAssistant(incompleteAssistant, []).runStatus).toBe('succeeded');
   });
+
+  it('isCloneContentFillReloadRecoveryCandidate detects runContext json fill after brief-only persist', () => {
+    const userBriefOnly: ChatMessage = {
+      id: 'user-brief',
+      role: 'user',
+      content: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+      runContext: { templateCloneFill: 'json' },
+      createdAt: 0,
+    };
+    expect(isCloneContentFillReloadRecoveryCandidate(
+      [userBriefOnly, incompleteAssistant],
+      incompleteAssistant,
+    )).toBe(true);
+    expect(isCloneContentFillReloadRecoveryCandidate(
+      [{ ...userBriefOnly, runContext: { templateCloneFill: 'prompt' } }, incompleteAssistant],
+      incompleteAssistant,
+    )).toBe(false);
+  });
 });
 
 describe('attemptCloneSlotFillStuckRepairNoticeRecovery (루프372)', () => {

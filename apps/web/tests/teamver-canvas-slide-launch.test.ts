@@ -63,8 +63,9 @@ describe("canvasSlideLaunch", () => {
     expect(HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION).toContain(SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toContain(SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE);
     expect(HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/brief is a topic, not slide text/i);
-    expect(HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/Expo for Senior Engineers/);
-    expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/Expo for Senior Engineers/);
+    expect(HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION).not.toMatch(/Expo for Senior Engineers/);
+    expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).not.toMatch(/Expo for Senior Engineers/);
+    expect(SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE).not.toMatch(/Expo for Senior Engineers|EAS Build/i);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).not.toMatch(/simple-deck|nav, and print/i);
     expect(sanitizeSlideCreateTopicHint("Html Ppt Hermes")).toBeNull();
     expect(sanitizeSlideCreateTopicHint("Daisy Days.png")).toBeNull();

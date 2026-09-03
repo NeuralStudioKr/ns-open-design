@@ -225,7 +225,10 @@ import {
   extractTemplateCloneFillSlideCountHintFromPrompt,
   historyHasTemplateCloneContentFill,
   isTemplateCloneContentFillPrompt,
+  isTemplateCloneHostFillPrompt,
   isTemplateClonePromptFillPrompt,
+  templateCloneFillModeFromUserMessage,
+  templateCloneAutoContinueFlags,
   isTemplateCloneContentFillQueued,
   queueTemplateCloneContentFill,
   readQueuedAutoSendSeed,
@@ -425,6 +428,7 @@ import {
   renderCommentAttachmentContext,
   resolveCommentEditPersistTargetFileName,
   SLIDE_COMMENT_EDIT_PATCH_INSTRUCTION_MARKER,
+  persistableUserMessageContent,
   stripUserVisibleUserMessageText,
   visibleCommentEditInstruction,
 } from '../comments';
@@ -652,6 +656,8 @@ type ProjectChatSendMeta = ChatSendMeta & {
    * Forces create tone and blocks truncated deck.html re-attach.
    */
   templateCloneContentFill?: boolean;
+  /** Prompt-mode HTML fill — system prompt owns the host contract. */
+  templateClonePromptFill?: boolean;
 };
 
 const DAEMON_REATTACH_MISSING_RUN_GRACE_MS = 90_000;
@@ -1369,6 +1375,7 @@ export function chatAttachmentsForAutoContinueImageEmbed(
   originUser: {
     attachments?: readonly ChatAttachment[] | null;
     content?: string | null;
+    runContext?: { templateCloneFill?: string | null } | null;
   } | null | undefined,
   projectFilePaths?: readonly string[],
   options?: { omitHtml?: boolean },
@@ -1382,7 +1389,8 @@ export function chatAttachmentsForAutoContinueImageEmbed(
   const index = projectFilePaths ?? [];
   const omitHtml =
     options?.omitHtml === true
-    || isTemplateCloneContentFillPrompt(originUser?.content);
+    || isTemplateCloneHostFillPrompt(originUser?.content)
+    || templateCloneFillModeFromUserMessage(originUser) != null;
   const out: ChatAttachment[] = [];
   const seen = new Set<string>();
   for (const attachment of attachments) {
@@ -1407,7 +1415,8 @@ export function chatAttachmentsForAutoContinueImageEmbed(
     if (out.length >= 16) break;
   }
   // Clone fill retries must not re-attach deck.html — that restarts the <head> hang.
-  return isTemplateCloneContentFillPrompt(originUser?.content)
+  return isTemplateCloneHostFillPrompt(originUser?.content)
+    || templateCloneFillModeFromUserMessage(originUser) != null
     ? withoutCanonicalDeckAttachments(out)
     : out;
 }
@@ -4630,9 +4639,7 @@ export function ProjectView({
               const autoContinueVisualFlags = visualAnnotationAutoContinueFlags(
                 autoContinueCommentAttachments,
               );
-              const autoContinueOriginIsFill = isTemplateCloneContentFillPrompt(
-                autoContinueOriginUser?.content,
-              );
+              const autoContinueFill = templateCloneAutoContinueFlags(autoContinueOriginUser);
               const autoContinuePromptRaw = resolveAutoContinuePrompt({
                 commentAttachmentCount: autoContinueCommentAttachments.length,
                 visualMarkOnly: autoContinueVisualFlags.visualMarkOnly,
@@ -4647,18 +4654,19 @@ export function ProjectView({
                   referenceFiles: collectSlideReferencePathsFromMessages(mergedMessages),
                   slideCountHint: extractRequestedSlideCountHintFromMessages(mergedMessages),
                   ...autoContinueCtx,
-                  existingDeckPath: autoContinueOriginIsFill
+                  existingDeckPath: autoContinueFill.hostFill
                     ? null
                     : resolvePrimaryDeckFilePath(
                       filesForRecovery,
                       project.metadata?.entryFile,
                     ),
-                  templateCloneContentFill: autoContinueOriginIsFill,
+                  templateCloneContentFill: autoContinueFill.jsonFill,
+                  templateClonePromptFill: autoContinueFill.promptFill,
                   healBrief: runVisiblePromptRef.current || '',
                   healTitle: project.name || '슬라이드',
                 },
               });
-              const autoContinuePrompt = autoContinueOriginIsFill
+              const autoContinuePrompt = autoContinueFill.jsonFill
                 ? ensureTemplateCloneContentFillContinuePrompt(autoContinuePromptRaw)
                 : autoContinuePromptRaw;
               // Comment scope + image/deck attachments must survive the retry.
@@ -4672,7 +4680,8 @@ export function ProjectView({
                 autoContinueCommentAttachments,
                 {
                   entryFrom: AUTO_CONTINUE_ENTRY_FROM,
-                  ...(autoContinueOriginIsFill ? { templateCloneContentFill: true } : {}),
+                  ...(autoContinueFill.jsonFill ? { templateCloneContentFill: true } : {}),
+                  ...(autoContinueFill.promptFill ? { templateClonePromptFill: true } : {}),
                 },
               );
               void Promise.resolve(started).then((ok) => {
@@ -6774,6 +6783,7 @@ export function ProjectView({
       includeExistingDeckImageEditRule?: boolean;
       /** Clone LOOK → fill: strip Motif SVG dumps from the system kit. */
       templateCloneContentFill?: boolean;
+      templateClonePromptFill?: boolean;
     } | null,
   ): Promise<string> => {
     let skillBody: string | undefined;
@@ -7103,6 +7113,9 @@ export function ProjectView({
         : {}),
       ...(slideEditContracts?.templateCloneContentFill === true
         ? { templateCloneContentFill: true }
+        : {}),
+      ...(slideEditContracts?.templateClonePromptFill === true
+        ? { templateClonePromptFill: true }
         : {}),
     });
   }, [
@@ -9331,9 +9344,7 @@ export function ProjectView({
             const autoContinueVisualFlags = visualAnnotationAutoContinueFlags(
               autoContinueCommentAttachments,
             );
-            const autoContinueOriginIsFill = isTemplateCloneContentFillPrompt(
-              autoContinueOriginUser?.content,
-            );
+            const autoContinueFill = templateCloneAutoContinueFlags(autoContinueOriginUser);
             const autoContinuePromptRaw = resolveAutoContinuePrompt({
               commentAttachmentCount: autoContinueCommentAttachments.length,
               visualMarkOnly: autoContinueVisualFlags.visualMarkOnly,
@@ -9348,18 +9359,19 @@ export function ProjectView({
                 referenceFiles: collectSlideReferencePathsFromMessages(mergedMessages),
                 slideCountHint: extractRequestedSlideCountHintFromMessages(mergedMessages),
                 ...autoContinueCtx,
-                existingDeckPath: autoContinueOriginIsFill
+                existingDeckPath: autoContinueFill.hostFill
                   ? null
                   : resolvePrimaryDeckFilePath(
                     nextFiles,
                     project.metadata?.entryFile,
                   ),
-                templateCloneContentFill: autoContinueOriginIsFill,
+                templateCloneContentFill: autoContinueFill.jsonFill,
+                templateClonePromptFill: autoContinueFill.promptFill,
                 healBrief: runVisiblePromptRef.current || '',
                 healTitle: project.name || '슬라이드',
               },
             });
-            const autoContinuePrompt = autoContinueOriginIsFill
+            const autoContinuePrompt = autoContinueFill.jsonFill
               ? ensureTemplateCloneContentFillContinuePrompt(autoContinuePromptRaw)
               : autoContinuePromptRaw;
             // Preserve comment scope + image/deck attachments so image-embed
@@ -9371,7 +9383,8 @@ export function ProjectView({
               autoContinueCommentAttachments,
               {
                 entryFrom: AUTO_CONTINUE_ENTRY_FROM,
-                ...(autoContinueOriginIsFill ? { templateCloneContentFill: true } : {}),
+                ...(autoContinueFill.jsonFill ? { templateCloneContentFill: true } : {}),
+                ...(autoContinueFill.promptFill ? { templateClonePromptFill: true } : {}),
               },
             );
             void Promise.resolve(started).then((ok) => {
@@ -9761,7 +9774,20 @@ export function ProjectView({
               ? baseRunContext.designSystemTitle.trim()
               : undefined)
           : undefined;
-      const runContext = baseRunContext || turnDesignSystemId
+      const promptFillHint =
+        meta?.templateClonePromptFill === true
+        || isTemplateClonePromptFillPrompt(prompt)
+        || templateCloneFillModeFromUserMessage(retryTarget?.userMsg) === 'prompt';
+      const jsonFillHint =
+        meta?.templateCloneContentFill === true
+        || isTemplateCloneContentFillPrompt(prompt)
+        || templateCloneFillModeFromUserMessage(retryTarget?.userMsg) === 'json';
+      const runContextFillMode = jsonFillHint && !promptFillHint
+        ? 'json' as const
+        : promptFillHint
+          ? 'prompt' as const
+          : undefined;
+      const runContext = baseRunContext || turnDesignSystemId || runContextFillMode
         ? {
             ...(baseRunContext ?? {}),
             ...(turnDesignSystemId
@@ -9771,6 +9797,9 @@ export function ProjectView({
                     ? { designSystemTitle: turnDesignSystemTitle }
                     : {}),
                 }
+              : {}),
+            ...(runContextFillMode
+              ? { templateCloneFill: runContextFillMode }
               : {}),
           }
         : undefined;
@@ -9832,20 +9861,35 @@ export function ProjectView({
       // Clone → content-fill must NOT ingest the full cloned deck.html (24KB truncated
       // mid-CSS) — that anchors the model to rewrite a huge head and hang on max_tokens.
       // Auto-continue prompts lose fill markers — recover from meta, retry origin, or history.
-      const isCloneContentFillTurn =
-        meta?.templateCloneContentFill === true
-        || isTemplateCloneContentFillPrompt(
+      const isClonePromptFillTurn =
+        meta?.templateClonePromptFill === true
+        || isTemplateClonePromptFillPrompt(
           retryTarget ? retryTarget.userMsg.content || prompt : prompt,
         )
+        || templateCloneFillModeFromUserMessage(retryTarget?.userMsg) === 'prompt'
         || (
           (isAutoContinueSend || Boolean(retryTarget))
-          && historyHasTemplateCloneContentFill(historyBase)
+          && historyBase.some((message) => (
+            message.role === 'user'
+            && templateCloneFillModeFromUserMessage(message) === 'prompt'
+          ))
         );
-      const isTemplateClonePromptFillTurn = isTemplateClonePromptFillPrompt(
-        retryTarget ? retryTarget.userMsg.content || prompt : prompt,
-      );
+      const isCloneContentFillTurn =
+        !isClonePromptFillTurn
+        && (
+          meta?.templateCloneContentFill === true
+          || isTemplateCloneContentFillPrompt(
+            retryTarget ? retryTarget.userMsg.content || prompt : prompt,
+          )
+          || templateCloneFillModeFromUserMessage(retryTarget?.userMsg) === 'json'
+          || (
+            (isAutoContinueSend || Boolean(retryTarget))
+            && historyHasTemplateCloneContentFill(historyBase)
+          )
+        );
+      const isCloneHostFillTurn = isCloneContentFillTurn || isClonePromptFillTurn;
       runTemplateCloneContentFillRef.current = isCloneContentFillTurn;
-      runTemplateClonePromptFillRef.current = isTemplateClonePromptFillTurn;
+      runTemplateClonePromptFillRef.current = isClonePromptFillTurn;
       runTemplateCloneSlotFillFallbackRef.current = false;
       const fillSlideCountHint =
         extractTemplateCloneFillSlideCountHintFromPrompt(
@@ -9857,10 +9901,10 @@ export function ProjectView({
             ? String(meta.pluginInputs.slideCount)
             : null
         );
-      const fillPluginInputs = (isCloneContentFillTurn || isTemplateClonePromptFillTurn)
+      const fillPluginInputs = isCloneHostFillTurn
         ? withTemplateCloneFillPluginInputs(meta?.pluginInputs, fillSlideCountHint)
         : meta?.pluginInputs;
-      if (isCloneContentFillTurn || isTemplateClonePromptFillTurn || isSlideCountTopUpSend) {
+      if (isCloneHostFillTurn || isSlideCountTopUpSend) {
         effectiveAttachments = effectiveAttachments.filter(
           (attachment) => !isCanonicalDeckFileName(
             String(attachment.path || attachment.name || '').trim(),
@@ -9872,7 +9916,7 @@ export function ProjectView({
       // on-disk deck attached so the model can emit element-patch / deck-patch
       // against real target ids instead of guessing from stale chat prose.
       // Skip for Clone content-fill — LOOK seed must not re-enter as edit context.
-      if (slideOnlyMvp && scopedCommentAttachments.length > 0 && !isCloneContentFillTurn && !isTemplateClonePromptFillTurn && !isSlideCountTopUpSend) {
+      if (slideOnlyMvp && scopedCommentAttachments.length > 0 && !isCloneHostFillTurn && !isSlideCountTopUpSend) {
         const existingDeck = resolveCanonicalDeckFileForEdit(
           filesSnapshot,
           project.metadata?.entryFile ?? null,
@@ -9895,7 +9939,7 @@ export function ProjectView({
       // no prior assistant in historyBase, but the project already has deck.html.
       // Do not treat leftover about.html / notes.html as an existing deck edit.
       // Skip for Clone content-fill: kit-driven compact CREATE instead of HTML rewrite.
-      if (slideOnlyMvp && scopedCommentAttachments.length === 0 && !isCloneContentFillTurn && !isTemplateClonePromptFillTurn && !isSlideCountTopUpSend) {
+      if (slideOnlyMvp && scopedCommentAttachments.length === 0 && !isCloneHostFillTurn && !isSlideCountTopUpSend) {
         const existingDeck = resolveCanonicalDeckFileForEdit(
           filesSnapshot,
           project.metadata?.entryFile ?? null,
@@ -9946,7 +9990,7 @@ export function ProjectView({
           }
         }
       }
-      if (isCloneContentFillTurn || isTemplateClonePromptFillTurn || isSlideCountTopUpSend) {
+      if (isCloneHostFillTurn || isSlideCountTopUpSend) {
         effectiveAttachments = withoutCanonicalDeckAttachments(effectiveAttachments);
         autoAttachedDeckPath = null;
       }
@@ -9973,7 +10017,7 @@ export function ProjectView({
           commentAttachmentCount: scopedCommentAttachments.length,
           existingDeckEdit: autoAttachedDeckPath != null,
           projectFilePaths: projectFilePathsForEmbed,
-          templateCloneContentFill: isCloneContentFillTurn,
+          templateCloneContentFill: isCloneHostFillTurn,
         },
       );
       // On Teamver slide-only comment edits, nudge the model into the
@@ -10066,9 +10110,10 @@ export function ProjectView({
       clearRunRecoveryBannerState(runConversationId);
       setError(null);
       const startedAt = Date.now();
-      const persistedUserContent = scopedCommentAttachments.length > 0
-        ? messageContentWithCommentAttachments(modelPrompt, scopedCommentAttachments)
-        : modelPrompt;
+      const persistedUserContent = persistableUserMessageContent(
+        modelPrompt,
+        scopedCommentAttachments,
+      );
       const userMsg: ChatMessage = retryTarget
         ? {
             ...retryTarget.userMsg,
@@ -10288,7 +10333,8 @@ export function ProjectView({
         slideOnlyMvp,
         preTurnFileNames,
         existingDeckAttached: autoAttachedDeckPath != null,
-        templateCloneContentFill: isCloneContentFillTurn,
+        templateCloneContentFill: isCloneHostFillTurn,
+        templateClonePromptFill: isClonePromptFillTurn,
       });
       const assistantId = randomUUID();
       const assistantMsg: ChatMessage = {
@@ -11192,9 +11238,7 @@ export function ProjectView({
                   const autoContinueVisualFlags = visualAnnotationAutoContinueFlags(
                     autoContinueCommentAttachments,
                   );
-                  const autoContinueOriginIsFill = isTemplateCloneContentFillPrompt(
-                    originatingUserMsg?.content,
-                  );
+                  const autoContinueFill = templateCloneAutoContinueFlags(originatingUserMsg);
                   const autoContinuePromptRaw = resolveAutoContinuePrompt({
                     commentAttachmentCount: autoContinueCommentAttachments.length,
                     visualMarkOnly: autoContinueVisualFlags.visualMarkOnly,
@@ -11212,18 +11256,19 @@ export function ProjectView({
                         partialHtml: partialHtmlForAutoContinue,
                         planOutline: rawFinalText,
                       }),
-                      existingDeckPath: autoContinueOriginIsFill
+                      existingDeckPath: autoContinueFill.hostFill
                         ? null
                         : resolvePrimaryDeckFilePath(
                           projectFiles,
                           project.metadata?.entryFile,
                         ),
-                      templateCloneContentFill: autoContinueOriginIsFill,
+                      templateCloneContentFill: autoContinueFill.jsonFill,
+                      templateClonePromptFill: autoContinueFill.promptFill,
                       healBrief: runVisiblePromptRef.current || '',
                       healTitle: project.name || '슬라이드',
                     },
                   });
-                  const autoContinuePrompt = autoContinueOriginIsFill
+                  const autoContinuePrompt = autoContinueFill.jsonFill
                     ? ensureTemplateCloneContentFillContinuePrompt(autoContinuePromptRaw)
                     : autoContinuePromptRaw;
                   // Preserve comment scope + image/deck attachments on retry.
@@ -11236,8 +11281,11 @@ export function ProjectView({
                     autoContinueCommentAttachments,
                     {
                       entryFrom: AUTO_CONTINUE_ENTRY_FROM,
-                      ...(autoContinueOriginIsFill
+                      ...(autoContinueFill.jsonFill
                         ? { templateCloneContentFill: true }
+                        : {}),
+                      ...(autoContinueFill.promptFill
+                        ? { templateClonePromptFill: true }
                         : {}),
                     },
                   );
@@ -12107,13 +12155,14 @@ export function ProjectView({
               // Clone LOOK seed is not an "existing completed deck" — image embeds on
               // fill must not flip system prompt into EXISTING_DECK edit / 「수정 반영 중」.
               includeExistingDeckImageEditRule:
-                !isCloneContentFillTurn
+                !isCloneHostFillTurn
                 && !isSlideCountTopUpSend
                 && (
                   autoAttachedDeckPath != null
                   || imageAttachmentPathsForSlideEmbed(effectiveAttachments).length > 0
                 ),
               templateCloneContentFill: isCloneContentFillTurn,
+              templateClonePromptFill: isClonePromptFillTurn,
             },
           );
           const kitMissTemplateId = shouldNotifyTemplateVisualKitMiss({
@@ -12645,8 +12694,8 @@ export function ProjectView({
         resumeOriginUser,
         runCommentAttachmentsRef.current,
       );
-      const resumeOriginIsFill = isTemplateCloneContentFillPrompt(resumeOriginUser?.content);
-      const resumePrompt = resumeOriginIsFill
+      const resumeFill = templateCloneAutoContinueFlags(resumeOriginUser);
+      const resumePrompt = resumeFill.jsonFill
         ? ensureTemplateCloneContentFillContinuePrompt(RESUME_CONTINUE_PROMPT)
         : RESUME_CONTINUE_PROMPT;
       void handleSend(
@@ -12660,7 +12709,8 @@ export function ProjectView({
         resumeCommentAttachments,
         {
           entryFrom: 'resume_continue',
-          ...(resumeOriginIsFill ? { templateCloneContentFill: true } : {}),
+          ...(resumeFill.jsonFill ? { templateCloneContentFill: true } : {}),
+          ...(resumeFill.promptFill ? { templateClonePromptFill: true } : {}),
         },
       );
     },
@@ -14210,7 +14260,10 @@ export function ProjectView({
       markDesignSystemAuditAutoRepairEligible(project.id);
     }
     const selected = selectedDeckTemplateMetadata(project.metadata);
-    const isFillSeed = fillQueued || isTemplateCloneContentFillPrompt(seed);
+    const isJsonFillSeed = isTemplateCloneContentFillPrompt(seed);
+    const isPromptFillSeed = isTemplateClonePromptFillPrompt(seed)
+      || (fillQueued && !isJsonFillSeed);
+    const isFillSeed = isJsonFillSeed || isPromptFillSeed;
     const fillSlideCountHint = extractTemplateCloneFillSlideCountHintFromPrompt(seed);
     const conversationIdAtStart = activeConversationId;
     let cancelled = false;
@@ -14230,7 +14283,7 @@ export function ProjectView({
         entryFrom: 'new_project',
         skipDiscoveryBrief:
           project.metadata?.skipDiscoveryBrief === true || Boolean(selected),
-        ...(isFillSeed
+        ...(isJsonFillSeed
           ? {
               templateCloneContentFill: true,
               pluginInputs: withTemplateCloneFillPluginInputs(
@@ -14238,7 +14291,9 @@ export function ProjectView({
                 fillSlideCountHint,
               ),
             }
-          : {}),
+          : isPromptFillSeed
+            ? { templateClonePromptFill: true }
+            : {}),
         ...(selected
           ? {
               selectedDeckTemplateId: selected.id,

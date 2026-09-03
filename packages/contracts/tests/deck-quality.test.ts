@@ -11,8 +11,9 @@ describe('slide deck content expansion', () => {
     expect(SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION).toMatch(/brief is a topic, not slide text/i);
     expect(SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION).toMatch(/시니어 개발자/);
     expect(SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION).toMatch(/만들어줘/);
-    expect(SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE).toContain('Expo for Senior Engineers');
-    expect(SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE).toMatch(/EAS Build/);
+    expect(SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE).toMatch(/brief is an instruction/i);
+    expect(SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE).toMatch(/failed deliverable/i);
+    expect(SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE).not.toMatch(/Expo for Senior Engineers|EAS Build/i);
   });
 
   it('is injected into Teamver skip-discovery system prompts', () => {

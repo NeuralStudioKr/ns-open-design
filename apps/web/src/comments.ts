@@ -426,7 +426,7 @@ const COMMENT_EDIT_PATCH_DIRECTIVE_RE =
 const EXISTING_DECK_EDIT_DIRECTIVE_RE =
   /\n*\[Existing deck edit\][\s\S]*$/i;
 const TEMPLATE_CLONE_CONTENT_FILL_DIRECTIVE_RE =
-  /\n*\[Template clone (?:content fill(?: turn)?|prompt fill|slot-fill JSON repair)\][\s\S]*$/i;
+  /\n*\[Template clone [^\]]+\][\s\S]*$/i;
 const CANVAS_CREATE_SCAFFOLD_DIRECTIVE_RE =
   /\n*\[(?:Deliverable instruction|Selected slide template(?: priority)?|Source brief|Quick settings)\][\s\S]*$/i;
 const DESIGN_TOOLBOX_INSTRUCTION_RE =
@@ -697,6 +697,25 @@ export function stripUserVisibleUserMessageText(content: string | null | undefin
   text = text.replace(ATTACHED_PROJECT_FILES_RE, '');
   text = text.replace(WEB_FETCH_CONTEXT_RE, '');
   return stripUserVisibleQuestionFormProtocolText(text);
+}
+
+/**
+ * Persist the user-visible brief only. Host contracts stay on the model
+ * prompt / system prompt — storing them on ChatMessage.content is what
+ * leaked `[Template clone prompt fill]` into chat.
+ */
+export function persistableUserMessageContent(
+  modelPrompt: string,
+  commentAttachments?: readonly ChatCommentAttachment[] | null,
+): string {
+  const visible = stripUserVisibleUserMessageText(modelPrompt);
+  if (commentAttachments && commentAttachments.length > 0) {
+    return messageContentWithCommentAttachments(
+      visible || COMMENT_ONLY_USER_PLACEHOLDER,
+      [...commentAttachments],
+    );
+  }
+  return visible;
 }
 
 export function messageContentWithCommentAttachments(

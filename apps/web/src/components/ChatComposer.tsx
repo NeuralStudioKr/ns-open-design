@@ -450,6 +450,7 @@ export interface ChatSendMeta {
    * keeps deck.html off the attachment list through ProjectView handleSend.
    */
   templateCloneContentFill?: boolean;
+  templateClonePromptFill?: boolean;
 }
 
 /**
@@ -2355,6 +2356,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                       ),
                     }
                   : {
+                      templateClonePromptFill: true,
                       pluginInputs: canvasCreateSlidesPluginInputs(
                         null,
                         selectedCanvasSlideTemplate.title,
@@ -2610,6 +2612,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                     ),
                   }
                 : {
+                    templateClonePromptFill: true,
                     pluginInputs: canvasCreateSlidesPluginInputs(
                       null,
                       selectedCanvasSlideTemplate.title,

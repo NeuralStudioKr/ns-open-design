@@ -476,6 +476,13 @@ export interface ComposeInput {
    * compact deck instead of hanging on Daisy `<svg><style>` dumps.
    */
   templateCloneContentFill?: boolean | undefined;
+  /**
+   * Prompt-mode HTML fill after a LOOK seed. User chat stores the brief only;
+   * this flag carries the host contract in the system prompt so it cannot
+   * leak into ChatMessage.content. Mutually exclusive with JSON slot-fill:
+   * when this is true, JSON fill rules must not apply.
+   */
+  templateClonePromptFill?: boolean | undefined;
 }
 
 /**
@@ -528,6 +535,7 @@ export function composeSystemPrompt({
   includeCommentEditPatchRule,
   includeExistingDeckImageEditRule,
   templateCloneContentFill,
+  templateClonePromptFill,
 }: ComposeInput): string {
   // Discovery + philosophy goes FIRST so its hard rules ("emit a form on
   // turn 1", "branch on brand on turn 2", "TodoWrite on turn 3", run
@@ -575,6 +583,7 @@ export function composeSystemPrompt({
       includeCommentEditPatchRule,
       includeExistingDeckImageEditRule,
       templateCloneContentFill,
+      templateClonePromptFill,
     });
   }
 
@@ -1502,6 +1511,18 @@ If the attached source's palette conflicts with the kit, **ignore the source's p
  * Fill-path visual half of Final authority. Merges the former FOR_FILL +
  * NO_SVG READ LAST blocks so Clone fill ends with one absolute last section.
  */
+const TEAMVER_TEMPLATE_CLONE_PROMPT_FILL_CONTRACT = `## Selected template — first HTML fill
+
+This is the first content fill after a LOOK seed. The user message is THIS turn's brief/topic only.
+
+Emit ONE complete \`<artifact type="deck" identifier="deck">\` HTML document this turn. Do not emit a JSON outline.
+
+- Do not paste the user brief, this contract, or any worked example onto slides.
+- Use the selected template kit as visual authority (palette, type, motif, chrome).
+- Every slide is 1920×1080, overflow hidden, navigable as a deck.
+- Close \`</html></artifact>\` this turn.
+`;
+
 const TEAMVER_SELECTED_TEMPLATE_VISUAL_FILL_AUTHORITY = `## Selected template — first content-fill (JSON slot-fill)
 
 This is the first content fill after a LOOK seed.
@@ -1560,6 +1581,7 @@ export function composeTeamverSlideApiPrompt({
   includeCommentEditPatchRule,
   includeExistingDeckImageEditRule,
   templateCloneContentFill,
+  templateClonePromptFill,
 }: Pick<
   ComposeInput,
   | 'skillBody'
@@ -1577,9 +1599,12 @@ export function composeTeamverSlideApiPrompt({
   | 'includeCommentEditPatchRule'
   | 'includeExistingDeckImageEditRule'
   | 'templateCloneContentFill'
+  | 'templateClonePromptFill'
 >): string {
+  const htmlPromptFill = templateClonePromptFill === true;
+  const jsonSlotFill = templateCloneContentFill === true && !htmlPromptFill;
   const parts: string[] = [];
-  if (templateCloneContentFill === true && skillBody?.trim()) {
+  if (jsonSlotFill && skillBody?.trim()) {
     skillBody = stripTemplateVisualKitMotifSpritesForFill(skillBody);
   }
   const activeDesignSystemBody = designSystemBody?.trim();
@@ -1703,7 +1728,7 @@ export function composeTeamverSlideApiPrompt({
     // confirm can `patchProject` then send on the same tick while React
     // `project.metadata` is still stale.
     if (hasSelectedTemplate) {
-      const hardRequirements = templateCloneContentFill === true
+      const hardRequirements = jsonSlotFill
         ? (
           'Hard requirements (first content-fill — JSON slot-fill):\n'
           + '- Emit ONE JSON outline only (`title` + `slides[]` with `title`/`body`/optional `roleHint`).\n'
@@ -1756,7 +1781,7 @@ export function composeTeamverSlideApiPrompt({
   // compact wireframe (`#0f172a` / Inter). Models overweight the last concrete
   // HTML samples and rewrite Daisy Days / Zhangzara kits into sparse corporate.
   parts.push(
-    templateCloneContentFill === true
+    jsonSlotFill
       ? DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL
       : hasSelectedTemplate
       ? DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE
@@ -1768,7 +1793,7 @@ export function composeTeamverSlideApiPrompt({
   }
   // Clone fill: one trailing Final authority (streaming + Motif fill visual).
   // Other paths keep streaming → optional edit contracts → selected visual.
-  if (templateCloneContentFill === true) {
+  if (jsonSlotFill) {
     // Edit contracts stay ahead of Final authority (same relative order as
     // before: streaming/edit then Motif fill last). Fill rarely sets them.
     if (includeCommentEditPatchRule === true) {
@@ -1779,6 +1804,9 @@ export function composeTeamverSlideApiPrompt({
     }
     parts.push(buildTeamverFillFinalAuthority(directDeckGeneration));
   } else {
+    if (htmlPromptFill) {
+      parts.push(TEAMVER_TEMPLATE_CLONE_PROMPT_FILL_CONTRACT);
+    }
     parts.push(
       directDeckGeneration
         ? TEAMVER_SLIDE_API_DIRECT_STREAMING_RULE

@@ -31,6 +31,7 @@ import {
   queuedSlideNavTarget,
   removeAttachedComment,
   resolveCommentEditPersistTargetFileName,
+  persistableUserMessageContent,
   stripUserVisibleUserMessageText,
   targetFromSnapshot,
   visibleCommentEditInstruction,
@@ -993,6 +994,32 @@ describe('preview comment attachment helpers', () => {
       'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
     );
     expect(stripUserVisibleUserMessageText(prompt)).not.toMatch(/expo|Quality bar|Selected template/i);
+  });
+
+  it('strips any [Template clone …] host contract from user-visible chat text', () => {
+    const prompt = [
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+      '[Template clone foo]',
+      'Host-only contract that must never render in chat or become slide copy.',
+      'Worked example — Expo for Senior Engineers.',
+    ].join('\n');
+    expect(stripUserVisibleUserMessageText(prompt)).toBe(
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+    );
+  });
+
+  it('persists the user brief only — host contracts stay off ChatMessage.content', () => {
+    const brief = 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.';
+    const modelPrompt = [
+      brief,
+      '[Template clone prompt fill]',
+      'A visual deck template was selected. Create ONE complete final deck artifact now.',
+      'Worked example — brief "expo에 대해서 설명하는 피피티 만들어줘.": Cover title must be Expo for Senior Engineers.',
+    ].join('\n');
+    expect(persistableUserMessageContent(modelPrompt)).toBe(brief);
+    expect(persistableUserMessageContent(modelPrompt)).not.toMatch(
+      /Template clone|Expo for Senior Engineers|Quality bar/i,
+    );
   });
 
   it('strips Template clone content-fill host contract from user-visible chat text', () => {
