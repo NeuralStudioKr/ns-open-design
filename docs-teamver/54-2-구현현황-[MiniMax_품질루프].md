@@ -42,6 +42,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프393 — 학습 노트 drop · empty pricing li · 비교표 orphan
+
+체감: non-IB에 `학습 노트` leftover · pricing 빈 li · comparison orphan 셀.
+
+수정: dropStudyNotesChromeOnNonIbKits · mixed empty li strip · absorbOrphanComparisonTrackCells · invent `표지`로 완화.
+
 ### 루프392 — 8-bit atmospheric flatten · 비교표 · dark surface
 
 체감: starfield relative flatten · nested comparison grid 붕괴 · cream letterbox on navy.

@@ -1111,11 +1111,15 @@ function destHasNonIbKitSignals(html: string): boolean {
     && /(?:#0A0E27|#0F1B3D|--dark-void|--neon-pink|--neon-cyan)/i.test(source)) {
     return true;
   }
+  // Hermes / Capsule body chrome (루프393).
+  if (/\bclass\s*=\s*["'][^"']*\b(?:hc-scanlines|hc-grid|hc-h1|deco-pill|floating-pills)\b/i.test(source)) {
+    return true;
+  }
   // Neubrutalism / studio / capsule / hermes / 8-bit tokens.
   if (/var\(\s*--(?:cream|pink|yellow|offwhite|hc-bg|hc-fg|gd-bg|noise|accent-pink|studio-bg|capsule-bg|neon-pink|neon-cyan|neon-yellow|dark-void|deep-navy|soft-lavender)/i.test(source)) {
     return true;
   }
-  if (/--(?:neon-pink|dark-void|deep-navy|neon-cyan|neon-yellow|soft-lavender)\s*:/i.test(source)) return true;
+  if (/--(?:neon-pink|dark-void|deep-navy|neon-cyan|neon-yellow|soft-lavender|hc-bg|gd-bg)\s*:/i.test(source)) return true;
   // Motif deco CSS block emitted for non-IB kits (루프390-후속: pixel-particles와
   // hermes-cyber / gd-orb / xp-blob / post-it / floating-pills / petals까지 포함).
   if (/data-od-official-motif-deco-css[\s\S]{0,6000}\.(?:deco-(?:pink-rect|green-circle|yellow-bar|dots)|pixel-particles|starfield|hc-scanlines|hc-grid|xp-blob|gd-orb|post-it|floating-pills|petals)\b/i.test(source)) {
@@ -1821,7 +1825,8 @@ function nestedBlockIsComparisonRowShell(block: string): boolean {
   if (!openLooksLikeComparisonTrackGrid(open)) return false;
   const inner = trimmed.replace(/^<div\b[^>]*>/i, '').replace(/<\/div\s*>$/i, '');
   const kids = listTopLevelBlocks(inner).filter((part) => part.trim());
-  if (kids.length < 2 || kids.length > 4) return false;
+  // 루프393 — incomplete early-close rows (1 cell) must unwrap too.
+  if (kids.length < 1 || kids.length > 4) return false;
   return kids.every((kid) => {
     const kidOpen = /^<div\b[^>]*>/i.exec(kid.trim())?.[0] ?? '';
     return !openLooksLikeComparisonTrackGrid(kidOpen);
@@ -1871,6 +1876,89 @@ export function flattenNestedComparisonGridRows(html: string): string {
     }
     if (!changed) break;
   }
+  return out;
+}
+
+/**
+ * 루프393 — After nested-row unwrap, orphan cells often sit as siblings of the
+ * body track (early `</div>`). Reparent trailing non-grid cell divs into the
+ * last comparison track inside the same parent so auto-flow completes rows.
+ */
+export function absorbOrphanComparisonTrackCells(html: string): string {
+  let out = String(html ?? '');
+  if (!out || !COMPARISON_TRACK_COLS_RE.test(out)) return out;
+
+  const openRe = /<div\b[^>]*>/gi;
+  const starts: number[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) {
+    if (openLooksLikeComparisonTrackGrid(match[0] ?? '')) {
+      starts.push(match.index);
+    }
+  }
+  for (let i = starts.length - 1; i >= 0; i -= 1) {
+    const trackStart = starts[i]!;
+    const track = extractBalancedFrom(out, trackStart);
+    if (!track) continue;
+    const trackEnd = trackStart + track.length;
+    // Collect immediate sibling div orphans after this track until a non-cell.
+    let cursor = trackEnd;
+    const orphans: string[] = [];
+    while (cursor < out.length) {
+      const ws = out.slice(cursor).match(/^\s*/)?.[0] ?? '';
+      cursor += ws.length;
+      if (!/^<div\b/i.test(out.slice(cursor))) break;
+      const sibling = extractBalancedFrom(out, cursor);
+      if (!sibling) break;
+      const sibOpen = /^<div\b[^>]*>/i.exec(sibling)?.[0] ?? '';
+      if (openLooksLikeComparisonTrackGrid(sibOpen)) break;
+      if (/display\s*:\s*grid/i.test(sibOpen) && /grid-template-columns/i.test(sibOpen)) {
+        break;
+      }
+      const text = stripTagsToText(sibling);
+      if (text.length < 1) break;
+      orphans.push(sibling);
+      cursor += sibling.length;
+    }
+    if (orphans.length === 0) continue;
+    const open = /^<div\b[^>]*>/i.exec(track)?.[0] ?? '';
+    const close = /<\/div\s*>$/i.exec(track)?.[0] ?? '</div>';
+    const inner = track.slice(open.length, track.length - close.length);
+    const nextTrack = `${open}${inner}${orphans.join('')}${close}`;
+    out = `${out.slice(0, trackStart)}${nextTrack}${out.slice(cursor)}`;
+  }
+  return out;
+}
+
+/**
+ * 루프393 — Non-IB kits that still carry MiniMax IB leftover chrome
+ * (`학습 노트` / Study Notes on brand/ribbon). Drop those leaves only —
+ * do not invent replacement copy.
+ */
+export function dropStudyNotesChromeOnNonIbKits(html: string): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || officialLookIsIbMagazine(dest)) return dest;
+  if (
+    !destHasNonIbKitSignals(dest)
+    && !officialLookIsEightBitOrbit(dest)
+    && !officialLookIsNeoBrutalBlockFrame(dest)
+  ) {
+    return dest;
+  }
+  let out = dest;
+  // Match chrome hosts by class on the open tag so parent `.body` wrappers
+  // do not swallow nested `.ribbon` / `.brand` leaves.
+  out = out.replace(
+    /<(span|div|p)\b([^>]*\b(?:brand|ribbon|conf|kicker|eyebrow)\b[^>]*)>([\s\S]*?)<\/\1>/gi,
+    (full, _tag: string, _attrs: string, inner: string) => {
+      if (/<(?:span|div|p|h[1-6]|ul|ol)\b/i.test(inner)) return full;
+      const text = stripTagsToText(inner);
+      if (!magazineLeftoverRibbonLabel(text)) return full;
+      return '';
+    },
+  );
+  out = out.replace(/<header\b([^>]*\bmast\b[^>]*)>\s*<\/header>/gi, '');
+  out = out.replace(/<footer\b([^>]*\bfoot\b[^>]*)>\s*<\/footer>/gi, '');
   return out;
 }
 
@@ -2356,12 +2444,14 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = salvageOrphanRepeatGridCards(next);
   next = collapseSparseRepeatGrids(next);
   next = flattenNestedComparisonGridRows(next);
+  next = absorbOrphanComparisonTrackCells(next);
   next = pinDecorativeGradientOverlays(next);
   next = restoreAtmosphericOverlayPositioning(next);
   next = healOrphanRadialCircles(next);
   next = dropEmptyDeckSlides(next);
   next = restyleForeignIbMagazineCover(next);
   next = stripNeoBrutalVarFallbackOnEightBit(next);
+  next = dropStudyNotesChromeOnNonIbKits(next);
   next = enrichSparseCobaltCover(next, brief);
   next = restyleBiennaleSparseChapterBodies(next);
   next = restyleBiennaleSparseDataBodies(next);
@@ -2821,14 +2911,13 @@ function replaceListItems(html: string, lines: string[]): string {
   const items = lines.map((line, index) => {
     const attrs = existingItems[index]?.[1] ?? existingItems[0]?.[1] ?? '';
     const priorInner = existingItems[index]?.[2] ?? '';
+    // 루프393 — blank outline lines must not become empty pricing <li> shells.
+    if (!String(line).trim()) return '';
     if (priorInner && /<[a-zA-Z]/.test(priorInner)) {
-      if (!String(line).trim()) {
-        return `<li${attrs}></li>`;
-      }
       return `<li${attrs}>${replaceFirstTextRun(priorInner, line)}</li>`;
     }
     return `<li${attrs}>${escapeHtml(line)}</li>`;
-  }).join('');
+  }).filter(Boolean).join('');
   const nextList = `${open}${items}${close}`;
   return (
     html.slice(0, listMatch.index)
@@ -4468,10 +4557,21 @@ export function stripLeafEmptyListAndParagraphShells(html: string): string {
 function dropLeafEmptyShellsOnce(html: string): string {
   let out = html;
   out = out.replace(
-    /<(ul|ol)\b[^>]*>([\s\S]*?)<\/\1>/gi,
-    (block, _tag: string, inner: string) => {
-      if (looksLikeEmptyListInner(inner)) return '';
-      return block;
+    /<(ul|ol)\b([^>]*)>([\s\S]*?)<\/\1>/gi,
+    (_block, tag: string, attrs: string, inner: string) => {
+      // 루프393 — Drop individually empty <li> inside mixed pricing/feature lists.
+      const nextInner = String(inner).replace(
+        /<li\b([^>]*)>([\s\S]*?)<\/li>/gi,
+        (liFull, _liAttrs: string, liInner: string) => (
+          leafOnlyLeafListItem(liInner) ? '' : liFull
+        ),
+      );
+      if (!/<li\b/i.test(nextInner)) {
+        return looksLikeEmptyListInner(nextInner) || leafOnlyWhitespace(nextInner)
+          ? ''
+          : `<${tag}${attrs}>${nextInner}</${tag}>`;
+      }
+      return `<${tag}${attrs}>${nextInner}</${tag}>`;
     },
   );
   out = out.replace(
@@ -4610,7 +4710,9 @@ export function healSparseDeckCoverLayout(
       /<(?:header|div)\b[^>]*letter-spacing:\s*0\.2[12]em[^>]*>([\s\S]*?)<\/(?:header|div)>/i,
     ))
     .find((text) => text.length >= 2)
-    ?? (/[가-힣]/.test(coverTitle) ? '학습 노트' : 'Notes');
+    // 루프393 — Prefer a neutral cover label over inventing IB `학습 노트`
+    // when later slides have no eyebrow chrome (guard failure still hurts less).
+    ?? (/[가-힣]/.test(coverTitle) ? '표지' : 'Cover');
   const meta = collectCoverMetaRows(laterBodies);
   const metaHtml = meta.length > 0
     ? meta.map((row) => (

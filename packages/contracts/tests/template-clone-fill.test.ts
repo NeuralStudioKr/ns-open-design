@@ -31,7 +31,10 @@ import {
   rewriteRawUrlSiteCoverTitles,
   healSparseDeckCoverLayout,
   flattenNestedComparisonGridRows,
+  absorbOrphanComparisonTrackCells,
   restoreAtmosphericOverlayPositioning,
+  dropStudyNotesChromeOnNonIbKits,
+  stripLeafEmptyListAndParagraphShells,
   restyleBiennaleSparseChapterBodies,
   restyleBiennaleSparseDataBodies,
   restyleBiennaleSparseQuoteBodies,
@@ -813,6 +816,48 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     );
     expect(salvaged).toMatch(/class="starfield"[^>]*position:absolute/);
     expect(salvaged.match(/grid-template-columns:0\.4fr 0\.3fr 0\.3fr/g)?.length).toBe(2);
+  });
+
+  it('루프393: drops study-notes chrome, empty pricing li, and absorbs comparison orphans', () => {
+    const hermesIb = `<!doctype html><html lang="ko"><body>
+<section class="slide cover" style="background:var(--paper)">
+<header class="mast"><span class="brand">학습 노트</span></header>
+<div class="body"><span class="ribbon">학습 노트</span><h1 class="display">팀버</h1></div>
+</section>
+<section class="slide" style="background:var(--hc-bg,#0a0c10)">
+<div class="hc-scanlines"></div><h2 class="hc-h1">Why</h2>
+</section>
+<style data-od-official-look-css>:root{--hc-bg:#0a0c10;--hc-ink:#e8f0ea}</style>
+</body></html>`;
+    const cleaned = dropStudyNotesChromeOnNonIbKits(hermesIb);
+    expect(cleaned).not.toMatch(/학습 노트/);
+    expect(cleaned).toContain('팀버');
+    expect(cleaned).toMatch(/hc-scanlines|hc-h1/);
+
+    const pricing = stripLeafEmptyListAndParagraphShells(
+      '<ul class="tier-features"><li>Pro plan</li><li></li><li>&nbsp;</li><li>Audit log</li></ul>',
+    );
+    expect(pricing).toContain('Pro plan');
+    expect(pricing).toContain('Audit log');
+    expect(pricing).not.toMatch(/<li[^>]*>\s*<\/li>/);
+    expect(pricing).not.toMatch(/<li[^>]*>&nbsp;<\/li>/);
+
+    const orphanTable = `<div class="pixel-box">
+<div style="display:grid;grid-template-columns:0.4fr 0.3fr 0.3fr">
+<div>권한·감사 로그</div><div>제한적</div>
+</div>
+<div>엔터프라이즈급</div>
+<div>팀 단위 공유</div>
+<div>불가</div>
+</div>`;
+    const absorbed = absorbOrphanComparisonTrackCells(orphanTable);
+    expect(absorbed).toContain('엔터프라이즈급');
+    expect(absorbed).toMatch(
+      /grid-template-columns:0\.4fr 0\.3fr 0\.3fr[^>]*>[\s\S]*엔터프라이즈급[\s\S]*팀 단위 공유[\s\S]*불가\s*<\/div>\s*<\/div>/,
+    );
+
+    const endToEnd = salvageMalformedMiniMaxSlideMarkup(hermesIb);
+    expect(endToEnd).not.toMatch(/학습 노트/);
   });
 
   it('루프388: rewrites raw URL cover titles on Cobalt Grid and fills sparse subkicker', () => {
@@ -2482,7 +2527,8 @@ describe('루프376 stripLeafEmptyListAndParagraphShells', () => {
 
   it('keeps a list when any <li> has visible text', () => {
     const html = '<ul><li></li><li>Kept</li><li></li></ul>';
-    expect(stripLeafEmptyListAndParagraphShells(html)).toBe(html);
+    // 루프393 — individually empty <li> shells are dropped; filled items stay.
+    expect(stripLeafEmptyListAndParagraphShells(html)).toBe('<ul><li>Kept</li></ul>');
   });
 
   it('keeps a <li> when it holds SVG / img / other visible media', () => {
