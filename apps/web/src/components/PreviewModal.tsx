@@ -1192,7 +1192,13 @@ export function PreviewModal({
                             onClick={() => {
                               onSharePopoverItemClick?.('zip');
                               setTemplateShareOpen(false);
-                              if (activeHtml) exportAsZip(activeHtml, exportTitle);
+                              setExportNotice(null);
+                              if (!activeHtml) return;
+                              try {
+                                exportAsZip(activeHtml, exportTitle, { deck: activeDeck });
+                              } catch (err) {
+                                setExportNotice(formatExportFailureMessageForUser(err));
+                              }
                             }}
                           >
                             <span className="share-menu-icon">
@@ -1207,7 +1213,13 @@ export function PreviewModal({
                             onClick={() => {
                               onSharePopoverItemClick?.('html');
                               setTemplateShareOpen(false);
-                              if (activeHtml) exportAsHtml(activeHtml, exportTitle);
+                              setExportNotice(null);
+                              if (!activeHtml) return;
+                              try {
+                                exportAsHtml(activeHtml, exportTitle, { deck: activeDeck });
+                              } catch (err) {
+                                setExportNotice(formatExportFailureMessageForUser(err));
+                              }
                             }}
                           >
                             <span className="share-menu-icon">

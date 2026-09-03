@@ -289,6 +289,7 @@ describe('ExamplesTab', () => {
     expect(exportAsZip).toHaveBeenCalledWith(
       '<main><h1>live-dashboard preview</h1></main>',
       'live-dashboard',
+      { deck: false },
     );
 
     fireEvent.click(shareButton);
@@ -296,6 +297,7 @@ describe('ExamplesTab', () => {
     expect(exportAsHtml).toHaveBeenCalledWith(
       '<main><h1>live-dashboard preview</h1></main>',
       'live-dashboard',
+      { deck: false },
     );
   });
 
@@ -325,6 +327,31 @@ describe('ExamplesTab', () => {
     });
     expect(alertSpy).not.toHaveBeenCalled();
     alertSpy.mockRestore();
+  });
+
+  it('surfaces card ZIP export failures in a banner', async () => {
+    vi.mocked(exportAsZip).mockImplementationOnce(() => {
+      throw new Error('ZIP 쓰기에 실패했습니다.');
+    });
+
+    renderExamples();
+
+    const card = screen.getByTestId('example-card-live-dashboard');
+    fireEvent.mouseEnter(card);
+
+    const shareButton = within(card).getByRole('button', { name: 'Share ▾' }) as HTMLButtonElement;
+    await waitFor(() => {
+      expect(shareButton.disabled).toBe(false);
+    });
+
+    fireEvent.click(shareButton);
+    fireEvent.click(screen.getByRole('menuitem', { name: /Download as \.zip/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId('example-export-error-banner-live-dashboard').textContent,
+      ).toContain('ZIP 쓰기에 실패했습니다');
+    });
   });
 
   it('opens the full preview modal and exercises its toolbar actions', async () => {
@@ -371,6 +398,7 @@ describe('ExamplesTab', () => {
     expect(exportAsZip).toHaveBeenCalledWith(
       '<main><h1>live-dashboard preview</h1></main>',
       'live-dashboard',
+      { deck: false },
     );
 
     fireEvent.click(shareButton);
@@ -378,6 +406,7 @@ describe('ExamplesTab', () => {
     expect(exportAsHtml).toHaveBeenCalledWith(
       '<main><h1>live-dashboard preview</h1></main>',
       'live-dashboard',
+      { deck: false },
     );
 
     fireEvent.click(shareButton);

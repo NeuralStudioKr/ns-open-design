@@ -48,6 +48,8 @@ describe('Teamver embed native dialog replacements', () => {
     expect(previewModal).toContain('common.exportImageFailed');
     expect(previewModal).toContain('formatExportFailureMessageForUser');
     expect(previewModal).toContain('preview-export-error-banner');
+    expect(previewModal).toContain('exportAsZip(activeHtml, exportTitle, { deck: activeDeck })');
+    expect(previewModal).toContain('exportAsHtml(activeHtml, exportTitle, { deck: activeDeck })');
   });
 
   it('ExamplesTab surfaces PDF export failures in a banner', () => {
@@ -55,6 +57,8 @@ describe('Teamver embed native dialog replacements', () => {
     expect(examplesTab).toContain('setExportNotice');
     expect(examplesTab).toContain('formatExportFailureMessageForUser');
     expect(examplesTab).toContain('example-export-error-banner');
+    expect(examplesTab).toContain('exportAsZip(html, exportTitle, { deck: isDeck })');
+    expect(examplesTab).toContain('exportAsHtml(html, exportTitle, { deck: isDeck })');
   });
 
   it('desktop leftover confirms use ViewerConfirmModal', () => {

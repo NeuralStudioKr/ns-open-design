@@ -13,22 +13,26 @@ import { PreviewModal } from '../../src/components/PreviewModal';
 
 const {
   captureHostIframeSnapshotMock,
+  exportAsHtmlMock,
   exportAsImageMock,
   exportAsPdfMock,
+  exportAsZipMock,
   requestPreviewSnapshotMock,
 } = vi.hoisted(() => ({
   captureHostIframeSnapshotMock: vi.fn(),
+  exportAsHtmlMock: vi.fn(),
   exportAsImageMock: vi.fn(),
   exportAsPdfMock: vi.fn(),
+  exportAsZipMock: vi.fn(),
   requestPreviewSnapshotMock: vi.fn(),
 }));
 
 vi.mock('../../src/runtime/exports', () => ({
   captureHostIframeSnapshot: captureHostIframeSnapshotMock,
-  exportAsHtml: vi.fn(),
+  exportAsHtml: exportAsHtmlMock,
   exportAsImage: exportAsImageMock,
   exportAsPdf: exportAsPdfMock,
-  exportAsZip: vi.fn(),
+  exportAsZip: exportAsZipMock,
   formatExportFailureMessageForUser: (err: unknown) =>
     err instanceof Error ? err.message : String(err ?? ''),
   openSandboxedPreviewInNewTab: vi.fn(),
@@ -196,6 +200,45 @@ describe('PreviewModal image export', () => {
 
     expect(alertSpy).not.toHaveBeenCalled();
     alertSpy.mockRestore();
+  });
+
+  it('shows an in-modal banner when ZIP export throws', async () => {
+    exportAsZipMock.mockImplementationOnce(() => {
+      throw new Error('ZIP 쓰기에 실패했습니다.');
+    });
+
+    render(
+      <PreviewModal {...baseProps} onClose={() => {}} />,
+    );
+
+    openShareMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /download as \.zip/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('preview-export-error-banner').textContent).toContain(
+        'ZIP 쓰기에 실패했습니다',
+      );
+    });
+    expect(exportAsZipMock).toHaveBeenCalledWith('<p>hello</p>', 'main', { deck: false });
+  });
+
+  it('passes deck option when exporting HTML', () => {
+    render(
+      <PreviewModal
+        {...baseProps}
+        views={[{ id: 'main', label: 'Main', html: '<section class="slide">ok</section>', deck: true }]}
+        onClose={() => {}}
+      />,
+    );
+
+    openShareMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /export as standalone html/i }));
+
+    expect(exportAsHtmlMock).toHaveBeenCalledWith(
+      '<section class="slide">ok</section>',
+      'main',
+      { deck: true },
+    );
   });
 
   it('fires onSharePopoverItemClick with "image"', () => {

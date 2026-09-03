@@ -731,7 +731,12 @@ function ExampleCard({
                   role="menuitem"
                   onClick={() => {
                     setShareOpen(false);
-                    exportAsZip(html, exportTitle);
+                    setExportNotice(null);
+                    try {
+                      exportAsZip(html, exportTitle, { deck: isDeck });
+                    } catch (err) {
+                      setExportNotice(formatExportFailureMessageForUser(err));
+                    }
                   }}
                 >
                   <span className="share-menu-icon">🗜</span>
@@ -743,7 +748,12 @@ function ExampleCard({
                   role="menuitem"
                   onClick={() => {
                     setShareOpen(false);
-                    exportAsHtml(html, exportTitle);
+                    setExportNotice(null);
+                    try {
+                      exportAsHtml(html, exportTitle, { deck: isDeck });
+                    } catch (err) {
+                      setExportNotice(formatExportFailureMessageForUser(err));
+                    }
                   }}
                 >
                   <span className="share-menu-icon">🌐</span>
