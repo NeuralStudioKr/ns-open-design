@@ -136,6 +136,13 @@ describe('parseSlideCountPhrase', () => {
     expect(parseSlideCountPhrase('10-15 pages')).toContain('정확히 15장');
     expect(parseSlideCountPhrase('20장')).toBeNull();
   });
+
+  it('루프399: parses bare runContext hints like 8-10', () => {
+    expect(parseSlideCountPhrase('8-10')).toContain('정확히 10장');
+    expect(parseSlideCountPhrase('8-10 (close this turn)')).toContain('8–10');
+    expect(parseSlideCountPhrase('8')).toContain('정확히 8장');
+    expect(parseSlideCountPhrase('6 (stability cap for first template fill)')).toBeNull();
+  });
 });
 
 describe('extractRequestedSlideCountHintFromMessages', () => {
@@ -150,6 +157,20 @@ describe('extractRequestedSlideCountHintFromMessages', () => {
       assistantMessage('a1'),
     ];
     expect(extractRequestedSlideCountHintFromMessages(messages)).toContain('정확히 12장');
+  });
+
+  it('루프399: reads bare 8-10 from runContext on brief-only turns', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'u1',
+        role: 'user',
+        content: 'www.teamver.com 분석해서 서비스 소개 슬라이드 만들어줘',
+        createdAt: 1,
+        runContext: { slideCountHint: '8-10' },
+      },
+      assistantMessage('a1'),
+    ];
+    expect(extractRequestedSlideCountHintFromMessages(messages)).toContain('정확히 10장');
   });
 
   it('prefers the latest non-auto-continue user turn', () => {

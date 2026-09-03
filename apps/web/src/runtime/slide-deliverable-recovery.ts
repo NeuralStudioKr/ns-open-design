@@ -133,18 +133,22 @@ const SLIDE_COUNT_FORM_LABEL_RE =
 const SLIDE_COUNT_PLUGIN_INPUT_RE =
   /\b(?:slideCount|slides|pageCount)\s*:\s*["']?([^"'\n]+)["']?/i;
 
-/** Parse "10장", "8~10장", "10-15 pages" into an auto-continue slide-count hint. */
+function formatSlideCountPhraseHint(min: number, max: number): string {
+  if (min === max) return `정확히 ${max}장의 슬라이드를 출력하세요.`;
+  return `정확히 ${max}장의 슬라이드를 출력하세요 (사용자 요청 범위 ${min}–${max}, 상한 적용).`;
+}
+
+/** Parse "10장", "8~10장", "10-15 pages", or bare "8-10" into an auto-continue hint. */
 export function parseSlideCountPhrase(text: string): string | null {
   const normalized = text.replace(/\s+/g, ' ').trim();
-  if (!normalized || normalized === '(skipped)') return null;
+  if (!normalized || normalized === '(skipped)' || /stability cap/i.test(normalized)) return null;
 
   const rangeMatch = normalized.match(/(\d{1,2})\s*[-~–]\s*(\d{1,2})\s*(?:장|pages?|slides?|페이지)/i);
   if (rangeMatch) {
     const lower = Number.parseInt(rangeMatch[1]!, 10);
     const upper = Number.parseInt(rangeMatch[2]!, 10);
     if (Number.isFinite(lower) && Number.isFinite(upper) && lower >= 1 && upper <= SLIDE_COUNT_REQUEST_MAX) {
-      const target = Math.max(lower, upper);
-      return `정확히 ${target}장의 슬라이드를 출력하세요 (사용자 요청 범위 ${lower}–${upper}, 상한 적용).`;
+      return formatSlideCountPhraseHint(Math.min(lower, upper), Math.max(lower, upper));
     }
   }
 
@@ -152,7 +156,35 @@ export function parseSlideCountPhrase(text: string): string | null {
   if (singleMatch) {
     const count = Number.parseInt(singleMatch[1]!, 10);
     if (Number.isFinite(count) && count >= 1 && count <= SLIDE_COUNT_REQUEST_MAX) {
-      return `정확히 ${count}장의 슬라이드를 출력하세요.`;
+      return formatSlideCountPhraseHint(count, count);
+    }
+  }
+
+  // 루프399 — runContext / plugin bare hints ("8-10", "8") without 장/pages.
+  // Anchor to the whole string so free-prose briefs do not false-positive.
+  const bare = normalized
+    .replace(/\s*\(close this turn\)\s*$/i, '')
+    .replace(/\s*\(close at least \d+ this turn\)\s*$/i, '')
+    .trim();
+  const bareRange = bare.match(/^(\d{1,2})\s*[-~–—]\s*(\d{1,2})$/);
+  if (bareRange) {
+    const lower = Number.parseInt(bareRange[1]!, 10);
+    const upper = Number.parseInt(bareRange[2]!, 10);
+    if (
+      Number.isFinite(lower)
+      && Number.isFinite(upper)
+      && lower >= 1
+      && upper <= SLIDE_COUNT_REQUEST_MAX
+      && upper >= lower
+    ) {
+      return formatSlideCountPhraseHint(lower, upper);
+    }
+  }
+  const bareSingle = bare.match(/^(\d{1,2})$/);
+  if (bareSingle) {
+    const count = Number.parseInt(bareSingle[1]!, 10);
+    if (Number.isFinite(count) && count >= 1 && count <= SLIDE_COUNT_REQUEST_MAX) {
+      return formatSlideCountPhraseHint(count, count);
     }
   }
 
@@ -172,6 +204,12 @@ export function extractRequestedSlideCountHintFromMessages(
     const content = message.content ?? '';
     if (isAutoContinueIncompleteOutputPrompt(content)) continue;
     if (isSlideCountTopUpPrompt(content)) continue;
+
+    // 루프398 — brief-only persist: honor runContext.slideCountHint first.
+    const fromRunContext = message.runContext?.slideCountHint
+      ? parseSlideCountPhrase(String(message.runContext.slideCountHint))
+      : null;
+    if (fromRunContext) return fromRunContext;
 
     const pluginMatch = content.match(SLIDE_COUNT_PLUGIN_INPUT_RE);
     if (pluginMatch?.[1]) {

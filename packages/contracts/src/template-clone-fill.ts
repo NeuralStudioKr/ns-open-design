@@ -1169,18 +1169,28 @@ export function stripNeoBrutalVarFallbackOnEightBit(html: string): string {
  * 루프396 — used for IB cover restyle + neo cream fallback skip.
  */
 export function officialLookIsCapsule(html: string): boolean {
-  const css = lookCssWithoutNeutralize(html);
+  const source = String(html ?? '');
+  const css = lookCssWithoutNeutralize(source);
   if (css.trim()) {
-    if (/--coral\s*:\s*#E85D4E/i.test(css) && /Bodoni Moda|\.title-pill\b|\.deco-pill\b/i.test(css)) {
+    // Soft coral kit token is enough — look CSS may omit Bodoni in truncated sheets.
+    if (/--coral\s*:\s*#E85D4E/i.test(css)) return true;
+    if (/\.title-pill\b/i.test(css) && /(?:Bodoni Moda|--font-display|\.main-title\b)/i.test(css)) {
       return true;
     }
-    if (/\.slide-1\s+\.title-pill\b/i.test(css) && /\.slide-10\b/i.test(css)) return true;
+    if (/\.slide-1\s+\.title-pill\b/i.test(css)) return true;
   }
-  const deco = [...String(html ?? '').matchAll(
+  // Pre-look-merge / MiniMax body: coral paint + Capsule chrome classes.
+  if (
+    /(?:#E85D4E|var\(\s*--coral\b)/i.test(source)
+    && /\b(?:title-pill|main-title|header-pill|deco-pill|deco-pills)\b/i.test(source)
+  ) {
+    return true;
+  }
+  const deco = [...source.matchAll(
     /<style\b[^>]*\bdata-od-official-motif-deco-css\b[^>]*>([\s\S]*?)<\/style>/gi,
   )].map((match) => match[1] ?? '').join('\n');
   return /\.deco-pills-closing\b|\.f-pill\b/i.test(deco)
-    && /Bodoni Moda|--coral\b|\.deco-pill\b/i.test(String(html ?? ''));
+    && /Bodoni Moda|--coral\b|\.deco-pill\b|#E85D4E/i.test(source);
 }
 
 function officialLookIsBiennaleYellow(html: string): boolean {
@@ -1770,7 +1780,7 @@ export function closeOrphanHeadingsBeforeBlocks(html: string): string {
  */
 export function extractBlocksFromChromePills(html: string): string {
   let out = String(html ?? '');
-  const openRe = /<(div|span)\b[^>]*\b(?:header-pill|orbit-pill)\b[^>]*>/gi;
+  const openRe = /<(div|span)\b[^>]*\b(?:header-pill|orbit-pill|title-pill|nb-label|badge)\b[^>]*>/gi;
   const starts: number[] = [];
   let match: RegExpExecArray | null;
   while ((match = openRe.exec(out)) !== null) starts.push(match.index);
@@ -1784,10 +1794,13 @@ export function extractBlocksFromChromePills(html: string): string {
     const inner = balanced.slice(open.length, balanced.length - closeLen);
     const block = /<(div|ul|ol|section|article)\b/i.exec(inner);
     if (!block || block.index == null) continue;
-    const label = inner.slice(0, block.index).replace(/\s+/g, ' ').trim();
-    if (!label || label.length > 16) continue;
+    const label = stripTagsToText(inner.slice(0, block.index)).replace(/\s+/g, ' ').trim();
+    // title-pill can carry a short phrase ("SERVICE INTRO"); still extract grids.
+    if (!label || label.length > 40) continue;
     const rest = inner.slice(block.index);
-    if (stripTagsToText(rest).length < 24) continue;
+    // Grid/list hosts often ship short KR card copy ("카드" + one line) — 24 was too high.
+    if (!/display\s*:\s*grid|grid-template|<(?:ul|ol|h[1-6])\b/i.test(rest)) continue;
+    if (stripTagsToText(rest).length < 8) continue;
     const replacement = `${open}${escapeHtml(label)}</${tag}>${rest}`;
     out = `${out.slice(0, start)}${replacement}${out.slice(start + balanced.length)}`;
   }
@@ -1938,16 +1951,22 @@ export function unwrapStrayBoldShells(html: string): string {
  *   → `<b>1,200+개 문화 콘텐츠</b>를 카테고리별로…`
  *
  * Guardrails: outer prefix must be ≤ 3 digits + whitespace only, inner
- * must start with a comma-separated or decimal number so we never merge a
- * genuine `<b>1위 <b>SaaS</b></b>` emphasis chain.
+ * must start with a comma-separated, decimal, or plain 3+ digit number so
+ * we never merge a genuine `<b>1위 <b>SaaS</b></b>` emphasis chain.
  */
-const NESTED_BOLD_NUMBER_TYPO_RE =
-  /<b\b[^>]*>\s*\d{1,3}\s+(<b\b[^>]*>\s*\d{1,3}(?:[.,]\d+)+[^<]*<\/b>[^<]*?)<\/b>/gi;
-
 export function stripNestedBoldNumberTypoPrefix(html: string): string {
   const out = String(html ?? '');
   if (!out || !/<b\b/i.test(out)) return out;
-  return out.replace(NESTED_BOLD_NUMBER_TYPO_RE, (_match, keep: string) => keep);
+  let next = out.replace(
+    /<b\b[^>]*>\s*\d{1,3}\s+(<b\b[^>]*>\s*\d{1,3}(?:[.,]\d+)+[^<]*<\/b>[^<]*?)<\/b>/gi,
+    (_match, keep: string) => keep,
+  );
+  // 루프398 — also `<b>1 <b>1200+개…` without thousands separators.
+  next = next.replace(
+    /<b\b[^>]*>\s*\d{1,3}\s+(<b\b[^>]*>\s*\d{3,}(?:\+|개|명|장|건)?[^<]*<\/b>[^<]*?)<\/b>/gi,
+    (_match, keep: string) => keep,
+  );
+  return next;
 }
 
 /**
@@ -2036,14 +2055,18 @@ function pinNeoDecoOpenAttrs(attrs: string): string {
  * tab / dot grid) emitted as `position:relative` steal flex column space and
  * park the real title in the upper half of the 16:9. Park them absolute.
  * Short mono labels ("TEAMVER · 2025") on the same chips also leave flow.
+ * 루프399 — Capsule `deco-pill` / `floating-pills` relative chips do the same.
  */
 export function pinNeoBrutalEmptyDecoBlocks(html: string): string {
   let out = String(html ?? '').replace(
     /<div\b([^>]*)>\s*<\/div>/gi,
     (full, attrs: string) => {
       const style = /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i.exec(attrs)?.[2] ?? '';
-      if (!style || !looksLikeNeoBrutalDecoStyle(style)) return full;
-      return `<div${pinNeoDecoOpenAttrs(attrs)}></div>`;
+      if (!style) return full;
+      if (looksLikeNeoBrutalDecoStyle(style) || looksLikeCapsuleRelativeDeco(attrs, style)) {
+        return `<div${pinNeoDecoOpenAttrs(attrs)}></div>`;
+      }
+      return full;
     },
   );
   // Short leaf labels on deco chips (no nested tags).
@@ -2051,12 +2074,41 @@ export function pinNeoBrutalEmptyDecoBlocks(html: string): string {
     /<div\b([^>]*)>([^<]{1,40})<\/div>/gi,
     (full, attrs: string, text: string) => {
       const style = /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i.exec(attrs)?.[2] ?? '';
-      if (!style || !looksLikeNeoBrutalDecoStyle(style)) return full;
+      if (!style) return full;
+      if (looksLikeCapsuleRelativeDeco(attrs, style)) {
+        return `<div${pinNeoDecoOpenAttrs(attrs)}>${text}</div>`;
+      }
+      if (!looksLikeNeoBrutalDecoStyle(style)) return full;
       if (!/Space Grotesk|monospace|font-weight\s*:\s*[67]00/i.test(style)) return full;
       return `<div${pinNeoDecoOpenAttrs(attrs)}>${text}</div>`;
     },
   );
+  // Capsule class chrome may be <span class="deco-pill" style="position:relative">…
+  out = out.replace(
+    /<(span|div)\b([^>]*\b(?:deco-pill|floating-pills|f-pill)\b[^>]*)>/gi,
+    (full, tag: string, attrs: string) => {
+      const style = /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i.exec(attrs)?.[2] ?? '';
+      if (!style || /position\s*:\s*absolute/i.test(style)) return full;
+      if (!/position\s*:\s*relative/i.test(style) && !/\b(?:top|left|right|bottom)\s*:/i.test(style)) {
+        return full;
+      }
+      return `<${tag}${pinNeoDecoOpenAttrs(attrs)}>`;
+    },
+  );
   return out;
+}
+
+function looksLikeCapsuleRelativeDeco(attrs: string, style: string): boolean {
+  if (/position\s*:\s*absolute/i.test(style)) return false;
+  if (/\b(?:deco-pill|deco-pills|floating-pills|f-pill)\b/i.test(attrs)) {
+    return /position\s*:\s*relative/i.test(style) || /border-radius\s*:/i.test(style);
+  }
+  const width = Number(/width\s*:\s*(\d+)px/i.exec(style)?.[1] ?? 0);
+  const height = Number(/height\s*:\s*(\d+)px/i.exec(style)?.[1] ?? 0);
+  if (width < 24 || height < 24 || width > 420 || height > 420) return false;
+  if (!/#E85D4E|var\(\s*--coral|#FFE66D|#FFB703|#F5F5F0|var\(\s*--bg/i.test(style)) return false;
+  if (!/border\s*:/i.test(style) && !/border-radius\s*:/i.test(style)) return false;
+  return /position\s*:\s*relative/i.test(style) || !/position\s*:/i.test(style);
 }
 
 /**
@@ -2083,32 +2135,43 @@ export function pinNeoBrutalEmptyDecoBlocks(html: string): string {
  * its content and the rotation stays local.
  */
 const ROTATED_PILL_LEAF_RE = /<div\b([^>]*)>([^<]{2,120})<\/div>/gi;
+const ROTATED_PILL_INLINE_CHILD_RE =
+  /<div\b([^>]*)>\s*<(span|b|strong|em|i)\b([^>]*)>([^<]{2,80})<\/\2>\s*<\/div>/gi;
 
 export function normalizeRotatedInlinePills(html: string): string {
   const out = String(html ?? '');
   if (!out || !/transform\s*:\s*rotate/i.test(out)) return out;
-  return out.replace(
-    ROTATED_PILL_LEAF_RE,
-    (full, attrs: string, text: string) => {
-      const style = /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i.exec(attrs)?.[2] ?? '';
-      if (!style) return full;
-      if (!/transform\s*:\s*rotate\s*\(/i.test(style)) return full;
-      if (/\bdisplay\s*:\s*(?:inline(?:-block|-flex)?|flex|grid)\b/i.test(style)) return full;
-      if (/\bwidth\s*:\s*(?:\d|auto|fit-content|max-content|min-content|100%|calc\()/i.test(style)) return full;
-      // Pill signal: padding + background + border/box-shadow.
-      if (!/\bpadding\s*:/i.test(style)) return full;
-      if (!/\bbackground(?:-color)?\s*:/i.test(style)) return full;
-      if (!/\b(?:border|box-shadow)\s*:/i.test(style)) return full;
-      // Text must be non-empty.
-      if (!text.trim()) return full;
-      const rewritten = rewriteStyleAttr(`<div${attrs}>`, (prev) => {
-        const cleaned = String(prev).replace(/;;+/g, ';').replace(/^;|;$/g, '').trim();
-        const sep = cleaned && !cleaned.endsWith(';') ? ';' : '';
-        return `${cleaned}${sep}display:inline-block;width:fit-content;`;
-      });
-      return `${rewritten}${text}</div>`;
-    },
+  const rewritePill = (full: string, attrs: string, innerHtml: string): string => {
+    const style = /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i.exec(attrs)?.[2] ?? '';
+    if (!style) return full;
+    if (!/transform\s*:\s*rotate\s*\(/i.test(style)) return full;
+    if (/\bdisplay\s*:\s*(?:inline(?:-block|-flex)?|flex|grid)\b/i.test(style)) return full;
+    if (/\bwidth\s*:\s*(?:\d|auto|fit-content|max-content|min-content|100%|calc\()/i.test(style)) {
+      return full;
+    }
+    if (!/\bpadding\s*:/i.test(style)) return full;
+    if (!/\bbackground(?:-color)?\s*:/i.test(style)) return full;
+    if (!/\b(?:border|box-shadow)\s*:/i.test(style)) return full;
+    if (!innerHtml.replace(/<[^>]+>/g, '').trim()) return full;
+    const rewritten = rewriteStyleAttr(`<div${attrs}>`, (prev) => {
+      const cleaned = String(prev).replace(/;;+/g, ';').replace(/^;|;$/g, '').trim();
+      const sep = cleaned && !cleaned.endsWith(';') ? ';' : '';
+      return `${cleaned}${sep}display:inline-block;width:fit-content;`;
+    });
+    return `${rewritten}${innerHtml}</div>`;
+  };
+  // 루프399 — single inline child (<span>OVERVIEW</span>) still counts as a pill leaf.
+  let next = out.replace(
+    ROTATED_PILL_INLINE_CHILD_RE,
+    (full, attrs: string, tag: string, childAttrs: string, text: string) => (
+      rewritePill(full, attrs, `<${tag}${childAttrs}>${text}</${tag}>`)
+    ),
   );
+  next = next.replace(
+    ROTATED_PILL_LEAF_RE,
+    (full, attrs: string, text: string) => rewritePill(full, attrs, text),
+  );
+  return next;
 }
 
 /**
@@ -2461,6 +2524,12 @@ function slideBodyLooksEmpty(body: string): boolean {
     .replace(/&nbsp;/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+  // 루프398 — generic cover chrome labels alone ("표지"/"Cover") are stubs.
+  // JS `\b` does not bound Hangul, so match chrome-only text explicitly.
+  if (!text || /^(?:표지|Cover|Title|슬라이드)(?:\s+(?:표지|Cover|Title|슬라이드))*$/i.test(text)) {
+    if (/<(?:img|video|canvas|iframe|table|svg)\b/i.test(withoutSentinel)) return false;
+    return true;
+  }
   if (text.length >= 2) return false;
   if (/<(?:img|video|canvas|iframe|table|svg)\b/i.test(withoutSentinel)) return false;
   return true;
@@ -2548,11 +2617,19 @@ export function restyleForeignIbMagazineCover(html: string): string {
     return dest;
   }
   if (/\btitle-pill\b/i.test(body) && /\bmain-title\b/i.test(body) && capsule) return dest;
-  if (!coverHasIbDisplayHeading(body) || !coverHasIbMagazineChrome(first.attrs, body)) {
-    return dest;
+  const kitOwned = Boolean(biennale || neo || eightBit || capsule);
+  // 루프398/399 — Kit-owned: `h1.display` OR any h1 on cover/IB leftover chrome.
+  const hasDisplay = coverHasIbDisplayHeading(body);
+  const hasAnyH1 = /<h1\b/i.test(body);
+  if (!hasDisplay) {
+    const kitCoverH1 = kitOwned && hasAnyH1 && (
+      coverHasIbMagazineChrome(first.attrs, body) || /\bcover\b/i.test(first.attrs)
+    );
+    if (!kitCoverH1) return dest;
   }
+  if (!kitOwned && !coverHasIbMagazineChrome(first.attrs, body)) return dest;
   // No-mast leftover chrome is kit-owned. Poster-kind alone is too broad.
-  if (!/\bmast\b/i.test(body) && !biennale && !neo && !eightBit && !capsule) return dest;
+  if (!/\bmast\b/i.test(body) && !kitOwned) return dest;
   const title = polishUrlSiteCoverTitle(
     polishInstructionCoverTitle(
       (body.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '')

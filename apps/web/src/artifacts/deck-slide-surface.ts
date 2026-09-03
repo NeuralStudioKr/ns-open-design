@@ -452,12 +452,24 @@ function pickPreferredSurfaceFromVars(vars: Record<string, string>): string | nu
       && /(?:^|-)(?:dark|deep|void|navy|hc|gd|studio|capsule)/i.test(name)
     ));
   if (namedDarkBg) return vars[namedDarkBg]!.trim();
+  const neoCreamLeftover = /#FFDC8B/i.test(String(vars.cream ?? vars.paper ?? ''));
   // Capsule: --coral + --bg beat neo cream leftovers from IB cover fallback (루프395).
   if (vars.coral?.trim() && vars.bg?.trim() && !isWhiteOrEmptyBackground(vars.bg)) {
     return vars.bg.trim();
   }
-  if (vars.cream?.trim()) return vars.cream.trim();
-  if (vars.paper?.trim()) return vars.paper.trim();
+  // 루프398/399 — Neo leftover --cream:#FFDC8B must not beat kit soft-wash --bg.
+  if (vars.bg?.trim() && !isWhiteOrEmptyBackground(vars.bg) && neoCreamLeftover) {
+    return vars.bg.trim();
+  }
+  // 루프399 — Capsule coral present but truncated look omitted --bg: never pick neo cream.
+  if (vars.coral?.trim() && neoCreamLeftover) {
+    if (vars.surface?.trim() && !isWhiteOrEmptyBackground(vars.surface)) return vars.surface.trim();
+    if (vars.bg?.trim() && !isWhiteOrEmptyBackground(vars.bg)) return vars.bg.trim();
+  }
+  if (vars.cream?.trim() && !/#FFDC8B/i.test(vars.cream)) return vars.cream.trim();
+  if (vars.paper?.trim() && !/#FFDC8B/i.test(vars.paper) && !/var\(\s*--cream\b/i.test(vars.paper)) {
+    return vars.paper.trim();
+  }
   const namedBg = Object.keys(vars)
     .sort()
     .find((name) => /-(?:bg|background)$/.test(name) && name !== 'bg' && name !== 'background' && vars[name]?.trim());
@@ -465,6 +477,9 @@ function pickPreferredSurfaceFromVars(vars: Record<string, string>): string | nu
   if (vars.surface?.trim()) return vars.surface.trim();
   if (vars.bg?.trim()) return vars.bg.trim();
   if (vars.background?.trim()) return vars.background.trim();
+  // Last resort — skip neo cream when Capsule coral identity is present.
+  if (vars.cream?.trim() && !(vars.coral?.trim() && neoCreamLeftover)) return vars.cream.trim();
+  if (vars.paper?.trim() && !(vars.coral?.trim() && neoCreamLeftover)) return vars.paper.trim();
   return null;
 }
 
@@ -493,13 +508,36 @@ export function inferDeckSlidePaperSurface(html: string): DeckSlidePaperSurface 
     extractRuleBackground(source, isIdentityHostSelector),
   );
   const preferredVar = pickPreferredSurfaceFromVars(vars);
+  // 루프399 — Capsule coral + neo cream leftover: prefer real slide wash over --cream.
+  const skipNeoCreamLetterbox = Boolean(
+    vars.coral?.trim() && /#FFDC8B/i.test(String(vars.cream ?? vars.paper ?? '')),
+  );
+  const slideRuleBg = solidPaperFromBackground(
+    extractRuleBackground(source, /^(?:[a-z][a-z0-9]*)?\.slide$/i),
+  );
+  const slideInlineBg = solidPaperFromBackground(extractInlineSlideBackground(source));
 
   const background =
     (preferredVar && !isWhiteOrEmptyBackground(preferredVar) ? preferredVar : null)
     ?? (identityHostBg && !isWhiteOrEmptyBackground(identityHostBg) ? identityHostBg : null)
-    ?? extractCssVarLiteral(source, ['cream', 'paper', 'surface', 'bg', 'background'])
-    ?? solidPaperFromBackground(extractRuleBackground(source, /^(?:[a-z][a-z0-9]*)?\.slide$/i))
-    ?? solidPaperFromBackground(extractInlineSlideBackground(source))
+    ?? (skipNeoCreamLetterbox
+      && slideRuleBg
+      && !isWhiteOrEmptyBackground(slideRuleBg)
+      ? slideRuleBg
+      : null)
+    ?? (skipNeoCreamLetterbox
+      && slideInlineBg
+      && !isWhiteOrEmptyBackground(slideInlineBg)
+      ? slideInlineBg
+      : null)
+    ?? extractCssVarLiteral(
+      source,
+      skipNeoCreamLetterbox
+        ? ['surface', 'bg', 'background']
+        : ['cream', 'paper', 'surface', 'bg', 'background'],
+    )
+    ?? slideRuleBg
+    ?? slideInlineBg
     ?? extractInnerPaperBackground(source)
     ?? solidPaperFromBackground(extractBodyBackground(source));
   if (!background || isWhiteOrEmptyBackground(background)) return null;

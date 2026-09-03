@@ -44,6 +44,8 @@ import {
   extractBlocksFromChromePills,
   absorbTrailingContentIntoSlideFlow,
   officialLookIsCapsule,
+  stripNestedBoldNumberTypoPrefix,
+  normalizeRotatedInlinePills,
   stripLeafEmptyListAndParagraphShells,
   restyleBiennaleSparseChapterBodies,
   restyleBiennaleSparseDataBodies,
@@ -825,6 +827,71 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     );
     expect(salvaged).toMatch(/class="starfield"[^>]*position:absolute/);
     expect(salvaged.match(/grid-template-columns:0\.4fr 0\.3fr 0\.3fr/g)?.length).toBe(2);
+  });
+
+  it('루프398: Capsule soft wash, partial IB cover, chrome-pill grids, plain nested bold', () => {
+    expect(officialLookIsCapsule(
+      '<style data-od-official-look-css="">:root{--coral:#E85D4E;--bg:#F5F5F0}</style>',
+    )).toBe(true);
+
+    const partialIb = restyleForeignIbMagazineCover(`<!doctype html><html><body>
+<section class="slide cover"><div class="body"><h1 class="display">팀버 소개</h1></div></section>
+<section class="slide"><h2>Why</h2><p>본문 카피가 있습니다.</p></section>
+<style data-od-official-look-css="">:root{--coral:#E85D4E;--bg:#F5F5F0}
+.slide-1 .title-pill{}</style>
+</body></html>`);
+    expect(partialIb).toMatch(/title-pill|main-title/);
+    expect(partialIb).not.toMatch(/h1 class="display"/);
+
+    const titlePillNested = extractBlocksFromChromePills(
+      '<div class="title-pill">SERVICE INTRO'
+      + '<div style="display:grid;grid-template-columns:repeat(2,1fr)">'
+      + '<div><h3>카드</h3><p>설명 문장이 충분히 깁니다.</p></div></div></div>',
+    );
+    expect(titlePillNested).toMatch(/title-pill[^>]*>SERVICE INTRO<\/div>/);
+    expect(titlePillNested).toMatch(/display:grid[\s\S]*카드/);
+
+    expect(stripNestedBoldNumberTypoPrefix(
+      '<b>1 <b>1200+개 문화 콘텐츠</b>를 제공합니다.</b>',
+    )).toContain('1200+개');
+    expect(stripNestedBoldNumberTypoPrefix(
+      '<b>1 <b>1200+개 문화 콘텐츠</b>를 제공합니다.</b>',
+    )).not.toMatch(/<b>1\s+<b>/);
+
+    const stubFirst = dropEmptyDeckSlides([
+      '<section class="slide cover"><header class="mast"><span class="brand">표지</span></header>',
+      '<div class="body"><span class="ribbon">표지</span></div></section>',
+      '<section class="slide"><h1>실제 커버</h1><p>본문입니다.</p></section>',
+    ].join(''));
+    expect(stubFirst).not.toMatch(/class="slide cover"/);
+    expect(stubFirst).toContain('실제 커버');
+  });
+
+  it('루프399: Capsule h1-without-display restyle, deco pin, nested rotated pill', () => {
+    const noDisplay = restyleForeignIbMagazineCover(`<!doctype html><html><body>
+<section class="slide cover"><div class="body"><h1>팀버 소개</h1></div></section>
+<section class="slide"><h2>Why</h2><p>본문 카피가 있습니다.</p></section>
+<style data-od-official-look-css="">:root{--coral:#E85D4E;--bg:#F5F5F0}
+.slide-1 .title-pill{}</style>
+</body></html>`);
+    expect(noDisplay).toMatch(/title-pill|main-title/);
+    expect(noDisplay).not.toMatch(/class="slide cover"/);
+
+    const deco = pinNeoBrutalEmptyDecoBlocks(
+      '<div class="deco-pill" style="position:relative;width:80px;height:80px;'
+      + 'background:#E85D4E;border-radius:999px"></div>'
+      + '<span class="f-pill" style="position:relative;top:20px;left:40px;'
+      + 'padding:8px 16px;background:var(--coral);border-radius:999px">NEW</span>',
+    );
+    expect(deco).toMatch(/class="deco-pill"[^>]*position:absolute/);
+    expect(deco).toMatch(/class="f-pill"[^>]*position:absolute/);
+
+    const rotated = normalizeRotatedInlinePills(
+      '<div style="padding:8px 18px;background:#FFE66D;border:2px solid #111;'
+      + 'transform:rotate(4deg)"><span>OVERVIEW</span></div>',
+    );
+    expect(rotated).toMatch(/display:inline-block;width:fit-content/);
+    expect(rotated).toContain('<span>OVERVIEW</span>');
   });
 
   it('루프396: Capsule IB cover restyle, unclosed heading/pill salvage', () => {

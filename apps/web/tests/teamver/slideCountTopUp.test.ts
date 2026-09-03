@@ -57,6 +57,27 @@ describe("slideCountTopUp", () => {
     expect(extractRequestedSlideCountTargetFromMessages(messages)).toBe(15);
   });
 
+  it("루프398: ignores stability-cap runContext and honors plain 8-10", () => {
+    expect(extractRequestedSlideCountSpecFromMessages([
+      {
+        id: "u-cap",
+        role: "user",
+        content: "서비스 소개 슬라이드",
+        createdAt: 1,
+        runContext: { slideCountHint: "6 (stability cap for first template fill)" },
+      },
+    ])).toBeNull();
+    expect(extractRequestedSlideCountSpecFromMessages([
+      {
+        id: "u-ok",
+        role: "user",
+        content: "서비스 소개 슬라이드",
+        createdAt: 1,
+        runContext: { slideCountHint: "8-10 (close this turn)" },
+      },
+    ])).toEqual({ min: 8, max: 10 });
+  });
+
   it("루프396: reads 8-10 from runContext when brief-only persist dropped the seed line", () => {
     const messages: ChatMessage[] = [
       {

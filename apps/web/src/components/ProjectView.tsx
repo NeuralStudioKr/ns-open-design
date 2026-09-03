@@ -542,6 +542,7 @@ import {
   extractRequestedSlideCountTargetFromMessages,
   isSlideCountTopUpPrompt,
   looksLikeSlideCountExpansionRequest,
+  parseSlideCountSpec,
   rollbackSlideCountTopUpCount,
   shouldQueueSlideCountTopUp,
   syncSlideCountTopUpCountFromMessages,
@@ -705,8 +706,26 @@ function mergeServerMessageWithLocal(server: ChatMessage, local?: ChatMessage): 
   if (!server.sessionMode && local.sessionMode) {
     merged.sessionMode = local.sessionMode;
   }
-  if (!server.runContext && local.runContext) {
-    merged.runContext = local.runContext;
+  // 루프398/399 — Field-merge runContext so a partial server object cannot drop
+  // durable slideCountHint / templateCloneFill after brief-only persist.
+  // Prefer local uncapped hint over server stability-cap strings.
+  if (local.runContext || server.runContext) {
+    merged.runContext = {
+      ...(local.runContext ?? {}),
+      ...(server.runContext ?? {}),
+    };
+    const localHint = local.runContext?.slideCountHint;
+    const serverHint = server.runContext?.slideCountHint;
+    const localDurable = typeof localHint === 'string'
+      && Boolean(parseSlideCountSpec(localHint, { allowBareNumber: true }));
+    const serverDurable = typeof serverHint === 'string'
+      && Boolean(parseSlideCountSpec(serverHint, { allowBareNumber: true }));
+    if (localDurable && !serverDurable) {
+      merged.runContext.slideCountHint = localHint;
+    }
+    if (local.runContext?.templateCloneFill && !server.runContext?.templateCloneFill) {
+      merged.runContext.templateCloneFill = local.runContext.templateCloneFill;
+    }
   }
   if (!server.appliedPluginSnapshot && local.appliedPluginSnapshot) {
     merged.appliedPluginSnapshot = local.appliedPluginSnapshot;
@@ -9901,20 +9920,39 @@ export function ProjectView({
             ? String(meta.pluginInputs.slideCount)
             : null
         );
-      // 루프395 — Persist Quick settings / fill count on runContext so top-up
-      // still sees 8–10 after brief-only chat content (루프391).
-      const durableSlideCountHint =
-        fillSlideCountHint
-        ?? (
-          typeof retryTarget?.userMsg?.runContext?.slideCountHint === 'string'
-            ? retryTarget.userMsg.runContext.slideCountHint
-            : null
-        )
-        ?? (
-          typeof baseRunContext?.slideCountHint === 'string'
-            ? baseRunContext.slideCountHint
-            : null
-        );
+      // 루프398 — Persist the *uncapped* user/quick-settings count (e.g. "8-10"),
+      // never a first-fill stability-cap string. brief-only chat (루프391) drops
+      // "User requested slide count" from content; runContext must keep it.
+      const durableSlideCountHint = (() => {
+        const candidates: string[] = [];
+        const fromUserLine = /User requested slide count:\s*([^\n]+)/i
+          .exec(retryTarget ? retryTarget.userMsg.content || prompt : prompt)?.[1]
+          ?.trim();
+        if (fromUserLine) candidates.push(fromUserLine);
+        if (
+          typeof meta?.pluginInputs?.slideCount === 'string'
+          || typeof meta?.pluginInputs?.slideCount === 'number'
+        ) {
+          candidates.push(String(meta.pluginInputs.slideCount).trim());
+        }
+        if (fillSlideCountHint) candidates.push(String(fillSlideCountHint).trim());
+        if (typeof retryTarget?.userMsg?.runContext?.slideCountHint === 'string') {
+          candidates.push(retryTarget.userMsg.runContext.slideCountHint);
+        }
+        if (typeof baseRunContext?.slideCountHint === 'string') {
+          candidates.push(baseRunContext.slideCountHint);
+        }
+        for (const raw of candidates) {
+          const cleaned = raw
+            .replace(/[.\s]+$/u, '')
+            .replace(/\s*\(close this turn\)\s*$/i, '')
+            .replace(/\s*\(close at least \d+ this turn\)\s*$/i, '')
+            .trim();
+          if (!cleaned || /stability cap/i.test(cleaned)) continue;
+          if (parseSlideCountSpec(cleaned, { allowBareNumber: true })) return cleaned;
+        }
+        return null;
+      })();
       const runContextForPersist = runContext || durableSlideCountHint
         ? {
             ...(runContext ?? {}),

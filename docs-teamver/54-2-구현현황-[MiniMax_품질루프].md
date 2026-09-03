@@ -42,6 +42,22 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프399 — bare slideCount hint · merge cap · Capsule h1/deco/rotated
+
+체감: brief-only `runContext.slideCountHint="8-10"`이 auto-continue phrase 경로에서 단위 없어 null · server stability-cap이 local durable 8–10을 덮음 · Capsule `h1` without `.display` IB leftover 미restyle · relative deco-pill flex 공간 강탈 · `<span>OVERVIEW</span>` 회전 pill 미정규화 · coral+neo cream without `--bg` 노란 letterbox.
+
+수정: `parseSlideCountPhrase` bare range/number · mergeServerMessageWithLocal durable-over-cap · kit cover h1 restyle · Capsule deco pin · rotated inline-child · surface skip neo cream when coral.
+
+검증: contracts 루프398/399 · web recovery/surface/topUp.
+
+### 루프398 — Capsule soft wash · chrome-pill · 표지 stub · plain nested bold
+
+체감: Capsule letterbox가 neo `--cream:#FFDC8B` · title-pill에 Features grid 중첩 · `표지`만 있는 IB stub 1페이지 · `<b>1 <b>1200+개` (쉼표 없는) typo · brief-only 후 slideCountHint 유실.
+
+수정: cream vs `--bg` surface · chrome-pill extract 임계/title-pill · Hangul `표지` stub empty · plain nested bold · durable uncapped hint persist + field-merge runContext.
+
+검증: contracts 루프398 · web surface/topUp.
+
 ### 루프395 — 중첩 `<b>N <b>N,NNN` 숫자 typo 접두 · 문장 종결 부호 스터터
 
 체감: 루프394 이후 구조는 안정. 그러나 슬라이드 3에서 `자체 큐레이션한 1 1,200+개 문화 콘텐츠를…`(브라우저 렌더는 `11,200+개`로 붙어보임)와 슬라이드 4 Step 01의 `30분 . .` 스터터가 남음. 모두 모델 오타/스터터.

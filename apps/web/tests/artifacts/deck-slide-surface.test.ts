@@ -130,6 +130,44 @@ html, body, .slide, section.slide { background: #F5F0E6 !important; color: #2D2D
     expect(repaired).not.toMatch(/background:\s*#FFDC8B\s*!important/i);
   });
 
+  it('루프398: prefers Capsule --bg soft wash over neo leftover --cream letterbox', () => {
+    const html = `<!doctype html><html><head>
+<style data-od-neobrutal-var-fallback>:root{--cream:#FFDC8B;--paper:var(--cream);--ink:#2D2D2D}</style>
+<style data-od-official-look-css>
+:root{--coral:#E85D4E;--bg:#F5F5F0;--fg:#1A1A1A;--cream:#FFDC8B}
+.slide{background:var(--bg);color:var(--fg)}
+</style>
+</head>
+<body>
+<section class="slide" style="width:1920px;height:1080px;background:#F5F5F0;color:#1A1A1A">
+<div class="title-pill">SERVICE INTRO</div>
+<h1 class="main-title">팀버 소개</h1>
+</section>
+</body></html>`;
+    expect(inferDeckSlidePaperSurface(html)?.background.toLowerCase()).toBe('#f5f5f0');
+    const repaired = repairDeckSlideSurfaceBleed(html);
+    expect(repaired).toMatch(/background:\s*#F5F5F0\s*!important/i);
+    expect(repaired).not.toMatch(/background:\s*#FFDC8B\s*!important/i);
+  });
+
+  it('루프399: Capsule coral + neo cream without --bg does not letterbox yellow', () => {
+    const html = `<!doctype html><html><head>
+<style data-od-neobrutal-var-fallback>:root{--cream:#FFDC8B;--paper:var(--cream)}</style>
+<style data-od-official-look-css>
+:root{--coral:#E85D4E;--fg:#1A1A1A;--cream:#FFDC8B}
+.slide{background:#F5F5F0;color:var(--fg)}
+</style>
+</head>
+<body>
+<section class="slide" style="width:1920px;height:1080px;background:#F5F5F0;color:#1A1A1A">
+<h1 class="main-title">팀버</h1>
+</section>
+</body></html>`;
+    expect(inferDeckSlidePaperSurface(html)?.background.toLowerCase()).not.toBe('#ffdc8b');
+    const repaired = repairDeckSlideSurfaceBleed(html);
+    expect(repaired).not.toMatch(/background:\s*#FFDC8B\s*!important/i);
+  });
+
   it('flattens MiniMax Neutral navy/cream gradients once official look CSS is present', () => {
     const html = `<!doctype html><html><head>
 <style data-od-official-look-css>
