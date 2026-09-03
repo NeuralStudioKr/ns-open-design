@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 
 import {
   TEMPLATE_CLONE_CONTENT_FILL_MARKER,
@@ -106,6 +107,19 @@ describe('templateCloneContentFill', () => {
     expect(getTemplateCloneFillMode()).toBe('prompt');
     expect(shouldSkipTemplateCloneSeed()).toBe(false);
     expect(shouldUseDeterministicTemplateCloneFill()).toBe(false);
+  });
+
+  it('loop410 — App still guards clone seed with shouldSkipTemplateCloneSeed (kit id retained)', () => {
+    // Staging env =pure-prompt; FE must skip LOOK seed on both Canvas and
+    // Home create branches while still threading selectedDeckTemplateId.
+    const app = readFileSync(
+      new URL('../../src/App.tsx', import.meta.url),
+      'utf8',
+    );
+    expect(app).toContain('!shouldSkipTemplateCloneSeed()');
+    expect((app.match(/!shouldSkipTemplateCloneSeed\(\)/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect(app).toContain('selectedDeckTemplateId');
+    expect(app).toContain('루프401/409/410');
   });
 
   it('does not treat Canvas boilerplate as the visible request', () => {

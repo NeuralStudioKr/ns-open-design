@@ -78,9 +78,23 @@
 
 **다음 후속 작업:**
 
-1. Staging QA에서 pure-prompt 승격의 실제 사용자 만족도 재확인 후 Production env를 `=prompt`에서 empty(=pure-prompt)로 승격할지 결정.
-2. clone-fill 자체 품질 개선은 별도 track — salvage/heal의 defect surface가 여전히 크므로, 근본적 개선은 시스템 프롬프트 재설계(clone contract 단순화)와 slot-fill 스키마 강화에서 나올 가능성.
+1. Staging 재배포 후 pure-prompt 만족도 확인 → OK면 Production env를 empty 또는 `=pure-prompt`로 승격.
+2. clone-fill 자체 품질 개선은 별도 track — salvage/heal defect surface는 유지.
 3. 사용자용 in-app 토글(설정에서 clone/pure-prompt/deterministic 선택)이 필요한지 검토.
+
+## 2026-09-03 — staging `pure-prompt` 승격 + kit pin (루프410)
+
+**결정:** Staging 빌드 env를 `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=pure-prompt`로 바꿔 루프409 default가 **실제 staging QA**에 적용되게 함. Production은 `=prompt` 유지.
+
+**수정:**
+
+1. `deploy/teamver/.env.staging.example` — `=pure-prompt` (+ 주석). 로컬 gitignored `.env.staging`도 동일.
+2. contracts — `composeTeamverSlideApiPrompt`가 `selectedDeckTemplateId` + Template visual kit만으로도 kit 헤더/READ LAST를 싣고, clone-fill JSON 계약을 넣지 않는지 pin.
+3. FE App — skip-seed 가드 주석을 staging default에 맞게 갱신 · canvas launch source pin.
+
+**롤백:** staging env를 `=prompt`로 되돌린 뒤 웹 이미지 재빌드.
+
+**다음:** Staging 재배포 → 사용자 생성 품질 확인 → Production 승격 여부 결정.
 
 ## 2026-09-03 — `pure-prompt` 세 번째 모드(루프401)
 

@@ -42,6 +42,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프410 — staging을 `pure-prompt`로 승격 + kit 스펙 pin
+
+체감: 루프409가 env-empty default만 바꿔도 staging은 `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=prompt`라 사용자 QA 경로가 여전히 Clone LOOK seed. pure-prompt 품질 가설을 staging에서 검증할 수 없음.
+
+수정: `.env.staging.example`(및 로컬 `.env.staging`) → `pure-prompt` · production은 `=prompt` 유지 · `composeTeamverSlideApiPrompt`가 clone-fill 마커 없이도 Selected deck template + Template visual kit를 실는지 contracts pin · App skip-seed 가드 주석/캔버스 launch pin.
+
+검증: contracts `system-prompt-api-mode` loop410 · web canvas-slide-launch pin.
+
 ### 루프409 — env-empty 기본 fill 모드를 `pure-prompt`로 승격 (Clone은 명시 opt-in)
 
 체감: 루프379~406에서 clone-fill salvage/heal을 매 loop 다듬어도 사용자는 반복적으로 "결과가 부자연스럽다", 이번엔 "그냥 clone 쓰지 말아야하나?"라고 명시적으로 clone 사용 재검토 요청. 매 loop마다 새로운 결함 클래스 발견 = clone-fill의 이중 지시(LOOK seed 참고 + 새 콘텐츠 생성)가 근본 원인이라는 가설 강화.
@@ -2023,7 +2031,20 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프408 · top-up busy 재예약·대기열 비주차)
+## 이번 루프 (루프410 · staging pure-prompt + kit pin)
+
+- [x] `.env.staging.example` → `pure-prompt` (production `=prompt` 유지)
+- [x] contracts composeTeamverSlideApiPrompt kit-without-clone-fill pin
+- [x] App skip-seed 주석 · canvas-slide-launch pin
+- [ ] Staging 웹 재배포 후 사용자 QA
+- [ ] Production env 승격 여부 결정
+
+## 직전 루프 (루프409 · env-empty pure-prompt default)
+
+- [x] `TEMPLATE_CLONE_FILL_DEFAULT_MODE = 'pure-prompt'`
+- [x] explicit `=prompt` legacy 유지
+
+## 직전 루프 (루프408 · top-up busy 재예약·대기열 비주차)
 
 - [x] handleSend: hidden automation은 busy 시 queue 금지
 - [x] top-up: phantom busy clear + abort busy retry (max 3)

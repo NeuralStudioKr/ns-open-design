@@ -2727,13 +2727,10 @@ function AppInner() {
           // The actual user request must still auto-send so the AI reads the
           // attachment/source and generates real content from the prompt.
           //
-          // 루프401 — When the user opts into `pure-prompt` fill mode
-          // (`VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=pure-prompt`), skip
-          // clone seeding + clone-fill marker entirely. The outgoing turn
-          // still carries `selectedDeckTemplateId`, so
-          // `composeTeamverSlideApiPrompt` emits the kit spec — model
-          // gets a plain create prompt with kit context, matching the
-          // pre-Clone flow users report producing higher-quality decks.
+          // 루프401/409/410 — `pure-prompt` (env-empty default + staging)
+          // skips clone seeding + clone-fill marker. Outgoing turn still
+          // carries `selectedDeckTemplateId`, so composeTeamverSlideApiPrompt
+          // emits the kit spec — plain create + kit context (pre-Clone flow).
           if (
             slideOnlyMvp
             && isExplicitCanvasSlideVisualTemplate({ id: selectedDeckTemplateId })
@@ -2845,7 +2842,7 @@ function AppInner() {
       // Drive import failure must NOT skip Clone — otherwise Daisy is never
       // applied and the user only sees an empty project (auto-send also blocked).
       //
-      // 루프401 — Same `pure-prompt` opt-out as the Canvas branch above.
+      // 루프401/409/410 — Same `pure-prompt` skip as the Canvas branch above.
       if (
         !workingDirHandoffFailed
         && !canvasImportFailed

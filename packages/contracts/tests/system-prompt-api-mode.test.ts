@@ -697,9 +697,6 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       // pins a template — this is what tells the model 'this is the
       // primary visual contract, match it exactly'.
       expect(prompt).toContain('## Selected deck template — Html Ppt Hermes Cyber Terminal — MUST MATCH THIS VISUAL SPEC');
-      // The visual summary — including the CJK description — must survive
-      // verbatim so the model has the concrete palette / typography /
-      // motif spec to reproduce.
       expect(prompt).toContain('## Visual summary (from template frontmatter)');
       expect(prompt).toContain('#0a0c10');
       expect(prompt).toContain('#7ed3a4');
@@ -712,6 +709,34 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       // Old summarized header must NOT appear when a template is pinned —
       // otherwise the model sees two competing visual references.
       expect(prompt).not.toContain('Visual style reference — Html Ppt Hermes Cyber Terminal');
+    });
+
+    it('loop410 — pure-prompt still ships Template visual kit without clone-fill markers', () => {
+      // pure-prompt skips LOOK seed + TEAMVER_TEMPLATE_CLONE_*_CONTRACT, but the
+      // FE still passes selectedDeckTemplateId + kit skillBody so the model gets
+      // palette/font Motif cues (pre-Clone quality path).
+      const prompt = composeTeamverSlideApiPrompt({
+        skillName: 'Html Ppt Zhangzara Daisy Days',
+        skillBody:
+          '## Template visual kit (from example.html)\n\n'
+          + '### Slide surface\n\n**background**: `#F5F0E6`\n\n'
+          + '### Typography\n\n**heading**: `Bodoni Moda`\n\n'
+          + '### Motif sprites\n\n```html\n<svg viewBox="0 0 10 10"></svg>\n```\n',
+        metadata: {
+          kind: 'deck',
+          skipDiscoveryBrief: true,
+          selectedDeckTemplateId: 'example-html-ppt-zhangzara-daisy-days',
+          selectedDeckTemplateTitle: 'Html Ppt Zhangzara Daisy Days',
+        },
+      });
+      expect(prompt).toContain('## Selected deck template — Html Ppt Zhangzara Daisy Days — MUST MATCH THIS VISUAL SPEC');
+      expect(prompt).toContain('## Template visual kit (from example.html)');
+      expect(prompt).toContain('#F5F0E6');
+      expect(prompt).toContain('Bodoni Moda');
+      expect(prompt).toContain('Selected deck template visual — READ LAST');
+      expect(prompt).not.toContain('## Selected template — first content-fill');
+      expect(prompt).not.toMatch(/JSON outline only|JSON slot-fill/i);
+      expect(prompt).not.toContain('TEAMVER_TEMPLATE_CLONE_PROMPT_FILL_CONTRACT');
     });
 
     it('falls back to the summarized `Visual style reference` header when no selectedDeckTemplateId is set (default scenario path)', () => {
