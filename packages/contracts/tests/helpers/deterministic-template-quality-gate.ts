@@ -211,4 +211,23 @@ export const ZHANGZARA_QUALITY_GATE_SPECS: readonly TemplateQualityGateSpec[] = 
     ],
     expectedSlideCount: 10,
   },
+  // 루프458 — product / pitch catalog kits.
+  {
+    name: 'Product Launch',
+    templateId: 'html-ppt-product-launch',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-product-launch/example.html',
+    motifMustInclude: ['tpl-product-launch', 'price-card', 'feature-card'],
+    demoMustNotInclude: ['Open-ear spatial', 'Lossless 24-bit'],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Pitch Deck',
+    templateId: 'html-ppt-pitch-deck',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-pitch-deck/example.html',
+    motifMustInclude: ['tpl-pitch-deck', 'team-card'],
+    demoMustNotInclude: [],
+    expectedSlideCount: 10,
+  },
 ];

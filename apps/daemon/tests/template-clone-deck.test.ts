@@ -1012,6 +1012,24 @@ const ZHANGZARA_SMOKE_SPECS: readonly ZhangzaraSmokeSpec[] = [
     motifMustInclude: ['--c-accent', 'slide-chrome', 'stat-card'],
     expectedSlideCount: 10,
   },
+  // 루프458 — product / pitch catalog kits (server path).
+  {
+    name: 'Product Launch',
+    pluginId: 'html-ppt-product-launch',
+    exampleSubpath: 'html-ppt-product-launch/example.html',
+    templateTitle: 'Html Ppt Product Launch',
+    motifMustInclude: ['tpl-product-launch', 'price-card', 'feature-card'],
+    demoMustNotInclude: ['Open-ear spatial', 'Lossless 24-bit'],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Pitch Deck',
+    pluginId: 'html-ppt-pitch-deck',
+    exampleSubpath: 'html-ppt-pitch-deck/example.html',
+    templateTitle: 'Html Ppt Pitch Deck',
+    motifMustInclude: ['tpl-pitch-deck', 'team-card'],
+    expectedSlideCount: 10,
+  },
 ];
 
 const CROSS_TEMPLATE_LEFTOVER_DENYLIST = [
@@ -1030,7 +1048,7 @@ const CROSS_TEMPLATE_LEFTOVER_DENYLIST = [
   'hermes-agent',
 ];
 
-describe('루프450 Zhangzara 4템플릿 서버 fill 스모크', () => {
+describe('루프450 Zhangzara 템플릿 서버 fill 스모크', () => {
   it.each(ZHANGZARA_SMOKE_SPECS.map((s) => [s.name, s] as const))(
     '%s deterministic server fill keeps motif, scrubs leftover, honors slide count',
     async (_name, spec) => {

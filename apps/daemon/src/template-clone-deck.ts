@@ -12,6 +12,7 @@ import type Database from 'better-sqlite3';
 import {
   attrsLookLikeDeckOrTemplateSlideHost,
   buildTemplateClonedDeckHtml,
+  listTemplateCloneSlideShells,
   looksLikeLeftoverTemplateDemoDeck,
   looksLikeTemplateCloneServiceIntroBrief,
   pickPluginPreviewHtmlPath,
@@ -113,15 +114,12 @@ async function loadTemplatePreviewHtml(
   return { html, previewPath, templateId: plugin.id, title };
 }
 
+/** Count filled slide shells — same truth source as contracts clone fill. */
 function countSlides(html: string): number {
-  const sections = (html.match(/<section\b[^>]*>/gi) ?? []).filter((open) =>
-    attrsLookLikeDeckOrTemplateSlideHost(open),
-  ).length;
-  if (sections > 0) return sections;
-  const divs = (html.match(/<div\b[^>]*>/gi) ?? []).filter((open) =>
-    attrsLookLikeDeckOrTemplateSlideHost(open),
-  ).length;
-  return divs || 1;
+  // 루프457: do not re-scan raw <div>/<section> opens with the host heuristic
+  // alone — nested chrome can inflate counts vs `listTemplateCloneSlideShells`.
+  const n = listTemplateCloneSlideShells(html).length;
+  return n > 0 ? n : 1;
 }
 
 function asMetadataRecord(value: unknown): Record<string, unknown> | null {

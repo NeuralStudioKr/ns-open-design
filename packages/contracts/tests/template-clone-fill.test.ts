@@ -401,6 +401,14 @@ describe('루프450 Zhangzara template quality gates', () => {
       await runDeterministicTemplateQualityGate(spec);
     },
   );
+
+  it('루프457: Creative Mode unique-role kit stays at 8 shells for 8–10 request', async () => {
+    const creative = ZHANGZARA_QUALITY_GATE_SPECS.find((s) => s.name === 'Creative Mode');
+    expect(creative).toBeTruthy();
+    expect(creative!.expectedSlideCount).toBe(8);
+    const cloned = await runDeterministicTemplateQualityGate(creative!);
+    expect(listTemplateCloneSlideShells(cloned).length).toBe(8);
+  });
 });
 
 describe('루프419 Capsule deterministic quality gate', () => {
