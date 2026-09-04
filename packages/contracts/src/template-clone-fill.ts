@@ -1000,6 +1000,12 @@ export function classifyTemplateCloneShellRole(shell: {
   if (/\b(?:feature|col|compare)-postit\b|\b(?:three|two)-col-layout\b|\bcompare-layout\b/i.test(hay)) {
     return 'cards';
   }
+  // 0901-N02-C13: catalog card peers (before `<ul>` list heuristic).
+  if (
+    /\b(?:feature|stat|metric|price|pricing|pillar|team|member|xp|hc|oc|kb|kpi)-card\b/i.test(hay)
+  ) {
+    return 'cards';
+  }
   if (/\bslide-welcome\b|\bwelcome-list\b|<[uo]l\b/i.test(hay)) return 'list';
   if (/\bslide-closing\b|\bthanks\b|\bend\b|\bclosing\b/i.test(hay)) return 'closing';
   return 'body';
@@ -1061,7 +1067,10 @@ function cardsShellFillScore(shell: SlideShell, lineCount = 0): number {
     || /\bcards-grid\b/i.test(body)
   ) {
     score = 3;
-  } else if (/\b(?:stat-card|feature-card|metric-card)\b/i.test(body)) {
+  } else if (
+    /\b(?:stat-card|feature-card|metric-card|price-card|pricing-card|pillar-card|team-card|member-card|xp-card|hc-card|oc-card|kb-card|kpi-card)\b/i
+      .test(body)
+  ) {
     score = 2;
   } else if (/\b(?:feature|col|compare)-postit\b/i.test(body)) {
     // 0901-N02-C11: scatterbrain sticky peers score as real card shells.
@@ -1094,6 +1103,7 @@ function countClassTokenPeers(body: string, token: string): number {
 
 /** Exact peer fit > trimable oversize > undersized (drops outline lines). */
 function cardsShellPeerFitBonus(body: string, lineCount: number): number {
+  // 0901-N02-C13: include common catalog card peers beyond scatterbrain postits.
   const peerCounts = [
     countClassTokenPeers(body, 'feature-postit'),
     countClassTokenPeers(body, 'col-postit'),
@@ -1102,7 +1112,19 @@ function cardsShellPeerFitBonus(body: string, lineCount: number): number {
     countClassTokenPeers(body, 'stat-card'),
     countClassTokenPeers(body, 'feature-card'),
     countClassTokenPeers(body, 'metric-card'),
+    countClassTokenPeers(body, 'price-card'),
+    countClassTokenPeers(body, 'pricing-card'),
+    countClassTokenPeers(body, 'pillar-card'),
+    countClassTokenPeers(body, 'team-card'),
+    countClassTokenPeers(body, 'member-card'),
+    countClassTokenPeers(body, 'day-card'),
+    countClassTokenPeers(body, 'timeline-card'),
     countClassTokenPeers(body, 'timeline-row'),
+    countClassTokenPeers(body, 'xp-card'),
+    countClassTokenPeers(body, 'hc-card'),
+    countClassTokenPeers(body, 'oc-card'),
+    countClassTokenPeers(body, 'kb-card'),
+    countClassTokenPeers(body, 'kpi-card'),
   ];
   const peers = Math.max(0, ...peerCounts);
   if (peers <= 0) return 0;
@@ -4383,7 +4405,8 @@ function tokenLooksLikeCardHost(
 }
 
 /**
- * 0901-N02-C9: hero/title postits that are not trim peers.
+ * 0901-N02-C9/C13: hero/title postits and sticky chrome that are not trim peers.
+ * Deny runs before allowlist so slot-map typos cannot promote cover chrome.
  */
 function isDeniedPostitPeerToken(token: string): boolean {
   const t = String(token ?? '').trim().toLowerCase();
@@ -4393,15 +4416,39 @@ function isDeniedPostitPeerToken(token: string): boolean {
     || t === 'main-title-postit'
     || t === 'main-text-postit'
     || t.endsWith('-title-postit')
+    || t.endsWith('-accent-postit')
   );
 }
 
+/** Scatterbrain / corkboard chrome — never treat as card peers (0901-N02-C13). */
+function isDeniedStickyChromePeer(token: string): boolean {
+  const t = String(token ?? '').trim().toLowerCase();
+  if (!t) return false;
+  if (
+    t === 'side-note'
+    || t === 'mini-note'
+    || t === 'diagram-note'
+    || t === 'chart-legend'
+    || t === 'closing-main'
+    || t === 'timeline-content'
+    || t === 'timeline-connector'
+    || t === 'timeline-node'
+    || t === 'post-it'
+  ) {
+    return true;
+  }
+  // title-accent-1 / closing-accent-2 …
+  if (/^(?:title|closing)-accent(?:-\d+)?$/.test(t)) return true;
+  return false;
+}
+
 /**
- * 0901-N02-C4/C5/C7/C9: prefixed peers (`xp-card`, `kb-step`, `grove-stat`, `feature-postit`).
+ * 0901-N02-C4/C5/C7/C9/C13: prefixed peers (`xp-card`, `kb-step`, `grove-stat`, `feature-postit`).
  * `*-card` never matches `card-icon` / `card-title`.
  * `*-step` requires a letter start and rejects `4-step` / `five-step` section chrome.
  * `*-stat` rejects slide/card/gc/split/big-stat chrome.
  * `*-postit` rejects statement/main-title hero chrome.
+ * Sticky chrome deny wins over allowlist.
  */
 function tokenLooksLikeCardPeer(
   token: string,
@@ -4409,6 +4456,7 @@ function tokenLooksLikeCardPeer(
 ): boolean {
   const t = String(token ?? '').trim().toLowerCase();
   if (!t) return false;
+  if (isDeniedPostitPeerToken(t) || isDeniedStickyChromePeer(t)) return false;
   if (peers.has(t)) return true;
   if (/^[a-z0-9][a-z0-9_-]*-card$/.test(t)) return true;
   if (isCountedStepSectionToken(t)) return false;
@@ -4417,7 +4465,6 @@ function tokenLooksLikeCardPeer(
   if (isDeniedStatPeerToken(t)) return false;
   // Letter-led `*-stat` (grove-stat / mini-stat / pin-stat / mat-stat).
   if (/^[a-z][a-z0-9_-]*-stat$/.test(t)) return true;
-  if (isDeniedPostitPeerToken(t)) return false;
   if (/^[a-z][a-z0-9_-]*-postit$/.test(t)) return true;
   return false;
 }
@@ -4544,6 +4591,7 @@ function collectPeersAmongChildren(
  * C10: oc/kb fill→heal · compare-postit/col-postit · compare-vs orphan drop.
  * C11: scatterbrain postit shells classify as cards · LOOK seed fill→heal.
  * C12: peer-count fit for cards pick · timeline-layout/timeline-row sticky.
+ * C13: peer-fit catalog cards (pillar/price/team/…) · sticky chrome deny before allowlist.
  */
 export function fillAndTrimCardPeers(
   html: string,

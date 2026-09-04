@@ -2847,6 +2847,117 @@ describe('0901-N02 heal↔clone integration', () => {
   });
 });
 
+describe('0901-N02-C13 peer-fit catalog + sticky chrome deny', () => {
+  it('3-line cards prefer Capsule pillar-card×3 over team-card×6', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-capsule/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      [
+        { title: '킥오프', roleHint: 'cover' },
+        { title: '세 축', body: '전략\n디자인\n런칭', roleHint: 'cards' },
+      ],
+      {
+        title: '킥오프',
+        templateId: 'example-html-ppt-zhangzara-capsule',
+      },
+    );
+    expect(cloned).toBeTruthy();
+    const bodyOnly = (cloned ?? '').replace(/<style[\s\S]*?<\/style>/gi, '');
+    const pillars = [...bodyOnly.matchAll(/class="[^"]*\bpillar-card\b/gi)].length;
+    const features = [...bodyOnly.matchAll(/class="[^"]*\bfeature-card\b/gi)].length;
+    const teams = [...bodyOnly.matchAll(/class="[^"]*\bteam-card\b/gi)].length;
+    // Exact-fit 3 peers (pillar or feature) beat undersized/oversize shells.
+    expect(Math.max(pillars, features)).toBe(3);
+    expect(teams).toBe(0);
+    expect(bodyOnly).toContain('전략');
+    expect(bodyOnly).toContain('디자인');
+    expect(bodyOnly).toContain('런칭');
+  });
+
+  it('3-line product-launch picks exact-fit feature/price card shell', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-product-launch/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const shells = listTemplateCloneSlideShells(html);
+    const slides = [
+      { title: '표지', roleHint: 'cover' as const },
+      { title: '기능', body: '공간음\n무손실\n적응EQ', roleHint: 'cards' as const },
+    ];
+    const picked = pickTemplateShellsForContent(shells, slides);
+    expect(classifyTemplateCloneShellRole(picked[1]!)).toBe('cards');
+    const body = picked[1]!.body;
+    const featurePeers = [...body.matchAll(/\bclass\s*=\s*["'][^"']*\bfeature-card\b/gi)].length;
+    const pricePeers = [...body.matchAll(/\bclass\s*=\s*["'][^"']*\bprice-card\b/gi)].length;
+    // Both are exact-fit×3; peer-fit must land on one of them (not undersized).
+    expect(Math.max(featurePeers, pricePeers)).toBe(3);
+  });
+
+  it('denies mini-note / side-note / closing-accent even when slotMap allowlists them', () => {
+    const html = [
+      '<div class="cork">',
+      '<div class="mini-note"><h3>Spare A</h3><p>a</p></div>',
+      '<div class="side-note"><h3>Spare B</h3><p>b</p></div>',
+      '<div class="closing-accent-1"><h3>Spare C</h3><p>c</p></div>',
+      '<div class="feature-postit"><h3>Strategy</h3><p>d</p></div>',
+      '<div class="feature-postit"><h3>Design</h3><p>e</p></div>',
+      '<div class="feature-postit"><h3>Ship</h3><p>f</p></div>',
+      '</div>',
+    ].join('');
+    const map = {
+      ids: ['synthetic-sticky-deny'],
+      hostClasses: ['cork'],
+      peerClasses: [
+        'mini-note',
+        'side-note',
+        'closing-accent-1',
+        'feature-postit',
+      ],
+    };
+    const next = fillAndTrimCardPeers(html, ['전략', '디자인'], map);
+    expect([...(next.matchAll(/\bfeature-postit\b/gi))].length).toBe(2);
+    expect(next).toContain('전략');
+    expect(next).toContain('디자인');
+    expect(next).not.toContain('Ship');
+    // Sticky chrome never trimmed/filled via allowlist bypass.
+    expect([...(next.matchAll(/\bmini-note\b/gi))].length).toBe(1);
+    expect([...(next.matchAll(/\bside-note\b/gi))].length).toBe(1);
+    expect([...(next.matchAll(/\bclosing-accent-1\b/gi))].length).toBe(1);
+    expect(next).toContain('Spare A');
+    expect(next).toContain('Spare B');
+    expect(next).toContain('Spare C');
+  });
+
+  it('denies *-accent-postit and bare post-it chrome before allowlist', () => {
+    const html = [
+      '<div class="wrap">',
+      '<div class="title-accent-postit"><h4>Hero</h4><p>a</p></div>',
+      '<div class="post-it"><h4>Sticky</h4><p>b</p></div>',
+      '<div class="closing-accent"><h4>Close</h4><p>c</p></div>',
+      '</div>',
+    ].join('');
+    const map = {
+      ids: ['synthetic-accent-deny'],
+      hostClasses: ['wrap'],
+      peerClasses: ['title-accent-postit', 'post-it', 'closing-accent'],
+    };
+    const denied = fillAndTrimCardPeers(html, ['하나', '둘'], map);
+    expect(denied).not.toContain('하나');
+    expect([...(denied.matchAll(/\btitle-accent-postit\b/gi))].length).toBe(1);
+    expect([...(denied.matchAll(/\bpost-it\b/gi))].length).toBe(1);
+    expect([...(denied.matchAll(/\bclosing-accent\b/gi))].length).toBe(1);
+  });
+});
+
 describe('0901-N02-C10 compare/col-postit polish', () => {
   it('trims compare-postit peers and drops orphan compare-vs', () => {
     const html = [

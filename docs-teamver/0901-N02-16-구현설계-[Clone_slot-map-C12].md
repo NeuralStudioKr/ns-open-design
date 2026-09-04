@@ -37,7 +37,4 @@
 
 ## 다음 추천 작업
 
-1. MiniMax 키 환경 Clone fill live smoke
-2. FileViewer ←/→ tools-dev + Teamver BFF GUI bake(선택)
-3. peer-fit을 info-card/stat-card 외 템플릿으로 확장(선택)
-4. statement 외 sticky chrome deny 목록 점검(선택)
+→ [0901-N02-18 C13](./0901-N02-18-구현설계-[Clone_slot-map-C13].md)에서 catalog peer-fit · sticky deny 완료.

@@ -15,17 +15,13 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts system-prompt-api-mode · template-visual-kit · teamver-selected-template-compose · deck-framework-compact · template-clone-fill, web templateCloneContentFill · runtime/resume.
 
-**후속 (진행 중):** [0901-N02-2](./0901-N02-2-구현설계-[Clone_slot-fill].md) · [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) — B1–B5 · C–C12 · D · 루프368–374. MiniMax live 가드 ☑(키 있으면 slot-fill smoke). 루프366 vitest+chrome bake ☑ · filmstrip C3 ☑.
+**후속:** [0901-N02-2](./0901-N02-2-구현설계-[Clone_slot-fill].md) · [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) · [0901-N02-18](./0901-N02-18-구현설계-[Clone_slot-map-C13].md) — B1–B5 · C–C13 · D · 루프368–426. MiniMax live 가드 ☑(키 있으면 slot-fill smoke · 없으면 skip). 루프366 vitest+chrome bake ☑ · filmstrip C3 ☑ · C13 catalog peer-fit/deny ☑.
 
 다음 추천 작업:
 1. MiniMax 키 환경 Clone fill live smoke (`deploy/teamver/.env` 또는 `MINIMAX_API_KEY`)
 2. FileViewer ←/→ tools-dev + Teamver BFF GUI bake(선택)
-3. peer-fit을 다른 템플릿 카드 셸로 확장(선택)
-4. sticky chrome deny 목록 점검(선택)
-
-2. FileViewer ←/→ tools-dev + Teamver BFF GUI bake(선택)
-3. peer-fit을 다른 템플릿 카드 셸로 확장(선택)
-4. sticky chrome deny 목록 점검(선택)
+3. Block-frame/stat-card peer-fit LOOK 스모크(선택)
+4. leftover letter-race / persist-split 분리 트랙
 
 
 ### 빈 칸 번호 카드 (코드명 leftover)
@@ -41,6 +37,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 `기둥` / `PILLAR` / `Phase`는 모델이 붙이는 접두일 뿐, 발표 용어가 아닙니다. extra-copy·stub는 주제 단어 목록이 아닙니다(루프259·265).
 
 ## 2026-09-02 현재 판단 · 최신 루프
+
+### 루프426 / C13 — catalog peer-fit · sticky chrome deny
+
+체감: peer-fit이 postit에만 묶이고, allowlist가 mini-note/closing-accent를 peer로 승격할 수 있음.
+
+수정: catalog card peers를 peer-fit에 포함 · sticky chrome deny를 allowlist보다 먼저 · Capsule/product-launch · deny 빨간 스펙. MiniMax 키 없음 skip.
 
 ### 루프425 — deterministic LOOK fill 밀도 보강
 
