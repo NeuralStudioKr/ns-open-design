@@ -74,6 +74,7 @@
 | **루프422** 고른 템플릿은 pure-prompt여도 LOOK seed + 서버 fill | ☑ |
 | **루프425** LOOK도 dense fill · 서비스 소개 기본 8장 · Capsule leftover/IB 가드 | ☑ |
 | **루프430** peer-fill idempotent · unique-role shell 중복 방지 · pagenum 재번호 | ☑ |
+| **루프437** Zhangzara 4템플릿 fixture 품질 게이트 (Capsule/Daisy/Creative/Studio · motif+leftover+1920×1080+장수) | ☑ 헬퍼 · contracts/daemon · Creative numeric-role cap |
 | **루프366** section `#stage` hoist · contracts dist rebuild | ☑ web transform-driven 19/19 |
 | MiniMax 실키 E2E | ☑ 가드 있음 · 키 없으면 skip (`template-clone-minimax-live.e2e`) |
 
@@ -124,6 +125,7 @@
 
 | 일자 | 내용 |
 |------|------|
+| 2026-09-04 | 루프437 — Zhangzara 4템플릿 fixture 품질 게이트. `assertDeterministicTemplateQualityGate` + Capsule/Daisy/Creative/Studio (motif · leftover · 1920×1080 · 장수). |
 | 2026-09-04 | 루프431–436 — block-frame peer-fit · class-flex leftover · all-기둥 row · Neo scrub · col clip · AA/스물한째 |
 | 2026-09-04 | C13 / 루프426 — catalog peer-fit · sticky chrome deny-before-allowlist · MiniMax skip 재확인 |
 | 2026-09-04 | 루프430 — peer-fill idempotent · unique-role Biennale-family shell 중복 방지 · pagenum 재번호. |

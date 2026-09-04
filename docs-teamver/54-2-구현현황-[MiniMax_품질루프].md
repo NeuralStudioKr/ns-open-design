@@ -37,6 +37,17 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프450 — Zhangzara 4템플릿 fixture 품질 게이트
+
+체감: Capsule에만 4축 게이트가 있고 Studio / Creative / Daisy는 회귀 방지가 부분적. leftover / canvas 실수를 조기에 잡기 어렵다.
+
+수정:
+- 공유 헬퍼 `assertDeterministicTemplateQualityGate(cloned, spec)`가 (1) 대표 motif · (2) demo leftover 부재 · (3) `width:1920px` + `(min-)height:1080px` · (4) `listTemplateCloneSlideShells.length === expectedSlideCount`를 검사.
+- contracts describe `루프450 Zhangzara template quality gates` (Capsule/Daisy/Creative/Studio `it.each`) + Loop419 Capsule 게이트 헬퍼 위임. daemon describe `루프450 Zhangzara 4템플릿 서버 fill 스모크` (server `deterministic-fill` 후 motif/leftover/`slideCount`).
+- `templateShellsAreUniqueRole`에 numeric `s\d+` alias(Creative Mode `s1`..`s8`) 감지 추가 — 10장 요청에서도 8장 유지, shell 중복 방지.
+
+검증: contracts 147 · daemon 23. 설계: [0901-N02-19](./0901-N02-19-구현설계-[Clone_template-quality-gates].md).
+
 ### 루프438 — Capsule letterbox 빈 미리보기
 
 체감: 437 이후 미리보기 패널이 비고 새로고침해도 그대로.
