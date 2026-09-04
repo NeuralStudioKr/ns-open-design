@@ -4446,7 +4446,7 @@ function stripBlueProfessionalCatalogDemoCopy(html: string): string {
 }
 
 const LEFTOVER_CATALOG_PHRASE_RE =
-/Hartfield(?:\s*&(?:amp;)?\s*Co\.?)?|NorthPeak Industries|WACC\s*\(\s*base\s*\)|Revenue CAGR|Filebase|Northwind Studios|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|Composed in kami|52\.5200°\s*N|\[\[Author Name\]\]|this is the broadside style|Aurora Institute|Aurora Programme|Aurora Charter|Public Form|Public attendance|Open programme|Field Notes|Quiet Editions|Open Conversations|The Long Yellow|Pavilion of Quiet Form|Reading Garden|A field study of light,\s*matter and atmosphere|Six months of exhibitions[\s\S]{0,160}?palette of yellow\.?|A room is a slow argument with the sun[\s\S]{0,160}?answers\.?|Curator-at-large[\s\S]{0,120}?January 2026|Visitors\s*·\s*Year four|Returning audience|Three quarters of last year[\s\S]{0,120}?twice\.?|A 2\.4× rise[\s\S]{0,120}?audience\.?|Strands\s*·\s*2026|Slow Atmospheres|Selected dates|Sector context(?:\s*&(?:amp;)?\s*market dynamics)?|Trading comparables analysis|Precedent transactions|Industrial automation cycle, capital flows, trading multiples|12 selected listed peers, EV\/EBITDA(?:\s*&(?:amp;)?\s*EV\/Revenue 2026E)?|M&amp;A transactions \$0\.5–5\.0B, 2022–2025|Selection criteria|Fictional illustrative sample|38\s*[×x]|Apache-2\.0|\bBYOK\b|Your agent reads a folder of\s*<code>SKILL\.md<\/code> files\.?|Open Design is the\s*(?:<strong>)?\s*(?:<\/strong>)?\s*\.?|Neobrutalist Presentation Template|Quarterly Growth Metrics/gi;
+/Hartfield(?:\s*&(?:amp;)?\s*Co\.?)?|NorthPeak Industries|WACC\s*\(\s*base\s*\)|Revenue CAGR|Filebase|Northwind Studios|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|Composed in kami|52\.5200°\s*N|\[\[Author Name\]\]|this is the broadside style|Aurora Institute|Aurora Programme|Aurora Charter|Public Form|Public attendance|Open programme|Field Notes|Quiet Editions|Open Conversations|The Long Yellow|Pavilion of Quiet Form|Reading Garden|A field study of light,\s*matter and atmosphere|Six months of exhibitions[\s\S]{0,160}?palette of yellow\.?|A room is a slow argument with the sun[\s\S]{0,160}?answers\.?|Curator-at-large[\s\S]{0,120}?January 2026|Visitors\s*·\s*Year four|Returning audience|Three quarters of last year[\s\S]{0,120}?twice\.?|A 2\.4× rise[\s\S]{0,120}?audience\.?|Strands\s*·\s*2026|Slow Atmospheres|Selected dates|Sector context(?:\s*&(?:amp;)?\s*market dynamics)?|Trading comparables analysis|Precedent transactions|Industrial automation cycle, capital flows, trading multiples|12 selected listed peers, EV\/EBITDA(?:\s*&(?:amp;)?\s*EV\/Revenue 2026E)?|M&amp;A transactions \$0\.5–5\.0B, 2022–2025|Selection criteria|Fictional illustrative sample|38\s*[×x]|Apache-2\.0|\bBYOK\b|Your agent reads a folder of\s*<code>SKILL\.md<\/code> files\.?|Open Design is the\s*(?:<strong>)?\s*(?:<\/strong>)?\s*\.?|Neobrutalist Presentation Template|Quarterly Growth Metrics|Field Office Quarterly|Field Office Editorial|field-office\.co|Lin Ito(?:\s*&(?:amp;)?\s*Anya Mehrotra)?|Anya Mehrotra|the field-office collective|In Newsreader, Hanken Grotesk\s*(?:&(?:amp;)?)?\s*DM Mono|quiet, paid, and read slowly|The next issue ships October 20\d{2}[\s\S]{0,120}?Monday morning\.?|A trend is a quiet question that several rooms started asking(?:\s+(?:<[^>]+>)?[^<]{0,80}?(?:<\/[^>]+>)?)?|at roughly the same time\.?|From the editor's note|Index 20\d{2}\s*·\s*opening pages|Colophon\s*·\s*Index 20\d{2}|The index, in six entries\.?|Trend ledger, in long\.?|Spring 20\d{2}(?:\s*·\s*selected trends)?|Newsletter opens\s*·\s*20\d{2}\s*Q\d\s*—\s*20\d{2}\s*Q\d|Chapter one\s*—\s*the case for slow software|Software is a room, and rooms are designed to be lived in slowly\.?|In its first chapter the Index[\s\S]{0,240}?read first\.?|Slow software|Domestic interfaces|Hand-set print(?:\s+again)?|Quietly weird type|Receipts (?:and|&(?:amp;)?)\s*ledgers|Public weather|Long-form receipts|Pre-loved objects|Tools that opt out of[\s\S]{0,160}?on by default\.?|Screens designed to live in living rooms[\s\S]{0,200}?willingness to be ignored\.?|A return to letterpress[\s\S]{0,160}?digital-feeling clients\.?|Display type with one slightly off detail[\s\S]{0,160}?looking twice\.?|Information designed to be filed, not consumed\.[\s\S]{0,160}?the favour\.?|Brand and product writing that includes[\s\S]{0,200}?unfinished thought\.?|Tools that opt out of urgency by default\.?|Screens designed to live in living rooms\.?|Letterpress and risograph paired with digital briefs\.?|Display faces with one slightly off detail\.?|Brand voice that admits the day's actual mood\.?|Newsletters that read like printed pamphlets\.?|Resale and repair as the front of the brand\.?|Information designed to be filed, not consumed\.?|A field report on the state of things\.?|Look for the cobalt envelope on a Monday morning\.?|issue\.0\d|spring\s+20\d{2}|autumn\s+20\d{2}|All ten\s*·\s*with our reading on each|A 2\.1× lift on the inaugural issue[\s\S]{0,160}?Sunday mornings\.?|Quiet, mostly-not-on-social[\s\S]{0,140}?referral programme\.?|We started the bulletin[\s\S]{0,220}?rereading\.?"?|To subscribers[\s\S]{0,80}?twice a year|Reader response, by quarter\.?|A note from the studio|Open rate\s*·\s*Q1 20\d{2}|Active subscribers/gi;
 
 function stripLeftoverCatalogDemoPhrases(html: string): string {
   return String(html ?? '')
@@ -5141,6 +5141,14 @@ function fillBiennaleStatSlots(
         ? line.title
         : String(index + 1).padStart(2, '0')
     )));
+    // 루프459 — Cobalt Grid `.vbig` is the display metric, not `.v`.
+    // Blank demo digits (82% / 11k) unless the outline actually has a metric.
+    next = replaceClassTextBySequence(next, 'vbig', statLines.map((line) => (
+      titleLooksLikeMetric(line.title) ? line.title : ''
+    )));
+  }
+  if (/\blab-tag\b/i.test(next)) {
+    next = replaceFirstExactClassText(next, 'lab-tag', input.lead || input.title);
   }
   const hasRealMetric = statLines.some((line) => (
     titleLooksLikeMetric(line.title) || titleLooksLikeMetric(line.body)
@@ -5189,7 +5197,11 @@ function fillBiennaleQuoteSlots(
     fillLines: TemplateCloneCardFillLine[];
   },
 ): string {
-  if (!/\b(?:qwrap|qbody|qkicker|qattr|quote|attr)\b/i.test(body)) return body;
+  // 루프459 — Cobalt-Grid `.stmt` / `.stmt-wrap` / `.meta-tag` join the
+  // Biennale-family quote slot family. Without the widened guard, the demo
+  // sentence ("A trend is a quiet question…") stays and only the `.roman`
+  // span gets swapped with the outline title.
+  if (!/\b(?:qwrap|qbody|qkicker|qattr|quote|attr|stmt|stmt-wrap|meta-tag)\b/i.test(body)) return body;
   const lines = biennaleFillLines(input, 2);
   const quote = input.bodyText || input.lead || resolveTemplateCloneCardFill(lines[0]!).body || `${input.title}의 핵심 메시지를 한 문장으로 정리합니다.`;
   const source = resolveTemplateCloneCardFill(lines[1] ?? lines[0]!);
@@ -5200,6 +5212,134 @@ function fillBiennaleQuoteSlots(
   next = replaceFirstExactClassText(next, 'who', source.body || input.title);
   next = replaceFirstExactClassText(next, 'attr', source.body || source.title || input.title);
   next = replaceFirstExactClassText(next, 'quote', quote);
+  // Cobalt-Grid `.stmt` — full sentence slot. Drop nested `<span class="roman">`
+  // markup so the demo copy does not leak alongside the outline title.
+  if (/\bstmt\b/i.test(next)) {
+    next = next.replace(
+      /(<p\b[^>]*\bclass\s*=\s*["'][^"']*\bstmt\b[^"']*["'][^>]*>)[\s\S]*?(<\/p>)/i,
+      (_m, open: string, close: string) => `${open}${escapeHtml(input.title)}${close}`,
+    );
+  }
+  if (/\bmeta-tag\b/i.test(next)) {
+    next = replaceFirstExactClassText(next, 'meta-tag', input.lead || input.kicker || input.title);
+  }
+  // Cobalt-Grid `.who-tag` / `.role-meta` sit on the s-quote attribution row.
+  if (/\bwho-tag\b/i.test(next)) {
+    next = replaceFirstExactClassText(next, 'who-tag', source.title || input.title);
+  }
+  if (/\brole-meta\b/i.test(next)) {
+    next = replaceFirstExactClassText(next, 'role-meta', source.body || input.lead || input.title);
+  }
+  return next;
+}
+
+/**
+ * 루프459 — Cobalt Grid `.s-index` / `.s-table` row peers. Each `.row`
+ * carries `.num-tag` + `<h3>` + `<p>` (or `.nm` + `.desc` + `.mood-tag` +
+ * `.delta-tag` on the table). Fill sequentially from the outline `items[]`.
+ */
+function fillCobaltRowPeers(
+  body: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+  variant: 'index' | 'table',
+): string {
+  if (!/\brow\b/i.test(body)) return body;
+  const rows = exactClassBlocks(body, 'row').filter((span) => !/\bheadrow\b/i.test(span.html));
+  if (rows.length === 0) return body;
+  const lines = biennaleFillLines(input, rows.length);
+  let next = replaceFirstExactClassText(body, 'h', input.title);
+  if (input.lead) next = replaceFirstExactClassText(next, 'lab', input.lead);
+  if (/\blab-tag\b/i.test(next)) {
+    next = replaceFirstExactClassText(next, 'lab-tag', input.lead || input.title);
+  }
+  next = replaceExactClassBlocksBySequence(next, 'row', lines, (block, line, index) => {
+    if (/\bheadrow\b/i.test(block)) return block;
+    const resolved = resolveTemplateCloneCardFill(line);
+    let filled = replaceFirstExactClassText(block, 'num-tag', `${String(index + 1).padStart(2, '0')}.`);
+    if (variant === 'index') {
+      filled = replaceFirstHeadingText(filled, resolved.title);
+      filled = replaceFirstTagText(filled, 'p', resolved.body || resolved.title);
+    } else {
+      filled = replaceFirstExactClassText(filled, 'nm', resolved.title);
+      filled = replaceFirstExactClassText(filled, 'desc', resolved.body || resolved.title);
+      filled = replaceFirstExactClassText(filled, 'mood-tag', input.title);
+      filled = replaceFirstExactClassText(filled, 'delta-tag', `${String(index + 1).padStart(2, '0')} / ${rows.length}`);
+    }
+    return filled;
+  });
+  return next;
+}
+
+/** 루프459 — Cobalt Grid `.s-colophon .col-footer` cells (4 flat divs). */
+function fillCobaltColophonFooter(
+  body: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  if (!/\bcol-footer\b/i.test(body)) return body;
+  const rows = biennaleFillLines(input, 4).slice(0, 4);
+  let next = replaceClassTextBySequence(body, 'ftag', rows.map((row) => row.title));
+  next = replaceClassTextBySequence(next, 'ftxt', rows.map((row) => row.body || row.title));
+  return next;
+}
+
+/** 루프459 — Cobalt Grid `.s-cover .cfooter` cells and `.subkicker`. */
+function fillCobaltCoverChrome(
+  body: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    kicker: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  let next = body;
+  if (/\bsubkicker\b/i.test(next)) {
+    // `.subkicker .l` = kicker; `.subkicker .ed` = lead sentence.
+    if (/\bclass\s*=\s*["'][^"']*\bl\b[^"']*["']/i.test(next)) {
+      next = next.replace(
+        /(<div\b[^>]*\bclass\s*=\s*["'][^"']*\bl\b(?:\s+caption)?[^"']*["'][^>]*>)([\s\S]*?)(<\/div>)/i,
+        (_m, open: string, _inner: string, close: string) => (
+          `${open}${escapeHtml(input.kicker || input.title)}${close}`
+        ),
+      );
+    }
+    next = replaceFirstExactClassText(next, 'ed', input.lead || `${input.title} 소개`);
+  }
+  if (/\bcfooter\b/i.test(next)) {
+    const rows = biennaleFillLines(input, 2).slice(0, 2);
+    next = replaceExactClassBlocksBySequence(next, 'colf', rows, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = replaceFirstExactClassText(block, 'ftag', resolved.title);
+      filled = filled.replace(
+        /(<div\b(?![^>]*\bftag\b)[^>]*>)([\s\S]*?)(<\/div>)/i,
+        `$1${escapeHtml(resolved.body || resolved.title)}$3`,
+      );
+      return filled;
+    });
+  }
+  if (/\bvstack\b/i.test(next)) {
+    next = next.replace(
+      /(<div\b[^>]*\bclass\s*=\s*["'][^"']*\bv-row\b[^"']*["'][^>]*>)([\s\S]*?)(<\/div>)/gi,
+      (_m, open: string, inner: string, close: string) => (
+        // vertical stack labels are pure demo (issue.04 / spring 2026 /
+        // field-office.co) — blank them and let the scrub drop the shell.
+        /(issue\.|spring\s+20\d{2}|autumn\s+20\d{2}|field-office\.co)/i.test(inner)
+          ? `${open}${close}`
+          : `${open}${inner}${close}`
+      ),
+    );
+  }
   return next;
 }
 
@@ -5343,15 +5483,31 @@ function fillOneCardPeer(cardHtml: string, line: TemplateCloneCardFillLine): str
     return next;
   }
   // 0901-N02-C7: grove/pin/mat/mini stat labels + soft-editorial `.lab` + kpi `.label`.
-  if (/\b(?:[\w-]+-stat-label|mini-label)\b/i.test(next) || (
-    /\bclass\s*=\s*["'][^"']*\blab\b[^"']*["']/i.test(next)
-    && /\bclass\s*=\s*["'][^"']*\bstat\b/i.test(cardHtml)
-  )) {
+  // 루프459 — Cobalt-Grid also uses `.lab2` + `.vbig` inside `.stat`.
+  const cobaltStat = /\bclass\s*=\s*["'][^"']*\bstat\b/i.test(cardHtml)
+    && (
+      /\bclass\s*=\s*["'][^"']*\blab2\b[^"']*["']/i.test(next)
+      || /\bclass\s*=\s*["'][^"']*\bvbig\b[^"']*["']/i.test(next)
+    );
+  if (
+    /\b(?:[\w-]+-stat-label|mini-label)\b/i.test(next)
+    || (
+      /\bclass\s*=\s*["'][^"']*\blab\b[^"']*["']/i.test(next)
+      && /\bclass\s*=\s*["'][^"']*\bstat\b/i.test(cardHtml)
+    )
+    || cobaltStat
+  ) {
     const slots = assignStatSlots(text, body);
     if (/\b(?:[\w-]+-stat-label|mini-label)\b/i.test(next)) {
       next = fillClassInner(
         next,
         /(<[^>]*\b(?:[\w-]+-stat-label|mini-label)\b[^>]*>)([\s\S]*?)(<\/)/i,
+        slots.label,
+      );
+    } else if (cobaltStat) {
+      next = fillClassInner(
+        next,
+        /(<[^>]*\bclass\s*=\s*["'][^"']*\blab2\b[^"']*["'][^>]*>)([\s\S]*?)(<\/)/i,
         slots.label,
       );
     } else {
@@ -5366,11 +5522,30 @@ function fillOneCardPeer(cardHtml: string, line: TemplateCloneCardFillLine): str
       /(<[^>]*\b(?:[\w-]+-stat-val|mini-val)\b[^>]*>)([\s\S]*?)(<\/)/gi,
       slots.value,
     );
+    // Cobalt-Grid `.vbig` — the huge italic Newsreader digit slot. Fill with
+    // the metric if the outline has one; otherwise blank the demo value.
+    if (/\bvbig\b/i.test(next)) {
+      const displayValue = titleLooksLikeMetric(slots.value) ? slots.value : '';
+      next = fillClassInner(
+        next,
+        /(<[^>]*\bvbig\b[^>]*>)([\s\S]*?)(<\/)/gi,
+        displayValue,
+      );
+    }
     next = fillClassInner(
       next,
       /(<[^>]*\bclass\s*=\s*["'][^"']*\bv\b[^"']*["'][^>]*>)([\s\S]*?)(<\/)/gi,
       slots.value,
     );
+    // `.desc` sibling gets the outline body when the label already took the
+    // title (Cobalt-Grid stat description slot).
+    if (cobaltStat && body && /\bclass\s*=\s*["'][^"']*\bdesc\b[^"']*["']/i.test(next)) {
+      next = fillClassInner(
+        next,
+        /(<[^>]*\bclass\s*=\s*["'][^"']*\bdesc\b[^"']*["'][^>]*>)([\s\S]*?)(<\/)/i,
+        body,
+      );
+    }
     return next;
   }
   if (/\bclass\s*=\s*["'][^"']*\bkpi\b/i.test(cardHtml) && /\blabel\b/i.test(next)) {
@@ -5594,6 +5769,19 @@ function fillSlideShell(
   }
   if (/\bs-cal\b/i.test(shell.attrs)) {
     body = fillBiennaleCalendarSlots(body, { title, lead, bodyText, fillLines });
+  }
+  // 루프459 — Cobalt Grid dedicated slots.
+  if (/\bs-cover\b/i.test(shell.attrs) && /\b(?:cfooter|subkicker|vstack)\b/i.test(body)) {
+    body = fillCobaltCoverChrome(body, { title, lead, bodyText, kicker, fillLines });
+  }
+  if (/\bs-index\b/i.test(shell.attrs)) {
+    body = fillCobaltRowPeers(body, { title, lead, bodyText, fillLines }, 'index');
+  }
+  if (/\bs-table\b/i.test(shell.attrs)) {
+    body = fillCobaltRowPeers(body, { title, lead, bodyText, fillLines }, 'table');
+  }
+  if (/\bs-colophon\b/i.test(shell.attrs) && /\bcol-footer\b/i.test(body)) {
+    body = fillCobaltColophonFooter(body, { title, lead, bodyText, fillLines });
   }
   body = stripCapsuleCatalogDemoCopy(body);
   body = stripBlockFrameNeoCatalogDemoCopy(body);
@@ -5857,7 +6045,9 @@ function templateShellsAreUniqueRole(shells: SlideShell[]): boolean {
   // specialized layout. Role classification is too coarse (s-manifesto and
   // s-programme both classify as 'body') so we key on the presence of the
   // markers themselves plus a per-shell uniqueness check.
-  const sectionMarkerRe = /\bs-(?:cover|manifesto|programme|chapter|data|quote|cal|colophon)\b/i;
+  // 루프451 — extended to cobalt-grid family (s-index / s-table). Kits that
+  // add new specialized section shells should extend this list so cap fires.
+  const sectionMarkerRe = /\bs-(?:cover|manifesto|programme|chapter|data|quote|cal|colophon|index|table|ledger|trend|section|stmt)\b/i;
   const semanticMarkers = shells
     .map((shell) => shell.attrs.match(sectionMarkerRe)?.[0]?.toLowerCase() ?? null)
     .filter((marker): marker is string => marker !== null);
@@ -6101,7 +6291,7 @@ function cleanCloneTitle(title: string): string {
 export function looksLikeLeftoverTemplateDemoDeck(html: string): boolean {
   const text = String(html ?? '');
   if (!text.trim()) return false;
-  return /Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|52\.5200°\s*N|Composed in kami|Apache-2\.0[\s\S]{0,800}Local-first[\s\S]{0,800}BYOK|\[\[Author Name\]\]|this is the broadside style|Clarity of Purpose|The Journey Continues|A Framework for Bold Ideas|Neobrutalist Presentation Template|Quarterly Growth Metrics|Sentiment has shifted measurably|Bullish on three-year outlook/i.test(
+  return /Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|52\.5200°\s*N|Composed in kami|Apache-2\.0[\s\S]{0,800}Local-first[\s\S]{0,800}BYOK|\[\[Author Name\]\]|this is the broadside style|Clarity of Purpose|The Journey Continues|A Framework for Bold Ideas|Neobrutalist Presentation Template|Quarterly Growth Metrics|Sentiment has shifted measurably|Bullish on three-year outlook|Aurora Institute|Field Office Quarterly|field-office\.co|Lin Ito|Slow software|Public attendance|Open programme/i.test(
     text,
   );
 }

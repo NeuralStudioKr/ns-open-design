@@ -1,5 +1,5 @@
 /**
- * 루프450 — Shared deterministic quality gate for Zhangzara templates.
+ * 루프450–459 — Shared deterministic quality gate for Zhangzara templates.
  *
  * 4 axes checked per template:
  *   1) Motif — template CSS tokens / class names must remain in the cloned deck
@@ -49,6 +49,10 @@ export const CROSS_TEMPLATE_LEFTOVER_DENYLIST: readonly string[] = [
   'Filebase',
   'Apex Group',
   'hermes-agent',
+  'Field Office Quarterly',
+  'field-office.co',
+  'Lin Ito',
+  'Aurora Institute',
 ];
 
 export type TemplateQualityGateSpec = {
@@ -145,8 +149,10 @@ export function assertDeterministicTemplateQualityGate(
 }
 
 /**
- * Canonical 4-template spec table used by the contracts gate and (with
+ * Canonical spec table used by the contracts gate and (with
  * `expectedSlideCount` only) the daemon smoke.
+ * 루프450: Capsule / Daisy / Creative / Studio
+ * 루프451: Biennale Yellow / Cobalt Grid / Block Frame
  */
 export const ZHANGZARA_QUALITY_GATE_SPECS: readonly TemplateQualityGateSpec[] = [
   {
@@ -229,5 +235,33 @@ export const ZHANGZARA_QUALITY_GATE_SPECS: readonly TemplateQualityGateSpec[] = 
     motifMustInclude: ['tpl-pitch-deck', 'team-card'],
     demoMustNotInclude: [],
     expectedSlideCount: 10,
+  },
+  // 루프459 — unique-role Biennale / Cobalt Grid.
+  {
+    name: 'Biennale Yellow',
+    templateId: 'html-ppt-zhangzara-biennale-yellow',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-biennale-yellow/example.html',
+    motifMustInclude: ['--sun', 'sunglow', 's-programme'],
+    demoMustNotInclude: [
+      'Aurora Programme',
+      'Pavilion of Quiet Form',
+      'Reading Garden',
+    ],
+    expectedSlideCount: 8,
+  },
+  {
+    name: 'Cobalt Grid',
+    templateId: 'html-ppt-zhangzara-cobalt-grid',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-cobalt-grid/example.html',
+    motifMustInclude: ['--ink-soft', 'pixel-glitch', 's-index'],
+    demoMustNotInclude: [
+      'Field Office Editorial',
+      'Slow software',
+      'Domestic interfaces',
+      'Hand-set print',
+    ],
+    expectedSlideCount: 8,
   },
 ];

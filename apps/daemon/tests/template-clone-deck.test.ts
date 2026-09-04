@@ -960,7 +960,7 @@ describe('seedTemplateClonedDeckOnServer filled-deck preserve', () => {
 });
 
 /**
- * 루프450 — Table-driven server-side smoke for the 4 Zhangzara templates
+ * 루프450/451 — Table-driven server-side smoke for the Zhangzara templates
  * targeted by the contracts quality gate. contracts covers the Canvas /
  * whole-document assertions; the daemon smoke confirms that the same
  * `seedTemplateClonedDeckOnServer` path (deterministic-fill) delivers the
@@ -1030,6 +1030,25 @@ const ZHANGZARA_SMOKE_SPECS: readonly ZhangzaraSmokeSpec[] = [
     motifMustInclude: ['tpl-pitch-deck', 'team-card'],
     expectedSlideCount: 10,
   },
+  // 루프459 — unique-role Biennale / Cobalt Grid.
+  {
+    name: 'Biennale Yellow',
+    pluginId: 'html-ppt-zhangzara-biennale-yellow',
+    exampleSubpath: 'html-ppt-zhangzara-biennale-yellow/example.html',
+    templateTitle: 'Html Ppt Zhangzara Biennale Yellow',
+    motifMustInclude: ['--sun', 'sunglow', 's-programme'],
+    demoMustNotInclude: ['Aurora Programme', 'Pavilion of Quiet Form'],
+    expectedSlideCount: 8,
+  },
+  {
+    name: 'Cobalt Grid',
+    pluginId: 'html-ppt-zhangzara-cobalt-grid',
+    exampleSubpath: 'html-ppt-zhangzara-cobalt-grid/example.html',
+    templateTitle: 'Html Ppt Zhangzara Cobalt Grid',
+    motifMustInclude: ['--ink-soft', 'pixel-glitch', 's-index'],
+    demoMustNotInclude: ['Field Office Editorial', 'Slow software', 'Domestic interfaces'],
+    expectedSlideCount: 8,
+  },
 ];
 
 const CROSS_TEMPLATE_LEFTOVER_DENYLIST = [
@@ -1046,9 +1065,13 @@ const CROSS_TEMPLATE_LEFTOVER_DENYLIST = [
   'Filebase',
   'Apex Group',
   'hermes-agent',
+  'Field Office Quarterly',
+  'field-office.co',
+  'Lin Ito',
+  'Aurora Institute',
 ];
 
-describe('루프450 Zhangzara 템플릿 서버 fill 스모크', () => {
+describe('루프450/459 Zhangzara 서버 fill 스모크', () => {
   it.each(ZHANGZARA_SMOKE_SPECS.map((s) => [s.name, s] as const))(
     '%s deterministic server fill keeps motif, scrubs leftover, honors slide count',
     async (_name, spec) => {

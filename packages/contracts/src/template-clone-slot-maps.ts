@@ -99,6 +99,19 @@ export const MAT_SLOT_MAP: TemplateCloneSlotMap = mapOf(
   /\binfo-card\b/i,
 );
 
+/**
+ * 루프459 — Cobalt Grid ("Field Office Quarterly") — index/table row peers.
+ * The template uses `.list .row` and `.ledger .row` as its card / table
+ * hosts. Without this map, only the first row gets filled; the rest keep
+ * `Slow software / Domestic interfaces / Hand-set print / …` demo copy.
+ */
+export const COBALT_GRID_SLOT_MAP: TemplateCloneSlotMap = mapOf(
+  ['example-html-ppt-zhangzara-cobalt-grid', 'html-ppt-zhangzara-cobalt-grid'],
+  ['list', 'ledger'],
+  ['row'],
+  /\b(?:s-index|s-table)\b[\s\S]{0,4000}?\brow\b/i,
+);
+
 export const TEMPLATE_CLONE_SLOT_MAPS: readonly TemplateCloneSlotMap[] = [
   DAISY_DAYS_SLOT_MAP,
   BLOCK_FRAME_SLOT_MAP,
@@ -110,6 +123,7 @@ export const TEMPLATE_CLONE_SLOT_MAPS: readonly TemplateCloneSlotMap[] = [
   PLAYFUL_SLOT_MAP,
   EIGHT_BIT_ORBIT_SLOT_MAP,
   MAT_SLOT_MAP,
+  COBALT_GRID_SLOT_MAP,
 ];
 
 function normalizeTemplateId(raw: string | null | undefined): string {

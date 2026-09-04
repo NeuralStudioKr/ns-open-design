@@ -389,12 +389,10 @@ describe('free-form Daisy clone content swap', () => {
   });
 });
 
-describe('루프450 Zhangzara template quality gates', () => {
-  // Loop437 shared 4-axis gate: motif · leftover · 1920×1080 · slide count.
-  // Capsule / Daisy / Creative / Studio all pin the fixture through the
-  // deterministic FE path (no MiniMax) and assert the same invariants.
-  // (Loop numbers 431–436 were already assigned on the remote branch to a
-  //  peer-fit / leftover / neo-scrub stack.)
+describe('루프450/459 Zhangzara template quality gates', () => {
+  // Shared 4-axis gate: motif · leftover · 1920×1080 · slide count.
+  // 루프459 adds Biennale Yellow / Cobalt Grid (unique-role 8).
+  // All pin the fixture through the deterministic FE path (no MiniMax).
   it.each(ZHANGZARA_QUALITY_GATE_SPECS.map((s) => [s.name, s] as const))(
     '%s deterministic clone passes 4-axis gate',
     async (_name, spec) => {
@@ -455,6 +453,48 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(pagenums).toEqual(['01 / 08', '02 / 08', '03 / 08', '04 / 08', '05 / 08', '06 / 08', '07 / 08', '08 / 08']);
     // No fill-loop 8× repeat regression on stat titles.
     expect(cloned).not.toMatch(/입력입력입력입력|정리정리정리정리|완성완성완성완성/);
+  });
+
+  it('loop459 — Cobalt Grid 10-slide request fills stmt/list/table/colophon and scrubs Field Office demo', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-cobalt-grid/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const slides = resolveTemplateCloneSlidesForDeterministicFill({
+      userInstruction: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+      slideCount: 10,
+    });
+    const cloned = buildTemplateClonedDeckHtml(html, slides, {
+      title: '팀버 소개',
+      templateId: 'html-ppt-zhangzara-cobalt-grid',
+      maxSlides: 10,
+    })!;
+    expect(cloned).toBeTruthy();
+    expect(listTemplateCloneSlideShells(cloned).length).toBe(8);
+    const sectionMarkers = [...cloned.matchAll(
+      /<section\b[^>]*class="[^"]*\b(s-cover|s-manifesto|s-index|s-chapter|s-data|s-quote|s-table|s-colophon)\b/g,
+    )].map((m) => m[1]);
+    expect(sectionMarkers).toHaveLength(8);
+    expect(new Set(sectionMarkers).size).toBe(8);
+    // Field Office demo (Aurora-like Cobalt Grid catalog) is scrubbed.
+    expect(cloned).not.toMatch(/Field Office Quarterly|Field Office Editorial|field-office\.co/);
+    expect(cloned).not.toMatch(/Lin Ito|Anya Mehrotra|The next issue ships October/);
+    expect(cloned).not.toMatch(/Slow software|Domestic interfaces|Hand-set print|Quietly weird type|Public weather|Long-form receipts|Pre-loved objects/);
+    expect(cloned).not.toMatch(/The index, in six entries\.|Trend ledger, in long\./);
+    expect(cloned).not.toMatch(/A trend is a quiet question that several rooms started asking/);
+    // .stmt slot on s-manifesto carries the outline title, not the demo sentence.
+    expect(/<section[^>]*s-manifesto[\s\S]*?<p class="stmt">[^<]+<\/p>/i.test(cloned)).toBe(true);
+    // .list rows on s-index are filled from the outline (no Aurora rows).
+    const indexRows = [...cloned.matchAll(
+      /<section[^>]*s-index[\s\S]*?<\/section>/i.exec(cloned)?.[0]?.matchAll(/<h3>([^<]+)<\/h3>/g) ?? [],
+    )];
+    expect(indexRows.length).toBeGreaterThanOrEqual(2);
+    // Vbig demo values are gone.
+    expect(cloned).not.toMatch(/<div class="vbig[^"]*"[^>]*>82%<\/div>/);
+    expect(cloned).not.toMatch(/<div class="vbig[^"]*"[^>]*>11k<\/div>/);
   });
 
   it('loop421 — empty-brief padding synthesizes card bodies instead of empty shells', () => {
@@ -596,6 +636,12 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     )).toBe(true);
     expect(looksLikeLeftoverTemplateDemoDeck(
       '<p class="lead">this is the broadside style</p>',
+    )).toBe(true);
+    expect(looksLikeLeftoverTemplateDemoDeck(
+      '<h1>Field Office Quarterly</h1><p>Lin Ito · field-office.co</p>',
+    )).toBe(true);
+    expect(looksLikeLeftoverTemplateDemoDeck(
+      '<h1>Aurora Institute</h1><p>Public attendance · Open programme</p>',
     )).toBe(true);
     expect(looksLikeLeftoverTemplateDemoDeck(
       ':root { --c-bg-orange: #e85d26; } /* ZONE A · TOKENS */',
