@@ -143,6 +143,35 @@ describe('buildTemplateClonedDeckHtml', () => {
     expect(inferTemplateCloneContentRole(slides[1]!, 1, 3)).toBe('list');
   });
 
+  it('fills Biennale Yellow official slots without leaving Aurora demo copy', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-biennale-yellow/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const brief = 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘';
+    const slides = resolveTemplateCloneSlidesForDeterministicFill({
+      userInstruction: brief,
+      deckTitle: '팀버 소개',
+      slideCount: 8,
+    });
+    const cloned = buildTemplateClonedDeckHtml(html, slides, {
+      title: '팀버 소개',
+      templateId: 'html-ppt-zhangzara-biennale-yellow',
+      brief,
+      maxSlides: 8,
+    });
+    expect(cloned).toBeTruthy();
+    expect(listTemplateCloneSlideShells(cloned!).length).toBe(8);
+    expect(cloned).toContain('팀버 소개');
+    expect(cloned).toContain('핵심 기능과 사용자가 얻는 직접적인 가치');
+    expect(cloned).not.toMatch(/Aurora|Public attendance|Open programme|Field Notes|Quiet Editions|The Long Yellow/i);
+    expect(cloned).not.toMatch(/입력입력|정리정리|병목병목|A 2\.4× rise|Returning audience/i);
+    expect(cloned).not.toMatch(/76,400|112,800|141,200|164,900|182,300/);
+  });
+
   it('supports div.slide shells', () => {
     const html = `<!doctype html><html><head><style>:root{--paper:#fff}</style></head>
 <body>

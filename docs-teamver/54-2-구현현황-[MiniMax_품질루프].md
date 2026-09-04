@@ -38,6 +38,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프429 — Biennale Yellow deterministic 슬롯 잔여 데모 제거
+
+현재 시점 기준 판단: deterministic fill 자체는 맞지만, Biennale Yellow류 공식 템플릿은 일반 title/list/card 슬롯 외에 `footer-row`, `strand`, `stat`, `qbody`, `row` 등 템플릿 고유 반복 슬롯이 많다. 이 슬롯을 못 채우면 template sample의 Aurora/전시/방문자 숫자 copy가 그대로 남고, 빈 영역이나 겹치는 chart가 보여 품질이 크게 떨어진다.
+
+수정: daemon이 brief를 builder에 전달. contracts에서 Biennale footer/programme/data/quote/calendar 슬롯을 outline 카드 내용으로 채움. 실제 metric이 없으면 demo chart 제거. `.stat` 직접 텍스트 반복과 Aurora/Biennale leftover copy를 scrub.
+
+검증: Biennale Yellow 8장 fixture가 `팀버 소개` 주제를 포함하고 Aurora/demo 문구·숫자·반복 텍스트를 남기지 않음. contracts 140 passed · daemon 19 passed · web 36 passed.
+
 ### 루프428 — deterministic create 후 빈「슬라이드 작업 시작」방지
 
 체감: 서버 fill 성공 후 채팅이 비어 멈춘 것처럼 보임.

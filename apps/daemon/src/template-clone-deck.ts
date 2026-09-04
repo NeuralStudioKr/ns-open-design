@@ -414,6 +414,7 @@ export async function seedTemplateClonedDeckOnServer(
   const cloned = buildTemplateClonedDeckHtml(loaded.html, honorSlides, {
     title: deckTitle,
     templateId: loaded.templateId,
+    brief: briefText,
     ...(honorCount != null ? { maxSlides: honorCount } : {}),
   });
   if (!cloned) {

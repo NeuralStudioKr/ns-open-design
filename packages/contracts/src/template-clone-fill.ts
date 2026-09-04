@@ -4236,7 +4236,7 @@ function stripCapsuleCatalogDemoCopy(html: string): string {
 }
 
 const LEFTOVER_CATALOG_PHRASE_RE =
-  /Hartfield(?:\s*&(?:amp;)?\s*Co\.?)?|NorthPeak Industries|WACC\s*\(\s*base\s*\)|Revenue CAGR|Filebase|Northwind Studios|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|Composed in kami|52\.5200°\s*N|\[\[Author Name\]\]|this is the broadside style|Sector context(?:\s*&(?:amp;)?\s*market dynamics)?|Trading comparables analysis|Precedent transactions|Industrial automation cycle, capital flows, trading multiples|12 selected listed peers, EV\/EBITDA(?:\s*&(?:amp;)?\s*EV\/Revenue 2026E)?|M&amp;A transactions \$0\.5–5\.0B, 2022–2025|Selection criteria|Fictional illustrative sample|38\s*[×x]|Apache-2\.0|\bBYOK\b|Your agent reads a folder of\s*<code>SKILL\.md<\/code> files\.?|Open Design is the\s*(?:<strong>)?\s*(?:<\/strong>)?\s*\.?/gi;
+  /Hartfield(?:\s*&(?:amp;)?\s*Co\.?)?|NorthPeak Industries|WACC\s*\(\s*base\s*\)|Revenue CAGR|Filebase|Northwind Studios|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|Composed in kami|52\.5200°\s*N|\[\[Author Name\]\]|this is the broadside style|Aurora Institute|Aurora Programme|Aurora Charter|Public Form|Public attendance|Open programme|Field Notes|Quiet Editions|Open Conversations|The Long Yellow|Pavilion of Quiet Form|Reading Garden|A field study of light,\s*matter and atmosphere|Six months of exhibitions[\s\S]{0,160}?palette of yellow\.?|A room is a slow argument with the sun[\s\S]{0,160}?answers\.?|Curator-at-large[\s\S]{0,120}?January 2026|Visitors\s*·\s*Year four|Returning audience|Three quarters of last year[\s\S]{0,120}?twice\.?|A 2\.4× rise[\s\S]{0,120}?audience\.?|Strands\s*·\s*2026|Slow Atmospheres|Selected dates|Sector context(?:\s*&(?:amp;)?\s*market dynamics)?|Trading comparables analysis|Precedent transactions|Industrial automation cycle, capital flows, trading multiples|12 selected listed peers, EV\/EBITDA(?:\s*&(?:amp;)?\s*EV\/Revenue 2026E)?|M&amp;A transactions \$0\.5–5\.0B, 2022–2025|Selection criteria|Fictional illustrative sample|38\s*[×x]|Apache-2\.0|\bBYOK\b|Your agent reads a folder of\s*<code>SKILL\.md<\/code> files\.?|Open Design is the\s*(?:<strong>)?\s*(?:<\/strong>)?\s*\.?/gi;
 
 function stripLeftoverCatalogDemoPhrases(html: string): string {
   return String(html ?? '')
@@ -4765,6 +4765,259 @@ function assignStatSlots(title: string, body: string): { label: string; value: s
   return { label: title, value: body };
 }
 
+function replaceClassTextBySequence(html: string, className: string, values: string[]): string {
+  if (values.length === 0) return html;
+  let index = 0;
+  const classToken = escapeRegExp(className);
+  return html.replace(
+    new RegExp(
+      `(<(?:div|p|span)\\b[^>]*\\bclass\\s*=\\s*["'][^"']*\\b${classToken}\\b[^"']*["'][^>]*>)([\\s\\S]*?)(<\\/(?:div|p|span)>)`,
+      'gi',
+    ),
+    (match, open: string, _inner: string, close: string) => {
+      if (index >= values.length) return match;
+      const value = values[index++] ?? '';
+      return `${open}${escapeHtml(value)}${close}`;
+    },
+  );
+}
+
+function compactTextLines(...values: Array<string | null | undefined>): string[] {
+  return values
+    .flatMap((value) => String(value ?? '').split(/\n+/))
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .filter((line, index, arr) => arr.findIndex((candidate) => candidate === line) === index);
+}
+
+function exactClassBlocks(html: string, className: string): Array<HtmlSpan & { html: string }> {
+  const source = String(html ?? '');
+  const out: Array<HtmlSpan & { html: string }> = [];
+  const openRe = /<(div|section|article|aside|li|tr)\b[^>]*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(source)) !== null) {
+    if (!openHasExactClass(match[0] ?? '', className)) continue;
+    const tag = (match[1] ?? 'div').toLowerCase();
+    const start = match.index;
+    const closeEnd = findMatchingClose(source, start + match[0]!.length, tag);
+    if (closeEnd < 0) continue;
+    out.push({ start, end: closeEnd, html: source.slice(start, closeEnd) });
+  }
+  return out;
+}
+
+function replaceExactClassBlocksBySequence(
+  html: string,
+  className: string,
+  values: TemplateCloneCardFillLine[],
+  fill: (block: string, line: TemplateCloneCardFillLine, index: number) => string,
+): string {
+  const blocks = exactClassBlocks(html, className);
+  if (blocks.length === 0 || values.length === 0) return html;
+  let next = html;
+  const usable = values.slice(0, blocks.length);
+  for (let i = blocks.length - 1; i >= 0; i -= 1) {
+    const block = blocks[i]!;
+    const line = usable[i] ?? usable[usable.length - 1]!;
+    next = `${next.slice(0, block.start)}${fill(block.html, line, i)}${next.slice(block.end)}`;
+  }
+  return next;
+}
+
+function replaceFirstHeadingText(html: string, text: string): string {
+  for (const tag of ['h1', 'h2', 'h3', 'h4', 'h5']) {
+    if (new RegExp(`<${tag}\\b`, 'i').test(html)) {
+      return replaceHeadingText(html, tag, text);
+    }
+  }
+  return html;
+}
+
+function biennaleFillLines(input: {
+  title: string;
+  lead?: string;
+  bodyText?: string;
+  fillLines?: TemplateCloneCardFillLine[];
+}, minimum = 4): Array<{ title: string; body: string }> {
+  const out = (input.fillLines ?? [])
+    .map((line) => resolveTemplateCloneCardFill(line))
+    .filter((line) => line.title || line.body);
+  for (const line of compactTextLines(input.lead, input.bodyText)) {
+    const split = splitDenseTemplateCloneTitleBodyLine(line);
+    out.push(split ? { title: split.title, body: split.body } : { title: line, body: '' });
+  }
+  const fallbacks = [
+    { title: `${input.title} 개요`, body: '핵심 메시지와 사용자가 얻는 가치를 먼저 정리합니다.' },
+    { title: '주요 기능', body: '협업, 파일, AI 작업 흐름을 한 화면에서 연결합니다.' },
+    { title: '활용 흐름', body: '요청부터 결과물 공유까지 필요한 단계를 줄입니다.' },
+    { title: '기대 효과', body: '반복 업무를 줄이고 팀의 실행 속도를 높입니다.' },
+    { title: '다음 단계', body: '도입 검토와 실행 계획을 명확하게 제안합니다.' },
+  ];
+  for (const fallback of fallbacks) {
+    if (out.length >= minimum) break;
+    out.push(fallback);
+  }
+  return out.slice(0, Math.max(minimum, out.length));
+}
+
+function biennaleFooterRows(input: {
+  title: string;
+  lead: string;
+  bodyText: string;
+  kicker: string;
+  fillLines: TemplateCloneCardFillLine[];
+}): Array<{ label: string; text: string }> {
+  const cards = input.fillLines
+    .map((line) => resolveTemplateCloneCardFill(line))
+    .filter((line) => line.title || line.body)
+    .slice(0, 4)
+    .map((line) => ({
+      label: line.title || '핵심',
+      text: line.body || line.title,
+    }));
+  if (cards.length >= 2) return cards;
+  const lines = compactTextLines(input.lead, input.bodyText);
+  return [
+    { label: input.kicker || '주제', text: input.title },
+    { label: '방향', text: lines[0] || input.lead || `${input.title} 한눈에` },
+    { label: '구성', text: lines[1] || '핵심 흐름과 사용자 가치 정리' },
+    { label: '메모', text: lines[2] || '팀 단위 실행과 다음 단계까지 연결' },
+  ];
+}
+
+function fillBiennaleFooterSlots(
+  body: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    kicker: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  if (!/\bfooter-row\b/i.test(body)) return body;
+  const rows = biennaleFooterRows(input);
+  let next = replaceClassTextBySequence(body, 'ftag', rows.map((row) => row.label));
+  next = replaceClassTextBySequence(next, 'ftxt', rows.map((row) => row.text));
+  next = replaceClassTextBySequence(next, 'fdesc', rows.map((row) => row.text));
+  next = replaceClassTextBySequence(next, 'subline', [
+    input.lead || input.kicker || `${input.title} 소개`,
+  ]);
+  return next;
+}
+
+function fillBiennaleStatSlots(
+  body: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  if (!/\bs-data\b/i.test(body) && !/\bclass\s*=\s*["'][^"']*\b(?:frame|stat|chart)\b/i.test(body)) {
+    return body;
+  }
+  const lines = biennaleFillLines(input, 4);
+  const statLines = lines.slice(0, 4);
+  let next = replaceFirstExactClassText(body, 'h', input.title);
+  if (input.lead) next = replaceFirstExactClassText(next, 'lab', input.lead);
+  if (statLines.length > 0) {
+    next = replaceClassTextBySequence(next, 'lab2', statLines.map((line) => line.title));
+    next = replaceClassTextBySequence(next, 'desc', statLines.map((line) => line.body || line.title));
+    next = replaceClassTextBySequence(next, 'v', statLines.map((line, index) => (
+      titleLooksLikeMetric(line.title)
+        ? line.title
+        : String(index + 1).padStart(2, '0')
+    )));
+  }
+  const hasRealMetric = statLines.some((line) => (
+    titleLooksLikeMetric(line.title) || titleLooksLikeMetric(line.body)
+  ));
+  if (!hasRealMetric) {
+    next = stripClassBlocks(next, 'chart');
+  }
+  next = next.replace(
+    /(<div\b[^>]*\bclass\s*=\s*["'][^"']*\bstat\b[^"']*["'][^>]*>)[^<]+(?=<)/gi,
+    '$1',
+  );
+  return next;
+}
+
+function fillBiennaleProgrammeSlots(
+  body: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  if (!/\bstrand\b/i.test(body)) return body;
+  const lines = biennaleFillLines(input, Math.max(4, exactClassBlocks(body, 'strand').length));
+  let next = replaceFirstExactClassText(body, 'word', input.title);
+  next = replaceFirstExactClassText(next, 'head', input.lead || '핵심 구성');
+  next = replaceFirstExactClassText(next, 'meta', input.bodyText || input.lead || `${input.title}의 주요 내용을 구조화합니다.`);
+  next = replaceExactClassBlocksBySequence(next, 'strand', lines, (block, line, index) => {
+    const resolved = resolveTemplateCloneCardFill(line);
+    let filled = replaceFirstExactClassText(block, 'num', String(index + 1).padStart(2, '0'));
+    filled = replaceFirstHeadingText(filled, resolved.title);
+    filled = replaceFirstTagText(filled, 'p', resolved.body || resolved.title);
+    return filled;
+  });
+  return next;
+}
+
+function fillBiennaleQuoteSlots(
+  body: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    kicker: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  if (!/\b(?:qwrap|qbody|qkicker|qattr|quote|attr)\b/i.test(body)) return body;
+  const lines = biennaleFillLines(input, 2);
+  const quote = input.bodyText || input.lead || resolveTemplateCloneCardFill(lines[0]!).body || `${input.title}의 핵심 메시지를 한 문장으로 정리합니다.`;
+  const source = resolveTemplateCloneCardFill(lines[1] ?? lines[0]!);
+  let next = body;
+  next = replaceFirstExactClassText(next, 'qkicker', input.kicker || input.title);
+  next = replaceFirstExactClassText(next, 'qbody', quote);
+  next = replaceFirstExactClassText(next, 'role', source.title || '핵심 관점');
+  next = replaceFirstExactClassText(next, 'who', source.body || input.title);
+  next = replaceFirstExactClassText(next, 'attr', source.body || source.title || input.title);
+  next = replaceFirstExactClassText(next, 'quote', quote);
+  return next;
+}
+
+function fillBiennaleCalendarSlots(
+  body: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  if (!/\brow\b/i.test(body)) return body;
+  const rows = exactClassBlocks(body, 'row').filter((span) => !/\bheadrow\b/i.test(span.html));
+  const lines = biennaleFillLines(input, Math.max(4, rows.length || 4));
+  let next = replaceFirstExactClassText(body, 'h', input.title);
+  next = replaceFirstExactClassText(next, 'lab', input.lead || '실행 흐름');
+  next = replaceExactClassBlocksBySequence(next, 'row', lines, (block, line, index) => {
+    if (/\bheadrow\b/i.test(block)) return block;
+    const resolved = resolveTemplateCloneCardFill(line);
+    let filled = replaceFirstExactClassText(block, 'date', String(index + 1).padStart(2, '0'));
+    filled = replaceFirstExactClassText(filled, 'ttl', resolved.title);
+    filled = replaceFirstExactClassText(filled, 'ven', resolved.body || resolved.title);
+    filled = replaceFirstExactClassText(filled, 'dur', '핵심');
+    return filled;
+  });
+  return next;
+}
+
 function fillOneCardPeer(cardHtml: string, line: TemplateCloneCardFillLine): string {
   const { title, body } = resolveTemplateCloneCardFill(line);
   const text = title;
@@ -5108,6 +5361,21 @@ function fillSlideShell(
   // Partial heading swaps must not keep IB/finance demo chrome/tables.
   if (/Hartfield|NorthPeak|WACC\s*\(\s*base\s*\)|Implied EV|Demo-data notice/i.test(body)) {
     body = stripLeftoverTemplateDemoCopy(body);
+  }
+  if (/\b(?:s-cover|s-colophon)\b/i.test(shell.attrs) && /\bfooter-row\b/i.test(body)) {
+    body = fillBiennaleFooterSlots(body, { title, lead, bodyText, kicker, fillLines });
+  }
+  if (/\bs-programme\b/i.test(shell.attrs)) {
+    body = fillBiennaleProgrammeSlots(body, { title, lead, bodyText, fillLines });
+  }
+  if (/\bs-data\b/i.test(shell.attrs)) {
+    body = fillBiennaleStatSlots(body, { title, lead, bodyText, fillLines });
+  }
+  if (/\b(?:s-quote|s-manifesto)\b/i.test(shell.attrs)) {
+    body = fillBiennaleQuoteSlots(body, { title, lead, bodyText, kicker, fillLines });
+  }
+  if (/\bs-cal\b/i.test(shell.attrs)) {
+    body = fillBiennaleCalendarSlots(body, { title, lead, bodyText, fillLines });
   }
   body = stripCapsuleCatalogDemoCopy(body);
   body = stripLeftoverCatalogDemoPhrases(body);
