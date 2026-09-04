@@ -15,7 +15,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts system-prompt-api-mode · template-visual-kit · teamver-selected-template-compose · deck-framework-compact · template-clone-fill, web templateCloneContentFill · runtime/resume.
 
-**후속:** [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) · [0901-N02-18](./0901-N02-18-구현설계-[Clone_slot-map-C13].md) — B1–B5 · C–C13 · D · 루프368–438. MiniMax live 가드 ☑(키 없으면 skip). 루프366 bake ☑ · C13 ☑ · 루프431–438 ☑.
+**후속:** [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) · [0901-N02-18](./0901-N02-18-구현설계-[Clone_slot-map-C13].md) — B1–B5 · C–C13 · D · 루프368–438. MiniMax live 가드 ☑(키 없으면 skip). 루프366 bake ☑ · C13 ☑ · 루프431–451 ☑.
 
 다음 추천 작업:
 1. MiniMax 키 환경 Clone fill live smoke
@@ -36,6 +36,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 `기둥` / `PILLAR` / `Phase`는 모델이 붙이는 접두일 뿐, 발표 용어가 아닙니다. extra-copy·stub는 주제 단어 목록이 아닙니다(루프259·265).
 
 ## 2026-09-02 현재 판단 · 최신 루프
+
+### 루프451 — Cobalt Grid 16:9 슬롯 복원 · orphan stat
+
+체감: 「근거와 사례」 82%/11k가 떠 있고 「운영과 보안」이 왼쪽 glitch와 겹침. Field Office leftover.
+
+수정: LOOK_NEUTRALIZE absolute 슬롯 복원 · chart 없는 s-data 2열 · orphan `.stat`를 `.col-a`로 재부모 · Hangul만 Field Office leftover 슬롯 drop. 영문 example.html no-op.
 
 ### 루프450 — Zhangzara 4템플릿 fixture 품질 게이트
 

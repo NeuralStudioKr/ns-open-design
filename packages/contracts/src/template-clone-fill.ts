@@ -1581,7 +1581,7 @@ function officialLookIsBiennaleYellow(html: string): boolean {
  * 루프388 — Cobalt Grid look fingerprint (cream paper + electric cobalt ink)
  * or DOM cover chrome when look CSS is not merged yet (persist heal order).
  */
-function officialLookIsCobaltGrid(html: string): boolean {
+export function officialLookIsCobaltGrid(html: string): boolean {
   const source = String(html ?? '');
   const css = lookCssWithoutNeutralize(source);
   if (css.trim() && /--ink\s*:\s*#1F2BE0/i.test(css)) {
@@ -1751,6 +1751,180 @@ export function enrichSparseCobaltCover(
   const close = dest.slice(first.bodyEnd).match(new RegExp(`^</${first.tag}\\s*>`, 'i'));
   const end = first.bodyEnd + (close?.[0].length ?? 0);
   return `${dest.slice(0, first.start)}<${first.tag}${first.attrs}>${body}</${first.tag}>${dest.slice(end)}`;
+}
+
+function openHasClass(open: string, name: string): boolean {
+  return classTokensFromAttrs(open).some(
+    (token) => token.toLowerCase() === name.toLowerCase(),
+  );
+}
+
+function findFirstClassDiv(
+  html: string,
+  className: string,
+): { start: number; block: string } | null {
+  const openRe = /<div\b[^>]*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(html)) !== null) {
+    if (!openHasClass(match[0], className)) continue;
+    const block = extractBalancedFrom(html, match.index);
+    if (!block) continue;
+    return { start: match.index, block };
+  }
+  return null;
+}
+
+function visibleDeckCopy(html: string): string {
+  return String(html ?? '')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * MiniMax often parks Cobalt `.stat` blocks as siblings of an empty
+ * `.col-a` instead of children. Official kit is `.body > .col-a > .stat`
+ * plus an optional `.chart`. Reparent only — do not invent a chart or KPI.
+ */
+export function healCobaltOrphanDataStats(html: string): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsCobaltGrid(dest)) return dest;
+  const spans = listHealSlideHostSpans(dest);
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    if (!/\bs-data\b/i.test(span.attrs)) continue;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    const nextBody = reparentOrphanCobaltDataStats(body);
+    if (nextBody === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
+  }
+  return out;
+}
+
+function reparentOrphanCobaltDataStats(slideBody: string): string {
+  const bodySlot = findFirstClassDiv(slideBody, 'body');
+  if (!bodySlot) return slideBody;
+  const open = /^<div\b[^>]*>/.exec(bodySlot.block)?.[0] ?? '';
+  if (!open) return slideBody;
+  if (/\bclass\s*=\s*["'][^"']*\bchart\b/i.test(bodySlot.block)) return slideBody;
+  const closeMatch = /<\/div\s*>$/i.exec(bodySlot.block);
+  if (!closeMatch) return slideBody;
+  const innerStart = open.length;
+  const innerEnd = bodySlot.block.length - closeMatch[0].length;
+  const children = listDirectChildRanges(bodySlot.block, innerStart, innerEnd);
+  let colA: { start: number; end: number; html: string; inner: string } | null = null;
+  const stats: { start: number; end: number; html: string }[] = [];
+  const others: { start: number; end: number; html: string }[] = [];
+  for (const range of children) {
+    const html = bodySlot.block.slice(range.start, range.end);
+    const tag = /^<div\b[^>]*>/.exec(html)?.[0] ?? '';
+    if (openHasClass(tag, 'col-a')) {
+      const colClose = /<\/div\s*>$/i.exec(html);
+      const inner = colClose
+        ? html.slice(tag.length, html.length - colClose[0].length)
+        : '';
+      colA = { start: range.start, end: range.end, html, inner };
+    } else if (openHasClass(tag, 'stat')) {
+      stats.push({ start: range.start, end: range.end, html });
+    } else {
+      others.push({ start: range.start, end: range.end, html });
+    }
+  }
+  if (stats.length === 0) return slideBody;
+  if (colA && colA.inner.replace(/\s+/g, '') !== '') return slideBody;
+  const nextInner = (
+    `<div class="col-a">${stats.map((stat) => stat.html).join('')}</div>`
+    + others.map((part) => part.html).join('')
+  );
+  const nextBlock = `${open}${nextInner}</div>`;
+  return (
+    slideBody.slice(0, bodySlot.start)
+    + nextBlock
+    + slideBody.slice(bodySlot.start + bodySlot.block.length)
+  );
+}
+
+const COBALT_FIELD_OFFICE_DEMO_RE =
+  /Field Office Quarterly|A field report on the state of things\.?|field-office\.co|Newsletter opens|Lin Ito|Anya Mehrotra|field-office collective|Until autumn|The next issue ships October|cobalt envelope|issue\.04|Edited by[\s\S]{0,80}Field Office|To subscribers\s*&(?:amp;)?\s*the open web|In Newsreader,\s*Hanken Grotesk|quiet,\s*paid,\s*and read slowly|NEWSLETTER OPENS/i;
+
+const COBALT_FIELD_OFFICE_SLOT_CLASSES = [
+  'lab-tag',
+  'subkicker',
+  'cfooter',
+  'vstack',
+  'col-footer',
+  'qattr',
+] as const;
+
+/**
+ * Hangul Cobalt fills often keep Field Office catalog chrome (newsletter
+ * opens, Lin Ito colophon, issue.04). Drop those slots only — do not
+ * invent replacement copy. Official English example.html is a no-op.
+ */
+export function scrubCobaltFieldOfficeDemoSlots(html: string): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsCobaltGrid(dest)) return dest;
+  if (!/[가-힣]/.test(visibleDeckCopy(dest))) return dest;
+  const spans = listHealSlideHostSpans(dest);
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    const nextBody = dropCobaltFieldOfficeSlots(body);
+    if (nextBody === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
+  }
+  return out;
+}
+
+function dropCobaltFieldOfficeSlots(slideBody: string): string {
+  let out = slideBody;
+  for (const className of COBALT_FIELD_OFFICE_SLOT_CLASSES) {
+    const starts: number[] = [];
+    const openRe = /<(div|span)\b[^>]*>/gi;
+    let match: RegExpExecArray | null;
+    while ((match = openRe.exec(out)) !== null) {
+      if (!openHasClass(match[0], className)) continue;
+      starts.push(match.index);
+    }
+    for (let i = starts.length - 1; i >= 0; i -= 1) {
+      const start = starts[i]!;
+      const block = extractBalancedFrom(out, start);
+      if (!block) continue;
+      if (!COBALT_FIELD_OFFICE_DEMO_RE.test(block) && !COBALT_FIELD_OFFICE_DEMO_RE.test(visibleDeckCopy(block))) {
+        continue;
+      }
+      out = `${out.slice(0, start)}${out.slice(start + block.length)}`;
+    }
+  }
+  return out;
+}
+
+const COBALT_ABSOLUTE_SLOT_MARK = 'data-od-cobalt-absolute-slots';
+const COBALT_ABSOLUTE_SLOT_CSS = [
+  '.slide.s-cover>.titlewrap,.slide.s-cover>.cfooter,.slide.s-cover>.vstack,.slide.s-cover>.qr-block,',
+  '.slide.s-colophon>.titlewrap,.slide.s-colophon>.col-footer,.slide.s-colophon>.qr-block,',
+  '.slide.s-manifesto>.stmt-wrap,.slide.s-index>.frame,.slide.s-chapter>.frame,',
+  '.slide.s-data>.frame,.slide.s-quote>.qframe,.slide.s-table>.frame,.slide>.pagenum{position:absolute!important}',
+  '.s-data .body:not(:has(.chart)){grid-template-columns:1fr 1fr!important;align-items:center}',
+  '.s-data .body:not(:has(.chart)) .col-a{display:contents}',
+].join('');
+
+/**
+ * Persist/preview: keep Cobalt absolute slots after neutralize, and let
+ * chart-less s-data stats share the 16:9 row. Idempotent.
+ */
+export function injectCobaltAbsoluteSlotCss(html: string): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsCobaltGrid(dest)) return dest;
+  if (dest.includes(COBALT_ABSOLUTE_SLOT_MARK)) return dest;
+  const tag = `<style ${COBALT_ABSOLUTE_SLOT_MARK}>${COBALT_ABSOLUTE_SLOT_CSS}</style>`;
+  if (/<\/head>/i.test(dest)) return dest.replace(/<\/head>/i, `${tag}</head>`);
+  if (/<\/body>/i.test(dest)) return dest.replace(/<\/body>/i, `${tag}</body>`);
+  return `${dest}${tag}`;
 }
 
 function magazineLeftoverRibbonLabel(text: string): boolean {
@@ -3701,11 +3875,14 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = scrubGenericTitlePills(next);
   next = stripNeoBrutalVarFallbackOnEightBit(next);
   next = dropStudyNotesChromeOnNonIbKits(next);
+  next = scrubCobaltFieldOfficeDemoSlots(next);
+  next = healCobaltOrphanDataStats(next);
   next = enrichSparseCobaltCover(next, brief);
   next = restyleBiennaleSparseChapterBodies(next);
   next = restyleBiennaleSparseDataBodies(next);
   next = restyleBiennaleSparseQuoteBodies(next);
   next = injectBiennaleSparseFillCss(next);
+  next = injectCobaltAbsoluteSlotCss(next);
   next = salvageOrphan2x2GridCards(next);
   return next;
 }

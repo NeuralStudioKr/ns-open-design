@@ -14,11 +14,14 @@ import { attrsLookLikeDeckOrTemplateSlideHost } from './deck-slide-class.js';
 import { normalizeHangulParticleGaps } from './heal-ai-generated-deck.js';
 import {
   deriveDeckCoverTitleFromBrief,
+  healCobaltOrphanDataStats,
   injectBiennaleSparseFillCss,
+  injectCobaltAbsoluteSlotCss,
   restyleBiennaleSparseChapterBodies,
   restyleBiennaleSparseDataBodies,
   restyleBiennaleSparseQuoteBodies,
   restyleForeignIbMagazineCover,
+  scrubCobaltFieldOfficeDemoSlots,
 } from '../template-clone-fill.js';
 
 function escapeHtml(value: string): string {
@@ -1346,7 +1349,7 @@ export function healOfficialMagazineLayoutDensity(
 ): string {
   const dest = String(html ?? '');
   if (!dest.trim()) return dest;
-  return injectBiennaleSparseFillCss(
+  const healed = injectBiennaleSparseFillCss(
     peelMisplacedBodyChromeFromCapsuleCover(
     healSparseLeftoverCoverComposition(
     healOfficialMagazineBodyFrames(
@@ -1387,6 +1390,11 @@ export function healOfficialMagazineLayoutDensity(
     ),
     brief,
     ),
+    ),
+  );
+  return injectCobaltAbsoluteSlotCss(
+    healCobaltOrphanDataStats(
+      scrubCobaltFieldOfficeDemoSlots(healed),
     ),
   );
 }

@@ -78,6 +78,12 @@ describe('heal official magazine layout density', () => {
     expect(LOOK_NEUTRALIZE_CSS).toMatch(
       /\.slide\s+\.slide-inner[\s\S]*width:\s*100%\s*!important/,
     );
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(/\.slide\.s-colophon\s*>\s*\.titlewrap/);
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(/\.slide\.s-colophon\s*>\s*\.col-footer/);
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(/\.slide\s*>\s*\.pagenum/);
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(
+      /\.s-data\s+\.body:not\(:has\(\.chart\)\)/,
+    );
     const innerFillBlock = LOOK_NEUTRALIZE_CSS.match(
       /od-slide-inner-canvas-fill:[\s\S]*?od-magazine-optical-place/,
     )?.[0] ?? '';
@@ -835,5 +841,83 @@ describe('peel misplaced body chrome from Capsule cover (loop437)', () => {
     );
     expect(densityCover).not.toContain('pillar-card');
     expect(densityCover).toContain('CAPSULE');
+  });
+});
+
+const COBALT_EXAMPLE = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../../plugins/_official/examples/html-ppt-zhangzara-cobalt-grid/example.html',
+);
+
+const COBALT_LOOK = `<style data-od-official-look-css>
+:root { --paper:#F0EBDE; --ink:#1F2BE0; }
+.s-cover .titlewrap { position:absolute; }
+.s-cover .pixel-glitch { position:absolute; }
+.s-data .body { display:grid; grid-template-columns:0.8fr 1.6fr; }
+.s-colophon .titlewrap { position:absolute; right:80px; top:28%; }
+.s-colophon .col-footer { position:absolute; bottom:120px; }
+</style>`;
+
+const HANGUL_COBALT_MISPLACED = `<!doctype html><html lang="ko"><head></head><body>
+<section class="slide s-cover hairlines">
+<div class="titlewrap"><h1 class="title">팀버<br/>소개</h1>
+<div class="subkicker"><div class="l caption">Field Office Quarterly</div>
+<div class="ed">A field report on the state of things.</div></div></div>
+<div class="pixel-glitch" aria-hidden="true"></div>
+</section>
+<section class="slide s-data hairlines">
+<div class="frame">
+<div class="topbar"><div class="h">근거와 사례</div>
+<div class="lab-tag caption">Newsletter opens · 2024 Q1 — 2026 Q1</div></div>
+<div class="body"><div class="col-a"></div>
+<div class="stat"><div class="vbig">82%</div><div class="lab2 caption">팀</div>
+<div class="desc">개인 생산성보다 팀 전체의 반복 업무 절감에 초점</div></div>
+<div class="stat"><div class="vbig">11k</div><div class="lab2 caption">연결</div>
+<div class="desc">문서, 슬라이드, 드라이브 연동을 하나의 작업선으로 연결</div></div>
+</div></div>
+<div class="pagenum">05 / 10</div>
+</section>
+<section class="slide s-colophon hairlines">
+<div class="pixel-glitch" aria-hidden="true"></div>
+<div class="titlewrap"><div class="ktag caption">Colophon</div><h2 class="ttl">운영과 보안</h2></div>
+<div class="col-footer">
+<div><div class="ftag caption">Editors</div>
+<div class="ftxt">Lin Ito &amp; Anya Mehrotra<br/>with the field-office collective</div></div>
+<div><div class="ftag caption">Designed</div>
+<div class="ftxt">In Newsreader, Hanken Grotesk<br/>&amp; DM Mono</div></div>
+</div>
+<div class="pagenum">08 / 10</div>
+</section>
+${COBALT_LOOK}
+</body></html>`;
+
+describe('루프451 Cobalt Grid absolute slots and orphan data stats', () => {
+  it('leaves the official English Cobalt example untouched', () => {
+    const official = readFileSync(COBALT_EXAMPLE, 'utf8');
+    const healed = healOfficialMagazineLayoutDensity(official);
+    expect(healed).toContain('Newsletter opens');
+    expect(healed).toContain('Lin Ito');
+    expect(healed).toMatch(/<div class="col-a">[\s\S]*class="stat"[\s\S]*82%/);
+    expect(healed).toContain('pixel-glitch');
+  });
+
+  it('reparents orphan stats, drops Field Office leftover, and injects slot CSS', () => {
+    expect(HANGUL_COBALT_MISPLACED).toMatch(/<div class="col-a"><\/div>\s*<div class="stat">/);
+    const healed = healOfficialMagazineLayoutDensity(HANGUL_COBALT_MISPLACED, '팀버 소개');
+    expect(healed).not.toMatch(/<div class="col-a"><\/div>\s*<div class="stat">/);
+    expect(healed).toMatch(/<div class="col-a">[\s\S]*class="stat"[\s\S]*82%[\s\S]*11k/);
+    expect(healed).toContain('근거와 사례');
+    expect(healed).toContain('운영과 보안');
+    expect(healed).not.toMatch(/Newsletter opens/i);
+    expect(healed).not.toMatch(/Lin Ito/);
+    expect(healed).not.toMatch(/Field Office Quarterly/);
+    expect(healed).toContain('data-od-cobalt-absolute-slots');
+    expect(healed).toMatch(/\.slide\.s-colophon>\.titlewrap/);
+    const again = healOfficialMagazineLayoutDensity(healed);
+    expect(again).not.toMatch(/<div class="col-a"><\/div>\s*<div class="stat">/);
+    expect(again).toMatch(/<div class="col-a">[\s\S]*class="stat"[\s\S]*82%[\s\S]*11k/);
+    expect(again).not.toMatch(/Newsletter opens/i);
+    expect(again).not.toMatch(/Lin Ito/);
+    expect(again.match(/data-od-cobalt-absolute-slots/g)?.length).toBe(1);
   });
 });

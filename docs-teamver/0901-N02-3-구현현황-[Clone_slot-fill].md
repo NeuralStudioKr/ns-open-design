@@ -32,6 +32,7 @@
 | **루프434** Block-frame Neo scrub | ☑ Neo marketing wipe on Hangul LOOK |
 | **루프435** col-left/right clip | ☑ flow clip · Motif outside · no persist-split |
 | **루프436** AA · 스물한째 | ☑ beyond closed letter/ordinal track |
+| **루프451** Cobalt Grid 슬롯 복원 · orphan stat | ☑ absolute slots · Field Office leftover drop |
 | **D** hybrid fallback 제거 | ☑ |
 | **루프359** HTML dump → seed-fallback 즉시 · repair AC abort시 seed 유지 | ☑ |
 | **루프360** repair 판단 messagesRef 레이스 · sendNow synchronous reject 회복 | ☑ |
@@ -125,6 +126,7 @@
 
 | 일자 | 내용 |
 |------|------|
+| 2026-09-04 | 루프451 — Cobalt Grid absolute 슬롯 복원 · orphan `.stat` 재부모 · Hangul Field Office leftover drop. |
 | 2026-09-04 | 루프437 — Zhangzara 4템플릿 fixture 품질 게이트. `assertDeterministicTemplateQualityGate` + Capsule/Daisy/Creative/Studio (motif · leftover · 1920×1080 · 장수). |
 | 2026-09-04 | 루프431–436 — block-frame peer-fit · class-flex leftover · all-기둥 row · Neo scrub · col clip · AA/스물한째 |
 | 2026-09-04 | C13 / 루프426 — catalog peer-fit · sticky chrome deny-before-allowlist · MiniMax skip 재확인 |

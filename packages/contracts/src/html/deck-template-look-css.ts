@@ -187,6 +187,36 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
   position: relative !important;
   z-index: 2 !important;
 }
+/* 루프451 — Cobalt Grid authored slots stay presentation-absolute.
+ * Neutralize flattened titlewrap / col-footer / pagenum into document
+ * flow, so the colophon title overlaps the left pixel-glitch and the
+ * page number drifts to the far left. Restore those kit slots only. */
+.slide.s-cover > .titlewrap,
+.slide.s-cover > .cfooter,
+.slide.s-cover > .vstack,
+.slide.s-cover > .qr-block,
+.slide.s-colophon > .titlewrap,
+.slide.s-colophon > .col-footer,
+.slide.s-colophon > .qr-block,
+.slide.s-manifesto > .stmt-wrap,
+.slide.s-index > .frame,
+.slide.s-chapter > .frame,
+.slide.s-data > .frame,
+.slide.s-quote > .qframe,
+.slide.s-table > .frame,
+.slide > .pagenum {
+  position: absolute !important;
+}
+/* Cobalt s-data without a pixel chart: two stats share the 16:9 row.
+ * Official kit is 0.8fr plus a 1.6fr chart; MiniMax often omits the
+ * chart and parks .stat as siblings of an empty .col-a. */
+.s-data .body:not(:has(.chart)) {
+  grid-template-columns: 1fr 1fr !important;
+  align-items: center;
+}
+.s-data .body:not(:has(.chart)) .col-a {
+  display: contents;
+}
 /* od-slide-inner-canvas-fill: IB presenter cards are 1320×820 / 92vw×86vh.
  * Stacked 16:9 PPT pages must fill the 1920×1080 frame, not float a smaller card.
  * od-slide-inner-min-fill: never height:100% + min-height:0 inside the flow clip —

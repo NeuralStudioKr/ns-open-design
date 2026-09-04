@@ -34,7 +34,11 @@ import {
   salvageMalformedMiniMaxSlideMarkup,
   restyleForeignIbMagazineCover,
   enrichSparseCobaltCover,
+  healCobaltOrphanDataStats,
+  injectCobaltAbsoluteSlotCss,
+  officialLookIsCobaltGrid,
   rewriteRawUrlSiteCoverTitles,
+  scrubCobaltFieldOfficeDemoSlots,
   healSparseDeckCoverLayout,
   flattenNestedComparisonGridRows,
   absorbOrphanComparisonTrackCells,
@@ -1414,6 +1418,67 @@ ${capsuleLook}
     expect(salvaged).not.toMatch(/www\.teamver\.com 사이/);
     expect(salvaged).toMatch(/subkicker/);
     expect(rewriteRawUrlSiteCoverTitles(html)).toMatch(/팀버/);
+  });
+
+  it('루프451: reparents Cobalt orphan s-data stats and drops Field Office leftover', async () => {
+    const look = [
+      '<style data-od-official-look-css>',
+      ':root { --paper:#F0EBDE; --ink:#1F2BE0; }',
+      '.s-cover .titlewrap { position:absolute; }',
+      '.s-cover .pixel-glitch { position:absolute; }',
+      '</style>',
+    ].join('');
+    const html = [
+      '<section class="slide s-cover hairlines">',
+      '<div class="titlewrap"><h1 class="title">팀버 소개</h1>',
+      '<div class="subkicker"><div class="l caption">Field Office Quarterly</div>',
+      '<div class="ed">A field report on the state of things.</div></div></div>',
+      '<div class="pixel-glitch"></div>',
+      '</section>',
+      '<section class="slide s-data hairlines">',
+      '<div class="frame"><div class="topbar"><div class="h">근거와 사례</div>',
+      '<div class="lab-tag caption">Newsletter opens · 2024 Q1 — 2026 Q1</div></div>',
+      '<div class="body"><div class="col-a"></div>',
+      '<div class="stat"><div class="vbig">82%</div><div class="lab2">팀</div></div>',
+      '<div class="stat"><div class="vbig">11k</div><div class="lab2">연결</div></div>',
+      '</div></div></section>',
+      '<section class="slide s-colophon hairlines">',
+      '<div class="titlewrap"><h2 class="ttl">운영과 보안</h2></div>',
+      '<div class="col-footer"><div class="ftxt">Lin Ito &amp; Anya Mehrotra</div></div>',
+      '</section>',
+      look,
+    ].join('');
+    expect(officialLookIsCobaltGrid(html)).toBe(true);
+    const reparented = healCobaltOrphanDataStats(html);
+    expect(reparented).not.toMatch(/<div class="col-a"><\/div>\s*<div class="stat">/);
+    expect(reparented).toMatch(/<div class="col-a">[\s\S]*82%[\s\S]*11k/);
+    expect(healCobaltOrphanDataStats(reparented)).toBe(reparented);
+
+    const scrubbed = scrubCobaltFieldOfficeDemoSlots(html);
+    expect(scrubbed).not.toMatch(/Newsletter opens/i);
+    expect(scrubbed).not.toMatch(/Lin Ito/);
+    expect(scrubbed).not.toMatch(/Field Office Quarterly/);
+    expect(scrubbed).toContain('근거와 사례');
+    expect(scrubbed).toContain('운영과 보안');
+
+    const injected = injectCobaltAbsoluteSlotCss(html);
+    expect(injected).toContain('data-od-cobalt-absolute-slots');
+    expect(injectCobaltAbsoluteSlotCss(injected)).toBe(injected);
+
+    const official = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-cobalt-grid/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(healCobaltOrphanDataStats(official)).toBe(official);
+    expect(scrubCobaltFieldOfficeDemoSlots(official)).toBe(official);
+
+    const salvaged = salvageMalformedMiniMaxSlideMarkup(html);
+    expect(salvaged).not.toMatch(/<div class="col-a"><\/div>\s*<div class="stat">/);
+    expect(salvaged).not.toMatch(/Newsletter opens/i);
+    expect(salvaged).toContain('data-od-cobalt-absolute-slots');
   });
 
   it('does not wrap dense or already-stacked Biennale chapters', () => {

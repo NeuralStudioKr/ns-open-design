@@ -1088,6 +1088,9 @@ ${staleFill}
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-sibling-chrome-above-flow');
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-data-anim-visible');
     expect(LOOK_NEUTRALIZE_CSS).toContain('od-data-anim-reveal');
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(/\.slide\.s-colophon\s*>\s*\.titlewrap/);
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(/\.slide\s*>\s*\.pagenum/);
+    expect(LOOK_NEUTRALIZE_CSS).toMatch(/\.s-data\s+\.body:not\(:has\(\.chart\)\)/);
     expect(LOOK_NEUTRALIZE_CSS).toMatch(
       /\[data-anim\][\s\S]*opacity:\s*1\s*!important/,
     );
