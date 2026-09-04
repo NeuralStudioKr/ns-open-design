@@ -1289,4 +1289,88 @@ describe('streamProxyEndpoint idle-timeout stall (AGENT_EXECUTION_STALLED)', () 
     );
     expect(shouldSoftRetryProxyFailure(postDeltaStall)).toBe(false);
   });
+
+  it('loop423 — daemon : keepalive comments do not reset the content idle clock', async () => {
+    const { parseSseFrame } = await import('../../src/providers/sse');
+    const { isProxySseContentActivityFrame } = await import(
+      '../../src/providers/api-proxy'
+    );
+    expect(isProxySseContentActivityFrame(parseSseFrame(': keepalive'))).toBe(false);
+    expect(
+      isProxySseContentActivityFrame(
+        parseSseFrame('event: delta\ndata: {"delta":"x"}'),
+      ),
+    ).toBe(true);
+
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        body: {
+          getReader() {
+            let step = 0;
+            return {
+              read() {
+                step += 1;
+                if (step === 1) {
+                  return Promise.resolve({
+                    done: false,
+                    value: new TextEncoder().encode(
+                      'event: delta\ndata: {"delta":"<head>"}\n\n',
+                    ),
+                  });
+                }
+                // Several keepalives would have reset byte-idle forever.
+                if (step <= 8) {
+                  return Promise.resolve({
+                    done: false,
+                    value: new TextEncoder().encode(': keepalive\n\n'),
+                  });
+                }
+                // Then hang — content idle from the last real event must still fire.
+                return new Promise(() => {});
+              },
+              cancel() {},
+              releaseLock() {},
+            };
+          },
+        },
+      }),
+    );
+
+    const onDelta = vi.fn();
+    const onError = vi.fn();
+    const onDone = vi.fn();
+    const runPromise = streamProxyEndpoint(
+      '/api/proxy/minimax/stream',
+      {
+        apiKey: 'test-api-key',
+        baseUrl: 'https://api.minimaxi.com',
+        model: 'MiniMax-M3',
+      } as any,
+      'System',
+      [{ id: 'm1', role: 'user', content: 'hi', createdAt: 1 }],
+      new AbortController().signal,
+      { onDelta, onDone, onError },
+      { minOutputTokens: 16_000 },
+    );
+
+    await Promise.resolve();
+    await Promise.resolve();
+    // Drain the immediate keepalive reads, then advance past deck content idle.
+    for (let i = 0; i < 12; i += 1) await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000 + 2000);
+    await runPromise;
+
+    expect(onDelta).toHaveBeenCalledWith('<head>');
+    expect(onDone).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledTimes(1);
+    const err = onError.mock.calls[0]?.[0] as Error & {
+      code?: string;
+      retryable?: boolean;
+    };
+    expect(err.code).toBe('AGENT_EXECUTION_STALLED');
+    expect(err.retryable).toBe(false);
+  });
 });

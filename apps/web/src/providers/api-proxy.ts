@@ -36,11 +36,12 @@ import {
 } from '../utils/projectFileFetchCache';
 import { loadAuthenticatedProjectFileBlob } from '../hooks/useAuthenticatedProjectFileObjectUrl';
 
-/** No SSE bytes for this long → surface a retryable stall error instead of infinite Working UI. */
+/** No *content* SSE events for this long → stall (keepalive comments ignored). */
 export const PROXY_STREAM_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 /**
  * Slide/deck BYOK (minOutputTokens floor): MiniMax often pauses mid-artifact
  * while planning the next section. 5 minutes cut live decks as AGENT_EXECUTION_STALLED.
+ * Idle is measured from the last real event (delta/thinking/…), not TCP keepalives.
  */
 export const PROXY_STREAM_IDLE_TIMEOUT_DECK_MS = 10 * 60 * 1000;
 
@@ -54,6 +55,20 @@ export function resolveProxyStreamIdleTimeoutMs(context?: ProxyContext): number 
     return PROXY_STREAM_IDLE_TIMEOUT_DECK_MS;
   }
   return PROXY_STREAM_IDLE_TIMEOUT_MS;
+}
+
+/** Daemon `: keepalive` comments must not reset the stall clock (loop423). */
+export function isProxySseContentActivityFrame(
+  parsed: ReturnType<typeof parseSseFrame>,
+): boolean {
+  return parsed?.kind === 'event';
+}
+
+function createProxyStreamIdleError(): Error & { code: string; retryable: boolean } {
+  return Object.assign(new Error('BYOK proxy stream timed out due to inactivity'), {
+    code: 'AGENT_EXECUTION_STALLED',
+    retryable: true,
+  });
 }
 
 async function readProxyStreamChunk(
@@ -82,12 +97,7 @@ async function readProxyStreamChunk(
     signal.addEventListener('abort', onAbort, { once: true });
     timer = setTimeout(() => {
       signal.removeEventListener('abort', onAbort);
-      reject(
-        Object.assign(new Error('BYOK proxy stream timed out due to inactivity'), {
-          code: 'AGENT_EXECUTION_STALLED',
-          retryable: true,
-        }),
-      );
+      reject(createProxyStreamIdleError());
     }, idleTimeoutMs);
     reader.read().then(
       (result) => {
@@ -364,11 +374,19 @@ async function streamProxyEndpointOnce(
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
+    // 루프423 — Stall on content silence. Daemon `: keepalive` every 25s must
+    // not reset the clock or Working UI hangs forever mid-<head>.
+    const contentIdleTimeoutMs = resolveProxyStreamIdleTimeoutMs(context);
+    let lastContentAt = Date.now();
 
     while (true) {
+      const remainingMs = contentIdleTimeoutMs - (Date.now() - lastContentAt);
+      if (remainingMs <= 0) {
+        throw createProxyStreamIdleError();
+      }
       const { value, done } = await readProxyStreamChunk(
         reader,
-        resolveProxyStreamIdleTimeoutMs(context),
+        remainingMs,
         signal,
       );
       if (done) break;
@@ -381,6 +399,9 @@ async function streamProxyEndpointOnce(
         buf = buf.slice(match.index + match[0].length);
 
         const parsed = parseSseFrame(frame);
+        if (isProxySseContentActivityFrame(parsed)) {
+          lastContentAt = Date.now();
+        }
         if (!parsed || parsed.kind !== 'event') continue;
 
         if (parsed.event === 'delta') {

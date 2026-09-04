@@ -42,6 +42,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프423 — SSE keepalive가 content idle을 리셋하지 않음
+
+체감: `<head>` 직후 keepalive만 오고 Working 고정. 추가 생성 불가.
+
+수정: FE idle을 real SSE event 기준으로 측정(comment keepalive 무시). staging 웹 재배포 필요. 당장 Stop 후 재시도.
+
 ### 루프422 — 고른 템플릿은 pure-prompt여도 LOOK seed
 
 체감: pure-prompt가 Capsule을 적용하지 못하고 Inter/슬레이트 + IB magazine 표지만 냄.
