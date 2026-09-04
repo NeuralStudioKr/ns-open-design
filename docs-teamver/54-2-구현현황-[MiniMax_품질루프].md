@@ -15,7 +15,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts system-prompt-api-mode · template-visual-kit · teamver-selected-template-compose · deck-framework-compact · template-clone-fill, web templateCloneContentFill · runtime/resume.
 
-**후속:** [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) · [0901-N02-18](./0901-N02-18-구현설계-[Clone_slot-map-C13].md) — B1–B5 · C–C13 · D · 루프368–436. MiniMax live 가드 ☑(키 없으면 skip). 루프366 bake ☑ · C13 ☑ · 루프431–436 ☑.
+**후속:** [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) · [0901-N02-18](./0901-N02-18-구현설계-[Clone_slot-map-C13].md) — B1–B5 · C–C13 · D · 루프368–437. MiniMax live 가드 ☑(키 없으면 skip). 루프366 bake ☑ · C13 ☑ · 루프431–437 ☑.
 
 다음 추천 작업:
 1. MiniMax 키 환경 Clone fill live smoke
@@ -36,6 +36,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 `기둥` / `PILLAR` / `Phase`는 모델이 붙이는 접두일 뿐, 발표 용어가 아닙니다. extra-copy·stub는 주제 단어 목록이 아닙니다(루프259·265).
 
 ## 2026-09-02 현재 판단 · 최신 루프
+
+### 루프437 — Capsule 채움 16:9 letterbox · 표지 body 카드 제거
+
+체감: Capsule 미리보기가 iframe 비율로 잘리고 표지에 pillar/네오 카드가 겹침.
+
+수정: Hangul(또는 1920 pin) filled Capsule presenter만 16:9 letterbox. 표지에서 본문 카드 peel. 영문 catalog `example.html`은 네이티브 100% 유지. nav-hint 숨김.
 
 ### 루프436 — doubled letter · 스물한째
 

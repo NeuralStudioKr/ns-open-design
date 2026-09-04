@@ -41,6 +41,7 @@ import {
   COLLAPSE_PREVIEW_MAX_STEPS,
   pinDeckSlidesToFixedCanvas,
   healOfficialMagazineLayoutDensity,
+  peelMisplacedBodyChromeFromCapsuleCover,
   healAiGeneratedDeckMarkup,
   healInstructionCopyCoverHeading,
   scrubLeftoverCatalogExampleHtml,
@@ -222,6 +223,14 @@ function buildSrcdocUnsafe(
       } catch (_) {
         /* keep authored HTML */
       }
+    }
+    // Capsule LOOK seeds keep presenter JS, so the density heal below is
+    // skipped. Cover peel must still run — body cards dumped on slide-1
+    // overlap the Bodoni title even when the 16:9 letterbox is applied.
+    try {
+      html = peelMisplacedBodyChromeFromCapsuleCover(html);
+    } catch (_) {
+      /* keep authored HTML */
     }
     if (!authoredPresenterDeck) {
       try {
@@ -2879,6 +2888,13 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .stage > .slide {
   /* Soft edge so cream slides read as a card on the stage chrome. */
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
   ${stagePaper ? `background: ${stagePaper};` : ''}
+}
+html[data-od-compact-stacked] .nav-hint,
+html[data-od-compact-stacked] .nav-dots,
+html[data-od-compact-stacked] .nav-dot,
+html[data-od-compact-stacked] .slide-counter,
+html[data-od-compact-stacked] .keyboard-hint {
+  display: none !important;
 }
 #od-stacked-deck-stage > .slide {
   box-sizing: border-box !important;

@@ -1216,6 +1216,129 @@ export function healSparseLeftoverCoverComposition(
   return `${dest.slice(0, first.start)}${nextSlide}${dest.slice(first.end)}`;
 }
 
+const CAPSULE_COVER_PEEL_CLASSES = new Set([
+  'pillar-card',
+  'stat-card',
+  'cards-grid',
+  'slide-header',
+  'header-pill',
+  'hero-frame',
+  'split-left',
+  'split-right',
+  'left-content',
+  'right-visual',
+  'chart-container',
+]);
+
+function looksLikeCapsuleTitleCover(attrs: string, body: string): boolean {
+  const host = hasExactClass(attrs, 'slide-1')
+    || /\bdata-slide\s*=\s*['"]1['"]/i.test(attrs);
+  if (!host) return false;
+  return /\b(?:title-pill|main-title|deco-pills)\b/i.test(body);
+}
+
+function looksLikeNeoBrutalDumpCard(attrs: string): boolean {
+  if (
+    hasExactClass(attrs, 'deco-pill')
+    || hasExactClass(attrs, 'deco-pills')
+    || hasExactClass(attrs, 'title-pill')
+    || hasExactClass(attrs, 'main-title')
+    || hasExactClass(attrs, 'subtitle')
+    || hasExactClass(attrs, 'pill')
+  ) {
+    return false;
+  }
+  if (hasExactClass(attrs, 'neo-card') || hasExactClass(attrs, 'brutal-card')) {
+    return true;
+  }
+  const style = /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i.exec(attrs)?.[2] ?? '';
+  if (!style) return false;
+  const thickBorder = /border(?:-width)?\s*:\s*[3-8]px/i.test(style)
+    && (
+      /border(?:-style)?\s*:\s*solid/i.test(style)
+      || /border\s*:\s*[3-8]px\s+solid/i.test(style)
+    );
+  const offsetShadow = /box-shadow\s*:\s*-?\d+px\s+-?\d+px\s+0(?:px)?(?:\s+\S+)?/i.test(style);
+  return thickBorder && offsetShadow;
+}
+
+function openLooksLikeCapsuleCoverPeel(open: string, block: string): boolean {
+  const attrs = open.replace(/^<[a-zA-Z][\w-]*/, '');
+  if (
+    hasExactClass(attrs, 'deco-pills')
+    || hasExactClass(attrs, 'deco-pill')
+    || hasExactClass(attrs, 'title-pill')
+    || hasExactClass(attrs, 'main-title')
+    || hasExactClass(attrs, 'subtitle')
+  ) {
+    return false;
+  }
+  for (const token of classTokens(attrs)) {
+    if (CAPSULE_COVER_PEEL_CLASSES.has(token.toLowerCase())) return true;
+  }
+  if (
+    hasExactClass(attrs, 'slide-inner')
+    && !/\b(?:title-pill|main-title|deco-pills)\b/i.test(block)
+  ) {
+    return true;
+  }
+  return looksLikeNeoBrutalDumpCard(attrs);
+}
+
+function peelCapsuleCoverDumpChrome(body: string): string {
+  let out = body;
+  const openRe = /<(div|section|article|aside)\b[^>]*>/gi;
+  const starts: number[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) starts.push(match.index);
+  for (let i = starts.length - 1; i >= 0; i -= 1) {
+    const start = starts[i]!;
+    const block = extractBalancedElement(out, start);
+    if (!block) continue;
+    const open = /^<(div|section|article|aside)\b[^>]*>/i.exec(block)?.[0] ?? '';
+    if (!openLooksLikeCapsuleCoverPeel(open, block)) continue;
+    out = `${out.slice(0, start)}${out.slice(start + block.length)}`;
+  }
+  return out.replace(/\n{3,}/g, '\n\n');
+}
+
+/**
+ * Loop437 — Capsule LOOK covers keep deco-pills + title-pill + main-title.
+ * Compact fill often dumps slide-3 `pillar-card` / neo-brutal cards onto
+ * slide-1, so the Bodoni title overlaps body chrome. Peel only that
+ * foreign host chrome. Official English `example.html` is a no-op.
+ */
+export function peelMisplacedBodyChromeFromCapsuleCover(html: string): string {
+  const dest = String(html ?? '');
+  if (!dest.trim()) return dest;
+  // Do not use listMagazineSlideSpans — Capsule covers nest many </div>
+  // (deco-pills) and the first close is not the slide close.
+  const openRe = /<(section|div|main|article)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(dest)) !== null) {
+    const attrs = match[2] ?? '';
+    if (!attrsLookLikeDeckOrTemplateSlideHost(attrs)) continue;
+    if (!hasExactClass(attrs, 'slide-1') && !/\bdata-slide\s*=\s*['"]1['"]/i.test(attrs)) {
+      continue;
+    }
+    const block = extractBalancedElement(dest, match.index);
+    if (!block) return dest;
+    const open = match[0];
+    const tag = (match[1] ?? 'div').toLowerCase();
+    const close = new RegExp(`</${tag}\\s*>$`, 'i').exec(block);
+    if (!close) return dest;
+    const body = block.slice(open.length, block.length - close[0].length);
+    if (!looksLikeCapsuleTitleCover(attrs, body)) return dest;
+    const nextBody = peelCapsuleCoverDumpChrome(body);
+    if (nextBody === body) return dest;
+    return (
+      `${dest.slice(0, match.index)}${open}${nextBody}${close[0]}`
+      + dest.slice(match.index + block.length)
+    );
+  }
+  return dest;
+}
+
 /** Persist + preview: empty Motif chrome, broken tags, sparse IB cover. */
 export function healOfficialMagazineLayoutDensity(
   html: string,
@@ -1224,6 +1347,7 @@ export function healOfficialMagazineLayoutDensity(
   const dest = String(html ?? '');
   if (!dest.trim()) return dest;
   return injectBiennaleSparseFillCss(
+    peelMisplacedBodyChromeFromCapsuleCover(
     healSparseLeftoverCoverComposition(
     healOfficialMagazineBodyFrames(
       healSparseOfficialMagazineCover(
@@ -1262,6 +1386,7 @@ export function healOfficialMagazineLayoutDensity(
       ),
     ),
     brief,
+    ),
     ),
   );
 }

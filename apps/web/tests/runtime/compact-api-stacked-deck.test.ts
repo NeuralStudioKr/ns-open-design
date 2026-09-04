@@ -979,6 +979,44 @@ cur=n;
     expect(srcdoc).toMatch(/\.slide\s*\{[^}]*position:\s*absolute/i);
   });
 
+  it('letterboxes Hangul-filled Capsule LOOK seeds to a 16:9 stage', () => {
+    const official = readFileSync(
+      resolve(repoRoot, 'plugins/_official/examples/html-ppt-zhangzara-capsule/example.html'),
+      'utf8',
+    );
+    const filled = official
+      .replace('lang="en"', 'lang="ko"')
+      .replace('CAPSULE', '팀버')
+      .replace('A Framework for Bold Ideas', '서비스 소개')
+      .replace(
+        '</h1>\n  </div>\n\n  <!-- SLIDE 2:',
+        `</h1>
+    <div class="cards-grid">
+      <div class="pillar-card"><h3>핵심 기능</h3><p>직접적인 가치</p></div>
+    </div>
+    <div style="border:4px solid #000;box-shadow:6px 6px 0 #000">협업</div>
+  </div>
+
+  <!-- SLIDE 2:`,
+      );
+    expect(looksLikeOfficialFullscreenPresenterDeck(filled)).toBe(true);
+    expect(looksLikeCompactApiStackedDeck(filled)).toBe(true);
+    expect(looksLikeCompactApiStackedDeckForPreview(filled)).toBe(true);
+    const srcdoc = buildSrcdoc(filled, { deck: true });
+    expect(srcdoc).toContain('data-od-deck-stacked-fix');
+    expect(srcdoc).toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+    expect(srcdoc).toContain('#od-stacked-deck-stage');
+    expect(srcdoc).toContain('scale(');
+    expect(srcdoc).toMatch(/html\[data-od-compact-stacked\] \.nav-hint/);
+    expect(srcdoc).toContain('팀버');
+    expect(srcdoc).toContain('deco-pills');
+    expect(srcdoc).toContain('title-pill');
+    expect(srcdoc).not.toMatch(/main-title[\s\S]{0,400}cards-grid/);
+    expect(srcdoc).not.toMatch(/main-title[\s\S]{0,400}직접적인 가치/);
+    expect(srcdoc).not.toMatch(/box-shadow:6px 6px 0 #000">협업/);
+    expect(srcdoc).toMatch(/class="slide slide-3"[\s\S]*pillar-card/);
+  });
+
   it('does not force stacked slides into a centered column that clips 16:9 split layouts', async () => {
     const html = [
       '<!doctype html><html lang="ko"><head>',

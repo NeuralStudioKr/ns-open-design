@@ -13,6 +13,7 @@ import {
   healOfficialMagazineLayoutDensity,
   healSparseLeftoverCoverComposition,
   healSparseOfficialMagazineCover,
+  peelMisplacedBodyChromeFromCapsuleCover,
   repairCompactFirstFillMarkup,
   stripEmptyOfficialTextChromeMotifs,
 } from '../src/html/heal-official-magazine-layout';
@@ -783,5 +784,56 @@ describe('heal leftover IB cover on Neutral body (loop427)', () => {
     const merged = mergeOfficialDeckLookCss(sparse, assets);
     const healed = healSparseLeftoverCoverComposition(merged, 'Linux internals explainer');
     expect(healed).toBe(merged);
+  });
+});
+
+const CAPSULE_EXAMPLE = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../../plugins/_official/examples/html-ppt-zhangzara-capsule/example.html',
+);
+
+describe('peel misplaced body chrome from Capsule cover (loop437)', () => {
+  it('leaves the official English Capsule example untouched', () => {
+    const official = readFileSync(CAPSULE_EXAMPLE, 'utf8');
+    expect(peelMisplacedBodyChromeFromCapsuleCover(official)).toBe(official);
+    expect(healOfficialMagazineLayoutDensity(official)).toContain('CAPSULE');
+    expect(healOfficialMagazineLayoutDensity(official)).toContain('pillar-card');
+  });
+
+  it('peels pillar and neo cards off slide-1 and keeps title chrome', () => {
+    const official = readFileSync(CAPSULE_EXAMPLE, 'utf8');
+    const dumped = official.replace(
+      '</h1>\n  </div>\n\n  <!-- SLIDE 2:',
+      `</h1>
+    <div class="cards-grid">
+      <div class="pillar-card"><h3>핵심 기능</h3><p>직접적인 가치</p></div>
+    </div>
+    <div style="border:4px solid #000;box-shadow:6px 6px 0 #000">협업</div>
+  </div>
+
+  <!-- SLIDE 2:`,
+    );
+    expect(dumped).toContain('pillar-card');
+    const peeled = peelMisplacedBodyChromeFromCapsuleCover(dumped);
+    const cover = peeled.slice(
+      peeled.search(/class="slide slide-1/),
+      peeled.search(/SLIDE 2:/),
+    );
+    expect(cover).toContain('main-title');
+    expect(cover).toContain('CAPSULE');
+    expect(cover).toContain('deco-pills');
+    expect(cover).toContain('title-pill');
+    expect(cover).not.toContain('pillar-card');
+    expect(cover).not.toContain('cards-grid');
+    expect(cover).not.toContain('협업');
+    expect(peeled).toMatch(/class="slide slide-3"[\s\S]*pillar-card/);
+    expect(peelMisplacedBodyChromeFromCapsuleCover(peeled)).toBe(peeled);
+    const viaDensity = healOfficialMagazineLayoutDensity(dumped, '팀버 소개');
+    const densityCover = viaDensity.slice(
+      viaDensity.search(/class="slide slide-1/),
+      viaDensity.search(/SLIDE 2:/),
+    );
+    expect(densityCover).not.toContain('pillar-card');
+    expect(densityCover).toContain('CAPSULE');
   });
 });

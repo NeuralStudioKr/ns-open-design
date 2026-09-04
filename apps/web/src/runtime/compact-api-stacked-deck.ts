@@ -269,9 +269,36 @@ export function looksLikeCompactApiStackedDeck(html: string): boolean {
   }
 }
 
+/**
+ * Capsule / opacity-stack LOOK seeds keep catalog presenter JS +
+ * `.presentation` + `opacity:0`. FileViewer then skips the 1920×1080
+ * letterbox and the iframe aspect becomes the slide ratio — pills clip
+ * and later pages can paint through. Hangul (or a 1920 pin) means this
+ * is a Teamver fill, not the English gallery example.
+ */
+function looksLikeFilledOfficialPresentationDeck(html: string): boolean {
+  const source = String(html ?? '');
+  if (!looksLikeOfficialFullscreenPresenterDeck(source)) return false;
+  if (looksLikeNestedVerticalTranslateYDeck(source)) return false;
+  if (looksLikeFrameworkDeckMarkup(source)) return false;
+  const presentation = /<(?:div|section|main)\b[^>]*\bclass\s*=\s*['"][^'"]*\bpresentation\b/i.test(source)
+    || (
+      /\.slide\s*\{[^}]*opacity\s*:\s*0/i.test(source)
+      && /\.slide\.(?:active|is-active|current)(?![\w-])[^{]*\{[^}]*opacity\s*:\s*1/i.test(source)
+    );
+  if (!presentation) return false;
+  if (looksLikeFixedCanvasSlideDeck(source)) return true;
+  const visible = source
+    .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ');
+  return /[가-힣]/.test(visible);
+}
+
 function looksLikeCompactApiStackedDeckUnsafe(html: string): boolean {
   if (looksLikeNestedVerticalTranslateYDeck(html)) return false;
   const deckViewportTrack = looksLikeBareDeckViewportTrack(html);
+  if (looksLikeFilledOfficialPresentationDeck(html)) return true;
   if (!deckViewportTrack && looksLikeOfficialFullscreenPresenterDeck(html)) return false;
   if (looksLikeFrameworkDeckMarkup(html)) return false;
   if (looksLikeAuthoredHorizontalSwipeDeck(html)) return false;
