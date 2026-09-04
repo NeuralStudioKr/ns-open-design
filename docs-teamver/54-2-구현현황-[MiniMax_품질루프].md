@@ -38,6 +38,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프430 — peer-fill idempotent · shell 중복 방지 · pagenum 재번호
+
+체감: 10장 요청 시 Biennale s-manifesto/s-programme/s-data가 각 2회 중복, `.stat`에 `입력입력입력입력입력입력입력입력` 반복, pagenum이 shell 원본 유지.
+
+수정: `fillOneCardPeer` fallback idempotent · 미사용 body shell 우선 · unique-role kit은 shell.length로 cap · `.pagenum` 재번호.
+
 ### 루프429 — Biennale Yellow deterministic 슬롯 잔여 데모 제거
 
 현재 시점 기준 판단: deterministic fill 자체는 맞지만, Biennale Yellow류 공식 템플릿은 일반 title/list/card 슬롯 외에 `footer-row`, `strand`, `stat`, `qbody`, `row` 등 템플릿 고유 반복 슬롯이 많다. 이 슬롯을 못 채우면 template sample의 Aurora/전시/방문자 숫자 copy가 그대로 남고, 빈 영역이나 겹치는 chart가 보여 품질이 크게 떨어진다.

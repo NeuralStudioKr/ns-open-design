@@ -414,6 +414,40 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(looksLikeLeftoverTemplateDemoDeck(cloned!)).toBe(false);
   });
 
+  it('loop430 — Biennale 10-slide request stays within 8 unique shells with renumbered pagenums', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-biennale-yellow/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const slides = resolveTemplateCloneSlidesForDeterministicFill({
+      userInstruction: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+      slideCount: 10,
+    });
+    const cloned = buildTemplateClonedDeckHtml(html, slides, {
+      title: '팀버 소개',
+      templateId: 'html-ppt-zhangzara-biennale-yellow',
+      maxSlides: 10,
+    })!;
+    expect(cloned).toBeTruthy();
+    expect(listTemplateCloneSlideShells(cloned).length).toBe(8);
+    // Each specialized Biennale shell appears exactly once — no duplication.
+    const sectionMarkers = [...cloned.matchAll(
+      /<section\b[^>]*class="[^"]*\b(s-cover|s-manifesto|s-programme|s-chapter|s-data|s-quote|s-cal|s-colophon)\b/g,
+    )].map((m) => m[1]);
+    expect(sectionMarkers).toHaveLength(8);
+    expect(new Set(sectionMarkers).size).toBe(8);
+    // Pagenums are renumbered against the filled count (loop430).
+    const pagenums = [...cloned.matchAll(
+      /<div\b[^>]*class="[^"]*\bpagenum\b[^"]*"[^>]*>([^<]+)<\/div>/g,
+    )].map((m) => m[1]?.trim());
+    expect(pagenums).toEqual(['01 / 08', '02 / 08', '03 / 08', '04 / 08', '05 / 08', '06 / 08', '07 / 08', '08 / 08']);
+    // No fill-loop 8× repeat regression on stat titles.
+    expect(cloned).not.toMatch(/입력입력입력입력|정리정리정리정리|완성완성완성완성/);
+  });
+
   it('loop421 — empty-brief padding synthesizes card bodies instead of empty shells', () => {
     const seed = [
       '<!doctype html><html><body>',

@@ -1228,7 +1228,16 @@ export function pickTemplateShellsForContent(
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean).length;
-    const shell = pickShellByRole(role, byRole, cover, bodyPool, usage, lineCount);
+    let shell = pickShellByRole(role, byRole, cover, bodyPool, usage, lineCount);
+    // 루프430 — Never reuse a shell while unused body shells exist. Role
+    // classification is too coarse for Biennale-family kits (s-chapter and
+    // s-colophon classify as 'closing' so the 'timeline'/'stat' picker
+    // fallback misses them). Prefer any remaining unused body shell before
+    // duplicating an already-picked one.
+    if ((usage.get(shell) ?? 0) > 0) {
+      const unused = bodyPool.find((candidate) => (usage.get(candidate) ?? 0) === 0);
+      if (unused) shell = unused;
+    }
     picked.push(shell);
     usage.set(shell, (usage.get(shell) ?? 0) + 1);
   }
@@ -5202,10 +5211,17 @@ function fillOneCardPeer(cardHtml: string, line: TemplateCloneCardFillLine): str
     });
   }
   if (!text) return next;
-  return next.replace(
-    /^(<[a-zA-Z][\w:-]*\b[^>]*>)([\s\S]*)$/i,
-    (_m, open: string, rest: string) => `${open}${escapeHtml(text)}${rest}`,
-  );
+  // 루프430 — idempotent prepend. `fillAndTrimCardPeers` re-runs up to 8
+  // passes and previously appended the escaped title each pass
+  // (`입력입력입력입력입력입력입력입력`). Skip when the leading text run
+  // already starts with the escaped title.
+  const escaped = escapeHtml(text);
+  const openMatch = /^(<[a-zA-Z][\w:-]*\b[^>]*>)([\s\S]*)$/i.exec(next);
+  if (!openMatch) return next;
+  const [, open = '', rest = ''] = openMatch;
+  const leadingText = rest.match(/^\s*([^<]*)/)?.[1]?.trim() ?? '';
+  if (leadingText.startsWith(escaped)) return next;
+  return `${open}${escaped}${rest}`;
 }
 
 const KICKER_SLOT_CLASSES = [
@@ -5526,6 +5542,17 @@ export function buildTemplateClonedDeckHtml(
     if (honorShrink && workingSlides.length > hint) {
       workingSlides = workingSlides.slice(0, hint);
     }
+    // 루프430 — Kits where every shell is a specialized role (Biennale-family:
+    // s-cover / s-manifesto / s-programme / s-chapter / s-data / s-quote /
+    // s-cal / s-colophon) must not duplicate a shell. Duplicating ships two
+    // identical Programme / Data / Manifesto slides.
+    if (
+      shells.length >= 4
+      && workingSlides.length > shells.length
+      && templateShellsAreUniqueRole(shells)
+    ) {
+      workingSlides = workingSlides.slice(0, shells.length);
+    }
   } else {
     // Empty brief: short starter deck with role-diverse shells — not all
     // template demo pages in demo order.
@@ -5600,7 +5627,49 @@ export function buildTemplateClonedDeckHtml(
   // (footer / unused chrome). Wipe the whole document, not just each slide.
   out = stripCapsuleCatalogDemoCopy(out);
   out = stripLeftoverCatalogDemoPhrases(out);
+  out = renumberBiennalePagenums(out, filled.length);
   return out.trim() || null;
+}
+
+/**
+ * 루프430 — True when every shell owns a distinct narrative slot
+ * (Biennale-family: s-cover / s-manifesto / s-programme / s-chapter / s-data
+ * / s-quote / s-cal / s-colophon). Duplicating any of these produces a
+ * broken deliverable — the same Programme / Data / Manifesto page repeats
+ * with the same demo copy.
+ */
+function templateShellsAreUniqueRole(shells: SlideShell[]): boolean {
+  if (shells.length < 4) return false;
+  // Section markers signal a Biennale-family kit where each shell carries a
+  // specialized layout. Role classification is too coarse (s-manifesto and
+  // s-programme both classify as 'body') so we key on the presence of the
+  // markers themselves plus a per-shell uniqueness check.
+  const sectionMarkerRe = /\bs-(?:cover|manifesto|programme|chapter|data|quote|cal|colophon)\b/i;
+  const markers = shells
+    .map((shell) => shell.attrs.match(sectionMarkerRe)?.[0]?.toLowerCase() ?? null)
+    .filter((marker): marker is string => marker !== null);
+  if (markers.length < shells.length - 1) return false;
+  return new Set(markers).size === markers.length;
+}
+
+/**
+ * 루프430 — Rewrite `.pagenum` labels against the filled shell count so the
+ * deck does not ship two `02 / 08` and skip `04 / 08` after the picker
+ * duplicated specialized Biennale shells.
+ */
+function renumberBiennalePagenums(html: string, total: number): string {
+  const source = String(html ?? '');
+  if (!/\bpagenum\b/i.test(source)) return source;
+  const width = String(total).padStart(2, '0');
+  let index = 0;
+  return source.replace(
+    /(<div\b[^>]*\bclass\s*=\s*["'][^"']*\bpagenum\b[^"']*["'][^>]*>)([\s\S]*?)(<\/div>)/gi,
+    (_m, open: string, _inner: string, close: string) => {
+      index += 1;
+      const n = String(index).padStart(2, '0');
+      return `${open}${n} / ${width}${close}`;
+    },
+  );
 }
 
 /**
