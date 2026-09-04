@@ -38,6 +38,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프428 — deterministic create 후 빈「슬라이드 작업 시작」방지
+
+체감: 서버 fill 성공 후 채팅이 비어 멈춘 것처럼 보임.
+
+수정: Home create deterministic 성공 시 user 브리프 + assistant 안내 메시지 시드.
+
 ### 루프427 — leftover IB 표지를 Neutral 본문에 맞춰 재구성
 
 체감: 표지가 제목만 + footer 메아리 + 정의 안 된 `--paper`. 2장부터 Neutral.

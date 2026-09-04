@@ -137,6 +137,7 @@ import {
   fillTemplateClonedDeckDeterministically,
   seedTemplateClonedDeck,
 } from './teamver/seedTemplateClonedDeck';
+import { persistDeterministicHomeCreateChat } from './teamver/deterministicHomeCreateChat';
 import {
   writeCreateConversationHandoff,
   setPendingTemplateClone,
@@ -2700,6 +2701,7 @@ function AppInner() {
       // 루프414 — Home must not auto-send MiniMax JSON fill when the
       // server already slot-filled the LOOK seed.
       let usedDeterministicCloneFill = false;
+      let deterministicSlideCount: number | null = null;
       if (!workingDirHandoffFailed && pendingCanvasHandoff) {
         try {
           const canvasResult = await importTeamverCanvas(result.project.id, {
@@ -2785,6 +2787,7 @@ function AppInner() {
                   seededDeckFileName = seeded.fileName;
                   preservedFilledDeck = cloneResultSuppressesAiFill(seeded);
                   usedDeterministicCloneFill = true;
+                  deterministicSlideCount = seeded.slideCount ?? null;
                   return seeded;
                 }
                 const look = await seedTemplateClonedDeck(cloneRequest);
@@ -2794,6 +2797,7 @@ function AppInner() {
                   // 루프421 — a LOOK/filled deck is the deliverable. never MiniMax
                   // HTML rewrite — it overwrites Capsule and fails AGENT_EXECUTION_FAILED.
                   usedDeterministicCloneFill = true;
+                  deterministicSlideCount = look.slideCount ?? null;
                   return look;
                 }
                 devLog.warn(
@@ -2958,6 +2962,7 @@ function AppInner() {
               seededDeckFileName = seeded.fileName;
               preservedFilledDeck = cloneResultSuppressesAiFill(seeded);
               usedDeterministicCloneFill = true;
+              deterministicSlideCount = seeded.slideCount ?? null;
               return seeded;
             }
             const look = await seedTemplateClonedDeck(cloneRequest);
@@ -2966,6 +2971,7 @@ function AppInner() {
               preservedFilledDeck = cloneResultSuppressesAiFill(look);
               // 루프421 — LOOK/filled deck is the deliverable. never MiniMax overwrite.
               usedDeterministicCloneFill = true;
+              deterministicSlideCount = look.slideCount ?? null;
               return look;
             }
             devLog.warn(
@@ -3149,6 +3155,10 @@ function AppInner() {
           }
         : project;
       rememberLocalProject(projectForNav.id);
+      let createConversationId =
+        typeof result.conversationId === 'string' && result.conversationId.trim()
+          ? result.conversationId.trim()
+          : '';
       if (usedDeterministicCloneFill) {
         // Persist the clear + filled flags — otherwise a projects refresh
         // reloads the dump and can re-arm MiniMax auto-send.
@@ -3156,10 +3166,27 @@ function AppInner() {
           pendingPrompt: null,
           metadata: projectForNav.metadata,
         });
+        // 루프428 — seed chat so empty「슬라이드 작업 시작」does not look stuck.
+        const userBrief =
+          sanitizeCreateAutoSendSeed(derivedPendingPrompt)
+          || extractUserFacingCreateRequest(derivedPendingPrompt)
+          || '슬라이드를 만들어줘.';
+        try {
+          const seededCid = await persistDeterministicHomeCreateChat({
+            projectId: projectForNav.id,
+            conversationId: createConversationId || null,
+            userBrief,
+            slideCount: deterministicSlideCount,
+            fileName: seededDeckFileName ?? 'deck.html',
+          });
+          if (seededCid) createConversationId = seededCid;
+        } catch (err) {
+          devLog.warn('Deterministic Home create chat seed failed', err);
+        }
       }
-      if (typeof result.conversationId === 'string' && result.conversationId.trim()) {
-        writeCreateConversationHandoff(projectForNav.id, result.conversationId);
-        rememberTeamverProjectConversation(projectForNav.id, result.conversationId.trim());
+      if (createConversationId) {
+        writeCreateConversationHandoff(projectForNav.id, createConversationId);
+        rememberTeamverProjectConversation(projectForNav.id, createConversationId);
       }
       flushSync(() => {
         setProjects((curr) => [
@@ -3179,8 +3206,8 @@ function AppInner() {
         kind: 'project',
         projectId: projectForNav.id,
         fileName: navDeckFile,
-        ...(typeof result.conversationId === 'string' && result.conversationId.trim()
-          ? { conversationId: result.conversationId.trim() }
+        ...(createConversationId
+          ? { conversationId: createConversationId }
           : {}),
       } as const;
       if (!hideWorkspaceTabsBar) {
