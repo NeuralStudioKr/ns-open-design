@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   shouldHideTeamverPluginDeveloperChrome,
   teamverEndUserPluginMetaOmit,
+  teamverPluginShareTargetUrl,
 } from "../../src/teamver/branding/pluginDetailDisplay";
 
 describe("teamverEndUserPluginMetaOmit", () => {
@@ -30,5 +31,23 @@ describe("teamverEndUserPluginMetaOmit", () => {
   it("hides install/marketplace share chrome only in slide-only", () => {
     expect(shouldHideTeamverPluginDeveloperChrome({ slideOnlyMvp: false })).toBe(false);
     expect(shouldHideTeamverPluginDeveloperChrome({ slideOnlyMvp: true })).toBe(true);
+  });
+
+  it("drops open-design.ai plugin URLs when embed hides external share", () => {
+    expect(
+      teamverPluginShareTargetUrl(
+        { hideExternalShareSurfaces: true },
+        "https://open-design.ai/marketplace/simple-deck",
+      ),
+    ).toBeUndefined();
+    expect(
+      teamverPluginShareTargetUrl(
+        { hideExternalShareSurfaces: false },
+        "https://open-design.ai/marketplace/simple-deck",
+      ),
+    ).toBe("https://open-design.ai/marketplace/simple-deck");
+    expect(
+      teamverPluginShareTargetUrl({ hideExternalShareSurfaces: false }, null),
+    ).toBeUndefined();
   });
 });

@@ -21,3 +21,12 @@ export function shouldHideTeamverPluginDeveloperChrome(
 ): boolean {
   return branding.slideOnlyMvp === true;
 }
+
+/** open-design.ai public plugin pages stay outside the Teamver tenant. */
+export function teamverPluginShareTargetUrl(
+  branding: Pick<TeamverBrandingConfig, "hideExternalShareSurfaces">,
+  publicUrl: string | null,
+): string | undefined {
+  if (branding.hideExternalShareSurfaces) return undefined;
+  return publicUrl ?? undefined;
+}

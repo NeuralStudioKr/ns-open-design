@@ -74,6 +74,19 @@ describe('Teamver embed external share-surface gating (loop 171)', () => {
     expect(previewModal).toContain("onSharePopoverItemClick?.('html')");
   });
 
+  it('omits open-design.ai plugin shareTarget URLs in embed detail modals', () => {
+    for (const relative of [
+      'src/components/plugin-details/PluginExampleDetail.tsx',
+      'src/components/plugin-details/PluginMediaDetail.tsx',
+      'src/components/plugin-details/PluginDesignSystemDetail.tsx',
+    ]) {
+      const source = readSource(relative);
+      expect(source).toContain('teamverPluginShareTargetUrl');
+      expect(source).toContain('hideExternalShareSurfaces');
+      expect(source).not.toMatch(/url:\s*buildPluginShareUrl\(record\)/);
+    }
+  });
+
   it('disables the assistant Share-to-Open-Design submission in embed', () => {
     const projectView = readSource('src/components/ProjectView.tsx');
     expect(projectView).toContain('hideExternalShareSurfaces');

@@ -36,6 +36,7 @@ import { useTeamverBranding } from '../../teamver/branding/TeamverBrandingProvid
 import {
   shouldHideTeamverPluginDeveloperChrome,
   teamverEndUserPluginMetaOmit,
+  teamverPluginShareTargetUrl,
 } from '../../teamver/branding/pluginDetailDisplay';
 
 interface Props {
@@ -86,7 +87,7 @@ export function PluginDesignSystemDetail({
   onSharePopoverItemClick,
 }: Props) {
   const { t, locale } = useI18n();
-  const { slideOnlyMvp } = useTeamverBranding();
+  const { slideOnlyMvp, hideExternalShareSurfaces } = useTeamverBranding();
   const localizedTitle = localizePluginTitle(locale, record);
   const localizedDescription = localizePluginDescription(locale, record);
   const dsRef = designSystemRef(record);
@@ -253,7 +254,10 @@ export function PluginDesignSystemDetail({
       shareTarget={{
         title: localizedTitle,
         description: localizedDescription || dsRef || undefined,
-        url: buildPluginShareUrl(record),
+        url: teamverPluginShareTargetUrl(
+          { hideExternalShareSurfaces },
+          buildPluginShareUrl(record),
+        ),
       }}
       onClose={onClose}
       sidebar={{

@@ -30,6 +30,7 @@ import { useTeamverBranding } from '../../teamver/branding/TeamverBrandingProvid
 import {
   shouldHideTeamverPluginDeveloperChrome,
   teamverEndUserPluginMetaOmit,
+  teamverPluginShareTargetUrl,
 } from '../../teamver/branding/pluginDetailDisplay';
 
 interface Props {
@@ -98,7 +99,7 @@ export function PluginMediaDetail({
   onSharePopoverItemClick,
 }: Props) {
   const t = useT();
-  const { slideOnlyMvp } = useTeamverBranding();
+  const { slideOnlyMvp, hideExternalShareSurfaces } = useTeamverBranding();
   const [copied, setCopied] = useState(false);
 
   const manifest: PluginManifest = record.manifest ?? ({} as PluginManifest);
@@ -237,7 +238,10 @@ export function PluginMediaDetail({
       shareTarget={{
         title: record.title,
         description: description || undefined,
-        url: buildPluginShareUrl(record),
+        url: teamverPluginShareTargetUrl(
+          { hideExternalShareSurfaces },
+          buildPluginShareUrl(record),
+        ),
       }}
       onClose={onClose}
       sidebar={{

@@ -21,7 +21,10 @@ import { buildPluginUseMenu, pluginUsePrimaryAction } from './pluginUseMenu';
 import type { PluginUseAction } from '../plugins-home/useActions';
 import { embedUiLabel } from '../../teamver/embedUiLabels';
 import { useTeamverBranding } from '../../teamver/branding/TeamverBrandingProvider';
-import { teamverEndUserPluginMetaOmit } from '../../teamver/branding/pluginDetailDisplay';
+import {
+  teamverEndUserPluginMetaOmit,
+  teamverPluginShareTargetUrl,
+} from '../../teamver/branding/pluginDetailDisplay';
 
 interface Props {
   record: InstalledPluginRecord;
@@ -47,7 +50,7 @@ export function PluginExampleDetail({
   onSharePopoverItemClick,
 }: Props) {
   const { t, locale } = useI18n();
-  const { slideOnlyMvp } = useTeamverBranding();
+  const { slideOnlyMvp, hideExternalShareSurfaces } = useTeamverBranding();
   const localizedTitle = localizePluginTitle(locale, record);
   const [html, setHtml] = useState<string | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
@@ -157,7 +160,10 @@ export function PluginExampleDetail({
       shareTarget={{
         title: localizedTitle,
         description: description || undefined,
-        url: buildPluginShareUrl(record),
+        url: teamverPluginShareTargetUrl(
+          { hideExternalShareSurfaces },
+          buildPluginShareUrl(record),
+        ),
       }}
       onClose={onClose}
       sidebar={{
