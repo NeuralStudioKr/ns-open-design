@@ -2062,7 +2062,13 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프417 · deterministic create await fill before preview)
+## 이번 루프 (루프418 · staging pure-prompt)
+
+- [x] `.env.staging.example` / 로컬 `.env.staging` → `pure-prompt`
+- [ ] staging 웹 재빌드·재배포 후 Home 만들기 QA
+- [ ] production `deterministic` 승격 여부 보류
+
+## 직전 루프 (루프417 · deterministic create await fill before preview)
 
 - [x] App await `fillTemplateClonedDeckDeterministically` before navigate
 - [x] success-only `usedDeterministicCloneFill` · fail → AI fill + auto-send
