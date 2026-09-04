@@ -62,7 +62,8 @@
 | **루프413** dense JSON slot-fill 기본 복원 · `kicker`/`lead`/`items[]` · `=prompt`→json | ☑ |
 | **루프414** Home MiniMax JSON fill 제거 · `=prompt` HTML 유지 | ☑ |
 | **루프419** deterministic dense outline · filled 덱 MiniMax skip · Capsule 8–10 게이트 | ☑ |
-| **루프420** pure-prompt 고착 해제 · dump sanitize · embed localStorage 무시 | ☑ |
+| **루프420** dump sanitize · embed localStorage 무시 | ☑ |
+| **루프421** filled 복구 · never MiniMax overwrite · Capsule 데모 스크럽 · deterministic 기본 유지 | ☑ |
 | **루프366** section `#stage` hoist · contracts dist rebuild | ☑ web transform-driven 19/19 |
 | MiniMax 실키 E2E | ☑ 가드 있음 · 키 없으면 skip (`template-clone-minimax-live.e2e`) |
 
@@ -111,8 +112,10 @@
 
 | 일자 | 내용 |
 |------|------|
-| 2026-09-04 | 루프420 — pure-prompt 고착 해제 · sanitizeCreateAutoSendSeed · embed localStorage 무시. staging `=pure-prompt`. |
-| 2026-09-04 | 루프419 — deterministic dense outline · filled 덱만 MiniMax skip · Capsule 8–10 게이트. || 2026-09-03 | 루프413 — dense JSON slot-fill을 기본 clone 경로로 복원. `items[]{title,body}`가 카드/스탯 본문까지 채움. HTML rewrite는 `prompt-fill` opt-in만. |
+| 2026-09-04 | 루프421 — filled 덱 복구 · LOOK/filled면 MiniMax 금지 · Capsule 데모 스크럽 · deterministic 기본 유지. |
+| 2026-09-04 | 루프420 — dump sanitize · embed leftover localStorage 무시. 기본 `pure-prompt` 재전환은 421에서 되돌림. |
+| 2026-09-04 | 루프419 — deterministic dense outline · filled 덱만 MiniMax skip · Capsule 8–10 게이트. |
+| 2026-09-03 | 루프413 — dense JSON slot-fill을 기본 clone 경로로 복원. `items[]{title,body}`가 카드/스탯 본문까지 채움. HTML rewrite는 `prompt-fill` opt-in만. |
 | 2026-09-03 | 루프403 — 중첩 카드 flatten · 표지 pill · badge 오핀 · stutter |
 | 2026-09-03 | 루프400 — Spec/Hint 통일 · Motif 보존 · SVG/flex/heading salvage |
 | 2026-09-03 | 루프399 — bare 8–10 hint · merge cap · Capsule h1/deco/rotated |

@@ -377,6 +377,30 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(cloned).toContain('맥락을 유지');
     expect(cloned).not.toMatch(/Hartfield|Daisy Days|Clarity of Purpose/i);
     expect(cloned).not.toContain('A Framework for Bold Ideas');
+    expect(cloned).not.toContain('The Journey Continues');
+    expect(cloned).not.toContain('340%');
+    expect(cloned).not.toContain('12.4M');
+    expect(looksLikeLeftoverTemplateDemoDeck(cloned!)).toBe(false);
+  });
+
+  it('loop421 — empty-brief padding synthesizes card bodies instead of empty shells', () => {
+    const seed = [
+      '<!doctype html><html><body>',
+      '<section class="slide"><h1>Demo</h1><p>Clarity of Purpose</p></section>',
+      '<section class="slide"><h2>Two</h2><div class="pillar-card"><h3>A</h3><p>x</p></div></section>',
+      '<section class="slide"><h2>Three</h2><p>The Journey Continues</p></section>',
+      '<section class="slide"><h2>Four</h2><p>340%</p></section>',
+      '</body></html>',
+    ].join('');
+    const cloned = buildTemplateClonedDeckHtml(seed, [], {
+      title: '팀버 소개',
+      maxSlides: 4,
+    });
+    expect(cloned).toBeTruthy();
+    expect(cloned).toMatch(/팀버 한눈에|직접적인 가치/);
+    expect(cloned).not.toContain('Clarity of Purpose');
+    expect(cloned).not.toContain('The Journey Continues');
+    expect(cloned).not.toContain('340%');
   });
 });
 
@@ -409,6 +433,7 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(looksLikeTemplateMarketingTitle('NorthPeak Industries')).toBe(true);
     expect(looksLikeTemplateMarketingTitle('Filebase · Series B')).toBe(true);
     expect(looksLikeLeftoverTemplateDemoDeck('<p>Hartfield &amp; Co. WACC (base)</p>')).toBe(true);
+    expect(looksLikeLeftoverTemplateDemoDeck('<p>Clarity of Purpose</p><p>The Journey Continues</p>')).toBe(true);
     expect(looksLikeLeftoverTemplateDemoDeck('<p>open-design v0.18 · skill: pitch-agent</p>')).toBe(true);
     expect(looksLikeLeftoverTemplateDemoDeck('<p>Apex Group · OPERATION HALCYON · hermes-agent</p>')).toBe(true);
     expect(looksLikeLeftoverTemplateDemoDeck('<section class="slide"><h1>개요</h1></section>')).toBe(false);

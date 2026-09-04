@@ -480,6 +480,8 @@ describe('seedTemplateClonedDeckOnServer', () => {
     );
     expect(source).toContain('resolveTemplateCloneSlidesForDeterministicFill');
     expect(source).toContain("contentFillMode === 'deterministic-fill'");
+    expect(source).toContain('preservedFilled: true');
+    expect(source).toContain('contentFilled: true');
   });
 
   it('루프419 — Capsule + teamver brief fills 8-10 dense slides on the server', async () => {
@@ -553,6 +555,9 @@ describe('seedTemplateClonedDeckOnServer', () => {
     expect(deck).toMatch(/팀버|Teamver/i);
     expect(deck).toContain('직접적인 가치');
     expect(deck).not.toMatch(/Hartfield|Daisy Days|Clarity of Purpose/i);
+    expect(deck).not.toContain('The Journey Continues');
+    expect(deck).not.toContain('340%');
+    expect(deck).not.toContain('12.4M');
     expect(deck).not.toContain('…');
   });
 

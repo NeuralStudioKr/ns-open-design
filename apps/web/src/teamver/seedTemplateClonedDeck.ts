@@ -22,6 +22,8 @@ export type SeedTemplateClonedDeckResult =
       recoveredExisting?: boolean;
       /** True when daemon kept a filled deck instead of reseeding LOOK. */
       preservedFilled?: boolean;
+      /** Server already slot-filled the LOOK seed — FE must not auto-send MiniMax. */
+      contentFilled?: boolean;
     }
   | {
       ok: false;
@@ -46,10 +48,10 @@ function asSeededTemplateId(...candidates: unknown[]): string {
  * response was lost after write), prefer keeping that deck over model fallback.
  *
  * Authority (any one is enough, when deck.html also exists):
- * 1. `deck.html.artifact.json` metadata.templateClonedDeckSeeded
- *    (ignored when templateCloneContentFilled is already true)
- * 2. project metadata.templateClonedDeckSeeded
- *    (ignored when templateCloneContentFilled is already true)
+ * 1. `deck.html.artifact.json` metadata.templateCloneContentFilled
+ *    — treat as a finished deliverable (루프421).
+ * 2. `deck.html.artifact.json` metadata.templateClonedDeckSeeded
+ * 3. project metadata.templateCloneContentFilled / templateClonedDeckSeeded
  */
 export async function recoverExistingTemplateClonedDeck(
   projectId: string,
@@ -83,7 +85,18 @@ export async function recoverExistingTemplateClonedDeck(
         };
       };
       if (json?.metadata?.templateCloneContentFilled === true) {
-        return null;
+        return {
+          ok: true,
+          fileName: 'deck.html',
+          slideCount: 1,
+          templateId: asSeededTemplateId(
+            json.metadata?.selectedDeckTemplateId,
+            json.sourceSkillId,
+          ),
+          recoveredExisting: true,
+          preservedFilled: true,
+          contentFilled: true,
+        };
       }
       if (json?.metadata?.templateClonedDeckSeeded === true) {
         return {
@@ -112,7 +125,15 @@ export async function recoverExistingTemplateClonedDeck(
         }
       | undefined;
     if (meta?.templateCloneContentFilled === true) {
-      return null;
+      return {
+        ok: true,
+        fileName: 'deck.html',
+        slideCount: 1,
+        templateId: asSeededTemplateId(meta.selectedDeckTemplateId),
+        recoveredExisting: true,
+        preservedFilled: true,
+        contentFilled: true,
+      };
     }
     if (meta?.templateClonedDeckSeeded === true) {
       return {
@@ -128,6 +149,17 @@ export async function recoverExistingTemplateClonedDeck(
   }
 
   return null;
+}
+
+/** True when a clone/fill result already occupies deck.html — do not MiniMax. */
+export function cloneResultSuppressesAiFill(
+  result: SeedTemplateClonedDeckResult | null | undefined,
+): result is Extract<SeedTemplateClonedDeckResult, { ok: true }> {
+  return Boolean(
+    result
+    && result.ok
+    && (result.contentFilled === true || result.preservedFilled === true || result.recoveredExisting === true),
+  );
 }
 
 /**
@@ -194,6 +226,7 @@ export async function seedTemplateClonedDeck(options: {
       slideCount?: number;
       templateId?: string;
       preservedFilled?: boolean;
+      contentFilled?: boolean;
     };
     if (!json?.ok || json.fileName !== 'deck.html') {
       return {
@@ -208,6 +241,7 @@ export async function seedTemplateClonedDeck(options: {
       slideCount: typeof json.slideCount === 'number' ? json.slideCount : 1,
       templateId: typeof json.templateId === 'string' ? json.templateId : pluginId,
       ...(json.preservedFilled === true ? { preservedFilled: true } : {}),
+      ...(json.contentFilled === true ? { contentFilled: true } : {}),
     };
   };
 
@@ -308,6 +342,7 @@ export async function fillTemplateClonedDeckDeterministically(options: {
       slideCount?: number;
       templateId?: string;
       preservedFilled?: boolean;
+      contentFilled?: boolean;
     };
     if (!json?.ok || json.fileName !== 'deck.html') {
       return {
@@ -322,6 +357,7 @@ export async function fillTemplateClonedDeckDeterministically(options: {
       slideCount: typeof json.slideCount === 'number' ? json.slideCount : 1,
       templateId: typeof json.templateId === 'string' ? json.templateId : pluginId,
       ...(json.preservedFilled === true ? { preservedFilled: true } : {}),
+      ...(json.contentFilled === true ? { contentFilled: true } : {}),
     };
   };
 

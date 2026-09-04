@@ -260,6 +260,7 @@ export function composerDraftFromPendingCreatePrompt(
     /\[Deliverable instruction\]/i.test(raw)
     || /\[Selected slide template(?:\s+priority)?\]/i.test(raw)
     || /\[Quick settings\]/i.test(raw)
+    || /\[Template clone /i.test(raw)
   ) {
     return extractUserFacingCreateRequest(raw);
   }

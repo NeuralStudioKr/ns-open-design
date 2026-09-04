@@ -442,6 +442,8 @@ export async function seedTemplateClonedDeckOnServer(
         templateId: loaded.templateId,
         previewPath: loaded.previewPath,
         preservedFilled: true,
+        // 루프421 — kept deck is the deliverable. FE must never MiniMax-overwrite.
+        contentFilled: true,
       };
     }
   } catch {

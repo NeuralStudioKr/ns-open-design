@@ -42,11 +42,17 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
-### 루프420 — pure-prompt 고착 해제 + auto-send dump 차단
+### 루프421 — filled 덱 복구 + never MiniMax overwrite
 
-체감: 「슬라이드 작업 시작」 빈 채팅. pure-prompt가 생성 계약 덤프를 MiniMax에 보내면 실패.
+체감: fill HTTP 타임아웃 후 MiniMax가 Capsule을 덮고, deterministic 실패가 prompt-fill을 큐함. Capsule 데모 문구/지표가 남음.
 
-수정: default/`staging`=`pure-prompt` · embed localStorage 무시 · App auto-send 강제 · `sanitizeCreateAutoSendSeed`. staging 재배포 필수.
+수정: filled 복구 · LOOK/filled면 MiniMax 금지 · host-fill retry 차단 · Capsule stat/closing 슬롯 + 데모 스크럽. staging/env-empty 기본은 `deterministic` 유지.
+
+### 루프420 — staging deterministic 복구 + auto-send dump 차단
+
+체감: 「슬라이드 작업 시작」 빈 채팅. 생성 계약 덤프를 MiniMax에 보내면 실패.
+
+수정: `sanitizeCreateAutoSendSeed` · embed leftover localStorage 무시 · 명시 `pure-prompt`만 auto-send 강제. 기본값 `pure-prompt` 재전환은 루프421에서 되돌림.
 
 ### 루프419 — deterministic fill 밀도 + filled 덱 MiniMax skip
 
@@ -2074,19 +2080,19 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프420 · staging deterministic + dump 차단)
+## 이번 루프 (루프421 · filled 복구 + never MiniMax)
+
+- [x] filled 덱 HTTP 타임아웃 복구 (`contentFilled`)
+- [x] LOOK/filled면 MiniMax HTML rewrite 금지
+- [x] prompt-fill도 host-fill로 보고 deterministic retry 재큐 금지
+- [x] Capsule `stat-pill` / `closing-pill` + 카탈로그 데모 스크럽
+- [ ] staging 웹+daemon 재빌드·재배포 후 Home 만들기 QA
+
+## 직전 루프 (루프420 · staging deterministic + dump 차단)
 
 - [x] staging env `=deterministic`
 - [x] auto-send dump → 사용자 브리프
 - [ ] staging 웹+daemon 재빌드·재배포 후 Home 만들기 QA
-
-## 직전 루프 (루프419 · deterministic 밀도)
-
-- [x] dense outline helper (`kicker`/`lead`/`items[]`)
-- [x] daemon deterministic 경로 연결
-- [x] 성공 fill만 MiniMax skip · 실패는 루프417 AI fill 폴백
-- [x] Capsule + teamver.com + 8–10 품질 게이트
-- [ ] production `deterministic` 재배포 후 동일 브리프 재생성
 
 ## 직전 루프 (루프418 · staging pure-prompt)
 

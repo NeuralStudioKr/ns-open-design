@@ -40,6 +40,7 @@ import {
   withTemplateCloneFillPluginInputs,
   withoutCanonicalDeckAttachments,
 } from '../../src/teamver/templateCloneContentFill';
+import { cloneResultSuppressesAiFill } from '../../src/teamver/seedTemplateClonedDeck';
 import { persistableUserMessageContent } from '../../src/comments';
 import { promptWithTemplateCloneContentFillInstruction } from '../../src/components/ProjectView';
 
@@ -68,16 +69,16 @@ afterEach(() => {
 });
 
 describe('templateCloneContentFill', () => {
-  it('loop420 — defaults to pure-prompt; MiniMax JSON fill is explicit opt-in', () => {
-    expect(normalizeTemplateCloneFillMode(undefined)).toBe('pure-prompt');
-    expect(normalizeTemplateCloneFillMode('')).toBe('pure-prompt');
-    expect(normalizeTemplateCloneFillMode('nonsense')).toBe('pure-prompt');
-    expect(getTemplateCloneFillMode()).toBe('pure-prompt');
-    expect(shouldSkipTemplateCloneSeed()).toBe(true);
+  it('loop413/414/421 — defaults to deterministic slot-fill; MiniMax JSON fill is explicit opt-in', () => {
+    expect(normalizeTemplateCloneFillMode(undefined)).toBe('deterministic');
+    expect(normalizeTemplateCloneFillMode('')).toBe('deterministic');
+    expect(normalizeTemplateCloneFillMode('nonsense')).toBe('deterministic');
+    expect(getTemplateCloneFillMode()).toBe('deterministic');
+    expect(shouldSkipTemplateCloneSeed()).toBe(false);
     expect(shouldUseJsonTemplateCloneFill()).toBe(false);
     expect(shouldQueueAiTemplateCloneFill()).toBe(false);
     expect(shouldUsePromptTemplateCloneFill()).toBe(false);
-    expect(shouldUseDeterministicTemplateCloneFill()).toBe(false);
+    expect(shouldUseDeterministicTemplateCloneFill()).toBe(true);
 
     // Existing env tokens stay on HTML rewrite — remapping them to JSON
     // caused MiniMax AGENT_EXECUTION_FAILED (loop414).
@@ -115,8 +116,8 @@ describe('templateCloneContentFill', () => {
   });
 
   it('accepts the loop401 `pure-prompt` rollback mode via env and multiple aliases', () => {
-    expect(getTemplateCloneFillMode()).toBe('pure-prompt');
-    expect(shouldSkipTemplateCloneSeed()).toBe(true);
+    expect(getTemplateCloneFillMode()).toBe('deterministic');
+    expect(shouldSkipTemplateCloneSeed()).toBe(false);
     expect(normalizeTemplateCloneFillMode('pure-prompt')).toBe('pure-prompt');
     expect(normalizeTemplateCloneFillMode('no-seed')).toBe('pure-prompt');
     expect(normalizeTemplateCloneFillMode('skip-seed')).toBe('pure-prompt');
@@ -134,9 +135,9 @@ describe('templateCloneContentFill', () => {
     expect(normalizeTemplateCloneFillMode('NO-CLONE')).toBe('pure-prompt');
   });
 
-  it('loop420 — Teamver embed ignores leftover localStorage fill mode', () => {
+  it('loop420/421 — Teamver embed ignores leftover localStorage fill mode', () => {
     const store = new Map<string, string>();
-    store.set('od:template-clone-fill-mode', 'deterministic');
+    store.set('od:template-clone-fill-mode', 'pure-prompt');
     const prev = globalThis.window;
     (globalThis as { window?: unknown }).window = {
       location: { hostname: 'localhost' },
@@ -152,13 +153,13 @@ describe('templateCloneContentFill', () => {
     };
     try {
       process.env.VITE_TEAMVER_EMBED = '1';
-      expect(getTemplateCloneFillMode()).toBe('pure-prompt');
-      expect(shouldSkipTemplateCloneSeed()).toBe(true);
-      expect(shouldUseDeterministicTemplateCloneFill()).toBe(false);
+      expect(getTemplateCloneFillMode()).toBe('deterministic');
+      expect(shouldSkipTemplateCloneSeed()).toBe(false);
+      expect(shouldUseDeterministicTemplateCloneFill()).toBe(true);
 
       process.env.VITE_TEAMVER_EMBED = '0';
-      expect(getTemplateCloneFillMode()).toBe('deterministic');
-      expect(shouldUseDeterministicTemplateCloneFill()).toBe(true);
+      expect(getTemplateCloneFillMode()).toBe('pure-prompt');
+      expect(shouldSkipTemplateCloneSeed()).toBe(true);
     } finally {
       if (prev) (globalThis as { window?: unknown }).window = prev;
       else delete (globalThis as { window?: unknown }).window;
@@ -189,28 +190,78 @@ describe('templateCloneContentFill', () => {
     expect(app).toContain('usedDeterministicCloneFill');
     expect(app).toContain('sanitizeCreateAutoSendSeed');
     expect(app).toContain('shouldSkipTemplateCloneSeed()');
-    expect(app).toMatch(/루프420|pure-prompt must always auto-send/);
+    expect(app).toMatch(/루프401\/409\/410\/413|shouldSkipTemplateCloneSeed|pure-prompt must always auto-send/);
     const stagingEnv = readFileSync(
       new URL('../../../../deploy/teamver/.env.staging.example', import.meta.url),
       'utf8',
     );
-    expect(stagingEnv).toMatch(/VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=pure-prompt/);
-    expect(stagingEnv).not.toMatch(/VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=deterministic/);
+    expect(stagingEnv).toMatch(/VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=deterministic/);
+    expect(stagingEnv).not.toMatch(/VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=pure-prompt/);
     const composer = readFileSync(
       new URL('../../src/components/ChatComposer.tsx', import.meta.url),
       'utf8',
     );
-    expect(composer).toContain('Failure falls through to');
+    expect(composer).toContain('LOOK seed is enough');
+    expect(composer).toContain('never MiniMax');
     const projectView = readFileSync(
       new URL('../../src/components/ProjectView.tsx', import.meta.url),
       'utf8',
     );
     expect(projectView).toContain('shouldSkipCreateAutoSendForDeterministicClone');
-    expect(projectView).toContain('shouldUseJsonTemplateCloneFill()');
+    expect(projectView).toContain('isTemplateCloneHostFillQueued');
+    expect(projectView).toContain('queueTemplateClonePromptFill');
+    expect(app).toContain('cloneResultSuppressesAiFill');
+    expect(app).toContain('never MiniMax');
   });
 
-  it('loop419 — only a filled deck skips Home auto-send; fail-fallback still sends', () => {
-    process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = 'deterministic';
+  it('loop421 — recovered LOOK/filled decks suppress MiniMax overwrite', () => {
+    expect(cloneResultSuppressesAiFill({
+      ok: true,
+      fileName: 'deck.html',
+      slideCount: 10,
+      templateId: 'html-ppt-zhangzara-capsule',
+      contentFilled: true,
+    })).toBe(true);
+    expect(cloneResultSuppressesAiFill({
+      ok: true,
+      fileName: 'deck.html',
+      slideCount: 1,
+      templateId: 'html-ppt-zhangzara-capsule',
+      recoveredExisting: true,
+      preservedFilled: true,
+      contentFilled: true,
+    })).toBe(true);
+    expect(cloneResultSuppressesAiFill({
+      ok: true,
+      fileName: 'deck.html',
+      slideCount: 1,
+      templateId: 'html-ppt-zhangzara-capsule',
+      recoveredExisting: true,
+    })).toBe(true);
+    expect(cloneResultSuppressesAiFill({
+      ok: true,
+      fileName: 'deck.html',
+      slideCount: 1,
+      templateId: 'html-ppt-zhangzara-capsule',
+    })).toBe(false);
+    expect(cloneResultSuppressesAiFill({
+      ok: false,
+      reason: 'fetch_failed',
+      message: 'timeout',
+    })).toBe(false);
+
+    const recoverSource = readFileSync(
+      new URL('../../src/teamver/seedTemplateClonedDeck.ts', import.meta.url),
+      'utf8',
+    );
+    expect(recoverSource).toContain('templateCloneContentFilled === true');
+    expect(recoverSource).toContain('contentFilled: true');
+    expect(recoverSource).not.toMatch(
+      /if \(json\?\.metadata\?\.templateCloneContentFilled === true\) return null/,
+    );
+  });
+
+  it('loop421 — filled decks and leftover MiniMax fill seeds skip Home auto-send', () => {
     expect(shouldUseDeterministicTemplateCloneFill()).toBe(true);
     expect(
       shouldSkipCreateAutoSendForDeterministicClone({
@@ -232,7 +283,7 @@ describe('templateCloneContentFill', () => {
         seed: `${TEMPLATE_CLONE_CONTENT_FILL_MARKER}\nJSON only`,
         fillQueued: true,
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('does not treat Canvas boilerplate as the visible request', () => {

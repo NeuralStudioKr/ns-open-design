@@ -4141,6 +4141,16 @@ export function stripNonSlotWrappers(html: string): string {
   return out;
 }
 
+const CAPSULE_CATALOG_DEMO_COPY_RE =
+  /A Framework for Bold Ideas|Clarity of Purpose|The Journey Continues|Thank You for Your Attention|Questions and conversation welcome|Key Metrics at a Glance|Every Great Endeavor Begins with a Single Thought|Where Vision Meets Execution|System Architecture Overview|Visual Placeholder|This template exists to give shape[\s\S]{0,120}?matters most\.?/gi;
+const CAPSULE_CATALOG_DEMO_METRIC_RE = /\b340%|\b12\.4M\b|\b98\.2%|\b4\.9\b(?=\s*<)/g;
+
+function stripCapsuleCatalogDemoCopy(html: string): string {
+  return String(html ?? '')
+    .replace(CAPSULE_CATALOG_DEMO_COPY_RE, '')
+    .replace(CAPSULE_CATALOG_DEMO_METRIC_RE, '');
+}
+
 function stripLeftoverTemplateDemoCopy(html: string): string {
   // F4: structural slot-vs-wrapper strip replaces the growing IB class list.
   // Tables that somehow sit on a slot ancestor are still removed — they are
@@ -4240,6 +4250,7 @@ function peerClassSet(slotMap: TemplateCloneSlotMap | null | undefined): Set<str
     // 0901-N02-C7: bare `.stat` / `.kpi` rows (soft-editorial / weekly-report).
     'stat',
     'kpi',
+    'stat-pill',
     // 0901-N02-C9: scatterbrain feature sticky peers.
     'feature-postit',
     'col-postit',
@@ -4732,6 +4743,21 @@ function fillOneCardPeer(cardHtml: string, line: TemplateCloneCardFillLine): str
     );
     return next;
   }
+  // Capsule / metric pills: `.stat-number` + `.stat-label` (루프421).
+  if (/\bstat-number\b/i.test(next) || /\bstat-pill\b/i.test(next)) {
+    const slots = assignStatSlots(text, body);
+    next = fillClassInner(
+      next,
+      /(<[^>]*\bstat-number\b[^>]*>)([\s\S]*?)(<\/)/i,
+      slots.value,
+    );
+    next = fillClassInner(
+      next,
+      /(<[^>]*\bstat-label\b[^>]*>)([\s\S]*?)(<\/)/i,
+      slots.label,
+    );
+    return next;
+  }
   // 0901-N02-C7: grove/pin/mat/mini stat labels + soft-editorial `.lab` + kpi `.label`.
   if (/\b(?:[\w-]+-stat-label|mini-label)\b/i.test(next) || (
     /\bclass\s*=\s*["'][^"']*\blab\b[^"']*["']/i.test(next)
@@ -4875,6 +4901,14 @@ function fillSlideShell(
   if (kicker) {
     body = fillFirstKickerSlot(body, kicker);
   }
+  if (/\bclosing-pill\b/i.test(body)) {
+    const pill = lead || bodyText || title;
+    body = replaceFirstExactClassText(body, 'closing-pill', pill);
+  }
+  if (/\bclosing-sub\b/i.test(body)) {
+    const sub = bodyText || lead;
+    if (sub) body = replaceFirstExactClassText(body, 'closing-sub', sub);
+  }
 
   const placeholderBody = isPlaceholderCloneBody(bodyText)
     && fillLines.length === 0
@@ -4955,6 +4989,7 @@ function fillSlideShell(
   if (/Hartfield|NorthPeak|WACC\s*\(\s*base\s*\)|Implied EV|Demo-data notice/i.test(body)) {
     body = stripLeftoverTemplateDemoCopy(body);
   }
+  body = stripCapsuleCatalogDemoCopy(body);
 
   // Loop376 — Empty content-list / subtitle shells left behind by the
   // placeholder / title-only wipe paths render as visible orphan pills or
@@ -5092,9 +5127,10 @@ export function buildTemplateClonedDeckHtml(
     ) {
       while (workingSlides.length < hint) {
         const n = workingSlides.length + 1;
+        const label = n === 1 ? deckTitle : `${deckTitle} · ${n}`;
         workingSlides.push({
-          title: n === 1 ? deckTitle : `${deckTitle} · ${n}`,
-          body: '',
+          title: label,
+          ...synthesizeTemplateCloneSlideBody(deckTitle, label, Math.max(1, n - 1)),
         });
       }
     }
@@ -5105,10 +5141,21 @@ export function buildTemplateClonedDeckHtml(
     // Empty brief: short starter deck with role-diverse shells — not all
     // template demo pages in demo order.
     const starterCount = hint ?? 3;
-    workingSlides = Array.from({ length: Math.min(20, starterCount) }, (_, index) => ({
-      title: index === 0 ? deckTitle : `${deckTitle} · ${index + 1}`,
-      body: '',
-    }));
+    workingSlides = Array.from({ length: Math.min(20, starterCount) }, (_, index) => {
+      const label = index === 0 ? deckTitle : `${deckTitle} · ${index + 1}`;
+      if (index === 0) {
+        return {
+          title: label,
+          roleHint: 'cover' as const,
+          kicker: 'OVERVIEW',
+          lead: `${topicKeywordForSynthBody(deckTitle)} 한눈에`,
+        };
+      }
+      return {
+        title: label,
+        ...synthesizeTemplateCloneSlideBody(deckTitle, label, index),
+      };
+    });
   }
 
   const picked = pickTemplateShellsForContent(shells, workingSlides);
@@ -5362,7 +5409,7 @@ function cleanCloneTitle(title: string): string {
 export function looksLikeLeftoverTemplateDemoDeck(html: string): boolean {
   const text = String(html ?? '');
   if (!text.trim()) return false;
-  return /Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|52\.5200°\s*N|Composed in kami|Apache-2\.0[\s\S]{0,800}Local-first[\s\S]{0,800}BYOK|\[\[Author Name\]\]|this is the broadside style/i.test(
+  return /Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|52\.5200°\s*N|Composed in kami|Apache-2\.0[\s\S]{0,800}Local-first[\s\S]{0,800}BYOK|\[\[Author Name\]\]|this is the broadside style|Clarity of Purpose|The Journey Continues|A Framework for Bold Ideas/i.test(
     text,
   );
 }

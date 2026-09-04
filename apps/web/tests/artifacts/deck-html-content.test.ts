@@ -658,6 +658,21 @@ describe("deck-html-content", () => {
     ).toBe(false);
   });
 
+  it("flags leftover Capsule demo copy when the brief is a different topic", () => {
+    const leftover =
+      '<!doctype html><html><body>'
+      + '<section class="slide"><h1>A Framework for Bold Ideas</h1>'
+      + '<h3>Clarity of Purpose</h3>'
+      + '<div class="closing-pill">The Journey Continues</div>'
+      + '</section></body></html>';
+    expect(
+      deckLooksLikeUnfilledCatalogExample(
+        leftover,
+        'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+      ),
+    ).toBe(true);
+  });
+
   it("flags leftover kami-deck studio copy when the brief is a different topic", () => {
     const leftover =
       '<!doctype html><html><body>'

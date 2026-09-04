@@ -230,10 +230,13 @@ import {
   templateCloneFillModeFromUserMessage,
   templateCloneAutoContinueFlags,
   isTemplateCloneContentFillQueued,
+  isTemplateCloneHostFillQueued,
   queueTemplateCloneContentFill,
+  queueTemplateClonePromptFill,
   readQueuedAutoSendSeed,
   resolveTemplateCloneAutoSendSeed,
   shouldSkipCreateAutoSendForDeterministicClone,
+  shouldUseDeterministicTemplateCloneFill,
   shouldUseJsonTemplateCloneFill,
   templateCloneContentFillHardRules,
   templateCloneFillSlideCountOverrideNotice,
@@ -14274,9 +14277,10 @@ export function ProjectView({
     }
     autoSendFirstMessageRef.current = isAutoSend;
     const queuedSeedAtMount = readQueuedAutoSendSeed(project.id);
-    const fillQueuedAtMount =
-      isTemplateCloneContentFillQueued(project.id)
-      || isTemplateCloneContentFillPrompt(queuedSeedAtMount);
+    const fillQueuedAtMount = isTemplateCloneHostFillQueued(
+      project.id,
+      [queuedSeedAtMount],
+    );
     autoSendSeedRef.current = isAutoSend
       ? resolveTemplateCloneAutoSendSeed({
           queuedFillSeed: queuedSeedAtMount,
@@ -14502,11 +14506,10 @@ export function ProjectView({
     // server. When a Clone content-fill is queued, the fill seed ALWAYS
     // wins over the stale create-time pendingPrompt (full canvas run dump).
     const queuedFillSeed = readQueuedAutoSendSeed(project.id);
-    const fillQueued =
-      isTemplateCloneContentFillQueued(project.id)
-      || isTemplateCloneContentFillPrompt(queuedFillSeed)
-      || isTemplateCloneContentFillPrompt(autoSendSeedRef.current)
-      || isTemplateCloneContentFillPrompt(project.pendingPrompt);
+    const fillQueued = isTemplateCloneHostFillQueued(
+      project.id,
+      [queuedFillSeed, autoSendSeedRef.current, project.pendingPrompt],
+    );
     const seed = resolveTemplateCloneAutoSendSeed({
       queuedFillSeed:
         autoSendSeedRef.current
@@ -14658,12 +14661,20 @@ export function ProjectView({
       } catch {
         /* ignore */
       }
-      if (fillQueued && seed && shouldUseJsonTemplateCloneFill()) {
-        queueTemplateCloneContentFill({
-          projectId: project.id,
-          seed,
-          attachments,
-        });
+      if (fillQueued && seed && !shouldUseDeterministicTemplateCloneFill()) {
+        if (isTemplateCloneContentFillPrompt(seed) || shouldUseJsonTemplateCloneFill()) {
+          queueTemplateCloneContentFill({
+            projectId: project.id,
+            seed,
+            attachments,
+          });
+        } else if (isTemplateClonePromptFillPrompt(seed)) {
+          queueTemplateClonePromptFill({
+            projectId: project.id,
+            seed,
+            attachments,
+          });
+        }
       }
       // Re-arm the effect — flag restore alone does not change deps.
       setAutoSendRetryNonce((value) => value + 1);
@@ -14690,12 +14701,20 @@ export function ProjectView({
         } catch {
           /* ignore */
         }
-        if (fillQueued && seed && shouldUseJsonTemplateCloneFill()) {
-          queueTemplateCloneContentFill({
-            projectId: project.id,
-            seed,
-            attachments,
-          });
+        if (fillQueued && seed && !shouldUseDeterministicTemplateCloneFill()) {
+          if (isTemplateCloneContentFillPrompt(seed) || shouldUseJsonTemplateCloneFill()) {
+            queueTemplateCloneContentFill({
+              projectId: project.id,
+              seed,
+              attachments,
+            });
+          } else if (isTemplateClonePromptFillPrompt(seed)) {
+            queueTemplateClonePromptFill({
+              projectId: project.id,
+              seed,
+              attachments,
+            });
+          }
         }
       }
     };

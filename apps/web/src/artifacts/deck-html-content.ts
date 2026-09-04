@@ -510,6 +510,11 @@ const CATALOG_EXAMPLE_FINGERPRINTS = [
   /\[\[Author Name\]\]/,
   /ZONE B · ENGINE/i,
   /this is the broadside style/i,
+  // Capsule catalog leftover. A filled Capsule deck replaces these strings;
+  // ≥2 hits means the example.html demo lineup is still showing.
+  /Clarity of Purpose/i,
+  /The Journey Continues/i,
+  /A Framework for Bold Ideas/i,
 ];
 
 /**

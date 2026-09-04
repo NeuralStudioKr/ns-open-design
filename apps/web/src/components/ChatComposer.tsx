@@ -2297,8 +2297,6 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             setCanvasSlideUserPrompt('');
             setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
             if (deterministicFill && seeded.ok) {
-              // 루프419 — success is the deliverable. Failure falls through to
-              // LOOK seed + AI fill (same as Home loop417).
               void patchProject(id, {
                 metadata: {
                   ...(projectMetadata ?? {}),
@@ -2312,10 +2310,23 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               return;
             }
             if (deterministicFill && !seeded.ok) {
+              // 루프421 — LOOK seed is enough. never MiniMax HTML rewrite —
+              // it overwrites the kit and fails AGENT_EXECUTION_FAILED.
               const look = await seedTemplateClonedDeck(cloneRequest);
               if (look.ok) {
                 onProjectFilesMaybeChanged?.();
                 onRequestOpenFile?.(look.fileName);
+                void patchProject(id, {
+                  metadata: {
+                    ...(projectMetadata ?? {}),
+                    ...templateBinding.projectMetadata,
+                    templateClonedDeckSeeded: true,
+                    templateCloneContentFilled: true,
+                    templateCloneContentFillPending: false,
+                    templateCloneFillMode: 'deterministic',
+                  },
+                });
+                return;
               }
             }
             // Clone LOOK seed is optional. Fill always runs as compact CREATE
@@ -2556,8 +2567,6 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           setCanvasSlideUserPrompt('');
           setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
           if (deterministicFill && seeded.ok) {
-            // 루프419 — success is the deliverable. Failure falls through to
-            // LOOK seed + AI fill (same as Home loop417).
             void patchProject(id, {
               metadata: {
                 ...(projectMetadata ?? {}),
@@ -2571,10 +2580,22 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             return;
           }
           if (deterministicFill && !seeded.ok) {
+            // 루프421 — LOOK seed is enough. never MiniMax HTML rewrite.
             const look = await seedTemplateClonedDeck(cloneRequest);
             if (look.ok) {
               onProjectFilesMaybeChanged?.();
               onRequestOpenFile?.(look.fileName);
+              void patchProject(id, {
+                metadata: {
+                  ...(projectMetadata ?? {}),
+                  ...templateBinding.projectMetadata,
+                  templateClonedDeckSeeded: true,
+                  templateCloneContentFilled: true,
+                  templateCloneContentFillPending: false,
+                  templateCloneFillMode: 'deterministic',
+                },
+              });
+              return;
             }
           }
           // Clone LOOK seed is optional. Fill always runs as compact CREATE

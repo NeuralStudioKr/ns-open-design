@@ -133,6 +133,7 @@ import {
   isExplicitCanvasSlideVisualTemplate,
 } from './teamver/canvasSlideLaunch';
 import {
+  cloneResultSuppressesAiFill,
   fillTemplateClonedDeckDeterministically,
   seedTemplateClonedDeck,
 } from './teamver/seedTemplateClonedDeck';
@@ -2781,43 +2782,26 @@ function AppInner() {
                 const seeded = await fillTemplateClonedDeckDeterministically(cloneRequest);
                 if (seeded.ok) {
                   seededDeckFileName = seeded.fileName;
-                  preservedFilledDeck = true;
+                  preservedFilledDeck = cloneResultSuppressesAiFill(seeded);
                   usedDeterministicCloneFill = true;
                   return seeded;
                 }
                 const look = await seedTemplateClonedDeck(cloneRequest);
                 if (look.ok) {
                   seededDeckFileName = look.fileName;
-                  preservedFilledDeck = look.preservedFilled === true;
-                } else {
-                  devLog.warn(
-                    'Home Canvas deterministic fill failed; LOOK seed also missed',
-                    { seeded, look },
-                  );
-                  setWorkingDirError(
-                    '템플릿 미리보기 준비에 실패했습니다. 선택한 템플릿 컨텍스트로 슬라이드 생성을 계속합니다.',
-                  );
+                  preservedFilledDeck = cloneResultSuppressesAiFill(look);
+                  // 루프421 — a LOOK/filled deck is the deliverable. never MiniMax
+                  // HTML rewrite — it overwrites Capsule and fails AGENT_EXECUTION_FAILED.
+                  usedDeterministicCloneFill = true;
+                  return look;
                 }
-                // Fall through to AI fill (not MiniMax JSON-only when mode
-                // is deterministic — buildTemplateCloneFillSeedForCurrentMode
-                // still respects json vs prompt-fill).
-                const canvasFill = buildTemplateCloneFillSeedForCurrentMode({
-                  userInstruction: userFacingRequest || null,
-                  sourceBrief,
-                  pendingPrompt: derivedPendingPrompt ?? null,
-                  templateTitle: templateTitle || selectedDeckTemplateId,
-                  hasSourceMaterial: true,
-                  slideCountHint: slideCountHintFromInputs,
-                });
-                queuedFillSeed = canvasFill.seed;
-                const queueCanvasFill = canvasFill.jsonFill
-                  ? queueTemplateCloneContentFill
-                  : queueTemplateClonePromptFill;
-                queueCanvasFill({
-                  projectId: result.project.id,
-                  seed: queuedFillSeed,
-                  attachments: firstMessageAttachments,
-                });
+                devLog.warn(
+                  'Home Canvas deterministic fill failed; LOOK seed also missed',
+                  { seeded, look },
+                );
+                setWorkingDirError(
+                  '템플릿 미리보기 준비에 실패했습니다. 선택한 템플릿 컨텍스트로 슬라이드 생성을 계속합니다.',
+                );
                 return look;
               })();
               setPendingTemplateClone(result.project.id, fillPromise);
@@ -2968,40 +2952,25 @@ function AppInner() {
             const seeded = await fillTemplateClonedDeckDeterministically(cloneRequest);
             if (seeded.ok) {
               seededDeckFileName = seeded.fileName;
-              preservedFilledDeck = true;
+              preservedFilledDeck = cloneResultSuppressesAiFill(seeded);
               usedDeterministicCloneFill = true;
               return seeded;
             }
             const look = await seedTemplateClonedDeck(cloneRequest);
             if (look.ok) {
               seededDeckFileName = look.fileName;
-              preservedFilledDeck = look.preservedFilled === true;
-            } else {
-              devLog.warn(
-                'Home deterministic fill failed; LOOK seed also missed',
-                { seeded, look },
-              );
-              setWorkingDirError(
-                '템플릿 미리보기 준비에 실패했습니다. 선택한 템플릿 컨텍스트로 슬라이드 생성을 계속합니다.',
-              );
+              preservedFilledDeck = cloneResultSuppressesAiFill(look);
+              // 루프421 — LOOK/filled deck is the deliverable. never MiniMax overwrite.
+              usedDeterministicCloneFill = true;
+              return look;
             }
-            const homeFill = buildTemplateCloneFillSeedForCurrentMode({
-              userInstruction: userFacingRequest || null,
-              sourceBrief,
-              pendingPrompt: derivedPendingPrompt ?? null,
-              templateTitle: templateTitle || selectedDeckTemplateId,
-              hasSourceMaterial,
-              slideCountHint: slideCountHintFromInputs,
-            });
-            queuedFillSeed = homeFill.seed;
-            const queueHomeFill = homeFill.jsonFill
-              ? queueTemplateCloneContentFill
-              : queueTemplateClonePromptFill;
-            queueHomeFill({
-              projectId: result.project.id,
-              seed: queuedFillSeed,
-              attachments: firstMessageAttachments,
-            });
+            devLog.warn(
+              'Home deterministic fill failed; LOOK seed also missed',
+              { seeded, look },
+            );
+            setWorkingDirError(
+              '템플릿 미리보기 준비에 실패했습니다. 선택한 템플릿 컨텍스트로 슬라이드 생성을 계속합니다.',
+            );
             return look;
           })();
           setPendingTemplateClone(result.project.id, fillPromise);
@@ -3175,9 +3144,12 @@ function AppInner() {
         : project;
       rememberLocalProject(projectForNav.id);
       if (usedDeterministicCloneFill) {
-        // Persist the clear — otherwise a projects refresh reloads the dump
-        // into the composer after navigate.
-        void patchProject(projectForNav.id, { pendingPrompt: null });
+        // Persist the clear + filled flags — otherwise a projects refresh
+        // reloads the dump and can re-arm MiniMax auto-send.
+        void patchProject(projectForNav.id, {
+          pendingPrompt: null,
+          metadata: projectForNav.metadata,
+        });
       }
       if (typeof result.conversationId === 'string' && result.conversationId.trim()) {
         writeCreateConversationHandoff(projectForNav.id, result.conversationId);

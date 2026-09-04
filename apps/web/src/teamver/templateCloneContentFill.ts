@@ -55,26 +55,27 @@ export const CLONE_SLOT_FILL_REPAIR_ENTRY_FROM = 'clone_slot_fill_json_repair';
 /**
  * Fill mode for explicit-template deck creates.
  *
- *   `pure-prompt` (**env-empty / Teamver embed default since loop420**):
- *     SKIP LOOK seeding. Kit spec still lands in the system prompt.
- *     Home create auto-sends one MiniMax turn. Staging pin: env=`pure-prompt`.
- *
- *   `deterministic`: daemon seeds the real template LOOK and fills shells
- *     on the server. Home skips the MiniMax fill turn when fill succeeds.
+ *   `deterministic` (**env-empty default since loop413 / restored loop421**):
+ *     daemon seeds the real template LOOK and fills those shells on the
+ *     server. Home and ChatComposer skip MiniMax when LOOK/fill exists.
  *
  *   `json`: LOOK seed + AI dense JSON outline (opt-in only — MiniMax
  *     JSON-only turns often fail AGENT_EXECUTION_FAILED).
  *
  *   `prompt` (HTML rewrite): LOOK seed then the model emits full HTML.
  *     Existing production `=prompt` / `clone` stay here.
+ *
+ *   `pure-prompt`: SKIP LOOK seeding. Kit spec still lands in the
+ *     system prompt. Explicit rollback only (`pure-prompt` / `no-seed`).
  */
 export type TemplateCloneFillMode = 'json' | 'prompt' | 'deterministic' | 'pure-prompt';
 
 /**
- * 루프420 — Env-empty default is pure-prompt (one-turn MiniMax create).
- * Staging sets env explicitly; production may pin `deterministic` / `prompt`.
+ * 루프413/421 — Env-empty default is deterministic Clone/slot-fill.
+ * A leftover staging pin of `pure-prompt` sent MiniMax the create dump
+ * and failed AGENT_EXECUTION_FAILED (loop418/420).
  */
-export const TEMPLATE_CLONE_FILL_DEFAULT_MODE: TemplateCloneFillMode = 'pure-prompt';
+export const TEMPLATE_CLONE_FILL_DEFAULT_MODE: TemplateCloneFillMode = 'deterministic';
 
 export function normalizeTemplateCloneFillMode(value: unknown): TemplateCloneFillMode {
   const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -153,21 +154,33 @@ export function shouldQueueAiTemplateCloneFill(): boolean {
 }
 
 /**
- * 루프419 — Skip the Home `auto-send-first` MiniMax turn only when the
- * server already delivered the deck. Global deterministic mode, leftover
- * fill seeds, and loop417 fail-fallback queues must still auto-send.
+ * 루프421 — Skip Home auto-send when the server already delivered the
+ * deck. A leftover host-fill seed must not overwrite that deliverable.
+ * Unfilled metadata still allows fail-fallback / no-template first messages.
  */
 export function shouldSkipCreateAutoSendForDeterministicClone(input: {
   metadata?: unknown;
   seed?: string | null;
   fillQueued?: boolean;
 }): boolean {
-  void input.seed;
-  void input.fillQueued;
   const rec = input.metadata && typeof input.metadata === 'object'
     ? (input.metadata as Record<string, unknown>)
     : null;
-  return rec?.templateCloneContentFilled === true;
+  if (rec?.templateCloneContentFilled === true) return true;
+  if (shouldUseDeterministicTemplateCloneFill() && isTemplateCloneHostFillPrompt(input.seed)) {
+    return true;
+  }
+  void input.fillQueued;
+  return false;
+}
+
+/** JSON or prompt-fill seed already queued for this project. */
+export function isTemplateCloneHostFillQueued(
+  projectId: string,
+  extraSeeds: Array<string | null | undefined> = [],
+): boolean {
+  if (isTemplateCloneContentFillQueued(projectId)) return true;
+  return extraSeeds.some((seed) => isTemplateCloneHostFillPrompt(seed));
 }
 
 /** LOOK seed + model HTML rewrite (legacy dual-instruction path). */
@@ -493,7 +506,6 @@ export function extractTemplateCloneUserFacingRequest(input: {
     if (candidate.length > 500) continue;
     return candidate;
   }
-  // Never claim "첨부한 자료" when the user may not have attached anything.
   return HOME_FILL_SLIDES_PROMPT;
 }
 
@@ -813,7 +825,13 @@ export function sanitizeCreateAutoSendSeed(text: unknown): string {
   if (!raw) return '';
   if (isTemplateCloneHostFillPrompt(raw)) return raw;
   if (looksLikeCanvasCreateDeliverableDump(raw)) {
-    return extractTemplateCloneUserFacingRequest({ pendingPrompt: raw });
+    const brief = extractTemplateCloneUserFacingRequest({ pendingPrompt: raw });
+    // Keep real user briefs even when they say "만들어줘". Only drop
+    // Home/Canvas scaffolding and the empty-topic fallback fill copy.
+    if (!brief || looksLikeCanvasCreateBoilerplate(brief)) {
+      return '';
+    }
+    return brief;
   }
   return raw;
 }

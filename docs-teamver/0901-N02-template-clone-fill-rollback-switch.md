@@ -154,4 +154,10 @@
 3. App — pure-prompt면 `usedDeterministicCloneFill = false` 강제 + `sanitizeCreateAutoSendSeed`
 4. staging example `=pure-prompt`
 
-**운영:** EC2 `.env.staging`에 `=pure-prompt` 확인 후 `deploy/teamver/deploy.sh --staging` 재배포. 브라우저 `od:template-clone-fill-mode` 삭제 권장.
+**운영:** 루프421에서 staging/env-empty 기본은 다시 `deterministic`. 명시 `pure-prompt`만 MiniMax 한 턴 create.
+
+## 2026-09-04 — 루프421: deterministic 기본 유지 + filled 복구
+
+**결정:** LOOK seed + 서버 fill이 Home 기본 경로다. fill 성공/복구 후 MiniMax HTML rewrite를 큐하지 않는다. embed leftover localStorage 무시는 유지한다.
+
+**운영:** staging `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=deterministic` 재빌드. 롤백은 명시 `=pure-prompt`.
