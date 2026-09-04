@@ -3152,6 +3152,84 @@ describe('0901-N02-C13 peer-fit catalog + sticky chrome deny', () => {
     expect(bodyOnly).toContain('매출');
     expect(bodyOnly).toContain('전환');
   });
+
+  it('루프454: blue-professional 3-line cards prefer metric-card×3', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-blue-professional/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const shells = listTemplateCloneSlideShells(html);
+    const picked = pickTemplateShellsForContent(shells, [
+      { title: '킥오프', roleHint: 'cover' },
+      { title: '지표', body: '매출\n리텐션\n활성', roleHint: 'cards' },
+    ]);
+    expect(classifyTemplateCloneShellRole(picked[1]!)).toBe('cards');
+    const body = picked[1]!.body;
+    expect([...body.matchAll(/\bclass\s*=\s*["'][^"']*\bmetric-card\b/gi)].length).toBe(3);
+
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      [
+        { title: '킥오프', roleHint: 'cover' },
+        { title: '지표', body: '매출\n리텐션\n활성', roleHint: 'cards' },
+      ],
+      {
+        title: '킥오프',
+        templateId: 'example-html-ppt-zhangzara-blue-professional',
+        brief: '팀버 서비스 소개',
+      },
+    );
+    expect(cloned).toBeTruthy();
+    const bodyOnly = (cloned ?? '').replace(/<style[\s\S]*?<\/style>/gi, '');
+    expect([...bodyOnly.matchAll(/class="[^"]*\bmetric-card\b/gi)].length).toBe(3);
+    expect(bodyOnly).toContain('매출');
+    expect(bodyOnly).toContain('리텐션');
+    expect(bodyOnly).toContain('활성');
+    expect(bodyOnly).not.toContain('Bullish on three-year outlook');
+    expect(bodyOnly).not.toContain('Sentiment has shifted');
+  });
+
+  it('루프455: Daisy 3-line cards prefer info-card over weekly day-card', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-daisy-days/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const shells = listTemplateCloneSlideShells(html);
+    const picked = pickTemplateShellsForContent(shells, [
+      { title: '킥오프', roleHint: 'cover' },
+      { title: '세 축', body: '전략\n디자인\n런칭', roleHint: 'cards' },
+    ]);
+    expect(classifyTemplateCloneShellRole(picked[1]!)).toBe('cards');
+    const body = picked[1]!.body;
+    expect([...body.matchAll(/\bclass\s*=\s*["'][^"']*\binfo-card\b/gi)].length).toBe(4);
+    expect([...body.matchAll(/\bclass\s*=\s*["'][^"']*\bday-card\b/gi)].length).toBe(0);
+
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      [
+        { title: '킥오프', roleHint: 'cover' },
+        { title: '세 축', body: '전략\n디자인\n런칭', roleHint: 'cards' },
+      ],
+      {
+        title: '킥오프',
+        templateId: 'example-html-ppt-zhangzara-daisy-days',
+      },
+    );
+    expect(cloned).toBeTruthy();
+    const bodyOnly = (cloned ?? '').replace(/<style[\s\S]*?<\/style>/gi, '');
+    expect([...bodyOnly.matchAll(/class="[^"]*\binfo-card\b/gi)].length).toBe(3);
+    expect([...bodyOnly.matchAll(/class="[^"]*\bday-card\b/gi)].length).toBe(0);
+    expect(bodyOnly).toContain('전략');
+    expect(bodyOnly).toContain('런칭');
+    expect(bodyOnly).not.toContain('Monday');
+    expect(bodyOnly).not.toContain('Creative Expression');
+  });
 });
 
 describe('0901-N02-C10 compare/col-postit polish', () => {

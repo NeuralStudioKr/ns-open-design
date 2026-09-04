@@ -185,4 +185,30 @@ export const ZHANGZARA_QUALITY_GATE_SPECS: readonly TemplateQualityGateSpec[] = 
     demoMustNotInclude: [],
     expectedSlideCount: 10,
   },
+  // 루프456 — expand gate beyond the original 4 to Blue-pro + Block-frame.
+  {
+    name: 'Blue Professional',
+    templateId: 'html-ppt-zhangzara-blue-professional',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-blue-professional/example.html',
+    motifMustInclude: ['--primary', 'metric-card', 'cover-decoration'],
+    demoMustNotInclude: [
+      'Sentiment has shifted',
+      'Bullish on three-year outlook',
+    ],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Block Frame',
+    templateId: 'html-ppt-zhangzara-block-frame',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-block-frame/example.html',
+    motifMustInclude: ['feature-card', 'deco-dots', '--pink'],
+    demoMustNotInclude: [
+      'Neobrutalist Presentation Template',
+      'Quarterly Growth Metrics',
+      'Modular Layouts',
+    ],
+    expectedSlideCount: 10,
+  },
 ];

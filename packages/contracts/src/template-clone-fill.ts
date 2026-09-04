@@ -4434,6 +4434,17 @@ function stripBlockFrameNeoCatalogDemoCopy(html: string): string {
   return String(html ?? '').replace(BLOCK_FRAME_NEO_DEMO_COPY_RE, '');
 }
 
+/** 루프454 — Blue Professional catalog leftovers on Hangul LOOK seeds. */
+const BLUE_PROFESSIONAL_DEMO_COPY_RE =
+  /Sentiment has shifted measurably from the prior quarter|Bullish on three-year outlook|Expect recession before year-end|Median inflation expectation|An all-time series high[\s\S]{0,120}?near-term uncertainty\.?|Highest reading since the survey began in 2018|Soft-landing scenario now the modal expectation|Key Findings|Executive Summary/gi;
+const BLUE_PROFESSIONAL_DEMO_METRIC_RE = /\b73%|\b55%|\b4\.5%|\+11 pts|\-36 pts/g;
+
+function stripBlueProfessionalCatalogDemoCopy(html: string): string {
+  return String(html ?? '')
+    .replace(BLUE_PROFESSIONAL_DEMO_COPY_RE, '')
+    .replace(BLUE_PROFESSIONAL_DEMO_METRIC_RE, '');
+}
+
 const LEFTOVER_CATALOG_PHRASE_RE =
 /Hartfield(?:\s*&(?:amp;)?\s*Co\.?)?|NorthPeak Industries|WACC\s*\(\s*base\s*\)|Revenue CAGR|Filebase|Northwind Studios|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|Composed in kami|52\.5200°\s*N|\[\[Author Name\]\]|this is the broadside style|Aurora Institute|Aurora Programme|Aurora Charter|Public Form|Public attendance|Open programme|Field Notes|Quiet Editions|Open Conversations|The Long Yellow|Pavilion of Quiet Form|Reading Garden|A field study of light,\s*matter and atmosphere|Six months of exhibitions[\s\S]{0,160}?palette of yellow\.?|A room is a slow argument with the sun[\s\S]{0,160}?answers\.?|Curator-at-large[\s\S]{0,120}?January 2026|Visitors\s*·\s*Year four|Returning audience|Three quarters of last year[\s\S]{0,120}?twice\.?|A 2\.4× rise[\s\S]{0,120}?audience\.?|Strands\s*·\s*2026|Slow Atmospheres|Selected dates|Sector context(?:\s*&(?:amp;)?\s*market dynamics)?|Trading comparables analysis|Precedent transactions|Industrial automation cycle, capital flows, trading multiples|12 selected listed peers, EV\/EBITDA(?:\s*&(?:amp;)?\s*EV\/Revenue 2026E)?|M&amp;A transactions \$0\.5–5\.0B, 2022–2025|Selection criteria|Fictional illustrative sample|38\s*[×x]|Apache-2\.0|\bBYOK\b|Your agent reads a folder of\s*<code>SKILL\.md<\/code> files\.?|Open Design is the\s*(?:<strong>)?\s*(?:<\/strong>)?\s*\.?|Neobrutalist Presentation Template|Quarterly Growth Metrics/gi;
 
@@ -5586,6 +5597,7 @@ function fillSlideShell(
   }
   body = stripCapsuleCatalogDemoCopy(body);
   body = stripBlockFrameNeoCatalogDemoCopy(body);
+  body = stripBlueProfessionalCatalogDemoCopy(body);
   body = stripLeftoverCatalogDemoPhrases(body);
 
   // Loop376 — Empty content-list / subtitle shells left behind by the
@@ -5818,8 +5830,10 @@ export function buildTemplateClonedDeckHtml(
   // 루프425 — leftover Capsule catalog copy can sit outside filled shells
   // (footer / unused chrome). Wipe the whole document, not just each slide.
   // 루프434 — Neo/block-frame marketing leftovers too.
+  // 루프454 — Blue Professional survey leftovers too.
   out = stripCapsuleCatalogDemoCopy(out);
   out = stripBlockFrameNeoCatalogDemoCopy(out);
+  out = stripBlueProfessionalCatalogDemoCopy(out);
   out = stripLeftoverCatalogDemoPhrases(out);
   out = renumberBiennalePagenums(out, filled.length);
   return out.trim() || null;
@@ -6087,7 +6101,7 @@ function cleanCloneTitle(title: string): string {
 export function looksLikeLeftoverTemplateDemoDeck(html: string): boolean {
   const text = String(html ?? '');
   if (!text.trim()) return false;
-  return /Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|52\.5200°\s*N|Composed in kami|Apache-2\.0[\s\S]{0,800}Local-first[\s\S]{0,800}BYOK|\[\[Author Name\]\]|this is the broadside style|Clarity of Purpose|The Journey Continues|A Framework for Bold Ideas|Neobrutalist Presentation Template|Quarterly Growth Metrics/i.test(
+  return /Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|52\.5200°\s*N|Composed in kami|Apache-2\.0[\s\S]{0,800}Local-first[\s\S]{0,800}BYOK|\[\[Author Name\]\]|this is the broadside style|Clarity of Purpose|The Journey Continues|A Framework for Bold Ideas|Neobrutalist Presentation Template|Quarterly Growth Metrics|Sentiment has shifted measurably|Bullish on three-year outlook/i.test(
     text,
   );
 }

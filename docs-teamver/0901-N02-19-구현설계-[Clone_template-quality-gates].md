@@ -20,6 +20,8 @@ deterministic clone 산출 HTML에 대해 **4축**을 4개 대표 템플릿에�
 | Daisy Days | `html-ppt-zhangzara-daisy-days` | 10 `section.slide` | `deco-daisy`, `--cream`, `day-card` | 10 |
 | Creative Mode | `html-ppt-zhangzara-creative-mode` | 8 `div.slide` | `--cream`, `Archivo` | 8 |
 | Studio | `html-ppt-zhangzara-studio` | 12 `section.slide` (+15 `div.slide`) | `--c-accent`, `slide-chrome`, `stat-card` | 10 |
+| Blue Professional (루프456) | `html-ppt-zhangzara-blue-professional` | ~10 `div.slide` | `--primary`, `metric-card`, `cover-decoration` | 10 |
+| Block Frame (루프456) | `html-ppt-zhangzara-block-frame` | 10 `section.slide` | `feature-card`, `deco-dots`, `--pink` | 10 |
 
 공통 brief (Capsule 게이트와 동일):
 
@@ -125,6 +127,7 @@ pnpm --filter @open-design/daemon exec vitest run tests/template-clone-deck.test
 
 ## 비범위
 
-- 전 Zhangzara 카탈로그 일괄 게이트
+- 전 Zhangzara 카탈로그 일괄 게이트 (루프456에서 Blue-pro·Block-frame만 추가)
 - MiniMax live E2E · staging 재배포
 - UI 변경
+- daemon Creative Mode slideCount 불일치(contracts=8 vs daemon=10) — 인접 이슈

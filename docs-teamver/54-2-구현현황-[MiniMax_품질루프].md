@@ -15,13 +15,13 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts system-prompt-api-mode · template-visual-kit · teamver-selected-template-compose · deck-framework-compact · template-clone-fill, web templateCloneContentFill · runtime/resume.
 
-**후속:** [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) · [0901-N02-18](./0901-N02-18-구현설계-[Clone_slot-map-C13].md) — B1–B5 · C–C13 · D · 루프368–438. MiniMax live 가드 ☑(키 없으면 skip). 루프366 bake ☑ · C13 ☑ · 루프431–451 ☑.
+**후속:** [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) · [0901-N02-18](./0901-N02-18-구현설계-[Clone_slot-map-C13].md) · [0901-N02-19](./0901-N02-19-구현설계-[Clone_template-quality-gates].md) — B1–B5 · C–C13 · D · 루프368–456. MiniMax live 가드 ☑(키 없으면 skip). 루프450–456 품질 게이트/peer-fit ☑.
 
 다음 추천 작업:
 1. MiniMax 키 환경 Clone fill live smoke
 2. FileViewer ←/→ tools-dev + Teamver BFF GUI bake(선택)
-3. Blue-professional metric-card peer-fit LOOK 스모크(선택)
-4. Daisy/weekly day-card peer-fit 회귀 핀(선택)
+3. daemon Creative Mode 서버 스모크 slideCount 10≠8 (contracts 게이트와 불일치) 분리 수정
+4. Pitch-deck / product-launch 품질 게이트 편입(선택)
 
 ### 빈 칸 번호 카드 (코드명 leftover)
 
@@ -37,6 +37,17 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프456 — Blue-pro · Block-frame 품질 게이트
+
+`ZHANGZARA_QUALITY_GATE_SPECS` 6스펙. daemon Creative Mode slideCount 불일치는 인접.
+
+### 루프455 — Daisy info-card peer-fit
+
+3줄 cards → info-card · day-card 비선택.
+
+### 루프454 — Blue-pro metric-card peer-fit · demo scrub
+
+metric-card×3 · Bullish/Sentiment wipe.
 ### 루프451 — Cobalt Grid 16:9 슬롯 복원 · orphan stat
 
 체감: 「근거와 사례」 82%/11k가 떠 있고 「운영과 보안」이 왼쪽 glitch와 겹침. Field Office leftover.
