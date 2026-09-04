@@ -157,6 +157,24 @@ export function shouldQueueAiTemplateCloneFill(): boolean {
   return mode === 'json' || mode === 'prompt';
 }
 
+/**
+ * 루프419 — Skip the Home `auto-send-first` MiniMax turn only when the
+ * server already delivered the deck. Global deterministic mode, leftover
+ * fill seeds, and loop417 fail-fallback queues must still auto-send.
+ */
+export function shouldSkipCreateAutoSendForDeterministicClone(input: {
+  metadata?: unknown;
+  seed?: string | null;
+  fillQueued?: boolean;
+}): boolean {
+  void input.seed;
+  void input.fillQueued;
+  const rec = input.metadata && typeof input.metadata === 'object'
+    ? (input.metadata as Record<string, unknown>)
+    : null;
+  return rec?.templateCloneContentFilled === true;
+}
+
 /** LOOK seed + model HTML rewrite (legacy dual-instruction path). */
 export function shouldUsePromptTemplateCloneFill(): boolean {
   return getTemplateCloneFillMode() === 'prompt';

@@ -635,19 +635,28 @@ function synthesizeTemplateCloneSlideBody(
   cover: string,
   label: string,
   index: number,
-): { body: string; roleHint: TemplateCloneShellRole } {
+): Pick<TemplateCloneSlideContent, 'body' | 'roleHint' | 'items' | 'lead'> {
   const topic = topicKeywordForSynthBody(cover);
-  const templates: Array<{ roleHint: TemplateCloneShellRole; lines: string[] }> = [
+  const templates: Array<{
+    roleHint: TemplateCloneShellRole;
+    lead: string;
+    itemTitles: string[];
+    lines: string[];
+  }> = [
     {
       roleHint: 'list',
+      lead: `왜 ${topic}인가`,
+      itemTitles: ['문제', '병목', '판단 기준'],
       lines: [
-        `${label}: ${topic}이 해결하려는 사용자 문제와 도입 배경`,
+        `${topic} — 해결하려는 사용자 문제와 도입 배경`,
         '기존 업무 흐름에서 반복되는 병목과 비효율',
         '슬라이드 전체에서 검증할 핵심 판단 기준',
       ],
     },
     {
       roleHint: 'cards',
+      lead: '한 장에 담을 세 가지 포인트',
+      itemTitles: ['가치', '협업', '흐름'],
       lines: [
         '핵심 기능과 사용자가 얻는 직접적인 가치',
         '팀 단위 협업에서 맥락을 유지하는 방식',
@@ -656,6 +665,8 @@ function synthesizeTemplateCloneSlideBody(
     },
     {
       roleHint: 'process',
+      lead: '초안에서 결과물까지',
+      itemTitles: ['입력', '정리', '완성'],
       lines: [
         '입력 자료와 요청 의도를 구조화',
         '초안 생성 후 템플릿 레이아웃에 맞게 정리',
@@ -664,6 +675,8 @@ function synthesizeTemplateCloneSlideBody(
     },
     {
       roleHint: 'cards',
+      lead: '누구에게 어떤 변화가 생기는가',
+      itemTitles: ['팀', '연결', '관리'],
       lines: [
         '개인 생산성보다 팀 전체의 반복 업무 절감에 초점',
         '문서, 슬라이드, 드라이브 연동을 하나의 작업선으로 연결',
@@ -672,6 +685,8 @@ function synthesizeTemplateCloneSlideBody(
     },
     {
       roleHint: 'list',
+      lead: '역할별 적용 장면',
+      itemTitles: ['장면', '조직', '성공 조건'],
       lines: [
         '사용자 역할별 주요 사용 장면',
         '기획, 세일즈, 운영, 개발 조직에서의 적용 포인트',
@@ -680,24 +695,30 @@ function synthesizeTemplateCloneSlideBody(
     },
     {
       roleHint: 'timeline',
+      lead: '단계별 정착 경로',
+      itemTitles: ['1단계', '2단계', '3단계'],
       lines: [
-        '1단계: 작은 업무 단위에서 파일과 대화를 연결',
-        '2단계: 반복 산출물을 템플릿화하고 공유',
-        '3단계: 팀 워크플로우와 권한 체계에 정착',
+        '작은 업무 단위에서 파일과 대화를 연결',
+        '반복 산출물을 템플릿화하고 공유',
+        '팀 워크플로우와 권한 체계에 정착',
       ],
     },
     {
       roleHint: 'stat',
+      lead: '운영에서 볼 지표',
+      itemTitles: ['속도', '품질', '안정'],
       lines: [
-        '평가 지표: 초안 작성 시간, 수정 횟수, 공유 속도',
-        '품질 기준: 메시지 맥락 유지와 결과물 재현성',
-        '운영 기준: 저장 안정성, 접근 권한, 감사 가능성',
+        '초안 작성 시간, 수정 횟수, 공유 속도',
+        '메시지 맥락 유지와 결과물 재현성',
+        '저장 안정성, 접근 권한, 감사 가능성',
       ],
     },
     {
       roleHint: 'closing',
+      lead: '다음에 할 일',
+      itemTitles: ['의미', '다음 단계'],
       lines: [
-        `${topic}은 단일 기능이 아니라 팀 작업 방식을 바꾸는 기반입니다.`,
+        `${topic} 자체는 단일 기능이 아니라 팀 작업 방식을 바꾸는 기반입니다.`,
         '다음 단계는 실제 업무 시나리오에 맞춘 파일, 템플릿, 권한 흐름 검증입니다.',
       ],
     },
@@ -705,7 +726,16 @@ function synthesizeTemplateCloneSlideBody(
   const picked = templates[(index - 1) % templates.length]!;
   return {
     roleHint: picked.roleHint,
+    lead: picked.lead || label,
     body: picked.lines.join('\n'),
+    items: picked.lines.map((line, itemIndex) => {
+      const split = splitDenseTemplateCloneTitleBodyLine(line);
+      if (split) return split;
+      return {
+        title: picked.itemTitles[itemIndex] ?? `포인트 ${itemIndex + 1}`,
+        body: line,
+      };
+    }),
   };
 }
 
@@ -748,7 +778,12 @@ export function synthesizeTemplateCloneOutlineFromBrief(input: {
     '성과 지표',
     '요약',
   ];
-  const slides: TemplateCloneSlideContent[] = [{ title: cover, roleHint: 'cover' }];
+  const slides: TemplateCloneSlideContent[] = [{
+    title: cover,
+    roleHint: 'cover',
+    kicker: 'OVERVIEW',
+    lead: `${topicKeywordForSynthBody(cover)} 한눈에`,
+  }];
   for (let i = 1; i < target; i += 1) {
     const label = genericSections[i - 1] ?? `핵심 ${i}`;
     slides.push({
@@ -6209,5 +6244,63 @@ export function resolveTemplateCloneSlidesFromBrief(options: {
   return synthesizeTemplateCloneSlidesFromFreeFormBrief({
     brief: text,
     ...(options.deckTitle !== undefined ? { deckTitle: options.deckTitle } : {}),
+  });
+}
+
+function slideNeedsDeterministicBody(slide: TemplateCloneSlideContent): boolean {
+  if (slide.items && slide.items.length > 0) return false;
+  return isPlaceholderCloneBody(slide.body);
+}
+
+/**
+ * 루프419 — Deterministic Home fill must not leave `…` placeholders.
+ * Prefer a dense topical outline (kicker/lead/items) so cards and stats
+ * get title+body in one server pass.
+ */
+export function resolveTemplateCloneSlidesForDeterministicFill(options: {
+  sourceBrief?: string | null;
+  userInstruction?: string | null;
+  deckTitle?: string | null;
+  slideCount?: number | null;
+}): TemplateCloneSlideContent[] {
+  const brief = [options.sourceBrief ?? '', options.userInstruction ?? '']
+    .filter(Boolean)
+    .join('\n\n')
+    .trim();
+  const resolved = resolveTemplateCloneSlidesFromBrief(options);
+  const slideCount = options.slideCount
+    ?? extractSlideCountFromTemplateCloneBrief(brief);
+  const ellipsisStarter = resolved.length > 0
+    && resolved.every((slide) => slideNeedsDeterministicBody(slide))
+    && resolved.every((slide, index) => (
+      index === 0
+      || /^(?:개요|핵심 포인트|다음 단계|핵심 \d+)$/.test(slide.title)
+    ));
+  if (resolved.length === 0 || ellipsisStarter) {
+    const synth = synthesizeTemplateCloneOutlineFromBrief({
+      userBrief: brief || options.deckTitle || '',
+      deckTitle: options.deckTitle ?? resolved[0]?.title ?? null,
+      slideCount,
+    });
+    if (synth) return synth.slides;
+  }
+  if (resolved.length === 0) return [];
+  const cover = resolved[0]?.title ?? options.deckTitle ?? '슬라이드';
+  return resolved.map((slide, index) => {
+    if (!slideNeedsDeterministicBody(slide)) return slide;
+    if (index === 0) {
+      const next: TemplateCloneSlideContent = {
+        title: slide.title,
+        roleHint: slide.roleHint ?? 'cover',
+        kicker: slide.kicker ?? 'OVERVIEW',
+        lead: slide.lead ?? `${topicKeywordForSynthBody(cover)} 한눈에`,
+      };
+      copyTemplateCloneSlideExtras(slide, next);
+      return next;
+    }
+    return {
+      title: slide.title,
+      ...synthesizeTemplateCloneSlideBody(cover, slide.title, index),
+    };
   });
 }

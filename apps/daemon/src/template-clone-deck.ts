@@ -15,6 +15,7 @@ import {
   looksLikeLeftoverTemplateDemoDeck,
   pickPluginPreviewHtmlPath,
   resolveTemplateCloneSlideCountHint,
+  resolveTemplateCloneSlidesForDeterministicFill,
   resolveTemplateCloneSlidesFromBrief,
   sanitizeTemplateCloneDeckTitle,
 } from '@open-design/contracts';
@@ -377,14 +378,20 @@ export async function seedTemplateClonedDeckOnServer(
     };
   }
 
-  const slides = resolveTemplateCloneSlidesFromBrief({
+  const countHint = resolveTemplateCloneSlideCountHint(input.slideCountHint);
+  const briefOpts = {
     ...(input.sourceBrief != null ? { sourceBrief: input.sourceBrief } : {}),
     ...(input.userInstruction != null ? { userInstruction: input.userInstruction } : {}),
     // Prefer the user-facing deck/project title over the plugin marketing
     // title ("Html Ppt Zhangzara Daisy Days") when synthesizing free-form.
     deckTitle: sanitizeTemplateCloneDeckTitle(input.deckTitle),
-  });
-  const countHint = resolveTemplateCloneSlideCountHint(input.slideCountHint);
+  };
+  const slides = contentFillMode === 'deterministic-fill'
+    ? resolveTemplateCloneSlidesForDeterministicFill({
+      ...briefOpts,
+      ...(countHint != null ? { slideCount: countHint } : {}),
+    })
+    : resolveTemplateCloneSlidesFromBrief(briefOpts);
   const honorSlides = countHint != null && countHint <= 10 && slides.length > countHint
     ? slides.slice(0, countHint)
     : slides;

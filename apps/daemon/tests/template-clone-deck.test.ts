@@ -473,6 +473,89 @@ describe('seedTemplateClonedDeckOnServer', () => {
     expect(marked[0]?.contentFillMode).toBe('deterministic-fill');
   });
 
+  it('루프419 — deterministic fill uses dense outline helper, not ellipsis LOOK seed', async () => {
+    const source = await readFile(
+      new URL('../src/template-clone-deck.ts', import.meta.url),
+      'utf8',
+    );
+    expect(source).toContain('resolveTemplateCloneSlidesForDeterministicFill');
+    expect(source).toContain("contentFillMode === 'deterministic-fill'");
+  });
+
+  it('루프419 — Capsule + teamver brief fills 8-10 dense slides on the server', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'od-template-clone-capsule-'));
+    const pluginDir = path.join(root, 'plugin');
+    const projectsRoot = path.join(root, 'projects');
+    const dataDir = path.join(root, '.od');
+    await mkdir(pluginDir, { recursive: true });
+    await mkdir(projectsRoot, { recursive: true });
+
+    const capsulePath = path.resolve(
+      process.cwd(),
+      '../../plugins/_official/examples/html-ppt-zhangzara-capsule/example.html',
+    );
+    const exampleHtml = await readFile(capsulePath, 'utf8');
+    await writeFile(path.join(pluginDir, 'example.html'), exampleHtml, 'utf8');
+
+    const db = openDatabase(root, { dataDir });
+    upsertInstalledPlugin(db, {
+      id: 'html-ppt-zhangzara-capsule',
+      title: 'Html Ppt Zhangzara Capsule',
+      version: '0.0.0',
+      sourceKind: 'local',
+      source: pluginDir,
+      trust: 'bundled',
+      capabilitiesGranted: [],
+      manifest: {
+        name: 'html-ppt-zhangzara-capsule',
+        title: 'Html Ppt Zhangzara Capsule',
+        version: '0.0.0',
+        od: { preview: { entry: 'example.html' } },
+      } as any,
+      fsPath: pluginDir,
+      installedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const written = new Map<string, string>();
+    const result = await seedTemplateClonedDeckOnServer(
+      {
+        db,
+        projectsRoot,
+        projectId: 'proj-capsule',
+        ensureProject: async () => {
+          const dir = path.join(projectsRoot, 'proj-capsule');
+          await mkdir(dir, { recursive: true });
+          return dir;
+        },
+        writeProjectFile: async (_root, _id, name, body) => {
+          written.set(name, typeof body === 'string' ? body : body.toString('utf8'));
+          return { name };
+        },
+      },
+      {
+        pluginId: 'html-ppt-zhangzara-capsule',
+        templateTitle: 'Html Ppt Zhangzara Capsule',
+        userInstruction: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장',
+        deckTitle: '슬라이드',
+        slideCountHint: '8-10',
+        contentFillMode: 'deterministic-fill',
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.contentFilled).toBe(true);
+    expect(result.slideCount).toBe(10);
+    const deck = written.get('deck.html') ?? '';
+    expect(deck).toContain('--coral');
+    expect(deck).toContain('--lime');
+    expect(deck).toMatch(/팀버|Teamver/i);
+    expect(deck).toContain('직접적인 가치');
+    expect(deck).not.toMatch(/Hartfield|Daisy Days|Clarity of Purpose/i);
+    expect(deck).not.toContain('…');
+  });
+
   it('normalizes marketplace-prefixed ids for bundled ensure', () => {
     expect(normalizeBundledPluginLookupId('open-design/example-html-ppt-zhangzara-daisy-days'))
       .toBe('example-html-ppt-zhangzara-daisy-days');

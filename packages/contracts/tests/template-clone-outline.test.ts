@@ -14,6 +14,7 @@ import {
   outlineLooksLikeHtmlDump,
   parseTemplateCloneDeckOutline,
   recoverPartialTemplateCloneOutline,
+  resolveTemplateCloneSlidesForDeterministicFill,
   stripTemplateCloneOutlineNoise,
   synthesizeTemplateCloneOutlineFromBrief,
   prepareTemplateCloneSlotFillAssistantText,
@@ -450,7 +451,11 @@ describe('루프373 synthesizeTemplateCloneOutlineFromBrief', () => {
       expect(slide.title).toMatch(/^(?:개요|핵심 포인트|근거와 사례|실행 방안|고객 경험|운영과 보안|도입 로드맵|성과 지표|요약|핵심 \d+)$/);
       expect(slide.body?.split('\n').filter(Boolean).length).toBeGreaterThanOrEqual(2);
       expect(slide.roleHint).toBeTruthy();
+      expect(slide.items?.length).toBeGreaterThanOrEqual(2);
+      expect(slide.items?.every((item) => item.title && item.body)).toBe(true);
+      expect(slide.lead).toBeTruthy();
     }
+    expect(outline!.slides[0]?.kicker).toBe('OVERVIEW');
   });
 
   it('extracts requested slide count from brief when caller has no parsed count', () => {
@@ -466,6 +471,35 @@ describe('루프373 synthesizeTemplateCloneOutlineFromBrief', () => {
     expect(
       synthesizeTemplateCloneOutlineFromBrief({ userBrief: '', deckTitle: '' }),
     ).toBeNull();
+  });
+});
+
+describe('루프419 resolveTemplateCloneSlidesForDeterministicFill', () => {
+  it('turns a short URL brief + 8-10 hint into a dense 10-slide outline', () => {
+    const slides = resolveTemplateCloneSlidesForDeterministicFill({
+      userInstruction: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장',
+      deckTitle: '슬라이드',
+      slideCount: 10,
+    });
+    expect(slides).toHaveLength(10);
+    expect(slides[0]?.title).toMatch(/팀버|Teamver|teamver/i);
+    expect(slides[0]?.kicker).toBe('OVERVIEW');
+    expect(slides.slice(1).every((slide) => (slide.items?.length ?? 0) >= 2)).toBe(true);
+    expect(slides.some((slide) => slide.body === '…')).toBe(false);
+    const joined = JSON.stringify(slides);
+    expect(joined).not.toMatch(/팀버이|팀버은/);
+    expect(joined).toContain('왜 팀버인가');
+    expect(joined).toContain('팀버 한눈에');
+  });
+
+  it('densifies title-only Visible headings instead of leaving empty card bodies', () => {
+    const slides = resolveTemplateCloneSlidesForDeterministicFill({
+      sourceBrief: 'Visible headings: 표지 / 문제 / 해결',
+      userInstruction: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+    });
+    expect(slides.map((slide) => slide.title)).toEqual(['표지', '문제', '해결']);
+    expect(slides[1]?.items?.some((item) => Boolean(item.body))).toBe(true);
+    expect(slides[2]?.items?.some((item) => Boolean(item.body))).toBe(true);
   });
 });
 
@@ -627,7 +661,7 @@ describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
     if (decision.kind === 'seed-fallback') {
       expect(listTemplateCloneSlideShells(decision.html).length).toBe(10);
       expect(decision.html).toContain('성과 지표');
-      expect(decision.html).toContain('평가 지표');
+      expect(decision.html).toContain('한 장에 담을 세 가지 포인트');
       expect(decision.html).not.toContain('Demo');
     }
   });

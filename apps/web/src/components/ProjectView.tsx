@@ -233,6 +233,8 @@ import {
   queueTemplateCloneContentFill,
   readQueuedAutoSendSeed,
   resolveTemplateCloneAutoSendSeed,
+  shouldSkipCreateAutoSendForDeterministicClone,
+  shouldUseJsonTemplateCloneFill,
   templateCloneContentFillHardRules,
   templateCloneFillSlideCountOverrideNotice,
   withTemplateCloneFillPluginInputs,
@@ -14513,6 +14515,20 @@ export function ProjectView({
       pendingPrompt: project.pendingPrompt,
       fillQueued,
     }).trim();
+    if (
+      shouldSkipCreateAutoSendForDeterministicClone({
+        metadata: project.metadata,
+        seed,
+        fillQueued,
+      })
+    ) {
+      // 루프419 — server slot-fill is the deliverable. Loop417 fail-fallback
+      // queues still auto-send because content is not marked filled.
+      autoSentRef.current = true;
+      clearAutoSendSession(project.id);
+      clearTemplateCloneContentFillQueue(project.id);
+      return;
+    }
     const attachments = fillQueued
       ? withoutCanonicalDeckAttachments(autoSendAttachmentsRef.current ?? [])
       : (autoSendAttachmentsRef.current ?? []);
@@ -14642,7 +14658,7 @@ export function ProjectView({
       } catch {
         /* ignore */
       }
-      if (fillQueued && seed) {
+      if (fillQueued && seed && shouldUseJsonTemplateCloneFill()) {
         queueTemplateCloneContentFill({
           projectId: project.id,
           seed,
@@ -14674,7 +14690,7 @@ export function ProjectView({
         } catch {
           /* ignore */
         }
-        if (fillQueued && seed) {
+        if (fillQueued && seed && shouldUseJsonTemplateCloneFill()) {
           queueTemplateCloneContentFill({
             projectId: project.id,
             seed,

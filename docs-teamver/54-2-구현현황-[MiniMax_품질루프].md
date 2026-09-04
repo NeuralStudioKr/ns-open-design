@@ -42,6 +42,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프419 — deterministic fill 밀도 + filled 덱 MiniMax skip
+
+체감: 서버 fill이 `…` 4장. 카드 본문 공백. production `deterministic` 품질 구멍.
+
+수정: dense outline helper · daemon 연결 · 성공 시에만 MiniMax skip · `templateCloneContentFilled`만 auto-send skip · Capsule 8–10 게이트. staging `pure-prompt` 유지.
+
 ### 루프414 — deterministic Home MiniMax JSON fill 제거
 
 체감: 생성 직후 MiniMax `AGENT_EXECUTION_FAILED`. Home이 서버 slot-fill 뒤에도 JSON-only fill을 자동 전송.
@@ -2062,7 +2068,15 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프418 · staging pure-prompt)
+## 이번 루프 (루프419 · deterministic 밀도)
+
+- [x] dense outline helper (`kicker`/`lead`/`items[]`)
+- [x] daemon deterministic 경로 연결
+- [x] 성공 fill만 MiniMax skip · 실패는 루프417 AI fill 폴백
+- [x] Capsule + teamver.com + 8–10 품질 게이트
+- [ ] production `deterministic` 재배포 후 동일 브리프 재생성
+
+## 직전 루프 (루프418 · staging pure-prompt)
 
 - [x] `.env.staging.example` / 로컬 `.env.staging` → `pure-prompt`
 - [ ] staging 웹 재빌드·재배포 후 Home 만들기 QA

@@ -30,6 +30,7 @@ import {
   resolveTemplateCloneAutoSendSeed,
   shouldSkipTemplateCloneSeed,
   shouldUseDeterministicTemplateCloneFill,
+  shouldSkipCreateAutoSendForDeterministicClone,
   shouldUseJsonTemplateCloneFill,
   shouldUsePromptTemplateCloneFill,
   shouldQueueAiTemplateCloneFill,
@@ -139,6 +140,42 @@ describe('templateCloneContentFill', () => {
     expect(app).toContain('fillTemplateClonedDeckDeterministically');
     expect(app).toContain('usedDeterministicCloneFill');
     expect(app).toMatch(/루프401\/409\/410\/413|shouldSkipTemplateCloneSeed/);
+    const composer = readFileSync(
+      new URL('../../src/components/ChatComposer.tsx', import.meta.url),
+      'utf8',
+    );
+    expect(composer).toContain('Failure falls through to');
+    const projectView = readFileSync(
+      new URL('../../src/components/ProjectView.tsx', import.meta.url),
+      'utf8',
+    );
+    expect(projectView).toContain('shouldSkipCreateAutoSendForDeterministicClone');
+    expect(projectView).toContain('shouldUseJsonTemplateCloneFill()');
+  });
+
+  it('loop419 — only a filled deck skips Home auto-send; fail-fallback still sends', () => {
+    expect(shouldUseDeterministicTemplateCloneFill()).toBe(true);
+    expect(
+      shouldSkipCreateAutoSendForDeterministicClone({
+        metadata: { kind: 'deck' },
+        seed: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+        fillQueued: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldSkipCreateAutoSendForDeterministicClone({
+        metadata: { templateCloneContentFilled: true },
+        seed: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+        fillQueued: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldSkipCreateAutoSendForDeterministicClone({
+        metadata: { kind: 'deck' },
+        seed: `${TEMPLATE_CLONE_CONTENT_FILL_MARKER}\nJSON only`,
+        fillQueued: true,
+      }),
+    ).toBe(false);
   });
 
   it('does not treat Canvas boilerplate as the visible request', () => {

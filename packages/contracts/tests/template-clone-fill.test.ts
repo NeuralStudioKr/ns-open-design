@@ -19,6 +19,7 @@ import {
   normalizeTemplateCssForFixedCanvas,
   pickTemplateShellsForContent,
   resolveTemplateCloneSlideCountHint,
+  resolveTemplateCloneSlidesForDeterministicFill,
   resolveTemplateCloneSlidesFromBrief,
   sanitizeTemplateCloneDeckTitle,
   deriveDeckCoverTitleFromBrief,
@@ -345,6 +346,37 @@ describe('free-form Daisy clone content swap', () => {
     expect(outCount).toBe(slides.length);
     expect(outCount).toBeLessThan(natural);
     expect(outCount).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('루프419 Capsule deterministic quality gate', () => {
+  it('fills Capsule cards for www.teamver.com + 8-10 without MiniMax HTML', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-capsule/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const slides = resolveTemplateCloneSlidesForDeterministicFill({
+      userInstruction: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장',
+      slideCount: 10,
+    });
+    const cloned = buildTemplateClonedDeckHtml(html, slides, {
+      title: slides[0]?.title || '팀버',
+      templateId: 'html-ppt-zhangzara-capsule',
+      maxSlides: 10,
+      brief: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장',
+    });
+    expect(cloned).toBeTruthy();
+    expect(listTemplateCloneSlideShells(cloned!).length).toBe(10);
+    expect(cloned).toContain('--coral');
+    expect(cloned).toContain('--lime');
+    expect(cloned).toMatch(/팀버|Teamver/i);
+    expect(cloned).toContain('직접적인 가치');
+    expect(cloned).toContain('맥락을 유지');
+    expect(cloned).not.toMatch(/Hartfield|Daisy Days|Clarity of Purpose/i);
+    expect(cloned).not.toContain('A Framework for Bold Ideas');
   });
 });
 
