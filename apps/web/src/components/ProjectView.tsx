@@ -265,6 +265,7 @@ import { agentDisplayName, agentModelDisplayName } from '../utils/agentLabels';
 import { isMacPlatform } from '../utils/platform';
 import {
   canAutoRenameProjectFromPrompt,
+  composerDraftFromPendingCreatePrompt,
   conversationTitleFromUserTurn,
   deriveProjectNameForCreate,
   summarizeProjectNameFromUserTurn,
@@ -14267,11 +14268,11 @@ export function ProjectView({
   }
   const [initialDraft, setInitialDraft] = useState<
     { projectId: string; value: string } | undefined
-  >(
-    autoSendSeedRef.current || !project.pendingPrompt
-      ? undefined
-      : { projectId: project.id, value: project.pendingPrompt },
-  );
+  >(() => {
+    if (autoSendSeedRef.current || !project.pendingPrompt) return undefined;
+    const draft = composerDraftFromPendingCreatePrompt(project.pendingPrompt);
+    return draft ? { projectId: project.id, value: draft } : undefined;
+  });
   useEffect(() => {
     const pendingPrompt = project.pendingPrompt;
     if (!pendingPrompt) return;
@@ -14279,10 +14280,15 @@ export function ProjectView({
       onClearPendingPrompt();
       return;
     }
+    const draft = composerDraftFromPendingCreatePrompt(pendingPrompt);
+    if (!draft) {
+      onClearPendingPrompt();
+      return;
+    }
     setInitialDraft((current) =>
       current?.projectId === project.id
         ? current
-        : { projectId: project.id, value: pendingPrompt },
+        : { projectId: project.id, value: draft },
     );
     onClearPendingPrompt();
   }, [project.id, project.pendingPrompt, onClearPendingPrompt]);

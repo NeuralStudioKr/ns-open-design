@@ -3073,6 +3073,10 @@ function AppInner() {
       const projectForNav = usedDeterministicCloneFill
         ? {
             ...project,
+            // 루프416 — host already slot-filled the LOOK seed. Clearing the
+            // create-time canvasCreateSlidesRunPrompt dump prevents ChatComposer
+            // from showing [Deliverable instruction] / Quick settings as draft.
+            pendingPrompt: undefined,
             metadata: {
               ...(project.metadata && typeof project.metadata === 'object'
                 ? project.metadata
@@ -3108,6 +3112,11 @@ function AppInner() {
           }
         : project;
       rememberLocalProject(projectForNav.id);
+      if (usedDeterministicCloneFill) {
+        // Persist the clear — otherwise a projects refresh reloads the dump
+        // into the composer after navigate.
+        void patchProject(projectForNav.id, { pendingPrompt: null });
+      }
       if (typeof result.conversationId === 'string' && result.conversationId.trim()) {
         writeCreateConversationHandoff(projectForNav.id, result.conversationId);
         rememberTeamverProjectConversation(projectForNav.id, result.conversationId.trim());

@@ -2062,7 +2062,14 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프415 · MiniMax AGENT_EXECUTION_FAILED 진단·재분류)
+## 이번 루프 (루프416 · deterministic create deliverable 덤프 → composer 차단)
+
+- [x] App deterministic 경로 `pendingPrompt` clear + server PATCH
+- [x] `composerDraftFromPendingCreatePrompt` · ProjectView draft 시드 가드
+- [x] projectName 테스트
+- [ ] staging 웹 재배포 후 Home 만들기 QA
+
+## 직전 루프 (루프415 · MiniMax AGENT_EXECUTION_FAILED 진단·재분류)
 
 - [x] daemon Upstream SSE message에 redacted body snippet 포함
 - [x] FE `proxyErrorMessage`가 status-only일 때 `details` 본문 병합

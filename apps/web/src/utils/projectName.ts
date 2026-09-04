@@ -247,6 +247,26 @@ export function extractUserFacingCreateRequest(fullPrompt: string | null | undef
 }
 
 /**
+ * Composer draft from create `pendingPrompt`. Never put the model-facing
+ * `[Deliverable instruction]` / Quick settings dump in the textarea (루프416).
+ * Auto-send paths skip initialDraft entirely; this guards the manual-seed path.
+ */
+export function composerDraftFromPendingCreatePrompt(
+  pendingPrompt: string | null | undefined,
+): string {
+  const raw = String(pendingPrompt ?? "").trim();
+  if (!raw) return "";
+  if (
+    /\[Deliverable instruction\]/i.test(raw)
+    || /\[Selected slide template(?:\s+priority)?\]/i.test(raw)
+    || /\[Quick settings\]/i.test(raw)
+  ) {
+    return extractUserFacingCreateRequest(raw);
+  }
+  return raw;
+}
+
+/**
  * Conversation dropdown title — never falls back to 「첨부한 자료」 / raw protocol dump.
  */
 export function conversationTitleFromUserTurn(fullPrompt: string): string {

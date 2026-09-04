@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   canAutoRenameProjectFromPrompt,
+  composerDraftFromPendingCreatePrompt,
   conversationTitleFromUserTurn,
   deriveProjectNameForCreate,
   extractUserFacingCreateRequest,
@@ -143,6 +144,31 @@ describe('extractUserFacingCreateRequest', () => {
       'expo에 대해서 설명하는 피피티 만들어줘.',
     ].join('\n');
     expect(extractUserFacingCreateRequest(full)).toMatch(/expo/i);
+  });
+});
+
+describe('composerDraftFromPendingCreatePrompt', () => {
+  it('strips Home create deliverable dumps down to the user brief', () => {
+    const full = [
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+      '',
+      '[Deliverable instruction]',
+      'Build a new presentation deck. There may be no attached source…',
+      '',
+      '[Quick settings]',
+      'Audience: Business/investor audience.',
+      '',
+      '[Selected slide template priority]',
+      'The user explicitly selected "Html Ppt 제품 출시".',
+    ].join('\n');
+    expect(composerDraftFromPendingCreatePrompt(full)).toBe(
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+    );
+    expect(composerDraftFromPendingCreatePrompt(full)).not.toContain('[Deliverable');
+  });
+
+  it('returns ordinary pending prompts unchanged', () => {
+    expect(composerDraftFromPendingCreatePrompt('제목만 고쳐줘')).toBe('제목만 고쳐줘');
   });
 });
 
