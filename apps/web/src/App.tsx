@@ -2738,14 +2738,15 @@ function AppInner() {
           // The actual user request must still auto-send so the AI reads the
           // attachment/source and generates real content from the prompt.
           //
-          // 루프401/409/410/413 — skip seed only in `pure-prompt`; default is LOOK seed + slot-fill
-          // skips clone seeding + clone-fill marker. Outgoing turn still
-          // carries `selectedDeckTemplateId`, so composeTeamverSlideApiPrompt
-          // emits the kit spec — plain create + kit context (pre-Clone flow).
+          // 루프422 — a picked visual template always Clones example.html.
+          // `pure-prompt` kit-spec-only create cannot apply Capsule.
+          const hasExplicitCanvasTemplate = isExplicitCanvasSlideVisualTemplate({
+            id: selectedDeckTemplateId,
+          });
           if (
             slideOnlyMvp
-            && isExplicitCanvasSlideVisualTemplate({ id: selectedDeckTemplateId })
-            && !shouldSkipTemplateCloneSeed()
+            && hasExplicitCanvasTemplate
+            && !shouldSkipTemplateCloneSeed(hasExplicitCanvasTemplate)
           ) {
             const sourceBrief = canvasCreateSlidesSourceBrief(pendingCanvasHandoff);
             const templateTitle =
@@ -2772,7 +2773,7 @@ function AppInner() {
                 || null,
               slideCountHint: slideCountHintFromInputs,
             };
-            if (shouldUseDeterministicTemplateCloneFill()) {
+            if (shouldUseDeterministicTemplateCloneFill(hasExplicitCanvasTemplate)) {
               // 루프417 — await fill before navigate. Fire-and-forget opened
               // deck.html while the daemon still wrote it → sticky preview
               // loading + empty chat (auto-send suppressed).
@@ -2894,14 +2895,17 @@ function AppInner() {
       // Drive import failure must NOT skip Clone — otherwise Daisy is never
       // applied and the user only sees an empty project (auto-send also blocked).
       //
-      // 루프401/409/410/413 — Same `pure-prompt` skip as the Canvas branch above.
+      // 루프422 — same as Canvas: picked template always LOOK-seeds.
+      const hasExplicitHomeTemplate = isExplicitCanvasSlideVisualTemplate({
+        id: selectedDeckTemplateId,
+      });
       if (
         !workingDirHandoffFailed
         && !canvasImportFailed
         && !pendingCanvasHandoff
         && slideOnlyMvp
-        && isExplicitCanvasSlideVisualTemplate({ id: selectedDeckTemplateId })
-        && !shouldSkipTemplateCloneSeed()
+        && hasExplicitHomeTemplate
+        && !shouldSkipTemplateCloneSeed(hasExplicitHomeTemplate)
       ) {
         const templateTitle =
           typeof input.metadata?.selectedDeckTemplateTitle === 'string'
@@ -2943,7 +2947,7 @@ function AppInner() {
           deckTitle: clonedDeckCoverTitle,
           slideCountHint: slideCountHintFromInputs,
         };
-        if (shouldUseDeterministicTemplateCloneFill()) {
+        if (shouldUseDeterministicTemplateCloneFill(hasExplicitHomeTemplate)) {
           // 루프417 — await host fill before navigate so FileViewer does not
           // stick on "슬라이드 미리보기 불러오는 중…" for a missing deck.html.
           const fillPromise = (async (): Promise<
@@ -3038,9 +3042,11 @@ function AppInner() {
       // structure turn (no source attach → Neutral look risk).
       const suppressAutoSendForFailedDriveImport =
         pendingDriveAssets.length > 0 && !homeDriveImportSucceeded;
-      // 루프420 — pure-prompt must always auto-send the create turn. Never
-      // inherit usedDeterministicCloneFill from a stale host-fill attempt.
-      if (shouldSkipTemplateCloneSeed()) {
+      // 루프420/422 — no-template `pure-prompt` still auto-sends MiniMax.
+      // A picked template already LOOK-filled; do not clear that flag.
+      if (shouldSkipTemplateCloneSeed(
+        isExplicitCanvasSlideVisualTemplate({ id: selectedDeckTemplateId }),
+      )) {
         usedDeterministicCloneFill = false;
       }
       if (suppressAutoSendForFailedDriveImport || usedDeterministicCloneFill) {

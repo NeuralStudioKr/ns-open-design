@@ -42,6 +42,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프422 — 고른 템플릿은 pure-prompt여도 LOOK seed
+
+체감: pure-prompt가 Capsule을 적용하지 못하고 Inter/슬레이트 + IB magazine 표지만 냄.
+
+수정: 템플릿 선택 시 seed skip 금지 · `pure-prompt`+템플릿은 서버 fill.
+
 ### 루프421 — filled 덱 복구 + never MiniMax overwrite
 
 체감: fill HTTP 타임아웃 후 MiniMax가 Capsule을 덮고, deterministic 실패가 prompt-fill을 큐함. Capsule 데모 문구/지표가 남음.
@@ -2080,7 +2086,13 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프421 · filled 복구 + never MiniMax)
+## 이번 루프 (루프422 · 고른 템플릿은 LOOK seed)
+
+- [x] `shouldSkipTemplateCloneSeed(true)` → false
+- [x] `pure-prompt` + 템플릿 → 서버 fill, MiniMax queue 없음
+- [ ] staging 웹 재빌드·재배포 후 Capsule Home 만들기 QA
+
+## 직전 루프 (루프421 · filled 복구 + never MiniMax)
 
 - [x] filled 덱 HTTP 타임아웃 복구 (`contentFilled`)
 - [x] LOOK/filled면 MiniMax HTML rewrite 금지

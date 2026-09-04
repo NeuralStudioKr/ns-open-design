@@ -138,8 +138,18 @@ export function getTemplateCloneFillMode(): TemplateCloneFillMode {
   return TEMPLATE_CLONE_FILL_DEFAULT_MODE;
 }
 
-export function shouldUseDeterministicTemplateCloneFill(): boolean {
-  return getTemplateCloneFillMode() === 'deterministic';
+/**
+ * 루프422 — A picked visual template must use LOOK + server fill.
+ * `pure-prompt` MiniMax-from-scratch cannot apply Capsule (`--coral` /
+ * `--lime` / pillar-card). User dump was IB magazine cover + Inter/slate
+ * generic slides. Explicit `=prompt` / `=json` still use AI fill.
+ */
+export function shouldUseDeterministicTemplateCloneFill(
+  hasExplicitTemplate = false,
+): boolean {
+  const mode = getTemplateCloneFillMode();
+  if (mode === 'deterministic') return true;
+  return hasExplicitTemplate && mode === 'pure-prompt';
 }
 
 /** LOOK seed + AI JSON outline. Explicit `json` only — not the default. */
@@ -148,7 +158,8 @@ export function shouldUseJsonTemplateCloneFill(): boolean {
 }
 
 /** Home/App should queue a MiniMax fill turn after LOOK seed. */
-export function shouldQueueAiTemplateCloneFill(): boolean {
+export function shouldQueueAiTemplateCloneFill(hasExplicitTemplate = false): boolean {
+  if (shouldUseDeterministicTemplateCloneFill(hasExplicitTemplate)) return false;
   const mode = getTemplateCloneFillMode();
   return mode === 'json' || mode === 'prompt';
 }
@@ -201,14 +212,12 @@ export function buildTemplateCloneFillSeedForCurrentMode(
 }
 
 /**
- * 루프401 — When true, callers must skip `seedTemplateClonedDeck` and
- * `queueTemplateClonePromptFill` / `buildTemplateClonePromptFillSeed`.
- * The user turn goes out through the standard create path but with
- * `selectedDeckTemplateId` + `skillIds` preserved so the kit spec still
- * lands in the system prompt. No LOOK seed is written; no clone marker
- * is attached.
+ * 루프401/422 — Skip LOOK seed only for no-template `pure-prompt`.
+ * A picked Capsule/Daisy/… template always clones `example.html`.
+ * MiniMax kit-spec-only create cannot apply the visual system.
  */
-export function shouldSkipTemplateCloneSeed(): boolean {
+export function shouldSkipTemplateCloneSeed(hasExplicitTemplate = false): boolean {
+  if (hasExplicitTemplate) return false;
   return getTemplateCloneFillMode() === 'pure-prompt';
 }
 

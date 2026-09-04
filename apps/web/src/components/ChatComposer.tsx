@@ -2258,15 +2258,15 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           // preview seed. Continue into the model run so the AI generates
           // real content from the source + user prompt.
           //
-          // 루프401 — `pure-prompt` mode opts out of clone seeding + clone-
-          // fill marker; falls through to the standard create path below,
-          // which still forwards `selectedDeckTemplateId` so the kit spec
-          // lands in the system prompt.
+          // 루프422 — a picked visual template always Clones example.html.
+          const hasExplicitCanvasTemplate = isExplicitCanvasSlideVisualTemplate(
+            selectedCanvasSlideTemplate,
+          );
           if (
             slideOnlyMvp
-            && isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)
+            && hasExplicitCanvasTemplate
             && templateBinding.projectMetadata.selectedDeckTemplateId
-            && !shouldSkipTemplateCloneSeed()
+            && !shouldSkipTemplateCloneSeed(hasExplicitCanvasTemplate)
           ) {
             const cloneRequest = {
               projectId: id,
@@ -2282,7 +2282,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 canvasSlideQuickSettings.length,
               ),
             };
-            const deterministicFill = shouldUseDeterministicTemplateCloneFill();
+            const deterministicFill = shouldUseDeterministicTemplateCloneFill(
+              hasExplicitCanvasTemplate,
+            );
             const jsonFill = shouldUseJsonTemplateCloneFill();
             const seeded = deterministicFill
               ? await fillTemplateClonedDeckDeterministically(cloneRequest)
@@ -2535,11 +2537,14 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           if (patched) onActiveDesignSystemChange?.(patched);
         }
         const sourceBrief = driveCreateSlidesSourceBrief(asset);
+        const hasExplicitDriveTemplate = isExplicitCanvasSlideVisualTemplate(
+          selectedCanvasSlideTemplate,
+        );
         if (
           slideOnlyMvp
-          && isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)
+          && hasExplicitDriveTemplate
           && templateBinding.projectMetadata.selectedDeckTemplateId
-          && !shouldSkipTemplateCloneSeed()
+          && !shouldSkipTemplateCloneSeed(hasExplicitDriveTemplate)
         ) {
           const cloneRequest = {
             projectId: id,
@@ -2552,7 +2557,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               canvasSlideQuickSettings.length,
             ),
           };
-          const deterministicFill = shouldUseDeterministicTemplateCloneFill();
+          const deterministicFill = shouldUseDeterministicTemplateCloneFill(
+            hasExplicitDriveTemplate,
+          );
           const jsonFill = shouldUseJsonTemplateCloneFill();
           const seeded = deterministicFill
             ? await fillTemplateClonedDeckDeterministically(cloneRequest)

@@ -130,6 +130,10 @@ describe('templateCloneContentFill', () => {
     expect(shouldSkipTemplateCloneSeed()).toBe(true);
     expect(shouldUseJsonTemplateCloneFill()).toBe(false);
     expect(shouldUseDeterministicTemplateCloneFill()).toBe(false);
+    // 루프422 — a picked Capsule/Daisy template still LOOK-seeds + server-fills.
+    expect(shouldSkipTemplateCloneSeed(true)).toBe(false);
+    expect(shouldUseDeterministicTemplateCloneFill(true)).toBe(true);
+    expect(shouldQueueAiTemplateCloneFill(true)).toBe(false);
 
     expect(normalizeTemplateCloneFillMode('  Pure-Prompt  ')).toBe('pure-prompt');
     expect(normalizeTemplateCloneFillMode('NO-CLONE')).toBe('pure-prompt');
@@ -176,21 +180,32 @@ describe('templateCloneContentFill', () => {
     expect(shouldQueueAiTemplateCloneFill()).toBe(true);
   });
 
+  it('loop422 — picked template never skips LOOK seed, even on pure-prompt', () => {
+    process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = 'pure-prompt';
+    expect(shouldSkipTemplateCloneSeed(false)).toBe(true);
+    expect(shouldSkipTemplateCloneSeed(true)).toBe(false);
+    expect(shouldUseDeterministicTemplateCloneFill(true)).toBe(true);
+    expect(shouldQueueAiTemplateCloneFill(true)).toBe(false);
+    process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = 'prompt';
+    expect(shouldSkipTemplateCloneSeed(true)).toBe(false);
+    expect(shouldUseDeterministicTemplateCloneFill(true)).toBe(false);
+    expect(shouldQueueAiTemplateCloneFill(true)).toBe(true);
+  });
+
   it('loop410/413/414 — App still gates clone seed with shouldSkipTemplateCloneSeed (kit id retained)', () => {
-    // The gate must remain so explicit pure-prompt rollback can skip LOOK seed
-    // while deterministic default still threads selectedDeckTemplateId.
+    // The gate must remain so no-template pure-prompt can skip LOOK seed
+    // while a picked template still threads selectedDeckTemplateId + clone.
     const app = readFileSync(
       new URL('../../src/App.tsx', import.meta.url),
       'utf8',
     );
-    expect(app).toContain('!shouldSkipTemplateCloneSeed()');
-    expect((app.match(/!shouldSkipTemplateCloneSeed\(\)/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect(app).toContain('shouldSkipTemplateCloneSeed(hasExplicit');
+    expect((app.match(/shouldSkipTemplateCloneSeed\(/g) ?? []).length).toBeGreaterThanOrEqual(3);
     expect(app).toContain('selectedDeckTemplateId');
     expect(app).toContain('fillTemplateClonedDeckDeterministically');
     expect(app).toContain('usedDeterministicCloneFill');
     expect(app).toContain('sanitizeCreateAutoSendSeed');
-    expect(app).toContain('shouldSkipTemplateCloneSeed()');
-    expect(app).toMatch(/루프401\/409\/410\/413|shouldSkipTemplateCloneSeed|pure-prompt must always auto-send/);
+    expect(app).toMatch(/루프422|shouldSkipTemplateCloneSeed/);
     const stagingEnv = readFileSync(
       new URL('../../../../deploy/teamver/.env.staging.example', import.meta.url),
       'utf8',
