@@ -142,10 +142,12 @@ import {
 } from './teamver/createProjectStreamHandoff';
 import { rememberTeamverProjectConversation } from './teamver/teamverProjectConversationMemory';
 import {
+  autoSendSeedStorageKey,
   buildTemplateCloneFillSeedForCurrentMode,
   clearTemplateCloneContentFillQueue,
   queueTemplateCloneContentFill,
   queueTemplateClonePromptFill,
+  sanitizeCreateAutoSendSeed,
   shouldSkipTemplateCloneSeed,
   shouldUseDeterministicTemplateCloneFill,
   withoutCanonicalDeckAttachments,
@@ -3092,6 +3094,15 @@ function AppInner() {
             `od:auto-send-first:${result.project.id}`,
             '1',
           );
+          if (!queuedFillSeed) {
+            const cleanSeed = sanitizeCreateAutoSendSeed(derivedPendingPrompt);
+            if (cleanSeed) {
+              window.sessionStorage.setItem(
+                autoSendSeedStorageKey(result.project.id),
+                cleanSeed,
+              );
+            }
+          }
           if (firstMessageAttachments.length > 0) {
             const autoSendAttachments = queuedFillSeed
               ? withoutCanonicalDeckAttachments(firstMessageAttachments)

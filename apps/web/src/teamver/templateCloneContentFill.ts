@@ -801,6 +801,28 @@ export function buildTemplateClonePromptFillSeed(options: {
   return parts.join('\n');
 }
 
+const CANVAS_CREATE_DELIVERABLE_DUMP_RE =
+  /\[Deliverable instruction\]|\[Selected slide template(?:\s+priority)?\]|\[Quick settings\]/i;
+
+/** Home create stores the model-facing canvas dump as pendingPrompt. */
+export function looksLikeCanvasCreateDeliverableDump(text: unknown): boolean {
+  return CANVAS_CREATE_DELIVERABLE_DUMP_RE.test(String(text ?? ''));
+}
+
+/**
+ * 루프420 — Auto-send must never ship the [Deliverable instruction] dump.
+ * Staging `pure-prompt` sent that whole contract to MiniMax and failed.
+ */
+export function sanitizeCreateAutoSendSeed(text: unknown): string {
+  const raw = String(text ?? '').trim();
+  if (!raw) return '';
+  if (isTemplateCloneHostFillPrompt(raw)) return raw;
+  if (looksLikeCanvasCreateDeliverableDump(raw)) {
+    return extractTemplateCloneUserFacingRequest({ pendingPrompt: raw });
+  }
+  return raw;
+}
+
 /**
  * Auto-send seed after daemon Clone.
  *
@@ -825,8 +847,9 @@ export function resolveTemplateCloneAutoSendSeed(input: {
     if (queued) return queued;
     return buildTemplateCloneContentFillSeed({ pendingPrompt: pending });
   }
-  if (isTemplateCloneContentFillPrompt(queued)) return queued;
-  return queued || pending;
+  if (isTemplateCloneHostFillPrompt(queued)) return queued;
+  if (isTemplateCloneHostFillPrompt(pending)) return pending;
+  return sanitizeCreateAutoSendSeed(queued) || sanitizeCreateAutoSendSeed(pending);
 }
 
 /** Cloned `deck.html` must never ride along on a content-fill turn. */

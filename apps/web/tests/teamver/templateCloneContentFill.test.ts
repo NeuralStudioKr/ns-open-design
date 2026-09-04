@@ -28,6 +28,7 @@ import {
   queueTemplateCloneContentFill,
   queueTemplateClonePromptFill,
   resolveTemplateCloneAutoSendSeed,
+  sanitizeCreateAutoSendSeed,
   shouldSkipTemplateCloneSeed,
   shouldUseDeterministicTemplateCloneFill,
   shouldSkipCreateAutoSendForDeterministicClone,
@@ -139,7 +140,14 @@ describe('templateCloneContentFill', () => {
     expect(app).toContain('selectedDeckTemplateId');
     expect(app).toContain('fillTemplateClonedDeckDeterministically');
     expect(app).toContain('usedDeterministicCloneFill');
+    expect(app).toContain('sanitizeCreateAutoSendSeed');
     expect(app).toMatch(/루프401\/409\/410\/413|shouldSkipTemplateCloneSeed/);
+    const stagingEnv = readFileSync(
+      new URL('../../../../deploy/teamver/.env.staging.example', import.meta.url),
+      'utf8',
+    );
+    expect(stagingEnv).toMatch(/VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=deterministic/);
+    expect(stagingEnv).not.toMatch(/VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=pure-prompt/);
     const composer = readFileSync(
       new URL('../../src/components/ChatComposer.tsx', import.meta.url),
       'utf8',
@@ -593,6 +601,31 @@ describe('templateCloneContentFill', () => {
     expect(seed).toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
     expect(seed).toMatch(/expo/i);
     expect(seed).not.toMatch(/^첨부한 자료를 바탕으로/m);
+  });
+
+  it('loop420 — auto-send strips the canvas deliverable dump down to the user brief', () => {
+    const dump = [
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장',
+      '',
+      '[Deliverable instruction]',
+      'Create a complete closed deck with motif fidelity...',
+      '',
+      '[Quick settings]',
+      'Length: 8-10',
+      '',
+      '[Selected slide template]',
+      'Capsule',
+    ].join('\n');
+    expect(sanitizeCreateAutoSendSeed(dump)).toMatch(/teamver\.com/);
+    expect(sanitizeCreateAutoSendSeed(dump)).not.toContain('[Deliverable instruction]');
+    const seed = resolveTemplateCloneAutoSendSeed({
+      queuedFillSeed: '',
+      pendingPrompt: dump,
+      fillQueued: false,
+    });
+    expect(seed).toMatch(/teamver\.com/);
+    expect(seed).not.toContain('[Deliverable instruction]');
+    expect(seed).not.toContain('[Quick settings]');
   });
 
   it('historyHasTemplateCloneContentFill only checks the latest user turn', () => {
