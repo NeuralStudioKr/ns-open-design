@@ -42,11 +42,11 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
-### 루프420 — staging deterministic 복구 + auto-send dump 차단
+### 루프420 — pure-prompt 고착 해제 + auto-send dump 차단
 
-체감: staging `pure-prompt`가 MiniMax에 생성 계약 덤프를 보내 실패. 419 서버 fill이 QA 경로에 없음.
+체감: 「슬라이드 작업 시작」 빈 채팅. pure-prompt가 생성 계약 덤프를 MiniMax에 보내면 실패.
 
-수정: staging `=deterministic` · `sanitizeCreateAutoSendSeed` · App auto-send seed를 사용자 브리프만.
+수정: default/`staging`=`pure-prompt` · embed localStorage 무시 · App auto-send 강제 · `sanitizeCreateAutoSendSeed`. staging 재배포 필수.
 
 ### 루프419 — deterministic fill 밀도 + filled 덱 MiniMax skip
 

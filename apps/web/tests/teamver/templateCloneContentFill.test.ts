@@ -45,23 +45,39 @@ import { promptWithTemplateCloneContentFillInstruction } from '../../src/compone
 
 beforeEach(() => {
   delete process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE;
+  delete process.env.VITE_TEAMVER_EMBED;
+  try {
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem('od:template-clone-fill-mode');
+    }
+  } catch {
+    /* ignore */
+  }
 });
 
 afterEach(() => {
   delete process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE;
+  delete process.env.VITE_TEAMVER_EMBED;
+  try {
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem('od:template-clone-fill-mode');
+    }
+  } catch {
+    /* ignore */
+  }
 });
 
 describe('templateCloneContentFill', () => {
-  it('loop413/414 — defaults to deterministic slot-fill; MiniMax JSON fill is explicit opt-in', () => {
-    expect(normalizeTemplateCloneFillMode(undefined)).toBe('deterministic');
-    expect(normalizeTemplateCloneFillMode('')).toBe('deterministic');
-    expect(normalizeTemplateCloneFillMode('nonsense')).toBe('deterministic');
-    expect(getTemplateCloneFillMode()).toBe('deterministic');
-    expect(shouldSkipTemplateCloneSeed()).toBe(false);
+  it('loop420 — defaults to pure-prompt; MiniMax JSON fill is explicit opt-in', () => {
+    expect(normalizeTemplateCloneFillMode(undefined)).toBe('pure-prompt');
+    expect(normalizeTemplateCloneFillMode('')).toBe('pure-prompt');
+    expect(normalizeTemplateCloneFillMode('nonsense')).toBe('pure-prompt');
+    expect(getTemplateCloneFillMode()).toBe('pure-prompt');
+    expect(shouldSkipTemplateCloneSeed()).toBe(true);
     expect(shouldUseJsonTemplateCloneFill()).toBe(false);
     expect(shouldQueueAiTemplateCloneFill()).toBe(false);
     expect(shouldUsePromptTemplateCloneFill()).toBe(false);
-    expect(shouldUseDeterministicTemplateCloneFill()).toBe(true);
+    expect(shouldUseDeterministicTemplateCloneFill()).toBe(false);
 
     // Existing env tokens stay on HTML rewrite — remapping them to JSON
     // caused MiniMax AGENT_EXECUTION_FAILED (loop414).
@@ -99,8 +115,8 @@ describe('templateCloneContentFill', () => {
   });
 
   it('accepts the loop401 `pure-prompt` rollback mode via env and multiple aliases', () => {
-    expect(getTemplateCloneFillMode()).toBe('deterministic');
-    expect(shouldSkipTemplateCloneSeed()).toBe(false);
+    expect(getTemplateCloneFillMode()).toBe('pure-prompt');
+    expect(shouldSkipTemplateCloneSeed()).toBe(true);
     expect(normalizeTemplateCloneFillMode('pure-prompt')).toBe('pure-prompt');
     expect(normalizeTemplateCloneFillMode('no-seed')).toBe('pure-prompt');
     expect(normalizeTemplateCloneFillMode('skip-seed')).toBe('pure-prompt');
@@ -116,6 +132,37 @@ describe('templateCloneContentFill', () => {
 
     expect(normalizeTemplateCloneFillMode('  Pure-Prompt  ')).toBe('pure-prompt');
     expect(normalizeTemplateCloneFillMode('NO-CLONE')).toBe('pure-prompt');
+  });
+
+  it('loop420 — Teamver embed ignores leftover localStorage fill mode', () => {
+    const store = new Map<string, string>();
+    store.set('od:template-clone-fill-mode', 'deterministic');
+    const prev = globalThis.window;
+    (globalThis as { window?: unknown }).window = {
+      location: { hostname: 'localhost' },
+      localStorage: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          store.set(key, value);
+        },
+        removeItem: (key: string) => {
+          store.delete(key);
+        },
+      },
+    };
+    try {
+      process.env.VITE_TEAMVER_EMBED = '1';
+      expect(getTemplateCloneFillMode()).toBe('pure-prompt');
+      expect(shouldSkipTemplateCloneSeed()).toBe(true);
+      expect(shouldUseDeterministicTemplateCloneFill()).toBe(false);
+
+      process.env.VITE_TEAMVER_EMBED = '0';
+      expect(getTemplateCloneFillMode()).toBe('deterministic');
+      expect(shouldUseDeterministicTemplateCloneFill()).toBe(true);
+    } finally {
+      if (prev) (globalThis as { window?: unknown }).window = prev;
+      else delete (globalThis as { window?: unknown }).window;
+    }
   });
 
   it('loop414 — an explicit `=prompt` env stays on HTML rewrite, not JSON slot-fill', () => {
@@ -141,13 +188,14 @@ describe('templateCloneContentFill', () => {
     expect(app).toContain('fillTemplateClonedDeckDeterministically');
     expect(app).toContain('usedDeterministicCloneFill');
     expect(app).toContain('sanitizeCreateAutoSendSeed');
-    expect(app).toMatch(/루프401\/409\/410\/413|shouldSkipTemplateCloneSeed/);
+    expect(app).toContain('shouldSkipTemplateCloneSeed()');
+    expect(app).toMatch(/루프420|pure-prompt must always auto-send/);
     const stagingEnv = readFileSync(
       new URL('../../../../deploy/teamver/.env.staging.example', import.meta.url),
       'utf8',
     );
-    expect(stagingEnv).toMatch(/VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=deterministic/);
-    expect(stagingEnv).not.toMatch(/VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=pure-prompt/);
+    expect(stagingEnv).toMatch(/VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=pure-prompt/);
+    expect(stagingEnv).not.toMatch(/VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=deterministic/);
     const composer = readFileSync(
       new URL('../../src/components/ChatComposer.tsx', import.meta.url),
       'utf8',
@@ -162,6 +210,7 @@ describe('templateCloneContentFill', () => {
   });
 
   it('loop419 — only a filled deck skips Home auto-send; fail-fallback still sends', () => {
+    process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = 'deterministic';
     expect(shouldUseDeterministicTemplateCloneFill()).toBe(true);
     expect(
       shouldSkipCreateAutoSendForDeterministicClone({

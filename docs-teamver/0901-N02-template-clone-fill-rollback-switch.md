@@ -143,3 +143,15 @@
 1. `pure-prompt` opt-in 후 실제 사용자 워크로드에서 완성도 비교(A/B) — 만족스러우면 문서화된 QA/staging 설정으로 승격.
 2. 개별 사용자·프로젝트 단위 opt-in UI(설정 토글)이 필요하면 추가 wiring 검토 — 현재는 env / localStorage로만 opt-in.
 3. `pure-prompt` 모드에서도 kit spec가 시스템 프롬프트에 실제로 실리는지 최소한의 통합 테스트로 pinning(FE→backend). 현 시점에서는 `composeTeamverSlideApiPrompt` 단위 테스트만 존재.
+
+## 2026-09-04 — 루프420: pure-prompt 고착 해제 + auto-send dump 차단
+
+**결정:** 빈 「슬라이드 작업 시작」을 막기 위해 staging/env-empty는 `pure-prompt`를 유지하고, MiniMax에는 생성 계약 덤프 대신 사용자 브리프만 보낸다. Teamver embed에서는 leftover localStorage fill mode를 무시한다.
+
+**수정:**
+1. `TEMPLATE_CLONE_FILL_DEFAULT_MODE = 'pure-prompt'`
+2. `getTemplateCloneFillMode()` — `isTeamverEmbedMode()`이면 localStorage 스킵
+3. App — pure-prompt면 `usedDeterministicCloneFill = false` 강제 + `sanitizeCreateAutoSendSeed`
+4. staging example `=pure-prompt`
+
+**운영:** EC2 `.env.staging`에 `=pure-prompt` 확인 후 `deploy/teamver/deploy.sh --staging` 재배포. 브라우저 `od:template-clone-fill-mode` 삭제 권장.

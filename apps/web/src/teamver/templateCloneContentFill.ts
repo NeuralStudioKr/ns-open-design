@@ -23,6 +23,7 @@ import {
 } from './slideCreateBoilerplate';
 import { isSlideCountRangeHint, parseSlideCountSpec, parseSlideCountTarget } from './slideCountTopUp';
 import { readTeamverViteEnv } from './teamverViteEnv';
+import { isTeamverEmbedMode } from './designApiBase';
 
 /** Keep local — contracts barrel can be undefined during web test init. */
 const FIRST_FILL_SLIDE_COUNT_THIS_TURN = 6;
@@ -54,41 +55,33 @@ export const CLONE_SLOT_FILL_REPAIR_ENTRY_FROM = 'clone_slot_fill_json_repair';
 /**
  * Fill mode for explicit-template deck creates.
  *
- *   `deterministic` (**env-empty default since loop413**): daemon seeds
- *     the real template LOOK and fills those shells on the server.
- *     SVG motifs, colors, slide chrome, and 1920x1080 layout come from
- *     example.html. Home and ChatComposer both skip the MiniMax fill
- *     turn (loop414).
+ *   `pure-prompt` (**env-empty / Teamver embed default since loop420**):
+ *     SKIP LOOK seeding. Kit spec still lands in the system prompt.
+ *     Home create auto-sends one MiniMax turn. Staging pin: env=`pure-prompt`.
  *
- *   `json`: LOOK seed + AI dense JSON outline
- *     (`kicker` / `lead` / `items[]{title,body}`). The model never
- *     rewrites HTML. Aliases: `slot-fill`, `json-fill` only.
- *     Do not use this as the default — MiniMax JSON-only turns fail as
- *     AGENT_EXECUTION_FAILED (loop414).
+ *   `deterministic`: daemon seeds the real template LOOK and fills shells
+ *     on the server. Home skips the MiniMax fill turn when fill succeeds.
+ *
+ *   `json`: LOOK seed + AI dense JSON outline (opt-in only — MiniMax
+ *     JSON-only turns often fail AGENT_EXECUTION_FAILED).
  *
  *   `prompt` (HTML rewrite): LOOK seed then the model emits full HTML.
- *     Existing staging/production `=prompt` / `clone` / `clone-fill`
- *     stay here. Also `prompt-fill` / `html` / `html-fill`.
- *
- *   `pure-prompt`: SKIP LOOK seeding. Kit spec still lands in the
- *     system prompt. Rollback via `pure-prompt` / `no-seed` / `no-clone`.
+ *     Existing production `=prompt` / `clone` stay here.
  */
 export type TemplateCloneFillMode = 'json' | 'prompt' | 'deterministic' | 'pure-prompt';
 
 /**
- * 루프413 — Env-empty default is deterministic Clone/slot-fill.
- * Dense JSON extras (kicker/lead/items) fill card/stat bodies so the
- * shell stays immutable and content is not title-only.
+ * 루프420 — Env-empty default is pure-prompt (one-turn MiniMax create).
+ * Staging sets env explicitly; production may pin `deterministic` / `prompt`.
  */
-export const TEMPLATE_CLONE_FILL_DEFAULT_MODE: TemplateCloneFillMode = 'deterministic';
+export const TEMPLATE_CLONE_FILL_DEFAULT_MODE: TemplateCloneFillMode = 'pure-prompt';
 
 export function normalizeTemplateCloneFillMode(value: unknown): TemplateCloneFillMode {
   const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
   if (raw === 'deterministic' || raw === 'content-fill' || raw === 'server') {
     return 'deterministic';
   }
-  // 루프401/407/413 — `pure-prompt` is explicit rollback. Empty/unknown
-  // falls through to the deterministic default.
+  // 루프401/407/413/420 — `pure-prompt` aliases. Empty/unknown → default.
   if (
     raw === 'pure-prompt'
     || raw === 'no-seed'
@@ -131,7 +124,9 @@ export function isTemplateClonePromptFillPrompt(text: unknown): boolean {
 export function getTemplateCloneFillMode(): TemplateCloneFillMode {
   const fromEnv = readTeamverViteEnv('VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE');
   if (fromEnv) return normalizeTemplateCloneFillMode(fromEnv);
-  if (typeof window !== 'undefined') {
+  // 루프420 — Teamver embed: ignore leftover localStorage from deterministic
+  // experiments so staging QA cannot silently skip MiniMax auto-send.
+  if (typeof window !== 'undefined' && !isTeamverEmbedMode()) {
     try {
       const stored = window.localStorage.getItem('od:template-clone-fill-mode');
       if (stored) return normalizeTemplateCloneFillMode(stored);

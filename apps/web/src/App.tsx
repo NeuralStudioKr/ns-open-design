@@ -3069,6 +3069,11 @@ function AppInner() {
       // structure turn (no source attach → Neutral look risk).
       const suppressAutoSendForFailedDriveImport =
         pendingDriveAssets.length > 0 && !homeDriveImportSucceeded;
+      // 루프420 — pure-prompt must always auto-send the create turn. Never
+      // inherit usedDeterministicCloneFill from a stale host-fill attempt.
+      if (shouldSkipTemplateCloneSeed()) {
+        usedDeterministicCloneFill = false;
+      }
       if (suppressAutoSendForFailedDriveImport || usedDeterministicCloneFill) {
         // queueTemplateCloneContentFill may have run above — drop fill + any
         // residual auto-send so Neutral structure turns never fire without source.
