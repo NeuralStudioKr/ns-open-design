@@ -4,6 +4,10 @@
  * Compact first-fill often leaves a title-only cover, empty Motif `.ribbon` /
  * `.stamp` shells, and broken tags (`</p="">`). Official look CSS is already
  * merged — this restores cover density without re-injecting Hartfield copy.
+ *
+ * Loop425 also restyles leftover IB chrome (undefined `--paper`, echo
+ * footer, `h1.display`) when later slides are Neutral slate and no
+ * official look CSS is present.
  */
 
 import { attrsLookLikeDeckOrTemplateSlideHost } from './deck-slide-class.js';
@@ -485,16 +489,25 @@ function collectBodySlideTitles(html: string, skipFirst = true): string[] {
   return out;
 }
 
+function isNumericSlideKicker(text: string): boolean {
+  return /^\d{1,2}$/.test(String(text ?? '').replace(/\s+/g, ' ').trim());
+}
+
 function firstSlideProse(body: string): string {
-  const paragraph = visibleText(/<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(body)?.[1] ?? '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (paragraph.length >= 12) return paragraph;
+  const pRe = /<p\b[^>]*>([\s\S]*?)<\/p>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = pRe.exec(body)) !== null) {
+    const paragraph = visibleText(match[1] ?? '').replace(/\s+/g, ' ').trim();
+    if (isNumericSlideKicker(paragraph)) continue;
+    if (paragraph.length >= 12 && paragraph.length <= 220) return paragraph;
+  }
   const block = /<div\b[^>]*>([\s\S]*?)<\/div>/i.exec(body);
   if (!block) return '';
   const inner = block[1] ?? '';
   if (/<(?:ul|ol|table|svg|div|article|section|aside|h[1-6])\b/i.test(inner)) return '';
-  return visibleText(inner).replace(/\s+/g, ' ').trim();
+  const fromDiv = visibleText(inner).replace(/\s+/g, ' ').trim();
+  if (isNumericSlideKicker(fromDiv)) return '';
+  return fromDiv;
 }
 
 /** First later-slide paragraphs — on-brief subheads, not invented TOC labels. */
@@ -1012,6 +1025,197 @@ export function healSparseOfficialMagazineCover(
   return `${dest.slice(0, first.start)}${nextSlide}${dest.slice(first.end)}`;
 }
 
+function firstInlineStyleHex(chunk: string, prop: string): string | null {
+  const re = new RegExp(`(?:^|[;"'\\s])${prop}\\s*:\\s*(#[0-9a-fA-F]{3,8})`, 'i');
+  return re.exec(chunk)?.[1] ?? null;
+}
+
+function laterSlidesHaveForeignKitChrome(html: string): boolean {
+  const slides = listMagazineSlideSpans(html);
+  for (let i = 1; i < slides.length; i += 1) {
+    const chunk = html.slice(slides[i]!.start, slides[i]!.end);
+    if (
+      /\b(?:mast|slide-inner|hero-frame|title-pill|pixel-hero-text|s-cover|s-chapter|s-data|s-quote)\b/i.test(chunk)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Prompt-fill leftover: `.slide.cover` + `h1.display` + undefined
+ * `--paper`/`--ink` + magazine `auto 1fr auto` grid, without official look CSS.
+ */
+function looksLikeLeftoverIbCoverChrome(attrs: string, body: string): boolean {
+  const host = /\bcover\b/i.test(attrs) || /\bslide-title\b/i.test(attrs);
+  const displayH1 = /<h1\b[^>]*\bdisplay\b/i.test(body);
+  const magazineVars = /var\(\s*--(?:paper|ink|rule)\s*\)/i.test(`${attrs} ${body}`);
+  const footConf = /<(?:footer|div|span)\b[^>]*\b(?:foot|conf)\b/i.test(body);
+  const magazineGrid = /grid-template-rows\s*:\s*auto\s+1fr\s+auto/i.test(`${attrs} ${body}`);
+  if (!host && !displayH1) return false;
+  return displayH1 || magazineVars || footConf || magazineGrid;
+}
+
+/**
+ * Later slides painted as Neutral slate (explicit hex + Inter/Pretendard),
+ * not Daisy/Studio/IB framed chrome.
+ */
+function looksLikeNeutralInlineBodyDeck(html: string): boolean {
+  if (/\bdata-od-official-look-css\b/i.test(html)) return false;
+  if (laterSlidesHaveForeignKitChrome(html)) return false;
+  const slides = listMagazineSlideSpans(html);
+  if (slides.length < 2) return false;
+  let hex = 0;
+  let font = 0;
+  for (let i = 1; i < slides.length; i += 1) {
+    const chunk = html.slice(slides[i]!.start, slides[i]!.end);
+    if (/background\s*:\s*#([0-9a-f]{3,8})/i.test(chunk)) hex += 1;
+    if (/Inter|Pretendard/i.test(chunk)) font += 1;
+  }
+  return hex >= 1 && font >= 1;
+}
+
+function extractNeutralCoverPalette(html: string): {
+  bg: string;
+  ink: string;
+  accent: string;
+  muted: string;
+  font: string;
+} {
+  const slides = listMagazineSlideSpans(html);
+  const chunk = slides.length >= 2
+    ? html.slice(slides[1]!.start, slides[1]!.end)
+    : '';
+  const bg = firstInlineStyleHex(chunk, 'background') ?? '#0f172a';
+  const ink = firstInlineStyleHex(chunk, 'color') ?? '#f8fafc';
+  const kickerColor = /<p\b[^>]*style="[^"]*letter-spacing[^"]*"[^>]*>/i.exec(chunk)?.[0] ?? '';
+  const accent = firstInlineStyleHex(kickerColor, 'color')
+    ?? firstInlineStyleHex(chunk, 'color')
+    ?? '#38bdf8';
+  const leadColor = /<p\b[^>]*style="[^"]*max-width[^"]*"[^>]*>/i.exec(chunk)?.[0] ?? '';
+  const muted = firstInlineStyleHex(leadColor, 'color') ?? (
+    /^#(?:0f172a|1e293b|0a0e27)$/i.test(bg) ? '#cbd5e1' : '#475569'
+  );
+  const font = /font-family\s*:\s*([^;]+)/i.exec(chunk)?.[1]?.trim()
+    ?? "'Inter','Pretendard','Noto Sans KR',sans-serif";
+  return { bg, ink, accent, muted, font };
+}
+
+function replaceHostStyle(attrs: string, style: string): string {
+  if (/\bstyle\s*=/i.test(attrs)) {
+    return attrs.replace(/\bstyle\s*=\s*(['"])[\s\S]*?\1/i, `style="${style}"`);
+  }
+  return `${attrs} style="${style}"`;
+}
+
+function collectCoverLeadFromLaterSlides(html: string, title: string): string {
+  const slides = listMagazineSlideSpans(html);
+  const titleNorm = title.replace(/\s+/g, ' ').trim();
+  for (let i = 1; i < slides.length; i += 1) {
+    const body = html.slice(slides[i]!.openEnd, slides[i]!.bodyEnd);
+    const prose = firstSlideProse(body);
+    if (
+      prose.length >= 12
+      && prose.length <= 220
+      && prose !== titleNorm
+      && !looksLikeLeftoverOutlineChip(prose)
+    ) {
+      return prose;
+    }
+  }
+  return '';
+}
+
+function buildNeutralCoverInner(
+  title: string,
+  lead: string,
+  palette: { bg: string; ink: string; accent: string; muted: string; font: string },
+): string {
+  const leadHtml = lead
+    ? `<p style="font:28px/1.6 sans-serif;margin:0;color:${palette.muted};max-width:38rem">${escapeHtml(lead)}</p>`
+    : '';
+  return (
+    `<div data-od-slide-flow="" data-od-cover-composed="neutral" `
+    + `style="display:flex;flex-direction:column;justify-content:center;`
+    + `font-family:${palette.font};color:${palette.ink};padding:80px 88px;box-sizing:border-box">`
+    + `<p style="font:600 20px/1 sans-serif;letter-spacing:.12em;color:${palette.accent};margin:0 0 24px">01</p>`
+    + `<h1 style="font:800 72px/1.05 sans-serif;margin:0 0 ${lead ? '28px' : '0'}">${escapeHtml(title)}</h1>`
+    + leadHtml
+    + `</div>`
+  );
+}
+
+function buildFallbackLeftoverCoverInner(title: string, lead: string): string {
+  const leadHtml = lead
+    ? `<p class="lead" style="margin:0 0 0;max-width:38rem;font:28px/1.55 sans-serif;color:var(--ink,#1A1A1A)">${escapeHtml(lead)}</p>`
+    : '';
+  return (
+    `<div data-od-slide-flow="" data-od-cover-composed="fallback" `
+    + `style="display:flex;flex-direction:column;justify-content:center;padding:80px 88px;`
+    + `box-sizing:border-box;color:var(--ink,#1A1A1A)">`
+    + `<h1 class="display" style="margin:0 0 ${lead ? '24px' : '0'}">${escapeHtml(title)}</h1>`
+    + leadHtml
+    + `</div>`
+  );
+}
+
+/**
+ * Loop425 — leftover IB magazine chrome on a Neutral (or unstyled) deck.
+ * `healSparseOfficialMagazineCover` requires official look CSS, so a
+ * title-only `.slide.cover` + echo footer + undefined `--paper` never
+ * rebuilt. Copy the first later-slide product sentence onto the cover
+ * and match Neutral body paint. Do not invent 학습 노트 / KPIs.
+ */
+export function healSparseLeftoverCoverComposition(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim()) return dest;
+  if (/\bdata-od-official-look-css\b/i.test(dest)) return dest;
+  const slides = listMagazineSlideSpans(dest);
+  if (slides.length === 0) return dest;
+  const first = slides[0]!;
+  const body = dest.slice(first.openEnd, first.bodyEnd);
+  if (/\bdata-od-cover-composed\b/i.test(body)) return dest;
+  if (!isSparseMagazineCover(body)) return dest;
+  const leftover = looksLikeLeftoverIbCoverChrome(first.attrs, body);
+  const neutral = looksLikeNeutralInlineBodyDeck(dest);
+  if (!leftover && !neutral) return dest;
+
+  const existing = visibleText(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(body)?.[1] ?? '');
+  const fromBrief = String(brief ?? '').trim()
+    ? polishCoverTitle(deriveDeckCoverTitleFromBrief(brief ?? '', existing || null))
+    : '';
+  const title = fromBrief || polishCoverTitle(existing);
+  if (!title) return dest;
+  const lead = collectCoverLeadFromLaterSlides(dest, title);
+
+  let nextInner: string;
+  let hostStyle: string;
+  if (neutral) {
+    const palette = extractNeutralCoverPalette(dest);
+    nextInner = buildNeutralCoverInner(title, lead, palette);
+    hostStyle = (
+      `width:1920px;height:1080px;box-sizing:border-box;overflow:visible;position:relative;`
+      + `background:${palette.bg};color:${palette.ink};padding:80px 88px;`
+      + `display:flex;flex-direction:column;justify-content:center;font-family:${palette.font}`
+    );
+  } else {
+    nextInner = buildFallbackLeftoverCoverInner(title, lead);
+    hostStyle = (
+      `width:1920px;height:1080px;box-sizing:border-box;overflow:visible;position:relative;`
+      + `background:var(--paper,#F7F4EF);color:var(--ink,#1A1A1A);padding:80px 88px;`
+      + `display:flex;flex-direction:column;justify-content:center`
+    );
+  }
+
+  const nextAttrs = addClassToAttrs(replaceHostStyle(first.attrs, hostStyle), 'cover');
+  const nextSlide = `<${first.tag}${nextAttrs}>${nextInner}</${first.tag}>`;
+  return `${dest.slice(0, first.start)}${nextSlide}${dest.slice(first.end)}`;
+}
+
 /** Persist + preview: empty Motif chrome, broken tags, sparse IB cover. */
 export function healOfficialMagazineLayoutDensity(
   html: string,
@@ -1020,6 +1224,7 @@ export function healOfficialMagazineLayoutDensity(
   const dest = String(html ?? '');
   if (!dest.trim()) return dest;
   return injectBiennaleSparseFillCss(
+    healSparseLeftoverCoverComposition(
     healOfficialMagazineBodyFrames(
       healSparseOfficialMagazineCover(
         dropEmptyDeckSlides(
@@ -1055,6 +1260,8 @@ export function healOfficialMagazineLayoutDensity(
         ),
         brief,
       ),
+    ),
+    brief,
     ),
   );
 }
