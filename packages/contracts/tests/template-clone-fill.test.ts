@@ -2,6 +2,11 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
 import {
+  runDeterministicTemplateQualityGate,
+  ZHANGZARA_QUALITY_GATE_SPECS,
+} from './helpers/deterministic-template-quality-gate.js';
+
+import {
   applyTemplateCloneSlotFill,
   buildTemplateClonedDeckHtml,
   classifyTemplateCloneShellRole,
@@ -380,38 +385,30 @@ describe('free-form Daisy clone content swap', () => {
   });
 });
 
+describe('루프450 Zhangzara template quality gates', () => {
+  // Loop437 shared 4-axis gate: motif · leftover · 1920×1080 · slide count.
+  // Capsule / Daisy / Creative / Studio all pin the fixture through the
+  // deterministic FE path (no MiniMax) and assert the same invariants.
+  // (Loop numbers 431–436 were already assigned on the remote branch to a
+  //  peer-fit / leftover / neo-scrub stack.)
+  it.each(ZHANGZARA_QUALITY_GATE_SPECS.map((s) => [s.name, s] as const))(
+    '%s deterministic clone passes 4-axis gate',
+    async (_name, spec) => {
+      await runDeterministicTemplateQualityGate(spec);
+    },
+  );
+});
+
 describe('루프419 Capsule deterministic quality gate', () => {
   it('fills Capsule cards for www.teamver.com + 8-10 without MiniMax HTML', async () => {
-    const html = await readFile(
-      new URL(
-        '../../../plugins/_official/examples/html-ppt-zhangzara-capsule/example.html',
-        import.meta.url,
-      ),
-      'utf8',
-    );
-    const slides = resolveTemplateCloneSlidesForDeterministicFill({
-      userInstruction: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장',
-      slideCount: 10,
-    });
-    const cloned = buildTemplateClonedDeckHtml(html, slides, {
-      title: slides[0]?.title || '팀버',
-      templateId: 'html-ppt-zhangzara-capsule',
-      maxSlides: 10,
-      brief: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장',
-    });
-    expect(cloned).toBeTruthy();
-    expect(listTemplateCloneSlideShells(cloned!).length).toBe(10);
-    expect(cloned).toContain('--coral');
-    expect(cloned).toContain('--lime');
-    expect(cloned).toMatch(/팀버|Teamver/i);
+    // 루프450 — delegate the 4-axis gate to the shared helper. Loop419 keeps
+    // its Capsule-specific body-copy invariants that the generic gate does
+    // not know about ("직접적인 가치" / "맥락을 유지").
+    const capsuleSpec = ZHANGZARA_QUALITY_GATE_SPECS.find((s) => s.name === 'Capsule');
+    expect(capsuleSpec).toBeTruthy();
+    const cloned = await runDeterministicTemplateQualityGate(capsuleSpec!);
     expect(cloned).toContain('직접적인 가치');
     expect(cloned).toContain('맥락을 유지');
-    expect(cloned).not.toMatch(/Hartfield|Daisy Days|Clarity of Purpose/i);
-    expect(cloned).not.toContain('A Framework for Bold Ideas');
-    expect(cloned).not.toContain('The Journey Continues');
-    expect(cloned).not.toContain('340%');
-    expect(cloned).not.toContain('12.4M');
-    expect(looksLikeLeftoverTemplateDemoDeck(cloned!)).toBe(false);
   });
 
   it('loop430 — Biennale 10-slide request stays within 8 unique shells with renumbered pagenums', async () => {

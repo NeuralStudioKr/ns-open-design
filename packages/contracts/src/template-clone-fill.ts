@@ -5654,6 +5654,11 @@ export function buildTemplateClonedDeckHtml(
  * / s-quote / s-cal / s-colophon). Duplicating any of these produces a
  * broken deliverable — the same Programme / Data / Manifesto page repeats
  * with the same demo copy.
+ *
+ * 루프450 — Extended to numeric-alias kits (Creative Mode: `s1` … `s8`).
+ * Numbered shells behave the same way — each `sN` is a distinct layout
+ * (title / intro / two-col / grid / poster / quote / cards / colophon) and
+ * duplicating any of them ships the same layout twice.
  */
 function templateShellsAreUniqueRole(shells: SlideShell[]): boolean {
   if (shells.length < 4) return false;
@@ -5662,11 +5667,28 @@ function templateShellsAreUniqueRole(shells: SlideShell[]): boolean {
   // s-programme both classify as 'body') so we key on the presence of the
   // markers themselves plus a per-shell uniqueness check.
   const sectionMarkerRe = /\bs-(?:cover|manifesto|programme|chapter|data|quote|cal|colophon)\b/i;
-  const markers = shells
+  const semanticMarkers = shells
     .map((shell) => shell.attrs.match(sectionMarkerRe)?.[0]?.toLowerCase() ?? null)
     .filter((marker): marker is string => marker !== null);
-  if (markers.length < shells.length - 1) return false;
-  return new Set(markers).size === markers.length;
+  if (semanticMarkers.length >= shells.length - 1
+    && new Set(semanticMarkers).size === semanticMarkers.length) {
+    return true;
+  }
+  // Numeric alias kits (Creative Mode: s1 … s8). Only count `sN` when it is
+  // the shell's primary class token — `slide-1` / `slide-2` / etc. remain
+  // uncapped (Capsule / Daisy pattern).
+  const numericMarkerRe = /(?:^|\s)(s\d+)(?=\s|$|["'])/i;
+  const numericMarkers = shells
+    .map((shell) => {
+      const cls = /\bclass\s*=\s*(["'])([\s\S]*?)\1/i.exec(shell.attrs)?.[2] ?? '';
+      return numericMarkerRe.exec(cls)?.[1]?.toLowerCase() ?? null;
+    })
+    .filter((marker): marker is string => marker !== null);
+  if (numericMarkers.length >= shells.length - 1
+    && new Set(numericMarkers).size === numericMarkers.length) {
+    return true;
+  }
+  return false;
 }
 
 /**

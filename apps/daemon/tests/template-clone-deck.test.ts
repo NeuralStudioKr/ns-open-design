@@ -958,3 +958,167 @@ describe('seedTemplateClonedDeckOnServer filled-deck preserve', () => {
     expect(written.get('deck.html')).not.toContain('내용을 입력하세요');
   });
 });
+
+/**
+ * 루프450 — Table-driven server-side smoke for the 4 Zhangzara templates
+ * targeted by the contracts quality gate. contracts covers the Canvas /
+ * whole-document assertions; the daemon smoke confirms that the same
+ * `seedTemplateClonedDeckOnServer` path (deterministic-fill) delivers the
+ * template motif, scrubs demo leftover, and honors the requested slide
+ * count when a template is picked from Home.
+ */
+type ZhangzaraSmokeSpec = {
+  name: string;
+  pluginId: string;
+  exampleSubpath: string;
+  templateTitle: string;
+  motifMustInclude: readonly string[];
+  demoMustNotInclude?: readonly string[];
+  expectedSlideCount: number;
+};
+
+const ZHANGZARA_SMOKE_SPECS: readonly ZhangzaraSmokeSpec[] = [
+  {
+    name: 'Capsule',
+    pluginId: 'html-ppt-zhangzara-capsule',
+    exampleSubpath: 'html-ppt-zhangzara-capsule/example.html',
+    templateTitle: 'Html Ppt Zhangzara Capsule',
+    motifMustInclude: ['--coral', '--lime', 'pillar-card'],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Daisy Days',
+    pluginId: 'html-ppt-zhangzara-daisy-days',
+    exampleSubpath: 'html-ppt-zhangzara-daisy-days/example.html',
+    templateTitle: 'Html Ppt Zhangzara Daisy Days',
+    motifMustInclude: ['--cream', 'deco-daisy', 'day-card'],
+    demoMustNotInclude: ['A cheerful presentation template'],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Creative Mode',
+    pluginId: 'html-ppt-zhangzara-creative-mode',
+    exampleSubpath: 'html-ppt-zhangzara-creative-mode/example.html',
+    templateTitle: 'Html Ppt Zhangzara Creative Mode',
+    motifMustInclude: ['--cream', 'Archivo'],
+    demoMustNotInclude: ['FLIP THE'],
+    expectedSlideCount: 8,
+  },
+  {
+    name: 'Studio',
+    pluginId: 'html-ppt-zhangzara-studio',
+    exampleSubpath: 'html-ppt-zhangzara-studio/example.html',
+    templateTitle: 'Html Ppt Zhangzara Studio',
+    motifMustInclude: ['--c-accent', 'slide-chrome', 'stat-card'],
+    expectedSlideCount: 10,
+  },
+];
+
+const CROSS_TEMPLATE_LEFTOVER_DENYLIST = [
+  'Hartfield',
+  'Daisy Days',
+  'Clarity of Purpose',
+  'A Framework for Bold Ideas',
+  'The Journey Continues',
+  '340%',
+  '12.4M',
+  'Aurora',
+  'Public attendance',
+  'Open programme',
+  'Filebase',
+  'Apex Group',
+  'hermes-agent',
+];
+
+describe('루프450 Zhangzara 4템플릿 서버 fill 스모크', () => {
+  it.each(ZHANGZARA_SMOKE_SPECS.map((s) => [s.name, s] as const))(
+    '%s deterministic server fill keeps motif, scrubs leftover, honors slide count',
+    async (_name, spec) => {
+      const root = await mkdtemp(path.join(os.tmpdir(), `od-loop437-${spec.pluginId}-`));
+      const pluginDir = path.join(root, 'plugin');
+      const projectsRoot = path.join(root, 'projects');
+      const dataDir = path.join(root, '.od');
+      await mkdir(pluginDir, { recursive: true });
+      await mkdir(projectsRoot, { recursive: true });
+
+      const examplePath = path.resolve(
+        process.cwd(),
+        '../../plugins/_official/examples',
+        spec.exampleSubpath,
+      );
+      const exampleHtml = await readFile(examplePath, 'utf8');
+      await writeFile(path.join(pluginDir, 'example.html'), exampleHtml, 'utf8');
+
+      const db = openDatabase(root, { dataDir });
+      upsertInstalledPlugin(db, {
+        id: spec.pluginId,
+        title: spec.templateTitle,
+        version: '0.0.0',
+        sourceKind: 'local',
+        source: pluginDir,
+        trust: 'bundled',
+        capabilitiesGranted: [],
+        manifest: {
+          name: spec.pluginId,
+          title: spec.templateTitle,
+          version: '0.0.0',
+          od: { preview: { entry: 'example.html' } },
+        } as any,
+        fsPath: pluginDir,
+        installedAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      const written = new Map<string, string>();
+      const result = await seedTemplateClonedDeckOnServer(
+        {
+          db,
+          projectsRoot,
+          projectId: `proj-loop437-${spec.pluginId}`,
+          ensureProject: async () => {
+            const dir = path.join(projectsRoot, `proj-loop437-${spec.pluginId}`);
+            await mkdir(dir, { recursive: true });
+            return dir;
+          },
+          writeProjectFile: async (_r, _id, name, body) => {
+            written.set(name, typeof body === 'string' ? body : body.toString('utf8'));
+            return { name };
+          },
+        },
+        {
+          pluginId: spec.pluginId,
+          templateTitle: spec.templateTitle,
+          userInstruction:
+            'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장',
+          deckTitle: '슬라이드',
+          slideCountHint: '8-10',
+          contentFillMode: 'deterministic-fill',
+        },
+      );
+
+      expect(result.ok, `[루프450:${spec.name}] server fill failed`).toBe(true);
+      if (!result.ok) return;
+      expect(result.contentFilled, `[루프450:${spec.name}] contentFilled`).toBe(true);
+      expect(result.slideCount, `[루프450:${spec.name}] slideCount`)
+        .toBe(spec.expectedSlideCount);
+
+      const deck = written.get('deck.html') ?? '';
+      // Axis 1 — motif retained.
+      for (const marker of spec.motifMustInclude) {
+        expect(deck, `[루프450:${spec.name}] motif ${JSON.stringify(marker)}`)
+          .toContain(marker);
+      }
+      // Axis 4 — brief topic present.
+      expect(deck, `[루프450:${spec.name}] 팀버/Teamver topic`).toMatch(/팀버|Teamver/i);
+      // Axis 2 — leftover scrubbed.
+      for (const phrase of CROSS_TEMPLATE_LEFTOVER_DENYLIST) {
+        expect(deck, `[루프450:${spec.name}] leftover ${JSON.stringify(phrase)}`)
+          .not.toContain(phrase);
+      }
+      for (const phrase of spec.demoMustNotInclude ?? []) {
+        expect(deck, `[루프450:${spec.name}] template demo ${JSON.stringify(phrase)}`)
+          .not.toContain(phrase);
+      }
+    },
+  );
+});
