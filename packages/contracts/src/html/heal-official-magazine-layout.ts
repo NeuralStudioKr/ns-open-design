@@ -14,6 +14,7 @@ import { attrsLookLikeDeckOrTemplateSlideHost } from './deck-slide-class.js';
 import { normalizeHangulParticleGaps } from './heal-ai-generated-deck.js';
 import {
   deriveDeckCoverTitleFromBrief,
+  healCobaltLeftoverCatalogCopy,
   healCobaltOrphanDataStats,
   injectBiennaleSparseFillCss,
   injectCobaltAbsoluteSlotCss,
@@ -1394,7 +1395,10 @@ export function healOfficialMagazineLayoutDensity(
   );
   return injectCobaltAbsoluteSlotCss(
     healCobaltOrphanDataStats(
-      scrubCobaltFieldOfficeDemoSlots(healed),
+      healCobaltLeftoverCatalogCopy(
+        scrubCobaltFieldOfficeDemoSlots(healed),
+        brief,
+      ),
     ),
   );
 }

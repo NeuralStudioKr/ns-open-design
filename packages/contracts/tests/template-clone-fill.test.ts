@@ -34,6 +34,7 @@ import {
   salvageMalformedMiniMaxSlideMarkup,
   restyleForeignIbMagazineCover,
   enrichSparseCobaltCover,
+  healCobaltLeftoverCatalogCopy,
   healCobaltOrphanDataStats,
   injectCobaltAbsoluteSlotCss,
   officialLookIsCobaltGrid,
@@ -495,6 +496,72 @@ describe('루프419 Capsule deterministic quality gate', () => {
     // Vbig demo values are gone.
     expect(cloned).not.toMatch(/<div class="vbig[^"]*"[^>]*>82%<\/div>/);
     expect(cloned).not.toMatch(/<div class="vbig[^"]*"[^>]*>11k<\/div>/);
+  });
+
+  it('루프460: persist leftover refill replaces Field Office body after chrome scrub', async () => {
+    const look = [
+      '<style data-od-official-look-css>',
+      ':root { --paper:#F0EBDE; --ink:#1F2BE0; }',
+      '.s-cover .titlewrap { position:absolute; }',
+      '.s-cover .pixel-glitch { position:absolute; }',
+      '</style>',
+    ].join('');
+    const html = [
+      '<section class="slide s-cover hairlines">',
+      '<div class="titlewrap"><h1 class="title">Index<br/>2026</h1></div>',
+      '<div class="pixel-glitch"></div>',
+      '</section>',
+      '<section class="slide s-manifesto hairlines">',
+      '<p class="stmt">A trend is a quiet question that several rooms started asking ',
+      '<span class="roman">at roughly the same time.</span></p>',
+      '</section>',
+      '<section class="slide s-index hairlines">',
+      '<div class="frame"><div class="topbar"><div class="h">The index, in six entries.</div></div>',
+      '<div class="list">',
+      '<div class="row"><div class="num-tag">01.</div><div><h3>개요</h3>',
+      '<p>한 장에 담을 세 가지 포인트</p></div></div>',
+      '<div class="row"><div class="num-tag">02.</div><div><h3>Domestic interfaces</h3>',
+      '<p>Screens designed to live in living rooms.</p></div></div>',
+      '</div></div></section>',
+      '<section class="slide s-chapter hairlines">',
+      '<div class="pixel-glitch"></div>',
+      '<h2 class="ttl">Software is a room, and rooms are designed to be lived in slowly.</h2>',
+      '</section>',
+      '<section class="slide s-quote hairlines">',
+      '<div class="pixel-glitch"></div>',
+      '<p class="qbody">We started the bulletin because the loudest readings of design were eating the ones we found ourselves rereading.</p>',
+      '</section>',
+      '<section class="slide s-data hairlines">',
+      '<div class="h">Reader response, by quarter.</div>',
+      '<div class="stat"><div class="vbig">82%</div>',
+      '<div class="lab2">Open rate · Q1 2026</div></div>',
+      '</section>',
+      look,
+    ].join('');
+    expect(looksLikeLeftoverTemplateDemoDeck(html)).toBe(true);
+    const healed = healCobaltLeftoverCatalogCopy(
+      html,
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+    );
+    expect(healed).not.toMatch(/Domestic interfaces/);
+    expect(healed).not.toMatch(/The index, in six entries/);
+    expect(healed).not.toMatch(/A trend is a quiet question/);
+    expect(healed).not.toMatch(/Index<br\s*\/?>2026|Index\s*2026/i);
+    expect(healed).not.toMatch(/Software is a room/);
+    expect(healed).not.toMatch(/We started the bulletin/);
+    expect(healed).not.toMatch(/Reader response, by quarter/);
+    expect(healed).toMatch(/82%/);
+    expect(healed).toContain('팀버');
+    expect(healed).toMatch(/[가-힣]{2,}/);
+
+    const official = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-cobalt-grid/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(healCobaltLeftoverCatalogCopy(official)).toBe(official);
   });
 
   it('loop421 — empty-brief padding synthesizes card bodies instead of empty shells', () => {

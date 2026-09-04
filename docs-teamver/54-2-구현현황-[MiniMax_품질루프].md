@@ -15,7 +15,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts system-prompt-api-mode · template-visual-kit · teamver-selected-template-compose · deck-framework-compact · template-clone-fill, web templateCloneContentFill · runtime/resume.
 
-**후속:** [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) · [0901-N02-18](./0901-N02-18-구현설계-[Clone_slot-map-C13].md) · [0901-N02-19](./0901-N02-19-구현설계-[Clone_template-quality-gates].md) — B1–B5 · C–C13 · D · 루프368–458. MiniMax live 가드 ☑(키 없으면 skip). 루프450–458 품질 게이트/peer-fit ☑.
+**후속:** [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) · [0901-N02-18](./0901-N02-18-구현설계-[Clone_slot-map-C13].md) · [0901-N02-19](./0901-N02-19-구현설계-[Clone_template-quality-gates].md) — B1–B5 · C–C13 · D · 루프368–460. MiniMax live 가드 ☑(키 없으면 skip). 루프450–460 품질 게이트/peer-fit ☑.
 
 다음 추천 작업:
 1. MiniMax 키 환경 Clone fill live smoke
@@ -36,6 +36,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 `기둥` / `PILLAR` / `Phase`는 모델이 붙이는 접두일 뿐, 발표 용어가 아닙니다. extra-copy·stub는 주제 단어 목록이 아닙니다(루프259·265).
 
 ## 2026-09-02 현재 판단 · 최신 루프
+
+### 루프460 — Cobalt Field Office leftover 본문 persist refill
+
+체감: 크롬만 지운 뒤 목차/표/선언/챕터/인용이 템플릿 영문으로 남음.
+
+수정: leftover 본문 지문 · persist `healCobaltLeftoverCatalogCopy` (슬롯 선채움) · `.title`/`.ttl` 전체 교체. KPI 유지. 영문 example.html no-op.
 
 ### 루프459 — Biennale · Cobalt Grid 품질 게이트 + dedicated fill
 

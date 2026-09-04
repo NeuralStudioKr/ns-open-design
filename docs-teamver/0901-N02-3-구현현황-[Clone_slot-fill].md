@@ -37,6 +37,7 @@
 | **루프456** Blue-pro · Block-frame 품질 게이트 | ☑ ZHANGZARA specs 6 |
 | **루프457** Creative Mode slideCount 계약 정렬 | ☑ countSlides=listShells · 8장 핀 |
 | **루프458** Product Launch · Pitch Deck 게이트 | ☑ contracts+daemon specs |
+| **루프460** Cobalt Field Office leftover persist refill | ☑ 본문 지문 · title/ttl · Hangul heal |
 | **루프459** Biennale · Cobalt Grid 품질 게이트 + dedicated fill | ☑ 4축 · leftover · `.stmt`/row/`vbig` |
 | **루프451** Cobalt Grid 슬롯 복원 · orphan stat | ☑ absolute slots · Field Office leftover drop |
 | **D** hybrid fallback 제거 | ☑ |
@@ -132,6 +133,7 @@
 
 | 일자 | 내용 |
 |------|------|
+| 2026-09-04 | 루프460 — Cobalt persist leftover 본문 refill · leftover 본문 지문 · title/ttl 전체 교체. |
 | 2026-09-04 | 루프459 — Biennale Yellow / Cobalt Grid 4축 게이트 + Cobalt `.stmt`/row/`cfooter`/`vbig` fill. |
 | 2026-09-04 | 루프457–458 — Creative Mode slideCount=listShells · Product/Pitch 품질 게이트 |
 | 2026-09-04 | 루프454–456 — Blue-pro metric peer-fit/scrub · Daisy info peer-fit · Blue-pro/Block-frame 품질 게이트 |
