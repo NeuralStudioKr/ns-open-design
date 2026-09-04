@@ -334,6 +334,20 @@ function looksLikeCompactApiStackedDeckUnsafe(html: string): boolean {
   return legacyBodyFirst;
 }
 
+/**
+ * Compact letterbox still hoists to `#od-stacked-deck-stage`, but a
+ * `width=1920` layout viewport makes that stage sit in a fake 1920-wide
+ * document. The host iframe only shows the empty top-left — preview
+ * looks blank even after refresh. Capsule / opacity-stack LOOK seeds
+ * size with `%` and `inset:0`, so they must keep device-width. `#deck`
+ * 100vw strips still need the 1920 lock.
+ */
+export function shouldInflateStackedDesignViewport(html: string): boolean {
+  if (!html) return false;
+  if (looksLikeFilledOfficialPresentationDeck(html)) return false;
+  return looksLikeCompactApiStackedDeck(html);
+}
+
 /** Host-side detection that matches buildSrcdoc's wrapped preview HTML. */
 export function looksLikeCompactApiStackedDeckForPreview(html: string): boolean {
   try {

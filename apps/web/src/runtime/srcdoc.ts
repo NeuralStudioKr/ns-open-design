@@ -56,6 +56,7 @@ import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
 import {
   injectStackedDeckViewport,
   looksLikeCompactApiStackedDeck,
+  shouldInflateStackedDesignViewport,
   looksLikeLeftoverHostNavCanvasDeck,
   prepareCompactStackedDeckPreviewHtml,
   wrapPreviewHtmlShell,
@@ -382,6 +383,7 @@ function buildSrcdocUnsafe(
     return withArtifactGuard;
   }
   const withStackedViewport = compactStackedDeck
+    && shouldInflateStackedDesignViewport(detectionBase)
     ? injectStackedDeckViewport(withArtifactGuard)
     : withArtifactGuard;
   const withDeck = options.deck
@@ -2909,6 +2911,18 @@ html[data-od-compact-stacked] .keyboard-hint {
   /* Motif-safe — overflow:hidden re-clips Daisy/Graphify hangs after pin heal (§0.76). */
   overflow: visible !important;
   display: none !important;
+}
+/* Capsule LOOK seeds already mark slide-1 as active. The first-child
+ * fallback below turns OFF when any .active exists — without this rule
+ * every page stays display:none until forceReveal, and a missed host
+ * viewport handshake paints a blank letterbox (loop438). */
+#od-stacked-deck-stage > .slide.active,
+#od-stacked-deck-stage > .slide.is-active,
+#od-stacked-deck-stage > .slide.current {
+  display: flex !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  opacity: 1 !important;
 }
 /* Boot-only: paint page 1 before JS adds .active. After a host next,
  * :has(.slide.active) turns this off so a lost inline hide cannot

@@ -15,7 +15,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts system-prompt-api-mode · template-visual-kit · teamver-selected-template-compose · deck-framework-compact · template-clone-fill, web templateCloneContentFill · runtime/resume.
 
-**후속:** [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) · [0901-N02-18](./0901-N02-18-구현설계-[Clone_slot-map-C13].md) — B1–B5 · C–C13 · D · 루프368–437. MiniMax live 가드 ☑(키 없으면 skip). 루프366 bake ☑ · C13 ☑ · 루프431–437 ☑.
+**후속:** [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) · [0901-N02-18](./0901-N02-18-구현설계-[Clone_slot-map-C13].md) — B1–B5 · C–C13 · D · 루프368–438. MiniMax live 가드 ☑(키 없으면 skip). 루프366 bake ☑ · C13 ☑ · 루프431–438 ☑.
 
 다음 추천 작업:
 1. MiniMax 키 환경 Clone fill live smoke
@@ -36,6 +36,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 `기둥` / `PILLAR` / `Phase`는 모델이 붙이는 접두일 뿐, 발표 용어가 아닙니다. extra-copy·stub는 주제 단어 목록이 아닙니다(루프259·265).
 
 ## 2026-09-02 현재 판단 · 최신 루프
+
+### 루프438 — Capsule letterbox 빈 미리보기
+
+체감: 437 이후 미리보기 패널이 비고 새로고침해도 그대로.
+
+수정: Capsule opacity-stack은 1920 viewport lock 금지(device-width). stacked stage의 `.slide.active`를 CSS로 바로 표시.
 
 ### 루프437 — Capsule 채움 16:9 letterbox · 표지 body 카드 제거
 

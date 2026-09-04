@@ -14,6 +14,7 @@ import {
   looksLikeCompactApiStackedDeckForPreview,
   looksLikeLeftoverHostNavCanvasDeck,
   normalizeCompactStackedDeckForExport,
+  shouldInflateStackedDesignViewport,
   wrapPreviewHtmlShell,
 } from '../../src/runtime/compact-api-stacked-deck';
 import { buildSrcdoc } from '../../src/runtime/srcdoc';
@@ -1002,12 +1003,20 @@ cur=n;
     expect(looksLikeOfficialFullscreenPresenterDeck(filled)).toBe(true);
     expect(looksLikeCompactApiStackedDeck(filled)).toBe(true);
     expect(looksLikeCompactApiStackedDeckForPreview(filled)).toBe(true);
-    const srcdoc = buildSrcdoc(filled, { deck: true });
+    expect(shouldInflateStackedDesignViewport(filled)).toBe(false);
+    const srcdoc = buildSrcdoc(filled, {
+      deck: true,
+      userBrief: 'www.teamver.com 서비스 소개',
+      scrubLeftoverCatalog: true,
+    });
     expect(srcdoc).toContain('data-od-deck-stacked-fix');
-    expect(srcdoc).toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+    // 1920 layout viewport + 50% stage = empty top-left in the iframe.
+    expect(srcdoc).not.toContain('content="width=1920, initial-scale=1, maximum-scale=1"');
+    expect(srcdoc).toContain('width=device-width');
     expect(srcdoc).toContain('#od-stacked-deck-stage');
     expect(srcdoc).toContain('scale(');
     expect(srcdoc).toMatch(/html\[data-od-compact-stacked\] \.nav-hint/);
+    expect(srcdoc).toMatch(/#od-stacked-deck-stage > \.slide\.active/);
     expect(srcdoc).toContain('팀버');
     expect(srcdoc).toContain('deco-pills');
     expect(srcdoc).toContain('title-pill');
@@ -1015,6 +1024,46 @@ cur=n;
     expect(srcdoc).not.toMatch(/main-title[\s\S]{0,400}직접적인 가치/);
     expect(srcdoc).not.toMatch(/box-shadow:6px 6px 0 #000">협업/);
     expect(srcdoc).toMatch(/class="slide slide-3"[\s\S]*pillar-card/);
+  });
+
+  it('paints the Capsule cover without a host-viewport handshake', async () => {
+    const official = readFileSync(
+      resolve(repoRoot, 'plugins/_official/examples/html-ppt-zhangzara-capsule/example.html'),
+      'utf8',
+    );
+    const filled = official
+      .replace('lang="en"', 'lang="ko"')
+      .replace('CAPSULE', '팀버')
+      .replace('A Framework for Bold Ideas', '서비스 소개');
+    const srcdoc = buildSrcdoc(filled, {
+      deck: true,
+      userBrief: 'www.teamver.com 서비스 소개',
+      scrubLeftoverCatalog: true,
+    });
+    const match = srcdoc.match(/<script data-od-deck-bridge>([\s\S]*?)<\/script>/);
+    expect(match?.[1]).toBeTruthy();
+    const { JSDOM } = await import('jsdom');
+    const dom = new JSDOM(srcdoc.replace(/<script\b[\s\S]*?<\/script>/gi, ''), {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+    });
+    const win = dom.window;
+    Object.defineProperty(win, 'innerWidth', { configurable: true, value: 800 });
+    Object.defineProperty(win, 'innerHeight', { configurable: true, value: 450 });
+    Object.defineProperty(win.document.documentElement, 'clientWidth', { configurable: true, value: 800 });
+    Object.defineProperty(win.document.documentElement, 'clientHeight', { configurable: true, value: 450 });
+    Object.defineProperty(win, 'parent', { configurable: true, value: { postMessage: () => {} } });
+    new win.Function(match![1]!).call(win);
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 40));
+
+    const stage = win.document.getElementById('od-stacked-deck-stage') as HTMLElement | null;
+    expect(stage).toBeTruthy();
+    const cover = win.document.querySelector('#od-stacked-deck-stage > .slide') as HTMLElement | null;
+    expect(cover).toBeTruthy();
+    expect(cover?.classList.contains('active')).toBe(true);
+    expect(String(cover?.style.display || '').toLowerCase()).not.toBe('none');
+    expect(String(win.getComputedStyle(cover!).display || '').toLowerCase()).not.toBe('none');
+    expect(cover?.textContent || '').toMatch(/팀버/);
   });
 
   it('does not force stacked slides into a centered column that clips 16:9 split layouts', async () => {
