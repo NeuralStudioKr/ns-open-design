@@ -2770,31 +2770,56 @@ function AppInner() {
               slideCountHint: slideCountHintFromInputs,
             };
             if (shouldUseDeterministicTemplateCloneFill()) {
-              usedDeterministicCloneFill = true;
-              setPendingTemplateClone(
-                result.project.id,
-                fillTemplateClonedDeckDeterministically(cloneRequest).then(async (seeded) => {
-                  if (seeded.ok) {
-                    seededDeckFileName = seeded.fileName;
-                    preservedFilledDeck = true;
-                    return seeded;
-                  }
-                  const look = await seedTemplateClonedDeck(cloneRequest);
-                  if (look.ok) {
-                    seededDeckFileName = look.fileName;
-                    preservedFilledDeck = look.preservedFilled === true;
-                  } else {
-                    devLog.warn(
-                      'Home Canvas deterministic fill failed; LOOK seed also missed',
-                      { seeded, look },
-                    );
-                    setWorkingDirError(
-                      '템플릿 미리보기 준비에 실패했습니다. 선택한 템플릿 컨텍스트로 슬라이드 생성을 계속합니다.',
-                    );
-                  }
-                  return look;
-                }),
-              );
+              // 루프417 — await fill before navigate. Fire-and-forget opened
+              // deck.html while the daemon still wrote it → sticky preview
+              // loading + empty chat (auto-send suppressed).
+              const fillPromise = (async (): Promise<
+                Awaited<ReturnType<typeof fillTemplateClonedDeckDeterministically>>
+              > => {
+                const seeded = await fillTemplateClonedDeckDeterministically(cloneRequest);
+                if (seeded.ok) {
+                  seededDeckFileName = seeded.fileName;
+                  preservedFilledDeck = true;
+                  usedDeterministicCloneFill = true;
+                  return seeded;
+                }
+                const look = await seedTemplateClonedDeck(cloneRequest);
+                if (look.ok) {
+                  seededDeckFileName = look.fileName;
+                  preservedFilledDeck = look.preservedFilled === true;
+                } else {
+                  devLog.warn(
+                    'Home Canvas deterministic fill failed; LOOK seed also missed',
+                    { seeded, look },
+                  );
+                  setWorkingDirError(
+                    '템플릿 미리보기 준비에 실패했습니다. 선택한 템플릿 컨텍스트로 슬라이드 생성을 계속합니다.',
+                  );
+                }
+                // Fall through to AI fill (not MiniMax JSON-only when mode
+                // is deterministic — buildTemplateCloneFillSeedForCurrentMode
+                // still respects json vs prompt-fill).
+                const canvasFill = buildTemplateCloneFillSeedForCurrentMode({
+                  userInstruction: userFacingRequest || null,
+                  sourceBrief,
+                  pendingPrompt: derivedPendingPrompt ?? null,
+                  templateTitle: templateTitle || selectedDeckTemplateId,
+                  hasSourceMaterial: true,
+                  slideCountHint: slideCountHintFromInputs,
+                });
+                queuedFillSeed = canvasFill.seed;
+                const queueCanvasFill = canvasFill.jsonFill
+                  ? queueTemplateCloneContentFill
+                  : queueTemplateClonePromptFill;
+                queueCanvasFill({
+                  projectId: result.project.id,
+                  seed: queuedFillSeed,
+                  attachments: firstMessageAttachments,
+                });
+                return look;
+              })();
+              setPendingTemplateClone(result.project.id, fillPromise);
+              await fillPromise;
             } else {
               const canvasFill = buildTemplateCloneFillSeedForCurrentMode({
                 userInstruction: userFacingRequest || null,
@@ -2933,31 +2958,52 @@ function AppInner() {
           slideCountHint: slideCountHintFromInputs,
         };
         if (shouldUseDeterministicTemplateCloneFill()) {
-          usedDeterministicCloneFill = true;
-          setPendingTemplateClone(
-            result.project.id,
-            fillTemplateClonedDeckDeterministically(cloneRequest).then(async (seeded) => {
-              if (seeded.ok) {
-                seededDeckFileName = seeded.fileName;
-                preservedFilledDeck = true;
-                return seeded;
-              }
-              const look = await seedTemplateClonedDeck(cloneRequest);
-              if (look.ok) {
-                seededDeckFileName = look.fileName;
-                preservedFilledDeck = look.preservedFilled === true;
-              } else {
-                devLog.warn(
-                  'Home deterministic fill failed; LOOK seed also missed',
-                  { seeded, look },
-                );
-                setWorkingDirError(
-                  '템플릿 미리보기 준비에 실패했습니다. 선택한 템플릿 컨텍스트로 슬라이드 생성을 계속합니다.',
-                );
-              }
-              return look;
-            }),
-          );
+          // 루프417 — await host fill before navigate so FileViewer does not
+          // stick on "슬라이드 미리보기 불러오는 중…" for a missing deck.html.
+          const fillPromise = (async (): Promise<
+            Awaited<ReturnType<typeof fillTemplateClonedDeckDeterministically>>
+          > => {
+            const seeded = await fillTemplateClonedDeckDeterministically(cloneRequest);
+            if (seeded.ok) {
+              seededDeckFileName = seeded.fileName;
+              preservedFilledDeck = true;
+              usedDeterministicCloneFill = true;
+              return seeded;
+            }
+            const look = await seedTemplateClonedDeck(cloneRequest);
+            if (look.ok) {
+              seededDeckFileName = look.fileName;
+              preservedFilledDeck = look.preservedFilled === true;
+            } else {
+              devLog.warn(
+                'Home deterministic fill failed; LOOK seed also missed',
+                { seeded, look },
+              );
+              setWorkingDirError(
+                '템플릿 미리보기 준비에 실패했습니다. 선택한 템플릿 컨텍스트로 슬라이드 생성을 계속합니다.',
+              );
+            }
+            const homeFill = buildTemplateCloneFillSeedForCurrentMode({
+              userInstruction: userFacingRequest || null,
+              sourceBrief,
+              pendingPrompt: derivedPendingPrompt ?? null,
+              templateTitle: templateTitle || selectedDeckTemplateId,
+              hasSourceMaterial,
+              slideCountHint: slideCountHintFromInputs,
+            });
+            queuedFillSeed = homeFill.seed;
+            const queueHomeFill = homeFill.jsonFill
+              ? queueTemplateCloneContentFill
+              : queueTemplateClonePromptFill;
+            queueHomeFill({
+              projectId: result.project.id,
+              seed: queuedFillSeed,
+              attachments: firstMessageAttachments,
+            });
+            return look;
+          })();
+          setPendingTemplateClone(result.project.id, fillPromise);
+          await fillPromise;
         } else {
           const homeFill = buildTemplateCloneFillSeedForCurrentMode({
             userInstruction: userFacingRequest || null,

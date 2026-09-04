@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  hasPendingTemplateClone,
   peekCreateConversationHandoff,
   resetCreateProjectStreamHandoffForTests,
   setPendingTemplateClone,
@@ -47,9 +48,11 @@ describe("createProjectStreamHandoff", () => {
       resolve = r;
     });
     setPendingTemplateClone("p1", pending);
+    expect(hasPendingTemplateClone("p1")).toBe(true);
     const waiter = waitPendingTemplateClone("p1");
     resolve({ ok: true, fileName: "deck.html" });
     await expect(waiter).resolves.toEqual({ ok: true, fileName: "deck.html" });
+    expect(hasPendingTemplateClone("p1")).toBe(false);
   });
 
   it("returns settled clone result after map entry is cleared", async () => {
@@ -88,5 +91,17 @@ describe("create→stream source guards", () => {
     expect(projectView).toContain(
       "Latch success even if StrictMode cleanup set cancelled",
     );
+  });
+
+  it("Home deterministic create awaits fill before navigate (loop417)", () => {
+    const app = readWebSource("src/App.tsx");
+    expect(app).toContain("await fill before navigate");
+    expect(app).toContain("await fillPromise");
+    // Must not stamp success before the host fill settles.
+    expect(app).not.toMatch(
+      /shouldUseDeterministicTemplateCloneFill\(\)\s*\{\s*usedDeterministicCloneFill = true;/,
+    );
+    const projectView = readWebSource("src/components/ProjectView.tsx");
+    expect(projectView).toContain("hasPendingTemplateClone");
   });
 });

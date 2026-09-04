@@ -95,6 +95,12 @@ export function setPendingTemplateClone(
     });
 }
 
+/** True while Home/Canvas create still has an in-flight Clone/fill promise. */
+export function hasPendingTemplateClone(projectId: string): boolean {
+  const id = projectId.trim();
+  return Boolean(id && pendingTemplateClone.has(id));
+}
+
 /** Auto-send waits so fill does not race an in-flight Clone seed. */
 export async function waitPendingTemplateClone(
   projectId: string,

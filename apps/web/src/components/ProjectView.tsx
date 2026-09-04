@@ -455,6 +455,7 @@ import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider'
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { waitForTeamverEmbedBoot, isTeamverEmbedBootComplete } from '../teamver/teamverEmbedBoot';
 import {
+  hasPendingTemplateClone,
   peekCreateConversationHandoff,
   takeCreateConversationHandoff,
   waitPendingTemplateClone,
@@ -6783,6 +6784,29 @@ export function ProjectView({
     if (!routeFileName) return;
     requestOpenFile(routeFileName);
   }, [routeFileName, requestOpenFile]);
+
+  // 루프417 — Home create may still be finishing host template fill when the
+  // route already points at deck.html. Wait, then refresh + reopen so preview
+  // does not stick on "슬라이드 미리보기 불러오는 중…".
+  useEffect(() => {
+    if (!routeFileName) return;
+    if (!hasPendingTemplateClone(project.id)) return;
+    let cancelled = false;
+    void (async () => {
+      const outcome = await waitPendingTemplateClone(project.id);
+      if (cancelled) return;
+      await refreshProjectFiles().catch(() => undefined);
+      if (cancelled) return;
+      const openName =
+        outcome?.ok && typeof outcome.fileName === 'string' && outcome.fileName.trim()
+          ? outcome.fileName.trim()
+          : routeFileName;
+      requestOpenFile(openName);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [project.id, routeFileName, refreshProjectFiles, requestOpenFile]);
 
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
