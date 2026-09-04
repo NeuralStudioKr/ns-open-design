@@ -6045,7 +6045,7 @@ function templateShellsAreUniqueRole(shells: SlideShell[]): boolean {
   // specialized layout. Role classification is too coarse (s-manifesto and
   // s-programme both classify as 'body') so we key on the presence of the
   // markers themselves plus a per-shell uniqueness check.
-  // 루프451 — extended to cobalt-grid family (s-index / s-table). Kits that
+  // 루프459 — extended to cobalt-grid family (s-index / s-table). Kits that
   // add new specialized section shells should extend this list so cap fires.
   const sectionMarkerRe = /\bs-(?:cover|manifesto|programme|chapter|data|quote|cal|colophon|index|table|ledger|trend|section|stmt)\b/i;
   const semanticMarkers = shells
