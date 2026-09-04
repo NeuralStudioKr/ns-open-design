@@ -42,6 +42,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프424 — staging env를 deterministic으로 재고정
+
+체감: 템플릿 선택 후에도 pure-prompt처럼 모델이 새 HTML을 만들며 motif/SVG/장수/배치가 흔들림.
+
+원인: 코드 default와 `.env.staging.example`은 deterministic이나 실제 로컬 `deploy/teamver/.env.staging`만 `pure-prompt`로 남음. 운영 env는 gitignored라 commit diff에 보이지 않음.
+
+수정: 로컬 staging env `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=deterministic`. 재배포 전 실제 env 확인 필수. 루프422 때문에 명시 템플릿은 pure-prompt에서도 LOOK seed를 강제하지만, staging 기본 품질 기준은 deterministic으로 통일.
+
 ### 루프423 — SSE keepalive가 content idle을 리셋하지 않음
 
 체감: `<head>` 직후 keepalive만 오고 Working 고정. 추가 생성 불가.
