@@ -39,7 +39,4 @@
 
 ## 다음 추천 작업
 
-1. MiniMax 키 환경 Clone fill live smoke
-2. FileViewer ←/→ tools-dev + Teamver BFF GUI bake(선택)
-3. Block-frame/stat-card peer-fit 실 LOOK seed 스모크(선택)
-4. leftover letter-race / persist-split 분리 트랙
+→ 루프431–436에서 catalog follow-on 완료. 다음: MiniMax 키 live · GUI bake · Blue-pro metric peer-fit(선택).

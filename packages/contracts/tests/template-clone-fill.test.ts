@@ -486,6 +486,36 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(cloned).not.toContain('12.4M');
   });
 
+  it('루프434: Hangul LOOK scrub strips Block-frame Neo catalog demo copy', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-block-frame/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(looksLikeLeftoverTemplateDemoDeck(html)).toBe(true);
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      [
+        { title: '팀버', roleHint: 'cover', kicker: 'OVERVIEW', lead: '팀버 한눈에' },
+        { title: '세 축', body: '전략\n디자인\n런칭', roleHint: 'cards' },
+      ],
+      {
+        title: '팀버',
+        templateId: 'example-html-ppt-zhangzara-block-frame',
+        brief: '팀버 서비스 소개',
+      },
+    );
+    expect(cloned).toBeTruthy();
+    expect(cloned).not.toContain('Neobrutalist Presentation Template');
+    expect(cloned).not.toContain('Quarterly Growth Metrics');
+    expect(cloned).not.toContain('Modular Layouts');
+    expect(cloned).not.toContain('What We Deliver');
+    expect(cloned).toContain('팀버');
+    expect(cloned).toContain('전략');
+  });
+
   it('loop425 — does not IB-restyle a real Capsule deck that lost title-pill', () => {
     const html = `<!doctype html><html><body>
 <section class="slide slide-1">
@@ -3018,6 +3048,47 @@ describe('0901-N02-C13 peer-fit catalog + sticky chrome deny', () => {
     expect([...(denied.matchAll(/\btitle-accent-postit\b/gi))].length).toBe(1);
     expect([...(denied.matchAll(/\bpost-it\b/gi))].length).toBe(1);
     expect([...(denied.matchAll(/\bclosing-accent\b/gi))].length).toBe(1);
+  });
+
+  it('루프431: block-frame 3-line cards prefer feature-card×3', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-block-frame/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const shells = listTemplateCloneSlideShells(html);
+    const picked = pickTemplateShellsForContent(shells, [
+      { title: '킥오프', roleHint: 'cover' },
+      { title: '세 축', body: '전략\n디자인\n런칭', roleHint: 'cards' },
+    ]);
+    expect(classifyTemplateCloneShellRole(picked[1]!)).toBe('cards');
+    const body = picked[1]!.body;
+    expect([...body.matchAll(/\bclass\s*=\s*["'][^"']*\bfeature-card\b/gi)].length).toBe(3);
+    expect([...body.matchAll(/\bclass\s*=\s*["'][^"']*\bstat-card\b/gi)].length).toBe(0);
+
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      [
+        { title: '킥오프', roleHint: 'cover' },
+        { title: '세 축', body: '전략\n디자인\n런칭', roleHint: 'cards' },
+        { title: '지표', body: '매출\n리텐션\n활성\n전환', roleHint: 'cards' },
+      ],
+      {
+        title: '킥오프',
+        templateId: 'example-html-ppt-zhangzara-block-frame',
+      },
+    );
+    expect(cloned).toBeTruthy();
+    const bodyOnly = (cloned ?? '').replace(/<style[\s\S]*?<\/style>/gi, '');
+    expect([...bodyOnly.matchAll(/class="[^"]*\bfeature-card\b/gi)].length).toBe(3);
+    expect(bodyOnly).toContain('전략');
+    expect(bodyOnly).toContain('런칭');
+    // 4-line metric slide prefers stat-card×4 over leftover feature peers.
+    expect([...bodyOnly.matchAll(/class="[^"]*\bstat-card\b/gi)].length).toBe(4);
+    expect(bodyOnly).toContain('매출');
+    expect(bodyOnly).toContain('전환');
   });
 });
 

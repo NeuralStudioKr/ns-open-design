@@ -15,14 +15,13 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts system-prompt-api-mode · template-visual-kit · teamver-selected-template-compose · deck-framework-compact · template-clone-fill, web templateCloneContentFill · runtime/resume.
 
-**후속:** [0901-N02-2](./0901-N02-2-구현설계-[Clone_slot-fill].md) · [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) · [0901-N02-18](./0901-N02-18-구현설계-[Clone_slot-map-C13].md) — B1–B5 · C–C13 · D · 루프368–426. MiniMax live 가드 ☑(키 있으면 slot-fill smoke · 없으면 skip). 루프366 vitest+chrome bake ☑ · filmstrip C3 ☑ · C13 catalog peer-fit/deny ☑.
+**후속:** [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) · [0901-N02-18](./0901-N02-18-구현설계-[Clone_slot-map-C13].md) — B1–B5 · C–C13 · D · 루프368–436. MiniMax live 가드 ☑(키 없으면 skip). 루프366 bake ☑ · C13 ☑ · 루프431–436 ☑.
 
 다음 추천 작업:
-1. MiniMax 키 환경 Clone fill live smoke (`deploy/teamver/.env` 또는 `MINIMAX_API_KEY`)
+1. MiniMax 키 환경 Clone fill live smoke
 2. FileViewer ←/→ tools-dev + Teamver BFF GUI bake(선택)
-3. Block-frame/stat-card peer-fit LOOK 스모크(선택)
-4. leftover letter-race / persist-split 분리 트랙
-
+3. Blue-professional metric-card peer-fit LOOK 스모크(선택)
+4. Daisy/weekly day-card peer-fit 회귀 핀(선택)
 
 ### 빈 칸 번호 카드 (코드명 leftover)
 
@@ -38,6 +37,29 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프436 — doubled letter · 스물한째
+
+닫힌 A–Z/스무 번째 너머 `AA`·`스물한째` 패드 drop. `/u` 백레퍼런스 회피.
+
+### 루프435 — block-frame col-left/right clip
+
+Motif는 flow 밖 · split은 flow clip 안. persist-split 없음.
+
+### 루프434 — Block-frame Neo catalog scrub
+
+Hangul LOOK에서 Neo marketing 문구 wipe.
+
+### 루프433 — all-기둥 leftover row
+
+전원 `기둥 …`일 때만 행 제거. Phase/roman step 유지.
+
+### 루프432 — class-bound flex leftover
+
+`.cards-row{display:flex}` 호스트도 index leftover drop.
+
+### 루프431 — Block-frame peer-fit LOOK
+
+feature×3 / stat×4 · intro-card 2순위.
 ### 루프430 — peer-fill idempotent · shell 중복 방지 · pagenum 재번호
 
 체감: 10장 요청 시 Biennale s-manifesto/s-programme/s-data가 각 2회 중복, `.stat`에 `입력입력입력입력입력입력입력입력` 반복, pagenum이 shell 원본 유지.

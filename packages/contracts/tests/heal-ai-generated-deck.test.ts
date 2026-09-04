@@ -3034,6 +3034,78 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표')).toBe(html);
     });
 
+    it('루프432: class-bound flex `.cards-row` drops leftover index peers', () => {
+      const html = [
+        '<style>.cards-row{display:flex;gap:32px}</style>',
+        '<div class="cards-row">',
+        '<div class="card" style="padding:24px"><h3>전략</h3><p>요지</p></div>',
+        '<div class="card" style="padding:24px"><h3>디자인</h3><p>요지</p></div>',
+        '<div class="card" style="padding:24px"><h3>기둥 Z</h3></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(2);
+      expect(out).not.toContain('기둥 Z');
+      expect(out).toContain('전략');
+    });
+
+    it('루프433: drops an all-기둥 leftover peer row (keeps Phase step tracks)', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card" style="padding:24px"><h3>기둥 A</h3></div>',
+        '<div class="card" style="padding:24px"><h3>기둥 B</h3></div>',
+        '<div class="card" style="padding:24px"><h3>기둥 C</h3></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표');
+      expect(out).not.toContain('기둥 A');
+      expect(out).not.toContain('기둥 B');
+      expect(out).not.toContain('기둥 C');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(0);
+
+      const phaseRow = [
+        '<div style="display:flex;gap:16px">',
+        '<div class="card">Phase 1</div>',
+        '<div class="card">Phase 2</div>',
+        '<div class="card">Phase 3</div>',
+        '</div>',
+      ].join('');
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(phaseRow, '발표')).toBe(phaseRow);
+    });
+
+    it('루프433: still keeps an all-empty motif placeholder row', () => {
+      const emptyRow = [
+        '<div style="display:flex;gap:16px">',
+        '<div class="card"></div>',
+        '<div class="card"></div>',
+        '</div>',
+      ].join('');
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(emptyRow, '미적분')).toBe(emptyRow);
+    });
+
+    it('루프436: drops doubled letter and 스물한째 beyond closed track', () => {
+      const html = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card" style="padding:24px"><h3>하나</h3><p>요지</p></div>',
+        '<div class="card" style="padding:24px"><h3>기둥 AA</h3></div>',
+        '<div class="card" style="padding:24px"><h3>스물한째</h3></div>',
+        '</div>',
+      ].join('');
+      const out = dropEmptyLeftoverPeerCardsInAllocatedRows(html, '발표');
+      expect((out.match(/class="card"/g) ?? []).length).toBe(1);
+      expect(out).toContain('하나');
+      expect(out).not.toContain('기둥 AA');
+      expect(out).not.toContain('스물한째');
+      // Mixed digraph titles are not leftovers.
+      const keep = [
+        '<div style="display:flex;gap:28px">',
+        '<div class="card"><h3>하나</h3></div>',
+        '<div class="card"><h3>by</h3></div>',
+        '</div>',
+      ].join('');
+      expect(dropEmptyLeftoverPeerCardsInAllocatedRows(keep, '발표')).toBe(keep);
+    });
+
     it('drops a third card whose only text is the column number 기둥 Y (루프339)', () => {
       const html = [
         '<div style="display:flex;gap:28px">',

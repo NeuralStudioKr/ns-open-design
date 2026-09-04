@@ -26,6 +26,12 @@
 | **C11** scatterbrain cards 분류 · LOOK seed fill→heal | ☑ postit shell→cards · filmstrip/366 bake |
 | **C12** feature-postit peer-fit · sticky timeline · 366 chrome | ☑ 3줄→feature×3 · timeline-row · chrome bake |
 | **C13** catalog peer-fit · sticky chrome deny-before-allowlist | ☑ pillar/price · mini-note/closing-accent deny |
+| **루프431** Block-frame peer-fit LOOK | ☑ feature×3 · stat×4 · intro 2순위 |
+| **루프432** class-bound flex leftover | ☑ `.cards-row` flex → index drop |
+| **루프433** all-기둥 leftover row | ☑ 기둥 A/B/C 행 제거 · Phase step 유지 |
+| **루프434** Block-frame Neo scrub | ☑ Neo marketing wipe on Hangul LOOK |
+| **루프435** col-left/right clip | ☑ flow clip · Motif outside · no persist-split |
+| **루프436** AA · 스물한째 | ☑ beyond closed letter/ordinal track |
 | **D** hybrid fallback 제거 | ☑ |
 | **루프359** HTML dump → seed-fallback 즉시 · repair AC abort시 seed 유지 | ☑ |
 | **루프360** repair 판단 messagesRef 레이스 · sendNow synchronous reject 회복 | ☑ |
@@ -118,6 +124,7 @@
 
 | 일자 | 내용 |
 |------|------|
+| 2026-09-04 | 루프431–436 — block-frame peer-fit · class-flex leftover · all-기둥 row · Neo scrub · col clip · AA/스물한째 |
 | 2026-09-04 | C13 / 루프426 — catalog peer-fit · sticky chrome deny-before-allowlist · MiniMax skip 재확인 |
 | 2026-09-04 | 루프430 — peer-fill idempotent · unique-role Biennale-family shell 중복 방지 · pagenum 재번호. |
 | 2026-09-04 | 루프425 — LOOK도 dense helper · 서비스 소개 기본 8장 · 문서 leftover 스크럽 · Capsule IB restyle skip. |

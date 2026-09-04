@@ -1002,7 +1002,7 @@ export function classifyTemplateCloneShellRole(shell: {
   }
   // 0901-N02-C13: catalog card peers (before `<ul>` list heuristic).
   if (
-    /\b(?:feature|stat|metric|price|pricing|pillar|team|member|xp|hc|oc|kb|kpi)-card\b/i.test(hay)
+    /\b(?:feature|stat|metric|price|pricing|pillar|team|member|xp|hc|oc|kb|kpi|intro)-card\b/i.test(hay)
   ) {
     return 'cards';
   }
@@ -1075,6 +1075,10 @@ function cardsShellFillScore(shell: SlideShell, lineCount = 0): number {
   } else if (/\b(?:feature|col|compare)-postit\b/i.test(body)) {
     // 0901-N02-C11: scatterbrain sticky peers score as real card shells.
     score = 2;
+  } else if (/\bintro-card\b/i.test(body)) {
+    // 루프431: block-frame intro-cards are cards peers but secondary to
+    // feature/stat shells when line counts match.
+    score = 1;
   } else if (/\bslide-weekly\b/i.test(attrs) || /\bweekly-grid\b/i.test(body) || /\bday-card\b/i.test(body)) {
     score = 0;
   } else if (shellBodyLooksLikeCardGrid(body)) {
@@ -1125,6 +1129,7 @@ function cardsShellPeerFitBonus(body: string, lineCount: number): number {
     countClassTokenPeers(body, 'oc-card'),
     countClassTokenPeers(body, 'kb-card'),
     countClassTokenPeers(body, 'kpi-card'),
+    countClassTokenPeers(body, 'intro-card'),
   ];
   const peers = Math.max(0, ...peerCounts);
   if (peers <= 0) return 0;
@@ -4244,8 +4249,16 @@ function stripCapsuleCatalogDemoCopy(html: string): string {
     .replace(CAPSULE_CATALOG_DEMO_METRIC_RE, '');
 }
 
+/** 루프434 — Block-frame / Neo catalog marketing leftovers on Hangul LOOK seeds. */
+const BLOCK_FRAME_NEO_DEMO_COPY_RE =
+  /Neobrutalist Presentation Template|Presentation Template|Quarterly Growth Metrics|What We\s*<br\s*\/?>\s*Deliver|What We Deliver|Modular Layouts|Responsive Ready|Data Friendly|Strategy First|Design System|Launch Ready|Core Features|Performance Data|Every project follows a rigorous process[\s\S]{0,160}?fully functional\./gi;
+
+function stripBlockFrameNeoCatalogDemoCopy(html: string): string {
+  return String(html ?? '').replace(BLOCK_FRAME_NEO_DEMO_COPY_RE, '');
+}
+
 const LEFTOVER_CATALOG_PHRASE_RE =
-  /Hartfield(?:\s*&(?:amp;)?\s*Co\.?)?|NorthPeak Industries|WACC\s*\(\s*base\s*\)|Revenue CAGR|Filebase|Northwind Studios|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|Composed in kami|52\.5200°\s*N|\[\[Author Name\]\]|this is the broadside style|Aurora Institute|Aurora Programme|Aurora Charter|Public Form|Public attendance|Open programme|Field Notes|Quiet Editions|Open Conversations|The Long Yellow|Pavilion of Quiet Form|Reading Garden|A field study of light,\s*matter and atmosphere|Six months of exhibitions[\s\S]{0,160}?palette of yellow\.?|A room is a slow argument with the sun[\s\S]{0,160}?answers\.?|Curator-at-large[\s\S]{0,120}?January 2026|Visitors\s*·\s*Year four|Returning audience|Three quarters of last year[\s\S]{0,120}?twice\.?|A 2\.4× rise[\s\S]{0,120}?audience\.?|Strands\s*·\s*2026|Slow Atmospheres|Selected dates|Sector context(?:\s*&(?:amp;)?\s*market dynamics)?|Trading comparables analysis|Precedent transactions|Industrial automation cycle, capital flows, trading multiples|12 selected listed peers, EV\/EBITDA(?:\s*&(?:amp;)?\s*EV\/Revenue 2026E)?|M&amp;A transactions \$0\.5–5\.0B, 2022–2025|Selection criteria|Fictional illustrative sample|38\s*[×x]|Apache-2\.0|\bBYOK\b|Your agent reads a folder of\s*<code>SKILL\.md<\/code> files\.?|Open Design is the\s*(?:<strong>)?\s*(?:<\/strong>)?\s*\.?/gi;
+/Hartfield(?:\s*&(?:amp;)?\s*Co\.?)?|NorthPeak Industries|WACC\s*\(\s*base\s*\)|Revenue CAGR|Filebase|Northwind Studios|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|Composed in kami|52\.5200°\s*N|\[\[Author Name\]\]|this is the broadside style|Aurora Institute|Aurora Programme|Aurora Charter|Public Form|Public attendance|Open programme|Field Notes|Quiet Editions|Open Conversations|The Long Yellow|Pavilion of Quiet Form|Reading Garden|A field study of light,\s*matter and atmosphere|Six months of exhibitions[\s\S]{0,160}?palette of yellow\.?|A room is a slow argument with the sun[\s\S]{0,160}?answers\.?|Curator-at-large[\s\S]{0,120}?January 2026|Visitors\s*·\s*Year four|Returning audience|Three quarters of last year[\s\S]{0,120}?twice\.?|A 2\.4× rise[\s\S]{0,120}?audience\.?|Strands\s*·\s*2026|Slow Atmospheres|Selected dates|Sector context(?:\s*&(?:amp;)?\s*market dynamics)?|Trading comparables analysis|Precedent transactions|Industrial automation cycle, capital flows, trading multiples|12 selected listed peers, EV\/EBITDA(?:\s*&(?:amp;)?\s*EV\/Revenue 2026E)?|M&amp;A transactions \$0\.5–5\.0B, 2022–2025|Selection criteria|Fictional illustrative sample|38\s*[×x]|Apache-2\.0|\bBYOK\b|Your agent reads a folder of\s*<code>SKILL\.md<\/code> files\.?|Open Design is the\s*(?:<strong>)?\s*(?:<\/strong>)?\s*\.?|Neobrutalist Presentation Template|Quarterly Growth Metrics/gi;
 
 function stripLeftoverCatalogDemoPhrases(html: string): string {
   return String(html ?? '')
@@ -4333,6 +4346,7 @@ function peerClassSet(slotMap: TemplateCloneSlotMap | null | undefined): Set<str
     'stat-card',
     'feature-card',
     'metric-card',
+    'intro-card',
     'card',
     'team-card',
     'price-card',
@@ -5394,6 +5408,7 @@ function fillSlideShell(
     body = fillBiennaleCalendarSlots(body, { title, lead, bodyText, fillLines });
   }
   body = stripCapsuleCatalogDemoCopy(body);
+  body = stripBlockFrameNeoCatalogDemoCopy(body);
   body = stripLeftoverCatalogDemoPhrases(body);
 
   // Loop376 — Empty content-list / subtitle shells left behind by the
@@ -5625,7 +5640,9 @@ export function buildTemplateClonedDeckHtml(
   out = injectTeamverSizeStyle(out);
   // 루프425 — leftover Capsule catalog copy can sit outside filled shells
   // (footer / unused chrome). Wipe the whole document, not just each slide.
+  // 루프434 — Neo/block-frame marketing leftovers too.
   out = stripCapsuleCatalogDemoCopy(out);
+  out = stripBlockFrameNeoCatalogDemoCopy(out);
   out = stripLeftoverCatalogDemoPhrases(out);
   out = renumberBiennalePagenums(out, filled.length);
   return out.trim() || null;
@@ -5871,7 +5888,7 @@ function cleanCloneTitle(title: string): string {
 export function looksLikeLeftoverTemplateDemoDeck(html: string): boolean {
   const text = String(html ?? '');
   if (!text.trim()) return false;
-  return /Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|52\.5200°\s*N|Composed in kami|Apache-2\.0[\s\S]{0,800}Local-first[\s\S]{0,800}BYOK|\[\[Author Name\]\]|this is the broadside style|Clarity of Purpose|The Journey Continues|A Framework for Bold Ideas/i.test(
+  return /Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|52\.5200°\s*N|Composed in kami|Apache-2\.0[\s\S]{0,800}Local-first[\s\S]{0,800}BYOK|\[\[Author Name\]\]|this is the broadside style|Clarity of Purpose|The Journey Continues|A Framework for Bold Ideas|Neobrutalist Presentation Template|Quarterly Growth Metrics/i.test(
     text,
   );
 }

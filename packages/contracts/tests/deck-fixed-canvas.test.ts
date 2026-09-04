@@ -344,6 +344,31 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned.match(/<section\b/g)?.length).toBe(1);
   });
 
+  it('루프435: block-frame col-left/right clips inside flow without persist-split', () => {
+    const html = [
+      '<section class="slide slide-2" style="width:1920px;height:1080px;display:flex;gap:48px;padding:64px">',
+      '<div class="deco-dots" data-od-official-motif-html>motif</div>',
+      '<div class="col-left"><h2>개요</h2><p>본문</p></div>',
+      '<div class="col-right">',
+      '<div class="intro-card"><h3>전략</h3><p>요지</p></div>',
+      '<div class="intro-card"><h3>디자인</h3><p>요지</p></div>',
+      '</div>',
+      '</section>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    expect(pinned).toMatch(
+      /<div data-od-slide-flow style="(?=[^"]*display:flex)(?=[^"]*gap:48px)(?=[^"]*padding:64px)(?=[^"]*flex-direction:row)[^"]*">/,
+    );
+    expect(pinned).toContain('class="col-left"');
+    expect(pinned).toContain('class="col-right"');
+    expect(pinned).toMatch(/<div class="deco-dots"[^>]*>motif<\/div><div data-od-slide-flow\b/);
+    expect(pinned).not.toMatch(/<div data-od-slide-flow\b[^>]*>[\s\S]*deco-dots/);
+    expect(pinned).not.toMatch(/class="slide"[^>]*overflow:\s*hidden/);
+    expect(pinned).toMatch(/\[data-od-slide-flow\][\s\S]*overflow:\s*hidden/);
+    expect(pinned).toMatch(/\[data-od-slide-flow\]:has\(\.col-left\):has\(\.col-right\)/);
+    expect(pinned.match(/<section\b/g)?.length).toBe(1);
+  });
+
   it('keeps split-top/bottom on a column axis inside the clip', () => {
     const html = [
       '<section class="slide" style="width:1920px;height:1080px;padding:64px">',

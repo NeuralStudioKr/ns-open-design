@@ -1888,6 +1888,7 @@ function textLooksLikeLeftoverPeerPlaceholder(html: string): boolean {
  * 루프355 — drop empty column-number cards titled only spaced
  * `스무 번째`. Keep number+body (`스무 번째 실카피`). Letter/ordinal
  * leftover titles A–Z / 가…하 / 첫째…스무 번째는 여기서 닫힘.
+ * 루프436 — doubled same-letter (`AA`) and `스물한째` beyond that track.
  * These tokens are model-emitted column
  * numbers, not product copy.
  */
@@ -1897,10 +1898,14 @@ const LEFTOVER_INDEX_ROMAN =
 const LEFTOVER_INDEX_MARK = '[⓪①-⑨❶-❾⓿０-９⑴-⑼㉠-㉥]';
 /** 루프225/230 — 0 / 00 / 01–09 / 10 leftover shells. */
 const LEFTOVER_INDEX_DIGIT = '(?:0?[0-9]|10)';
-/** Latin A–U + W + Y + Z / 가…하. Not roman I/V/X. */
-const LEFTOVER_INDEX_LETTER = '(?:[a-uwyz]|[가나다라마바사아자차카타파하])';
-/** 첫째…스무째 / spaced `스무 번째` empty ordinal titles. Keep number+body. */
-const LEFTOVER_INDEX_ORDINAL = '(?:스무|열아홉|열여덟|열일곱|열여섯|열다섯|열네|열세|열두|열한|첫|둘|셋|넷|다섯|여섯|일곱|여덟|아홉|열)\\s*(?:째|번째)';
+/** Latin A–U + W + Y + Z / 가…하. Not roman I/V/X.
+ * 루프436 — doubled same-letter pads (`AA` / `기둥 BB`) beyond the closed
+ * single-letter track (루프355). Explicit pairs (no `\\1` — invalid under /u). */
+const LEFTOVER_INDEX_LETTER =
+  '(?:aa|bb|cc|dd|ee|ff|gg|hh|jj|kk|ll|mm|nn|oo|pp|qq|rr|ss|tt|uu|ww|yy|zz|[a-uwyz]|[가나다라마바사아자차카타파하])';
+/** 첫째…스무째 / spaced `스무 번째` empty ordinal titles. Keep number+body.
+ * 루프436 — `스물한째` beyond the closed 스무 번째 track. */
+const LEFTOVER_INDEX_ORDINAL = '(?:스물한|스무|열아홉|열여덟|열일곱|열여섯|열다섯|열네|열세|열두|열한|첫|둘|셋|넷|다섯|여섯|일곱|여덟|아홉|열)\\s*(?:째|번째)';
 const LEFTOVER_INDEX_CORE =
   `(?:${LEFTOVER_INDEX_DIGIT}|${LEFTOVER_INDEX_ROMAN}|${LEFTOVER_INDEX_MARK}|${LEFTOVER_INDEX_LETTER}|${LEFTOVER_INDEX_ORDINAL})`;
 const LEFTOVER_INDEX_SUFFIX = '(?:\\s*(?:번|번째|st|nd|rd|th))?';
@@ -2113,6 +2118,7 @@ function containerLooksLikeAllocatedCardRow(
   style: string,
   tokens: string[],
   decls: Map<string, ClassEqualTrackDecl>,
+  flexNames?: Set<string>,
 ): boolean {
   if (isFlexRowContainerStyle(style)) return true;
   const colsRaw = /grid-template-columns\s*:\s*([^;]+)/i.exec(style)?.[1];
@@ -2123,6 +2129,13 @@ function containerLooksLikeAllocatedCardRow(
   for (const token of tokens) {
     const bound = decls.get(token);
     if (bound?.cols && bound.cols.count >= 2) return true;
+  }
+  // 루프432: class-bound flex rows (`.cards-row { display:flex }`) are
+  // allocated peers too — not only inline flex / equal-track grids.
+  if (flexNames) {
+    for (const token of tokens) {
+      if (flexNames.has(token)) return true;
+    }
   }
   return false;
 }
@@ -2136,6 +2149,10 @@ function containerLooksLikeAllocatedCardRow(
  * Loop 191 then gives that empty shell `flex:1`, which paints the leftover
  * blank band. Remove empty cardish peers only; never invent topic copy.
  * Hangul/brief-gated so official English catalogs stay intact.
+ * 루프432 — class-bound flex hosts (`.cards-row { display:flex }`) count.
+ * 루프433 — when every peer is a Hangul `기둥 …` index pad, drop the whole
+ * row. Bare roman / Phase / Lesson / letter step tracks stay (루프205–256).
+ * Blank shells still stay — motif placeholders.
  */
 export function dropEmptyLeftoverPeerCardsInAllocatedRows(
   html: string,
@@ -2145,6 +2162,7 @@ export function dropEmptyLeftoverPeerCardsInAllocatedRows(
   if (!out) return out;
   if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
   const decls = collectClassEqualTrackDecls(out);
+  const flexNames = collectClassFlexRowNames(out);
   const openRe =
     /<(div|section|article|main|aside|ul|ol)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
   const removals: Array<{ start: number; end: number }> = [];
@@ -2153,7 +2171,7 @@ export function dropEmptyLeftoverPeerCardsInAllocatedRows(
     const attrs = match[2] ?? '';
     const style = extractInlineStyle(attrs);
     const tokens = classTokensFromAttrs(attrs);
-    if (!containerLooksLikeAllocatedCardRow(style, tokens, decls)) continue;
+    if (!containerLooksLikeAllocatedCardRow(style, tokens, decls, flexNames)) continue;
     const tag = (match[1] ?? '').toLowerCase();
     const openEnd = match.index + match[0].length;
     const close = findSameTagClose(out, tag, openEnd);
@@ -2163,7 +2181,19 @@ export function dropEmptyLeftoverPeerCardsInAllocatedRows(
     if (peers.length < 2 || peers.length > 6) continue;
     const emptyPeers = peers.filter((c) => childLooksEmptyLeftoverPeer(c));
     const filledPeers = peers.filter((c) => !childLooksEmptyLeftoverPeer(c));
-    if (emptyPeers.length === 0 || filledPeers.length === 0) continue;
+    if (emptyPeers.length === 0) continue;
+    if (filledPeers.length === 0) {
+      // 루프433: all peers are Hangul `기둥 …` index pads → drop the fake
+      // column row. Bare roman / Phase / Lesson / letter step tracks stay
+      // (루프205–256).
+      if (!peers.every((c) => {
+        if (!textLooksLikeLeftoverIndexLabel(c.inner)) return false;
+        const text = visibleText(c.inner).replace(/\s+/g, ' ').trim();
+        return /^기둥\s+/u.test(text);
+      })) {
+        continue;
+      }
+    }
     for (const empty of emptyPeers) {
       removals.push({ start: empty.absStart, end: empty.absCloseEnd });
     }

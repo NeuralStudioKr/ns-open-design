@@ -39,8 +39,8 @@ export const DAISY_DAYS_SLOT_MAP: TemplateCloneSlotMap = mapOf(
 export const BLOCK_FRAME_SLOT_MAP: TemplateCloneSlotMap = mapOf(
   ['example-html-ppt-zhangzara-block-frame', 'html-ppt-zhangzara-block-frame'],
   ['stats-grid', 'team-grid', 'cards-row', 'feature-grid'],
-  ['stat-card', 'feature-card', 'team-card'],
-  /\b(?:stats-grid|team-grid|cards-row)\b[\s\S]{0,4000}?\b(?:stat-card|team-card|feature-card)\b/i,
+  ['stat-card', 'feature-card', 'team-card', 'intro-card'],
+  /\b(?:stats-grid|team-grid|cards-row)\b[\s\S]{0,4000}?\b(?:stat-card|team-card|feature-card|intro-card)\b/i,
 );
 
 export const PRODUCT_LAUNCH_SLOT_MAP: TemplateCloneSlotMap = mapOf(
