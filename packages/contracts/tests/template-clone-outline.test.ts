@@ -497,9 +497,31 @@ describe('루프419 resolveTemplateCloneSlidesForDeterministicFill', () => {
       sourceBrief: 'Visible headings: 표지 / 문제 / 해결',
       userInstruction: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
     });
-    expect(slides.map((slide) => slide.title)).toEqual(['표지', '문제', '해결']);
+    expect(slides.map((slide) => slide.title).slice(0, 3)).toEqual(['표지', '문제', '해결']);
+    expect(slides).toHaveLength(8);
     expect(slides[1]?.items?.some((item) => Boolean(item.body))).toBe(true);
     expect(slides[2]?.items?.some((item) => Boolean(item.body))).toBe(true);
+    expect(slides.some((slide) => slide.body === '…')).toBe(false);
+  });
+
+  it('루프425 — service-intro URL brief defaults to 8 dense slides', () => {
+    const outline = synthesizeTemplateCloneOutlineFromBrief({
+      userBrief: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+      deckTitle: '슬라이드',
+    });
+    expect(outline?.slides).toHaveLength(8);
+    expect(outline?.slides[0]?.kicker).toBe('OVERVIEW');
+    expect(outline?.slides.some((slide) => slide.body === '…')).toBe(false);
+    expect(outline?.slides[1]?.items?.every((item) => item.title && item.body)).toBe(true);
+  });
+
+  it('루프425 — generic free-form stays at 5, never ellipsis cards', () => {
+    const outline = synthesizeTemplateCloneOutlineFromBrief({
+      userBrief: 'Expo 개발 도구에 대해 시니어 개발자용 발표 자료를 만들어 주세요',
+      deckTitle: '슬라이드',
+    });
+    expect(outline?.slides).toHaveLength(5);
+    expect(outline?.slides.some((slide) => slide.body === '…')).toBe(false);
   });
 });
 

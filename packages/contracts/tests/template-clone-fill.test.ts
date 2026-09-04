@@ -258,7 +258,9 @@ describe('resolveTemplateCloneSlidesFromBrief', () => {
     });
     expect(slides[0]?.title).toMatch(/expo/i);
     expect(slides[0]?.title).not.toMatch(/첨부한 자료|만들어줘/);
-    expect(slides[0]?.body).toBe('…');
+    expect(slides[0]?.kicker).toBe('OVERVIEW');
+    expect(slides.some((slide) => slide.body === '…')).toBe(false);
+    expect(slides.length).toBeGreaterThanOrEqual(4);
   });
 
   it('extracts [User instruction] from a full create-slides run prompt', () => {
@@ -401,6 +403,41 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(cloned).not.toContain('Clarity of Purpose');
     expect(cloned).not.toContain('The Journey Continues');
     expect(cloned).not.toContain('340%');
+  });
+
+  it('loop425 — whole-document Capsule leftover strip outside filled shells', () => {
+    const seed = [
+      '<!doctype html><html><body>',
+      '<header class="deck-chrome">The Journey Continues</header>',
+      '<section class="slide"><h1>Demo</h1><p>Clarity of Purpose</p></section>',
+      '<footer>340% · 12.4M</footer>',
+      '</body></html>',
+    ].join('');
+    const cloned = buildTemplateClonedDeckHtml(seed, [
+      { title: '팀버', roleHint: 'cover', kicker: 'OVERVIEW', lead: '팀버 한눈에' },
+    ], { title: '팀버', maxSlides: 1 });
+    expect(cloned).toBeTruthy();
+    expect(cloned).not.toContain('The Journey Continues');
+    expect(cloned).not.toContain('Clarity of Purpose');
+    expect(cloned).not.toContain('340%');
+    expect(cloned).not.toContain('12.4M');
+  });
+
+  it('loop425 — does not IB-restyle a real Capsule deck that lost title-pill', () => {
+    const html = `<!doctype html><html><body>
+<section class="slide slide-1">
+<h1 class="hero">팀버</h1>
+<p class="lead">팀버 한눈에</p>
+<div class="pillar-card"><h3>가치</h3><p>직접적인 가치</p></div>
+<span class="stat-pill">안정</span>
+</section>
+<style data-od-official-look-css="">:root{--coral:#E85D4E;--lime:#C8E64E;--bg:#F5F5F0}
+.pillar-card{} .stat-pill{}</style>
+</body></html>`;
+    const restyled = restyleForeignIbMagazineCover(html);
+    expect(restyled).toBe(html);
+    expect(restyled).not.toMatch(/h1 class="display"|class="mast"|class="foot"/);
+    expect(officialLookIsCapsule(html)).toBe(true);
   });
 });
 
@@ -1532,7 +1569,7 @@ ${capsuleLook}
     });
     const cloned = buildTemplateClonedDeckHtml(html, slides, {
       title: slides[0]?.title,
-      maxSlides: 10,
+      maxSlides: slides.length,
     });
     expect(cloned).toBeTruthy();
     expect(listTemplateCloneSlideShells(cloned!).length).toBe(slides.length);
@@ -1569,7 +1606,7 @@ ${capsuleLook}
     });
     const cloned = buildTemplateClonedDeckHtml(html, slides, {
       title: slides[0]?.title,
-      maxSlides: 10,
+      maxSlides: slides.length,
     });
     expect(cloned).toBeTruthy();
     expect(cloned).not.toMatch(/38×|38x/i);

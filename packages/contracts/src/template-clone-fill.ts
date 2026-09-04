@@ -59,6 +59,28 @@ export type TemplateCloneDeckOutline = {
 };
 
 export const TEMPLATE_CLONE_OUTLINE_MAX_SLIDES = 20;
+/** Site / service-intro briefs without an explicit count close 8 (cap 10). */
+export const TEMPLATE_CLONE_SERVICE_INTRO_DEFAULT_SLIDES = 8;
+export const TEMPLATE_CLONE_GENERIC_OUTLINE_DEFAULT_SLIDES = 5;
+
+const TEMPLATE_CLONE_GENERIC_SECTION_LABELS = [
+  '개요',
+  '핵심 포인트',
+  '근거와 사례',
+  '실행 방안',
+  '고객 경험',
+  '운영과 보안',
+  '도입 로드맵',
+  '성과 지표',
+  '요약',
+] as const;
+
+/** www / 사이트 / 서비스 소개 — Home's usual Teamver brief shape. */
+export function looksLikeTemplateCloneServiceIntroBrief(
+  text: string | null | undefined,
+): boolean {
+  return /사이트|서비스\s*소개|www\.|https?:\/\//i.test(String(text ?? ''));
+}
 
 type SlideShell = {
   tag: 'section' | 'div';
@@ -623,6 +645,23 @@ function extractSlideCountFromTemplateCloneBrief(text: string): number | null {
   return null;
 }
 
+function resolveTemplateCloneOutlineTargetCount(
+  brief: string,
+  requestedCount?: number | null,
+): number {
+  const explicit = requestedCount ?? extractSlideCountFromTemplateCloneBrief(brief);
+  if (explicit != null && Number.isFinite(explicit)) {
+    return Math.max(
+      3,
+      Math.min(TEMPLATE_CLONE_OUTLINE_MAX_SLIDES, Math.floor(explicit)),
+    );
+  }
+  const fallback = looksLikeTemplateCloneServiceIntroBrief(brief)
+    ? TEMPLATE_CLONE_SERVICE_INTRO_DEFAULT_SLIDES
+    : TEMPLATE_CLONE_GENERIC_OUTLINE_DEFAULT_SLIDES;
+  return Math.max(3, Math.min(10, fallback));
+}
+
 function topicKeywordForSynthBody(title: string): string {
   return String(title ?? '')
     .replace(/\s*(?:사이트|서비스|소개|슬라이드|덱|발표\s*자료)$/gu, '')
@@ -739,6 +778,31 @@ function synthesizeTemplateCloneSlideBody(
   };
 }
 
+function padDeterministicTemplateCloneSlides(
+  slides: TemplateCloneSlideContent[],
+  cover: string,
+  targetCount: number,
+): TemplateCloneSlideContent[] {
+  if (targetCount <= slides.length) return slides;
+  const used = new Set(slides.map((slide) => slide.title.trim().toLowerCase()));
+  const out = [...slides];
+  let sectionIdx = 0;
+  while (out.length < targetCount) {
+    let label = TEMPLATE_CLONE_GENERIC_SECTION_LABELS[sectionIdx] ?? `핵심 ${out.length + 1}`;
+    sectionIdx += 1;
+    if (used.has(label.toLowerCase())) {
+      label = `핵심 ${out.length + 1}`;
+      if (used.has(label.toLowerCase())) label = `핵심 ${sectionIdx}`;
+    }
+    used.add(label.toLowerCase());
+    out.push({
+      title: label,
+      ...synthesizeTemplateCloneSlideBody(cover, label, out.length),
+    });
+  }
+  return out;
+}
+
 export function synthesizeTemplateCloneOutlineFromBrief(input: {
   userBrief?: string | null;
   deckTitle?: string | null;
@@ -762,22 +826,7 @@ export function synthesizeTemplateCloneOutlineFromBrief(input: {
       && !SYNTH_GENERIC_TITLE_RE.test(candidate),
   );
   if (!cover) return null;
-  const requestedCount = input.slideCount ?? extractSlideCountFromTemplateCloneBrief(brief);
-  const target = Math.max(
-    3,
-    Math.min(TEMPLATE_CLONE_OUTLINE_MAX_SLIDES, Math.floor(requestedCount ?? 5)),
-  );
-  const genericSections: string[] = [
-    '개요',
-    '핵심 포인트',
-    '근거와 사례',
-    '실행 방안',
-    '고객 경험',
-    '운영과 보안',
-    '도입 로드맵',
-    '성과 지표',
-    '요약',
-  ];
+  const target = resolveTemplateCloneOutlineTargetCount(brief, input.slideCount);
   const slides: TemplateCloneSlideContent[] = [{
     title: cover,
     roleHint: 'cover',
@@ -785,7 +834,7 @@ export function synthesizeTemplateCloneOutlineFromBrief(input: {
     lead: `${topicKeywordForSynthBody(cover)} 한눈에`,
   }];
   for (let i = 1; i < target; i += 1) {
-    const label = genericSections[i - 1] ?? `핵심 ${i}`;
+    const label = TEMPLATE_CLONE_GENERIC_SECTION_LABELS[i - 1] ?? `핵심 ${i}`;
     slides.push({
       title: label,
       ...synthesizeTemplateCloneSlideBody(cover, label, i),
@@ -3147,6 +3196,19 @@ export function restyleForeignIbMagazineCover(html: string): string {
     return dest;
   }
   if (/\btitle-pill\b/i.test(body) && /\bmain-title\b/i.test(body) && capsule) return dest;
+  // 루프425 — A filled Capsule deck that lost title-pill/main-title must not
+  // be restyled into IB magazine chrome. `--coral` alone is look CSS and
+  // still needs IB→Capsule restyle (루프399). Skip only when body tokens
+  // (lime / pillar / stat) are present and the host is not a cover leftover.
+  if (
+    capsule
+    && /(?:--lime|pillar-card|stat-pill)/i.test(dest)
+    && !coverHasIbDisplayHeading(body)
+    && !coverHasIbMagazineChrome(first.attrs, body)
+    && !/\bcover\b/i.test(first.attrs)
+  ) {
+    return dest;
+  }
   const kitOwned = Boolean(biennale || neo || eightBit || capsule);
   // 루프398/399 — Kit-owned: `h1.display` OR any h1 on cover/IB leftover chrome.
   const hasDisplay = coverHasIbDisplayHeading(body);
@@ -4151,6 +4213,16 @@ function stripCapsuleCatalogDemoCopy(html: string): string {
     .replace(CAPSULE_CATALOG_DEMO_METRIC_RE, '');
 }
 
+const LEFTOVER_CATALOG_PHRASE_RE =
+  /Hartfield(?:\s*&(?:amp;)?\s*Co\.?)?|NorthPeak Industries|WACC\s*\(\s*base\s*\)|Revenue CAGR|Filebase|Northwind Studios|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|Composed in kami|52\.5200°\s*N|\[\[Author Name\]\]|this is the broadside style|Sector context(?:\s*&(?:amp;)?\s*market dynamics)?|Trading comparables analysis|Precedent transactions|Industrial automation cycle, capital flows, trading multiples|12 selected listed peers, EV\/EBITDA(?:\s*&(?:amp;)?\s*EV\/Revenue 2026E)?|M&amp;A transactions \$0\.5–5\.0B, 2022–2025|Selection criteria|Fictional illustrative sample|38\s*[×x]|Apache-2\.0|\bBYOK\b|Your agent reads a folder of\s*<code>SKILL\.md<\/code> files\.?|Open Design is the\s*(?:<strong>)?\s*(?:<\/strong>)?\s*\.?/gi;
+
+function stripLeftoverCatalogDemoPhrases(html: string): string {
+  return String(html ?? '')
+    .replace(LEFTOVER_CATALOG_PHRASE_RE, '')
+    .replace(/<p\b[^>]*>\s*(?:<strong>\s*<\/strong>)?\s*<\/p>/gi, '')
+    .replace(/<span\b[^>]*>\s*<\/span>/gi, '');
+}
+
 function stripLeftoverTemplateDemoCopy(html: string): string {
   // F4: structural slot-vs-wrapper strip replaces the growing IB class list.
   // Tables that somehow sit on a slot ancestor are still removed — they are
@@ -4990,6 +5062,7 @@ function fillSlideShell(
     body = stripLeftoverTemplateDemoCopy(body);
   }
   body = stripCapsuleCatalogDemoCopy(body);
+  body = stripLeftoverCatalogDemoPhrases(body);
 
   // Loop376 — Empty content-list / subtitle shells left behind by the
   // placeholder / title-only wipe paths render as visible orphan pills or
@@ -5207,6 +5280,10 @@ export function buildTemplateClonedDeckHtml(
   // `looksLikeCompactApiStackedDeck` expects (see 0826-N01-2 §F1-b).
   out = hoistCloneSlidesOutOfFlexTrack(out);
   out = injectTeamverSizeStyle(out);
+  // 루프425 — leftover Capsule catalog copy can sit outside filled shells
+  // (footer / unused chrome). Wipe the whole document, not just each slide.
+  out = stripCapsuleCatalogDemoCopy(out);
+  out = stripLeftoverCatalogDemoPhrases(out);
   return out.trim() || null;
 }
 
@@ -5508,11 +5585,16 @@ export function scrubLeftoverCatalogExampleHtml(
   const title = fromBrief[0]?.title || hangul || '슬라이드';
   const slides = fromBrief.length > 0
     ? fromBrief
-    : [
-      { title, body: '…' },
-      { title: '개요', body: '…' },
-      { title: '핵심 포인트', body: '…\n…\n…' },
-      { title: '다음 단계', body: '…' },
+    : synthesizeTemplateCloneOutlineFromBrief({
+      userBrief: brief ?? '',
+      deckTitle: title,
+    })?.slides ?? [
+      {
+        title,
+        roleHint: 'cover',
+        kicker: 'OVERVIEW',
+        lead: `${topicKeywordForSynthBody(title)} 한눈에`,
+      },
     ];
   return buildTemplateClonedDeckHtml(dest, slides, {
     title,
@@ -6227,13 +6309,32 @@ export function synthesizeTemplateCloneSlidesFromFreeFormBrief(options: {
     return out.slice(0, 20);
   }
 
-  // Short free-form ask: placeholder shells only. AI content-fill turn writes
-  // real copy next — never dump "만들어줘" instructions into titles/subtitles.
+  // Short free-form ask: dense topical outline (루프425). LOOK seed is the
+  // deliverable when fill is skipped — never leave `…` placeholder cards.
+  const synth = synthesizeTemplateCloneOutlineFromBrief({
+    userBrief: brief,
+    deckTitle: options.deckTitle ?? title,
+  });
+  if (synth?.slides.length) return synth.slides;
   return [
-    { title, body: '…' },
-    { title: '개요', body: '…' },
-    { title: '핵심 포인트', body: '…\n…\n…' },
-    { title: '다음 단계', body: '…' },
+    {
+      title,
+      roleHint: 'cover',
+      kicker: 'OVERVIEW',
+      lead: `${topicKeywordForSynthBody(title)} 한눈에`,
+    },
+    {
+      title: '개요',
+      ...synthesizeTemplateCloneSlideBody(title, '개요', 1),
+    },
+    {
+      title: '핵심 포인트',
+      ...synthesizeTemplateCloneSlideBody(title, '핵심 포인트', 2),
+    },
+    {
+      title: '다음 단계',
+      ...synthesizeTemplateCloneSlideBody(title, '다음 단계', 3),
+    },
   ];
 }
 
@@ -6316,7 +6417,10 @@ export function resolveTemplateCloneSlidesForDeterministicFill(options: {
     .trim();
   const resolved = resolveTemplateCloneSlidesFromBrief(options);
   const slideCount = options.slideCount
-    ?? extractSlideCountFromTemplateCloneBrief(brief);
+    ?? extractSlideCountFromTemplateCloneBrief(brief)
+    ?? (looksLikeTemplateCloneServiceIntroBrief(brief)
+      ? TEMPLATE_CLONE_SERVICE_INTRO_DEFAULT_SLIDES
+      : null);
   const ellipsisStarter = resolved.length > 0
     && resolved.every((slide) => slideNeedsDeterministicBody(slide))
     && resolved.every((slide, index) => (
@@ -6333,7 +6437,7 @@ export function resolveTemplateCloneSlidesForDeterministicFill(options: {
   }
   if (resolved.length === 0) return [];
   const cover = resolved[0]?.title ?? options.deckTitle ?? '슬라이드';
-  return resolved.map((slide, index) => {
+  const densified = resolved.map((slide, index) => {
     if (!slideNeedsDeterministicBody(slide)) return slide;
     if (index === 0) {
       const next: TemplateCloneSlideContent = {
@@ -6350,4 +6454,7 @@ export function resolveTemplateCloneSlidesForDeterministicFill(options: {
       ...synthesizeTemplateCloneSlideBody(cover, slide.title, index),
     };
   });
+  return slideCount != null
+    ? padDeterministicTemplateCloneSlides(densified, cover, slideCount)
+    : densified;
 }

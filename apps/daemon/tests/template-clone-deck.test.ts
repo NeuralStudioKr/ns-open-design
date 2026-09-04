@@ -484,6 +484,17 @@ describe('seedTemplateClonedDeckOnServer', () => {
     expect(source).toContain('contentFilled: true');
   });
 
+  it('루프425 — LOOK seed always uses the dense helper (not ellipsis FromBrief)', async () => {
+    const source = await readFile(
+      new URL('../src/template-clone-deck.ts', import.meta.url),
+      'utf8',
+    );
+    expect(source).toContain('resolveTemplateCloneSlidesForDeterministicFill');
+    expect(source).toContain('looksLikeTemplateCloneServiceIntroBrief');
+    expect(source).toContain('TEMPLATE_CLONE_SERVICE_INTRO_DEFAULT_SLIDES');
+    expect(source).not.toContain('resolveTemplateCloneSlidesFromBrief');
+  });
+
   it('루프419 — Capsule + teamver brief fills 8-10 dense slides on the server', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'od-template-clone-capsule-'));
     const pluginDir = path.join(root, 'plugin');
@@ -558,6 +569,79 @@ describe('seedTemplateClonedDeckOnServer', () => {
     expect(deck).not.toContain('The Journey Continues');
     expect(deck).not.toContain('340%');
     expect(deck).not.toContain('12.4M');
+    expect(deck).not.toContain('…');
+  });
+
+  it('루프425 — Capsule service-intro without 8-10 hint still fills 8 dense slides', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'od-template-clone-capsule-8-'));
+    const pluginDir = path.join(root, 'plugin');
+    const projectsRoot = path.join(root, 'projects');
+    const dataDir = path.join(root, '.od');
+    await mkdir(pluginDir, { recursive: true });
+    await mkdir(projectsRoot, { recursive: true });
+
+    const capsulePath = path.resolve(
+      process.cwd(),
+      '../../plugins/_official/examples/html-ppt-zhangzara-capsule/example.html',
+    );
+    const exampleHtml = await readFile(capsulePath, 'utf8');
+    await writeFile(path.join(pluginDir, 'example.html'), exampleHtml, 'utf8');
+
+    const db = openDatabase(root, { dataDir });
+    upsertInstalledPlugin(db, {
+      id: 'html-ppt-zhangzara-capsule',
+      title: 'Html Ppt Zhangzara Capsule',
+      version: '0.0.0',
+      sourceKind: 'local',
+      source: pluginDir,
+      trust: 'bundled',
+      capabilitiesGranted: [],
+      manifest: {
+        name: 'html-ppt-zhangzara-capsule',
+        title: 'Html Ppt Zhangzara Capsule',
+        version: '0.0.0',
+        od: { preview: { entry: 'example.html' } },
+      } as any,
+      fsPath: pluginDir,
+      installedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const written = new Map<string, string>();
+    const result = await seedTemplateClonedDeckOnServer(
+      {
+        db,
+        projectsRoot,
+        projectId: 'proj-capsule-8',
+        ensureProject: async () => {
+          const dir = path.join(projectsRoot, 'proj-capsule-8');
+          await mkdir(dir, { recursive: true });
+          return dir;
+        },
+        writeProjectFile: async (_root, _id, name, body) => {
+          written.set(name, typeof body === 'string' ? body : body.toString('utf8'));
+          return { name };
+        },
+      },
+      {
+        pluginId: 'html-ppt-zhangzara-capsule',
+        templateTitle: 'Html Ppt Zhangzara Capsule',
+        userInstruction: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+        deckTitle: '슬라이드',
+        contentFillMode: 'prompt-fill',
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.slideCount).toBe(8);
+    const deck = written.get('deck.html') ?? '';
+    expect(deck).toContain('--coral');
+    expect(deck).toContain('--lime');
+    expect(deck).toMatch(/팀버|Teamver/i);
+    expect(deck).toContain('직접적인 가치');
+    expect(deck).not.toContain('The Journey Continues');
+    expect(deck).not.toContain('340%');
     expect(deck).not.toContain('…');
   });
 

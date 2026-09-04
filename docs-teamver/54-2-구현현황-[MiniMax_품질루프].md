@@ -42,6 +42,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프425 — deterministic LOOK fill 밀도 보강
+
+체감: MiniMax보다 deterministic이 맞지만, LOOK 시드가 `…` 4장/5장으로 남거나 persist가 Capsule을 IB로 덮음.
+
+수정: LOOK도 dense helper · 서비스 소개 기본 8장 · 문서 전체 leftover 스크럽 · Capsule IB restyle skip. `=deterministic` 유지.
+
 ### 루프424 — staging env를 deterministic으로 재고정
 
 체감: 템플릿 선택 후에도 pure-prompt처럼 모델이 새 HTML을 만들며 motif/SVG/장수/배치가 흔들림.

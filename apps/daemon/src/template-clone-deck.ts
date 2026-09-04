@@ -13,11 +13,12 @@ import {
   attrsLookLikeDeckOrTemplateSlideHost,
   buildTemplateClonedDeckHtml,
   looksLikeLeftoverTemplateDemoDeck,
+  looksLikeTemplateCloneServiceIntroBrief,
   pickPluginPreviewHtmlPath,
   resolveTemplateCloneSlideCountHint,
   resolveTemplateCloneSlidesForDeterministicFill,
-  resolveTemplateCloneSlidesFromBrief,
   sanitizeTemplateCloneDeckTitle,
+  TEMPLATE_CLONE_SERVICE_INTRO_DEFAULT_SLIDES,
 } from '@open-design/contracts';
 
 import { ArtifactPublicationBlockedError } from './artifact-publication-guard.js';
@@ -386,14 +387,21 @@ export async function seedTemplateClonedDeckOnServer(
     // title ("Html Ppt Zhangzara Daisy Days") when synthesizing free-form.
     deckTitle: sanitizeTemplateCloneDeckTitle(input.deckTitle),
   };
-  const slides = contentFillMode === 'deterministic-fill'
-    ? resolveTemplateCloneSlidesForDeterministicFill({
-      ...briefOpts,
-      ...(countHint != null ? { slideCount: countHint } : {}),
-    })
-    : resolveTemplateCloneSlidesFromBrief(briefOpts);
-  const honorSlides = countHint != null && countHint <= 10 && slides.length > countHint
-    ? slides.slice(0, countHint)
+  const briefText = [input.sourceBrief ?? '', input.userInstruction ?? '']
+    .filter(Boolean)
+    .join('\n\n');
+  // 루프425 — LOOK seed (prompt-fill) uses the same dense helper. If MiniMax
+  // never runs or fails, the seed is the deliverable — no `…` cards.
+  const honorCount = countHint
+    ?? (looksLikeTemplateCloneServiceIntroBrief(briefText)
+      ? TEMPLATE_CLONE_SERVICE_INTRO_DEFAULT_SLIDES
+      : null);
+  const slides = resolveTemplateCloneSlidesForDeterministicFill({
+    ...briefOpts,
+    ...(honorCount != null ? { slideCount: honorCount } : {}),
+  });
+  const honorSlides = honorCount != null && honorCount <= 10 && slides.length > honorCount
+    ? slides.slice(0, honorCount)
     : slides;
   // Content-derived title wins. Never fall back to plugin/template marketing
   // names — those used to land on the cover when the brief was empty.
@@ -401,12 +409,12 @@ export async function seedTemplateClonedDeckOnServer(
     sanitizeTemplateCloneDeckTitle(slides[0]?.title)
     || sanitizeTemplateCloneDeckTitle(input.deckTitle)
     || '슬라이드';
-  // Content length wins. Only pass maxSlides when the user explicitly hinted
-  // a count — never pad to the template's demo page count (discouraged).
+  // Honor an explicit count, or the service-intro default of 8. Never pad to
+  // the template's demo page count.
   const cloned = buildTemplateClonedDeckHtml(loaded.html, honorSlides, {
     title: deckTitle,
     templateId: loaded.templateId,
-    ...(countHint != null ? { maxSlides: countHint } : {}),
+    ...(honorCount != null ? { maxSlides: honorCount } : {}),
   });
   if (!cloned) {
     return {

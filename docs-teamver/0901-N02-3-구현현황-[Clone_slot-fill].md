@@ -65,6 +65,7 @@
 | **루프420** dump sanitize · embed localStorage 무시 | ☑ |
 | **루프421** filled 복구 · never MiniMax overwrite · Capsule 데모 스크럽 · deterministic 기본 유지 | ☑ |
 | **루프422** 고른 템플릿은 pure-prompt여도 LOOK seed + 서버 fill | ☑ |
+| **루프425** LOOK도 dense fill · 서비스 소개 기본 8장 · Capsule leftover/IB 가드 | ☑ |
 | **루프366** section `#stage` hoist · contracts dist rebuild | ☑ web transform-driven 19/19 |
 | MiniMax 실키 E2E | ☑ 가드 있음 · 키 없으면 skip (`template-clone-minimax-live.e2e`) |
 
@@ -113,6 +114,7 @@
 
 | 일자 | 내용 |
 |------|------|
+| 2026-09-04 | 루프425 — LOOK도 dense helper · 서비스 소개 기본 8장 · 문서 leftover 스크럽 · Capsule IB restyle skip. |
 | 2026-09-04 | 루프422 — 고른 템플릿은 pure-prompt여도 LOOK seed + 서버 fill. MiniMax kit-spec-only는 Capsule을 적용하지 못함. |
 | 2026-09-04 | 루프421 — filled 덱 복구 · LOOK/filled면 MiniMax 금지 · Capsule 데모 스크럽 · deterministic 기본 유지. |
 | 2026-09-04 | 루프420 — dump sanitize · embed leftover localStorage 무시. 기본 `pure-prompt` 재전환은 421에서 되돌림. |
