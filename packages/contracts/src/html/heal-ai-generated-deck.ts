@@ -3885,7 +3885,7 @@ export function centerSparseTitleSlideHeading(html: string): string {
   let out = source;
   const patches: Array<{ start: number; end: number; replacement: string }> = [];
   for (const slide of slides) {
-    if (!/\bslide-title\b/i.test(slide.attrs)) continue;
+    if (!/\bslide-title\b/i.test(slide.attrs) && !/\bcover\b/i.test(slide.attrs)) continue;
     const inner = out.slice(slide.openEnd, slide.bodyEnd);
     if (/<(?:ul|ol|figure|table|img|svg|video)\b/i.test(inner)) continue;
     const h1Re = /<h1\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/h1>/i;

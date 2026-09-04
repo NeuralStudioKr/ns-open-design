@@ -38,6 +38,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프427 — leftover IB 표지를 Neutral 본문에 맞춰 재구성
+
+체감: 표지가 제목만 + footer 메아리 + 정의 안 된 `--paper`. 2장부터 Neutral.
+
+수정: official look 없는 leftover IB 크롬을 Neutral 표지(01·제목·2장 리드)로 재구성. `학습 노트`/KPI 발명 없음.
+
 ### 루프426 / C13 — catalog peer-fit · sticky chrome deny
 
 체감: peer-fit이 postit에만 묶이고, allowlist가 mini-note/closing-accent를 peer로 승격할 수 있음.
@@ -2108,7 +2114,14 @@ bare `class="slide"` 실cover 앞 title splash가 남던 구멍. substantive + s
 | contracts pretest: exactOptionalPropertyTypes TS2379 봉쇄 | ☑ 루프263 |
 | 실제 MiniMax 생성 라운드트립(브라우저) | ☐ 이 환경에서 managed MiniMax 키 없음. `minimax-live-e2e.gate.test.ts`가 키 부재를 고정 |
 
-## 이번 루프 (루프422 · 고른 템플릿은 LOOK seed)
+## 이번 루프 (루프427 · leftover IB 표지 → Neutral 구성)
+
+- [x] leftover IB + Neutral 본문 fixture → 01 + 제목 + 2장 리드
+- [x] official look / Daisy는 재구성하지 않음
+- [x] 멱등 · 2장 리드 유지 · `학습 노트`/KPI 미발명
+- [ ] FileViewer에서 사용자 deck.html 표지 확인
+
+## 직전 루프 (루프422 · 고른 템플릿은 LOOK seed)
 
 - [x] `shouldSkipTemplateCloneSeed(true)` → false
 - [x] `pure-prompt` + 템플릿 → 서버 fill, MiniMax queue 없음

@@ -149,6 +149,17 @@ describe('루프350 · centerSparseTitleSlideHeading', () => {
     expect(out).not.toMatch(/<h1[^>]*text-align/i);
   });
 
+  it('centers a lone h1 on leftover .cover hosts the same way', () => {
+    const html = [
+      '<section class="slide cover">',
+      '<div data-od-slide-flow=""><h1 class="display">팀버 소개</h1></div>',
+      '</section>',
+    ].join('');
+    const out = centerSparseTitleSlideHeading(html);
+    expect(out).toMatch(/data-od-slide-flow[^>]*text-align\s*:\s*center/i);
+    expect(out).toContain('팀버 소개');
+  });
+
   it('leaves a title slide with a lede paragraph alone', () => {
     const html = [
       '<section class="slide slide-title">',

@@ -11,6 +11,7 @@ import {
 import { healDeckHtmlForStandaloneExport } from '../src/html/deckPdfExport';
 import {
   healOfficialMagazineLayoutDensity,
+  healSparseLeftoverCoverComposition,
   healSparseOfficialMagazineCover,
   repairCompactFirstFillMarkup,
   stripEmptyOfficialTextChromeMotifs,
@@ -693,5 +694,94 @@ describe('heal official magazine layout density', () => {
     expect(healed).toMatch(/class="chart"/);
     expect(healed).toMatch(/class="qbody"/);
     expect(healed).not.toMatch(/학습 노트|English Speaking Tips/i);
+  });
+});
+
+/**
+ * User report 2026-09-04 — leftover IB magazine cover on Neutral body slides.
+ * Title-only `h1.display` + footer echoing the title + undefined `--paper`.
+ * Official look CSS is absent, so healSparseOfficialMagazineCover no-ops.
+ */
+const LEFTOVER_IB_NEUTRAL_COVER = `<!doctype html>
+<html lang="ko"><head>
+  <meta charset="utf-8" />
+  <style data-od-deck-fixed-canvas-pin="">.slide{width:1920px!important;height:1080px!important}</style>
+</head>
+<body style="margin:0">
+<section class="slide cover" style="width:1920px;height:1080px;box-sizing:border-box;overflow:visible;position:relative;background:var(--paper);color:var(--ink);padding:56px 72px 48px;border-top:6px solid var(--ink);display:grid;grid-template-rows:auto 1fr auto">
+  <div data-od-slide-flow="" style="display:grid;grid-template-rows:auto 1fr auto;overflow:visible;color:var(--ink);padding:56px 72px 48px;box-sizing:border-box">
+    <div class="body" style="display:grid;grid-template-columns:1fr;gap:48px;align-items:end;padding:24px 0 16px">
+      <div><h1 class="display">팀버 소개</h1></div>
+    </div>
+    <footer class="foot" style="display:flex;justify-content:space-between;align-items:center;padding-top:14px;border-top:1px solid var(--rule)">
+      <span class="conf">팀버 소개</span>
+    </footer>
+  </div>
+</section>
+<section class="slide" data-screen-label="02 What is Teamver" style="width:1920px;height:1080px;box-sizing:border-box;padding:80px 88px;background:#0f172a;color:#f8fafc;display:flex;flex-direction:column;justify-content:center;font-family:'Inter','Pretendard','Noto Sans KR',sans-serif">
+  <div data-od-slide-flow style="display:flex;flex-direction:column;justify-content:center;font-family:'Inter','Pretendard','Noto Sans KR',sans-serif;color:#f8fafc;padding:80px 88px;box-sizing:border-box">
+    <p style="font:600 20px/1 sans-serif;letter-spacing:.12em;color:#38bdf8;margin:0 0 24px">02</p>
+    <h2 style="font:800 64px/1.05 sans-serif;margin:0 0 28px">팀단위로 일하는 사람들을 위한 새로운 협업 OS</h2>
+    <p style="font:28px/1.6 sans-serif;margin:0;color:#cbd5e1;max-width:38rem">Teamver(팀버)는 프로젝트·조직·커뮤니케이션 데이터를 하나로 묶어, 분산된 팀이 한 화면에서 협업하도록 설계된 B2B SaaS 협업 플랫폼입니다.</p>
+  </div>
+</section>
+<section class="slide" data-screen-label="03 Core Value" style="width:1920px;height:1080px;background:#f8fafc;color:#0f172a;font-family:'Inter','Pretendard',sans-serif">
+  <p>03</p>
+  <h2>도구 7개 · 로그인 7번</h2>
+  <div>72%</div>
+</section>
+</body></html>`;
+
+describe('heal leftover IB cover on Neutral body (loop427)', () => {
+  it('does not rebuild the leftover Neutral cover through the official-look gate', () => {
+    expect(healSparseOfficialMagazineCover(LEFTOVER_IB_NEUTRAL_COVER, '팀버 소개')).toBe(
+      LEFTOVER_IB_NEUTRAL_COVER,
+    );
+  });
+
+  it('composes the leftover cover with the slide-2 product lead and Neutral paint', () => {
+    const healed = healOfficialMagazineLayoutDensity(LEFTOVER_IB_NEUTRAL_COVER, '팀버 소개');
+    const cover = healed.slice(
+      healed.search(/<section\b[^>]*\bcover\b/i),
+      healed.search(/<section\b[^>]*data-screen-label="02/i),
+    );
+    expect(cover).toContain('팀버 소개');
+    expect(cover).toContain('Teamver(팀버)는 프로젝트·조직·커뮤니케이션');
+    expect(cover).toContain('data-od-cover-composed="neutral"');
+    expect(cover).toMatch(/background:#0f172a/);
+    expect(cover).toMatch(/color:#f8fafc/);
+    expect(cover).toMatch(/font-family:'Inter','Pretendard'/);
+    expect(cover).toMatch(/>01</);
+    expect(cover).not.toMatch(/var\(--paper\)/);
+    expect(cover).not.toMatch(/class="conf"/);
+    expect(cover).not.toMatch(/학습 노트|Working notes/i);
+    expect(cover).not.toMatch(/72%|2\.3x|100%/);
+    expect(cover).not.toMatch(/class="mast"|class="ribbon"|class="slide-inner"/);
+    expect(healed).toContain('data-od-deck-fixed-canvas-pin');
+    expect(healed).toContain('팀단위로 일하는 사람들을 위한');
+    expect(healed).toContain('72%');
+  });
+
+  it('is idempotent and does not steal the lead off slide 2', () => {
+    const once = healSparseLeftoverCoverComposition(LEFTOVER_IB_NEUTRAL_COVER, '팀버 소개');
+    const twice = healSparseLeftoverCoverComposition(once, '팀버 소개');
+    expect(twice).toBe(once);
+    expect((once.match(/Teamver\(팀버\)는 프로젝트/g) ?? []).length).toBe(2);
+  });
+
+  it('does not invent a Neutral slate cover on Daisy official look', () => {
+    const daisy = join(
+      dirname(fileURLToPath(import.meta.url)),
+      '../../../plugins/_official/examples/html-ppt-zhangzara-daisy-days/example.html',
+    );
+    const sparse = `<!doctype html><html lang="ko"><body>
+<section class="slide slide-title" style="width:1920px;height:1080px">
+<h1>Linux Internals for Senior Engineers</h1></section>
+<section class="slide"><h2>Body</h2><p>Keep this page.</p></section>
+</body></html>`;
+    const assets = extractOfficialDeckLookAssets(readFileSync(daisy, 'utf8'));
+    const merged = mergeOfficialDeckLookCss(sparse, assets);
+    const healed = healSparseLeftoverCoverComposition(merged, 'Linux internals explainer');
+    expect(healed).toBe(merged);
   });
 });
