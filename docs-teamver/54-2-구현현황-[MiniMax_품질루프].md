@@ -37,6 +37,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프466 — Block Frame clone 조기 종료 품질 가드
+
+체감: 사용자가 “clone 하고서 바로 종료하는 것 같다”고 보고. Block Frame 기반 결과가 MiniMax 없이 완료되면서 `NEO-...-STYLE`, `Image Placeholder`, `Get Started`, `J. Doe`, `Revenue Growth` 같은 데모 문구와 UI 샘플을 남길 수 있었다.
+
+현재 시점 기준 판단: deterministic clone이 `contentFilled=true`이면 FE가 AI 후속 생성을 억제하는 것은 의도된 속도 최적화다. 따라서 deterministic 결과가 완성품 조건을 만족하지 못하면 그 시점에서 막아야 한다.
+
+수정: `.list-num`은 01/02 번호 배지로 유지하고 본문은 옆 `<span>`에 채움. Block Frame `.visual-box` / `.data-box` / `.team-card` / `.nb-btn` / `.close-btn` 슬롯을 직접 채우며, `NEO-<br>BRUTALISM<br>STYLE`류 제목은 전체 교체한다. cross-template leftover denylist와 Block Frame 전용 회귀 테스트를 추가했다.
+
+검증: contracts `template-clone-fill` 160 · daemon `template-clone-deck` 27 · web `templateCloneContentFill` 36.
+
 ### 루프465 — Block Frame Clone letterbox 표지 사이즈
 
 체감: LOOK seed 표지 hero가 cream 캔버스 우하단에 작게 보임.
