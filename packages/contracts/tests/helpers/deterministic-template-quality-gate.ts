@@ -8,7 +8,7 @@
  *   3) Canvas — fixed 1920×1080 style is present (width:1920px + min-height 1080)
  *   4) Slide count — `listTemplateCloneSlideShells(cloned).length === expected`
  *      + brief-derived topic (`팀버` / `Teamver`)
- *   5) Layout (루프471) — class-like motif tokens appear as live tags, and the
+ *   5) Layout (루프472) — class-like motif tokens appear as live tags, and the
  *      first shell still has a heading. Pixel screenshots stay out of this gate.
  *
  * The helper delegates deck build to `buildTemplateClonedDeckHtml` with a
@@ -195,8 +195,8 @@ export function assertDeterministicTemplateQualityGate(
   expect(shells.length, `${tag} slide count`).toBe(spec.expectedSlideCount);
   expect(cloned, `${tag} 팀버/Teamver topic`).toMatch(/팀버|Teamver/i);
 
-  // Axis 5 — 루프471 layout: live motif tags + a title host.
-  const layoutTag = `[루프471:${spec.name}]`;
+  // Axis 5 — 루프472 layout: live motif tags + a title host.
+  const layoutTag = `[루프472:${spec.name}]`;
   for (const cls of motifClassTokens(spec)) {
     if (LAYOUT_SKIP_LIVE_TOKENS.has(cls)) continue;
     const liveTagRe = new RegExp(
@@ -221,7 +221,7 @@ export function assertDeterministicTemplateQualityGate(
  * 루프450–467: Capsule … Sakura / Broadside / 8-bit / Scatterbrain
  * 루프469: Long Table / Editorial unique-role
  * 루프470: remaining 10-shell official Zhangzara catalogue kits
- * 루프471: axis 5 live motif tags + cover heading host
+ * 루프472: axis 5 live motif tags + cover heading host
  */
 export const ZHANGZARA_QUALITY_GATE_SPECS: readonly TemplateQualityGateSpec[] = [
   {
