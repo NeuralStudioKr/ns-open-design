@@ -38,11 +38,15 @@ import {
   healCobaltLeftoverCatalogCopy,
   healSakuraLeftoverCatalogCopy,
   healLongTableLeftoverCatalogCopy,
+  healStudioLeftoverCatalogCopy,
+  healCreativeLeftoverCatalogCopy,
   healCobaltOrphanDataStats,
   injectCobaltAbsoluteSlotCss,
   officialLookIsCobaltGrid,
   officialLookIsSakuraChroma,
   officialLookIsLongTable,
+  officialLookIsStudio,
+  officialLookIsCreativeMode,
   rewriteRawUrlSiteCoverTitles,
   scrubCobaltFieldOfficeDemoSlots,
   healSparseDeckCoverLayout,
@@ -812,6 +816,156 @@ describe('루프419 Capsule deterministic quality gate', () => {
       'utf8',
     );
     expect(healLongTableLeftoverCatalogCopy(official)).toBe(official);
+  });
+
+  it('루프476: Studio Hangul clone scrubs catalog leftover', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-studio/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(officialLookIsStudio(html)).toBe(true);
+    expect(looksLikeLeftoverTemplateDemoDeck(html)).toBe(true);
+    const slides = resolveTemplateCloneSlidesForDeterministicFill({
+      userInstruction: TEAMVER_SERVICE_INTRO_BRIEF,
+      slideCount: 10,
+    });
+    const cloned = buildTemplateClonedDeckHtml(html, slides, {
+      title: '팀버 소개',
+      templateId: 'html-ppt-zhangzara-studio',
+      maxSlides: 10,
+      brief: TEAMVER_SERVICE_INTRO_BRIEF,
+    })!;
+    expect(cloned).toBeTruthy();
+    expect(listTemplateCloneSlideShells(cloned).length).toBe(10);
+    expect(cloned).not.toMatch(/WHO WE ARE|Our studio pairs|Years of practice|\[Studio Name\]|A DISTINCTIVE VOICE/i);
+    expect(cloned).toMatch(/팀버|Teamver/i);
+    expect(cloned).toContain('stat-card');
+  });
+
+  it('루프476: Creative Mode Hangul clone scrubs catalog leftover', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-creative-mode/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(officialLookIsCreativeMode(html)).toBe(true);
+    expect(looksLikeLeftoverTemplateDemoDeck(html)).toBe(true);
+    const slides = resolveTemplateCloneSlidesForDeterministicFill({
+      userInstruction: TEAMVER_SERVICE_INTRO_BRIEF,
+      slideCount: 10,
+    });
+    const cloned = buildTemplateClonedDeckHtml(html, slides, {
+      title: '팀버 소개',
+      templateId: 'html-ppt-zhangzara-creative-mode',
+      maxSlides: 10,
+      brief: TEAMVER_SERVICE_INTRO_BRIEF,
+    })!;
+    expect(cloned).toBeTruthy();
+    expect(listTemplateCloneSlideShells(cloned).length).toBe(8);
+    expect(cloned).not.toMatch(
+      /FLIP THE|Lift In Engagement|Throughput Multiplier|Layer alpha|VALUES ARE PLACEHOLDER|eight pages/i,
+    );
+    expect(cloned).toMatch(/팀버|Teamver/i);
+    expect(cloned).toContain('poster');
+  });
+
+  it('루프476: persist leftover refill replaces Studio catalog body', async () => {
+    const look = [
+      '<style data-od-official-look-css>',
+      ':root { --c-accent:#f5d200; --c-bg:#1c1c1c; }',
+      '.slide--cover .cover-meta { position:absolute; }',
+      '.stat-card { display:block; }',
+      '</style>',
+    ].join('');
+    const html = [
+      '<section class="slide dark slide--cover">',
+      '<h1 class="display">PROPOSAL</h1>',
+      '<div class="cover-meta"><div class="cover-meta-col">[Studio Name] × [Client Name]</div></div>',
+      '</section>',
+      '<section class="slide light slide--chapter">',
+      '<div class="chapter-num">01 / WHO WE ARE</div>',
+      '<h1 class="h1">WHO WE ARE</h1>',
+      '</section>',
+      '<section class="slide light slide--split">',
+      '<p class="lead">Our studio pairs strategic thinking with craft-level execution.</p>',
+      '<h2>개요</h2>',
+      '</section>',
+      '<section class="slide light slide--stats">',
+      '<div class="stat-card"><div class="stat-value">12</div>',
+      '<div class="stat-label">Years of practice</div>',
+      '<div class="stat-note">[Studio Name] founded</div></div>',
+      '</section>',
+      look,
+    ].join('');
+    expect(officialLookIsStudio(html)).toBe(true);
+    expect(looksLikeLeftoverTemplateDemoDeck(html)).toBe(true);
+    const healed = healStudioLeftoverCatalogCopy(
+      html,
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+    );
+    expect(healed).not.toMatch(/WHO WE ARE|Our studio pairs|Years of practice|\[Studio Name\]/i);
+    expect(healed).toMatch(/12/);
+    expect(healed).toContain('팀버');
+    expect(healed).toMatch(/[가-힣]{2,}/);
+
+    const official = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-studio/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(healStudioLeftoverCatalogCopy(official)).toBe(official);
+  });
+
+  it('루프476: persist leftover refill replaces Creative Mode catalog body', async () => {
+    const look = [
+      '<style data-od-official-look-css>',
+      ':root { --cream:#F4EFE6; --orange:#FF5A1F; }',
+      '.poster { position:absolute; }',
+      'font-family: Archivo, sans-serif;',
+      '</style>',
+    ].join('');
+    const html = [
+      '<section class="s1" data-screen-label="01 Title">',
+      '<div class="title display"><span class="row">CREATIVE</span></div>',
+      '<div class="footnote">A presentation template — eight pages, eight layouts. Replace freely.</div>',
+      '<div class="poster"></div>',
+      '</section>',
+      '<section class="s3" data-screen-label="03 Stats">',
+      '<div class="cell c1"><div class="num">42%</div>',
+      '<div class="lbl">Lift In Engagement</div>',
+      '<div class="desc">Placeholder caption describing the metric.</div></div>',
+      '</section>',
+      '<section class="s4" data-screen-label="04 Diagram">',
+      '<h1 class="h display">개요</h1>',
+      '<div class="legend"><div class="row"><span class="sw"></span> Layer alpha — interface</div></div>',
+      '</section>',
+      look,
+    ].join('');
+    expect(officialLookIsCreativeMode(html)).toBe(true);
+    expect(looksLikeLeftoverTemplateDemoDeck(html)).toBe(true);
+    const healed = healCreativeLeftoverCatalogCopy(
+      html,
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+    );
+    expect(healed).not.toMatch(/eight pages|Lift In Engagement|Layer alpha|Placeholder caption/i);
+    expect(healed).toMatch(/42%/);
+    expect(healed).toContain('팀버');
+
+    const official = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-creative-mode/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(healCreativeLeftoverCatalogCopy(official)).toBe(official);
   });
 
   it('loop421 — empty-brief padding synthesizes card bodies instead of empty shells', () => {

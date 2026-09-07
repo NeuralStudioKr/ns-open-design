@@ -4034,6 +4034,8 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = healCobaltLeftoverCatalogCopy(next, brief);
   next = healSakuraLeftoverCatalogCopy(next, brief);
   next = healLongTableLeftoverCatalogCopy(next, brief);
+  next = healStudioLeftoverCatalogCopy(next, brief);
+  next = healCreativeLeftoverCatalogCopy(next, brief);
   next = healCobaltOrphanDataStats(next);
   next = enrichSparseCobaltCover(next, brief);
   next = restyleBiennaleSparseChapterBodies(next);
@@ -4594,6 +4596,16 @@ function stripBlockFrameNeoCatalogDemoCopy(html: string): string {
   return String(html ?? '').replace(BLOCK_FRAME_NEO_DEMO_COPY_RE, '');
 }
 
+/** 루프476 — Studio / Creative Mode catalog leftovers on Hangul LOOK seeds. */
+const STUDIO_CREATIVE_DEMO_COPY_RE =
+  /WHO WE ARE|GREAT WORK DOESN'T HAPPEN BY ACCIDENT|WE BUILD WHAT OTHERS PLAN|Our studio pairs strategic thinking with craft-level execution\.?|Every project begins with a question:[\s\S]{0,160}?work itself\.?|Strategy before aesthetics|Constraints as creative fuel|Delivery on schedule, not on someday|Years of practice|Projects delivered|Continents active|\[Studio Name\](?:\s*[·x×]\s*\[Client Name\])?|\[Client Name\]|\[Presentation Title\]|\[Caption[^\]]*\]|\[City [ABC]\]|\[Y-\d\]|WHAT WE OFFER|A focused set of services built for ambitious[\s\S]{0,120}?challenges\.?|Brand strategy and identity systems|Campaign and content direction|Digital experience design and build|Motion and video production|Ongoing creative partnership and retainer|THEY DON'T JUST MAKE THINGS[\s\S]{0,80}?WORK\.?|GENERIC IDENTITY,?\s*FORGETTABLE CAMPAIGNS|A brand built by committee[\s\S]{0,160}?category norms\.?|No clear point of view|Inconsistent execution across touchpoints|Campaigns that launched and disappeared|A DISTINCTIVE VOICE PEOPLE RECOGNIZE|A brand with a defined perspective[\s\S]{0,160}?trust\.?|Ownable visual and verbal territory|System that scales without diluting|Campaigns that created lasting recall|BOLD IDEAS DESERVE BOLD EXECUTION|PROJECTS BY YEAR|Count\s*·\s*\[Studio Name\] Portfolio|IMAGE PLACEHOLDER|Studio Presentation|Our Work|THE STUDIO|By the Numbers|FLIP THE(?:\s*<br\s*\/?>\s*|\s+)SWITCH\.?|A presentation template\s*—\s*eight pages, eight layouts\.?|Generic placeholder copy throughout\.?\s*Replace freely\.?|Placeholder paragraph for an opening statement[\s\S]{0,200}?slides\.?|A second paragraph balances the page[\s\S]{0,160}?visual\.?|End with a third line[\s\S]{0,160}?here yet\.?|PRESS\s*(?:&nbsp;)?\s*PLAY|Lift In Engagement|Throughput Multiplier|Active Placeholders|Total Sample Value|Placeholder caption describing the metric[\s\S]{0,120}?matters\.?|A short generic explainer line[\s\S]{0,80}?punchy\.?|Filler descriptor about the count[\s\S]{0,80}?breathes\.?|Closing stat caption[\s\S]{0,80}?small\.?|FOUR FIGURES,?\s*ONE\s*STORY\.?|Layer alpha\s*—\s*interface|Layer beta\s*—\s*orchestration|Layer gamma\s*—\s*services|Layer delta\s*—\s*substrate|Generic placeholder description for the schematic[\s\S]{0,200}?template\.?|PLACEHOLDER METRIC,?\s*BY QUARTER\.?|FIG\.\s*01\s*—\s*VALUES ARE PLACEHOLDER[\s\S]{0,80}?INTERNAL\.?|Series [ABC]|A FOUR-STEP PROCESS\.?|Generic placeholder description for the first step[\s\S]{0,120}?cleanly\.?|Filler text outlining the second step[\s\S]{0,100}?template\.?|Third step placeholder[\s\S]{0,100}?slide\.?|Closing step copy[\s\S]{0,100}?row\.?|FY(?:\s|&nbsp;)+PLACEHOLDER|CHAPTER(?:\s|&nbsp;)+OPENER|A PRESENTATION TEMPLATE|SYSTEM(?:\s|&nbsp;)+DIAGRAM|SCHEMATIC(?:\s|&nbsp;)+\/*\s*A|QUARTERLY(?:\s|&nbsp;)+READOUT|HOW(?:\s|&nbsp;)+IT(?:\s|&nbsp;)+WORKS|FOUR(?:\s|&nbsp;)+STEPS|METHOD(?:\s|&nbsp;)+FLOW|SIDE(?:\s|&nbsp;)+BY(?:\s|&nbsp;)+SIDE|OPTIONS(?:\s|&nbsp;)+MATRIX|END(?:\s|&nbsp;)+OF(?:\s|&nbsp;)+DECK|CLOSING(?:\s|&nbsp;)+CARD|METRICS(?:\s|&nbsp;)+OVERVIEW|CREATIVE(?:\s|&nbsp;)*MODE(?=\s*<|\s*$)/gi;
+
+function stripStudioCreativeCatalogDemoCopy(html: string): string {
+  return String(html ?? '')
+    .replace(STUDIO_CREATIVE_DEMO_COPY_RE, '')
+    .replace(/\[(?:Studio Name|Client Name|Presentation Title|Date|Company|CLIENT NAME|N|Year|Y-\d)\]/gi, '');
+}
+
 /** 루프454 — Blue Professional catalog leftovers on Hangul LOOK seeds. */
 const BLUE_PROFESSIONAL_DEMO_COPY_RE =
   /Sentiment has shifted measurably from the prior quarter|Bullish on three-year outlook|Expect recession before year-end|Median inflation expectation|An all-time series high[\s\S]{0,120}?near-term uncertainty\.?|Highest reading since the survey began in 2018|Soft-landing scenario now the modal expectation|Key Findings|Executive Summary/gi;
@@ -4606,7 +4618,7 @@ function stripBlueProfessionalCatalogDemoCopy(html: string): string {
 }
 
 const LEFTOVER_CATALOG_PHRASE_RE =
-/Hartfield(?:\s*&(?:amp;)?\s*Co\.?)?|NorthPeak Industries|WACC\s*\(\s*base\s*\)|Revenue CAGR|Filebase|Northwind Studios|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|Composed in kami|52\.5200°\s*N|\[?\[Author Name\]\]?|\[Year\]|this is the broadside style|Aurora Institute|Aurora Programme|Aurora Charter|Public Form|Public attendance|Open programme|Field Notes|Quiet Editions|Open Conversations|The Long Yellow|Pavilion of Quiet Form|Reading Garden|A field study of light,\s*matter and atmosphere|Six months of exhibitions[\s\S]{0,160}?palette of yellow\.?|A room is a slow argument with the sun[\s\S]{0,160}?answers\.?|Curator-at-large[\s\S]{0,120}?January 2026|Visitors\s*·\s*Year four|Returning audience|Three quarters of last year[\s\S]{0,120}?twice\.?|A 2\.4× rise[\s\S]{0,120}?audience\.?|Strands\s*·\s*2026|Slow Atmospheres|Selected dates|Sector context(?:\s*&(?:amp;)?\s*market dynamics)?|Trading comparables analysis|Precedent transactions|Industrial automation cycle, capital flows, trading multiples|12 selected listed peers, EV\/EBITDA(?:\s*&(?:amp;)?\s*EV\/Revenue 2026E)?|M&amp;A transactions \$0\.5–5\.0B, 2022–2025|Selection criteria|Fictional illustrative sample|38\s*[×x]|Apache-2\.0|\bBYOK\b|Your agent reads a folder of\s*<code>SKILL\.md<\/code> files\.?|Open Design is the\s*(?:<strong>)?\s*(?:<\/strong>)?\s*\.?|Neobrutalist Presentation Template|Quarterly Growth Metrics|Field Office Quarterly|Field Office Editorial|field-office\.co|Lin Ito(?:\s*&(?:amp;)?\s*Anya Mehrotra)?|Anya Mehrotra|the field-office collective|In Newsreader, Hanken Grotesk\s*(?:&(?:amp;)?)?\s*DM Mono|quiet, paid, and read slowly|The next issue ships October 20\d{2}[\s\S]{0,120}?Monday morning\.?|A trend is a quiet question that several rooms started asking(?:\s+(?:<[^>]+>)?[^<]{0,80}?(?:<\/[^>]+>)?)?|at roughly the same time\.?|From the editor's note|Index 20\d{2}\s*·\s*opening pages|Colophon\s*·\s*Index 20\d{2}|The index, in six entries\.?|Trend ledger, in long\.?|Spring 20\d{2}(?:\s*·\s*selected trends)?|Newsletter opens\s*·\s*20\d{2}\s*Q\d\s*—\s*20\d{2}\s*Q\d|Chapter one\s*—\s*the case for slow software|Software is a room, and rooms are designed to be lived in slowly\.?|In its first chapter the Index[\s\S]{0,240}?read first\.?|Slow software|Domestic interfaces|Hand-set print(?:\s+again)?|Quietly weird type|Receipts (?:and|&(?:amp;)?)\s*ledgers|Public weather|Long-form receipts|Pre-loved objects|Tools that opt out of[\s\S]{0,160}?on by default\.?|Screens designed to live in living rooms[\s\S]{0,200}?willingness to be ignored\.?|A return to letterpress[\s\S]{0,160}?digital-feeling clients\.?|Display type with one slightly off detail[\s\S]{0,160}?looking twice\.?|Information designed to be filed, not consumed\.[\s\S]{0,160}?the favour\.?|Brand and product writing that includes[\s\S]{0,200}?unfinished thought\.?|Tools that opt out of urgency by default\.?|Screens designed to live in living rooms\.?|Letterpress and risograph paired with digital briefs\.?|Display faces with one slightly off detail\.?|Brand voice that admits the day's actual mood\.?|Newsletters that read like printed pamphlets\.?|Resale and repair as the front of the brand\.?|Information designed to be filed, not consumed\.?|A field report on the state of things\.?|Look for the cobalt envelope on a Monday morning\.?|issue\.0\d|spring\s+20\d{2}|autumn\s+20\d{2}|All ten\s*·\s*with our reading on each|A 2\.1× lift on the inaugural issue[\s\S]{0,160}?Sunday mornings\.?|Quiet, mostly-not-on-social[\s\S]{0,140}?referral programme\.?|We started the bulletin[\s\S]{0,220}?rereading\.?"?|To subscribers[\s\S]{0,80}?twice a year|Reader response, by quarter\.?|A note from the studio|Open rate\s*·\s*Q1 20\d{2}|Active subscribers|Tape Garden|tape garden|SUPERCATALOG|CATALOGUE NO\.\s*[78]|Catalogue No\.\s*[78]|We make small\s+(?:<em>)?analog(?:<\/em>)?\s+things[\s\S]{0,160}?desks\.?|SUPER(?:\s|&nbsp;)+TAPE|MIX(?:\s|&nbsp;)+CHAIR|Bloom Pedal|BLOOM(?:\s|&nbsp;)+PEDAL|CHROMA(?:\s|&nbsp;)+DECK|Chroma Deck|Ren Kobayashi|Mei Tanaka|See you in\s+(?:<em>)?volume eight|made in matsumoto|Matsumoto workshop|A short letter from the studio|A note pinned above the workbench|A reader writes|The 2026\s+(?:<em>)?Catalogue|Four products\s*·\s*spring|Output, by year|Units shipped|Repeat customers|Release schedule|Colophon\s*·\s*Catalogue|It feels less like a\s+(?:<em>)?gadget|Build the\s+(?:<em>)?thing[\s\S]{0,80}?spec sheet\.?|A tape-saturation pedal|A studio cassette deck|A box of seven C-60|A listening chair|\bT-26\b|\bSC-0[1-4]b?\b|Key Metrics|Visuals first|We started Long Table|long-table\.co|Iris\s*(?:&|&amp;)\s*Theo|Hana Brennan|A Plate(?:<br\s*\/?>|\s)+of Quiet|A Soup(?:<br\s*\/?>|\s)+of Letters|Roasted chestnut soup|Not a meal, an evening|22 seats only|Bairro Alto|See you(?:<br\s*\/?>|\s)+at the table|An evening I keep|December edition|a letter from the table|come and sit with us|More than dinner|Twice a month, by application|Placeholder lede|The Editorial Desk|Studio\s*(?:&|&amp;)\s*Salon|Editorial Brief|Eight principles|Twelve weeks of after-hours behavior\.?|Three rules we'?re keeping\.?|User Research Synthesis(?:\s*\/\s*\[[^\]]+\])?/gi;
+/Hartfield(?:\s*&(?:amp;)?\s*Co\.?)?|NorthPeak Industries|WACC\s*\(\s*base\s*\)|Revenue CAGR|Filebase|Northwind Studios|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|Composed in kami|52\.5200°\s*N|\[?\[Author Name\]\]?|\[Year\]|this is the broadside style|Aurora Institute|Aurora Programme|Aurora Charter|Public Form|Public attendance|Open programme|Field Notes|Quiet Editions|Open Conversations|The Long Yellow|Pavilion of Quiet Form|Reading Garden|A field study of light,\s*matter and atmosphere|Six months of exhibitions[\s\S]{0,160}?palette of yellow\.?|A room is a slow argument with the sun[\s\S]{0,160}?answers\.?|Curator-at-large[\s\S]{0,120}?January 2026|Visitors\s*·\s*Year four|Returning audience|Three quarters of last year[\s\S]{0,120}?twice\.?|A 2\.4× rise[\s\S]{0,120}?audience\.?|Strands\s*·\s*2026|Slow Atmospheres|Selected dates|Sector context(?:\s*&(?:amp;)?\s*market dynamics)?|Trading comparables analysis|Precedent transactions|Industrial automation cycle, capital flows, trading multiples|12 selected listed peers, EV\/EBITDA(?:\s*&(?:amp;)?\s*EV\/Revenue 2026E)?|M&amp;A transactions \$0\.5–5\.0B, 2022–2025|Selection criteria|Fictional illustrative sample|38\s*[×x]|Apache-2\.0|\bBYOK\b|Your agent reads a folder of\s*<code>SKILL\.md<\/code> files\.?|Open Design is the\s*(?:<strong>)?\s*(?:<\/strong>)?\s*\.?|Neobrutalist Presentation Template|Quarterly Growth Metrics|Field Office Quarterly|Field Office Editorial|field-office\.co|Lin Ito(?:\s*&(?:amp;)?\s*Anya Mehrotra)?|Anya Mehrotra|the field-office collective|In Newsreader, Hanken Grotesk\s*(?:&(?:amp;)?)?\s*DM Mono|quiet, paid, and read slowly|The next issue ships October 20\d{2}[\s\S]{0,120}?Monday morning\.?|A trend is a quiet question that several rooms started asking(?:\s+(?:<[^>]+>)?[^<]{0,80}?(?:<\/[^>]+>)?)?|at roughly the same time\.?|From the editor's note|Index 20\d{2}\s*·\s*opening pages|Colophon\s*·\s*Index 20\d{2}|The index, in six entries\.?|Trend ledger, in long\.?|Spring 20\d{2}(?:\s*·\s*selected trends)?|Newsletter opens\s*·\s*20\d{2}\s*Q\d\s*—\s*20\d{2}\s*Q\d|Chapter one\s*—\s*the case for slow software|Software is a room, and rooms are designed to be lived in slowly\.?|In its first chapter the Index[\s\S]{0,240}?read first\.?|Slow software|Domestic interfaces|Hand-set print(?:\s+again)?|Quietly weird type|Receipts (?:and|&(?:amp;)?)\s*ledgers|Public weather|Long-form receipts|Pre-loved objects|Tools that opt out of[\s\S]{0,160}?on by default\.?|Screens designed to live in living rooms[\s\S]{0,200}?willingness to be ignored\.?|A return to letterpress[\s\S]{0,160}?digital-feeling clients\.?|Display type with one slightly off detail[\s\S]{0,160}?looking twice\.?|Information designed to be filed, not consumed\.[\s\S]{0,160}?the favour\.?|Brand and product writing that includes[\s\S]{0,200}?unfinished thought\.?|Tools that opt out of urgency by default\.?|Screens designed to live in living rooms\.?|Letterpress and risograph paired with digital briefs\.?|Display faces with one slightly off detail\.?|Brand voice that admits the day's actual mood\.?|Newsletters that read like printed pamphlets\.?|Resale and repair as the front of the brand\.?|Information designed to be filed, not consumed\.?|A field report on the state of things\.?|Look for the cobalt envelope on a Monday morning\.?|issue\.0\d|spring\s+20\d{2}|autumn\s+20\d{2}|All ten\s*·\s*with our reading on each|A 2\.1× lift on the inaugural issue[\s\S]{0,160}?Sunday mornings\.?|Quiet, mostly-not-on-social[\s\S]{0,140}?referral programme\.?|We started the bulletin[\s\S]{0,220}?rereading\.?"?|To subscribers[\s\S]{0,80}?twice a year|Reader response, by quarter\.?|A note from the studio|Open rate\s*·\s*Q1 20\d{2}|Active subscribers|Tape Garden|tape garden|SUPERCATALOG|CATALOGUE NO\.\s*[78]|Catalogue No\.\s*[78]|We make small\s+(?:<em>)?analog(?:<\/em>)?\s+things[\s\S]{0,160}?desks\.?|SUPER(?:\s|&nbsp;)+TAPE|MIX(?:\s|&nbsp;)+CHAIR|Bloom Pedal|BLOOM(?:\s|&nbsp;)+PEDAL|CHROMA(?:\s|&nbsp;)+DECK|Chroma Deck|Ren Kobayashi|Mei Tanaka|See you in\s+(?:<em>)?volume eight|made in matsumoto|Matsumoto workshop|A short letter from the studio|A note pinned above the workbench|A reader writes|The 2026\s+(?:<em>)?Catalogue|Four products\s*·\s*spring|Output, by year|Units shipped|Repeat customers|Release schedule|Colophon\s*·\s*Catalogue|It feels less like a\s+(?:<em>)?gadget|Build the\s+(?:<em>)?thing[\s\S]{0,80}?spec sheet\.?|A tape-saturation pedal|A studio cassette deck|A box of seven C-60|A listening chair|\bT-26\b|\bSC-0[1-4]b?\b|Key Metrics|Visuals first|We started Long Table|long-table\.co|Iris\s*(?:&|&amp;)\s*Theo|Hana Brennan|A Plate(?:<br\s*\/?>|\s)+of Quiet|A Soup(?:<br\s*\/?>|\s)+of Letters|Roasted chestnut soup|Not a meal, an evening|22 seats only|Bairro Alto|See you(?:<br\s*\/?>|\s)+at the table|An evening I keep|December edition|a letter from the table|come and sit with us|More than dinner|Twice a month, by application|Placeholder lede|The Editorial Desk|Studio\s*(?:&|&amp;)\s*Salon|Editorial Brief|Eight principles|Twelve weeks of after-hours behavior\.?|Three rules we'?re keeping\.?|User Research Synthesis(?:\s*\/\s*\[[^\]]+\])?|WHO WE ARE|GREAT WORK DOESN'T HAPPEN BY ACCIDENT|WE BUILD WHAT OTHERS PLAN|Our studio pairs strategic thinking|Years of practice|Projects delivered|Continents active|GENERIC IDENTITY|A DISTINCTIVE VOICE PEOPLE RECOGNIZE|BOLD IDEAS DESERVE BOLD EXECUTION|\[Studio Name\]|\[Client Name\]|\[Presentation Title\]|WHAT WE OFFER|Ownable visual and verbal territory|Campaigns that created lasting recall|Lift In Engagement|Throughput Multiplier|Active Placeholders|Total Sample Value|Placeholder caption describing the metric|Layer alpha|Layer beta|VALUES ARE PLACEHOLDER|PLACEHOLDER METRIC|eight pages, eight layouts|Replace freely|Generic placeholder|Filler text|Filler descriptor|FY PLACEHOLDER|CHAPTER OPENER|A PRESENTATION TEMPLATE|A FOUR-STEP PROCESS|PRESS\s*(?:&nbsp;)?\s*PLAY/gi;
 
 function stripLeftoverCatalogDemoPhrases(html: string): string {
   return String(html ?? '')
@@ -6092,6 +6104,383 @@ export function healLongTableLeftoverCatalogCopy(
   return stripLeftoverCatalogDemoPhrases(out);
 }
 
+/**
+ * 루프476 — Studio look fingerprint (acid yellow `--c-accent` + slide--*
+ * shells + stat-card / compare-panel chrome).
+ */
+export function officialLookIsStudio(html: string): boolean {
+  const source = String(html ?? '');
+  if (!source.trim() || officialLookIsCreativeMode(source)) return false;
+  const hasAccent = /--c-accent\s*:/i.test(source) || /var\(\s*--c-accent/i.test(source);
+  const hasShell = /\bslide--(?:cover|stats|compare|chapter|split|quote)\b/i.test(source);
+  const hasMotif = /\b(?:stat-card|slide-chrome|compare-panel|cover-meta)\b/i.test(source);
+  return hasAccent && hasShell && hasMotif;
+}
+
+/**
+ * 루프476 — Creative Mode look fingerprint (numeric s1…s8 + poster motif).
+ */
+export function officialLookIsCreativeMode(html: string): boolean {
+  const source = String(html ?? '');
+  if (!source.trim()) return false;
+  const hasNumeric = /<(?:section|div)\b[^>]*\bclass\s*=\s*["'][^"']*\bs[1-8]\b/i.test(source);
+  const hasPoster = /\bclass\s*=\s*["'][^"']*\bposter\b/i.test(source);
+  const hasMeta = /\bdata-screen-label\b/i.test(source)
+    || /Archivo/i.test(source)
+    || /--cream\s*:/i.test(source);
+  return hasNumeric && hasPoster && hasMeta;
+}
+
+const STUDIO_LEFTOVER_BODY_RE =
+  /WHO WE ARE|GREAT WORK DOESN'T HAPPEN|WE BUILD WHAT OTHERS PLAN|Our studio pairs|Years of practice|Projects delivered|Continents active|GENERIC IDENTITY|A DISTINCTIVE VOICE|BOLD IDEAS DESERVE|\[Studio Name\]|\[Client Name\]|\[Presentation Title\]|WHAT WE OFFER|THE WORK|THE STUDIO|Ownable visual|Campaigns that created/i;
+
+const CREATIVE_LEFTOVER_BODY_RE =
+  /FLIP THE|eight pages|Replace freely|Lift In Engagement|Throughput Multiplier|Active Placeholders|Total Sample Value|Placeholder caption|Layer alpha|VALUES ARE PLACEHOLDER|PLACEHOLDER METRIC|Generic placeholder|Filler (?:text|descriptor)|FY PLACEHOLDER|CHAPTER OPENER|A PRESENTATION TEMPLATE|PRESS\s*(?:&nbsp;)?\s*PLAY|FOUR FIGURES|A FOUR-STEP PROCESS/i;
+
+type StudioCreativeFillInput = {
+  title: string;
+  lead: string;
+  bodyText: string;
+  kicker: string;
+  fillLines: TemplateCloneCardFillLine[];
+};
+
+function fillStudioKitSlide(
+  body: string,
+  attrs: string,
+  input: StudioCreativeFillInput,
+): string {
+  let next = body;
+  const lines = biennaleFillLines(input, 6);
+  if (/\bslide--cover\b/i.test(attrs) && /\bcover-meta\b/i.test(next)) {
+    const meta = [
+      input.title,
+      input.lead || synthesizeTemplateCloneCoverLead(input.title),
+      input.kicker || input.title,
+    ];
+    next = replaceClassTextBySequence(next, 'cover-meta-col', meta);
+  }
+  if (/\bslide--chapter\b/i.test(attrs)) {
+    next = replaceFirstExactClassText(
+      next,
+      'chapter-num',
+      input.kicker || input.lead || input.title,
+    );
+  }
+  if (/\b(?:slide--split|slide--list|slide--compare|slide--statement)\b/i.test(attrs)) {
+    const leadTexts = lines
+      .map((line) => resolveTemplateCloneCardFill(line).body || resolveTemplateCloneCardFill(line).title)
+      .filter(Boolean);
+    if (leadTexts.length > 0 && /\blead\b/i.test(next)) {
+      next = replaceClassTextBySequence(
+        next,
+        'lead',
+        leadTexts.length >= 2 ? leadTexts : [leadTexts[0]!, leadTexts[0]!],
+      );
+    }
+  }
+  if (/\bslide--stats\b/i.test(attrs) && /\bstat-card\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'stat-card', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = replaceFirstExactClassText(block, 'stat-label', resolved.title);
+      filled = replaceFirstExactClassText(
+        filled,
+        'stat-note',
+        resolved.body || resolved.title,
+      );
+      return filled;
+    });
+  }
+  if (/\bslide--compare\b/i.test(attrs)) {
+    next = replaceExactClassBlocksBySequence(
+      next,
+      'compare-panel',
+      lines.slice(0, 2),
+      (block, line) => {
+        const resolved = resolveTemplateCloneCardFill(line);
+        let filled = block.replace(
+          /(<h3\b[^>]*>)([\s\S]*?)(<\/h3>)/i,
+          `$1${escapeHtml(resolved.title)}$3`,
+        );
+        filled = replaceFirstExactClassText(
+          filled,
+          'lead',
+          resolved.body || resolved.title,
+        );
+        if (/<[uo]l\b/i.test(filled)) {
+          filled = replaceListItems(filled, [resolved.body || resolved.title]);
+        }
+        return filled;
+      },
+    );
+  }
+  if (/\bslide--quote\b/i.test(attrs)) {
+    next = replaceFirstExactClassText(
+      next,
+      'quote-text',
+      input.bodyText || input.lead || input.title,
+    );
+    next = replaceFirstExactClassText(next, 'quote-attr', input.title);
+  }
+  // Chrome / foot demo labels (Our Work, APPROACH, …) — blank leftover tokens.
+  // Studio example.html often splits closers as `</span\n>` — allow `\s*` in
+  // the close tag so the wipe cannot swallow the rest of the slide body.
+  if (/\bslide-chrome\b|\bslide-foot\b/i.test(next)) {
+    next = next.replace(
+      /(<span\b[^>]*\bclass\s*=\s*["'][^"']*\blabel\b[^"']*["'][^>]*>)([\s\S]*?)(<\/span\s*>)/gi,
+      (full, open: string, inner: string, close: string) => {
+        const plain = visibleDeckCopy(inner);
+        if (
+          /^(?:Our Work|APPROACH|Services|Before\s*\/\s*After|THE STUDIO|By the Numbers|\d+\s*\/\s*\d+)$/i
+            .test(plain)
+          || /\[Studio Name\]|\[Date\]|\[Caption/i.test(plain)
+        ) {
+          return `${open}${close}`;
+        }
+        return full;
+      },
+    );
+  }
+  return next;
+}
+
+function fillCreativeModeKitSlide(
+  body: string,
+  attrs: string,
+  input: StudioCreativeFillInput,
+): string {
+  let next = body;
+  const lines = biennaleFillLines(input, 6);
+  if (/\bs1\b/i.test(attrs)) {
+    next = replaceFirstExactClassText(next, 'title', input.title);
+    next = replaceFirstExactClassText(
+      next,
+      'footnote',
+      input.lead || synthesizeTemplateCloneCoverLead(input.title),
+    );
+  }
+  if (/\bs2\b/i.test(attrs)) {
+    next = replaceFirstExactClassText(next, 'kicker', input.kicker || input.title);
+    const paras = compactTextLines(
+      input.lead,
+      input.bodyText,
+      ...lines.map((line) => {
+        const resolved = resolveTemplateCloneCardFill(line);
+        return resolved.body || resolved.title;
+      }),
+    ).slice(0, 3);
+    if (paras.length > 0) {
+      let i = 0;
+      next = next.replace(
+        /(<div\b[^>]*\bbody-col\b[^>]*>)([\s\S]*?)(<\/div>)/i,
+        (_m, open: string, inner: string, close: string) => {
+          const filled = inner.replace(
+            /(<p\b[^>]*>)([\s\S]*?)(<\/p>)/gi,
+            (pm, pOpen: string, _pInner: string, pClose: string) => {
+              const text = paras[i++] ?? '';
+              return `${pOpen}${escapeHtml(text)}${pClose}`;
+            },
+          );
+          return `${open}${filled}${close}`;
+        },
+      );
+    }
+  }
+  if (/\bs3\b/i.test(attrs) && /\bcell\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'cell', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = replaceFirstExactClassText(block, 'lbl', resolved.title);
+      filled = replaceFirstExactClassText(
+        filled,
+        'desc',
+        resolved.body || resolved.title,
+      );
+      return filled;
+    });
+  }
+  if (/\bs4\b/i.test(attrs)) {
+    next = replaceFirstExactClassText(
+      next,
+      'sub',
+      input.lead || input.bodyText || synthesizeTemplateCloneCoverLead(input.title),
+    );
+    const layerLabels = lines.slice(0, 4).map((line, index) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      return `Layer / ${String(index + 1).padStart(2, '0')} — ${resolved.title}`;
+    });
+    if (layerLabels.length > 0) {
+      let i = 0;
+      next = next.replace(
+        /(<div\b[^>]*\bclass\s*=\s*["'][^"']*\brow\b[^"']*["'][^>]*>)([\s\S]*?)(<\/div>)/gi,
+        (full, open: string, inner: string, close: string) => {
+          if (!/\bsw\b/i.test(inner) || i >= layerLabels.length) return full;
+          const label = layerLabels[i++]!;
+          const sw = /<span\b[^>]*\bsw\b[^>]*>[\s\S]*?<\/span>/i.exec(inner)?.[0] ?? '';
+          return `${open}${sw} ${escapeHtml(label)}${close}`;
+        },
+      );
+      next = replaceClassTextBySequence(
+        next,
+        'tag',
+        lines.slice(0, 4).map((line) => resolveTemplateCloneCardFill(line).title),
+      );
+    }
+  }
+  if (/\bs5\b/i.test(attrs)) {
+    next = replaceFirstExactClassText(
+      next,
+      'note',
+      input.lead || input.bodyText || `${input.title} 지표`,
+    );
+    const series = lines.slice(0, 3).map((line) => resolveTemplateCloneCardFill(line).title);
+    if (series.length > 0) {
+      let i = 0;
+      next = next.replace(
+        /(<div\b[^>]*\blegend2\b[^>]*>)([\s\S]*?)(<\/div>)/i,
+        (_m, open: string, inner: string, close: string) => {
+          const filled = inner.replace(
+            /(<div\b[^>]*\brow\b[^>]*>)([\s\S]*?)(<\/div>)/gi,
+            (full, rowOpen: string, rowInner: string, rowClose: string) => {
+              if (i >= series.length) return full;
+              const sw = /<span\b[^>]*\bsw\b[^>]*>[\s\S]*?<\/span>/i.exec(rowInner)?.[0] ?? '';
+              return `${rowOpen}${sw} ${escapeHtml(series[i++]!)}${rowClose}`;
+            },
+          );
+          return `${open}${filled}${close}`;
+        },
+      );
+    }
+  }
+  // s6 steps already use `.t` / `.d` via fillOneCardPeer when peers run.
+  if (/\bs8\b/i.test(attrs)) {
+    next = replaceFirstExactClassText(next, 'title', input.title);
+  }
+  // Topbar / pill / slide-meta demo chrome.
+  next = next.replace(
+    /(<div\b[^>]*\b(?:pill|topbar|slide-meta|marker|tagline)\b[^>]*>)([\s\S]*?)(<\/div>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const plain = visibleDeckCopy(inner);
+      if (
+        CREATIVE_LEFTOVER_BODY_RE.test(plain)
+        || /^(?:BY THE NUMBERS|SYSTEM DIAGRAM|SCHEMATIC|QUARTERLY READOUT|HOW IT WORKS|FOUR STEPS|SIDE BY SIDE|COMPARISON|END OF DECK|FIN\.|ARCHITECTURE|FIGURE ONE|METHOD FLOW|OPTIONS MATRIX|CLOSING CARD|METRICS OVERVIEW|VOL\.|EDITION)/i
+          .test(plain)
+      ) {
+        if (/\bpill\b/i.test(open) || /\bmarker\b/i.test(open) || /\btagline\b/i.test(open)) {
+          return `${open}${close}`;
+        }
+      }
+      return full;
+    },
+  );
+  return next;
+}
+
+/**
+ * Hangul Studio persist leftover: catalog letters survive generic heading
+ * swaps. Fill specialized slots, then wipe leftover phrases. Official
+ * English example.html is a no-op. Do not invent KPI digits (`.stat-value`).
+ */
+export function healStudioLeftoverCatalogCopy(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsStudio(dest)) return dest;
+  if (!/[가-힣]/.test(visibleDeckCopy(dest)) && !/[가-힣]/.test(String(brief ?? ''))) {
+    return dest;
+  }
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) {
+    return stripStudioCreativeCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(dest));
+  }
+  const harvested = [...dest.matchAll(/<(?:h[1-3]|div)\b[^>]*>([\s\S]*?)<\/(?:h[1-3]|div)>/gi)]
+    .map((match) => visibleDeckCopy(match[1] ?? ''))
+    .filter((text) => /[가-힣]/.test(text) && text.length >= 2 && text.length <= 40);
+  const outline = resolveTemplateCloneSlidesForDeterministicFill({
+    userInstruction: brief || harvested.join('\n') || '',
+    deckTitle: harvested[0] ?? null,
+    slideCount: spans.length,
+  });
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    if (!/\bslide--(?:cover|chapter|split|stats|list|quote|compare|statement|chart|end)\b/i.test(span.attrs)) {
+      continue;
+    }
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    if (
+      !looksLikeLeftoverTemplateDemoDeck(body)
+      && !STUDIO_LEFTOVER_BODY_RE.test(body)
+    ) {
+      continue;
+    }
+    const slide = outline[i] ?? outline[Math.min(i, outline.length - 1)];
+    const title = slide?.title || harvested[i] || harvested[0] || '슬라이드';
+    const nextBody = fillStudioKitSlide(body, span.attrs, {
+      title,
+      lead: slide?.lead ?? '',
+      bodyText: slide?.body ?? '',
+      kicker: slide?.kicker ?? '',
+      fillLines: templateCloneSlideFillLines(slide ?? { title }),
+    });
+    if (nextBody === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
+  }
+  return stripStudioCreativeCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out));
+}
+
+/**
+ * Hangul Creative Mode persist leftover: placeholder captions / layer legend
+ * survive heading swaps. Fill specialized slots, then wipe leftover phrases.
+ * Official English example.html is a no-op. Do not invent `.num` KPI digits.
+ */
+export function healCreativeLeftoverCatalogCopy(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsCreativeMode(dest)) return dest;
+  if (!/[가-힣]/.test(visibleDeckCopy(dest)) && !/[가-힣]/.test(String(brief ?? ''))) {
+    return dest;
+  }
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) {
+    return stripStudioCreativeCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(dest));
+  }
+  const harvested = [...dest.matchAll(/<(?:h[1-3]|div)\b[^>]*>([\s\S]*?)<\/(?:h[1-3]|div)>/gi)]
+    .map((match) => visibleDeckCopy(match[1] ?? ''))
+    .filter((text) => /[가-힣]/.test(text) && text.length >= 2 && text.length <= 40);
+  const outline = resolveTemplateCloneSlidesForDeterministicFill({
+    userInstruction: brief || harvested.join('\n') || '',
+    deckTitle: harvested[0] ?? null,
+    slideCount: spans.length,
+  });
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    if (!/\bs[1-8]\b/i.test(span.attrs)) continue;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    if (
+      !looksLikeLeftoverTemplateDemoDeck(body)
+      && !CREATIVE_LEFTOVER_BODY_RE.test(body)
+    ) {
+      continue;
+    }
+    const slide = outline[i] ?? outline[Math.min(i, outline.length - 1)];
+    const title = slide?.title || harvested[i] || harvested[0] || '슬라이드';
+    const nextBody = fillCreativeModeKitSlide(body, span.attrs, {
+      title,
+      lead: slide?.lead ?? '',
+      bodyText: slide?.body ?? '',
+      kicker: slide?.kicker ?? '',
+      fillLines: templateCloneSlideFillLines(slide ?? { title }),
+    });
+    if (nextBody === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
+  }
+  return stripStudioCreativeCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out));
+}
+
 function fillBiennaleCalendarSlots(
   body: string,
   input: {
@@ -6691,10 +7080,17 @@ function fillSlideShell(
   if (slideLooksLikeLongTableKit(shell.attrs, body)) {
     body = fillLongTableKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
   }
+  if (/\bslide--(?:cover|chapter|split|stats|list|quote|compare|statement|chart|end)\b/i.test(shell.attrs)) {
+    body = fillStudioKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
+  }
+  if (/\bs[1-8]\b/i.test(shell.attrs)) {
+    body = fillCreativeModeKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
+  }
   body = fillBlockFrameNeoSlots(body, { title, lead, bodyText, kicker, fillLines });
   body = stripCapsuleCatalogDemoCopy(body);
   body = stripBlockFrameNeoCatalogDemoCopy(body);
   body = stripBlueProfessionalCatalogDemoCopy(body);
+  body = stripStudioCreativeCatalogDemoCopy(body);
   body = stripLeftoverCatalogDemoPhrases(body);
 
   // Loop376 — Empty content-list / subtitle shells left behind by the
@@ -6928,9 +7324,11 @@ export function buildTemplateClonedDeckHtml(
   // (footer / unused chrome). Wipe the whole document, not just each slide.
   // 루프434 — Neo/block-frame marketing leftovers too.
   // 루프454 — Blue Professional survey leftovers too.
+  // 루프476 — Studio / Creative Mode catalog leftovers too.
   out = stripCapsuleCatalogDemoCopy(out);
   out = stripBlockFrameNeoCatalogDemoCopy(out);
   out = stripBlueProfessionalCatalogDemoCopy(out);
+  out = stripStudioCreativeCatalogDemoCopy(out);
   out = stripLeftoverCatalogDemoPhrases(out);
   out = renumberBiennalePagenums(out, filled.length);
   return out.trim() || null;
@@ -7202,7 +7600,7 @@ function cleanCloneTitle(title: string): string {
 export function looksLikeLeftoverTemplateDemoDeck(html: string): boolean {
   const text = String(html ?? '');
   if (!text.trim()) return false;
-  return /Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|52\.5200°\s*N|Composed in kami|Apache-2\.0[\s\S]{0,800}Local-first[\s\S]{0,800}BYOK|\[?\[Author Name\]\]?|\[Year\]|this is the broadside style|Clarity of Purpose|The Journey Continues|A Framework for Bold Ideas|Neobrutalist Presentation Template|Quarterly Growth Metrics|Sentiment has shifted measurably|Bullish on three-year outlook|Aurora Institute|Field Office Quarterly|field-office\.co|Lin Ito|Slow software|Public attendance|Open programme|Domestic interfaces|The index, in six entries|A trend is a quiet question|See you in the autumn issue|Trend ledger, in long|Hand-set print|We started the bulletin|Software is a room|Tape Garden|SUPERCATALOG|CATALOGUE NO\. 7|We make small analog|Bloom Pedal|SUPER TAPE|MIX CHAIR|Ren Kobayashi|Mei Tanaka|See you in volume eight|made in matsumoto|Chroma Deck|We started Long Table|long-table\.co|Hana Brennan|Iris(?:\s|&|&amp;)+Theo|A Plate of Quiet|Roasted chestnut soup|Not a meal, an evening|Placeholder lede|The Editorial Desk|Studio & Salon|Twelve weeks of after-hours|Three rules we.?re keeping|User Research Synthesis/i.test(
+  return /Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|52\.5200°\s*N|Composed in kami|Apache-2\.0[\s\S]{0,800}Local-first[\s\S]{0,800}BYOK|\[?\[Author Name\]\]?|\[Year\]|this is the broadside style|Clarity of Purpose|The Journey Continues|A Framework for Bold Ideas|Neobrutalist Presentation Template|Quarterly Growth Metrics|Sentiment has shifted measurably|Bullish on three-year outlook|Aurora Institute|Field Office Quarterly|field-office\.co|Lin Ito|Slow software|Public attendance|Open programme|Domestic interfaces|The index, in six entries|A trend is a quiet question|See you in the autumn issue|Trend ledger, in long|Hand-set print|We started the bulletin|Software is a room|Tape Garden|SUPERCATALOG|CATALOGUE NO\. 7|We make small analog|Bloom Pedal|SUPER TAPE|MIX CHAIR|Ren Kobayashi|Mei Tanaka|See you in volume eight|made in matsumoto|Chroma Deck|We started Long Table|long-table\.co|Hana Brennan|Iris(?:\s|&|&amp;)+Theo|A Plate of Quiet|Roasted chestnut soup|Not a meal, an evening|Placeholder lede|The Editorial Desk|Studio & Salon|Twelve weeks of after-hours|Three rules we.?re keeping|User Research Synthesis|WHO WE ARE|GREAT WORK DOESN'T HAPPEN|Our studio pairs|Years of practice|\[Studio Name\]|A DISTINCTIVE VOICE|Lift In Engagement|Throughput Multiplier|Active Placeholders|Layer alpha|VALUES ARE PLACEHOLDER|eight pages, eight layouts|FLIP THE|PLACEHOLDER METRIC|Generic placeholder copy throughout/i.test(
     text,
   );
 }

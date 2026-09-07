@@ -75,6 +75,15 @@ export const CROSS_TEMPLATE_LEFTOVER_DENYLIST: readonly string[] = [
   'A. Smith',
   'Creative Lead',
   'Tech Director',
+  // 루프476 — Studio / Creative Mode catalog leftovers
+  'WHO WE ARE',
+  'Our studio pairs',
+  'Years of practice',
+  '[Studio Name]',
+  'Lift In Engagement',
+  'Throughput Multiplier',
+  'Layer alpha',
+  'VALUES ARE PLACEHOLDER',
 ];
 
 export type TemplateQualityGateSpec = {
@@ -248,7 +257,17 @@ export const ZHANGZARA_QUALITY_GATE_SPECS: readonly TemplateQualityGateSpec[] = 
     exampleRelativePath:
       '../../../../plugins/_official/examples/html-ppt-zhangzara-creative-mode/example.html',
     motifMustInclude: ['--cream', 'Archivo', 'poster'],
-    demoMustNotInclude: ['FLIP THE'],
+    demoMustNotInclude: [
+      'FLIP THE',
+      'Lift In Engagement',
+      'Throughput Multiplier',
+      'Active Placeholders',
+      'Layer alpha',
+      'VALUES ARE PLACEHOLDER',
+      'eight pages',
+      'Replace freely',
+      'PLACEHOLDER METRIC',
+    ],
     expectedSlideCount: 8,
   },
   {
@@ -257,7 +276,16 @@ export const ZHANGZARA_QUALITY_GATE_SPECS: readonly TemplateQualityGateSpec[] = 
     exampleRelativePath:
       '../../../../plugins/_official/examples/html-ppt-zhangzara-studio/example.html',
     motifMustInclude: ['--c-accent', 'slide-chrome', 'stat-card'],
-    demoMustNotInclude: [],
+    demoMustNotInclude: [
+      'WHO WE ARE',
+      'Our studio pairs',
+      'Years of practice',
+      'Projects delivered',
+      '[Studio Name]',
+      'A DISTINCTIVE VOICE',
+      'GENERIC IDENTITY',
+      'GREAT WORK DOESN\'T HAPPEN',
+    ],
     expectedSlideCount: 10,
   },
   // 루프456 — expand gate beyond the original 4 to Blue-pro + Block-frame.

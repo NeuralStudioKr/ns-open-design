@@ -15,13 +15,13 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts system-prompt-api-mode · template-visual-kit · teamver-selected-template-compose · deck-framework-compact · template-clone-fill, web templateCloneContentFill · runtime/resume.
 
-**후속:** [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) · [0901-N02-21](./0901-N02-21-구현설계-[Clone_sakura-leftover-refill].md) · [0901-N02-22](./0901-N02-22-구현설계-[Clone_long-table-leftover-refill].md) · [0901-N02-23](./0901-N02-23-구현설계-[Clone_remaining-zhangzara-quality-gates].md) · [0901-N02-24](./0901-N02-24-구현설계-[Clone_layout-smoke].md) · [0907-N06-1](./0907-N06-1-상위설계-[사이트분석_prompt-fill_outline_주입].md) · [0907-N06-5](./0907-N06-5-구현설계-[Clone_cover-lead-no-invent].md) · [0907-N07-1](./0907-N07-1-상위설계-[서비스소개_표지_lead_한눈에_개선].md) — B1–B5 · C–C13 · D · 루프368–475. MiniMax live 가드 ☑(키 없으면 skip). 루프450–475 품질 게이트/배치 smoke/사이트분석 outline/cover lead ☑. 공식 Zhangzara 4축+배치 게이트는 카탈로그 전 종.
+**후속:** [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) · [0901-N02-21](./0901-N02-21-구현설계-[Clone_sakura-leftover-refill].md) · [0901-N02-22](./0901-N02-22-구현설계-[Clone_long-table-leftover-refill].md) · [0901-N02-23](./0901-N02-23-구현설계-[Clone_remaining-zhangzara-quality-gates].md) · [0901-N02-24](./0901-N02-24-구현설계-[Clone_layout-smoke].md) · [0907-N06-1](./0907-N06-1-상위설계-[사이트분석_prompt-fill_outline_주입].md) · [0907-N06-5](./0907-N06-5-구현설계-[Clone_cover-lead-no-invent].md) · [0907-N07-1](./0907-N07-1-상위설계-[서비스소개_표지_lead_한눈에_개선].md) · [0907-N08-1](./0907-N08-1-상위설계-[Studio_Creative_leftover_denylist].md) — B1–B5 · C–C13 · D · 루프368–476. MiniMax live 가드 ☑(키 없으면 skip). 루프450–476 품질 게이트/배치 smoke/사이트분석 outline/cover lead/Studio·Creative leftover ☑. 공식 Zhangzara 4축+배치 게이트는 카탈로그 전 종.
 
 다음 추천 작업:
 1. Playwright pixel screenshot / FileViewer bake(선택)
 2. MiniMax 키 환경 Clone fill live smoke (teamver.com 사이트 분석 → dense outline + tagline lead)
 3. FileViewer ←/→ tools-dev + Teamver BFF GUI bake(선택)
-4. Studio/Creative leftover denylist 보강(선택)
+4. ~~Studio/Creative leftover denylist 보강(선택)~~ → 루프476 ☑ (N08)
 5. ~~deterministic synth cover lead(`한눈에`)~~ → 루프473–475 ☑ (N06-4/5 + N07)
 
 ### 빈 칸 번호 카드 (코드명 leftover)
@@ -37,6 +37,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 `기둥` / `PILLAR` / `Phase`는 모델이 붙이는 접두일 뿐, 발표 용어가 아닙니다. extra-copy·stub는 주제 단어 목록이 아닙니다(루프259·265).
 
 ## 2026-09-02 현재 판단 · 최신 루프
+
+### 루프476 / 0907-N08 — Studio / Creative leftover denylist
+
+체감: Hangul Clone 후에도 Studio `WHO WE ARE` / `[Studio Name]` · Creative `Lift In Engagement` / `Layer alpha` 카탈로그 데모가 남음.
+
+수정: denylist + kit fill + Hangul persist heal · 영문 example no-op · KPI `.stat-value`/`.num` 유지. [0907-N08-1](./0907-N08-1-상위설계-[Studio_Creative_leftover_denylist].md).
 
 ### 루프475 / 0907-N07 — cover lead tagline·preview 우선
 
