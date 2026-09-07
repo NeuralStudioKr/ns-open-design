@@ -37,6 +37,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프464 — Block Frame `.nb-card` 그리드 orphan 배치
+
+체감: PRODUCT에서 카드 밖 본문, PROBLEM에서 체크리스트 구석 배치.
+
+수정: absorb가 `.nb-card` host 인식 · `ejectTrailingListFromOverfilledGrid` · prompt-fill neo 구조 가드.
+
+설계: [0907-N03-1](./0907-N03-1-상위설계-[Block_frame_nb-card_그리드_orphan].md).
+
 ### 루프463 — LOOK + AI 본문 동시 사용 (기본 `prompt`)
 
 **질문:** deterministic과 AI를 동시에 쓰면 안 되나? 즉시 결과만 나오고 내용이 부적절하다.

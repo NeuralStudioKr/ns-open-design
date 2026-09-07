@@ -793,6 +793,8 @@ export function buildTemplateClonePromptFillSeed(options: {
     'Chat status may describe the deck, but the artifact must contain that many `<section class="slide">` (or equivalent slide hosts). Never claim 9 slides while emitting only a cover.',
     'Do not invent quantitative KPIs, headcount, NPS, market size ($XB), or pricing unless the brief/source materials state them. Prefer qualitative product claims and named features over fabricated metrics.',
     'Every KPI/stat cell must be a complete card (number + label inside one bordered shell). Do not leave bare .stat-number/.stat-label siblings or empty .stat-card shells.',
+    'Neo / Block Frame cards (`.nb-card`, `.intro-card`, `.feature-card`): put title AND body text INSIDE the same card element. Never leave description divs as grid siblings of `.nb-card` — that breaks the 3-column layout.',
+    'Diagram grids (`1fr auto 1fr`): keep left cluster + arrow + right result only. Put checklists BELOW the diagram grid, not as a fourth grid child.',
     'Keep kit CSS variables by including the template look (:root --pink/--blue/…). Never emit var(--pink) without defining tokens.',
     'If the kit is neo-brutal Block Frame (hero-frame, .slide-1…N, --pink/--cream), keep that DOM. Do not emit IB magazine chrome (mast, ribbon, h1.display, cover-meta, foot, or 학습 노트).',
     'Cover title must be a product/brand name (e.g. 팀버 소개), never a raw URL or truncated host crumb like "www.teamver.com 사이".',

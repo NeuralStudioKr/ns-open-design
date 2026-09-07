@@ -3016,6 +3016,8 @@ function looksLikeSpilledCardBody(child: DirectChildSpan): boolean {
     return text.length >= SPILLED_BODY_MIN && text.length <= SPILLED_BODY_MAX;
   }
   if (child.tag !== 'div') return false;
+  // 루프464 — `.nb-card` / `intro-card` peers are hosts, not spilled body.
+  if (classValueLooksCardish(classAttrValue(child.attrs))) return false;
   if (exactCardishTokens(child.attrs).length > 0) return false;
   if (looksLikeChromeCardStyle(child.style)) return false;
   if (/(?:^|;)\s*display\s*:\s*(?:inline-)?(?:grid|flex)\b/i.test(child.style)) return false;
@@ -3025,6 +3027,12 @@ function looksLikeSpilledCardBody(child: DirectChildSpan): boolean {
   return text.length >= SPILLED_BODY_MIN && text.length <= SPILLED_BODY_MAX;
 }
 
+function childLooksLikeAbsorbHostCard(child: DirectChildSpan): boolean {
+  if (child.tag !== 'div') return false;
+  if (classValueLooksCardish(classAttrValue(child.attrs))) return true;
+  return looksLikeChromeCardStyle(child.style);
+}
+
 function rowAllowsSpilledChromeAbsorb(
   style: string,
   children: DirectChildSpan[],
@@ -3032,13 +3040,53 @@ function rowAllowsSpilledChromeAbsorb(
   const colsRaw = /grid-template-columns\s*:\s*([^;]+)/i.exec(style)?.[1];
   if (/(?:^|;)\s*display\s*:\s*(?:inline-)?grid\b/i.test(style) && colsRaw) {
     const decl = parseDeclaredEqualColumns(colsRaw.trim());
-    return Boolean(decl && decl.count >= 2 && children.length > decl.count);
+    if (decl && decl.count >= 2 && children.length > decl.count) return true;
+    // 루프464 — unequal tracks (`1fr auto 1fr`) still overfill when MiniMax
+    // dumps a trailing checklist as a 4th grid child.
+    const trackCount = countCssGridTrackList(colsRaw.trim());
+    return trackCount >= 2 && children.length > trackCount;
   }
   if (!isFlexRowContainerStyle(style)) return false;
   if (children.some((child) => styleLooksLikeFixedSidebar(child.style))) return false;
-  const chromeCount = children.filter((child) => looksLikeChromeCardStyle(child.style)).length;
+  const chromeCount = children.filter((child) => childLooksLikeAbsorbHostCard(child)).length;
   // 루프294 — 크롬 카드가 2개 미만이면 라벨+본문 2열 스플릿으로 본다.
   return chromeCount >= 2 && children.length > chromeCount;
+}
+
+/** Count simple grid track tokens (`1fr`, `auto`, `minmax(...)`, `repeat(N,…)`). */
+function countCssGridTrackList(raw: string): number {
+  const text = String(raw ?? '').trim();
+  if (!text) return 0;
+  const repeat = /^repeat\(\s*(\d+)\s*,/i.exec(text);
+  if (repeat) {
+    const n = Number.parseInt(repeat[1] ?? '', 10);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+  let depth = 0;
+  let count = 0;
+  let sawToken = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i]!;
+    if (ch === '(') {
+      depth += 1;
+      sawToken = true;
+      continue;
+    }
+    if (ch === ')') {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+    if (depth === 0 && /\s/.test(ch)) {
+      if (sawToken) {
+        count += 1;
+        sawToken = false;
+      }
+      continue;
+    }
+    sawToken = true;
+  }
+  if (sawToken) count += 1;
+  return count;
 }
 
 /**
@@ -3051,6 +3099,7 @@ function rowAllowsSpilledChromeAbsorb(
  * 루프298 — inline display 없이 `.cards { display:flex }` /
  * `.grid { grid-template-columns:repeat(3,1fr) }` 클래스 바인딩도 동일.
  * 루프307 — `display:inline-grid` 행도 동일 (`display:grid`만 보면 놓침).
+ * 루프464 — `.nb-card` 등 class chrome(인라인 border 없음)도 host로 본다.
  * 카피 발명 없음.
  */
 export function absorbSpilledChromeCardSiblings(
@@ -3099,10 +3148,12 @@ export function absorbSpilledChromeCardSiblings(
     for (let i = 0; i < children.length; i += 1) {
       const host = children[i]!;
       if (absorbed.has(host)) continue;
-      if (host.tag !== 'div') continue;
-      if (!looksLikeChromeCardStyle(host.style)) continue;
+      if (!childLooksLikeAbsorbHostCard(host)) continue;
       const hostText = visibleText(host.inner);
-      if (hostText.length === 0 || hostText.length > SPILLED_CHROME_LABEL_MAX) continue;
+      const labelMax = classValueLooksCardish(classAttrValue(host.attrs))
+        ? SPILLED_CHROME_LABEL_MAX * 2
+        : SPILLED_CHROME_LABEL_MAX;
+      if (hostText.length === 0 || hostText.length > labelMax) continue;
       const spilled: DirectChildSpan[] = [];
       for (let j = i + 1; j < children.length && spilled.length < SPILLED_SIBLING_MAX; j += 1) {
         const next = children[j]!;
@@ -3138,6 +3189,62 @@ export function absorbSpilledChromeCardSiblings(
       start: openEnd,
       end: close.closeStart,
       replacement: pieces.join(''),
+    });
+  }
+  if (patches.length === 0) return out;
+  patches.sort((a, b) => b.start - a.start);
+  for (const patch of patches) {
+    out = `${out.slice(0, patch.start)}${patch.replacement}${out.slice(patch.end)}`;
+  }
+  return out;
+}
+
+/**
+ * 루프464 — Diagram grids (`1fr auto 1fr`) sometimes get a trailing `<ul>` as
+ * an extra track cell, pinning the checklist into a cramped bottom corner.
+ * Move that list to after the grid when child count exceeds track count.
+ */
+export function ejectTrailingListFromOverfilledGrid(
+  html: string,
+  brief?: string | null,
+): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
+  const gridOpenRe =
+    /<(div|section|article|main|aside)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  const patches: Array<{ start: number; end: number; replacement: string }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = gridOpenRe.exec(out)) !== null) {
+    const attrs = match[2] ?? '';
+    const style = extractInlineStyle(attrs);
+    if (!/(?:^|;)\s*display\s*:\s*(?:inline-)?grid\b/i.test(style)) continue;
+    const colsRaw = /grid-template-columns\s*:\s*([^;]+)/i.exec(style)?.[1];
+    if (!colsRaw) continue;
+    const trackCount =
+      parseDeclaredEqualColumns(colsRaw.trim())?.count
+      ?? countCssGridTrackList(colsRaw.trim());
+    if (trackCount < 2) continue;
+    const openTag = match[0] ?? '';
+    const tag = (match[1] ?? '').toLowerCase();
+    const openEnd = match.index + openTag.length;
+    const close = findSameTagClose(out, tag, openEnd);
+    if (!close) continue;
+    const children = listDirectBlockChildSpans(out, openEnd, close.closeStart);
+    if (children.length <= trackCount) continue;
+    const last = children[children.length - 1]!;
+    if (last.tag !== 'ul' && last.tag !== 'ol') continue;
+    const closeTok = new RegExp(`^</${tag}\\s*>`, 'i').exec(out.slice(close.closeStart));
+    if (!closeTok) continue;
+    const closeEnd = close.closeStart + closeTok[0].length;
+    const listHtml = out.slice(last.absStart, last.absCloseEnd);
+    const withoutList =
+      out.slice(openEnd, last.absStart)
+      + out.slice(last.absCloseEnd, close.closeStart);
+    patches.push({
+      start: openEnd,
+      end: closeEnd,
+      replacement: `${withoutList}</${tag}>${listHtml}`,
     });
   }
   if (patches.length === 0) return out;
@@ -4978,6 +5085,8 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // 루프293 — class 없는 크롬 카드의 조기 close가 제목·본문을 그리드
   // 형제로 남기면 shrink가 열을 늘린다. shrink 전에 카드 안으로 되돌린다.
   out = absorbSpilledChromeCardSiblings(out, brief);
+  // 루프464 — checklist dumped as an extra grid track → eject after the grid.
+  out = ejectTrailingListFromOverfilledGrid(out, brief);
   // 루프345 — flex column win-body가 heading 뒤에서 조기 종료되고 main grid가
   // 형제로 남으면 그리드를 column host 안으로 되돌린다.
   out = absorbOrphanContentGridIntoFlexColumnHost(out, brief);

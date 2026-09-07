@@ -11,6 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   absorbSpilledChromeCardSiblings,
+  ejectTrailingListFromOverfilledGrid,
   flattenNestedDuplicateCardOpens,
   healAiGeneratedDeckMarkup,
 } from '../src/html/heal-ai-generated-deck.js';
@@ -241,5 +242,45 @@ describe('루프293 · absorbSpilledChromeCardSiblings', () => {
     expect(formulaAt).toBeLessThan(nextCardAt);
     expect(out).toContain('③ 덧셈 공식');
     expect(out).not.toMatch(/기둥 P|열아홉째/);
+  });
+
+  it('루프464: absorbs orphan body after .nb-card in a 3-col neo grid', () => {
+    const html = [
+      '<section class="slide" data-screen-label="02 Product">',
+      '<div style="display:grid;grid-template-columns:repeat(3, minmax(0,1fr));gap:24px;margin-top:48px;flex:1">',
+      '<div class="nb-card nb-card-pink" style="display:flex;flex-direction:column">',
+      '<div style="font-size:48px;font-weight:900">CHATGPT</div></div>',
+      '<div style="margin-top:16px;font-size:18px;line-height:1.45">프로젝트 단위 채널,<br>개인 DM</div>',
+      '<div class="nb-card nb-card-blue" style="display:flex;flex-direction:column">',
+      '<div style="font-size:48px;font-weight:900">DRIVE</div>',
+      '<div style="font-size:22px;font-weight:700;margin-top:8px">개인 · 팀 자료</div></div>',
+      '<div style="margin-top:16px;font-size:18px;line-height:1.45">워크스페이스 단위 공유</div>',
+      '<div class="nb-card nb-card-green" style="display:flex;flex-direction:column">',
+      '<div style="font-size:48px;font-weight:900">AI</div>',
+      '<div style="margin-top:16px;font-size:18px">파일과 대화 맥락</div></div>',
+      '</div></section>',
+    ].join('');
+    const out = absorbSpilledChromeCardSiblings(html, '팀버 서비스 소개');
+    expect(out).toMatch(/nb-card-pink[\s\S]*CHATGPT[\s\S]*프로젝트 단위 채널[\s\S]*<\/div><div class="nb-card nb-card-blue/);
+    expect(out).toMatch(/nb-card-blue[\s\S]*DRIVE[\s\S]*워크스페이스 단위 공유[\s\S]*<\/div><div class="nb-card nb-card-green/);
+    // Orphan bodies are no longer direct grid siblings between cards.
+    expect([...out.matchAll(/class="nb-card/g)].length).toBe(3);
+  });
+
+  it('루프464: ejects trailing checklist from overfilled diagram grid', () => {
+    const html = [
+      '<section class="slide" data-screen-label="03 Problem">',
+      '<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:40px;align-items:center;margin-top:56px;flex:1">',
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px"><div class="nb-card">A</div></div>',
+      '<div style="font-size:140px">→</div>',
+      '<div class="nb-card" style="background:var(--pink)">TEAMVER</div>',
+      '<ul style="list-style:none;margin:24px 0 0"><li>✓ 대화 + 파일</li><li>✓ 하나의 맥락</li></ul>',
+      '</div></section>',
+    ].join('');
+    const out = ejectTrailingListFromOverfilledGrid(html, '팀버 서비스 소개');
+    expect(out).toMatch(/<\/div>\s*<ul[\s\S]*✓ 대화 \+ 파일/);
+    const gridClose = out.indexOf('</div><ul');
+    expect(gridClose).toBeGreaterThan(-1);
+    expect(out.slice(gridClose)).toContain('✓ 하나의 맥락');
   });
 });
