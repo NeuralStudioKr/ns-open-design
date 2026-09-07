@@ -666,8 +666,36 @@ export function hasFilledSlideSection(html: string): boolean {
   return listSlideSectionInners(html).some(slideInnerHasDeliverableCopy);
 }
 
-function countFilledSlideSections(html: string): number {
+/** Count slide hosts that carry real deliverable body (not title-only / empty shells). */
+export function countFilledSlideSections(html: string): number {
   return listSlideSectionInners(html).filter(slideInnerHasDeliverableCopy).length;
+}
+
+/**
+ * 루프468 — Top-up APPEND failed on a thin LOOK/scaffold prior. Accept the
+ * incoming body as a full replacement when it clearly improves substance
+ * (MiniMax often rewrites the whole deck instead of appending).
+ */
+export function incomingImprovesThinTopUpPrior(
+  priorHtml: string,
+  incomingHtml: string,
+  options?: {
+    brief?: string | null;
+    title?: string | null;
+    substanceRich?: (html: string) => boolean;
+  },
+): boolean {
+  const prior = String(priorHtml ?? '');
+  const incoming = String(incomingHtml ?? '').trim();
+  if (!incoming) return false;
+  if (!deckLooksLikeThinTopUpHostPrior(prior)) return false;
+  if (deckLooksLikeThinTopUpHostPrior(incoming)) return false;
+  if (options?.substanceRich?.(incoming)) return true;
+  const priorFilled = countFilledSlideSections(prior);
+  const incomingFilled = countFilledSlideSections(incoming);
+  if (incomingFilled > priorFilled) return true;
+  if (incomingFilled >= 1 && priorFilled === 0) return true;
+  return hasFilledSlideSection(incoming) && !hasFilledSlideSection(prior);
 }
 
 function totalFilledSlideVisibleText(html: string): number {

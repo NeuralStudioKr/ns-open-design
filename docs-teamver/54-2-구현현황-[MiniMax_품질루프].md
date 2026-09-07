@@ -37,6 +37,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프468 — thin-prior top-up 본문 품질 복구
+
+체감: `thin-prior-top-up-no-append` incomplete + 제목만 seed.
+
+수정: thin prior 교체 persist · LookSeed recoverable · thin LOOK full rewrite 큐. [0907-N05-1](./0907-N05-1-상위설계-[thin-prior_top-up_본문_품질복구].md).
+
 ### 루프467 — Sakura Chroma Tape Garden leftover refill + unique-role
 
 체감: Clone 후에도 Tape Garden / SUPERCATALOG / Bloom Pedal이 남고 10장 요청이 catalogue·stripe를 복제.

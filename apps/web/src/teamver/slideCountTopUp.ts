@@ -20,6 +20,14 @@ const SLIDE_COUNT_TOP_UP_PROMPT_FINGERPRINT_RE =
 /** Analytics `entry_from` for the append loop — not incomplete-output recovery. */
 export const SLIDE_COUNT_TOP_UP_ENTRY_FROM = "slide_count_top_up";
 
+/**
+ * 루프468 — Thin LOOK seed / title-only scaffold must not use APPEND top-up.
+ * Hidden rewrite turn replaces shells with a filled deck (prompt-fill lineage).
+ */
+export const THIN_PRIOR_FULL_REWRITE_PROMPT_SENTINEL = "[od:thin_prior_full_rewrite]";
+export const THIN_PRIOR_FULL_REWRITE_ENTRY_FROM = "thin_prior_full_rewrite";
+export const THIN_PRIOR_FULL_REWRITE_MAX_PER_CONVERSATION = 1;
+
 /** One remaining-all batch finishes a default-6 miss; two batches cover 15. */
 export const SLIDE_COUNT_TOP_UP_MAX_PER_CONVERSATION = 2;
 export const SLIDE_COUNT_TOP_UP_BATCH = 6;
@@ -45,6 +53,62 @@ export function isSlideCountTopUpPrompt(content: string | null | undefined): boo
   // Persist sanitize can drop the HTML-comment sentinel and most tags, leaving
   // "This is an explicit slide-count expansion" / "APPEND only new slides".
   return SLIDE_COUNT_TOP_UP_PROMPT_FINGERPRINT_RE.test(text);
+}
+
+export function isThinPriorFullRewritePrompt(content: string | null | undefined): boolean {
+  const text = (content ?? "").trimStart();
+  if (!text) return false;
+  return (
+    text.startsWith(THIN_PRIOR_FULL_REWRITE_PROMPT_SENTINEL)
+    || /\[od:thin_prior_full_rewrite\]|replace the thin look seed|rewrite the entire deck with real content/i.test(
+      text,
+    )
+  );
+}
+
+export function countThinPriorFullRewriteAttemptsInConversation(
+  messages: readonly ChatMessage[],
+): number {
+  return messages.filter(
+    (message) => message.role === "user" && isThinPriorFullRewritePrompt(message.content),
+  ).length;
+}
+
+/**
+ * Hollow LOOK seed / title+empty scaffold: replace, do not APPEND top-up.
+ * Host count ≥3 empty shells (or thin prior with ≥3 hosts).
+ */
+export function shouldQueueThinPriorFullRewrite(input: {
+  hostCount: number;
+  thinPrior: boolean;
+  rewriteCount: number;
+  commentAttachmentCount?: number;
+}): boolean {
+  if ((input.commentAttachmentCount ?? 0) > 0) return false;
+  if (!input.thinPrior) return false;
+  if (!Number.isFinite(input.hostCount) || input.hostCount < 3) return false;
+  if (input.rewriteCount >= THIN_PRIOR_FULL_REWRITE_MAX_PER_CONVERSATION) return false;
+  return true;
+}
+
+export function buildThinPriorFullRewritePrompt(input: {
+  hostCount: number;
+  requested?: number | null;
+}): string {
+  const target = input.requested && input.requested > 0
+    ? input.requested
+    : Math.min(Math.max(input.hostCount, 6), SLIDE_COUNT_REQUEST_MAX);
+  return [
+    THIN_PRIOR_FULL_REWRITE_PROMPT_SENTINEL,
+    "The saved deck is a THIN LOOK seed / title-only scaffold — empty shells, not a closed deliverable.",
+    "Do NOT append-only. Do NOT emit a slide-count expansion.",
+    `REWRITE the entire deck with real presentation content (${target} slides).`,
+    "Emit `<artifact type=\"deck\" identifier=\"deck\">` with a complete HTML document.",
+    "Keep the selected template kit (palette, motif, neo/Block Frame chrome). Replace placeholder shells with filled slides.",
+    "Every content slide needs a real title plus 2–4 concrete bullets/cards/paragraphs. No empty hosts.",
+    "Cover title must be a product/topic name, not a raw URL crumb.",
+    "Finish a closed `</html></artifact>` this turn.",
+  ].join("\n");
 }
 
 /** User follow-up that wants more pages — not a title/color surgical edit. */

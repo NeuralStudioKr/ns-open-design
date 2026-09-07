@@ -8,9 +8,11 @@ import {
   SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL,
   SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL_LEGACY,
   buildSlideCountTopUpPrompt,
+  buildThinPriorFullRewritePrompt,
   countHonoredSlideCountTopUpTurns,
   slideCountTopUpAppendUntil,
   isSlideCountTopUpPrompt,
+  isThinPriorFullRewritePrompt,
   extractRequestedSlideCountSpecFromMessages,
   countSlideCountTopUpAttemptsInConversation,
   extractRequestedSlideCountTargetFromMessages,
@@ -18,9 +20,11 @@ import {
   parseSlideCountSpec,
   parseSlideCountTarget,
   shouldQueueSlideCountTopUp,
+  shouldQueueThinPriorFullRewrite,
   honorSlideCountCeiling,
   honorSlideCountCeilingFromMessages,
   applyHonorSlideCeilingToHtml,
+  THIN_PRIOR_FULL_REWRITE_PROMPT_SENTINEL,
 } from "../../src/teamver/slideCountTopUp";
 
 function userMessage(id: string, content: string): ChatMessage {
@@ -509,5 +513,33 @@ describe("slideCountTopUp", () => {
       defaultRequested: 6,
       topUpCount: 1,
     })).toBe(false);
+  });
+
+  it("queues thin-prior full rewrite instead of append (루프468)", () => {
+    expect(shouldQueueThinPriorFullRewrite({
+      hostCount: 9,
+      thinPrior: true,
+      rewriteCount: 0,
+    })).toBe(true);
+    expect(shouldQueueThinPriorFullRewrite({
+      hostCount: 2,
+      thinPrior: true,
+      rewriteCount: 0,
+    })).toBe(false);
+    expect(shouldQueueThinPriorFullRewrite({
+      hostCount: 9,
+      thinPrior: false,
+      rewriteCount: 0,
+    })).toBe(false);
+    expect(shouldQueueThinPriorFullRewrite({
+      hostCount: 9,
+      thinPrior: true,
+      rewriteCount: 1,
+    })).toBe(false);
+    const prompt = buildThinPriorFullRewritePrompt({ hostCount: 9, requested: 8 });
+    expect(prompt.startsWith(THIN_PRIOR_FULL_REWRITE_PROMPT_SENTINEL)).toBe(true);
+    expect(isThinPriorFullRewritePrompt(prompt)).toBe(true);
+    expect(isSlideCountTopUpPrompt(prompt)).toBe(false);
+    expect(prompt).toMatch(/REWRITE the entire deck/i);
   });
 });

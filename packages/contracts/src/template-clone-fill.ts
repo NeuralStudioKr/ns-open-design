@@ -943,6 +943,9 @@ export const CLONE_CONTENT_FILL_LOW_SUBSTANCE_PERSIST_REASONS: readonly string[]
   'low-substance deck artifact',
   'unfilled-catalog-example',
   'incomplete-html-document-shell',
+  // 루프468 — thin LOOK/scaffold prior + top-up append miss → recover LOOK seed
+  // (or rewrite AC) instead of hard incomplete_output.
+  'thin-prior-top-up-no-append',
 ];
 
 /** Persist skip reason forced when Clone slot-fill armed a JSON repair AC. */

@@ -70,6 +70,7 @@ import {
   deckLooksLikeThinTopUpHostPrior,
   deckLooksLikeUnfilledCatalogExample,
   deckSlideHeadingsLookLikeFailedGenerate,
+  incomingImprovesThinTopUpPrior,
   isClosedSoftSalvageDeckHtml,
   isPersistableShortDeckDraft,
   isPersistableShortDeckDraftAfterHeal,
@@ -224,6 +225,7 @@ import {
   ensureTemplateCloneContentFillContinuePrompt,
   extractTemplateCloneFillSlideCountHintFromPrompt,
   historyHasTemplateCloneContentFill,
+  conversationHasTemplateCloneHostFill,
   isTemplateCloneContentFillPrompt,
   isTemplateCloneHostFillPrompt,
   isTemplateClonePromptFillPrompt,
@@ -550,15 +552,20 @@ import {
   SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX,
   SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
   SLIDE_COUNT_TOP_UP_ENTRY_FROM,
+  THIN_PRIOR_FULL_REWRITE_ENTRY_FROM,
   buildSlideCountTopUpPrompt,
+  buildThinPriorFullRewritePrompt,
   applyHonorSlideCeilingToHtml,
+  countThinPriorFullRewriteAttemptsInConversation,
   extractRequestedSlideCountSpecFromMessages,
   honorSlideCountCeiling,
   isSlideCountTopUpPrompt,
+  isThinPriorFullRewritePrompt,
   looksLikeSlideCountExpansionRequest,
   parseSlideCountSpec,
   rollbackSlideCountTopUpCount,
   shouldQueueSlideCountTopUp,
+  shouldQueueThinPriorFullRewrite,
   syncSlideCountTopUpCountFromMessages,
 } from '../teamver/slideCountTopUp';
 import {
@@ -5766,28 +5773,50 @@ export function ProjectView({
               // 루프269/275 — Thin prior + top-up noop is not a calm success.
               // Solo title-only covers and zero-body scaffolds also route here
               // (루프269 only caught cover+≥2 empties / low-substance).
-              if (
+              // 루프468 — MiniMax often rewrites the whole deck instead of
+              // appending. If incoming improves on a thin LOOK/scaffold prior,
+              // accept replacement instead of incomplete_output.
+              const thinPrior =
                 deckLooksLikeThinTopUpHostPrior(priorHtml)
                 || isLowSubstanceSlideDeckArtifact(
                   priorHtml,
                   topUpBrief,
                   project.name || '슬라이드',
-                )
-              ) {
+                );
+              if (thinPrior) {
+                if (
+                  incomingImprovesThinTopUpPrior(
+                    priorHtml,
+                    artifactToPersist.html,
+                    {
+                      brief: topUpBrief,
+                      title: project.name || '슬라이드',
+                      substanceRich: (html) => isSubstanceRichDeckReplacement(
+                        html,
+                        topUpBrief,
+                        project.name || '슬라이드',
+                      ),
+                    },
+                  )
+                ) {
+                  // Keep artifactToPersist — full replace of thin prior.
+                } else {
+                  return {
+                    kind: 'skipped-incomplete',
+                    fileName,
+                    reason: 'thin-prior-top-up-no-append',
+                  };
+                }
+              } else {
+                // 루프283 — Substance-rich prior (cover+body / filled multi-slide)
+                // keeps calm skipped-noop. Flashing incomplete_output over an
+                // already-deliverable deck is worse than a quiet no-append.
                 return {
-                  kind: 'skipped-incomplete',
+                  kind: 'skipped-noop',
                   fileName,
-                  reason: 'thin-prior-top-up-no-append',
+                  reason: 'top-up-did-not-append-slides',
                 };
               }
-              // 루프283 — Substance-rich prior (cover+body / filled multi-slide)
-              // keeps calm skipped-noop. Flashing incomplete_output over an
-              // already-deliverable deck is worse than a quiet no-append.
-              return {
-                kind: 'skipped-noop',
-                fileName,
-                reason: 'top-up-did-not-append-slides',
-              };
             }
           }
         }
@@ -9949,6 +9978,9 @@ export function ProjectView({
           && commentAttachments.length === 0
           && looksLikeSlideCountExpansionRequest(prompt)
         );
+      const isThinPriorFullRewriteSend =
+        meta?.entryFrom === THIN_PRIOR_FULL_REWRITE_ENTRY_FROM
+        || isThinPriorFullRewritePrompt(prompt);
       runSlideCountTopUpRef.current = isSlideCountTopUpSend;
       let filesSnapshot = projectFiles;
       if (
@@ -9991,6 +10023,7 @@ export function ProjectView({
       // Auto-continue prompts lose fill markers — recover from meta, retry origin, or history.
       const isClonePromptFillTurn =
         meta?.templateClonePromptFill === true
+        || isThinPriorFullRewriteSend
         || isTemplateClonePromptFillPrompt(
           retryTarget ? retryTarget.userMsg.content || prompt : prompt,
         )
@@ -10997,11 +11030,17 @@ export function ProjectView({
             // disk → succeeded on the seed (warning notice). Loop404: include
             // prompt-fill — count shortfalls now save+top-up, but structure
             // skips still need the same seed path content-fill already had.
+            // 루프468 — slide-count top-up turns drop fill markers; still recover
+            // when the conversation has Clone host-fill lineage.
             if (
               !cloneLookSeedFallbackRecovered
               && (
                 runTemplateCloneContentFillRef.current
                 || runTemplateClonePromptFillRef.current
+                || (
+                  runSlideCountTopUpRef.current
+                  && conversationHasTemplateCloneHostFill(cloneFillMessageHistory)
+                )
               )
               && terminalPersistResult?.kind === 'skipped-incomplete'
             ) {
@@ -12583,6 +12622,73 @@ export function ProjectView({
           || (slideOnlyMvp && !runPersistTargetFileRef.current);
         const requestedSpec = extractRequestedSlideCountSpecFromMessages(conversationMessages);
         const requested = requestedSpec?.max ?? null;
+        // 루프468 — Thin LOOK seed / title+empty scaffold: full rewrite once,
+        // never APPEND top-up onto hollow shells (that yields thin-prior-no-append).
+        const thinPrior = deckLooksLikeThinTopUpHostPrior(html);
+        const rewriteAlready = countThinPriorFullRewriteAttemptsInConversation(
+          conversationMessages,
+        );
+        if (
+          shouldQueueThinPriorFullRewrite({
+            hostCount: produced,
+            thinPrior,
+            rewriteCount: rewriteAlready,
+            commentAttachmentCount: runCommentAttachmentsRef.current.length,
+          })
+          && (
+            runTemplateCloneContentFillRef.current
+            || runTemplateClonePromptFillRef.current
+            || conversationHasTemplateCloneHostFill(conversationMessages)
+            || allowDefaultShortDeckTopUp
+          )
+        ) {
+          const scheduledProjectId = project.id;
+          const scheduledConversationId = activeConversationId;
+          pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
+          const rewritePrompt = buildThinPriorFullRewritePrompt({
+            hostCount: produced,
+            requested,
+          });
+          let busyRetries = 0;
+          const fireRewrite = () => {
+            slideCountTopUpTimerRef.current = null;
+            pendingSlideCountTopUpConversationIdRef.current = null;
+            if (project.id !== scheduledProjectId) return;
+            if (messagesConversationIdRef.current !== scheduledConversationId) return;
+            if (autoContinueTimerRef.current !== null) return;
+            if (!abortRef.current) {
+              if (apiBackgroundRecoveryRef.current) {
+                apiBackgroundRecoveryRef.current = false;
+                clearApiBackgroundRecoveryBanner();
+              }
+              if (streamingConversationIdRef.current === scheduledConversationId) {
+                clearStreamingMarker(scheduledConversationId);
+              }
+            }
+            if (abortRef.current) {
+              if (busyRetries < SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX) {
+                busyRetries += 1;
+                pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
+                slideCountTopUpTimerRef.current = window.setTimeout(
+                  fireRewrite,
+                  SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
+                );
+                return;
+              }
+              return;
+            }
+            const sendNow = handleSendRef.current;
+            if (!sendNow) return;
+            void Promise.resolve(
+              sendNow(rewritePrompt, [], [], {
+                entryFrom: THIN_PRIOR_FULL_REWRITE_ENTRY_FROM,
+                templateClonePromptFill: true,
+              }),
+            );
+          };
+          slideCountTopUpTimerRef.current = window.setTimeout(fireRewrite, 600);
+          return;
+        }
         const already = syncSlideCountTopUpCountFromMessages(
           conversationSlideCountTopUpCountRef.current,
           activeConversationId,

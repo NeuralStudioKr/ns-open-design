@@ -11,7 +11,9 @@ import {
 } from "../teamver/templateCloneContentFill";
 import {
   SLIDE_COUNT_TOP_UP_ENTRY_FROM,
+  THIN_PRIOR_FULL_REWRITE_ENTRY_FROM,
   isSlideCountTopUpPrompt,
+  isThinPriorFullRewritePrompt,
 } from "../teamver/slideCountTopUp";
 
 /**
@@ -22,6 +24,7 @@ export function isHiddenAutomationUserPrompt(content: string | null | undefined)
   return (
     isAutoContinueIncompleteOutputPrompt(content)
     || isSlideCountTopUpPrompt(content)
+    || isThinPriorFullRewritePrompt(content)
     || isTemplateCloneSlotFillRepairPrompt(content)
   );
 }
@@ -36,6 +39,7 @@ export function isHiddenAutomationQueuedSend(item: {
   return (
     entryFrom === AUTO_CONTINUE_ENTRY_FROM
     || entryFrom === SLIDE_COUNT_TOP_UP_ENTRY_FROM
+    || entryFrom === THIN_PRIOR_FULL_REWRITE_ENTRY_FROM
     || entryFrom === CLONE_SLOT_FILL_REPAIR_ENTRY_FROM
   );
 }

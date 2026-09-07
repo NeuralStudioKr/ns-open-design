@@ -718,7 +718,8 @@ describe('루프362 isCloneContentFillLowSubstancePersistReason', () => {
 
   it('rejects unrelated reasons and non-string input', () => {
     expect(isCloneContentFillLowSubstancePersistReason('template-clone-slot-fill-json-repair')).toBe(false);
-    expect(isCloneContentFillLowSubstancePersistReason('thin-prior-top-up-no-append')).toBe(false);
+    // 루프468 — thin-prior top-up miss recovers via LOOK seed / rewrite AC.
+    expect(isCloneContentFillLowSubstancePersistReason('thin-prior-top-up-no-append')).toBe(true);
     expect(isCloneContentFillLowSubstancePersistReason('artifact-regression')).toBe(false);
     expect(isCloneContentFillLowSubstancePersistReason('')).toBe(false);
     expect(isCloneContentFillLowSubstancePersistReason('   ')).toBe(false);
@@ -744,7 +745,7 @@ describe('루프364 isCloneContentFillLookSeedRecoverablePersistReason', () => {
   });
 
   it('rejects unrelated reasons', () => {
-    expect(isCloneContentFillLookSeedRecoverablePersistReason('thin-prior-top-up-no-append')).toBe(false);
+    expect(isCloneContentFillLookSeedRecoverablePersistReason('thin-prior-top-up-no-append')).toBe(true);
     expect(isCloneContentFillLookSeedRecoverablePersistReason('artifact-regression')).toBe(false);
     expect(isCloneContentFillLookSeedRecoverablePersistReason(null)).toBe(false);
   });

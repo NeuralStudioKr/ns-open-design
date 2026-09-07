@@ -1,6 +1,6 @@
 # 0907-N05-1 상위설계 — thin-prior top-up 본문 품질 복구
 
-**날짜:** 2026-09-07 · **루프:** 466  
+**날짜:** 2026-09-07 · **루프:** 468  
 **관련:** [0907-N02 LOOK+AI](./0907-N02-1-상위설계-[Clone_LOOK와_AI_본문_동시사용].md) · [0907-N04 letterbox](./0907-N04-1-상위설계-[Block_frame_Clone_letterbox_표지_사이즈].md) · [54-2](./54-2-구현현황-[MiniMax_품질루프].md)
 
 ## 1. 체감
@@ -23,7 +23,7 @@ Clone Block Frame 후 MiniMax가 돌았는데도:
 | D | `thin-prior-top-up-no-append`가 LookSeed recoverable 목록에 없음 | 버그 |
 | E | 빈 셸 다수를 `produced`로 세면 top-up 스케줄이 어긋나거나, 반대로 얇은 1장 뒤에 append를 강제함 | 구조 |
 
-## 3. 정책 (루프466)
+## 3. 정책 (루프468)
 
 1. **thin prior + top-up miss + incoming이 prior보다 낫다** → append 실패해도 **교체 persist** (incomplete 금지).
 2. **thin prior + incoming도 무용** → incomplete hard fail 대신 **LOOK seed 복구**(경고+Retry) 또는 **full rewrite AC** 1회.

@@ -7,6 +7,7 @@ import {
   documentContainsSlideSection,
   hasFilledSlideSection,
   hasSalvageableDeckSlideContent,
+  incomingImprovesThinTopUpPrior,
   isClosedSoftSalvageDeckHtml,
   isDeckStatusProseOnlyBody,
   isPersistableShortDeckDraft,
@@ -126,6 +127,25 @@ describe("deck-html-content", () => {
       + '<section class="slide"></section>'
       + '</body></html>';
     expect(deckLooksLikeThinTopUpHostPrior(titlePlusEmpty)).toBe(true);
+  });
+
+  it("accepts substance rewrite over thin LOOK prior (루프468)", () => {
+    const thin =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>팀버 소개</h1></section>'
+      + '<section class="slide"></section>'
+      + '<section class="slide"></section>'
+      + '</body></html>';
+    const improved =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>팀버 소개</h1><p>하나의 워크스페이스로 흩어진 일을 모읍니다.</p></section>'
+      + '<section class="slide"><h2>문제</h2><ul><li>도구가 흩어짐</li><li>맥락 손실</li></ul></section>'
+      + '<section class="slide"><h2>해결</h2><p>Teamver가 대화·문서·파일을 한곳에 둡니다.</p></section>'
+      + '</body></html>';
+    expect(deckLooksLikeThinTopUpHostPrior(thin)).toBe(true);
+    expect(incomingImprovesThinTopUpPrior(thin, improved)).toBe(true);
+    expect(incomingImprovesThinTopUpPrior(thin, thin)).toBe(false);
+    expect(incomingImprovesThinTopUpPrior(improved, thin)).toBe(false);
   });
 
   it("does not treat a 3-slide outline/status shell as a persistable draft", () => {

@@ -352,6 +352,24 @@ export function historyHasTemplateCloneContentFill(
 }
 
 /**
+ * 루프468 — Any Clone host fill (prompt or json) in the conversation.
+ * Top-up user turns drop fill markers; recovery still needs Clone lineage.
+ */
+export function conversationHasTemplateCloneHostFill(
+  messages: readonly {
+    role?: string;
+    content?: string | null;
+    runContext?: { templateCloneFill?: string | null } | null;
+  }[],
+): boolean {
+  return messages.some((message) => {
+    if (message?.role !== 'user') return false;
+    const mode = templateCloneFillModeFromUserMessage(message);
+    return mode === 'json' || mode === 'prompt';
+  });
+}
+
+/**
  * Auto-continue prompts drop fill markers — re-stamp CREATE fill contract so
  * handleSend keeps stripping deck.html and never flips to existing-deck edit.
  * No-op when the prompt already carries a fill marker (first seed or prior stamp).
