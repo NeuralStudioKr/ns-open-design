@@ -1,6 +1,6 @@
 # 0907-N06-1 상위설계 — 사이트 분석 → prompt-fill outline 주입
 
-**날짜:** 2026-09-07 · **루프:** 469  
+**날짜:** 2026-09-07 · **루프:** 471  
 **관련:** [0907-N05 thin-prior](./0907-N05-1-상위설계-[thin-prior_top-up_본문_품질복구].md) · [0907-N02 LOOK+AI](./0907-N02-1-상위설계-[Clone_LOOK와_AI_본문_동시사용].md) · [54-2](./54-2-구현현황-[MiniMax_품질루프].md) · [15 web_fetch FAQ](./15_웹참조_BYOK_web_fetch_FAQ.md)
 
 ## 1. 체감
@@ -22,7 +22,7 @@ Clone Block Frame + `www.teamver.com` 사이트 분석 요청 후에도 덱이 *
 | C | deterministic synth cover lead가 `{topic} 한눈에` — prompt-fill이 같은 얕은 패턴을 모방 | 구조 |
 | D | `<web-fetch-context>`는 턴에 붙지만, seed가 **필수 섹션 outline**을 강제하지 않음 | 갭 |
 
-## 3. 정책 (루프469)
+## 3. 정책 (루프471)
 
 1. brief/요청이 사이트·제품 URL 분석(`looksLikeTemplateCloneServiceIntroBrief` 계열)이면 prompt-fill seed에 **구조화 outline 블록**을 주입한다.
 2. 필수 섹션: problem/context · product promise · core workflow · key features · user/team use cases · closing(+ 선택: integration/ops). 각 섹션 **소스에서 뽑은 구체 bullet 2–4**.
@@ -40,4 +40,4 @@ Clone Block Frame + `www.teamver.com` 사이트 분석 요청 후에도 덱이 *
 
 ## 변경 이력
 
-| 2026-09-07 15:54 | 루프469 상위설계 초안 |
+| 2026-09-07 15:54 | 루프471 상위설계 초안 |

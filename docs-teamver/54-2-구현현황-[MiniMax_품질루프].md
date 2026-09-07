@@ -15,13 +15,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts system-prompt-api-mode · template-visual-kit · teamver-selected-template-compose · deck-framework-compact · template-clone-fill, web templateCloneContentFill · runtime/resume.
 
-**후속:** [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) · [0901-N02-21](./0901-N02-21-구현설계-[Clone_sakura-leftover-refill].md) · [0901-N02-22](./0901-N02-22-구현설계-[Clone_long-table-leftover-refill].md) · [0901-N02-23](./0901-N02-23-구현설계-[Clone_remaining-zhangzara-quality-gates].md) — B1–B5 · C–C13 · D · 루프368–470. MiniMax live 가드 ☑(키 없으면 skip). 루프450–470 품질 게이트/peer-fit ☑. 공식 Zhangzara 4축 게이트는 카탈로그 전 종.
+**후속:** [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) · [0901-N02-21](./0901-N02-21-구현설계-[Clone_sakura-leftover-refill].md) · [0901-N02-22](./0901-N02-22-구현설계-[Clone_long-table-leftover-refill].md) · [0901-N02-23](./0901-N02-23-구현설계-[Clone_remaining-zhangzara-quality-gates].md) · [0907-N06-1](./0907-N06-1-상위설계-[사이트분석_prompt-fill_outline_주입].md) — B1–B5 · C–C13 · D · 루프368–471. MiniMax live 가드 ☑(키 없으면 skip). 루프450–471 품질 게이트/peer-fit/사이트분석 outline ☑. 공식 Zhangzara 4축 게이트는 카탈로그 전 종.
 
 다음 추천 작업:
-1. screenshot smoke fixture로 motif/배치 고정
-2. MiniMax 키 환경 Clone fill live smoke
+1. MiniMax 키 환경 Clone fill live smoke (teamver.com 사이트 분석 → dense outline)
+2. screenshot smoke fixture로 motif/배치 고정
 3. FileViewer ←/→ tools-dev + Teamver BFF GUI bake(선택)
 4. Studio/Creative leftover denylist 보강(선택)
+5. deterministic synth cover lead(`한눈에`) 서비스 소개 경로 개선(선택)
 
 ### 빈 칸 번호 카드 (코드명 leftover)
 
@@ -36,6 +37,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 `기둥` / `PILLAR` / `Phase`는 모델이 붙이는 접두일 뿐, 발표 용어가 아닙니다. extra-copy·stub는 주제 단어 목록이 아닙니다(루프259·265).
 
 ## 2026-09-02 현재 판단 · 최신 루프
+
+### 루프471 — 사이트 분석 → prompt-fill outline 주입
+
+체감: `www.teamver.com` 분석 + Block Frame도 얕은 `팀버 소개` / `한눈에`.
+
+수정: service-intro outline(problem→closing)을 prompt-fill·JSON seed에 주입 · brief headings/preview/URL 앵커 바인딩 · compact brief가 URL 분석 보존 · KPI 가드 유지. [0907-N06-1](./0907-N06-1-상위설계-[사이트분석_prompt-fill_outline_주입].md).
 
 ### 루프470 — 남은 10셸 Zhangzara 공식 템플릿 4축 게이트
 

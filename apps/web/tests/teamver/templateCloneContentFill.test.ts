@@ -9,9 +9,11 @@ import {
   buildTemplateCloneContentFillSeed,
   buildTemplateClonePromptFillSeed,
   buildTemplateCloneSlotFillRepairPrompt,
+  buildWebsiteServiceIntroOutlineInstruction,
   cloneFillJsonRepairAlreadyAttempted,
   compactTemplateCloneFillSourceBrief,
   deriveTemplateCloneTopicLabel,
+  extractWebsiteAnalysisAnchorsFromBrief,
   ensureTemplateCloneContentFillContinuePrompt,
   extractTemplateCloneUserFacingRequest,
   getTemplateCloneFillMode,
@@ -400,6 +402,13 @@ describe('templateCloneContentFill', () => {
     expect(seed).toContain('Do not emit IB magazine chrome');
     expect(seed).toContain('never a raw URL or truncated host crumb');
     expect(seed).toContain('real service-introduction deck');
+    expect(seed).toContain('Website/product analysis outline (REQUIRED');
+    expect(seed).toContain('Problem/context');
+    expect(seed).toContain('Product promise');
+    expect(seed).toContain('Core workflow');
+    expect(seed).toContain('Key features');
+    expect(seed).toContain('FORBIDDEN shallow-only decks');
+    expect(seed).toContain('[Source brief]');
     expect(seed).toContain('close badges, section labels, header pills');
     expect(seed).toContain('Never nest the whole slide grid inside');
     expect(seed).not.toMatch(/Worked example — brief/i);
@@ -409,6 +418,62 @@ describe('templateCloneContentFill', () => {
     expect(persistableUserMessageContent(seed)).toBe(
       'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
     );
+  });
+
+  it('binds website-analysis outline anchors from headings/preview in the brief', () => {
+    const brief = [
+      'User instruction:',
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+      'Visible headings: Workspace / Canvas / Drive sync / 권한',
+      'Source preview:',
+      '- AI로 슬라이드와 문서를 한 워크스페이스에서',
+      '- Canvas와 Drive를 연결해 초안부터 공유까지',
+    ].join('\n');
+    const anchors = extractWebsiteAnalysisAnchorsFromBrief(brief);
+    expect(anchors.urls.some((url) => /teamver\.com/i.test(url))).toBe(true);
+    expect(anchors.headings).toEqual(
+      expect.arrayContaining(['Workspace', 'Canvas', 'Drive sync', '권한']),
+    );
+    expect(anchors.previewLines[0]).toMatch(/워크스페이스/);
+
+    const outline = buildWebsiteServiceIntroOutlineInstruction(brief);
+    expect(outline).toContain('Website/product analysis outline (REQUIRED');
+    expect(outline).toContain('headings=Workspace / Canvas / Drive sync / 권한');
+    expect(outline).toMatch(/preview=.*워크스페이스/);
+    expect(outline).toContain('FORBIDDEN shallow-only decks');
+
+    const seed = buildTemplateClonePromptFillSeed({
+      userInstruction: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+      sourceBrief: brief,
+      templateTitle: 'Html Ppt Zhangzara 블록 프레임',
+      slideCountHint: '8-10',
+    });
+    expect(seed).toContain('Source anchors (bind these');
+    expect(seed).toContain('Workspace / Canvas / Drive sync / 권한');
+    expect(seed).toContain('Do not invent quantitative KPIs');
+
+    const jsonSeed = buildTemplateCloneContentFillSeed({
+      userInstruction: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+      sourceBrief: brief,
+      slideCountHint: '8-10',
+    });
+    expect(jsonSeed).toContain('Website/product analysis outline (REQUIRED');
+    expect(jsonSeed).toContain('Key features');
+  });
+
+  it('does not inject website outline for a plain topic brief', () => {
+    expect(buildWebsiteServiceIntroOutlineInstruction(
+      'expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
+    )).toBeNull();
+    const seed = buildTemplateClonePromptFillSeed({
+      userInstruction: 'expo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨.',
+      templateTitle: 'Html Ppt Zhangzara Daisy Days',
+      slideCountHint: '5-6',
+    });
+    expect(seed).not.toContain('Website/product analysis outline (REQUIRED');
+    expect(compactTemplateCloneFillSourceBrief(
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+    )).toContain('www.teamver.com');
   });
 
   it('recovers prompt-fill lineage from runContext after persist stores the brief only', () => {

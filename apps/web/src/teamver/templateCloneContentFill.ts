@@ -10,6 +10,7 @@
 
 import type { ChatAttachment } from '../types';
 import {
+  looksLikeTemplateCloneServiceIntroBrief,
   SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION,
 } from '@open-design/contracts';
 import {
@@ -489,10 +490,118 @@ export function compactTemplateCloneFillSourceBrief(raw: string | null | undefin
 
   if (parts.length > 0) return parts.join('\n').slice(0, 1400);
   if (/\[Deliverable instruction\]|\[Selected slide template/i.test(text)) return '';
+  // 루프471 — URL / 사이트·서비스 소개 분석 문장은 instruction drop 전에 보존.
+  // Otherwise prompt-fill loses the only source anchor before web-fetch binds.
+  if (looksLikeTemplateCloneServiceIntroBrief(text)) {
+    return text.slice(0, 1400);
+  }
   if (looksLikeCanvasCreateBoilerplate(text) || looksLikeInstructionNotSlideCopy(text)) {
     return '';
   }
   return text.slice(0, 1400);
+}
+
+/** Anchors extracted from a website/product analysis brief for prompt-fill outline binding. */
+export type WebsiteAnalysisAnchors = {
+  urls: string[];
+  topic: string | null;
+  headings: string[];
+  previewLines: string[];
+};
+
+const WEBSITE_ANALYSIS_URL_RE =
+  /\b(?:https?:\/\/|www\.)[A-Za-z0-9\-._~:/?#@!$&*+,;=%]+/gi;
+const WEBSITE_ANALYSIS_BARE_HOST_RE =
+  /\b(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+(?:com|net|org|io|ai|app|dev|kr|co\.kr)\b/gi;
+
+/**
+ * Pull URLs, visible headings, and short preview lines from a Clone fill brief
+ * so the website-analysis outline can bind slots to real source facts.
+ */
+export function extractWebsiteAnalysisAnchorsFromBrief(
+  brief: string | null | undefined,
+): WebsiteAnalysisAnchors {
+  const text = String(brief ?? '').trim();
+  const urls = new Set<string>();
+  for (const match of text.matchAll(WEBSITE_ANALYSIS_URL_RE)) {
+    const raw = String(match[0] ?? '').replace(/[.,;:!?]+$/g, '');
+    if (raw) urls.add(raw.slice(0, 120));
+  }
+  for (const match of text.matchAll(WEBSITE_ANALYSIS_BARE_HOST_RE)) {
+    const raw = String(match[0] ?? '').trim();
+    if (raw && !/^(?:example|localhost)\b/i.test(raw)) urls.add(raw.slice(0, 120));
+  }
+
+  const headingsRaw =
+    /(?:Visible headings|Canvas headings|Source headings)\s*[:：]\s*(.+)$/im.exec(text)?.[1]
+    ?? '';
+  const headings = headingsRaw
+    .split(/\s*\/\s*|\s*[|;·]\s*|\n+/)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 2 && part.length <= 80)
+    .slice(0, 12);
+
+  const previewRaw =
+    /Source preview\s*[:：]\s*([\s\S]*?)(?=\n(?:Canvas |Drive |Visible |User |Selected |\[)|$)/i
+      .exec(text)?.[1]
+    ?? '';
+  const previewLines = previewRaw
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^[-*•]\s*/, '').trim())
+    .filter((line) => line.length >= 4 && line.length <= 120)
+    .slice(0, 8);
+
+  const topic =
+    deriveTemplateCloneTopicLabel(text)
+    || (/Canvas title\s*[:：]\s*(.+)$/im.exec(text)?.[1]?.trim().slice(0, 60) ?? null)
+    || null;
+
+  return {
+    urls: [...urls].slice(0, 3),
+    topic: topic && topic.length >= 2 ? topic : null,
+    headings,
+    previewLines,
+  };
+}
+
+/**
+ * 루프471 — Structured service-intro outline for website/product URL analysis.
+ * Replaces the generic one-liner so MiniMax must bind sections to brief/web-fetch facts.
+ */
+export function buildWebsiteServiceIntroOutlineInstruction(
+  brief: string | null | undefined,
+): string | null {
+  const text = String(brief ?? '').trim();
+  if (!text || !looksLikeTemplateCloneServiceIntroBrief(text)) return null;
+
+  const anchors = extractWebsiteAnalysisAnchorsFromBrief(text);
+  const anchorBits: string[] = [];
+  if (anchors.topic) anchorBits.push(`topic=${anchors.topic}`);
+  if (anchors.urls.length > 0) anchorBits.push(`urls=${anchors.urls.join(', ')}`);
+  if (anchors.headings.length > 0) {
+    anchorBits.push(`headings=${anchors.headings.join(' / ')}`);
+  }
+  if (anchors.previewLines.length > 0) {
+    anchorBits.push(`preview=${anchors.previewLines.slice(0, 4).join(' · ')}`);
+  }
+  const anchorLine = anchorBits.length > 0
+    ? `Source anchors (bind these — do not ignore): ${anchorBits.join('; ')}.`
+    : 'Source anchors: none parsed yet — bind every section to facts from [Source brief] and any `<web-fetch-context>` page text on this turn.';
+
+  return [
+    'Website/product analysis outline (REQUIRED — real service-introduction deck, not a shallow brand intro):',
+    '1. Cover — product/brand name only (never a raw URL or truncated host crumb).',
+    '2. Problem/context — concrete user/org pain from the source (2–4 bullets).',
+    '3. Product promise — what the product claims to deliver (named value, not slogan-only).',
+    '4. Core workflow — steps or journey named or implied by the source.',
+    '5. Key features — 2–4 named features/modules from the source (title + body each).',
+    '6. User/team use cases — who uses it and for what scenes.',
+    '7. Closing / adoption path — next step, CTA, or rollout (qualitative unless source states metrics).',
+    'Optional only if the source mentions them: integration / security / operations notes.',
+    'Bind every section to facts in [Source brief] and any `<web-fetch-context>` on this turn. Prefer page titles, headings, feature names, and workflow copy over invented marketing filler.',
+    anchorLine,
+    'FORBIDDEN shallow-only decks: brand intro + "한눈에" / "소개" title-only slides, empty section labels, or a cover plus one generic overview. Every content slide needs 2–4 concrete cards/bullets/paragraphs from the source.',
+  ].join('\n');
 }
 
 /**
@@ -724,14 +833,16 @@ export function buildTemplateCloneContentFillSeed(options: {
   const topic = deriveTemplateCloneTopicLabel(visible);
   const templateTitle = options.templateTitle?.trim() || '';
   const rawBrief = String(options.sourceBrief ?? '').trim();
-  const brief = compactTemplateCloneFillSourceBrief(
-    [options.sourceBrief, options.pendingPrompt, options.userInstruction]
-      .filter(Boolean)
-      .join('\n\n'),
-  );
+  const combinedBrief = [options.sourceBrief, options.pendingPrompt, options.userInstruction]
+    .filter(Boolean)
+    .join('\n\n');
+  const brief = compactTemplateCloneFillSourceBrief(combinedBrief);
   const hasAttachedSource =
     options.hasSourceMaterial
     ?? (briefLooksLikeAttachedSource(rawBrief) || briefLooksLikeAttachedSource(brief));
+  const websiteOutline = buildWebsiteServiceIntroOutlineInstruction(
+    [visible, brief, combinedBrief].filter(Boolean).join('\n\n'),
+  );
   const parts = [
     visible,
     '',
@@ -743,6 +854,7 @@ export function buildTemplateCloneContentFillSeed(options: {
     'The visible request above is a BRIEF/TOPIC. Expand it into a real presentation with domain knowledge. Do NOT paste the request onto the cover or body slides.',
     topic ? `Cover topic (use as the title — not the instruction): ${topic}.` : '',
     ...templateCloneContentFillHardRules(),
+    websiteOutline ?? '',
   ].filter((line) => line !== '');
   if (templateTitle) {
     parts.push(`Selected template: ${templateTitle}.`);
@@ -785,14 +897,16 @@ export function buildTemplateClonePromptFillSeed(options: {
   const topic = deriveTemplateCloneTopicLabel(visible);
   const templateTitle = options.templateTitle?.trim() || '';
   const rawBrief = String(options.sourceBrief ?? '').trim();
-  const brief = compactTemplateCloneFillSourceBrief(
-    [options.sourceBrief, options.pendingPrompt, options.userInstruction]
-      .filter(Boolean)
-      .join('\n\n'),
-  );
+  const combinedBrief = [options.sourceBrief, options.pendingPrompt, options.userInstruction]
+    .filter(Boolean)
+    .join('\n\n');
+  const brief = compactTemplateCloneFillSourceBrief(combinedBrief);
   const hasAttachedSource =
     options.hasSourceMaterial
     ?? (briefLooksLikeAttachedSource(rawBrief) || briefLooksLikeAttachedSource(brief));
+  const websiteOutline = buildWebsiteServiceIntroOutlineInstruction(
+    [visible, brief, combinedBrief].filter(Boolean).join('\n\n'),
+  );
   const visibleSlideCount = parseSlideCountTarget(visible);
   const slideCountHintSource =
     visibleSlideCount != null && isSlideCountRangeHint(options.slideCountHint)
@@ -824,7 +938,8 @@ export function buildTemplateClonePromptFillSeed(options: {
     SLIDE_DECK_QUALITY_BAR_INSTRUCTION,
     requestedLine,
     templateClonePromptFillSlideCountInstruction({ slideCountHint, slideCountHintSource }),
-    'If the source is a website or product URL, build a real service-introduction deck: problem/context, product promise, core workflow, key features, user/team use cases, integration/security/operation notes, adoption path, and closing. Do not stop at a shallow brand intro.',
+    websiteOutline
+      ?? 'If the source is a website or product URL, build a real service-introduction deck: problem/context, product promise, core workflow, key features, user/team use cases, integration/security/operation notes, adoption path, and closing. Do not stop at a shallow brand intro.',
     'Every content slide needs 2-4 concrete cards/bullets/paragraphs derived from the brief/source. A slide with only a section number and one generic title is incomplete.',
     'HTML structure guard: close badges, section labels, header pills, and number pills before opening grids/cards. Never nest the whole slide grid inside a `.header-pill`, `.title-pill`, `.tag`, or badge element.',
     'Every slide must be 1920x1080, fixed-size, overflow hidden, and navigable as a deck, not a scrolling article.',
