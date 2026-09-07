@@ -813,7 +813,7 @@ describe('루프419 Capsule deterministic quality gate', () => {
       maxSlides: 4,
     });
     expect(cloned).toBeTruthy();
-    expect(cloned).toMatch(/팀버 한눈에|직접적인 가치/);
+    expect(cloned).toMatch(/팀버가 다루는 문제와 제공 가치|직접적인 가치/);
     expect(cloned).not.toContain('Clarity of Purpose');
     expect(cloned).not.toContain('The Journey Continues');
     expect(cloned).not.toContain('340%');

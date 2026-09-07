@@ -670,6 +670,86 @@ function topicKeywordForSynthBody(title: string): string {
     || '핵심 주제';
 }
 
+const SHALLOW_SYNTH_COVER_LEAD_RE = /한눈에\s*$/u;
+const GENERIC_SERVICE_INTRO_LEAD_RE =
+  /^(?:표지|개요|커버|소개|문제|해결|요약|핵심(?:\s*\d+)?|다음\s*단계|서비스\s*소개)$/u;
+
+function looksLikeServiceIntroCoverLeadContext(
+  cover: string,
+  brief?: string | null,
+): boolean {
+  const context = [brief, cover].filter(Boolean).join('\n');
+  return looksLikeTemplateCloneServiceIntroBrief(context)
+    || /소개\s*$/u.test(String(cover ?? '').trim());
+}
+
+/**
+ * Prefer a source heading or preview line that is actual product copy —
+ * not the cover title, a section label, a URL, or the "만들어줘" request.
+ * Does not invent KPIs; returns null when the brief has no usable fact.
+ */
+function extractServiceIntroCoverLeadFromBrief(
+  brief: string,
+  topic: string,
+): string | null {
+  const headingsRaw =
+    /(?:Visible headings|Canvas headings|Source headings)\s*[:：]\s*(.+)$/im.exec(brief)?.[1]
+    ?? '';
+  const previewRaw =
+    /Source preview\s*[:：]\s*([\s\S]*?)(?=\n(?:Canvas |Drive |Visible |User |Selected |\[)|$)/i
+      .exec(brief)?.[1]
+    ?? '';
+  const candidates: string[] = [];
+  for (const part of headingsRaw.split(/\s*\/\s*|\s*[|;·]\s*|\n+/)) {
+    candidates.push(part.trim());
+  }
+  for (const line of previewRaw.split(/\r?\n/)) {
+    candidates.push(line.replace(/^[-*•·]\s*/, '').trim());
+  }
+  for (const line of brief.split(/\r?\n/)) {
+    const trimmed = line.replace(/^[-*•·]\s*/, '').trim();
+    if (/만들어줘|사이트\s*분석|https?:\/\/|^www\./i.test(trimmed)) continue;
+    if (trimmed.length >= 8 && trimmed.length <= 48) candidates.push(trimmed);
+  }
+
+  const topicNorm = topic.replace(/\s+/g, ' ').trim();
+  for (const raw of candidates) {
+    const text = raw.replace(/\s+/g, ' ').trim();
+    if (text.length < 6 || text.length > 48) continue;
+    if (GENERIC_SERVICE_INTRO_LEAD_RE.test(text)) continue;
+    if (SHALLOW_SYNTH_COVER_LEAD_RE.test(text)) continue;
+    if (text === topicNorm || text === `${topicNorm} 소개`) continue;
+    if (/^(?:슬라이드|덱|발표\s*자료)$/u.test(text)) continue;
+    if (/^https?:|^www\./i.test(text)) continue;
+    return text;
+  }
+  return null;
+}
+
+/**
+ * Cover lead for deterministic synth.
+ *
+ * Service-intro / website-analysis briefs must not ship the shallow
+ * `{topic} 한눈에` pattern. Prefer a source heading or preview line that is
+ * not the cover title itself; otherwise name the analysis task (problem +
+ * value) without inventing KPIs or product claims. Generic free-form briefs
+ * keep the short `{topic} 한눈에` lead.
+ */
+export function synthesizeTemplateCloneCoverLead(input: {
+  cover: string;
+  brief?: string | null;
+}): string {
+  const cover = String(input.cover ?? '').trim();
+  const brief = String(input.brief ?? '').trim();
+  const topic = topicKeywordForSynthBody(cover);
+  if (looksLikeServiceIntroCoverLeadContext(cover, brief)) {
+    const fromSource = extractServiceIntroCoverLeadFromBrief(brief || cover, topic);
+    if (fromSource) return fromSource;
+    return `${topic}가 다루는 문제와 제공 가치`;
+  }
+  return `${topic} 한눈에`;
+}
+
 function synthesizeTemplateCloneSlideBody(
   cover: string,
   label: string,
@@ -831,7 +911,7 @@ export function synthesizeTemplateCloneOutlineFromBrief(input: {
     title: cover,
     roleHint: 'cover',
     kicker: 'OVERVIEW',
-    lead: `${topicKeywordForSynthBody(cover)} 한눈에`,
+    lead: synthesizeTemplateCloneCoverLead({ cover, brief }),
   }];
   for (let i = 1; i < target; i += 1) {
     const label = TEMPLATE_CLONE_GENERIC_SECTION_LABELS[i - 1] ?? `핵심 ${i}`;
@@ -5160,7 +5240,7 @@ function biennaleFooterRows(input: {
   const lines = compactTextLines(input.lead, input.bodyText);
   return [
     { label: input.kicker || '주제', text: input.title },
-    { label: '방향', text: lines[0] || input.lead || `${input.title} 한눈에` },
+    { label: '방향', text: lines[0] || input.lead || synthesizeTemplateCloneCoverLead({ cover: input.title, brief: input.title }) },
     { label: '구성', text: lines[1] || '핵심 흐름과 사용자 가치 정리' },
     { label: '메모', text: lines[2] || '팀 단위 실행과 다음 단계까지 연결' },
   ];
@@ -5416,7 +5496,7 @@ export function healCobaltLeftoverCatalogCopy(
     }
     if (/\bs-chapter\b/i.test(span.attrs)) {
       nextBody = replaceFirstExactClassText(nextBody, 'nm-tag', input.kicker || input.lead || title);
-      nextBody = replaceFirstExactClassText(nextBody, 'lede', input.lead || input.bodyText || `${title} 한눈에`);
+      nextBody = replaceFirstExactClassText(nextBody, 'lede', input.lead || input.bodyText || synthesizeTemplateCloneCoverLead({ cover: title, brief: title }));
     }
     if (/\bs-data\b/i.test(span.attrs)) {
       const lines = biennaleFillLines(input, 2);
@@ -5770,7 +5850,7 @@ function fillLongTableCover(
   input: { title: string; lead: string; bodyText: string; kicker: string },
 ): string {
   let next = replaceSakuraClassCopy(body, 'title', input.title);
-  next = replaceSakuraClassCopy(next, 'tagline', input.lead || input.bodyText || `${input.title} 한눈에`);
+  next = replaceSakuraClassCopy(next, 'tagline', input.lead || input.bodyText || synthesizeTemplateCloneCoverLead({ cover: input.title, brief: input.title }));
   next = replaceSakuraClassCopy(next, 'big-edition', input.title);
   next = replaceSakuraClassCopy(next, 'big-edition-lab', input.kicker || input.lead || input.title);
   next = replaceSakuraClassCopy(next, 'big-edition-meta', input.bodyText || input.lead || input.title);
@@ -5819,7 +5899,7 @@ function fillLongTableFeatured(
   input: { title: string; lead: string; bodyText: string; kicker: string },
 ): string {
   let next = replaceSakuraClassCopy(body, 'ttl', input.title);
-  next = replaceSakuraClassCopy(next, 'lede', input.lead || input.bodyText || `${input.title} 한눈에`);
+  next = replaceSakuraClassCopy(next, 'lede', input.lead || input.bodyText || synthesizeTemplateCloneCoverLead({ cover: input.title, brief: input.title }));
   next = replaceSakuraClassCopy(next, 'ed-label', input.kicker || input.title);
   next = replaceClassTextBySequence(next, 'v', [
     input.title,
@@ -6563,7 +6643,7 @@ function fillSlideShell(
     body = replaceCobaltTitleHeading(body, title);
     if (/\bs-chapter\b/i.test(shell.attrs)) {
       body = replaceFirstExactClassText(body, 'nm-tag', kicker || lead || title);
-      body = replaceFirstExactClassText(body, 'lede', lead || bodyText || `${title} 한눈에`);
+      body = replaceFirstExactClassText(body, 'lede', lead || bodyText || synthesizeTemplateCloneCoverLead({ cover: title, brief: title }));
     }
   }
   // 루프461 — Do NOT gate on `officialLookIsNeoBrutalBlockFrame(body)`.
@@ -6753,7 +6833,10 @@ export function buildTemplateClonedDeckHtml(
           title: label,
           roleHint: 'cover' as const,
           kicker: 'OVERVIEW',
-          lead: `${topicKeywordForSynthBody(deckTitle)} 한눈에`,
+          lead: synthesizeTemplateCloneCoverLead({
+            cover: deckTitle,
+            brief: options.brief || deckTitle,
+          }),
         };
       }
       return {
@@ -7197,7 +7280,7 @@ export function scrubLeftoverCatalogExampleHtml(
         title,
         roleHint: 'cover',
         kicker: 'OVERVIEW',
-        lead: `${topicKeywordForSynthBody(title)} 한눈에`,
+        lead: synthesizeTemplateCloneCoverLead({ cover: title, brief }),
       },
     ];
   return buildTemplateClonedDeckHtml(dest, slides, {
@@ -7925,7 +8008,7 @@ export function synthesizeTemplateCloneSlidesFromFreeFormBrief(options: {
       title,
       roleHint: 'cover',
       kicker: 'OVERVIEW',
-      lead: `${topicKeywordForSynthBody(title)} 한눈에`,
+      lead: synthesizeTemplateCloneCoverLead({ cover: title, brief }),
     },
     {
       title: '개요',
@@ -8048,7 +8131,7 @@ export function resolveTemplateCloneSlidesForDeterministicFill(options: {
         title: slide.title,
         roleHint: slide.roleHint ?? 'cover',
         kicker: slide.kicker ?? 'OVERVIEW',
-        lead: slide.lead ?? `${topicKeywordForSynthBody(cover)} 한눈에`,
+        lead: slide.lead ?? synthesizeTemplateCloneCoverLead({ cover, brief }),
       };
       copyTemplateCloneSlideExtras(slide, next);
       return next;

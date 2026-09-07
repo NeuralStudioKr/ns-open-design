@@ -16,6 +16,7 @@ import {
   recoverPartialTemplateCloneOutline,
   resolveTemplateCloneSlidesForDeterministicFill,
   stripTemplateCloneOutlineNoise,
+  synthesizeTemplateCloneCoverLead,
   synthesizeTemplateCloneOutlineFromBrief,
   prepareTemplateCloneSlotFillAssistantText,
 } from '../src/template-clone-fill.js';
@@ -489,7 +490,9 @@ describe('루프419 resolveTemplateCloneSlidesForDeterministicFill', () => {
     const joined = JSON.stringify(slides);
     expect(joined).not.toMatch(/팀버이|팀버은/);
     expect(joined).toContain('왜 팀버인가');
-    expect(joined).toContain('팀버 한눈에');
+    expect(joined).not.toMatch(/한눈에/);
+    expect(slides[0]?.lead).toMatch(/팀버/);
+    expect(slides[0]?.lead).toMatch(/문제|가치|사이트/);
   });
 
   it('densifies title-only Visible headings instead of leaving empty card bodies', () => {
@@ -513,6 +516,37 @@ describe('루프419 resolveTemplateCloneSlidesForDeterministicFill', () => {
     expect(outline?.slides[0]?.kicker).toBe('OVERVIEW');
     expect(outline?.slides.some((slide) => slide.body === '…')).toBe(false);
     expect(outline?.slides[1]?.items?.every((item) => item.title && item.body)).toBe(true);
+  });
+
+  it('루프473 — service-intro cover lead is not the shallow 한눈에 pattern', () => {
+    const outline = synthesizeTemplateCloneOutlineFromBrief({
+      userBrief: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+      deckTitle: '슬라이드',
+    });
+    expect(outline?.slides[0]?.lead).toBeTruthy();
+    expect(outline?.slides[0]?.lead).not.toMatch(/한눈에/);
+    expect(outline?.slides[0]?.lead).toMatch(/팀버/);
+    expect(outline?.slides[0]?.lead).toMatch(/문제|가치|사이트/);
+    expect(JSON.stringify(outline)).not.toMatch(/\d+%/);
+  });
+
+  it('루프473 — source preview wins over the service-intro fallback lead', () => {
+    expect(synthesizeTemplateCloneCoverLead({
+      cover: '팀버 소개',
+      brief: [
+        'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+        'Source preview: AI가 만드는 슬라이드',
+        '템플릿으로 복제하고 자동 생성',
+      ].join('\n'),
+    })).toBe('AI가 만드는 슬라이드');
+  });
+
+  it('루프473 — generic free-form keeps the short 한눈에 cover lead', () => {
+    const outline = synthesizeTemplateCloneOutlineFromBrief({
+      userBrief: 'Expo 개발 도구에 대해 시니어 개발자용 발표 자료를 만들어 주세요',
+      deckTitle: '슬라이드',
+    });
+    expect(outline?.slides[0]?.lead).toMatch(/한눈에/);
   });
 
   it('루프425 — generic free-form stays at 5, never ellipsis cards', () => {
