@@ -688,6 +688,9 @@ function looksLikeServiceIntroCoverLeadContext(
  * Prefer a source heading or preview line that is actual product copy —
  * not the cover title, a section label, a URL, or the "만들어줘" request.
  * Does not invent KPIs or a Teamver-specific workflow claim.
+ *
+ * 0907-N07 / 루프475 — Priority: Brand — tagline → Source preview → problem
+ * one-liner → headings (section labels like 표지/개요 are filtered out).
  */
 function extractServiceIntroCoverLeadFromBrief(
   brief: string,
@@ -701,15 +704,40 @@ function extractServiceIntroCoverLeadFromBrief(
       .exec(brief)?.[1]
     ?? '';
   const candidates: string[] = [];
-  for (const part of headingsRaw.split(/\s*\/\s*|\s*[|;·]\s*|\n+/)) {
-    candidates.push(part.trim());
+
+  // 1) Brand — tagline / Brand - promise (em/en dash or spaced ASCII hyphen).
+  const dashTagline = brief.match(
+    /([A-Za-z가-힣0-9][A-Za-z가-힣0-9 .&']{0,40}?)\s*(?:[—–]|\s-\s)\s*([^\n]{6,48})/,
+  );
+  if (dashTagline?.[0]) {
+    candidates.push(dashTagline[0].replace(/\s+/g, ' ').trim().slice(0, 48));
+    if (dashTagline[2]) candidates.push(dashTagline[2].trim());
   }
+
+  // 2) Source preview lines (product one-liners).
   for (const line of previewRaw.split(/\r?\n/)) {
     candidates.push(line.replace(/^[-*•·]\s*/, '').trim());
   }
+
+  // 3) Problem / context one-liners in free-form body.
   for (const line of brief.split(/\r?\n/)) {
     const trimmed = line.replace(/^[-*•·]\s*/, '').trim();
     if (/만들어줘|사이트\s*분석|https?:\/\/|^www\./i.test(trimmed)) continue;
+    if (/^(?:문제|병목|페인|pain|why\b|왜\s)|(?:문제점|병목|비효율|불편)/i.test(trimmed)) {
+      candidates.push(trimmed);
+    }
+  }
+
+  // 4) Visible headings last (often section labels).
+  for (const part of headingsRaw.split(/\s*\/\s*|\s*[|;·]\s*|\n+/)) {
+    candidates.push(part.trim());
+  }
+
+  // 5) Other short brief lines.
+  for (const line of brief.split(/\r?\n/)) {
+    const trimmed = line.replace(/^[-*•·]\s*/, '').trim();
+    if (/만들어줘|사이트\s*분석|https?:\/\/|^www\./i.test(trimmed)) continue;
+    if (/^(?:Canvas |Drive |Visible |Source |User |\[)/i.test(trimmed)) continue;
     if (trimmed.length >= 8 && trimmed.length <= 48) candidates.push(trimmed);
   }
 
@@ -723,6 +751,7 @@ function extractServiceIntroCoverLeadFromBrief(
     if (text === topicNorm || text === `${topicNorm} 소개`) continue;
     if (/^(?:슬라이드|덱|발표\s*자료)$/u.test(text)) continue;
     if (/^https?:|^www\./i.test(text)) continue;
+    if (/html-ppt|zhangzara/i.test(text)) continue;
     return text;
   }
   return null;

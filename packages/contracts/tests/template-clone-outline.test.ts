@@ -528,6 +528,19 @@ describe('루프419 resolveTemplateCloneSlidesForDeterministicFill', () => {
     )).toBe('AI가 만드는 슬라이드');
   });
 
+  it('루프475 / 0907-N07 — Brand — tagline beats section headings and 한눈에', () => {
+    const brief = [
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+      'Visible headings: 표지 / 문제 / 해결',
+      'Source preview:',
+      'Teamver — Smarter & Faster',
+      'AI workspace for teams',
+    ].join('\n');
+    const lead = synthesizeTemplateCloneCoverLead('팀버', brief);
+    expect(lead).toMatch(/Smarter|Faster|Teamver/i);
+    expect(lead).not.toMatch(/한눈에|표지|파일·대화·템플릿/);
+  });
+
   it('densifies title-only Visible headings instead of leaving empty card bodies', () => {
     const slides = resolveTemplateCloneSlidesForDeterministicFill({
       sourceBrief: 'Visible headings: 표지 / 문제 / 해결',
