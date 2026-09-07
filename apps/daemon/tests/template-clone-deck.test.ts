@@ -1065,6 +1065,51 @@ const ZHANGZARA_SMOKE_SPECS: readonly ZhangzaraSmokeSpec[] = [
     ],
     expectedSlideCount: 8,
   },
+  {
+    name: 'Broadside',
+    pluginId: 'html-ppt-zhangzara-broadside',
+    exampleSubpath: 'html-ppt-zhangzara-broadside/example.html',
+    templateTitle: 'Html Ppt Zhangzara Broadside',
+    motifMustInclude: ['--c-accent', 'broadside', 'slide-foot'],
+    demoMustNotInclude: ['Author Name', 'A DRAMATIC EDITORIAL DECK'],
+    expectedSlideCount: 10,
+  },
+  {
+    name: '8 Bit Orbit',
+    pluginId: 'html-ppt-zhangzara-8-bit-orbit',
+    exampleSubpath: 'html-ppt-zhangzara-8-bit-orbit/example.html',
+    templateTitle: 'Html Ppt Zhangzara 8 Bit Orbit',
+    motifMustInclude: ['--neon-cyan', '--neon-yellow', 'pixel'],
+    demoMustNotInclude: ['PLAYER 1', 'INSERT COIN', 'HIGH SCORE'],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Scatterbrain',
+    pluginId: 'html-ppt-zhangzara-scatterbrain',
+    exampleSubpath: 'html-ppt-zhangzara-scatterbrain/example.html',
+    templateTitle: 'Html Ppt Zhangzara Scatterbrain',
+    motifMustInclude: ['post-it', 'bg-cork', '--yellow'],
+    demoMustNotInclude: ['Key Metrics', 'Visuals first'],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Long Table',
+    pluginId: 'html-ppt-zhangzara-long-table',
+    exampleSubpath: 'html-ppt-zhangzara-long-table/example.html',
+    templateTitle: 'Html Ppt Zhangzara Long Table',
+    motifMustInclude: ['--ink', 's-featured', 's-menu'],
+    demoMustNotInclude: ['We started Long Table', 'Hana Brennan', 'Roasted chestnut soup'],
+    expectedSlideCount: 8,
+  },
+  {
+    name: 'Editorial Tri-Tone',
+    pluginId: 'html-ppt-zhangzara-editorial-tri-tone',
+    exampleSubpath: 'html-ppt-zhangzara-editorial-tri-tone/example.html',
+    templateTitle: 'Html Ppt Zhangzara Editorial Tri Tone',
+    motifMustInclude: ['--burgundy', '--butter', 's-closer'],
+    demoMustNotInclude: ['Placeholder lede', 'The Editorial Desk', 'Lorem ipsum'],
+    expectedSlideCount: 8,
+  },
 ];
 
 const CROSS_TEMPLATE_LEFTOVER_DENYLIST = [
@@ -1089,6 +1134,10 @@ const CROSS_TEMPLATE_LEFTOVER_DENYLIST = [
   'SUPERCATALOG',
   'Ren Kobayashi',
   'Mei Tanaka',
+  'We started Long Table',
+  'Hana Brennan',
+  'Placeholder lede',
+  'The Editorial Desk',
 ];
 
 describe('루프450/459 Zhangzara 서버 fill 스모크', () => {

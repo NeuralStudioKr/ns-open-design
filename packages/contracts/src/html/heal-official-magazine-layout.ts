@@ -16,6 +16,7 @@ import {
   deriveDeckCoverTitleFromBrief,
   healCobaltLeftoverCatalogCopy,
   healSakuraLeftoverCatalogCopy,
+  healLongTableLeftoverCatalogCopy,
   healCobaltOrphanDataStats,
   injectBiennaleSparseFillCss,
   injectCobaltAbsoluteSlotCss,
@@ -1396,9 +1397,12 @@ export function healOfficialMagazineLayoutDensity(
   );
   return injectCobaltAbsoluteSlotCss(
     healCobaltOrphanDataStats(
-      healSakuraLeftoverCatalogCopy(
-        healCobaltLeftoverCatalogCopy(
-          scrubCobaltFieldOfficeDemoSlots(healed),
+      healLongTableLeftoverCatalogCopy(
+        healSakuraLeftoverCatalogCopy(
+          healCobaltLeftoverCatalogCopy(
+            scrubCobaltFieldOfficeDemoSlots(healed),
+            brief,
+          ),
           brief,
         ),
         brief,

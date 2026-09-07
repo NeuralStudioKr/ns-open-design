@@ -15,12 +15,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts system-prompt-api-mode · template-visual-kit · teamver-selected-template-compose · deck-framework-compact · template-clone-fill, web templateCloneContentFill · runtime/resume.
 
-**후속:** [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) · [0901-N02-18](./0901-N02-18-구현설계-[Clone_slot-map-C13].md) · [0901-N02-19](./0901-N02-19-구현설계-[Clone_template-quality-gates].md) · [0901-N02-21](./0901-N02-21-구현설계-[Clone_sakura-leftover-refill].md) — B1–B5 · C–C13 · D · 루프368–467. MiniMax live 가드 ☑(키 없으면 skip). 루프450–467 품질 게이트/peer-fit ☑.
+**후속:** [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) · [0901-N02-21](./0901-N02-21-구현설계-[Clone_sakura-leftover-refill].md) · [0901-N02-22](./0901-N02-22-구현설계-[Clone_long-table-leftover-refill].md) — B1–B5 · C–C13 · D · 루프368–469. MiniMax live 가드 ☑(키 없으면 skip). 루프450–469 품질 게이트/peer-fit ☑.
 
 다음 추천 작업:
 1. MiniMax 키 환경 Clone fill live smoke
 2. FileViewer ←/→ tools-dev + Teamver BFF GUI bake(선택)
-3. 공식 Zhangzara 전체 목록의 남은 템플릿 품질 게이트 확대
+3. 나머지 10셸 Zhangzara 품질 게이트(leftover detect는 통과) + screenshot smoke
 4. Studio/Creative leftover denylist 보강(선택)
 
 ### 빈 칸 번호 카드 (코드명 leftover)
@@ -36,6 +36,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 `기둥` / `PILLAR` / `Phase`는 모델이 붙이는 접두일 뿐, 발표 용어가 아닙니다. extra-copy·stub는 주제 단어 목록이 아닙니다(루프259·265).
 
 ## 2026-09-02 현재 판단 · 최신 루프
+
+### 루프469 — Long Table leftover refill + Editorial unique-role
+
+체감: Long Table / Editorial이 10장 복제 + supper-club / magazine leftover.
+
+수정: unique-role `featured|menu|closing|grid|stat|timeline|chart|closer` · Long Table dedicated fill/heal · 4축 게이트 2종 · daemon Broadside/Orbit/Scatterbrain 스모크.
+
+설계: [0901-N02-22](./0901-N02-22-구현설계-[Clone_long-table-leftover-refill].md).
 
 ### 루프468 — thin-prior top-up 본문 품질 복구
 

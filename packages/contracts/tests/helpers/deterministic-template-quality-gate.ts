@@ -57,6 +57,10 @@ export const CROSS_TEMPLATE_LEFTOVER_DENYLIST: readonly string[] = [
   'SUPERCATALOG',
   'Ren Kobayashi',
   'Mei Tanaka',
+  'We started Long Table',
+  'Hana Brennan',
+  'Placeholder lede',
+  'The Editorial Desk',
   'Image Placeholder',
   'Get Started',
   'View Process',
@@ -343,6 +347,36 @@ export const ZHANGZARA_QUALITY_GATE_SPECS: readonly TemplateQualityGateSpec[] = 
       'Ren Kobayashi',
       'Mei Tanaka',
       'See you in volume eight',
+    ],
+    expectedSlideCount: 8,
+  },
+  // 루프469 — unique-role Long Table / Editorial Tri-Tone.
+  {
+    name: 'Long Table',
+    templateId: 'html-ppt-zhangzara-long-table',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-long-table/example.html',
+    motifMustInclude: ['--ink', 's-featured', 's-menu'],
+    demoMustNotInclude: [
+      'We started Long Table',
+      'long-table.co',
+      'Hana Brennan',
+      'Roasted chestnut soup',
+      'Not a meal, an evening',
+      'Bairro Alto',
+    ],
+    expectedSlideCount: 8,
+  },
+  {
+    name: 'Editorial Tri-Tone',
+    templateId: 'html-ppt-zhangzara-editorial-tri-tone',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-editorial-tri-tone/example.html',
+    motifMustInclude: ['--burgundy', '--butter', 's-closer'],
+    demoMustNotInclude: [
+      'Placeholder lede',
+      'The Editorial Desk',
+      'Lorem ipsum',
     ],
     expectedSlideCount: 8,
   },

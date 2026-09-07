@@ -36,10 +36,12 @@ import {
   enrichSparseCobaltCover,
   healCobaltLeftoverCatalogCopy,
   healSakuraLeftoverCatalogCopy,
+  healLongTableLeftoverCatalogCopy,
   healCobaltOrphanDataStats,
   injectCobaltAbsoluteSlotCss,
   officialLookIsCobaltGrid,
   officialLookIsSakuraChroma,
+  officialLookIsLongTable,
   rewriteRawUrlSiteCoverTitles,
   scrubCobaltFieldOfficeDemoSlots,
   healSparseDeckCoverLayout,
@@ -695,6 +697,106 @@ describe('루프419 Capsule deterministic quality gate', () => {
       'utf8',
     );
     expect(healSakuraLeftoverCatalogCopy(official)).toBe(official);
+  });
+
+  it('loop469 — Long Table 10-slide request caps unique-role and scrubs supper-club leftover', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-long-table/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(officialLookIsLongTable(html)).toBe(true);
+    expect(officialLookIsCobaltGrid(html)).toBe(false);
+    const slides = resolveTemplateCloneSlidesForDeterministicFill({
+      userInstruction: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+      slideCount: 10,
+    });
+    const cloned = buildTemplateClonedDeckHtml(html, slides, {
+      title: '팀버 소개',
+      templateId: 'html-ppt-zhangzara-long-table',
+      maxSlides: 10,
+    })!;
+    expect(cloned).toBeTruthy();
+    expect(listTemplateCloneSlideShells(cloned).length).toBe(8);
+    const sectionMarkers = [...cloned.matchAll(
+      /<section\b[^>]*class="[^"]*\b(s-cover|s-manifesto|s-index|s-featured|s-menu|s-quote|s-cal|s-closing)\b/g,
+    )].map((m) => m[1]);
+    expect(sectionMarkers).toHaveLength(8);
+    expect(new Set(sectionMarkers).size).toBe(8);
+    expect(cloned).not.toMatch(/We started Long Table|long-table\.co|Hana Brennan/i);
+    expect(cloned).not.toMatch(/Roasted chestnut soup|Not a meal, an evening|Bairro Alto/i);
+    expect(cloned).toMatch(/팀버/);
+    expect(cloned).toMatch(/s-featured|s-menu/);
+  });
+
+  it('loop469 — Editorial Tri-Tone unique-role cap scrubs magazine leftover', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-editorial-tri-tone/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const slides = resolveTemplateCloneSlidesForDeterministicFill({
+      userInstruction: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+      slideCount: 10,
+    });
+    const cloned = buildTemplateClonedDeckHtml(html, slides, {
+      title: '팀버 소개',
+      templateId: 'html-ppt-zhangzara-editorial-tri-tone',
+      maxSlides: 10,
+    })!;
+    expect(listTemplateCloneSlideShells(cloned).length).toBe(8);
+    expect(cloned).not.toMatch(/Placeholder lede|The Editorial Desk|Lorem ipsum/i);
+    expect(cloned).toMatch(/팀버/);
+  });
+
+  it('루프469: persist leftover refill replaces Long Table supper-club body', async () => {
+    const look = [
+      '<style data-od-official-look-css>',
+      ':root { --paper:#FAF1E2; --ink:#B53D2A; }',
+      '.s-cover .title { position:absolute; }',
+      '.s-featured .ttl { position:absolute; }',
+      '</style>',
+    ].join('');
+    const html = [
+      '<section class="slide s-cover">',
+      '<h1 class="title">Long Table</h1>',
+      '<p class="tagline">Where ten strangers, one cook, and a long evening meet.</p>',
+      '<div class="stats">22 seats only</div>',
+      '</section>',
+      '<section class="slide s-manifesto">',
+      '<p>We started Long Table in a borrowed kitchen.</p>',
+      '<div class="who-tag">Iris &amp; Theo</div>',
+      '</section>',
+      '<section class="slide s-featured">',
+      '<h2 class="ttl">An evening for the rain.</h2>',
+      '<p class="lede">개요 한 줄</p>',
+      '</section>',
+      '<section class="slide s-menu">',
+      '<div class="course"><div class="nm">Roasted chestnut soup</div></div>',
+      '</section>',
+      look,
+    ].join('');
+    expect(officialLookIsLongTable(html)).toBe(true);
+    expect(looksLikeLeftoverTemplateDemoDeck(html)).toBe(true);
+    const healed = healLongTableLeftoverCatalogCopy(
+      html,
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+    );
+    expect(healed).not.toMatch(/We started Long Table|Roasted chestnut soup|22 seats only/i);
+    expect(healed).toContain('팀버');
+
+    const official = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-long-table/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(healLongTableLeftoverCatalogCopy(official)).toBe(official);
   });
 
   it('loop421 — empty-brief padding synthesizes card bodies instead of empty shells', () => {

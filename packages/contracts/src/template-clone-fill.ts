@@ -1598,7 +1598,8 @@ export function officialLookIsCobaltGrid(html: string): boolean {
   return /\bs-cover\b/i.test(source)
     && /\bpixel-glitch\b/i.test(source)
     && !/\bsunglow\b/i.test(source)
-    && !officialLookIsSakuraChroma(source);
+    && !officialLookIsSakuraChroma(source)
+    && !officialLookIsLongTable(source);
 }
 
 /**
@@ -1619,6 +1620,20 @@ export function officialLookIsSakuraChroma(html: string): boolean {
       && /\bhero\b/i.test(source)
       && /\b(?:petal|brand)\b/i.test(source)
     );
+}
+
+/**
+ * 루프469 — Long Table look fingerprint (rust ink + supper-club shells).
+ * Deny Cobalt: that kit also uses s-cover / s-index / s-manifesto.
+ */
+export function officialLookIsLongTable(html: string): boolean {
+  const source = String(html ?? '');
+  if (/\bpixel-glitch\b/i.test(source) || /\bs-catalogue\b/i.test(source)) return false;
+  const css = lookCssWithoutNeutralize(source);
+  if (css.trim() && /--ink\s*:\s*#B53D2A/i.test(css)) {
+    return /\bs-(?:featured|menu|closing)\b/i.test(source);
+  }
+  return /\bs-featured\b/i.test(source) && /\bs-menu\b/i.test(source);
 }
 
 /**
@@ -3906,6 +3921,7 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = scrubCobaltFieldOfficeDemoSlots(next);
   next = healCobaltLeftoverCatalogCopy(next, brief);
   next = healSakuraLeftoverCatalogCopy(next, brief);
+  next = healLongTableLeftoverCatalogCopy(next, brief);
   next = healCobaltOrphanDataStats(next);
   next = enrichSparseCobaltCover(next, brief);
   next = restyleBiennaleSparseChapterBodies(next);
@@ -4478,7 +4494,7 @@ function stripBlueProfessionalCatalogDemoCopy(html: string): string {
 }
 
 const LEFTOVER_CATALOG_PHRASE_RE =
-/Hartfield(?:\s*&(?:amp;)?\s*Co\.?)?|NorthPeak Industries|WACC\s*\(\s*base\s*\)|Revenue CAGR|Filebase|Northwind Studios|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|Composed in kami|52\.5200°\s*N|\[?\[Author Name\]\]?|\[Year\]|this is the broadside style|Aurora Institute|Aurora Programme|Aurora Charter|Public Form|Public attendance|Open programme|Field Notes|Quiet Editions|Open Conversations|The Long Yellow|Pavilion of Quiet Form|Reading Garden|A field study of light,\s*matter and atmosphere|Six months of exhibitions[\s\S]{0,160}?palette of yellow\.?|A room is a slow argument with the sun[\s\S]{0,160}?answers\.?|Curator-at-large[\s\S]{0,120}?January 2026|Visitors\s*·\s*Year four|Returning audience|Three quarters of last year[\s\S]{0,120}?twice\.?|A 2\.4× rise[\s\S]{0,120}?audience\.?|Strands\s*·\s*2026|Slow Atmospheres|Selected dates|Sector context(?:\s*&(?:amp;)?\s*market dynamics)?|Trading comparables analysis|Precedent transactions|Industrial automation cycle, capital flows, trading multiples|12 selected listed peers, EV\/EBITDA(?:\s*&(?:amp;)?\s*EV\/Revenue 2026E)?|M&amp;A transactions \$0\.5–5\.0B, 2022–2025|Selection criteria|Fictional illustrative sample|38\s*[×x]|Apache-2\.0|\bBYOK\b|Your agent reads a folder of\s*<code>SKILL\.md<\/code> files\.?|Open Design is the\s*(?:<strong>)?\s*(?:<\/strong>)?\s*\.?|Neobrutalist Presentation Template|Quarterly Growth Metrics|Field Office Quarterly|Field Office Editorial|field-office\.co|Lin Ito(?:\s*&(?:amp;)?\s*Anya Mehrotra)?|Anya Mehrotra|the field-office collective|In Newsreader, Hanken Grotesk\s*(?:&(?:amp;)?)?\s*DM Mono|quiet, paid, and read slowly|The next issue ships October 20\d{2}[\s\S]{0,120}?Monday morning\.?|A trend is a quiet question that several rooms started asking(?:\s+(?:<[^>]+>)?[^<]{0,80}?(?:<\/[^>]+>)?)?|at roughly the same time\.?|From the editor's note|Index 20\d{2}\s*·\s*opening pages|Colophon\s*·\s*Index 20\d{2}|The index, in six entries\.?|Trend ledger, in long\.?|Spring 20\d{2}(?:\s*·\s*selected trends)?|Newsletter opens\s*·\s*20\d{2}\s*Q\d\s*—\s*20\d{2}\s*Q\d|Chapter one\s*—\s*the case for slow software|Software is a room, and rooms are designed to be lived in slowly\.?|In its first chapter the Index[\s\S]{0,240}?read first\.?|Slow software|Domestic interfaces|Hand-set print(?:\s+again)?|Quietly weird type|Receipts (?:and|&(?:amp;)?)\s*ledgers|Public weather|Long-form receipts|Pre-loved objects|Tools that opt out of[\s\S]{0,160}?on by default\.?|Screens designed to live in living rooms[\s\S]{0,200}?willingness to be ignored\.?|A return to letterpress[\s\S]{0,160}?digital-feeling clients\.?|Display type with one slightly off detail[\s\S]{0,160}?looking twice\.?|Information designed to be filed, not consumed\.[\s\S]{0,160}?the favour\.?|Brand and product writing that includes[\s\S]{0,200}?unfinished thought\.?|Tools that opt out of urgency by default\.?|Screens designed to live in living rooms\.?|Letterpress and risograph paired with digital briefs\.?|Display faces with one slightly off detail\.?|Brand voice that admits the day's actual mood\.?|Newsletters that read like printed pamphlets\.?|Resale and repair as the front of the brand\.?|Information designed to be filed, not consumed\.?|A field report on the state of things\.?|Look for the cobalt envelope on a Monday morning\.?|issue\.0\d|spring\s+20\d{2}|autumn\s+20\d{2}|All ten\s*·\s*with our reading on each|A 2\.1× lift on the inaugural issue[\s\S]{0,160}?Sunday mornings\.?|Quiet, mostly-not-on-social[\s\S]{0,140}?referral programme\.?|We started the bulletin[\s\S]{0,220}?rereading\.?"?|To subscribers[\s\S]{0,80}?twice a year|Reader response, by quarter\.?|A note from the studio|Open rate\s*·\s*Q1 20\d{2}|Active subscribers|Tape Garden|tape garden|SUPERCATALOG|CATALOGUE NO\.\s*[78]|Catalogue No\.\s*[78]|We make small\s+(?:<em>)?analog(?:<\/em>)?\s+things[\s\S]{0,160}?desks\.?|SUPER(?:\s|&nbsp;)+TAPE|MIX(?:\s|&nbsp;)+CHAIR|Bloom Pedal|BLOOM(?:\s|&nbsp;)+PEDAL|CHROMA(?:\s|&nbsp;)+DECK|Chroma Deck|Ren Kobayashi|Mei Tanaka|See you in\s+(?:<em>)?volume eight|made in matsumoto|Matsumoto workshop|A short letter from the studio|A note pinned above the workbench|A reader writes|The 2026\s+(?:<em>)?Catalogue|Four products\s*·\s*spring|Output, by year|Units shipped|Repeat customers|Release schedule|Colophon\s*·\s*Catalogue|It feels less like a\s+(?:<em>)?gadget|Build the\s+(?:<em>)?thing[\s\S]{0,80}?spec sheet\.?|A tape-saturation pedal|A studio cassette deck|A box of seven C-60|A listening chair|\bT-26\b|\bSC-0[1-4]b?\b|Key Metrics|Visuals first/gi;
+/Hartfield(?:\s*&(?:amp;)?\s*Co\.?)?|NorthPeak Industries|WACC\s*\(\s*base\s*\)|Revenue CAGR|Filebase|Northwind Studios|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|Composed in kami|52\.5200°\s*N|\[?\[Author Name\]\]?|\[Year\]|this is the broadside style|Aurora Institute|Aurora Programme|Aurora Charter|Public Form|Public attendance|Open programme|Field Notes|Quiet Editions|Open Conversations|The Long Yellow|Pavilion of Quiet Form|Reading Garden|A field study of light,\s*matter and atmosphere|Six months of exhibitions[\s\S]{0,160}?palette of yellow\.?|A room is a slow argument with the sun[\s\S]{0,160}?answers\.?|Curator-at-large[\s\S]{0,120}?January 2026|Visitors\s*·\s*Year four|Returning audience|Three quarters of last year[\s\S]{0,120}?twice\.?|A 2\.4× rise[\s\S]{0,120}?audience\.?|Strands\s*·\s*2026|Slow Atmospheres|Selected dates|Sector context(?:\s*&(?:amp;)?\s*market dynamics)?|Trading comparables analysis|Precedent transactions|Industrial automation cycle, capital flows, trading multiples|12 selected listed peers, EV\/EBITDA(?:\s*&(?:amp;)?\s*EV\/Revenue 2026E)?|M&amp;A transactions \$0\.5–5\.0B, 2022–2025|Selection criteria|Fictional illustrative sample|38\s*[×x]|Apache-2\.0|\bBYOK\b|Your agent reads a folder of\s*<code>SKILL\.md<\/code> files\.?|Open Design is the\s*(?:<strong>)?\s*(?:<\/strong>)?\s*\.?|Neobrutalist Presentation Template|Quarterly Growth Metrics|Field Office Quarterly|Field Office Editorial|field-office\.co|Lin Ito(?:\s*&(?:amp;)?\s*Anya Mehrotra)?|Anya Mehrotra|the field-office collective|In Newsreader, Hanken Grotesk\s*(?:&(?:amp;)?)?\s*DM Mono|quiet, paid, and read slowly|The next issue ships October 20\d{2}[\s\S]{0,120}?Monday morning\.?|A trend is a quiet question that several rooms started asking(?:\s+(?:<[^>]+>)?[^<]{0,80}?(?:<\/[^>]+>)?)?|at roughly the same time\.?|From the editor's note|Index 20\d{2}\s*·\s*opening pages|Colophon\s*·\s*Index 20\d{2}|The index, in six entries\.?|Trend ledger, in long\.?|Spring 20\d{2}(?:\s*·\s*selected trends)?|Newsletter opens\s*·\s*20\d{2}\s*Q\d\s*—\s*20\d{2}\s*Q\d|Chapter one\s*—\s*the case for slow software|Software is a room, and rooms are designed to be lived in slowly\.?|In its first chapter the Index[\s\S]{0,240}?read first\.?|Slow software|Domestic interfaces|Hand-set print(?:\s+again)?|Quietly weird type|Receipts (?:and|&(?:amp;)?)\s*ledgers|Public weather|Long-form receipts|Pre-loved objects|Tools that opt out of[\s\S]{0,160}?on by default\.?|Screens designed to live in living rooms[\s\S]{0,200}?willingness to be ignored\.?|A return to letterpress[\s\S]{0,160}?digital-feeling clients\.?|Display type with one slightly off detail[\s\S]{0,160}?looking twice\.?|Information designed to be filed, not consumed\.[\s\S]{0,160}?the favour\.?|Brand and product writing that includes[\s\S]{0,200}?unfinished thought\.?|Tools that opt out of urgency by default\.?|Screens designed to live in living rooms\.?|Letterpress and risograph paired with digital briefs\.?|Display faces with one slightly off detail\.?|Brand voice that admits the day's actual mood\.?|Newsletters that read like printed pamphlets\.?|Resale and repair as the front of the brand\.?|Information designed to be filed, not consumed\.?|A field report on the state of things\.?|Look for the cobalt envelope on a Monday morning\.?|issue\.0\d|spring\s+20\d{2}|autumn\s+20\d{2}|All ten\s*·\s*with our reading on each|A 2\.1× lift on the inaugural issue[\s\S]{0,160}?Sunday mornings\.?|Quiet, mostly-not-on-social[\s\S]{0,140}?referral programme\.?|We started the bulletin[\s\S]{0,220}?rereading\.?"?|To subscribers[\s\S]{0,80}?twice a year|Reader response, by quarter\.?|A note from the studio|Open rate\s*·\s*Q1 20\d{2}|Active subscribers|Tape Garden|tape garden|SUPERCATALOG|CATALOGUE NO\.\s*[78]|Catalogue No\.\s*[78]|We make small\s+(?:<em>)?analog(?:<\/em>)?\s+things[\s\S]{0,160}?desks\.?|SUPER(?:\s|&nbsp;)+TAPE|MIX(?:\s|&nbsp;)+CHAIR|Bloom Pedal|BLOOM(?:\s|&nbsp;)+PEDAL|CHROMA(?:\s|&nbsp;)+DECK|Chroma Deck|Ren Kobayashi|Mei Tanaka|See you in\s+(?:<em>)?volume eight|made in matsumoto|Matsumoto workshop|A short letter from the studio|A note pinned above the workbench|A reader writes|The 2026\s+(?:<em>)?Catalogue|Four products\s*·\s*spring|Output, by year|Units shipped|Repeat customers|Release schedule|Colophon\s*·\s*Catalogue|It feels less like a\s+(?:<em>)?gadget|Build the\s+(?:<em>)?thing[\s\S]{0,80}?spec sheet\.?|A tape-saturation pedal|A studio cassette deck|A box of seven C-60|A listening chair|\bT-26\b|\bSC-0[1-4]b?\b|Key Metrics|Visuals first|We started Long Table|long-table\.co|Iris\s*(?:&|&amp;)\s*Theo|Hana Brennan|A Plate(?:<br\s*\/?>|\s)+of Quiet|A Soup(?:<br\s*\/?>|\s)+of Letters|Roasted chestnut soup|Not a meal, an evening|22 seats only|Bairro Alto|See you(?:<br\s*\/?>|\s)+at the table|An evening I keep|December edition|a letter from the table|come and sit with us|More than dinner|Twice a month, by application|Placeholder lede|The Editorial Desk|Studio\s*(?:&|&amp;)\s*Salon|Editorial Brief|Eight principles/gi;
 
 function stripLeftoverCatalogDemoPhrases(html: string): string {
   return String(html ?? '')
@@ -5736,6 +5752,234 @@ export function healSakuraLeftoverCatalogCopy(
   return stripLeftoverCatalogDemoPhrases(out);
 }
 
+function slideLooksLikeLongTableKit(attrs: string, body: string): boolean {
+  if (/\bs-(?:featured|menu|closing)\b/i.test(attrs)) return true;
+  if (/\bs-cover\b/i.test(attrs) && /\bbig-edition\b/i.test(body) && /\bed-badge\b/i.test(body)) {
+    return true;
+  }
+  if (/\bs-index\b/i.test(attrs) && /\bcity-tag\b/i.test(body) && /\bnm\b/i.test(body)) return true;
+  if (/\bs-cal\b/i.test(attrs) && /\btheme\b/i.test(body) && /\bcity-tag\b/i.test(body)) return true;
+  if (/\bs-manifesto\b/i.test(attrs) && /\bwho-tag\b/i.test(body) && /\bempha\b/i.test(body)) {
+    return true;
+  }
+  return false;
+}
+
+function fillLongTableCover(
+  body: string,
+  input: { title: string; lead: string; bodyText: string; kicker: string },
+): string {
+  let next = replaceSakuraClassCopy(body, 'title', input.title);
+  next = replaceSakuraClassCopy(next, 'tagline', input.lead || input.bodyText || `${input.title} 한눈에`);
+  next = replaceSakuraClassCopy(next, 'big-edition', input.title);
+  next = replaceSakuraClassCopy(next, 'big-edition-lab', input.kicker || input.lead || input.title);
+  next = replaceSakuraClassCopy(next, 'big-edition-meta', input.bodyText || input.lead || input.title);
+  next = replaceSakuraClassCopy(next, 'ed-label', input.kicker || input.title);
+  return next;
+}
+
+function fillLongTableManifesto(
+  body: string,
+  input: { title: string; lead: string; bodyText: string; kicker: string },
+): string {
+  let next = replaceSakuraClassCopy(body, 'h', input.title);
+  next = replaceSakuraClassCopy(next, 'ed-label', input.kicker || input.title);
+  next = replaceSakuraClassCopy(next, 'who-tag', input.title);
+  if (input.bodyText || input.lead) {
+    next = replaceFirstTagText(next, 'p', input.bodyText || input.lead);
+  }
+  return next;
+}
+
+function fillLongTableIndex(
+  body: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  const cards = exactClassBlocks(body, 'card');
+  const lines = biennaleFillLines(input, Math.max(3, cards.length || 3));
+  let next = replaceSakuraClassCopy(body, 'h', input.title);
+  next = replaceFirstExactClassText(next, 'lab-tag', input.lead || input.title);
+  next = replaceExactClassBlocksBySequence(next, 'card', lines, (block, line) => {
+    const resolved = resolveTemplateCloneCardFill(line);
+    let filled = replaceSakuraClassCopy(block, 'nm', resolved.title);
+    filled = replaceSakuraClassCopy(filled, 'desc', resolved.body || resolved.title);
+    filled = replaceSakuraClassCopy(filled, 'city-tag', resolved.title);
+    return filled;
+  });
+  return next;
+}
+
+function fillLongTableFeatured(
+  body: string,
+  input: { title: string; lead: string; bodyText: string; kicker: string },
+): string {
+  let next = replaceSakuraClassCopy(body, 'ttl', input.title);
+  next = replaceSakuraClassCopy(next, 'lede', input.lead || input.bodyText || `${input.title} 한눈에`);
+  next = replaceSakuraClassCopy(next, 'ed-label', input.kicker || input.title);
+  next = replaceClassTextBySequence(next, 'v', [
+    input.title,
+    input.lead || input.title,
+    input.bodyText || input.title,
+  ]);
+  return next;
+}
+
+function fillLongTableMenu(
+  body: string,
+  input: {
+    title: string;
+    lead: string;
+    kicker: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  const courses = exactClassBlocks(body, 'course');
+  const lines = biennaleFillLines(input, Math.max(5, courses.length || 5));
+  let next = replaceSakuraClassCopy(body, 'h', input.title);
+  next = replaceSakuraClassCopy(next, 'kicker', input.kicker || input.lead || input.title);
+  next = replaceExactClassBlocksBySequence(next, 'course', lines, (block, line) => {
+    const resolved = resolveTemplateCloneCardFill(line);
+    let filled = replaceSakuraClassCopy(block, 'nm', resolved.title);
+    filled = replaceSakuraClassCopy(filled, 'desc', resolved.body || resolved.title);
+    return filled;
+  });
+  return next;
+}
+
+function fillLongTableQuote(
+  body: string,
+  input: { title: string; lead: string; bodyText: string; kicker: string },
+): string {
+  let next = replaceSakuraClassCopy(body, 'kicker', input.kicker || input.title);
+  next = replaceSakuraClassCopy(next, 'qbody', input.bodyText || input.lead || input.title);
+  next = replaceSakuraClassCopy(next, 'who-tag', input.title);
+  next = replaceSakuraClassCopy(next, 'meta-tag', input.lead || input.kicker || input.title);
+  return next;
+}
+
+function fillLongTableCal(
+  body: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  const rows = exactClassBlocks(body, 'row').filter((span) => !/\bheadrow\b/i.test(span.html));
+  const lines = biennaleFillLines(input, Math.max(4, rows.length || 4));
+  let next = replaceSakuraClassCopy(body, 'h', input.title);
+  next = replaceFirstExactClassText(next, 'lab-tag', input.lead || input.title);
+  next = replaceExactClassBlocksBySequence(next, 'row', lines, (block, line) => {
+    if (/\bheadrow\b/i.test(block)) return block;
+    const resolved = resolveTemplateCloneCardFill(line);
+    let filled = replaceSakuraClassCopy(block, 'theme', resolved.title);
+    filled = replaceSakuraClassCopy(filled, 'city-tag', resolved.body || resolved.title);
+    return filled;
+  });
+  return next;
+}
+
+function fillLongTableClosing(
+  body: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    kicker: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  const rows = biennaleFillLines(input, 3).slice(0, 3);
+  let next = replaceSakuraClassCopy(body, 'h', input.title);
+  next = replaceSakuraClassCopy(next, 'ed-label', input.kicker || input.title);
+  next = replaceSakuraClassCopy(next, 'desc-it', input.bodyText || input.lead || `${input.title} 다음 단계`);
+  next = replaceClassTextBySequence(next, 'ftag', rows.map((row) => row.title));
+  return next;
+}
+
+function fillLongTableKitSlide(
+  body: string,
+  attrs: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    kicker: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  if (/\bs-cover\b/i.test(attrs)) return fillLongTableCover(body, input);
+  if (/\bs-manifesto\b/i.test(attrs)) return fillLongTableManifesto(body, input);
+  if (/\bs-index\b/i.test(attrs)) return fillLongTableIndex(body, input);
+  if (/\bs-featured\b/i.test(attrs)) return fillLongTableFeatured(body, input);
+  if (/\bs-menu\b/i.test(attrs)) return fillLongTableMenu(body, input);
+  if (/\bs-quote\b/i.test(attrs)) return fillLongTableQuote(body, input);
+  if (/\bs-cal\b/i.test(attrs)) return fillLongTableCal(body, input);
+  if (/\bs-closing\b/i.test(attrs)) return fillLongTableClosing(body, input);
+  return body;
+}
+
+const LONG_TABLE_LEFTOVER_BODY_RE =
+  /We started Long Table|long-table\.co|Hana Brennan|Iris|Theo|A Plate|chestnut soup|Not a meal|Bairro Alto|22 seats|December edition|Lisbon/i;
+
+/**
+ * Hangul Long Table persist leftover: supper-club catalog letters survive
+ * generic heading swaps. Fill specialized slots, then wipe leftover phrases.
+ * Official English example.html is a no-op.
+ */
+export function healLongTableLeftoverCatalogCopy(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsLongTable(dest)) return dest;
+  if (!/[가-힣]/.test(visibleDeckCopy(dest)) && !/[가-힣]/.test(String(brief ?? ''))) {
+    return dest;
+  }
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) return stripLeftoverCatalogDemoPhrases(dest);
+  const harvested = [...dest.matchAll(/<(?:h[1-3]|div)\b[^>]*>([\s\S]*?)<\/(?:h[1-3]|div)>/gi)]
+    .map((match) => visibleDeckCopy(match[1] ?? ''))
+    .filter((text) => /[가-힣]/.test(text) && text.length >= 2 && text.length <= 40);
+  const outline = resolveTemplateCloneSlidesForDeterministicFill({
+    userInstruction: brief || harvested.join('\n') || '',
+    deckTitle: harvested[0] ?? null,
+    slideCount: spans.length,
+  });
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    if (!/\bs-(?:cover|manifesto|index|featured|menu|quote|cal|closing)\b/i.test(span.attrs)) {
+      continue;
+    }
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    if (
+      !looksLikeLeftoverTemplateDemoDeck(body)
+      && !LONG_TABLE_LEFTOVER_BODY_RE.test(body)
+    ) {
+      continue;
+    }
+    const slide = outline[i] ?? outline[Math.min(i, outline.length - 1)];
+    const title = slide?.title || harvested[i] || harvested[0] || '슬라이드';
+    const nextBody = fillLongTableKitSlide(body, span.attrs, {
+      title,
+      lead: slide?.lead ?? '',
+      bodyText: slide?.body ?? '',
+      kicker: slide?.kicker ?? '',
+      fillLines: templateCloneSlideFillLines(slide ?? { title }),
+    });
+    if (nextBody === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
+  }
+  return stripLeftoverCatalogDemoPhrases(out);
+}
+
 function fillBiennaleCalendarSlots(
   body: string,
   input: {
@@ -6332,6 +6576,9 @@ function fillSlideShell(
   if (slideLooksLikeSakuraChromaKit(shell.attrs, body)) {
     body = fillSakuraKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
   }
+  if (slideLooksLikeLongTableKit(shell.attrs, body)) {
+    body = fillLongTableKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
+  }
   body = fillBlockFrameNeoSlots(body, { title, lead, bodyText, kicker, fillLines });
   body = stripCapsuleCatalogDemoCopy(body);
   body = stripBlockFrameNeoCatalogDemoCopy(body);
@@ -6596,9 +6843,10 @@ function templateShellsAreUniqueRole(shells: SlideShell[]): boolean {
   // s-programme both classify as 'body') so we key on the presence of the
   // markers themselves plus a per-shell uniqueness check.
   // 루프459 — cobalt-grid family (s-index / s-table).
-  // 루프467 — sakura-chroma family (s-catalogue / s-stripe). Kits that
-  // add new specialized section shells should extend this list so cap fires.
-  const sectionMarkerRe = /\bs-(?:cover|manifesto|programme|chapter|data|quote|cal|colophon|index|table|ledger|trend|section|stmt|catalogue|stripe)\b/i;
+  // 루프467 — sakura-chroma family (s-catalogue / s-stripe).
+  // 루프469 — long-table (s-featured / s-menu / s-closing) and
+  // editorial-tri-tone (s-grid / s-stat / s-timeline / s-chart / s-closer).
+  const sectionMarkerRe = /\bs-(?:cover|manifesto|programme|chapter|data|quote|cal|colophon|index|table|ledger|trend|section|stmt|catalogue|stripe|featured|menu|closing|grid|stat|timeline|chart|closer)\b/i;
   const semanticMarkers = shells
     .map((shell) => shell.attrs.match(sectionMarkerRe)?.[0]?.toLowerCase() ?? null)
     .filter((marker): marker is string => marker !== null);
@@ -6842,7 +7090,7 @@ function cleanCloneTitle(title: string): string {
 export function looksLikeLeftoverTemplateDemoDeck(html: string): boolean {
   const text = String(html ?? '');
   if (!text.trim()) return false;
-  return /Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|52\.5200°\s*N|Composed in kami|Apache-2\.0[\s\S]{0,800}Local-first[\s\S]{0,800}BYOK|\[?\[Author Name\]\]?|\[Year\]|this is the broadside style|Clarity of Purpose|The Journey Continues|A Framework for Bold Ideas|Neobrutalist Presentation Template|Quarterly Growth Metrics|Sentiment has shifted measurably|Bullish on three-year outlook|Aurora Institute|Field Office Quarterly|field-office\.co|Lin Ito|Slow software|Public attendance|Open programme|Domestic interfaces|The index, in six entries|A trend is a quiet question|See you in the autumn issue|Trend ledger, in long|Hand-set print|We started the bulletin|Software is a room|Tape Garden|SUPERCATALOG|CATALOGUE NO\. 7|We make small analog|Bloom Pedal|SUPER TAPE|MIX CHAIR|Ren Kobayashi|Mei Tanaka|See you in volume eight|made in matsumoto|Chroma Deck/i.test(
+  return /Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|52\.5200°\s*N|Composed in kami|Apache-2\.0[\s\S]{0,800}Local-first[\s\S]{0,800}BYOK|\[?\[Author Name\]\]?|\[Year\]|this is the broadside style|Clarity of Purpose|The Journey Continues|A Framework for Bold Ideas|Neobrutalist Presentation Template|Quarterly Growth Metrics|Sentiment has shifted measurably|Bullish on three-year outlook|Aurora Institute|Field Office Quarterly|field-office\.co|Lin Ito|Slow software|Public attendance|Open programme|Domestic interfaces|The index, in six entries|A trend is a quiet question|See you in the autumn issue|Trend ledger, in long|Hand-set print|We started the bulletin|Software is a room|Tape Garden|SUPERCATALOG|CATALOGUE NO\. 7|We make small analog|Bloom Pedal|SUPER TAPE|MIX CHAIR|Ren Kobayashi|Mei Tanaka|See you in volume eight|made in matsumoto|Chroma Deck|We started Long Table|long-table\.co|Hana Brennan|Iris(?:\s|&|&amp;)+Theo|A Plate of Quiet|Roasted chestnut soup|Not a meal, an evening|Placeholder lede|The Editorial Desk|Studio & Salon/i.test(
     text,
   );
 }
