@@ -20,7 +20,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 다음 추천 작업:
 1. MiniMax 키 환경 Clone fill live smoke
 2. FileViewer ←/→ tools-dev + Teamver BFF GUI bake(선택)
-3. Broadside / 8-bit Orbit / Scatterbrain 품질 게이트 확대
+3. 공식 Zhangzara 전체 목록의 남은 템플릿 품질 게이트 확대
 4. Studio/Creative leftover denylist 보강(선택)
 
 ### 빈 칸 번호 카드 (코드명 leftover)
@@ -48,6 +48,8 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 체감: Clone 후에도 Tape Garden / SUPERCATALOG / Bloom Pedal이 남고 10장 요청이 catalogue·stripe를 복제.
 
 수정: unique-role `catalogue|stripe` · `fillSakuraKitSlide` · leftover 지문 · persist `healSakuraLeftoverCatalogCopy` (`.vbig` 유지, 영문 example no-op) · 4축 게이트 Sakura Chroma(8).
+
+추가: Broadside / 8-bit Orbit / Scatterbrain도 4축 품질 게이트에 편입했다. Broadside `[Author Name]`, Scatterbrain `Key Metrics`/`Visuals first`, 8-bit Orbit `PLAYER 1`/`INSERT COIN`/`HIGH SCORE` 잔여를 deterministic clone 완료 오판 실패 신호로 고정한다.
 
 설계: [0901-N02-21](./0901-N02-21-구현설계-[Clone_sakura-leftover-refill].md).
 

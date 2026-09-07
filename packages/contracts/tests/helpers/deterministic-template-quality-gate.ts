@@ -285,6 +285,46 @@ export const ZHANGZARA_QUALITY_GATE_SPECS: readonly TemplateQualityGateSpec[] = 
     ],
     expectedSlideCount: 8,
   },
+  // 루프467 — remaining Zhangzara families most exposed to clone-only finish.
+  {
+    name: 'Broadside',
+    templateId: 'html-ppt-zhangzara-broadside',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-broadside/example.html',
+    motifMustInclude: ['--c-accent', 'broadside', 'slide-foot'],
+    demoMustNotInclude: [
+      'Broadside Demo',
+      'Author Name',
+      'A DRAMATIC EDITORIAL DECK',
+    ],
+    expectedSlideCount: 10,
+  },
+  {
+    name: '8 Bit Orbit',
+    templateId: 'html-ppt-zhangzara-8-bit-orbit',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-8-bit-orbit/example.html',
+    motifMustInclude: ['--neon-cyan', '--neon-yellow', 'pixel'],
+    demoMustNotInclude: [
+      'PLAYER 1',
+      'INSERT COIN',
+      'HIGH SCORE',
+    ],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Scatterbrain',
+    templateId: 'html-ppt-zhangzara-scatterbrain',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-scatterbrain/example.html',
+    motifMustInclude: ['post-it', 'bg-cork', '--yellow'],
+    demoMustNotInclude: [
+      'A post-it inspired template',
+      'Key Metrics',
+      'Visuals first',
+    ],
+    expectedSlideCount: 10,
+  },
   // 루프467 — unique-role Sakura Chroma.
   {
     name: 'Sakura Chroma',
