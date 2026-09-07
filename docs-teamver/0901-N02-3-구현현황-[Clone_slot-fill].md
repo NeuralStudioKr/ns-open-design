@@ -37,6 +37,7 @@
 | **루프456** Blue-pro · Block-frame 품질 게이트 | ☑ ZHANGZARA specs 6 |
 | **루프457** Creative Mode slideCount 계약 정렬 | ☑ countSlides=listShells · 8장 핀 |
 | **루프458** Product Launch · Pitch Deck 게이트 | ☑ contracts+daemon specs |
+| **루프461** Block Frame neo 슬롯 fill — body CSS fingerprint 게이트 제거 · a/button exact-class · Visual System/Overview/chart strip · denylist | ☑ [0907-N01-1](./0907-N01-1-상위설계-[Block_frame-neo-slot-gate].md) · [0907-N01-2](./0907-N01-2-구현설계-[Block_frame-neo-slot-gate].md) |
 | **루프460** Cobalt Field Office leftover persist refill | ☑ 본문 지문 · title/ttl · Hangul heal |
 | **루프459** Biennale · Cobalt Grid 품질 게이트 + dedicated fill | ☑ 4축 · leftover · `.stmt`/row/`vbig` |
 | **루프451** Cobalt Grid 슬롯 복원 · orphan stat | ☑ absolute slots · Field Office leftover drop |

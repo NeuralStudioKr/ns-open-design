@@ -37,6 +37,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프461 — Block Frame neo 슬롯 fill 게이트 회귀
+
+체감(사용자 2026-09-07): 「clone 하고서 바로 종료」. Block Frame 덱에 Visual System / Overview / 가짜 차트 / NEO-…-STYLE 잔여.
+
+원인: deterministic MiniMax skip은 의도(419/421). 실제 버그는 `officialLookIsNeoBrutalBlockFrame(slideBody)` — CSS fingerprint를 body에 적용해 항상 false → `fillBlockFrameNeoSlots` 스킵. `a.nb-btn`도 exact-class 미지원.
+
+수정: 구조 마커로 항상 neo fill 호출 · a/button exact-class · leftover/denylist 강화.
+
+검증: contracts 160 · daemon 27. 설계: [0907-N01-1](./0907-N01-1-상위설계-[Block_frame-neo-slot-gate].md).
+
 ### 루프460 — Cobalt Field Office leftover 본문 persist refill
 
 체감: 크롬만 지운 뒤 목차/표/선언/챕터/인용이 템플릿 영문으로 남음.
