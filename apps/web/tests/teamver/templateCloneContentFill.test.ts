@@ -387,6 +387,8 @@ describe('templateCloneContentFill', () => {
     expect(seed).toContain('www.teamver.com');
     expect(seed).toContain('[Template clone prompt fill]');
     expect(seed).toContain('Selected template: Html Ppt Zhangzara 블록 프레임');
+    expect(seed).toMatch(/\.nb-card/);
+    expect(seed).toMatch(/title AND body text INSIDE/i);
     expect(seed).toContain('User requested slide count: 8-10.');
     expect(seed).toContain('Emit 8-10 complete slides in THIS artifact');
     expect(seed).toContain('hard cap 10');
