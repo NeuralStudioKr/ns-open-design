@@ -1110,6 +1110,41 @@ const ZHANGZARA_SMOKE_SPECS: readonly ZhangzaraSmokeSpec[] = [
     demoMustNotInclude: ['Placeholder lede', 'The Editorial Desk', 'Lorem ipsum'],
     expectedSlideCount: 8,
   },
+  // 루프470 — remaining 10-shell kits on the server fill path.
+  {
+    name: 'Bold Poster',
+    pluginId: 'html-ppt-zhangzara-bold-poster',
+    exampleSubpath: 'html-ppt-zhangzara-bold-poster/example.html',
+    templateTitle: 'Html Ppt Zhangzara Bold Poster',
+    motifMustInclude: ['--red', 'hero-title', 'slide-red'],
+    demoMustNotInclude: ['Bold Poster Business Presentation'],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Coral',
+    pluginId: 'html-ppt-zhangzara-coral',
+    exampleSubpath: 'html-ppt-zhangzara-coral/example.html',
+    templateTitle: 'Html Ppt Zhangzara Coral',
+    motifMustInclude: ['--coral', 'zigzag-layer', 'brand-mark'],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Playful',
+    pluginId: 'html-ppt-zhangzara-playful',
+    exampleSubpath: 'html-ppt-zhangzara-playful/example.html',
+    templateTitle: 'Html Ppt Zhangzara Playful',
+    motifMustInclude: ['--accent', 'doodle-blob-1', 'toc-grid'],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Mat',
+    pluginId: 'html-ppt-zhangzara-mat',
+    exampleSubpath: 'html-ppt-zhangzara-mat/example.html',
+    templateTitle: 'Html Ppt Zhangzara Mat',
+    motifMustInclude: ['--c-bg', 'info-card', 'cover-headline'],
+    demoMustNotInclude: ['Mat Presentation', 'Craft Matters'],
+    expectedSlideCount: 10,
+  },
 ];
 
 const CROSS_TEMPLATE_LEFTOVER_DENYLIST = [

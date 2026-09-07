@@ -171,8 +171,9 @@ export function assertDeterministicTemplateQualityGate(
 /**
  * Canonical spec table used by the contracts gate and (with
  * `expectedSlideCount` only) the daemon smoke.
- * 루프450: Capsule / Daisy / Creative / Studio
- * 루프451: Biennale Yellow / Cobalt Grid / Block Frame
+ * 루프450–467: Capsule … Sakura / Broadside / 8-bit / Scatterbrain
+ * 루프469: Long Table / Editorial unique-role
+ * 루프470: remaining 10-shell official Zhangzara catalogue kits
  */
 export const ZHANGZARA_QUALITY_GATE_SPECS: readonly TemplateQualityGateSpec[] = [
   {
@@ -379,5 +380,211 @@ export const ZHANGZARA_QUALITY_GATE_SPECS: readonly TemplateQualityGateSpec[] = 
       'Lorem ipsum',
     ],
     expectedSlideCount: 8,
+  },
+  // 루프470 — remaining 10-shell official Zhangzara catalogue kits.
+  {
+    name: 'Bold Poster',
+    templateId: 'html-ppt-zhangzara-bold-poster',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-bold-poster/example.html',
+    motifMustInclude: ['--red', 'hero-title', 'slide-red'],
+    demoMustNotInclude: ['Bold Poster Business Presentation'],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Cartesian',
+    templateId: 'html-ppt-zhangzara-cartesian',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-cartesian/example.html',
+    motifMustInclude: ['--bg-primary', 'geo-decoration'],
+    demoMustNotInclude: [
+      'Cartesian Presentation Template',
+      'Precision in approach defines the boundary',
+    ],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Coral',
+    templateId: 'html-ppt-zhangzara-coral',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-coral/example.html',
+    motifMustInclude: ['--coral', 'zigzag-layer', 'brand-mark'],
+    demoMustNotInclude: ['Presentation Template'],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Grove',
+    templateId: 'html-ppt-zhangzara-grove',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-grove/example.html',
+    motifMustInclude: ['--c-bg', 'grove-sidebar', 'slide-chrome'],
+    demoMustNotInclude: [
+      'Grove Presentation',
+      'The landscape has shifted',
+    ],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Mat',
+    templateId: 'html-ppt-zhangzara-mat',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-mat/example.html',
+    motifMustInclude: ['--c-bg', 'info-card', 'cover-headline'],
+    demoMustNotInclude: [
+      'Mat Presentation',
+      'Craft Matters',
+      'Every surface is a decision',
+    ],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Monochrome',
+    templateId: 'html-ppt-zhangzara-monochrome',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-monochrome/example.html',
+    motifMustInclude: ['--c-bg-cream', 'slide-sidebar'],
+    demoMustNotInclude: [
+      'User Research Synthesis',
+    ],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Neo Grid Bold',
+    templateId: 'html-ppt-zhangzara-neo-grid-bold',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-neo-grid-bold/example.html',
+    motifMustInclude: ['--accent', 'blockmark', 's-toc'],
+    demoMustNotInclude: [
+      'The future of data-driven finance',
+      'Market penetration doubled',
+    ],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Peoples Platform',
+    templateId: 'html-ppt-zhangzara-peoples-platform',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-peoples-platform/example.html',
+    motifMustInclude: ['--orange-deep', 's-cover', 's-toc'],
+    demoMustNotInclude: [
+      "WHAT'S INSIDE",
+      'THREE PRIORITIES',
+    ],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Pin and Paper',
+    templateId: 'html-ppt-zhangzara-pin-and-paper',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-pin-and-paper/example.html',
+    motifMustInclude: ['pin-1', 'handwritten'],
+    demoMustNotInclude: [
+      'Kept things',
+      'Three rules we\'re keeping',
+    ],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Pink Script',
+    templateId: 'html-ppt-zhangzara-pink-script',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-pink-script/example.html',
+    motifMustInclude: ['--pink-deep', 's-cover', 'title-wrap'],
+    demoMustNotInclude: [
+      'Pink Script',
+      'Twelve weeks of after-hours',
+    ],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Playful',
+    templateId: 'html-ppt-zhangzara-playful',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-playful/example.html',
+    motifMustInclude: ['--accent', 'doodle-blob-1', 'toc-grid'],
+    demoMustNotInclude: ['Presentation Template'],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Raw Grid',
+    templateId: 'html-ppt-zhangzara-raw-grid',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-raw-grid/example.html',
+    motifMustInclude: ['--pink', 's1-headline', 't-display'],
+    demoMustNotInclude: [
+      'Neobrutalist Presentation Template',
+    ],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Retro Windows',
+    templateId: 'html-ppt-zhangzara-retro-windows',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-retro-windows/example.html',
+    motifMustInclude: ['--bg-gray', 'win-titlebar', 'pixel-font'],
+    demoMustNotInclude: [
+      'Retro Presentation Template',
+      'THANK YOU FOR WATCHING',
+    ],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Retro Zine',
+    templateId: 'html-ppt-zhangzara-retro-zine',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-retro-zine/example.html',
+    motifMustInclude: ['grain-overlay', 'slide-hero', '--green'],
+    demoMustNotInclude: ['Retro Zine Business Presentation'],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Signal',
+    templateId: 'html-ppt-zhangzara-signal',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-signal/example.html',
+    motifMustInclude: ['--c-accent', 'slide--cover', 'slide-chrome'],
+    demoMustNotInclude: [
+      'Signal Template',
+      'A concise statement that frames the main argument',
+    ],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Soft Editorial',
+    templateId: 'html-ppt-zhangzara-soft-editorial',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-soft-editorial/example.html',
+    motifMustInclude: ['--blush', 's-foreword', 's-cover'],
+    demoMustNotInclude: [
+      'Soft Editorial',
+      'What we learned this',
+    ],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Stencil Tablet',
+    templateId: 'html-ppt-zhangzara-stencil-tablet',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-stencil-tablet/example.html',
+    motifMustInclude: ['--sienna', 's-cover', 's-princ'],
+    demoMustNotInclude: [
+      'Stencil & Tablet',
+      'Stencil &amp; Tablet',
+      'Bold by design',
+    ],
+    expectedSlideCount: 10,
+  },
+  {
+    name: 'Vellum',
+    templateId: 'html-ppt-zhangzara-vellum',
+    exampleRelativePath:
+      '../../../../plugins/_official/examples/html-ppt-zhangzara-vellum/example.html',
+    motifMustInclude: ['--c-fg', 'pin-annotation', 'slide--cover'],
+    demoMustNotInclude: [
+      'Vellum Presentation',
+      'On Restraint',
+      'Most design problems are removed',
+    ],
+    expectedSlideCount: 10,
   },
 ];
