@@ -15,14 +15,13 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts system-prompt-api-mode · template-visual-kit · teamver-selected-template-compose · deck-framework-compact · template-clone-fill, web templateCloneContentFill · runtime/resume.
 
-**후속:** [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) · [0901-N02-21](./0901-N02-21-구현설계-[Clone_sakura-leftover-refill].md) · [0901-N02-22](./0901-N02-22-구현설계-[Clone_long-table-leftover-refill].md) · [0901-N02-23](./0901-N02-23-구현설계-[Clone_remaining-zhangzara-quality-gates].md) · [0901-N02-24](./0901-N02-24-구현설계-[Clone_layout-smoke].md) · [0907-N06-1](./0907-N06-1-상위설계-[사이트분석_prompt-fill_outline_주입].md) — B1–B5 · C–C13 · D · 루프368–472. MiniMax live 가드 ☑(키 없으면 skip). 루프450–472 품질 게이트/배치 smoke/사이트분석 outline ☑. 공식 Zhangzara 4축+배치 게이트는 카탈로그 전 종.
+**후속:** [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) · [0901-N02-21](./0901-N02-21-구현설계-[Clone_sakura-leftover-refill].md) · [0901-N02-22](./0901-N02-22-구현설계-[Clone_long-table-leftover-refill].md) · [0901-N02-23](./0901-N02-23-구현설계-[Clone_remaining-zhangzara-quality-gates].md) · [0901-N02-24](./0901-N02-24-구현설계-[Clone_layout-smoke].md) · [0907-N06-1](./0907-N06-1-상위설계-[사이트분석_prompt-fill_outline_주입].md) — B1–B5 · C–C13 · D · 루프368–473. MiniMax live 가드 ☑(키 없으면 skip). 루프450–473 품질 게이트/배치 smoke/사이트분석 outline/`한눈에` lead ☑. 공식 Zhangzara 4축+배치 게이트는 카탈로그 전 종.
 
 다음 추천 작업:
 1. Playwright pixel screenshot / FileViewer bake(선택)
 2. MiniMax 키 환경 Clone fill live smoke (teamver.com 사이트 분석 → dense outline)
 3. FileViewer ←/→ tools-dev + Teamver BFF GUI bake(선택)
 4. Studio/Creative leftover denylist 보강(선택)
-5. deterministic synth cover lead(`한눈에`) 서비스 소개 경로 개선(선택)
 
 ### 빈 칸 번호 카드 (코드명 leftover)
 
@@ -37,6 +36,10 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 `기둥` / `PILLAR` / `Phase`는 모델이 붙이는 접두일 뿐, 발표 용어가 아닙니다. extra-copy·stub는 주제 단어 목록이 아닙니다(루프259·265).
 
 ## 2026-09-02 현재 판단 · 최신 루프
+
+### 루프473 — deterministic synth cover lead 교체
+
+`{topic} 한눈에` LOOK seed lead를 서비스 소개 promise / 일반 핵심 맥락 문장으로 교체. [0907-N06-4](./0907-N06-4-구현설계-[Clone_deterministic-cover-lead].md).
 
 ### 루프472 — Clone 배치(DOM) smoke
 

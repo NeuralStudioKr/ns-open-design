@@ -13,6 +13,7 @@
 - [x] 단위 테스트 (`templateCloneContentFill` 38)
 - [x] `00` · `54-2` 루프471
 - [x] 코드+문서 commit · push staging
+- [x] 루프473 deterministic `한눈에` cover lead 교체 — [0907-N06-4](./0907-N06-4-구현설계-[Clone_deterministic-cover-lead].md)
 
 ## 진행
 

@@ -60,7 +60,7 @@ Keep: do not invent quantitative KPIs …
 ### E. 비범위
 
 - Zhangzara gate 확대
-- daemon deterministic synth lead(`한눈에`) 전면 교체 (별 백로그; prompt-fill 경로가 우선)
+- daemon deterministic synth lead(`한눈에`) 전면 교체 — 루프473 [0907-N06-4](./0907-N06-4-구현설계-[Clone_deterministic-cover-lead].md)
 - web-fetch adapter / reader backend 변경
 
 ## 검증

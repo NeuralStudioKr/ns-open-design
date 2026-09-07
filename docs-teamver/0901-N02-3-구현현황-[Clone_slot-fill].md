@@ -39,6 +39,7 @@
 | **루프458** Product Launch · Pitch Deck 게이트 | ☑ contracts+daemon specs |
 | **루프463** LOOK + AI 본문 동시 사용 — 기본 `prompt` 복구 · deterministic-only는 opt-in | ☑ [0907-N02-1](./0907-N02-1-상위설계-[Clone_LOOK와_AI_본문_동시사용].md) · [rollback switch](./0901-N02-template-clone-fill-rollback-switch.md) |
 | **루프461** Block Frame neo 슬롯 fill — body CSS fingerprint 게이트 제거 · a/button exact-class · Visual System/Overview/chart strip · denylist | ☑ [0907-N01-1](./0907-N01-1-상위설계-[Block_frame-neo-slot-gate].md) · [0907-N01-2](./0907-N01-2-구현설계-[Block_frame-neo-slot-gate].md) |
+| **루프473** deterministic synth cover lead 교체 | ☑ `한눈에` → promise/맥락 문장 · [0907-N06-4](./0907-N06-4-구현설계-[Clone_deterministic-cover-lead].md) |
 | **루프472** Clone 배치(DOM) smoke | ☑ live motif tag + 표지 heading · [0901-N02-24](./0901-N02-24-구현설계-[Clone_layout-smoke].md) |
 | **루프470** 남은 10셸 Zhangzara 18종 4축 게이트 | ☑ Bold Poster…Vellum · leftover scrub · [0901-N02-23](./0901-N02-23-구현설계-[Clone_remaining-zhangzara-quality-gates].md) |
 | **루프469** Long Table leftover refill + Editorial unique-role | ☑ featured/menu/closing/grid… cap · kit fill · persist heal · 4축 게이트 · [0901-N02-22](./0901-N02-22-구현설계-[Clone_long-table-leftover-refill].md) |
@@ -139,6 +140,7 @@
 
 | 일자 | 내용 |
 |------|------|
+| 2026-09-07 | 루프473 — deterministic synth cover lead 교체 · `한눈에` 제거 · [0907-N06-4](./0907-N06-4-구현설계-[Clone_deterministic-cover-lead].md). |
 | 2026-09-07 | 루프472 — Clone 배치(DOM) smoke · live motif tag + 표지 heading · [0901-N02-24](./0901-N02-24-구현설계-[Clone_layout-smoke].md). |
 | 2026-09-07 | 루프470 — 남은 10셸 Zhangzara 18종 4축 게이트 · leftover 스크럽(Pink Script / Pin and Paper / Monochrome) · [0901-N02-23](./0901-N02-23-구현설계-[Clone_remaining-zhangzara-quality-gates].md). |
 | 2026-09-07 | 루프469 — Long Table leftover refill · Editorial unique-role · 4축 게이트 2종. |
