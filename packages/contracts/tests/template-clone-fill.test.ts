@@ -408,6 +408,17 @@ describe('루프450/459 Zhangzara template quality gates', () => {
     const cloned = await runDeterministicTemplateQualityGate(creative!);
     expect(listTemplateCloneSlideShells(cloned).length).toBe(8);
   });
+
+  it('루프461: Block Frame clone does not finish with stock UI placeholders', async () => {
+    const blockFrame = ZHANGZARA_QUALITY_GATE_SPECS.find((s) => s.name === 'Block Frame');
+    expect(blockFrame).toBeTruthy();
+    const cloned = await runDeterministicTemplateQualityGate(blockFrame!);
+    expect(cloned).not.toMatch(/NEO-\s*<br\s*\/?>[\s\S]{0,80}<br\s*\/?>\s*STYLE/i);
+    expect(cloned).not.toMatch(/Image Placeholder|Get Started|View Process|J\.\s*Doe|Revenue Growth|Visual System|By The Numbers/i);
+    expect(cloned).not.toMatch(/>\s*Overview\s*</i);
+    expect(cloned).toMatch(/<span class="list-num">01<\/span>\s*<span>/i);
+    expect(cloned).not.toMatch(/<span class="list-num">[^<]{18,}<\/span>/i);
+  });
 });
 
 describe('루프419 Capsule deterministic quality gate', () => {

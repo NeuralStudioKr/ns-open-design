@@ -1286,6 +1286,10 @@ function isPlaceholderCloneBody(body?: string): boolean {
 function headingLooksLikeDemoSentence(inner: string): boolean {
   const plain = String(inner ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
   if (plain.length >= 24 || /\bthat\b|[.。]\s*$/i.test(plain)) return true;
+  // Block Frame / poster covers split stock names across <br> runs
+  // (`NEO-<br>BRUTALISM<br>STYLE`). First-run replacement would produce
+  // `NEO-<br>사용자 제목<br>STYLE`, which looks like an unfinished clone.
+  if (/<br\s*\/?>/i.test(inner) && /\b(?:BRUTALISM|STYLE|TEMPLATE)\b/i.test(plain)) return true;
   // Cover-style `Project <em>Atlas</em>` — first-run swap would leave English.
   return /<(?:em|i)\b/i.test(inner) && /[A-Za-z]{3,}/.test(plain);
 }
@@ -4203,7 +4207,9 @@ function firstTitleSlotClass(html: string): string | null {
 }
 
 function firstExactClassRange(html: string, className: string): HtmlSpan | null {
-  const openRe = /<(div|span|p)\b[^>]*>/gi;
+  // 루프461 — include `a`/`button` so Block Frame `.nb-btn` / `.close-btn`
+  // (anchor chrome) get the same exact-class text swap as div/span/p.
+  const openRe = /<(div|span|p|a|button)\b[^>]*>/gi;
   let match: RegExpExecArray | null;
   while ((match = openRe.exec(html)) !== null) {
     if (!openHasExactClass(match[0] ?? '', className)) continue;
@@ -4222,8 +4228,8 @@ function replaceFirstExactClassText(html: string, className: string, text: strin
   const block = html.slice(span.start, span.end);
   const open = /^<[^>]+>/.exec(block)?.[0];
   if (!open) return html;
-  const inner = block.slice(open.length).replace(new RegExp(`</(?:div|span|p)\\s*>$`, 'i'), '');
-  const close = /<\/(?:div|span|p)\s*>$/i.exec(block)?.[0] ?? '';
+  const inner = block.slice(open.length).replace(new RegExp(`</(?:div|span|p|a|button)\\s*>$`, 'i'), '');
+  const close = /<\/(?:div|span|p|a|button)\s*>$/i.exec(block)?.[0] ?? '';
   return `${html.slice(0, span.start)}${open}${replaceFirstTextRun(inner, text)}${close}${html.slice(span.end)}`;
 }
 
@@ -4427,9 +4433,9 @@ function stripCapsuleCatalogDemoCopy(html: string): string {
     .replace(CAPSULE_CATALOG_DEMO_METRIC_RE, '');
 }
 
-/** 루프434 — Block-frame / Neo catalog marketing leftovers on Hangul LOOK seeds. */
+/** 루프434 / 루프461 — Block-frame / Neo catalog marketing leftovers on Hangul LOOK seeds. */
 const BLOCK_FRAME_NEO_DEMO_COPY_RE =
-  /Neobrutalist Presentation Template|Presentation Template|Quarterly Growth Metrics|What We\s*<br\s*\/?>\s*Deliver|What We Deliver|Modular Layouts|Responsive Ready|Data Friendly|Strategy First|Design System|Launch Ready|Core Features|Performance Data|Every project follows a rigorous process[\s\S]{0,160}?fully functional\./gi;
+  /Neobrutalist Presentation Template|Presentation Template|Quarterly Growth Metrics|What We\s*<br\s*\/?>\s*Deliver|What We Deliver|Modular Layouts|Responsive Ready|Data Friendly|Strategy First|Design System|Launch Ready|Core Features|Performance Data|Every project follows a rigorous process[\s\S]{0,160}?fully functional\.|Image Placeholder|Visual System|Get Started|View Process|By The Numbers|The Team|Methodology|Roadmap|Revenue Growth|Active Users|Retention Rate|12\+\s*Years|500\+\s*Projects|J\.\s*Doe|A\.\s*Smith|Creative Lead|Tech Director|Oversees visual direction[\s\S]{0,120}?narrative\.?|Translates s into scalable technical architectures and workflows\.?/gi;
 
 function stripBlockFrameNeoCatalogDemoCopy(html: string): string {
   return String(html ?? '').replace(BLOCK_FRAME_NEO_DEMO_COPY_RE, '');
@@ -4474,6 +4480,27 @@ function replaceListItems(html: string, lines: string[]): string {
   const open = /^<[uo]l\b[^>]*>/i.exec(listHtml)?.[0] ?? '<ul>';
   const close = /<\/[uo]l>$/i.exec(listHtml)?.[0] ?? '</ul>';
   const existingItems = [...listHtml.matchAll(/<li\b([^>]*)>([\s\S]*?)<\/li>/gi)];
+  // Block Frame content-list uses `.list-num` as a compact ordinal badge.
+  // Fill the badge with 01/02/03 and put the real copy beside it; otherwise
+  // the first text-run replacement stretches the badge across the whole row.
+  if (/\blist-num\b/i.test(listHtml)) {
+    const items = lines.map((line, index) => {
+      const attrs = existingItems[index]?.[1] ?? existingItems[0]?.[1] ?? '';
+      if (!String(line).trim()) return '';
+      return (
+        `<li${attrs}>`
+        + `<span class="list-num">${String(index + 1).padStart(2, '0')}</span>`
+        + `<span>${escapeHtml(line)}</span>`
+        + `</li>`
+      );
+    }).filter(Boolean).join('');
+    const nextList = `${open}${items}${close}`;
+    return (
+      html.slice(0, listMatch.index)
+      + nextList
+      + html.slice(listMatch.index + listHtml.length)
+    );
+  }
   const items = lines.map((line, index) => {
     const attrs = existingItems[index]?.[1] ?? existingItems[0]?.[1] ?? '';
     const priorInner = existingItems[index]?.[2] ?? '';
@@ -4542,6 +4569,7 @@ function peerClassSet(slotMap: TemplateCloneSlotMap | null | undefined): Set<str
     'pricing-card',
     'pillar-card',
     'kpi-card',
+    'data-box',
     'step-card',
     'process-card',
     'member-card',
@@ -4983,7 +5011,7 @@ function replaceClassTextBySequence(html: string, className: string, values: str
   const classToken = escapeRegExp(className);
   return html.replace(
     new RegExp(
-      `(<(?:div|p|span)\\b[^>]*\\bclass\\s*=\\s*["'][^"']*\\b${classToken}\\b[^"']*["'][^>]*>)([\\s\\S]*?)(<\\/(?:div|p|span)>)`,
+      `(<(?:a|button|div|p|span)\\b[^>]*\\bclass\\s*=\\s*["'][^"']*\\b${classToken}\\b[^"']*["'][^>]*>)([\\s\\S]*?)(<\\/(?:a|button|div|p|span)>)`,
       'gi',
     ),
     (match, open: string, _inner: string, close: string) => {
@@ -5459,6 +5487,65 @@ function fillBiennaleCalendarSlots(
   return next;
 }
 
+function fillBlockFrameNeoSlots(
+  body: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    kicker: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  if (!/\b(?:hero-frame|visual-box|data-box|team-card|nb-btn|close-btn|chart-frame|nb-label|intro-card|feature-card|stat-card|timeline-step)\b/i.test(body)) {
+    return body;
+  }
+  const lines = biennaleFillLines(input, 4);
+  let next = body;
+  next = replaceFirstExactClassText(next, 'hero-label', input.kicker || '팀버 소개');
+  next = replaceFirstExactClassText(next, 'deco-yellow-bar', 'Teamver');
+  next = replaceFirstExactClassText(next, 'visual-label', input.kicker || input.title);
+  next = replaceFirstExactClassText(next, 'nb-btn', '자세히 보기');
+  next = replaceFirstExactClassText(next, 'close-btn', '다음 단계');
+
+  if (/\bvisual-box\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'visual-box', [lines[0] ?? { title: input.title, body: input.lead }], (block) => {
+      if (!/Image Placeholder/i.test(block)) return block;
+      const text = input.lead || input.bodyText || input.title;
+      return block.replace(
+        /(<span\b[^>]*>)[\s\S]*?(<\/span>)/i,
+        (_m, open: string, close: string) => `${open}${escapeHtml(text)}${close}`,
+      );
+    });
+  }
+
+  // If a chart slide has ordinary prose rather than true metrics, keep the
+  // neobrutal frame but remove demo bars/legend/values that imply fake data.
+  const metricLines = lines.filter((line) => (
+    titleLooksLikeMetric(line.title) || titleLooksLikeMetric(line.body)
+  ));
+  if (/\bchart-frame\b/i.test(next) && metricLines.length === 0) {
+    next = stripClassBlocks(next, 'chart-legend');
+    next = next.replace(/<svg\b[^>]*\bclass\s*=\s*["'][^"']*\bchart-svg\b[^"']*["'][^>]*>[\s\S]*?<\/svg>/gi, '');
+  }
+
+  // 루프461 — English chrome labels on nb-label / legend that survive when
+  // the structural fill above did not rewrite them (Overview / Methodology /
+  // By The Numbers / The Team / Roadmap / Revenue|Users|Retention).
+  next = next.replace(
+    /(<(?:div|span)\b[^>]*\bnb-label\b[^>]*>)([\s\S]*?)(<\/(?:div|span)>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!/^(?:Overview|Methodology|By The Numbers|The Team|Roadmap|Features|Insights)$/i.test(plain)) {
+        return full;
+      }
+      return `${open}${escapeHtml(input.kicker || input.title)}${close}`;
+    },
+  );
+
+  return next;
+}
+
 function fillOneCardPeer(cardHtml: string, line: TemplateCloneCardFillLine): string {
   const { title, body } = resolveTemplateCloneCardFill(line);
   const text = title;
@@ -5502,6 +5589,48 @@ function fillOneCardPeer(cardHtml: string, line: TemplateCloneCardFillLine): str
       next,
       /(<[^>]*\bmember-role\b[^>]*>)([\s\S]*?)(<\/)/gi,
       body,
+    );
+    return next;
+  }
+  // Block Frame `.team-card`: keep the avatar/card chrome, fill named slots.
+  if (/\bteam-card\b/i.test(cardHtml) && /\bteam-name\b/i.test(next)) {
+    next = fillClassInner(
+      next,
+      /(<[^>]*\bteam-name\b[^>]*>)([\s\S]*?)(<\/)/i,
+      text,
+    );
+    next = fillClassInner(
+      next,
+      /(<[^>]*\bteam-role\b[^>]*>)([\s\S]*?)(<\/)/i,
+      body || text,
+    );
+    next = fillClassInner(
+      next,
+      /(<[^>]*\bteam-bio\b[^>]*>)([\s\S]*?)(<\/)/i,
+      body || text,
+    );
+    next = fillClassInner(
+      next,
+      /(<[^>]*\bteam-avatar\b[^>]*>)([\s\S]*?)(<\/)/i,
+      text.replace(/<[^>]+>/g, '').trim().slice(0, 2).toUpperCase() || 'TV',
+    );
+    return next;
+  }
+  // Block Frame `.data-box`: sample metrics must not survive when the
+  // outline carries ordinary copy. Use numbered stat badges unless a real
+  // metric was supplied.
+  if (/\bdata-box\b/i.test(cardHtml) && /\bdata-(?:num|label)\b/i.test(next)) {
+    const slots = assignStatSlots(text, body);
+    const value = titleLooksLikeMetric(slots.value) ? slots.value : '';
+    next = fillClassInner(
+      next,
+      /(<[^>]*\bdata-num\b[^>]*>)([\s\S]*?)(<\/)/i,
+      value,
+    );
+    next = fillClassInner(
+      next,
+      /(<[^>]*\bdata-label\b[^>]*>)([\s\S]*?)(<\/)/i,
+      slots.label || slots.value,
     );
     return next;
   }
@@ -5880,6 +6009,14 @@ function fillSlideShell(
       body = replaceFirstExactClassText(body, 'lede', lead || bodyText || `${title} 한눈에`);
     }
   }
+  // 루프461 — Do NOT gate on `officialLookIsNeoBrutalBlockFrame(body)`.
+  // That fingerprint reads `<style>` / motif-deco CSS, which live in <head>,
+  // not in the per-slide body passed here — so the check was always false and
+  // Block Frame neo slots (visual-label, chart strip, nb-btn, deco-yellow-bar)
+  // never ran. `fillBlockFrameNeoSlots` already no-ops unless structural
+  // markers (`hero-frame` / `visual-box` / `data-box` / `team-card` / `nb-btn`
+  // / `close-btn`) are present.
+  body = fillBlockFrameNeoSlots(body, { title, lead, bodyText, kicker, fillLines });
   body = stripCapsuleCatalogDemoCopy(body);
   body = stripBlockFrameNeoCatalogDemoCopy(body);
   body = stripBlueProfessionalCatalogDemoCopy(body);
