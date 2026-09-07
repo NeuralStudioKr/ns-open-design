@@ -1,5 +1,9 @@
 # 2026-09-02 현재 판단 — 템플릿 Clone Content-Fill 롤백 스위치
 
+> **LOOK + AI 동시 사용 정책(루프463):**  
+> [0907-N02-1 — Clone LOOK와 AI 본문 동시 사용](./0907-N02-1-상위설계-[Clone_LOOK와_AI_본문_동시사용].md)  
+> 한 줄: `prompt` = LOOK와 AI를 **같이** 씀. deterministic-only는 본문 품질 기본값이 아님.
+
 ## 배경
 
 - 템플릿 선택 후 생성 품질을 개선하기 위해, 기존 방식처럼 모델이 전체 HTML을 다시 작성하는 경로 외에 서버가 템플릿 preview를 읽고 `deck.html`을 content-filled 상태로 저장하는 별도 경로가 필요하다.
@@ -161,3 +165,33 @@
 **결정:** LOOK seed + 서버 fill이 Home 기본 경로다. fill 성공/복구 후 MiniMax HTML rewrite를 큐하지 않는다. embed leftover localStorage 무시는 유지한다.
 
 **운영:** staging `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=deterministic` 재빌드. 롤백은 명시 `=pure-prompt`.
+
+## 2026-09-07 — 루프463: AI 내용 생성 기본 복구 (`prompt`)
+
+**사용자:** 「요청 하자마자 결과물이 나오는데 내용 구성이 적절하지 않다. AI를 거쳐서 내용을 만들어야 한다.」  
+후속: 「둘을 동시에 사용하면 안 되는가?」
+
+**정책 SSOT (자세한 설명):**  
+→ [0907-N02-1 상위설계 — Clone LOOK와 AI 본문 동시 사용](./0907-N02-1-상위설계-[Clone_LOOK와_AI_본문_동시사용].md)
+
+### 요약
+
+- **동시 사용은 된다.** `prompt` = LOOK seed + MiniMax 본문. 이것이 루프463 기본.
+- **금지·회피한 것**은 “서버가 본문까지 채운 뒤 MiniMax가 HTML 통짜 rewrite”하는 **이중 본문** (LOOK 붕괴 · `AGENT_EXECUTION_FAILED`).
+- 루프419/421의 deterministic-only 즉시 종료는 속도·LOOK용 단축이었고, **내용 품질 기본값으로는 부적절**하여 폐기.
+
+**결정:** env-empty / staging 기본을 `prompt`로 되돌린다.
+
+- LOOK seed(템플릿 chrome)는 유지
+- MiniMax prompt-fill이 본문을 작성 (즉시 deterministic-only 종료 금지)
+- `deterministic`은 명시 opt-in만
+- `pure-prompt` + 템플릿 선택 시에도 서버-only fill 강제 해제 → LOOK + AI fill (루프422 LOOK 강제 + 463 AI 유지)
+
+**수정:**
+
+1. `TEMPLATE_CLONE_FILL_DEFAULT_MODE = 'prompt'`
+2. `shouldUseDeterministicTemplateCloneFill` — `mode === 'deterministic'`만
+3. `shouldQueueAiTemplateCloneFill` — `prompt`/`json` + (`pure-prompt` && explicit template)
+4. `.env.staging.example` / `.env.production.example` / 로컬 staging env → `=prompt`
+
+**롤백:** `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=deterministic`

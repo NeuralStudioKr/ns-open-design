@@ -32,3 +32,41 @@ Block Frame `demoMustNotInclude`에 `Visual System` / `Image Placeholder` /
 - `pnpm vitest run tests/template-clone-fill.test.ts` — 160 passed
 - 수동 fixture: body에 `Visual System` / `chart-legend` / `Overview` /
   `Get Started` 없음 · `nb-btn`=`자세히 보기` · `deco-yellow-bar`=`Teamver`
+
+---
+
+## 루프462 — preview heal이 Block Frame host를 orphan
+
+### 증상
+
+deterministic fill 직후 HTML은 `col-right` / `data-column` 안에 peer가
+정상. FileViewer · `buildSrcdoc`가 `healAiGeneratedDeckMarkup`을 돌리면
+`closeUnclosedSiblingCardsInSlides`가 host를 조기 `</div>`로 닫아
+`<div class="col-right"></div><div class="intro-card">…` 형태가 됨.
+이어서 `wrapLooseStatMetricPairsIntoCards`가 두 번째 `stats-grid`를 주입.
+
+### 원인
+
+`attrsLookCardish`가 쓰던 `CARDISH_CLASS_RE =
+/\b(?:card|…|col(?:umn)?s?|…)\b/i` 가 클래스 문자열 **부분** 매칭:
+`col-right`→`col`, `data-column`→`column`, `stat-number`→`stat`.
+
+### 수정 (`heal-ai-generated-deck.ts`)
+
+`classValueLooksCardish(classValue)`:
+
+- exact token: `card|pillar|tile|panel|cell|box|metric|stat|kpi|col|column|…`
+- compound: `*-card|*-box|*-tile|*-panel|*-pillar` (`intro-card`, `data-box`)
+- layout host 제외: `col-left|col-right|data-column|stats-grid|…`
+
+`childLooksLikePeerCard` / `attrsLookCardish` / `childLooksLikeSizedPeerCard`
+가 동일 헬퍼를 사용.
+
+### 부가 (`template-clone-fill.ts`)
+
+outline이 `kicker: 'OVERVIEW'`를 주는 경우 neo chrome에 영문을 재기록하지
+않도록 `blockFrameNeoChromeLabel`(Overview→개요 등).
+
+### 회귀 테스트
+
+`루프462: Block Frame fill → preview heal keeps col-right / data-column hosts`

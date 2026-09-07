@@ -419,6 +419,36 @@ describe('루프450/459 Zhangzara template quality gates', () => {
     expect(cloned).toMatch(/<span class="list-num">01<\/span>\s*<span>/i);
     expect(cloned).not.toMatch(/<span class="list-num">[^<]{18,}<\/span>/i);
   });
+
+  it('루프462: Block Frame fill → preview heal keeps col-right / data-column hosts', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-block-frame/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const brief = 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.';
+    const slides = resolveTemplateCloneSlidesForDeterministicFill({
+      userInstruction: brief,
+      slideCount: 10,
+    });
+    const cloned = buildTemplateClonedDeckHtml(html, slides, {
+      title: '팀버 소개',
+      templateId: 'example-html-ppt-zhangzara-block-frame',
+      maxSlides: 10,
+    });
+    expect(cloned).toBeTruthy();
+    // FileViewer / srcdoc always run heal on preview — must not orphan neo peers.
+    const healed = healAiGeneratedDeckMarkup(cloned!, brief);
+    expect(healed).not.toMatch(/col-right"\s*>\s*<\/div>\s*<div class="intro-card/i);
+    expect(healed).not.toMatch(/data-column"\s*>\s*<\/div>\s*<div class="data-box/i);
+    expect(healed).toMatch(/col-right"[^>]*>[\s\S]*?<div class="intro-card"/i);
+    expect(healed).toMatch(/data-column"[^>]*>[\s\S]*?<div class="data-box"/i);
+    const statsGrids = [...healed.matchAll(/\bclass="[^"]*\bstats-grid\b/gi)];
+    expect(statsGrids.length).toBe(1);
+    expect(healed).not.toMatch(/stat-card"\s*>\s*<\/div>\s*<div class="stat-number"/i);
+  });
 });
 
 describe('루프419 Capsule deterministic quality gate', () => {

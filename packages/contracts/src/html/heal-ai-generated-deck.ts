@@ -1461,8 +1461,32 @@ export function shrinkClassBoundEqualTrackGrids(
   return out;
 }
 
-const CARDISH_CLASS_RE =
-  /\b(?:card|pillar|col(?:umn)?s?|tile|panel|cell|box|metric|stat|kpi)\b/i;
+/**
+ * Exact / compound class tokens that mean a peer "card" shell.
+ *
+ * Do **not** use a bare `\bcol\b` / `\bcard\b` substring scan on the whole
+ * class attribute — that falsely flags Block Frame layout hosts such as
+ * `col-right`, `data-column`, and metric leaves like `stat-number`.
+ * `closeUnclosedSiblingCardsInSlides` then inserts `</div>` before the next
+ * child card and orphans `.intro-card` / `.data-box` outside their hosts
+ * (루프462).
+ */
+const CARDISH_EXACT_TOKEN_RE =
+  /^(?:card|pillar|tile|panel|cell|box|metric|stat|kpi|col|column|columns|cols)$/i;
+const CARDISH_COMPOUND_TOKEN_RE = /-(?:card|box|tile|panel|pillar)$/i;
+/** Flex/grid hosts that contain peer cards — never auto-closed as cards. */
+const LAYOUT_HOST_CLASS_TOKEN_RE =
+  /^(?:col-(?:left|right|mid|main|aside|content)|data-column|chart-(?:frame|body|header|legend|svg)|cards-row|stats-grid|team-grid|timeline|split-(?:content|visual)|slide-header|hero-frame|close-frame|quote-frame|slides-container|content-list)$/i;
+
+function classValueLooksCardish(classValue: string): boolean {
+  const tokens = String(classValue ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+  for (const token of tokens) {
+    if (LAYOUT_HOST_CLASS_TOKEN_RE.test(token)) continue;
+    if (CARDISH_EXACT_TOKEN_RE.test(token)) return true;
+    if (CARDISH_COMPOUND_TOKEN_RE.test(token)) return true;
+  }
+  return false;
+}
 
 function styleHasFlexGrow(style: string): boolean {
   if (/(?:^|;)\s*flex-grow\s*:\s*(?!0(?:\s|;|!|$))/i.test(style)) return true;
@@ -1490,7 +1514,7 @@ function isFlexRowContainerStyle(style: string): boolean {
 
 function childLooksLikePeerCard(attrs: string, style: string): boolean {
   if (styleLooksLikeFixedSidebar(style)) return false;
-  if (CARDISH_CLASS_RE.test(classAttrValue(attrs))) return true;
+  if (classValueLooksCardish(classAttrValue(attrs))) return true;
   // MiniMax often emits padded/background boxes without a card class.
   if (/(?:^|;)\s*padding(?:-inline|-block|-left|-right)?\s*:/i.test(style)) return true;
   if (
@@ -2301,7 +2325,7 @@ function peerFixedMainSizePx(style: string): number | null {
 }
 
 function childLooksLikeSizedPeerCard(attrs: string, style: string): boolean {
-  if (CARDISH_CLASS_RE.test(classAttrValue(attrs))) return true;
+  if (classValueLooksCardish(classAttrValue(attrs))) return true;
   if (/(?:^|;)\s*padding(?:-inline|-block|-left|-right)?\s*:/i.test(style)) return true;
   if (
     /(?:^|;)\s*background(?:-color)?\s*:/i.test(style)
@@ -2560,7 +2584,8 @@ function classAttrValue(attrs: string): string {
 
 function attrsLookCardish(attrs: string): boolean {
   // Only the class token list — never style values like grid-template-columns.
-  if (CARDISH_CLASS_RE.test(classAttrValue(attrs))) return true;
+  // 루프462 — token-exact / compound (-card|-box) match; layout hosts excluded.
+  if (classValueLooksCardish(classAttrValue(attrs))) return true;
   // 루프349 — MiniMax retro win-body cards often have no class token but
   // share the same padded chrome inline style as grid cards. Treat them as
   // cardish so loop194 inserts sibling closes before the next card opens.

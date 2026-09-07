@@ -5487,6 +5487,34 @@ function fillBiennaleCalendarSlots(
   return next;
 }
 
+const BLOCK_FRAME_ENGLISH_CHROME_LABEL_RE =
+  /^(?:Overview|Methodology|By The Numbers|The Team|Roadmap|Features|Insights)$/i;
+
+const BLOCK_FRAME_ENGLISH_CHROME_LABEL_KO: Record<string, string> = {
+  overview: '개요',
+  methodology: '방법',
+  'by the numbers': '숫자로 보기',
+  'the team': '팀',
+  roadmap: '로드맵',
+  features: '기능',
+  insights: '인사이트',
+};
+
+/**
+ * neo chrome (`nb-label` / `hero-label`) must not keep catalog English when the
+ * deterministic outline still ships `kicker: 'OVERVIEW'` (루프461/462).
+ */
+function blockFrameNeoChromeLabel(input: { title: string; kicker: string }): string {
+  const kicker = String(input.kicker ?? '').trim();
+  if (kicker) {
+    const mapped = BLOCK_FRAME_ENGLISH_CHROME_LABEL_KO[kicker.toLowerCase()];
+    if (mapped) return mapped;
+    if (!BLOCK_FRAME_ENGLISH_CHROME_LABEL_RE.test(kicker)) return kicker;
+  }
+  const title = String(input.title ?? '').trim();
+  return title || '개요';
+}
+
 function fillBlockFrameNeoSlots(
   body: string,
   input: {
@@ -5501,10 +5529,11 @@ function fillBlockFrameNeoSlots(
     return body;
   }
   const lines = biennaleFillLines(input, 4);
+  const chromeLabel = blockFrameNeoChromeLabel(input);
   let next = body;
-  next = replaceFirstExactClassText(next, 'hero-label', input.kicker || '팀버 소개');
+  next = replaceFirstExactClassText(next, 'hero-label', chromeLabel);
   next = replaceFirstExactClassText(next, 'deco-yellow-bar', 'Teamver');
-  next = replaceFirstExactClassText(next, 'visual-label', input.kicker || input.title);
+  next = replaceFirstExactClassText(next, 'visual-label', chromeLabel || input.title);
   next = replaceFirstExactClassText(next, 'nb-btn', '자세히 보기');
   next = replaceFirstExactClassText(next, 'close-btn', '다음 단계');
 
@@ -5532,14 +5561,15 @@ function fillBlockFrameNeoSlots(
   // 루프461 — English chrome labels on nb-label / legend that survive when
   // the structural fill above did not rewrite them (Overview / Methodology /
   // By The Numbers / The Team / Roadmap / Revenue|Users|Retention).
+  // 루프462 — do not rewrite back to English `kicker: 'OVERVIEW'`.
   next = next.replace(
     /(<(?:div|span)\b[^>]*\bnb-label\b[^>]*>)([\s\S]*?)(<\/(?:div|span)>)/gi,
     (full, open: string, inner: string, close: string) => {
       const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-      if (!/^(?:Overview|Methodology|By The Numbers|The Team|Roadmap|Features|Insights)$/i.test(plain)) {
+      if (!BLOCK_FRAME_ENGLISH_CHROME_LABEL_RE.test(plain)) {
         return full;
       }
-      return `${open}${escapeHtml(input.kicker || input.title)}${close}`;
+      return `${open}${escapeHtml(chromeLabel)}${close}`;
     },
   );
 

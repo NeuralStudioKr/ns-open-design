@@ -37,6 +37,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프463 — LOOK + AI 본문 동시 사용 (기본 `prompt`)
+
+**질문:** deterministic과 AI를 동시에 쓰면 안 되나? 즉시 결과만 나오고 내용이 부적절하다.
+
+**답:** 동시 사용 **된다**. `prompt` = LOOK seed + MiniMax 본문. 루프419/421이 끈 것은 “서버 본문 fill 후 MiniMax 통짜 rewrite” 유해 조합과, deterministic을 최종본으로 두는 단축이었다.
+
+**SSOT:** [0907-N02-1](./0907-N02-1-상위설계-[Clone_LOOK와_AI_본문_동시사용].md) · [rollback switch](./0901-N02-template-clone-fill-rollback-switch.md)
+
+**코드/env:** default·staging·prod example → `prompt`. `deterministic` opt-in.
+
 ### 루프461 — Block Frame neo 슬롯 fill 게이트 회귀
 
 체감(사용자 2026-09-07): 「clone 하고서 바로 종료」. Block Frame 덱에 Visual System / Overview / 가짜 차트 / NEO-…-STYLE 잔여.

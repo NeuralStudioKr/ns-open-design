@@ -1,6 +1,7 @@
 # 0901-N02-1 상위설계 — Clone slot-fill
 
-기획 맥락: [54](./54_MiniMax_전환_기획_설계.md) · 현황: [54-2](./54-2-구현현황-[MiniMax_품질루프].md) Template Clone content-fill.
+기획 맥락: [54](./54_MiniMax_전환_기획_설계.md) · 현황: [54-2](./54-2-구현현황-[MiniMax_품질루프].md) Template Clone content-fill.  
+**LOOK + AI 동시 사용 정책:** [0907-N02-1](./0907-N02-1-상위설계-[Clone_LOOK와_AI_본문_동시사용].md)
 
 ## 문제
 

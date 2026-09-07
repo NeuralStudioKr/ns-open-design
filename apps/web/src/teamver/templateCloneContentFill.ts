@@ -55,27 +55,28 @@ export const CLONE_SLOT_FILL_REPAIR_ENTRY_FROM = 'clone_slot_fill_json_repair';
 /**
  * Fill mode for explicit-template deck creates.
  *
- *   `deterministic` (**env-empty default since loop413 / restored loop421**):
- *     daemon seeds the real template LOOK and fills those shells on the
- *     server. Home and ChatComposer skip MiniMax when LOOK/fill exists.
+ *   `prompt` (**env-empty / staging default since loop463**): LOOK seed, then
+ *     MiniMax HTML content fill. Template chrome stays; copy is model-written.
+ *
+ *   `deterministic`: daemon seeds LOOK and fills shells on the server.
+ *     Home skips MiniMax — fast, but outline/slot copy is thin (loop421).
+ *     Explicit opt-in only after loop463.
  *
  *   `json`: LOOK seed + AI dense JSON outline (opt-in only — MiniMax
  *     JSON-only turns often fail AGENT_EXECUTION_FAILED).
  *
- *   `prompt` (HTML rewrite): LOOK seed then the model emits full HTML.
- *     Existing production `=prompt` / `clone` stay here.
- *
- *   `pure-prompt`: SKIP LOOK seeding. Kit spec still lands in the
- *     system prompt. Explicit rollback only (`pure-prompt` / `no-seed`).
+ *   `pure-prompt`: SKIP LOOK seeding when no template is picked. Kit spec
+ *     still lands in the system prompt. With an explicit template, LOOK
+ *     still seeds (loop422) and AI prompt-fill still runs (loop463).
  */
 export type TemplateCloneFillMode = 'json' | 'prompt' | 'deterministic' | 'pure-prompt';
 
 /**
- * 루프413/421 — Env-empty default is deterministic Clone/slot-fill.
- * A leftover staging pin of `pure-prompt` sent MiniMax the create dump
- * and failed AGENT_EXECUTION_FAILED (loop418/420).
+ * 루프463 — Content quality requires MiniMax after LOOK seed.
+ * Deterministic slot-fill alone leaves outline-shaped copy (user report).
+ * Roll back to `deterministic` only via explicit env / localStorage.
  */
-export const TEMPLATE_CLONE_FILL_DEFAULT_MODE: TemplateCloneFillMode = 'deterministic';
+export const TEMPLATE_CLONE_FILL_DEFAULT_MODE: TemplateCloneFillMode = 'prompt';
 
 export function normalizeTemplateCloneFillMode(value: unknown): TemplateCloneFillMode {
   const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -139,17 +140,16 @@ export function getTemplateCloneFillMode(): TemplateCloneFillMode {
 }
 
 /**
- * 루프422 — A picked visual template must use LOOK + server fill.
- * `pure-prompt` MiniMax-from-scratch cannot apply Capsule (`--coral` /
- * `--lime` / pillar-card). User dump was IB magazine cover + Inter/slate
- * generic slides. Explicit `=prompt` / `=json` still use AI fill.
+ * Server slot-fill only when mode is explicitly `deterministic`.
+ * 루프463 — do not force deterministic on `pure-prompt` + picked template;
+ * that skipped MiniMax and left thin outline copy. LOOK seed is still
+ * required via `shouldSkipTemplateCloneSeed(false)` for explicit templates.
  */
 export function shouldUseDeterministicTemplateCloneFill(
   hasExplicitTemplate = false,
 ): boolean {
-  const mode = getTemplateCloneFillMode();
-  if (mode === 'deterministic') return true;
-  return hasExplicitTemplate && mode === 'pure-prompt';
+  void hasExplicitTemplate;
+  return getTemplateCloneFillMode() === 'deterministic';
 }
 
 /** LOOK seed + AI JSON outline. Explicit `json` only — not the default. */
@@ -161,7 +161,9 @@ export function shouldUseJsonTemplateCloneFill(): boolean {
 export function shouldQueueAiTemplateCloneFill(hasExplicitTemplate = false): boolean {
   if (shouldUseDeterministicTemplateCloneFill(hasExplicitTemplate)) return false;
   const mode = getTemplateCloneFillMode();
-  return mode === 'json' || mode === 'prompt';
+  if (mode === 'json' || mode === 'prompt') return true;
+  // 루프463 — picked template on pure-prompt: LOOK seed then AI prompt-fill.
+  return mode === 'pure-prompt' && hasExplicitTemplate;
 }
 
 /**
