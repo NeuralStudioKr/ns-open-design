@@ -35,9 +35,11 @@ import {
   restyleForeignIbMagazineCover,
   enrichSparseCobaltCover,
   healCobaltLeftoverCatalogCopy,
+  healSakuraLeftoverCatalogCopy,
   healCobaltOrphanDataStats,
   injectCobaltAbsoluteSlotCss,
   officialLookIsCobaltGrid,
+  officialLookIsSakuraChroma,
   rewriteRawUrlSiteCoverTitles,
   scrubCobaltFieldOfficeDemoSlots,
   healSparseDeckCoverLayout,
@@ -603,6 +605,96 @@ describe('루프419 Capsule deterministic quality gate', () => {
       'utf8',
     );
     expect(healCobaltLeftoverCatalogCopy(official)).toBe(official);
+  });
+
+  it('loop467 — Sakura Chroma 10-slide request caps unique-role and scrubs Tape Garden leftover', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-sakura-chroma/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(officialLookIsSakuraChroma(html)).toBe(true);
+    expect(officialLookIsCobaltGrid(html)).toBe(false);
+    const slides = resolveTemplateCloneSlidesForDeterministicFill({
+      userInstruction: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+      slideCount: 10,
+    });
+    const cloned = buildTemplateClonedDeckHtml(html, slides, {
+      title: '팀버 소개',
+      templateId: 'html-ppt-zhangzara-sakura-chroma',
+      maxSlides: 10,
+    })!;
+    expect(cloned).toBeTruthy();
+    expect(listTemplateCloneSlideShells(cloned).length).toBe(8);
+    const sectionMarkers = [...cloned.matchAll(
+      /<section\b[^>]*class="[^"]*\b(s-cover|s-manifesto|s-catalogue|s-stripe|s-data|s-quote|s-cal|s-colophon)\b/g,
+    )].map((m) => m[1]);
+    expect(sectionMarkers).toHaveLength(8);
+    expect(new Set(sectionMarkers).size).toBe(8);
+    expect(cloned).not.toMatch(/Tape Garden|SUPERCATALOG|CATALOGUE NO\. 7/i);
+    expect(cloned).not.toMatch(/We make small analog|Bloom Pedal|SUPER TAPE|MIX CHAIR/i);
+    expect(cloned).not.toMatch(/Ren Kobayashi|Mei Tanaka|See you in volume eight|made in matsumoto/i);
+    expect(cloned).toMatch(/팀버/);
+    expect(cloned).toMatch(/petal|ribbon/);
+  });
+
+  it('루프467: persist leftover refill replaces Tape Garden body after chrome leftover', async () => {
+    const look = [
+      '<style data-od-official-look-css>',
+      ':root { --paper:#F4EFE4; --ink:#3A2516; }',
+      '.s-cover .hero { position:absolute; }',
+      '.s-catalogue .card { position:absolute; }',
+      '</style>',
+    ].join('');
+    const html = [
+      '<section class="slide s-cover">',
+      '<div class="petals"><div class="petal p1"></div></div>',
+      '<div class="brand"><div class="b1">tape<br/>garden</div>',
+      '<div class="b2">CATALOGUE NO. 7</div></div>',
+      '<div class="hero">T-26</div>',
+      '<div class="lockup">SUPERCATALOG</div>',
+      '</section>',
+      '<section class="slide s-manifesto">',
+      '<div class="blob b-red"></div>',
+      '<div class="stmt-wrap">',
+      '<h1 class="stmt">We make small <em>analog</em> things for the people who keep tape recorders on their desks.</h1>',
+      '</div></section>',
+      '<section class="slide s-catalogue">',
+      '<div class="card c-red"><div class="nm">SC-03<br/>SUPER&nbsp;TAPE</div>',
+      '<div class="desc">A box of seven C-60 cassettes.</div></div>',
+      '<div class="card c-blue"><div class="nm">MIX&nbsp;CHAIR</div>',
+      '<div class="desc">개요 카드</div></div>',
+      '</section>',
+      '<section class="slide s-data">',
+      '<div class="ttl">Output, by year</div>',
+      '<div class="stat"><div class="vbig">26<sub>K</sub></div>',
+      '<div class="lab-tag">출하 대수</div></div>',
+      '</section>',
+      look,
+    ].join('');
+    expect(officialLookIsSakuraChroma(html)).toBe(true);
+    expect(officialLookIsCobaltGrid(html)).toBe(false);
+    expect(looksLikeLeftoverTemplateDemoDeck(html)).toBe(true);
+    const healed = healSakuraLeftoverCatalogCopy(
+      html,
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+    );
+    expect(healed).not.toMatch(/Tape Garden|SUPERCATALOG|CATALOGUE NO\. 7/i);
+    expect(healed).not.toMatch(/We make small analog|SUPER TAPE|MIX CHAIR|T-26/i);
+    expect(healed).toMatch(/26/);
+    expect(healed).toContain('팀버');
+    expect(healed).toMatch(/[가-힣]{2,}/);
+
+    const official = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-sakura-chroma/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(healSakuraLeftoverCatalogCopy(official)).toBe(official);
   });
 
   it('loop421 — empty-brief padding synthesizes card bodies instead of empty shells', () => {

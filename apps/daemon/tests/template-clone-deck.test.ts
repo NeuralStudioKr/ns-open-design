@@ -1049,6 +1049,22 @@ const ZHANGZARA_SMOKE_SPECS: readonly ZhangzaraSmokeSpec[] = [
     demoMustNotInclude: ['Field Office Editorial', 'Slow software', 'Domestic interfaces'],
     expectedSlideCount: 8,
   },
+  // 루프467 — unique-role Sakura Chroma.
+  {
+    name: 'Sakura Chroma',
+    pluginId: 'html-ppt-zhangzara-sakura-chroma',
+    exampleSubpath: 'html-ppt-zhangzara-sakura-chroma/example.html',
+    templateTitle: 'Html Ppt Zhangzara Sakura Chroma',
+    motifMustInclude: ['--ink', 'petal', 's-catalogue'],
+    demoMustNotInclude: [
+      'Tape Garden',
+      'SUPERCATALOG',
+      'Bloom Pedal',
+      'Ren Kobayashi',
+      'Mei Tanaka',
+    ],
+    expectedSlideCount: 8,
+  },
 ];
 
 const CROSS_TEMPLATE_LEFTOVER_DENYLIST = [
@@ -1069,6 +1085,10 @@ const CROSS_TEMPLATE_LEFTOVER_DENYLIST = [
   'field-office.co',
   'Lin Ito',
   'Aurora Institute',
+  'Tape Garden',
+  'SUPERCATALOG',
+  'Ren Kobayashi',
+  'Mei Tanaka',
 ];
 
 describe('루프450/459 Zhangzara 서버 fill 스모크', () => {

@@ -15,12 +15,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts system-prompt-api-mode · template-visual-kit · teamver-selected-template-compose · deck-framework-compact · template-clone-fill, web templateCloneContentFill · runtime/resume.
 
-**후속:** [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) · [0901-N02-18](./0901-N02-18-구현설계-[Clone_slot-map-C13].md) · [0901-N02-19](./0901-N02-19-구현설계-[Clone_template-quality-gates].md) — B1–B5 · C–C13 · D · 루프368–460. MiniMax live 가드 ☑(키 없으면 skip). 루프450–460 품질 게이트/peer-fit ☑.
+**후속:** [0901-N02-3](./0901-N02-3-구현현황-[Clone_slot-fill].md) · [0901-N02-18](./0901-N02-18-구현설계-[Clone_slot-map-C13].md) · [0901-N02-19](./0901-N02-19-구현설계-[Clone_template-quality-gates].md) · [0901-N02-21](./0901-N02-21-구현설계-[Clone_sakura-leftover-refill].md) — B1–B5 · C–C13 · D · 루프368–467. MiniMax live 가드 ☑(키 없으면 skip). 루프450–467 품질 게이트/peer-fit ☑.
 
 다음 추천 작업:
 1. MiniMax 키 환경 Clone fill live smoke
 2. FileViewer ←/→ tools-dev + Teamver BFF GUI bake(선택)
-3. Broadside / 8-bit Orbit / Scatterbrain / Sakura 품질 게이트 확대
+3. Broadside / 8-bit Orbit / Scatterbrain 품질 게이트 확대
 4. Studio/Creative leftover denylist 보강(선택)
 
 ### 빈 칸 번호 카드 (코드명 leftover)
@@ -36,6 +36,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 `기둥` / `PILLAR` / `Phase`는 모델이 붙이는 접두일 뿐, 발표 용어가 아닙니다. extra-copy·stub는 주제 단어 목록이 아닙니다(루프259·265).
 
 ## 2026-09-02 현재 판단 · 최신 루프
+
+### 루프467 — Sakura Chroma Tape Garden leftover refill + unique-role
+
+체감: Clone 후에도 Tape Garden / SUPERCATALOG / Bloom Pedal이 남고 10장 요청이 catalogue·stripe를 복제.
+
+수정: unique-role `catalogue|stripe` · `fillSakuraKitSlide` · leftover 지문 · persist `healSakuraLeftoverCatalogCopy` (`.vbig` 유지, 영문 example no-op) · 4축 게이트 Sakura Chroma(8).
+
+설계: [0901-N02-21](./0901-N02-21-구현설계-[Clone_sakura-leftover-refill].md).
 
 ### 루프466 — Block Frame clone 조기 종료 품질 가드
 

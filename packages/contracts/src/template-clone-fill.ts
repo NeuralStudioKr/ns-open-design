@@ -1594,7 +1594,28 @@ export function officialLookIsCobaltGrid(html: string): boolean {
   // Pre-look-merge: Cobalt covers use s-cover + pixel-glitch (Biennale uses sunglow).
   return /\bs-cover\b/i.test(source)
     && /\bpixel-glitch\b/i.test(source)
-    && !/\bsunglow\b/i.test(source);
+    && !/\bsunglow\b/i.test(source)
+    && !officialLookIsSakuraChroma(source);
+}
+
+/**
+ * 루프467 — Sakura Chroma look fingerprint (warm brown ink + catalogue /
+ * petal / ribbon chrome). Deny Cobalt: that kit shares `.cfooter` /
+ * `.stmt-wrap` / `.vbig` but uses electric `#1F2BE0` and `.pixel-glitch`.
+ */
+export function officialLookIsSakuraChroma(html: string): boolean {
+  const source = String(html ?? '');
+  if (/\bpixel-glitch\b/i.test(source) && !/\bs-catalogue\b/i.test(source)) return false;
+  const css = lookCssWithoutNeutralize(source);
+  if (css.trim() && /--ink\s*:\s*#3A2516/i.test(css)) {
+    return /\.s-catalogue\b|\.petal|\.ribbon\b|\bs-catalogue\b|\blockup\b/i.test(`${css}\n${source}`);
+  }
+  return /\bs-catalogue\b/i.test(source)
+    || (
+      /\blockup\b/i.test(source)
+      && /\bhero\b/i.test(source)
+      && /\b(?:petal|brand)\b/i.test(source)
+    );
 }
 
 /**
@@ -3881,6 +3902,7 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = dropStudyNotesChromeOnNonIbKits(next);
   next = scrubCobaltFieldOfficeDemoSlots(next);
   next = healCobaltLeftoverCatalogCopy(next, brief);
+  next = healSakuraLeftoverCatalogCopy(next, brief);
   next = healCobaltOrphanDataStats(next);
   next = enrichSparseCobaltCover(next, brief);
   next = restyleBiennaleSparseChapterBodies(next);
@@ -4453,7 +4475,7 @@ function stripBlueProfessionalCatalogDemoCopy(html: string): string {
 }
 
 const LEFTOVER_CATALOG_PHRASE_RE =
-/Hartfield(?:\s*&(?:amp;)?\s*Co\.?)?|NorthPeak Industries|WACC\s*\(\s*base\s*\)|Revenue CAGR|Filebase|Northwind Studios|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|Composed in kami|52\.5200°\s*N|\[\[Author Name\]\]|this is the broadside style|Aurora Institute|Aurora Programme|Aurora Charter|Public Form|Public attendance|Open programme|Field Notes|Quiet Editions|Open Conversations|The Long Yellow|Pavilion of Quiet Form|Reading Garden|A field study of light,\s*matter and atmosphere|Six months of exhibitions[\s\S]{0,160}?palette of yellow\.?|A room is a slow argument with the sun[\s\S]{0,160}?answers\.?|Curator-at-large[\s\S]{0,120}?January 2026|Visitors\s*·\s*Year four|Returning audience|Three quarters of last year[\s\S]{0,120}?twice\.?|A 2\.4× rise[\s\S]{0,120}?audience\.?|Strands\s*·\s*2026|Slow Atmospheres|Selected dates|Sector context(?:\s*&(?:amp;)?\s*market dynamics)?|Trading comparables analysis|Precedent transactions|Industrial automation cycle, capital flows, trading multiples|12 selected listed peers, EV\/EBITDA(?:\s*&(?:amp;)?\s*EV\/Revenue 2026E)?|M&amp;A transactions \$0\.5–5\.0B, 2022–2025|Selection criteria|Fictional illustrative sample|38\s*[×x]|Apache-2\.0|\bBYOK\b|Your agent reads a folder of\s*<code>SKILL\.md<\/code> files\.?|Open Design is the\s*(?:<strong>)?\s*(?:<\/strong>)?\s*\.?|Neobrutalist Presentation Template|Quarterly Growth Metrics|Field Office Quarterly|Field Office Editorial|field-office\.co|Lin Ito(?:\s*&(?:amp;)?\s*Anya Mehrotra)?|Anya Mehrotra|the field-office collective|In Newsreader, Hanken Grotesk\s*(?:&(?:amp;)?)?\s*DM Mono|quiet, paid, and read slowly|The next issue ships October 20\d{2}[\s\S]{0,120}?Monday morning\.?|A trend is a quiet question that several rooms started asking(?:\s+(?:<[^>]+>)?[^<]{0,80}?(?:<\/[^>]+>)?)?|at roughly the same time\.?|From the editor's note|Index 20\d{2}\s*·\s*opening pages|Colophon\s*·\s*Index 20\d{2}|The index, in six entries\.?|Trend ledger, in long\.?|Spring 20\d{2}(?:\s*·\s*selected trends)?|Newsletter opens\s*·\s*20\d{2}\s*Q\d\s*—\s*20\d{2}\s*Q\d|Chapter one\s*—\s*the case for slow software|Software is a room, and rooms are designed to be lived in slowly\.?|In its first chapter the Index[\s\S]{0,240}?read first\.?|Slow software|Domestic interfaces|Hand-set print(?:\s+again)?|Quietly weird type|Receipts (?:and|&(?:amp;)?)\s*ledgers|Public weather|Long-form receipts|Pre-loved objects|Tools that opt out of[\s\S]{0,160}?on by default\.?|Screens designed to live in living rooms[\s\S]{0,200}?willingness to be ignored\.?|A return to letterpress[\s\S]{0,160}?digital-feeling clients\.?|Display type with one slightly off detail[\s\S]{0,160}?looking twice\.?|Information designed to be filed, not consumed\.[\s\S]{0,160}?the favour\.?|Brand and product writing that includes[\s\S]{0,200}?unfinished thought\.?|Tools that opt out of urgency by default\.?|Screens designed to live in living rooms\.?|Letterpress and risograph paired with digital briefs\.?|Display faces with one slightly off detail\.?|Brand voice that admits the day's actual mood\.?|Newsletters that read like printed pamphlets\.?|Resale and repair as the front of the brand\.?|Information designed to be filed, not consumed\.?|A field report on the state of things\.?|Look for the cobalt envelope on a Monday morning\.?|issue\.0\d|spring\s+20\d{2}|autumn\s+20\d{2}|All ten\s*·\s*with our reading on each|A 2\.1× lift on the inaugural issue[\s\S]{0,160}?Sunday mornings\.?|Quiet, mostly-not-on-social[\s\S]{0,140}?referral programme\.?|We started the bulletin[\s\S]{0,220}?rereading\.?"?|To subscribers[\s\S]{0,80}?twice a year|Reader response, by quarter\.?|A note from the studio|Open rate\s*·\s*Q1 20\d{2}|Active subscribers/gi;
+/Hartfield(?:\s*&(?:amp;)?\s*Co\.?)?|NorthPeak Industries|WACC\s*\(\s*base\s*\)|Revenue CAGR|Filebase|Northwind Studios|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|Composed in kami|52\.5200°\s*N|\[\[Author Name\]\]|this is the broadside style|Aurora Institute|Aurora Programme|Aurora Charter|Public Form|Public attendance|Open programme|Field Notes|Quiet Editions|Open Conversations|The Long Yellow|Pavilion of Quiet Form|Reading Garden|A field study of light,\s*matter and atmosphere|Six months of exhibitions[\s\S]{0,160}?palette of yellow\.?|A room is a slow argument with the sun[\s\S]{0,160}?answers\.?|Curator-at-large[\s\S]{0,120}?January 2026|Visitors\s*·\s*Year four|Returning audience|Three quarters of last year[\s\S]{0,120}?twice\.?|A 2\.4× rise[\s\S]{0,120}?audience\.?|Strands\s*·\s*2026|Slow Atmospheres|Selected dates|Sector context(?:\s*&(?:amp;)?\s*market dynamics)?|Trading comparables analysis|Precedent transactions|Industrial automation cycle, capital flows, trading multiples|12 selected listed peers, EV\/EBITDA(?:\s*&(?:amp;)?\s*EV\/Revenue 2026E)?|M&amp;A transactions \$0\.5–5\.0B, 2022–2025|Selection criteria|Fictional illustrative sample|38\s*[×x]|Apache-2\.0|\bBYOK\b|Your agent reads a folder of\s*<code>SKILL\.md<\/code> files\.?|Open Design is the\s*(?:<strong>)?\s*(?:<\/strong>)?\s*\.?|Neobrutalist Presentation Template|Quarterly Growth Metrics|Field Office Quarterly|Field Office Editorial|field-office\.co|Lin Ito(?:\s*&(?:amp;)?\s*Anya Mehrotra)?|Anya Mehrotra|the field-office collective|In Newsreader, Hanken Grotesk\s*(?:&(?:amp;)?)?\s*DM Mono|quiet, paid, and read slowly|The next issue ships October 20\d{2}[\s\S]{0,120}?Monday morning\.?|A trend is a quiet question that several rooms started asking(?:\s+(?:<[^>]+>)?[^<]{0,80}?(?:<\/[^>]+>)?)?|at roughly the same time\.?|From the editor's note|Index 20\d{2}\s*·\s*opening pages|Colophon\s*·\s*Index 20\d{2}|The index, in six entries\.?|Trend ledger, in long\.?|Spring 20\d{2}(?:\s*·\s*selected trends)?|Newsletter opens\s*·\s*20\d{2}\s*Q\d\s*—\s*20\d{2}\s*Q\d|Chapter one\s*—\s*the case for slow software|Software is a room, and rooms are designed to be lived in slowly\.?|In its first chapter the Index[\s\S]{0,240}?read first\.?|Slow software|Domestic interfaces|Hand-set print(?:\s+again)?|Quietly weird type|Receipts (?:and|&(?:amp;)?)\s*ledgers|Public weather|Long-form receipts|Pre-loved objects|Tools that opt out of[\s\S]{0,160}?on by default\.?|Screens designed to live in living rooms[\s\S]{0,200}?willingness to be ignored\.?|A return to letterpress[\s\S]{0,160}?digital-feeling clients\.?|Display type with one slightly off detail[\s\S]{0,160}?looking twice\.?|Information designed to be filed, not consumed\.[\s\S]{0,160}?the favour\.?|Brand and product writing that includes[\s\S]{0,200}?unfinished thought\.?|Tools that opt out of urgency by default\.?|Screens designed to live in living rooms\.?|Letterpress and risograph paired with digital briefs\.?|Display faces with one slightly off detail\.?|Brand voice that admits the day's actual mood\.?|Newsletters that read like printed pamphlets\.?|Resale and repair as the front of the brand\.?|Information designed to be filed, not consumed\.?|A field report on the state of things\.?|Look for the cobalt envelope on a Monday morning\.?|issue\.0\d|spring\s+20\d{2}|autumn\s+20\d{2}|All ten\s*·\s*with our reading on each|A 2\.1× lift on the inaugural issue[\s\S]{0,160}?Sunday mornings\.?|Quiet, mostly-not-on-social[\s\S]{0,140}?referral programme\.?|We started the bulletin[\s\S]{0,220}?rereading\.?"?|To subscribers[\s\S]{0,80}?twice a year|Reader response, by quarter\.?|A note from the studio|Open rate\s*·\s*Q1 20\d{2}|Active subscribers|Tape Garden|tape garden|SUPERCATALOG|CATALOGUE NO\.\s*[78]|Catalogue No\.\s*[78]|We make small\s+(?:<em>)?analog(?:<\/em>)?\s+things[\s\S]{0,160}?desks\.?|SUPER(?:\s|&nbsp;)+TAPE|MIX(?:\s|&nbsp;)+CHAIR|Bloom Pedal|BLOOM(?:\s|&nbsp;)+PEDAL|CHROMA(?:\s|&nbsp;)+DECK|Chroma Deck|Ren Kobayashi|Mei Tanaka|See you in\s+(?:<em>)?volume eight|made in matsumoto|Matsumoto workshop|A short letter from the studio|A note pinned above the workbench|A reader writes|The 2026\s+(?:<em>)?Catalogue|Four products\s*·\s*spring|Output, by year|Units shipped|Repeat customers|Release schedule|Colophon\s*·\s*Catalogue|It feels less like a\s+(?:<em>)?gadget|Build the\s+(?:<em>)?thing[\s\S]{0,80}?spec sheet\.?|A tape-saturation pedal|A studio cassette deck|A box of seven C-60|A listening chair|\bT-26\b|\bSC-0[1-4]b?\b/gi;
 
 function stripLeftoverCatalogDemoPhrases(html: string): string {
   return String(html ?? '')
@@ -5461,6 +5483,256 @@ function fillCobaltCoverChrome(
   return next;
 }
 
+function sakuraBrandParts(title: string): [string, string] {
+  const trimmed = String(title ?? '').replace(/\s+/g, ' ').trim();
+  const parts = trimmed.split(' ').filter(Boolean);
+  if (parts.length >= 2) return [parts[0]!, parts.slice(1).join(' ')];
+  if (trimmed.length >= 4) return [trimmed.slice(0, 2), trimmed.slice(2)];
+  return [trimmed, trimmed];
+}
+
+function slideLooksLikeSakuraChromaKit(attrs: string, body: string): boolean {
+  if (/\bs-(?:catalogue|stripe)\b/i.test(attrs)) return true;
+  if (/\bs-cover\b/i.test(attrs) && /\blockup\b/i.test(body) && /\bhero\b/i.test(body)) return true;
+  if (/\bs-cal\b/i.test(attrs) && /\bdate-tag\b/i.test(body) && /\bttl-row\b/i.test(body)) return true;
+  if (/\bs-colophon\b/i.test(attrs) && /\b(?:col-petals|red-stamp)\b/i.test(body)) return true;
+  if (/\bs-data\b/i.test(attrs) && /\beq\b/i.test(body) && /\bbcol\b/i.test(body)) return true;
+  if (/\bs-quote\b/i.test(attrs) && /\bqpetals\b/i.test(body)) return true;
+  if (
+    /\bs-manifesto\b/i.test(attrs)
+    && /\bstmt-wrap\b/i.test(body)
+    && /\bblob\b/i.test(body)
+    && !/\bpixel-glitch\b/i.test(body)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function replaceSakuraClassCopy(html: string, className: string, text: string): string {
+  const headingRe = new RegExp(
+    `<(h[1-3])\\b([^>]*\\bclass\\s*=\\s*["'][^"']*\\b${escapeRegExp(className)}\\b[^"']*["'][^>]*)>([\\s\\S]*?)<\\/\\1>`,
+    'i',
+  );
+  if (headingRe.test(html)) {
+    return html.replace(
+      headingRe,
+      (_m, tag: string, attrs: string) => `<${tag}${attrs}>${escapeHtml(text)}</${tag}>`,
+    );
+  }
+  const span = firstExactClassRange(html, className);
+  if (!span) return html;
+  const block = html.slice(span.start, span.end);
+  const open = /^<[^>]+>/.exec(block)?.[0];
+  if (!open) return html;
+  const close = /<\/(?:div|span|p|a|button)\s*>$/i.exec(block)?.[0] ?? '';
+  return `${html.slice(0, span.start)}${open}${escapeHtml(text)}${close}${html.slice(span.end)}`;
+}
+
+function fillSakuraCover(
+  body: string,
+  input: { title: string; lead: string; kicker: string },
+): string {
+  const [brandA, brandB] = sakuraBrandParts(input.title);
+  let next = replaceSakuraClassCopy(body, 'hero', brandA || input.title);
+  next = replaceSakuraClassCopy(next, 'lockup', input.title);
+  next = replaceSakuraClassCopy(next, 'b1', brandA || input.title);
+  next = replaceSakuraClassCopy(next, 'b2', brandB || input.kicker || input.title);
+  return next;
+}
+
+function fillSakuraManifesto(
+  body: string,
+  input: { title: string; lead: string; bodyText: string; kicker: string },
+): string {
+  let next = replaceSakuraClassCopy(body, 'stmt', input.bodyText || input.lead || input.title);
+  next = replaceSakuraClassCopy(next, 'kicker', input.kicker || input.lead || input.title);
+  return next;
+}
+
+function fillSakuraCatalogue(
+  body: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  const cards = exactClassBlocks(body, 'card');
+  if (cards.length === 0) return body;
+  const lines = biennaleFillLines(input, cards.length);
+  let next = replaceSakuraClassCopy(body, 'ttl', input.title);
+  next = replaceFirstExactClassText(next, 'lab', input.lead || input.title);
+  next = replaceExactClassBlocksBySequence(next, 'card', lines, (block, line) => {
+    const resolved = resolveTemplateCloneCardFill(line);
+    let filled = replaceSakuraClassCopy(block, 'nm', resolved.title);
+    filled = replaceSakuraClassCopy(filled, 'desc', resolved.body || resolved.title);
+    if (/\bextras\b/i.test(filled)) {
+      filled = replaceSakuraClassCopy(filled, 'extras', resolved.body || resolved.title);
+    }
+    return filled;
+  });
+  return next;
+}
+
+function fillSakuraStripe(
+  body: string,
+  input: { title: string; lead: string; bodyText: string; kicker: string },
+): string {
+  let next = replaceSakuraClassCopy(body, 'qkicker', input.kicker || input.title);
+  next = replaceSakuraClassCopy(next, 'qbody', input.bodyText || input.lead || input.title);
+  next = replaceSakuraClassCopy(next, 'qattr', input.lead || input.title);
+  return next;
+}
+
+function fillSakuraData(
+  body: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  const lines = biennaleFillLines(input, 2);
+  let next = replaceSakuraClassCopy(body, 'ttl', input.title);
+  next = replaceFirstExactClassText(next, 'lab', input.lead || input.title);
+  next = replaceClassTextBySequence(next, 'lab-tag', lines.map((line) => line.title));
+  next = replaceClassTextBySequence(next, 'desc', lines.map((line) => line.body || line.title));
+  return next;
+}
+
+function fillSakuraQuote(
+  body: string,
+  input: { title: string; lead: string; bodyText: string; kicker: string },
+): string {
+  let next = replaceSakuraClassCopy(body, 'qkicker', input.kicker || input.title);
+  next = replaceSakuraClassCopy(next, 'qbody', input.bodyText || input.lead || input.title);
+  next = replaceSakuraClassCopy(next, 'who-tag', input.title);
+  next = replaceSakuraClassCopy(next, 'meta-tag', input.lead || input.kicker || input.title);
+  return next;
+}
+
+function fillSakuraCal(
+  body: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  const rows = exactClassBlocks(body, 'row').filter((span) => !/\bheadrow\b/i.test(span.html));
+  const lines = biennaleFillLines(input, Math.max(4, rows.length || 4));
+  let next = replaceSakuraClassCopy(body, 'ttl', input.title);
+  next = replaceFirstExactClassText(next, 'lab', input.lead || input.title);
+  next = replaceExactClassBlocksBySequence(next, 'row', lines, (block, line) => {
+    if (/\bheadrow\b/i.test(block)) return block;
+    const resolved = resolveTemplateCloneCardFill(line);
+    let filled = replaceSakuraClassCopy(block, 'ttl-row', resolved.title);
+    filled = replaceSakuraClassCopy(filled, 'ven', resolved.body || resolved.title);
+    return filled;
+  });
+  return next;
+}
+
+function fillSakuraColophon(
+  body: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    kicker: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  const rows = biennaleFillLines(input, 3).slice(0, 3);
+  let next = replaceSakuraClassCopy(body, 'ktag', input.kicker || input.lead || input.title);
+  next = replaceSakuraClassCopy(next, 'ttl', input.title);
+  next = replaceClassTextBySequence(next, 'ftag', rows.map((row) => row.title));
+  next = replaceClassTextBySequence(next, 'ftxt', rows.map((row) => row.body || row.title));
+  return next;
+}
+
+function fillSakuraKitSlide(
+  body: string,
+  attrs: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    kicker: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  if (/\bs-cover\b/i.test(attrs)) return fillSakuraCover(body, input);
+  if (/\bs-manifesto\b/i.test(attrs)) return fillSakuraManifesto(body, input);
+  if (/\bs-catalogue\b/i.test(attrs)) return fillSakuraCatalogue(body, input);
+  if (/\bs-stripe\b/i.test(attrs)) return fillSakuraStripe(body, input);
+  if (/\bs-data\b/i.test(attrs)) return fillSakuraData(body, input);
+  if (/\bs-quote\b/i.test(attrs)) return fillSakuraQuote(body, input);
+  if (/\bs-cal\b/i.test(attrs)) return fillSakuraCal(body, input);
+  if (/\bs-colophon\b/i.test(attrs)) return fillSakuraColophon(body, input);
+  return body;
+}
+
+const SAKURA_LEFTOVER_BODY_RE =
+  /Tape Garden|SUPERCATALOG|CATALOGUE NO|We make small analog|Bloom Pedal|SUPER TAPE|MIX CHAIR|Ren Kobayashi|Mei Tanaka|See you in volume|made in matsumoto|T-26|The 2026|Output, by year|Release schedule|A reader writes|Chroma Deck/i;
+
+/**
+ * Hangul Sakura persist leftover: Tape Garden chrome / catalogue cards may
+ * survive generic heading swaps. Fill specialized slots from the brief, then
+ * wipe leftover phrases. Do not invent KPIs — `.vbig` digits stay. Official
+ * English example.html is a no-op.
+ */
+export function healSakuraLeftoverCatalogCopy(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsSakuraChroma(dest)) return dest;
+  if (!/[가-힣]/.test(visibleDeckCopy(dest)) && !/[가-힣]/.test(String(brief ?? ''))) {
+    return dest;
+  }
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) return stripLeftoverCatalogDemoPhrases(dest);
+  const harvested = [...dest.matchAll(/<(?:h[1-3]|div)\b[^>]*>([\s\S]*?)<\/(?:h[1-3]|div)>/gi)]
+    .map((match) => visibleDeckCopy(match[1] ?? ''))
+    .filter((text) => /[가-힣]/.test(text) && text.length >= 2 && text.length <= 40);
+  const outline = resolveTemplateCloneSlidesForDeterministicFill({
+    userInstruction: brief || harvested.join('\n') || '',
+    deckTitle: harvested[0] ?? null,
+    slideCount: spans.length,
+  });
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    if (!/\bs-(?:cover|manifesto|catalogue|stripe|data|quote|cal|colophon)\b/i.test(span.attrs)) {
+      continue;
+    }
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    if (
+      !looksLikeLeftoverTemplateDemoDeck(body)
+      && !SAKURA_LEFTOVER_BODY_RE.test(body)
+    ) {
+      continue;
+    }
+    const slide = outline[i] ?? outline[Math.min(i, outline.length - 1)];
+    const title = slide?.title || harvested[i] || harvested[0] || '슬라이드';
+    const nextBody = fillSakuraKitSlide(body, span.attrs, {
+      title,
+      lead: slide?.lead ?? '',
+      bodyText: slide?.body ?? '',
+      kicker: slide?.kicker ?? '',
+      fillLines: templateCloneSlideFillLines(slide ?? { title }),
+    });
+    if (nextBody === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
+  }
+  return stripLeftoverCatalogDemoPhrases(out);
+}
+
 function fillBiennaleCalendarSlots(
   body: string,
   input: {
@@ -6010,7 +6282,7 @@ function fillSlideShell(
   if (/\bs-programme\b/i.test(shell.attrs)) {
     body = fillBiennaleProgrammeSlots(body, { title, lead, bodyText, fillLines });
   }
-  if (/\bs-data\b/i.test(shell.attrs)) {
+  if (/\bs-data\b/i.test(shell.attrs) && !slideLooksLikeSakuraChromaKit(shell.attrs, body)) {
     body = fillBiennaleStatSlots(body, { title, lead, bodyText, fillLines });
   }
   if (/\b(?:s-quote|s-manifesto)\b/i.test(shell.attrs)) {
@@ -6020,7 +6292,11 @@ function fillSlideShell(
     body = fillBiennaleCalendarSlots(body, { title, lead, bodyText, fillLines });
   }
   // 루프459 — Cobalt Grid dedicated slots.
-  if (/\bs-cover\b/i.test(shell.attrs) && /\b(?:cfooter|subkicker|vstack)\b/i.test(body)) {
+  if (
+    /\bs-cover\b/i.test(shell.attrs)
+    && /\b(?:cfooter|subkicker|vstack)\b/i.test(body)
+    && !slideLooksLikeSakuraChromaKit(shell.attrs, body)
+  ) {
     body = fillCobaltCoverChrome(body, { title, lead, bodyText, kicker, fillLines });
   }
   if (/\bs-index\b/i.test(shell.attrs)) {
@@ -6029,7 +6305,11 @@ function fillSlideShell(
   if (/\bs-table\b/i.test(shell.attrs)) {
     body = fillCobaltRowPeers(body, { title, lead, bodyText, fillLines }, 'table');
   }
-  if (/\bs-colophon\b/i.test(shell.attrs) && /\bcol-footer\b/i.test(body)) {
+  if (
+    /\bs-colophon\b/i.test(shell.attrs)
+    && /\bcol-footer\b/i.test(body)
+    && !slideLooksLikeSakuraChromaKit(shell.attrs, body)
+  ) {
     body = fillCobaltColophonFooter(body, { title, lead, bodyText, fillLines });
   }
   if (/\b(?:s-cover|s-chapter|s-colophon)\b/i.test(shell.attrs)) {
@@ -6046,6 +6326,9 @@ function fillSlideShell(
   // never ran. `fillBlockFrameNeoSlots` already no-ops unless structural
   // markers (`hero-frame` / `visual-box` / `data-box` / `team-card` / `nb-btn`
   // / `close-btn`) are present.
+  if (slideLooksLikeSakuraChromaKit(shell.attrs, body)) {
+    body = fillSakuraKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
+  }
   body = fillBlockFrameNeoSlots(body, { title, lead, bodyText, kicker, fillLines });
   body = stripCapsuleCatalogDemoCopy(body);
   body = stripBlockFrameNeoCatalogDemoCopy(body);
@@ -6309,9 +6592,10 @@ function templateShellsAreUniqueRole(shells: SlideShell[]): boolean {
   // specialized layout. Role classification is too coarse (s-manifesto and
   // s-programme both classify as 'body') so we key on the presence of the
   // markers themselves plus a per-shell uniqueness check.
-  // 루프459 — extended to cobalt-grid family (s-index / s-table). Kits that
+  // 루프459 — cobalt-grid family (s-index / s-table).
+  // 루프467 — sakura-chroma family (s-catalogue / s-stripe). Kits that
   // add new specialized section shells should extend this list so cap fires.
-  const sectionMarkerRe = /\bs-(?:cover|manifesto|programme|chapter|data|quote|cal|colophon|index|table|ledger|trend|section|stmt)\b/i;
+  const sectionMarkerRe = /\bs-(?:cover|manifesto|programme|chapter|data|quote|cal|colophon|index|table|ledger|trend|section|stmt|catalogue|stripe)\b/i;
   const semanticMarkers = shells
     .map((shell) => shell.attrs.match(sectionMarkerRe)?.[0]?.toLowerCase() ?? null)
     .filter((marker): marker is string => marker !== null);
@@ -6555,7 +6839,7 @@ function cleanCloneTitle(title: string): string {
 export function looksLikeLeftoverTemplateDemoDeck(html: string): boolean {
   const text = String(html ?? '');
   if (!text.trim()) return false;
-  return /Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|52\.5200°\s*N|Composed in kami|Apache-2\.0[\s\S]{0,800}Local-first[\s\S]{0,800}BYOK|\[\[Author Name\]\]|this is the broadside style|Clarity of Purpose|The Journey Continues|A Framework for Bold Ideas|Neobrutalist Presentation Template|Quarterly Growth Metrics|Sentiment has shifted measurably|Bullish on three-year outlook|Aurora Institute|Field Office Quarterly|field-office\.co|Lin Ito|Slow software|Public attendance|Open programme|Domestic interfaces|The index, in six entries|A trend is a quiet question|See you in the autumn issue|Trend ledger, in long|Hand-set print|We started the bulletin|Software is a room/i.test(
+  return /Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Team Structure\s*(?:&|&amp;)?\s*Resource Allocation|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|52\.5200°\s*N|Composed in kami|Apache-2\.0[\s\S]{0,800}Local-first[\s\S]{0,800}BYOK|\[\[Author Name\]\]|this is the broadside style|Clarity of Purpose|The Journey Continues|A Framework for Bold Ideas|Neobrutalist Presentation Template|Quarterly Growth Metrics|Sentiment has shifted measurably|Bullish on three-year outlook|Aurora Institute|Field Office Quarterly|field-office\.co|Lin Ito|Slow software|Public attendance|Open programme|Domestic interfaces|The index, in six entries|A trend is a quiet question|See you in the autumn issue|Trend ledger, in long|Hand-set print|We started the bulletin|Software is a room|Tape Garden|SUPERCATALOG|CATALOGUE NO\. 7|We make small analog|Bloom Pedal|SUPER TAPE|MIX CHAIR|Ren Kobayashi|Mei Tanaka|See you in volume eight|made in matsumoto|Chroma Deck/i.test(
     text,
   );
 }

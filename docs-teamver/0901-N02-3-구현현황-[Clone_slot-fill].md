@@ -39,6 +39,7 @@
 | **루프458** Product Launch · Pitch Deck 게이트 | ☑ contracts+daemon specs |
 | **루프463** LOOK + AI 본문 동시 사용 — 기본 `prompt` 복구 · deterministic-only는 opt-in | ☑ [0907-N02-1](./0907-N02-1-상위설계-[Clone_LOOK와_AI_본문_동시사용].md) · [rollback switch](./0901-N02-template-clone-fill-rollback-switch.md) |
 | **루프461** Block Frame neo 슬롯 fill — body CSS fingerprint 게이트 제거 · a/button exact-class · Visual System/Overview/chart strip · denylist | ☑ [0907-N01-1](./0907-N01-1-상위설계-[Block_frame-neo-slot-gate].md) · [0907-N01-2](./0907-N01-2-구현설계-[Block_frame-neo-slot-gate].md) |
+| **루프467** Sakura Chroma Tape Garden leftover refill + unique-role | ☑ catalogue/stripe cap · kit fill · persist heal · 4축 게이트 · [0901-N02-21](./0901-N02-21-구현설계-[Clone_sakura-leftover-refill].md) |
 | **루프460** Cobalt Field Office leftover persist refill | ☑ 본문 지문 · title/ttl · Hangul heal |
 | **루프459** Biennale · Cobalt Grid 품질 게이트 + dedicated fill | ☑ 4축 · leftover · `.stmt`/row/`vbig` |
 | **루프451** Cobalt Grid 슬롯 복원 · orphan stat | ☑ absolute slots · Field Office leftover drop |
@@ -135,6 +136,7 @@
 
 | 일자 | 내용 |
 |------|------|
+| 2026-09-07 | 루프467 — Sakura Chroma Tape Garden leftover refill · unique-role catalogue/stripe · persist heal · 4축 게이트. |
 | 2026-09-04 | 루프460 — Cobalt persist leftover 본문 refill · leftover 본문 지문 · title/ttl 전체 교체. |
 | 2026-09-04 | 루프459 — Biennale Yellow / Cobalt Grid 4축 게이트 + Cobalt `.stmt`/row/`cfooter`/`vbig` fill. |
 | 2026-09-04 | 루프457–458 — Creative Mode slideCount=listShells · Product/Pitch 품질 게이트 |

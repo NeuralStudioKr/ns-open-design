@@ -15,6 +15,7 @@ import { normalizeHangulParticleGaps } from './heal-ai-generated-deck.js';
 import {
   deriveDeckCoverTitleFromBrief,
   healCobaltLeftoverCatalogCopy,
+  healSakuraLeftoverCatalogCopy,
   healCobaltOrphanDataStats,
   injectBiennaleSparseFillCss,
   injectCobaltAbsoluteSlotCss,
@@ -1395,8 +1396,11 @@ export function healOfficialMagazineLayoutDensity(
   );
   return injectCobaltAbsoluteSlotCss(
     healCobaltOrphanDataStats(
-      healCobaltLeftoverCatalogCopy(
-        scrubCobaltFieldOfficeDemoSlots(healed),
+      healSakuraLeftoverCatalogCopy(
+        healCobaltLeftoverCatalogCopy(
+          scrubCobaltFieldOfficeDemoSlots(healed),
+          brief,
+        ),
         brief,
       ),
     ),
