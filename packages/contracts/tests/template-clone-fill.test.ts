@@ -394,7 +394,7 @@ describe('free-form Daisy clone content swap', () => {
   });
 });
 
-describe('루프450/459/469/470/471 Zhangzara template quality gates', () => {
+describe('루프450/459/469/470/472 Zhangzara template quality gates', () => {
   // Shared 5-axis gate: motif · leftover · 1920×1080 · slide count · live layout.
   // 루프472 requires class-like motif tokens as live tags + a cover heading.
   // All pin the fixture through the deterministic FE path (no MiniMax).
