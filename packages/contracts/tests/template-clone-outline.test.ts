@@ -17,6 +17,7 @@ import {
   resolveTemplateCloneSlidesForDeterministicFill,
   stripTemplateCloneOutlineNoise,
   synthesizeTemplateCloneOutlineFromBrief,
+  synthesizeTemplateCloneCoverLead,
   prepareTemplateCloneSlotFillAssistantText,
 } from '../src/template-clone-fill.js';
 
@@ -489,7 +490,20 @@ describe('루프419 resolveTemplateCloneSlidesForDeterministicFill', () => {
     const joined = JSON.stringify(slides);
     expect(joined).not.toMatch(/팀버이|팀버은/);
     expect(joined).toContain('왜 팀버인가');
-    expect(joined).toContain('팀버 한눈에');
+    expect(joined).not.toContain('한눈에');
+    expect(slides[0]?.lead).toBe(
+      synthesizeTemplateCloneCoverLead('팀버', 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장'),
+    );
+  });
+
+  it('루프473 — service-intro cover lead is a promise sentence, not 한눈에', () => {
+    const brief = 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장';
+    const lead = synthesizeTemplateCloneCoverLead('팀버 소개', brief);
+    expect(lead).toContain('팀버');
+    expect(lead).toContain('파일·대화·템플릿');
+    expect(lead).not.toMatch(/한눈에|팀버은|팀버이/);
+    expect(synthesizeTemplateCloneCoverLead('팀버 소개')).toContain('핵심 맥락');
+    expect(synthesizeTemplateCloneCoverLead('팀버 소개')).not.toContain('한눈에');
   });
 
   it('densifies title-only Visible headings instead of leaving empty card bodies', () => {

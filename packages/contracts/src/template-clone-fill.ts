@@ -670,6 +670,22 @@ function topicKeywordForSynthBody(title: string): string {
     || '핵심 주제';
 }
 
+/**
+ * 루프473 — Cover lead for deterministic synth. Never `{topic} 한눈에`:
+ * prompt-fill already forbids that shallow pattern (루프471), and LOOK seed
+ * fill copies the same lead onto the first shell.
+ */
+export function synthesizeTemplateCloneCoverLead(
+  cover: string,
+  brief?: string | null,
+): string {
+  const topic = topicKeywordForSynthBody(cover);
+  if (looksLikeTemplateCloneServiceIntroBrief(brief)) {
+    return `${topic} — 팀의 디자인 작업을 파일·대화·템플릿 한 흐름으로 연결합니다`;
+  }
+  return `${topic} — 핵심 맥락과 다음 단계를 정리합니다`;
+}
+
 function synthesizeTemplateCloneSlideBody(
   cover: string,
   label: string,
@@ -831,7 +847,7 @@ export function synthesizeTemplateCloneOutlineFromBrief(input: {
     title: cover,
     roleHint: 'cover',
     kicker: 'OVERVIEW',
-    lead: `${topicKeywordForSynthBody(cover)} 한눈에`,
+    lead: synthesizeTemplateCloneCoverLead(cover, brief),
   }];
   for (let i = 1; i < target; i += 1) {
     const label = TEMPLATE_CLONE_GENERIC_SECTION_LABELS[i - 1] ?? `핵심 ${i}`;
@@ -5160,7 +5176,7 @@ function biennaleFooterRows(input: {
   const lines = compactTextLines(input.lead, input.bodyText);
   return [
     { label: input.kicker || '주제', text: input.title },
-    { label: '방향', text: lines[0] || input.lead || `${input.title} 한눈에` },
+    { label: '방향', text: lines[0] || input.lead || synthesizeTemplateCloneCoverLead(input.title) },
     { label: '구성', text: lines[1] || '핵심 흐름과 사용자 가치 정리' },
     { label: '메모', text: lines[2] || '팀 단위 실행과 다음 단계까지 연결' },
   ];
@@ -5416,7 +5432,7 @@ export function healCobaltLeftoverCatalogCopy(
     }
     if (/\bs-chapter\b/i.test(span.attrs)) {
       nextBody = replaceFirstExactClassText(nextBody, 'nm-tag', input.kicker || input.lead || title);
-      nextBody = replaceFirstExactClassText(nextBody, 'lede', input.lead || input.bodyText || `${title} 한눈에`);
+      nextBody = replaceFirstExactClassText(nextBody, 'lede', input.lead || input.bodyText || synthesizeTemplateCloneCoverLead(title, brief));
     }
     if (/\bs-data\b/i.test(span.attrs)) {
       const lines = biennaleFillLines(input, 2);
@@ -5770,7 +5786,7 @@ function fillLongTableCover(
   input: { title: string; lead: string; bodyText: string; kicker: string },
 ): string {
   let next = replaceSakuraClassCopy(body, 'title', input.title);
-  next = replaceSakuraClassCopy(next, 'tagline', input.lead || input.bodyText || `${input.title} 한눈에`);
+  next = replaceSakuraClassCopy(next, 'tagline', input.lead || input.bodyText || synthesizeTemplateCloneCoverLead(input.title));
   next = replaceSakuraClassCopy(next, 'big-edition', input.title);
   next = replaceSakuraClassCopy(next, 'big-edition-lab', input.kicker || input.lead || input.title);
   next = replaceSakuraClassCopy(next, 'big-edition-meta', input.bodyText || input.lead || input.title);
@@ -5819,7 +5835,7 @@ function fillLongTableFeatured(
   input: { title: string; lead: string; bodyText: string; kicker: string },
 ): string {
   let next = replaceSakuraClassCopy(body, 'ttl', input.title);
-  next = replaceSakuraClassCopy(next, 'lede', input.lead || input.bodyText || `${input.title} 한눈에`);
+  next = replaceSakuraClassCopy(next, 'lede', input.lead || input.bodyText || synthesizeTemplateCloneCoverLead(input.title));
   next = replaceSakuraClassCopy(next, 'ed-label', input.kicker || input.title);
   next = replaceClassTextBySequence(next, 'v', [
     input.title,
@@ -6563,7 +6579,7 @@ function fillSlideShell(
     body = replaceCobaltTitleHeading(body, title);
     if (/\bs-chapter\b/i.test(shell.attrs)) {
       body = replaceFirstExactClassText(body, 'nm-tag', kicker || lead || title);
-      body = replaceFirstExactClassText(body, 'lede', lead || bodyText || `${title} 한눈에`);
+      body = replaceFirstExactClassText(body, 'lede', lead || bodyText || synthesizeTemplateCloneCoverLead(title));
     }
   }
   // 루프461 — Do NOT gate on `officialLookIsNeoBrutalBlockFrame(body)`.
@@ -6753,7 +6769,7 @@ export function buildTemplateClonedDeckHtml(
           title: label,
           roleHint: 'cover' as const,
           kicker: 'OVERVIEW',
-          lead: `${topicKeywordForSynthBody(deckTitle)} 한눈에`,
+          lead: synthesizeTemplateCloneCoverLead(deckTitle),
         };
       }
       return {
@@ -7197,7 +7213,7 @@ export function scrubLeftoverCatalogExampleHtml(
         title,
         roleHint: 'cover',
         kicker: 'OVERVIEW',
-        lead: `${topicKeywordForSynthBody(title)} 한눈에`,
+        lead: synthesizeTemplateCloneCoverLead(title, brief),
       },
     ];
   return buildTemplateClonedDeckHtml(dest, slides, {
@@ -7925,7 +7941,7 @@ export function synthesizeTemplateCloneSlidesFromFreeFormBrief(options: {
       title,
       roleHint: 'cover',
       kicker: 'OVERVIEW',
-      lead: `${topicKeywordForSynthBody(title)} 한눈에`,
+      lead: synthesizeTemplateCloneCoverLead(title, brief),
     },
     {
       title: '개요',
@@ -8048,7 +8064,7 @@ export function resolveTemplateCloneSlidesForDeterministicFill(options: {
         title: slide.title,
         roleHint: slide.roleHint ?? 'cover',
         kicker: slide.kicker ?? 'OVERVIEW',
-        lead: slide.lead ?? `${topicKeywordForSynthBody(cover)} 한눈에`,
+        lead: slide.lead ?? synthesizeTemplateCloneCoverLead(cover, brief),
       };
       copyTemplateCloneSlideExtras(slide, next);
       return next;
