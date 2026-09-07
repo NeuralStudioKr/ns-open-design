@@ -275,6 +275,13 @@ export function looksLikeCompactApiStackedDeck(html: string): boolean {
  * letterbox and the iframe aspect becomes the slide ratio — pills clip
  * and later pages can paint through. Hangul (or a 1920 pin) means this
  * is a Teamver fill, not the English gallery example.
+ *
+ * 루프465 — Block Frame / neo Clone seeds also keep catalog presenter CSS
+ * (`.slide{display:none}` + `.active{display:flex}`) while
+ * `buildTemplateClonedDeckHtml` pins every page to 1920×1080 via
+ * `data-teamver-template-clone-size` + vw→px. Without letterbox the iframe
+ * only shows the top-left of the canvas, so a centered `.hero-frame` reads
+ * as a tiny box in the bottom-right (user report 2026-09-07).
  */
 function looksLikeFilledOfficialPresentationDeck(html: string): boolean {
   const source = String(html ?? '');
@@ -286,8 +293,12 @@ function looksLikeFilledOfficialPresentationDeck(html: string): boolean {
       /\.slide\s*\{[^}]*opacity\s*:\s*0/i.test(source)
       && /\.slide\.(?:active|is-active|current)(?![\w-])[^{]*\{[^}]*opacity\s*:\s*1/i.test(source)
     );
-  if (!presentation) return false;
-  if (looksLikeFixedCanvasSlideDeck(source)) return true;
+  const displayTogglePresenter =
+    /\.slide\s*\{[^}]*display\s*:\s*none/i.test(source)
+    && /\.slide\.(?:active|is-active|current)(?![\w-])[^{]*\{[^}]*display\s*:\s*flex/i.test(source);
+  const cloneSized = /data-teamver-template-clone-size/i.test(source);
+  if (!presentation && !displayTogglePresenter && !cloneSized) return false;
+  if (looksLikeFixedCanvasSlideDeck(source) || cloneSized) return true;
   const visible = source
     .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
     .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')

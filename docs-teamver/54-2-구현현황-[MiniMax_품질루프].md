@@ -37,6 +37,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프465 — Block Frame Clone letterbox 표지 사이즈
+
+체감: LOOK seed 표지 hero가 cream 캔버스 우하단에 작게 보임.
+
+원인: Clone 1920 pin + Block Frame display-toggle presenter가 compact letterbox를 건너뛰어 iframe이 캔버스 좌상단만 크롭.
+
+수정: `looksLikeFilledOfficialPresentationDeck`에 clone-size / display-toggle+fixed-canvas. 설계: [0907-N04-1](./0907-N04-1-상위설계-[Block_frame_Clone_letterbox_표지_사이즈].md).
+
 ### 루프464 — Block Frame `.nb-card` 그리드 orphan 배치
 
 체감: PRODUCT에서 카드 밖 본문, PROBLEM에서 체크리스트 구석 배치.

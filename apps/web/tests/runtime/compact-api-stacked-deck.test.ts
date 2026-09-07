@@ -4,7 +4,10 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
-import { looksLikeOfficialFullscreenPresenterDeck } from '@open-design/contracts';
+import {
+  buildTemplateClonedDeckHtml,
+  looksLikeOfficialFullscreenPresenterDeck,
+} from '@open-design/contracts';
 import { buildEmergencySlideDeckFromOutline } from '../../src/artifacts/emergency-deck';
 import {
   injectStackedDeckViewport,
@@ -69,6 +72,42 @@ describe('looksLikeCompactApiStackedDeck', () => {
       '</body></html>',
     ].join('');
     expect(looksLikeLeftoverHostNavCanvasDeck(html)).toBe(true);
+  });
+
+  it('letterboxes Block Frame Clone LOOK seeds (루프465 hero crop)', () => {
+    // Catalog Block Frame keeps display:none/.active flex + fullscreen CSS.
+    // Clone pins 1920×1080 — without compact letterbox the iframe crops the
+    // canvas and a centered hero-frame reads as a tiny bottom-right box.
+    const example = readFileSync(
+      resolve(repoRoot, 'plugins/_official/examples/html-ppt-zhangzara-block-frame/example.html'),
+      'utf8',
+    );
+    expect(looksLikeOfficialFullscreenPresenterDeck(example)).toBe(true);
+    expect(looksLikeCompactApiStackedDeck(example)).toBe(false);
+
+    const cloned = buildTemplateClonedDeckHtml(
+      example,
+      [
+        { title: '팀버 소개', body: '팀버 한눈에' },
+        { title: '문제', body: '흩어진 일' },
+        { title: '해결', body: '하나의 워크스페이스' },
+      ],
+      {
+        title: '팀버 소개',
+        brief: 'www.teamver.com 소개',
+        templateId: 'html-ppt-zhangzara-block-frame',
+      },
+    );
+    expect(cloned).toBeTruthy();
+    expect(cloned!).toMatch(/data-teamver-template-clone-size/i);
+    expect(looksLikeOfficialFullscreenPresenterDeck(cloned!)).toBe(true);
+    expect(looksLikeCompactApiStackedDeck(cloned!)).toBe(true);
+    expect(shouldInflateStackedDesignViewport(cloned!)).toBe(false);
+
+    const src = buildSrcdoc(cloned!, { deck: true, userBrief: '팀버 소개' });
+    expect(src).toMatch(/compactStackedDeckEnabled = true/);
+    expect(src).toMatch(/data-od-deck-stacked-fix/);
+    expect(src).toMatch(/#od-stacked-deck-stage\s*\{/);
   });
 
   it('does not treat official IB example.html as a leftover host-nav canvas', () => {
