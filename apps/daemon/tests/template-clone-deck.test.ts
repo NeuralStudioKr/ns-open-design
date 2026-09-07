@@ -1000,7 +1000,7 @@ const ZHANGZARA_SMOKE_SPECS: readonly ZhangzaraSmokeSpec[] = [
     pluginId: 'html-ppt-zhangzara-creative-mode',
     exampleSubpath: 'html-ppt-zhangzara-creative-mode/example.html',
     templateTitle: 'Html Ppt Zhangzara Creative Mode',
-    motifMustInclude: ['--cream', 'Archivo'],
+    motifMustInclude: ['--cream', 'Archivo', 'poster'],
     demoMustNotInclude: ['FLIP THE'],
     expectedSlideCount: 8,
   },

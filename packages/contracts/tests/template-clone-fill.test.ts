@@ -394,9 +394,9 @@ describe('free-form Daisy clone content swap', () => {
   });
 });
 
-describe('루프450/459/469/470 Zhangzara template quality gates', () => {
-  // Shared 4-axis gate: motif · leftover · 1920×1080 · slide count.
-  // 루프470 adds the remaining 10-shell official Zhangzara catalogue kits.
+describe('루프450/459/469/470/471 Zhangzara template quality gates', () => {
+  // Shared 5-axis gate: motif · leftover · 1920×1080 · slide count · live layout.
+  // 루프471 requires class-like motif tokens as live tags + a cover heading.
   // All pin the fixture through the deterministic FE path (no MiniMax).
   it.each(ZHANGZARA_QUALITY_GATE_SPECS.map((s) => [s.name, s] as const))(
     '%s deterministic clone passes 4-axis gate',

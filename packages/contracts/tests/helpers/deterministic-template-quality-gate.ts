@@ -1,13 +1,15 @@
 /**
  * 루프450–459 — Shared deterministic quality gate for Zhangzara templates.
  *
- * 4 axes checked per template:
+ * 5 axes checked per template:
  *   1) Motif — template CSS tokens / class names must remain in the cloned deck
  *   2) Leftover — `looksLikeLeftoverTemplateDemoDeck === false` + template-specific
  *      demo phrase / number denylist
  *   3) Canvas — fixed 1920×1080 style is present (width:1920px + min-height 1080)
  *   4) Slide count — `listTemplateCloneSlideShells(cloned).length === expected`
  *      + brief-derived topic (`팀버` / `Teamver`)
+ *   5) Layout (루프471) — class-like motif tokens appear as live tags, and the
+ *      first shell still has a heading. Pixel screenshots stay out of this gate.
  *
  * The helper delegates deck build to `buildTemplateClonedDeckHtml` with a
  * deterministic outline from `resolveTemplateCloneSlidesForDeterministicFill`
@@ -128,6 +130,32 @@ export async function runDeterministicTemplateQualityGate(
 }
 
 /**
+ * Class-like motif tokens (not CSS variables or font family names).
+ * Used by axis 5 to require a live `class="…"` tag, not just a stylesheet hit.
+ */
+export function motifClassTokens(spec: TemplateQualityGateSpec): readonly string[] {
+  return spec.motifMustInclude.filter((token) => {
+    if (token.startsWith('--')) return false;
+    if (/^[A-Z][A-Za-z]+$/.test(token)) return false;
+    return /^[A-Za-z][A-Za-z0-9-]*$/.test(token);
+  });
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Empty CSS deco shells that clone fill may drop; still gated as stylesheet motif. */
+const LAYOUT_SKIP_LIVE_TOKENS = new Set([
+  'slide-chrome',
+  'deco-dots',
+  'sunglow',
+]);
+
+const COVER_HEADING_RE =
+  /<h[1-3]\b[^>]*>[\s\S]*?\S[\s\S]*?<\/h[1-3]>|<(?:div|span)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:title|display|headline|lockup|hero-title|cover-headline|title-main|main-title|t-display|wordmark|brand)\b[^>]*>[\s\S]*?\S/i;
+
+/**
  * Assert the 4-axis quality gate on an already-built cloned deck.
  * Failures include the template name and axis so a red spec points to the
  * exact scrub / canvas / count / motif regression.
@@ -163,9 +191,28 @@ export function assertDeterministicTemplateQualityGate(
     .toMatch(/(?:min-)?height:\s*1080px/i);
 
   // Axis 4 — slide count + topic.
-  const shellCount = listTemplateCloneSlideShells(cloned).length;
-  expect(shellCount, `${tag} slide count`).toBe(spec.expectedSlideCount);
+  const shells = listTemplateCloneSlideShells(cloned);
+  expect(shells.length, `${tag} slide count`).toBe(spec.expectedSlideCount);
   expect(cloned, `${tag} 팀버/Teamver topic`).toMatch(/팀버|Teamver/i);
+
+  // Axis 5 — 루프471 layout: live motif tags + a title host.
+  const layoutTag = `[루프471:${spec.name}]`;
+  for (const cls of motifClassTokens(spec)) {
+    if (LAYOUT_SKIP_LIVE_TOKENS.has(cls)) continue;
+    const liveTagRe = new RegExp(
+      `<[^>]+\\bclass\\s*=\\s*["'][^"']*\\b${escapeRegExp(cls)}\\b`,
+      'i',
+    );
+    expect(cloned, `${layoutTag} live motif tag .${cls} missing`).toMatch(liveTagRe);
+  }
+  const titleHost = shells.find((shell) => (
+    /\b(?:s-cover|slide-hero|slide-title|cover|s1)\b/i.test(shell.attrs)
+  )) ?? shells[0];
+  expect(titleHost, `${layoutTag} title host missing`).toBeTruthy();
+  expect(
+    `${titleHost!.full}\n${cloned}`,
+    `${layoutTag} cover heading missing`,
+  ).toMatch(COVER_HEADING_RE);
 }
 
 /**
@@ -174,6 +221,7 @@ export function assertDeterministicTemplateQualityGate(
  * 루프450–467: Capsule … Sakura / Broadside / 8-bit / Scatterbrain
  * 루프469: Long Table / Editorial unique-role
  * 루프470: remaining 10-shell official Zhangzara catalogue kits
+ * 루프471: axis 5 live motif tags + cover heading host
  */
 export const ZHANGZARA_QUALITY_GATE_SPECS: readonly TemplateQualityGateSpec[] = [
   {
@@ -199,7 +247,7 @@ export const ZHANGZARA_QUALITY_GATE_SPECS: readonly TemplateQualityGateSpec[] = 
     templateId: 'html-ppt-zhangzara-creative-mode',
     exampleRelativePath:
       '../../../../plugins/_official/examples/html-ppt-zhangzara-creative-mode/example.html',
-    motifMustInclude: ['--cream', 'Archivo'],
+    motifMustInclude: ['--cream', 'Archivo', 'poster'],
     demoMustNotInclude: ['FLIP THE'],
     expectedSlideCount: 8,
   },
