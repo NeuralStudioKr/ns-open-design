@@ -13,7 +13,7 @@
 | quality gate demoMustNotInclude | ☑ |
 | contracts 회귀 테스트 | ☑ |
 | 54-2 · 00 누적 루프476 | ☑ |
-| commit + push origin/staging | ☐ |
+| commit + push origin/staging | ☑ `93bf13332d` docs · `7b4465062d` fix |
 
 ## 결정
 
