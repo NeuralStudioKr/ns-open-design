@@ -500,10 +500,32 @@ describe('루프419 resolveTemplateCloneSlidesForDeterministicFill', () => {
     const brief = 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장';
     const lead = synthesizeTemplateCloneCoverLead('팀버 소개', brief);
     expect(lead).toContain('팀버');
-    expect(lead).toContain('파일·대화·템플릿');
     expect(lead).not.toMatch(/한눈에|팀버은|팀버이/);
-    expect(synthesizeTemplateCloneCoverLead('팀버 소개')).toContain('핵심 맥락');
     expect(synthesizeTemplateCloneCoverLead('팀버 소개')).not.toContain('한눈에');
+  });
+
+  it('루프474 — service-intro lead does not invent a Teamver workflow claim', () => {
+    const brief = 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장';
+    const lead = synthesizeTemplateCloneCoverLead('팀버 소개', brief);
+    expect(lead).toContain('팀버');
+    expect(lead).toMatch(/문제|가치|사이트/);
+    expect(lead).not.toContain('파일·대화·템플릿');
+    expect(lead).not.toMatch(/한눈에|\d+%/);
+    expect(synthesizeTemplateCloneCoverLead(
+      'Expo',
+      'https://expo.dev 사이트 분석해서 서비스 소개 슬라이드 만들어줘',
+    )).not.toContain('파일·대화·템플릿');
+  });
+
+  it('루프474 — source preview wins over the service-intro fallback lead', () => {
+    expect(synthesizeTemplateCloneCoverLead(
+      '팀버 소개',
+      [
+        'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+        'Source preview: AI가 만드는 슬라이드',
+        '템플릿으로 복제하고 자동 생성',
+      ].join('\n'),
+    )).toBe('AI가 만드는 슬라이드');
   });
 
   it('densifies title-only Visible headings instead of leaving empty card bodies', () => {

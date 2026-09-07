@@ -39,6 +39,7 @@
 | **루프458** Product Launch · Pitch Deck 게이트 | ☑ contracts+daemon specs |
 | **루프463** LOOK + AI 본문 동시 사용 — 기본 `prompt` 복구 · deterministic-only는 opt-in | ☑ [0907-N02-1](./0907-N02-1-상위설계-[Clone_LOOK와_AI_본문_동시사용].md) · [rollback switch](./0901-N02-template-clone-fill-rollback-switch.md) |
 | **루프461** Block Frame neo 슬롯 fill — body CSS fingerprint 게이트 제거 · a/button exact-class · Visual System/Overview/chart strip · denylist | ☑ [0907-N01-1](./0907-N01-1-상위설계-[Block_frame-neo-slot-gate].md) · [0907-N01-2](./0907-N01-2-구현설계-[Block_frame-neo-slot-gate].md) |
+| **루프474** 서비스 소개 cover lead 미발명 | ☑ `파일·대화·템플릿` 금지 · preview 우선 · [0907-N06-5](./0907-N06-5-구현설계-[Clone_cover-lead-no-invent].md) |
 | **루프473** deterministic synth cover lead 교체 | ☑ `한눈에` → promise/맥락 문장 · [0907-N06-4](./0907-N06-4-구현설계-[Clone_deterministic-cover-lead].md) |
 | **루프472** Clone 배치(DOM) smoke | ☑ live motif tag + 표지 heading · [0901-N02-24](./0901-N02-24-구현설계-[Clone_layout-smoke].md) |
 | **루프470** 남은 10셸 Zhangzara 18종 4축 게이트 | ☑ Bold Poster…Vellum · leftover scrub · [0901-N02-23](./0901-N02-23-구현설계-[Clone_remaining-zhangzara-quality-gates].md) |
@@ -140,6 +141,7 @@
 
 | 일자 | 내용 |
 |------|------|
+| 2026-09-07 | 루프474 — 서비스 소개 cover lead 미발명 · Teamver 작업 흐름 문장 금지 · source preview 우선 · [0907-N06-5](./0907-N06-5-구현설계-[Clone_cover-lead-no-invent].md). |
 | 2026-09-07 | 루프473 — deterministic synth cover lead 교체 · `한눈에` 제거 · [0907-N06-4](./0907-N06-4-구현설계-[Clone_deterministic-cover-lead].md). |
 | 2026-09-07 | 루프472 — Clone 배치(DOM) smoke · live motif tag + 표지 heading · [0901-N02-24](./0901-N02-24-구현설계-[Clone_layout-smoke].md). |
 | 2026-09-07 | 루프470 — 남은 10셸 Zhangzara 18종 4축 게이트 · leftover 스크럽(Pink Script / Pin and Paper / Monochrome) · [0901-N02-23](./0901-N02-23-구현설계-[Clone_remaining-zhangzara-quality-gates].md). |

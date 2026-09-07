@@ -29,3 +29,4 @@
 - Playwright pixel / FileViewer
 - MiniMax live
 - 호출자가 명시한 한눈에 카피 wipe
+- 서비스 소개 lead의 소스 바인딩 · 미발명 가드 → 루프474 [0907-N06-5](./0907-N06-5-구현설계-[Clone_cover-lead-no-invent].md)

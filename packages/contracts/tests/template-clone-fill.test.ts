@@ -432,7 +432,8 @@ describe('루프450/459/469/470/472 Zhangzara template quality gates', () => {
       userInstruction: TEAMVER_SERVICE_INTRO_BRIEF,
       slideCount: 10,
     });
-    expect(slides[0]?.lead).toContain('파일·대화·템플릿');
+    expect(slides[0]?.lead).toMatch(/문제|가치|사이트/);
+    expect(slides[0]?.lead).not.toContain('파일·대화·템플릿');
     expect(slides[0]?.lead).not.toContain('한눈에');
     const cloned = await runDeterministicTemplateQualityGate(capsule!);
     expect(cloned).not.toContain('한눈에');
@@ -827,7 +828,7 @@ describe('루프419 Capsule deterministic quality gate', () => {
       maxSlides: 4,
     });
     expect(cloned).toBeTruthy();
-    expect(cloned).toMatch(/핵심 맥락과 다음 단계|직접적인 가치/);
+    expect(cloned).toMatch(/팀버가 다루는 문제와 제공 가치|핵심 맥락과 다음 단계|직접적인 가치/);
     expect(cloned).not.toContain('한눈에');
     expect(cloned).not.toContain('Clarity of Purpose');
     expect(cloned).not.toContain('The Journey Continues');
