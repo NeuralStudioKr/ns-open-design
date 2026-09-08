@@ -69,6 +69,7 @@ import {
   flattenNestedBorderPadCards,
   scrubGenericTitlePills,
   stripStrayInlineAcronyms,
+  stripStrayBracketTextNodes,
   dedupeHeadingPhraseStutter,
   stripLeafEmptyListAndParagraphShells,
   restyleBiennaleSparseChapterBodies,
@@ -1687,6 +1688,10 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
 
     expect(stripStrayInlineAcronyms('<h3>음성·대화 AI</h3> AI <p>본문</p>'))
       .toBe('<h3>음성·대화 AI</h3><p>본문</p>');
+    expect(stripStrayInlineAcronyms('<p>인터랙티브 R&amp;D</p> R&amp;D <p>본문</p>'))
+      .toBe('<p>인터랙티브 R&amp;D</p><p>본문</p>');
+    expect(stripStrayBracketTextNodes('<p>사용자 설문)</p>)</div>'))
+      .toBe('<p>사용자 설문)</p></div>');
 
     expect(dedupeHeadingPhraseStutter(
       '<h2>함께 만들 AI,<br>지금 시작하세요 AI,<br>지금 시작하세요</h2>',

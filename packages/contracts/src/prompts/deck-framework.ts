@@ -552,7 +552,9 @@ Each slide is a **fixed 1920×1080** canvas: every host must be \`<section class
 
 **Canvas fit:** flow content must stay inside the padded 1920×1080 box. Overlapping \`position:absolute\` labels (a "05 / CHECKLIST" badge sitting inside card 02) are a failed deliverable — keep labels in normal flow inside their own card. Never emit overlay index badges such as "05 / CHECKLIST" as sibling labels.
 
-**Colors, fonts, borders, shadows, and decorative density MUST come from the Selected deck template / Template visual kit above.** Do not invent a slate/navy corporate palette. Forbidden fallbacks when a kit is present: \`#0f172a\`, \`#1e293b\`, \`#111827\`, \`#f8fafc\` + Inter-only sparse covers.
+**Colors, fonts, borders, shadows, and decorative density MUST come from the Selected deck template / Template visual kit above.** Do not invent a slate/navy corporate palette. Forbidden fallbacks when a kit is present: \`#0f172a\`, \`#1e293b\`, \`#111827\`, \`#f8fafc\`, \`#111c33\`, \`#0b1220\`, \`#1e3a8a\`, blue-tint body copy (\`#60a5fa\`, \`#93c5fd\`, \`#cbd5e1\`, \`#e0e7ff\`), \`linear-gradient(#2563eb,#7c3aed)\` + Inter-only sparse covers.
+
+**Every slide paints its own surface.** A \`<section class="slide">\` with no background inherits the kit paper, so light copy on it is invisible. Either paint the section with a kit surface hex, or keep the copy in the kit ink. Translucent glass cards (\`background:rgba(255,255,255,0.05)\` + white hairline borders) on a light/cream paper are a failed deliverable — use kit card surfaces and kit border tokens.
 
 **Kit cards, not fake frames:** do not invent 1–2px navy/blue outlined rectangles as a substitute template. Bind kit card/list/timeline classes and kit border/shadow tokens, plus at least one compact kit motif/deco cue per slide after the title.
 

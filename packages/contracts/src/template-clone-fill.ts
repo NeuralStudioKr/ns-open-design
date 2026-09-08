@@ -3986,6 +3986,7 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = unwrapBlocksFromHeadings(next);
   next = dedupeHeadingPhraseStutter(next);
   next = stripStrayInlineAcronyms(next);
+  next = stripStrayBracketTextNodes(next);
   // 루프381 — Model often emits an empty chrome card shell followed by the
   // pill/heading/paragraph triple that should live INSIDE it. Reparent first
   // so `stripEmptyBorderPadCardShells` does not drop the intended wrapper.
@@ -4165,12 +4166,31 @@ export function scrubGenericTitlePills(html: string): string {
 
 /**
  * 루프403 — MiniMax leaks bare acronyms between tags (`</h3> AI <p`, `</h3> LLM <p`).
+ * 루프478 — `</p> R&amp;D<p` from the same failure mode; the list stays closed so
+ * real copy between blocks is never eaten.
  */
 export function stripStrayInlineAcronyms(html: string): string {
   return String(html ?? '').replace(
-    /(<\/(?:h[1-6]|div|span|p)>)\s*(?:AI|LLM|ML|API|KPI|RAG|STT|TTS)\s*(?=<(?:p|div|h[1-6]|span|ul|ol)\b)/gi,
+    /(<\/(?:h[1-6]|div|span|p)>)\s*(?:AI|LLM|ML|API|KPI|RAG|STT|TTS|R&(?:amp;)?D|SaaS|SSO|UX|UI|ROI|B2B|B2C|PoC|CRM|ERP|SDK|SLA|QA|IoT)\s*(?=<(?:p|div|h[1-6]|span|ul|ol)\b)/gi,
     '$1',
   );
+}
+
+/**
+ * 루프478 — MiniMax closes a slide with an unmatched bracket after the last
+ * paragraph (`…고객 설문)</p>)</div>` → a stray `)` renders under the footnote).
+ * Only a lone bracket between block tags (or right before a close) is dropped.
+ */
+export function stripStrayBracketTextNodes(html: string): string {
+  return String(html ?? '')
+    .replace(
+      /(<\/(?:h[1-6]|div|span|p|ul|ol|li|section)>)\s*[)\]}）］】]\s*(?=<\/?(?:p|div|h[1-6]|span|ul|ol|li|section)\b)/gi,
+      '$1',
+    )
+    .replace(
+      /(<\/(?:h[1-6]|div|span|p|ul|ol|li)>)\s*[)\]}）］】]\s*(?=<\/(?:div|section)>)/gi,
+      '$1',
+    );
 }
 
 /**

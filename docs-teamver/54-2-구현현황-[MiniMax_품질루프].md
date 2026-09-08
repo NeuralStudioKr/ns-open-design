@@ -38,6 +38,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프479 — 공식 look 대비·flow inset·잔여 텍스트 품질 가드
+
+체감: slide count와 template clone은 통과해도, light-paper 템플릿에서 본문·카드가 거의 보이지 않거나 내용이 한쪽으로 밀리는 결과가 남았다. 예: Biennale Yellow 화면에서 `실제 팀이 쓰는 방법` 카드는 `rgba(255,255,255,0.05)` glass + light blue copy라 paper 위에서 비어 보였고, host padding과 flow padding이 겹치면 1920×1080 안의 usable area가 과도하게 줄었다.
+
+원인: 프롬프트 금지만으로는 모델이 임의 palette를 계속 섞는다. 또한 fixed-canvas 래퍼가 host layout intent를 보존하면서 padding까지 복사해, 템플릿이 이미 가진 inset을 두 번 적용했다. malformed output salvage에는 bare acronym(`R&D`)과 lone bracket text node 제거 범위가 좁았다.
+
+수정: `conformInlinePaletteToOfficialLook`를 persist heal 마지막 단계에 붙여 공식 look CSS의 paper/ink token으로 실제 contrast를 판단한다. 저대비 inline copy는 kit ink/paper로 snap하고, light paper 위 invisible glass card는 ink tint/card border로 보정한다. 공식 motif와 kit-painted subtree는 보호한다. flow 래핑은 host padding을 복사하지 않는 규칙으로 고정하고, stray acronym/bracket salvage 범위를 넓혔다. Prompt hard requirements에도 forbidden fallback palette와 light kit contrast 실패 케이스를 명시했다.
+
+검증: contracts 254 passed · daemon template-clone 37 passed · web templateCloneContentFill 38 passed · contracts build passed.
+
 ### 루프478 / 0908-N02-4 — 부분 덱 없는 스톨 soft-retry
 
 체감: 토큰이 하나도 안 온 채 스톨하면 10분 대기 후 실패 카드만 남고, 자동 재시도가 도는지 스펙이 비어 있었다.

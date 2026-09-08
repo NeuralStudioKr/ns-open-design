@@ -11,6 +11,7 @@
  */
 
 import { attrsLookLikeDeckOrTemplateSlideHost } from './deck-slide-class.js';
+import { conformInlinePaletteToOfficialLook } from './heal-official-look-contrast.js';
 import {
   catalogExampleShouldBeScrubbed,
   officialLookIsCapsule,
@@ -5188,6 +5189,10 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // 루프386 — prompt-fill often drops official look CSS but still paints with
   // var(--pink)/var(--offwhite). Without :root the slides render unstyled.
   out = ensureNeoBrutalCssVariableFallback(out);
+  // 루프478 — last: an invented dark palette on a light-paper kit leaves copy
+  // cream-on-cream. Judge inline colors against their effective background
+  // after every structural heal so the luminance we measure is the final one.
+  out = conformInlinePaletteToOfficialLook(out);
   return out;
 }
 

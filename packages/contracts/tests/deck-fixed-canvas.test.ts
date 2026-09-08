@@ -331,7 +331,7 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     ].join('');
     const pinned = pinDeckSlidesToFixedCanvas(html);
     expect(pinned).toMatch(
-      /<div data-od-slide-flow style="(?=[^"]*display:flex)(?=[^"]*gap:48px)(?=[^"]*padding:72px)(?=[^"]*flex-direction:row)[^"]*">/,
+      /<div data-od-slide-flow style="(?=[^"]*display:flex)(?=[^"]*gap:48px)(?=[^"]*flex-direction:row)[^"]*">/,
     );
     expect(pinned).toContain('class="split-left"');
     expect(pinned).toContain('class="split-right"');
@@ -357,7 +357,7 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     ].join('');
     const pinned = pinDeckSlidesToFixedCanvas(html);
     expect(pinned).toMatch(
-      /<div data-od-slide-flow style="(?=[^"]*display:flex)(?=[^"]*gap:48px)(?=[^"]*padding:64px)(?=[^"]*flex-direction:row)[^"]*">/,
+      /<div data-od-slide-flow style="(?=[^"]*display:flex)(?=[^"]*gap:48px)(?=[^"]*flex-direction:row)[^"]*">/,
     );
     expect(pinned).toContain('class="col-left"');
     expect(pinned).toContain('class="col-right"');
@@ -378,7 +378,7 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     ].join('');
     const pinned = pinDeckSlidesToFixedCanvas(html);
     expect(pinned).toMatch(
-      /<div data-od-slide-flow style="(?=[^"]*padding:64px)(?=[^"]*flex-direction:column)[^"]*">/,
+      /<div data-od-slide-flow style="(?=[^"]*flex-direction:column)[^"]*">/,
     );
     expect(pinned).toContain('class="split-top"');
     expect(pinned).toContain('class="split-bottom"');
@@ -393,7 +393,7 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     ].join('');
     const pinned = pinDeckSlidesToFixedCanvas(html);
     expect(pinned).toMatch(
-      /<div data-od-slide-flow style="(?=[^"]*display:flex)(?=[^"]*flex-direction:row)(?=[^"]*gap:40px)(?=[^"]*padding:80px)[^"]*">/,
+      /<div data-od-slide-flow style="(?=[^"]*display:flex)(?=[^"]*flex-direction:row)(?=[^"]*gap:40px)[^"]*">/,
     );
     expect(pinned).toContain('Left pane');
     expect(pinned).toContain('Right pane');
@@ -409,7 +409,7 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     ].join('');
     const pinned = pinDeckSlidesToFixedCanvas(html);
     expect(pinned).toMatch(
-      /<div data-od-slide-flow style="(?=[^"]*padding:64px)(?=[^"]*display:flex)(?=[^"]*flex-direction:row)[^"]*">/,
+      /<div data-od-slide-flow style="(?=[^"]*display:flex)(?=[^"]*flex-direction:row)[^"]*">/,
     );
     expect(pinned).toContain('class="col-left"');
     expect(pinned).toContain('class="col-right"');
@@ -724,14 +724,29 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).toContain('class="slide-inner"');
   });
 
-  it('still copies padding onto flow when the slide has no magazine inner', () => {
+  it('does not copy host padding onto flow when the slide has no magazine inner', () => {
     const html = [
       '<section class="slide" style="width:1920px;height:1080px;padding:80px">',
       '<h2>Title</h2><p>Body</p>',
       '</section>',
     ].join('');
     const pinned = pinDeckSlidesToFixedCanvas(html);
-    expect(pinned).toMatch(/<div data-od-slide-flow style="[^"]*padding:80px/);
+    expect(pinned).not.toMatch(/data-od-slide-flow[^>]*padding:80px/);
+  });
+
+  it('루프478 — drops copied flow padding because the host owns the inset', () => {
+    const html = [
+      '<section class="slide" style="width:1920px;height:1080px;box-sizing:border-box;padding:96px 112px">',
+      '<div data-od-slide-flow style="display:flex;flex-direction:column;padding:96px 112px;box-sizing:border-box">',
+      '<h2>4단계 워크플로우</h2>',
+      '</div>',
+      '</section>',
+    ].join('');
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    // Host keeps the authored safe area. Copying it onto the absolute wrapper
+    // double-insets the content on templates that already own slide padding.
+    expect(pinned).not.toMatch(/data-od-slide-flow[^>]*style="[^"]*padding:96px 112px/i);
+    expect(pinned).toMatch(/<section[^>]*style="[^"]*padding:96px 112px/i);
   });
 
   it('slims leftover flow padding when magazine inner already owns inset', () => {
