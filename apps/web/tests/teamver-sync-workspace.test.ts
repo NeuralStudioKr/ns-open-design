@@ -7,7 +7,7 @@ import {
 } from "../src/teamver/teamverWorkspaceEvents";
 
 const storeSetMock = vi.fn(async () => undefined);
-const storeGetMock = vi.fn(async () => null);
+const storeGetMock = vi.fn(async (): Promise<string | null> => null);
 const storeGetPreferredMock = vi.fn(() => null as string | null);
 
 vi.mock("../src/teamver/designBffClient", () => ({

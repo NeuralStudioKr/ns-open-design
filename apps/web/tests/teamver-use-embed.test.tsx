@@ -90,6 +90,9 @@ vi.mock("../src/teamver/teamverAuthReturn", () => ({
 vi.mock("../src/teamver/teamverWorkspaceEvents", () => ({
   dispatchTeamverWorkspaceChanged: vi.fn(),
   TEAMVER_WORKSPACE_CHANGED_EVENT: "teamver-workspace-changed",
+  dispatchTeamverWorkspaceAutoSwitched: vi.fn(),
+  subscribeTeamverWorkspaceAutoSwitched: vi.fn(() => () => {}),
+  TEAMVER_WORKSPACE_AUTO_SWITCHED_EVENT: "teamver-workspace-auto-switched",
 }));
 
 describe("useTeamverEmbed", () => {

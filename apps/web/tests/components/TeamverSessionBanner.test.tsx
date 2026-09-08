@@ -19,6 +19,10 @@ const embedState = vi.hoisted(() => ({
   workspaces: [] as Array<{ id: string; name: string }>,
   activeWorkspaceId: null as string | null,
   error: null as string | null,
+  workspaceAutoSwitch: null as
+    | { from: string; to: string; reason: 'app-disabled' | 'revoked' }
+    | null,
+  dismissWorkspaceAutoSwitch: vi.fn(),
   switchWorkspace: vi.fn(async () => undefined),
   refresh: vi.fn(async () => undefined),
 }));
@@ -62,6 +66,8 @@ describe('TeamverSessionBanner', () => {
     embedState.workspaces = [];
     embedState.activeWorkspaceId = null;
     embedState.error = null;
+    embedState.workspaceAutoSwitch = null;
+    embedState.dismissWorkspaceAutoSwitch.mockClear();
     embedState.refresh.mockClear();
     vi.mocked(designBffClient.isDesignAuthRefreshDeclined).mockReturnValue(false);
     vi.mocked(teamverAuthCookieHints.hasProbableTeamverAuthCookie).mockReturnValue(false);
@@ -119,7 +125,7 @@ describe('TeamverSessionBanner', () => {
     renderBanner();
 
     expect(screen.getByTestId('teamver-embed-bar').getAttribute('data-state')).toBe('warn');
-    expect(screen.getByTestId('teamver-embed-app-disabled').textContent).toContain('Design 사용 불가');
+    expect(screen.getByTestId('teamver-embed-app-disabled').textContent).toContain('슬라이드 사용 불가');
   });
 
   it('exposes a session retry chip while authenticated when BFF is unreachable', () => {
@@ -158,6 +164,40 @@ describe('TeamverSessionBanner', () => {
       force: true,
       resetRefreshState: true,
     });
+  });
+
+  it('루프477: surfaces an unrequested workspace switch and lets the user dismiss it', () => {
+    embedState.authenticated = true;
+    embedState.workspaces = [{ id: 'WS-2', name: 'Beta Team' }];
+    embedState.activeWorkspaceId = 'WS-2';
+    embedState.workspaceAutoSwitch = {
+      from: 'WS-1',
+      to: 'WS-2',
+      reason: 'app-disabled',
+    };
+
+    renderBanner();
+
+    const chip = screen.getByTestId('teamver-embed-workspace-auto-switch');
+    expect(chip.textContent).toContain('슬라이드를 쓸 수 없어 전환했습니다');
+
+    fireEvent.click(screen.getByRole('button', { name: '전환 안내 닫기' }));
+    expect(embedState.dismissWorkspaceAutoSwitch).toHaveBeenCalled();
+  });
+
+  it('루프477: says access was revoked when the previous workspace is gone', () => {
+    embedState.authenticated = true;
+    embedState.workspaceAutoSwitch = {
+      from: 'WS-gone',
+      to: 'WS-2',
+      reason: 'revoked',
+    };
+
+    renderBanner();
+
+    expect(
+      screen.getByTestId('teamver-embed-workspace-auto-switch').textContent,
+    ).toContain('접근 권한이 없어 전환했습니다');
   });
 
   it('renders a retry button when not_authenticated but a refresh-decline or cookie hint exists', () => {
