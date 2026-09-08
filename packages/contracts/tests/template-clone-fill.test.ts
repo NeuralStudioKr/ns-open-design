@@ -186,7 +186,9 @@ describe('buildTemplateClonedDeckHtml', () => {
     expect(cloned).toBeTruthy();
     expect(listTemplateCloneSlideShells(cloned!).length).toBe(8);
     expect(cloned).toContain('팀버 소개');
-    expect(cloned).toContain('핵심 기능과 사용자가 얻는 직접적인 가치');
+    expect(cloned).toContain('서비스 가치 제안');
+    expect(cloned).toContain('도입 로드맵');
+    expect(cloned).not.toContain('핵심 기능과 사용자가 얻는 직접적인 가치');
     expect(cloned).not.toMatch(/Aurora|Public attendance|Open programme|Field Notes|Quiet Editions|The Long Yellow/i);
     expect(cloned).not.toMatch(/입력입력|정리정리|병목병목|A 2\.4× rise|Returning audience/i);
     expect(cloned).not.toMatch(/76,400|112,800|141,200|164,900|182,300/);
@@ -310,6 +312,36 @@ describe('resolveTemplateCloneSlidesFromBrief', () => {
     expect(slides[0]?.kicker).toBe('OVERVIEW');
     expect(slides.some((slide) => slide.body === '…')).toBe(false);
     expect(slides.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('루프479 — restores v1.3-like topical density for non-service prompts', () => {
+    const slides = resolveTemplateCloneSlidesForDeterministicFill({
+      userInstruction: '삼각함수 설명 피피티 만들어줘. 고등학생 대상.',
+      deckTitle: '삼각함수',
+      slideCount: 6,
+    });
+    expect(slides).toHaveLength(6);
+    expect(slides[0]?.lead).toMatch(/삼각함수|핵심|단계/);
+    for (const slide of slides.slice(1)) {
+      expect(slide.lead?.length ?? 0).toBeGreaterThan(8);
+      expect(slide.body?.length ?? 0).toBeGreaterThan(50);
+      expect(slide.items?.length ?? 0).toBeGreaterThanOrEqual(2);
+    }
+    const text = JSON.stringify(slides);
+    expect(text).toMatch(/sin|cos|tan|단위원|그래프|주기/);
+    expect(text).not.toMatch(/파일·대화·템플릿|팀 워크스페이스|핵심 기능과 사용자가 얻는 직접적인 가치/);
+  });
+
+  it('루프479 — keeps template clone content dense for senior engineering topics', () => {
+    const slides = resolveTemplateCloneSlidesForDeterministicFill({
+      userInstruction: 'monorepo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨. 8장',
+      deckTitle: 'Monorepo',
+    });
+    expect(slides).toHaveLength(8);
+    const text = JSON.stringify(slides);
+    expect(text).toMatch(/workspace graph|태스크 캐시|Changesets|CI|CODEOWNERS/);
+    expect(text).not.toMatch(/파일·대화·템플릿|팀 워크스페이스|초안 생성 후 템플릿 레이아웃/);
+    expect(slides.slice(1).every((slide) => (slide.items?.length ?? 0) >= 2)).toBe(true);
   });
 
   it('extracts [User instruction] from a full create-slides run prompt', () => {
@@ -479,12 +511,13 @@ describe('루프419 Capsule deterministic quality gate', () => {
   it('fills Capsule cards for www.teamver.com + 8-10 without MiniMax HTML', async () => {
     // 루프450 — delegate the 4-axis gate to the shared helper. Loop419 keeps
     // its Capsule-specific body-copy invariants that the generic gate does
-    // not know about ("직접적인 가치" / "맥락을 유지").
+    // not know about: service-intro copy must be structured, not old filler.
     const capsuleSpec = ZHANGZARA_QUALITY_GATE_SPECS.find((s) => s.name === 'Capsule');
     expect(capsuleSpec).toBeTruthy();
     const cloned = await runDeterministicTemplateQualityGate(capsuleSpec!);
-    expect(cloned).toContain('직접적인 가치');
-    expect(cloned).toContain('맥락을 유지');
+    expect(cloned).toContain('핵심 가치');
+    expect(cloned).toContain('파일럿');
+    expect(cloned).not.toContain('핵심 기능과 사용자가 얻는 직접적인 가치');
   });
 
   it('loop430 — Biennale 10-slide request stays within 8 unique shells with renumbered pagenums', async () => {

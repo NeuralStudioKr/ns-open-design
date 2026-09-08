@@ -489,7 +489,8 @@ describe('루프419 resolveTemplateCloneSlidesForDeterministicFill', () => {
     expect(slides.some((slide) => slide.body === '…')).toBe(false);
     const joined = JSON.stringify(slides);
     expect(joined).not.toMatch(/팀버이|팀버은/);
-    expect(joined).toContain('왜 팀버인가');
+    expect(joined).toContain('팀버가 풀어야 하는 문제');
+    expect(joined).toContain('서비스 가치 제안');
     expect(joined).not.toContain('한눈에');
     expect(slides[0]?.lead).toBe(
       synthesizeTemplateCloneCoverLead('팀버', 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장'),
@@ -564,13 +565,14 @@ describe('루프419 resolveTemplateCloneSlidesForDeterministicFill', () => {
     expect(outline?.slides[1]?.items?.every((item) => item.title && item.body)).toBe(true);
   });
 
-  it('루프425 — generic free-form stays at 5, never ellipsis cards', () => {
+  it('루프425/479 — generic free-form stays dense, never ellipsis cards', () => {
     const outline = synthesizeTemplateCloneOutlineFromBrief({
       userBrief: 'Expo 개발 도구에 대해 시니어 개발자용 발표 자료를 만들어 주세요',
       deckTitle: '슬라이드',
     });
-    expect(outline?.slides).toHaveLength(5);
+    expect(outline?.slides).toHaveLength(6);
     expect(outline?.slides.some((slide) => slide.body === '…')).toBe(false);
+    expect(JSON.stringify(outline?.slides)).toMatch(/EAS|OTA|Expo Router|Native Modules/);
   });
 });
 
@@ -732,7 +734,8 @@ describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
     if (decision.kind === 'seed-fallback') {
       expect(listTemplateCloneSlideShells(decision.html).length).toBe(10);
       expect(decision.html).toContain('성과 지표');
-      expect(decision.html).toContain('한 장에 담을 세 가지 포인트');
+      expect(decision.html).toContain('서비스 가치 제안');
+      expect(decision.html).toContain('도입 로드맵');
       expect(decision.html).not.toContain('Demo');
     }
   });

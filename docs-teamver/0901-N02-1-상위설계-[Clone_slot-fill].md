@@ -40,6 +40,24 @@ AI는 **JSON outline / content slots만** 생성한다.
 
 정책 유지: 템플릿 demo 페이지 수/순서를 복사하지 않는다. 사용자 outline이 장수를 정한다.
 
+### 2026-09-08 루프479 — v1.3 대비 품질 저하 원인과 보정
+
+v1.3의 강점은 모델이 슬라이드 아크, 본문 밀도, 사례 흐름을 직접 설계했다는 점이었다. 현재 Clone slot-fill은 incomplete output과 템플릿 파손을 줄이기 위해 `example.html` shell을 유지하고 JSON/outline만 치환하는 방향으로 바뀌었는데, fallback outline 생성기가 그 설계 역할을 충분히 대체하지 못했다.
+
+회귀 원인:
+
+- generic fallback이 `개요 / 핵심 포인트 / 실행 방안` 같은 라벨에 얕은 본문을 붙였고, 서비스 소개가 아닌 주제에도 Teamver 워크스페이스식 filler가 섞였다.
+- 템플릿 스타일 보존을 우선하면서 “본문 품질 floor”가 별도 계약으로 고정되지 않았다.
+- 명시 slide count가 없을 때 generic deck 기본값이 5장이라, v1.3보다 짧고 덜 전개된 결과가 나오기 쉬웠다.
+
+보정 정책:
+
+- 템플릿은 색상, 도형, SVG, class, layout shell을 유지한다.
+- 그러나 내용은 shell demo copy나 shallow placeholder가 아니라 `lead + body + items`를 가진 주제별 outline으로 채운다.
+- known topic preset은 최소한의 도메인 밀도를 deterministic하게 보장한다: 삼각함수, cloud native, monorepo, Expo, service-intro.
+- generic fallback도 6장 기본으로 올리고, 배경-개념-흐름-사례-실행-정리의 아크를 가진다.
+- 회귀 테스트는 템플릿 motif 보존뿐 아니라 “비서비스 주제가 Teamver filler로 변질되지 않음”을 함께 본다.
+
 ## P0 계약
 
 ### 모델 출력

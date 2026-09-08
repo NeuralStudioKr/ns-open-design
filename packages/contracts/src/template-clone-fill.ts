@@ -61,7 +61,7 @@ export type TemplateCloneDeckOutline = {
 export const TEMPLATE_CLONE_OUTLINE_MAX_SLIDES = 20;
 /** Site / service-intro briefs without an explicit count close 8 (cap 10). */
 export const TEMPLATE_CLONE_SERVICE_INTRO_DEFAULT_SLIDES = 8;
-export const TEMPLATE_CLONE_GENERIC_OUTLINE_DEFAULT_SLIDES = 5;
+export const TEMPLATE_CLONE_GENERIC_OUTLINE_DEFAULT_SLIDES = 6;
 
 const TEMPLATE_CLONE_GENERIC_SECTION_LABELS = [
   '개요',
@@ -670,6 +670,468 @@ function topicKeywordForSynthBody(title: string): string {
     || '핵심 주제';
 }
 
+type SynthTemplateTopicPreset =
+  | 'trigonometry'
+  | 'cloud-native'
+  | 'monorepo'
+  | 'expo'
+  | 'service-intro'
+  | 'generic';
+
+type SynthTemplateTopicProfile = {
+  topic: string;
+  preset: SynthTemplateTopicPreset;
+};
+
+type SynthTemplateBodyTemplate = {
+  roleHint: TemplateCloneShellRole;
+  lead: string;
+  itemTitles: string[];
+  lines: string[];
+};
+
+function classifySynthTemplateTopicProfile(
+  cover: string,
+  brief?: string | null,
+): SynthTemplateTopicProfile {
+  const topic = topicKeywordForSynthBody(cover);
+  const context = [cover, brief].filter(Boolean).join('\n').toLowerCase();
+  if (/삼각함수|trigonometry|\bsin\b|\bcos\b|\btan\b|sine|cosine|단위원|라디안/u.test(context)) {
+    return { topic, preset: 'trigonometry' };
+  }
+  if (/cloud\s*native|클라우드\s*네이티브|kubernetes|쿠버네티스|컨테이너|마이크로서비스|msa\b|서비스\s*메시/u.test(context)) {
+    return { topic, preset: 'cloud-native' };
+  }
+  if (/monorepo|모노레포|터보레포|turborepo|pnpm\s*workspace|nx\b|changesets|workspace\s*graph/u.test(context)) {
+    return { topic, preset: 'monorepo' };
+  }
+  if (/\bexpo\b|react\s*native|eas\s*build|eas\s*update|expo\s*router|ota|native\s*modules|config\s*plugins/u.test(context)) {
+    return { topic, preset: 'expo' };
+  }
+  if (looksLikeServiceIntroCoverLeadContext(cover, brief)) {
+    return { topic, preset: 'service-intro' };
+  }
+  return { topic, preset: 'generic' };
+}
+
+function synthTemplateItems(
+  itemTitles: string[],
+  lines: string[],
+): TemplateCloneSlideItem[] {
+  return lines.map((line, itemIndex) => {
+    const split = splitDenseTemplateCloneTitleBodyLine(line);
+    if (split) return split;
+    return {
+      title: itemTitles[itemIndex] ?? `포인트 ${itemIndex + 1}`,
+      body: line,
+    };
+  });
+}
+
+function templatesForSynthTemplateTopic(
+  profile: SynthTemplateTopicProfile,
+): SynthTemplateBodyTemplate[] {
+  const topic = profile.topic;
+  if (profile.preset === 'trigonometry') {
+    return [
+      {
+        roleHint: 'list',
+        lead: '각을 길이의 비율로 읽는 출발점',
+        itemTitles: ['직각삼각형', '단위원', '실전 의미'],
+        lines: [
+          'sin·cos·tan은 한 각이 만드는 세 변의 비율을 이름 붙인 개념',
+          '단위원으로 확장하면 0도부터 360도 이후까지 같은 규칙으로 설명 가능',
+          '높이, 거리, 파동, 회전 운동을 계산하는 공통 언어로 쓰임',
+        ],
+      },
+      {
+        roleHint: 'cards',
+        lead: '세 함수가 맡는 역할을 분리하기',
+        itemTitles: ['sin', 'cos', 'tan'],
+        lines: [
+          'sin θ: y좌표와 높이 변화, 주기 현상에서 진폭을 읽는 기준',
+          'cos θ: x좌표와 수평 변화, 위상 차이를 비교할 때의 기준',
+          'tan θ: 기울기와 방향 변화, 직선의 경사 해석으로 연결',
+        ],
+      },
+      {
+        roleHint: 'process',
+        lead: '단위원에서 그래프로 이어지는 흐름',
+        itemTitles: ['각도', '좌표', '그래프'],
+        lines: [
+          '각도와 라디안을 같은 회전량으로 대응시킨다',
+          '회전한 점의 x·y좌표를 cos·sin 값으로 읽는다',
+          '좌표 변화를 시간축에 펼치면 사인·코사인 그래프가 된다',
+        ],
+      },
+      {
+        roleHint: 'cards',
+        lead: '그래프를 볼 때 놓치기 쉬운 네 가지',
+        itemTitles: ['주기', '진폭', '평행이동'],
+        lines: [
+          '주기: 같은 모양이 반복되는 간격, 기본 sin·cos는 2π',
+          '진폭: 중심선에서 위아래로 흔들리는 최대 거리',
+          '평행이동과 위상: 그래프가 좌우·상하로 이동해도 구조는 유지',
+        ],
+      },
+      {
+        roleHint: 'list',
+        lead: '공식 암기보다 관계를 먼저 잡기',
+        itemTitles: ['피타고라스', '덧셈정리', '변환'],
+        lines: [
+          'sin²θ + cos²θ = 1은 단위원의 반지름에서 바로 나온다',
+          '덧셈정리는 두 회전을 합칠 때 좌표가 어떻게 변하는지 설명한다',
+          '그래프 변환은 y=a sin b(x-c)+d의 각 파라미터 역할로 정리한다',
+        ],
+      },
+      {
+        roleHint: 'closing',
+        lead: '문제 풀이 순서',
+        itemTitles: ['정의', '그림', '검산'],
+        lines: [
+          '먼저 각이 어느 사분면에 있는지 보고 부호를 결정한다',
+          '단위원이나 그래프를 그려 값의 범위를 검산한다',
+          '공식은 마지막에 적용해 계산량을 줄인다',
+        ],
+      },
+    ];
+  }
+  if (profile.preset === 'cloud-native') {
+    return [
+      {
+        roleHint: 'list',
+        lead: '애플리케이션을 인프라 변화에 맞게 설계하는 방식',
+        itemTitles: ['컨테이너', '오케스트레이션', '자동화'],
+        lines: [
+          '컨테이너는 실행 환경을 이미지로 고정해 배포 차이를 줄인다',
+          'Kubernetes는 배치, 복구, 확장, 서비스 발견을 운영 단위로 묶는다',
+          'CI/CD와 선언형 인프라는 변경을 작게 자주 배포하게 만든다',
+        ],
+      },
+      {
+        roleHint: 'cards',
+        lead: '클라우드 네이티브를 구성하는 핵심 축',
+        itemTitles: ['서비스', '데이터', '관측'],
+        lines: [
+          '마이크로서비스: 팀 경계와 배포 경계를 맞춰 독립성을 높인다',
+          '상태 관리: DB, 캐시, 메시지 큐의 장애 범위를 분리한다',
+          'Observability: 로그·메트릭·트레이스로 장애 원인을 빠르게 좁힌다',
+        ],
+      },
+      {
+        roleHint: 'process',
+        lead: '개발에서 운영까지 이어지는 배포 흐름',
+        itemTitles: ['빌드', '릴리스', '운영'],
+        lines: [
+          '소스 변경이 컨테이너 이미지와 SBOM으로 만들어진다',
+          'Argo CD나 Flux가 Git 상태를 클러스터에 동기화한다',
+          '롤아웃, 롤백, 오토스케일링이 운영 정책으로 자동화된다',
+        ],
+      },
+      {
+        roleHint: 'cards',
+        lead: '시니어 엔지니어가 봐야 할 트레이드오프',
+        itemTitles: ['복잡도', '비용', '신뢰성'],
+        lines: [
+          '서비스 분리는 조직 속도를 높이지만 네트워크 장애면을 넓힌다',
+          '오토스케일링은 피크 대응에 강하지만 관측 없는 비용 증가를 만든다',
+          '플랫폼 추상화는 생산성을 높이지만 표준과 예외 관리가 필요하다',
+        ],
+      },
+      {
+        roleHint: 'list',
+        lead: '도입 판단 체크리스트',
+        itemTitles: ['조직', '시스템', '운영'],
+        lines: [
+          '팀이 독립 배포와 장애 소유권을 감당할 수 있는지 확인',
+          '모놀리스 분리보다 먼저 배포 자동화와 관측 체계를 갖춘다',
+          '보안, 네트워크, 비용 정책을 플랫폼 기본값으로 만든다',
+        ],
+      },
+      {
+        roleHint: 'closing',
+        lead: '성공 기준',
+        itemTitles: ['속도', '안정', '학습'],
+        lines: [
+          '배포 빈도와 변경 실패율을 함께 낮추는 것이 목표',
+          '장애를 숨기는 자동화가 아니라 빠르게 복구하는 체계를 만든다',
+          '플랫폼 팀은 도구 제공보다 제품 팀의 반복 실행을 돕는 역할에 집중한다',
+        ],
+      },
+    ];
+  }
+  if (profile.preset === 'monorepo') {
+    return [
+      {
+        roleHint: 'list',
+        lead: '하나의 저장소에서 여러 제품과 패키지를 함께 운영하는 전략',
+        itemTitles: ['경계', '그래프', '정책'],
+        lines: [
+          '앱과 패키지의 의존 관계를 workspace graph로 명시한다',
+          '공유 코드는 소유권, API 안정성, 변경 승인 기준을 함께 둔다',
+          '저장소 통합보다 빌드·테스트 범위 축소가 성패를 좌우한다',
+        ],
+      },
+      {
+        roleHint: 'cards',
+        lead: '시니어가 먼저 설계해야 할 운영 단위',
+        itemTitles: ['패키지', '태스크', '릴리스'],
+        lines: [
+          '패키지 경계: 재사용성과 결합도를 동시에 관리한다',
+          '태스크 캐시: 변경된 부분만 빌드·테스트해 CI 시간을 줄인다',
+          '버전 전략: Changesets나 release train으로 배포 책임을 분리한다',
+        ],
+      },
+      {
+        roleHint: 'process',
+        lead: '도입 순서',
+        itemTitles: ['통합', '최적화', '거버넌스'],
+        lines: [
+          '먼저 pnpm workspace, Nx, Turborepo 중 조직에 맞는 기본 구조를 정한다',
+          'affected test와 remote cache로 반복 빌드 비용을 낮춘다',
+          'CODEOWNERS, lint boundary, package policy로 무분별한 결합을 막는다',
+        ],
+      },
+      {
+        roleHint: 'cards',
+        lead: '흔한 실패 모드',
+        itemTitles: ['숨은 결합', '느린 CI', '릴리스 혼선'],
+        lines: [
+          '공유 유틸이 모든 앱을 끌어당기면 변경 영향 범위가 폭발한다',
+          '캐시 키와 affected graph가 부정확하면 전체 테스트로 되돌아간다',
+          '독립 버전과 고정 버전을 섞으면 배포 책임이 불명확해진다',
+        ],
+      },
+      {
+        roleHint: 'list',
+        lead: '운영 지표',
+        itemTitles: ['변경 범위', '시간', '품질'],
+        lines: [
+          'PR당 affected package 수와 cross-team 변경 비율',
+          'cold build, cached build, CI critical path 소요 시간',
+          '공유 패키지 회귀율과 릴리스 롤백 빈도',
+        ],
+      },
+      {
+        roleHint: 'closing',
+        lead: '결론',
+        itemTitles: ['원칙', '다음 단계'],
+        lines: [
+          '모노레포의 목표는 코드를 한곳에 넣는 것이 아니라 변경의 영향을 계산 가능하게 만드는 것',
+          '작게 시작해 graph, cache, ownership을 먼저 안정화한 뒤 릴리스 자동화를 확장한다',
+        ],
+      },
+    ];
+  }
+  if (profile.preset === 'expo') {
+    return [
+      {
+        roleHint: 'list',
+        lead: 'React Native 제품을 빠르게 만들고 안전하게 배포하는 플랫폼',
+        itemTitles: ['Managed Workflow', 'EAS', 'OTA'],
+        lines: [
+          'Managed Workflow는 네이티브 설정을 Expo config로 표준화한다',
+          'EAS Build와 Submit은 앱스토어 배포 파이프라인을 서비스화한다',
+          'EAS Update는 JS 번들을 OTA로 배포해 긴급 수정 시간을 줄인다',
+        ],
+      },
+      {
+        roleHint: 'cards',
+        lead: '시니어 관점의 핵심 판단',
+        itemTitles: ['생산성', '네이티브 확장', '릴리스'],
+        lines: [
+          '프로토타입 속도와 장기 운영 표준화를 동시에 얻을 수 있는지 본다',
+          'Native Modules와 config plugin으로 필요한 플랫폼 기능을 확장한다',
+          '채널, 런타임 버전, 롤백 정책으로 OTA 사고 범위를 통제한다',
+        ],
+      },
+      {
+        roleHint: 'process',
+        lead: '실무 배포 흐름',
+        itemTitles: ['개발', '검증', '배포'],
+        lines: [
+          'Expo Router로 화면 구조와 deep link를 파일 시스템에 맞춘다',
+          'development build에서 네이티브 의존성을 실제 환경으로 검증한다',
+          'preview channel과 production channel을 나눠 점진적으로 릴리스한다',
+        ],
+      },
+      {
+        roleHint: 'cards',
+        lead: 'Eject가 필요한 순간',
+        itemTitles: ['제약', '비용', '대안'],
+        lines: [
+          '지원되지 않는 네이티브 SDK나 빌드 단계 제어가 필수인 경우',
+          '플랫폼별 디버깅과 CI 비용이 Managed 이점보다 커지는 경우',
+          'config plugin, custom dev client로 해결 가능한지 먼저 검토',
+        ],
+      },
+      {
+        roleHint: 'list',
+        lead: '운영 체크리스트',
+        itemTitles: ['버전', '보안', '관측'],
+        lines: [
+          'runtimeVersion 정책을 정해 호환되지 않는 OTA 배포를 막는다',
+          '환경 변수와 secret은 EAS credential 경계에서 관리한다',
+          'Crashlytics, Sentry, analytics로 릴리스 품질을 추적한다',
+        ],
+      },
+      {
+        roleHint: 'closing',
+        lead: '결론',
+        itemTitles: ['적합', '다음 단계'],
+        lines: [
+          'Expo는 빠른 시작 도구가 아니라 모바일 제품 운영 플랫폼에 가깝다',
+          '팀의 네이티브 요구, 릴리스 빈도, OTA 위험 관리 수준으로 도입 여부를 판단한다',
+        ],
+      },
+    ];
+  }
+  if (profile.preset === 'service-intro') {
+    return [
+      {
+        roleHint: 'list',
+        lead: `${topic}가 풀어야 하는 문제`,
+        itemTitles: ['문제', '사용자', '맥락'],
+        lines: [
+          '사용자가 반복해서 겪는 핵심 불편과 전환 비용을 먼저 정의',
+          '방문자가 처음 보는 순간 이해해야 할 제품 범위와 약속',
+          '사이트에서 확인되는 메시지와 실제 사용 장면을 연결',
+        ],
+      },
+      {
+        roleHint: 'cards',
+        lead: '서비스 가치 제안',
+        itemTitles: ['핵심 가치', '사용 장면', '차별점'],
+        lines: [
+          '핵심 가치: 사용자가 즉시 얻는 시간 절감, 품질 개선, 의사결정 지원',
+          '사용 장면: 도입 전 탐색, 팀 협업, 결과물 생산, 운영 관리',
+          '차별점: 기존 대안 대비 더 적은 단계로 같은 결과를 만드는 흐름',
+        ],
+      },
+      {
+        roleHint: 'process',
+        lead: '사용 흐름',
+        itemTitles: ['탐색', '실행', '확장'],
+        lines: [
+          '첫 방문에서 문제와 해결 방식을 한 문장으로 이해',
+          '주요 기능을 체험하거나 문의로 연결되는 명확한 행동 경로',
+          '팀 규모, 권한, 반복 작업으로 확장되는 운영 시나리오',
+        ],
+      },
+      {
+        roleHint: 'cards',
+        lead: '대상 고객별 메시지',
+        itemTitles: ['실무자', '리더', '운영자'],
+        lines: [
+          '실무자: 반복 작업을 줄이고 결과물 완성도를 높이는 방식',
+          '리더: 팀 속도, 품질, 비용을 함께 관리할 수 있는 기준',
+          '운영자: 권한, 저장, 감사, 보안 요구를 만족시키는 운영 체계',
+        ],
+      },
+      {
+        roleHint: 'list',
+        lead: '신뢰를 만드는 증거',
+        itemTitles: ['제품', '사례', '운영'],
+        lines: [
+          '화면, 워크플로우, 결과물 예시로 제품 실체를 보여준다',
+          '고객 유형별 문제 해결 사례와 정량·정성 효과를 정리한다',
+          '지원, 보안, 개인정보, 도입 프로세스를 투명하게 제시한다',
+        ],
+      },
+      {
+        roleHint: 'timeline',
+        lead: '도입 로드맵',
+        itemTitles: ['파일럿', '확대', '정착'],
+        lines: [
+          '작은 팀이나 단일 업무에서 빠르게 파일럿을 시작',
+          '반복 사용 패턴을 기준으로 템플릿과 권한 정책을 확장',
+          '성과 지표와 운영 책임을 정해 조직 표준으로 정착',
+        ],
+      },
+      {
+        roleHint: 'stat',
+        lead: '측정해야 할 지표',
+        itemTitles: ['전환', '활성', '품질'],
+        lines: [
+          '방문에서 문의·가입까지 이어지는 전환율',
+          '핵심 기능 반복 사용, 팀 초대, 재방문 흐름',
+          '결과물 완성도, 수정 횟수, 지원 요청 감소',
+        ],
+      },
+      {
+        roleHint: 'closing',
+        lead: '다음 액션',
+        itemTitles: ['요약', '제안'],
+        lines: [
+          `${topic} 소개는 기능 나열보다 문제, 가치, 증거, 도입 경로가 이어져야 설득력이 생긴다`,
+          '다음 단계는 실제 고객군에 맞춘 메시지 우선순위와 CTA를 확정하는 것이다',
+        ],
+      },
+    ];
+  }
+  return [
+    {
+      roleHint: 'list',
+      lead: `왜 ${topic}을 지금 다뤄야 하는가`,
+      itemTitles: ['배경', '핵심 질문', '판단 기준'],
+      lines: [
+        `${topic}의 배경과 현재 논의가 필요한 이유`,
+        '청중이 이 주제에서 가장 먼저 이해해야 할 핵심 질문',
+        '뒤 슬라이드에서 검증할 개념, 사례, 실행 기준',
+      ],
+    },
+    {
+      roleHint: 'cards',
+      lead: '핵심 개념을 세 갈래로 나누기',
+      itemTitles: ['개념', '구조', '영향'],
+      lines: [
+        '개념: 용어와 원리를 짧고 정확하게 정의',
+        '구조: 구성 요소와 서로 연결되는 방식을 설명',
+        '영향: 실제 의사결정이나 업무에 생기는 변화를 정리',
+      ],
+    },
+    {
+      roleHint: 'process',
+      lead: '이해에서 적용까지의 순서',
+      itemTitles: ['이해', '비교', '적용'],
+      lines: [
+        '먼저 전체 지도를 잡고 세부 개념을 위치시킨다',
+        '대안, 사례, 실패 패턴을 비교해 차이를 드러낸다',
+        '실제 상황에 적용할 기준과 다음 행동을 제안한다',
+      ],
+    },
+    {
+      roleHint: 'cards',
+      lead: '사례로 보는 차이',
+      itemTitles: ['좋은 사례', '주의 사례', '전환점'],
+      lines: [
+        '좋은 사례: 핵심 원리가 실제 문제를 줄이는 장면',
+        '주의 사례: 겉보기엔 비슷하지만 성과가 낮은 접근',
+        '전환점: 적용 여부를 결정하는 비용, 리스크, 기대 효과',
+      ],
+    },
+    {
+      roleHint: 'list',
+      lead: '실행 체크리스트',
+      itemTitles: ['준비', '운영', '검증'],
+      lines: [
+        '필요한 자료, 이해관계자, 현재 상태를 먼저 확인',
+        '작은 범위에서 실행하고 피드백을 빠르게 반영',
+        '성과 지표와 실패 신호를 함께 정의해 다음 단계를 결정',
+      ],
+    },
+    {
+      roleHint: 'closing',
+      lead: '정리와 다음 단계',
+      itemTitles: ['핵심 메시지', '다음 행동'],
+      lines: [
+        `${topic}은 한 번에 설명하기보다 배경, 구조, 사례, 실행 기준으로 나누면 이해도가 높아진다`,
+        '다음 단계는 청중 수준에 맞춰 예시와 실습 또는 의사결정 기준을 보강하는 것이다',
+      ],
+    },
+  ];
+}
+
 const SHALLOW_SYNTH_COVER_LEAD_RE = /한눈에\s*$/u;
 const GENERIC_SERVICE_INTRO_LEAD_RE =
   /^(?:표지|개요|커버|소개|문제|해결|요약|핵심(?:\s*\d+)?|다음\s*단계|서비스\s*소개)$/u;
@@ -786,107 +1248,17 @@ function synthesizeTemplateCloneSlideBody(
   cover: string,
   label: string,
   index: number,
+  brief?: string | null,
 ): Pick<TemplateCloneSlideContent, 'body' | 'roleHint' | 'items' | 'lead'> {
-  const topic = topicKeywordForSynthBody(cover);
-  const templates: Array<{
-    roleHint: TemplateCloneShellRole;
-    lead: string;
-    itemTitles: string[];
-    lines: string[];
-  }> = [
-    {
-      roleHint: 'list',
-      lead: `왜 ${topic}인가`,
-      itemTitles: ['문제', '병목', '판단 기준'],
-      lines: [
-        `${topic} — 해결하려는 사용자 문제와 도입 배경`,
-        '기존 업무 흐름에서 반복되는 병목과 비효율',
-        '슬라이드 전체에서 검증할 핵심 판단 기준',
-      ],
-    },
-    {
-      roleHint: 'cards',
-      lead: '한 장에 담을 세 가지 포인트',
-      itemTitles: ['가치', '협업', '흐름'],
-      lines: [
-        '핵심 기능과 사용자가 얻는 직접적인 가치',
-        '팀 단위 협업에서 맥락을 유지하는 방식',
-        '결과물 생성, 공유, 재사용까지 이어지는 흐름',
-      ],
-    },
-    {
-      roleHint: 'process',
-      lead: '초안에서 결과물까지',
-      itemTitles: ['입력', '정리', '완성'],
-      lines: [
-        '입력 자료와 요청 의도를 구조화',
-        '초안 생성 후 템플릿 레이아웃에 맞게 정리',
-        '검토, 수정, 내보내기로 실무 결과물 완성',
-      ],
-    },
-    {
-      roleHint: 'cards',
-      lead: '누구에게 어떤 변화가 생기는가',
-      itemTitles: ['팀', '연결', '관리'],
-      lines: [
-        '개인 생산성보다 팀 전체의 반복 업무 절감에 초점',
-        '문서, 슬라이드, 드라이브 연동을 하나의 작업선으로 연결',
-        '권한과 워크스페이스 기준으로 결과물을 관리',
-      ],
-    },
-    {
-      roleHint: 'list',
-      lead: '역할별 적용 장면',
-      itemTitles: ['장면', '조직', '성공 조건'],
-      lines: [
-        '사용자 역할별 주요 사용 장면',
-        '기획, 세일즈, 운영, 개발 조직에서의 적용 포인트',
-        '처음 도입할 때 확인해야 할 성공 조건',
-      ],
-    },
-    {
-      roleHint: 'timeline',
-      lead: '단계별 정착 경로',
-      itemTitles: ['1단계', '2단계', '3단계'],
-      lines: [
-        '작은 업무 단위에서 파일과 대화를 연결',
-        '반복 산출물을 템플릿화하고 공유',
-        '팀 워크플로우와 권한 체계에 정착',
-      ],
-    },
-    {
-      roleHint: 'stat',
-      lead: '운영에서 볼 지표',
-      itemTitles: ['속도', '품질', '안정'],
-      lines: [
-        '초안 작성 시간, 수정 횟수, 공유 속도',
-        '메시지 맥락 유지와 결과물 재현성',
-        '저장 안정성, 접근 권한, 감사 가능성',
-      ],
-    },
-    {
-      roleHint: 'closing',
-      lead: '다음에 할 일',
-      itemTitles: ['의미', '다음 단계'],
-      lines: [
-        `${topic} 자체는 단일 기능이 아니라 팀 작업 방식을 바꾸는 기반입니다.`,
-        '다음 단계는 실제 업무 시나리오에 맞춘 파일, 템플릿, 권한 흐름 검증입니다.',
-      ],
-    },
-  ];
+  const templates = templatesForSynthTemplateTopic(
+    classifySynthTemplateTopicProfile(cover, brief),
+  );
   const picked = templates[(index - 1) % templates.length]!;
   return {
     roleHint: picked.roleHint,
     lead: picked.lead || label,
     body: picked.lines.join('\n'),
-    items: picked.lines.map((line, itemIndex) => {
-      const split = splitDenseTemplateCloneTitleBodyLine(line);
-      if (split) return split;
-      return {
-        title: picked.itemTitles[itemIndex] ?? `포인트 ${itemIndex + 1}`,
-        body: line,
-      };
-    }),
+    items: synthTemplateItems(picked.itemTitles, picked.lines),
   };
 }
 
@@ -894,6 +1266,7 @@ function padDeterministicTemplateCloneSlides(
   slides: TemplateCloneSlideContent[],
   cover: string,
   targetCount: number,
+  brief?: string | null,
 ): TemplateCloneSlideContent[] {
   if (targetCount <= slides.length) return slides;
   const used = new Set(slides.map((slide) => slide.title.trim().toLowerCase()));
@@ -909,7 +1282,7 @@ function padDeterministicTemplateCloneSlides(
     used.add(label.toLowerCase());
     out.push({
       title: label,
-      ...synthesizeTemplateCloneSlideBody(cover, label, out.length),
+      ...synthesizeTemplateCloneSlideBody(cover, label, out.length, brief),
     });
   }
   return out;
@@ -949,7 +1322,7 @@ export function synthesizeTemplateCloneOutlineFromBrief(input: {
     const label = TEMPLATE_CLONE_GENERIC_SECTION_LABELS[i - 1] ?? `핵심 ${i}`;
     slides.push({
       title: label,
-      ...synthesizeTemplateCloneSlideBody(cover, label, i),
+      ...synthesizeTemplateCloneSlideBody(cover, label, i, brief),
     });
   }
   return { title: cover, slides };
@@ -7252,7 +7625,12 @@ export function buildTemplateClonedDeckHtml(
         const label = n === 1 ? deckTitle : `${deckTitle} · ${n}`;
         workingSlides.push({
           title: label,
-          ...synthesizeTemplateCloneSlideBody(deckTitle, label, Math.max(1, n - 1)),
+          ...synthesizeTemplateCloneSlideBody(
+            deckTitle,
+            label,
+            Math.max(1, n - 1),
+            options.brief,
+          ),
         });
       }
     }
@@ -7286,7 +7664,7 @@ export function buildTemplateClonedDeckHtml(
       }
       return {
         title: label,
-        ...synthesizeTemplateCloneSlideBody(deckTitle, label, index),
+        ...synthesizeTemplateCloneSlideBody(deckTitle, label, index, options.brief),
       };
     });
   }
@@ -8459,15 +8837,15 @@ export function synthesizeTemplateCloneSlidesFromFreeFormBrief(options: {
     },
     {
       title: '개요',
-      ...synthesizeTemplateCloneSlideBody(title, '개요', 1),
+      ...synthesizeTemplateCloneSlideBody(title, '개요', 1, brief),
     },
     {
       title: '핵심 포인트',
-      ...synthesizeTemplateCloneSlideBody(title, '핵심 포인트', 2),
+      ...synthesizeTemplateCloneSlideBody(title, '핵심 포인트', 2, brief),
     },
     {
       title: '다음 단계',
-      ...synthesizeTemplateCloneSlideBody(title, '다음 단계', 3),
+      ...synthesizeTemplateCloneSlideBody(title, '다음 단계', 3, brief),
     },
   ];
 }
@@ -8585,10 +8963,10 @@ export function resolveTemplateCloneSlidesForDeterministicFill(options: {
     }
     return {
       title: slide.title,
-      ...synthesizeTemplateCloneSlideBody(cover, slide.title, index),
+      ...synthesizeTemplateCloneSlideBody(cover, slide.title, index, brief),
     };
   });
   return slideCount != null
-    ? padDeterministicTemplateCloneSlides(densified, cover, slideCount)
+    ? padDeterministicTemplateCloneSlides(densified, cover, slideCount, brief)
     : densified;
 }
