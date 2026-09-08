@@ -7,9 +7,14 @@ import {
   SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
   SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL,
   SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL_LEGACY,
+  SPARSE_CONTENT_TOP_UP_PROMPT_SENTINEL,
   buildSlideCountTopUpPrompt,
+  buildSparseContentTopUpPrompt,
   buildThinPriorFullRewritePrompt,
   countHonoredSlideCountTopUpTurns,
+  countSparseContentTopUpAttemptsInConversation,
+  isSparseContentTopUpPrompt,
+  shouldQueueSparseContentTopUp,
   slideCountTopUpAppendUntil,
   isSlideCountTopUpPrompt,
   isThinPriorFullRewritePrompt,
@@ -541,5 +546,46 @@ describe("slideCountTopUp", () => {
     expect(isThinPriorFullRewritePrompt(prompt)).toBe(true);
     expect(isSlideCountTopUpPrompt(prompt)).toBe(false);
     expect(prompt).toMatch(/REWRITE the entire deck/i);
+  });
+
+  it("queues a sparse-content repair only for a real deck with named gaps (루프480)", () => {
+    const base = {
+      evidenceCount: 2,
+      slideCount: 7,
+      topUpCount: 0,
+      thinPrior: false,
+    };
+    expect(shouldQueueSparseContentTopUp(base)).toBe(true);
+    // No evidence — a deliberately short deck is left alone.
+    expect(shouldQueueSparseContentTopUp({ ...base, evidenceCount: 0 })).toBe(false);
+    // Thin everywhere → thin-prior rewrite owns it.
+    expect(shouldQueueSparseContentTopUp({ ...base, thinPrior: true })).toBe(false);
+    // Gaps on most slides mean the whole run failed, not a fillable hole.
+    expect(shouldQueueSparseContentTopUp({ ...base, evidenceCount: 5 })).toBe(false);
+    expect(shouldQueueSparseContentTopUp({ ...base, slideCount: 2 })).toBe(false);
+    // One repair per conversation.
+    expect(shouldQueueSparseContentTopUp({ ...base, topUpCount: 1 })).toBe(false);
+    // A comment-driven edit turn must not be hijacked.
+    expect(shouldQueueSparseContentTopUp({ ...base, commentAttachmentCount: 1 })).toBe(false);
+  });
+
+  it("names the gaps in the sparse-content repair prompt (루프480)", () => {
+    const prompt = buildSparseContentTopUpPrompt([
+      { slideIndex: 2, reason: "heading_count_shortfall", detail: "4가지 핵심 기능 (4→3)" },
+      { slideIndex: 6, reason: "title_only_card", detail: "Enterprise" },
+    ]);
+    expect(prompt.startsWith(SPARSE_CONTENT_TOP_UP_PROMPT_SENTINEL)).toBe(true);
+    expect(isSparseContentTopUpPrompt(prompt)).toBe(true);
+    expect(isSlideCountTopUpPrompt(prompt)).toBe(false);
+    expect(isThinPriorFullRewritePrompt(prompt)).toBe(false);
+    expect(prompt).toMatch(/Slide 3: the heading promised more items/);
+    expect(prompt).toMatch(/Slide 7: a card carries a title with no body/);
+    expect(prompt).toMatch(/Do NOT add slides/);
+
+    const messages = [
+      { id: "u1", role: "user", content: prompt } as ChatMessage,
+      { id: "a1", role: "assistant", content: "ok" } as ChatMessage,
+    ];
+    expect(countSparseContentTopUpAttemptsInConversation(messages)).toBe(1);
   });
 });

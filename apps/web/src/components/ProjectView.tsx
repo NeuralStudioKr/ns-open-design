@@ -175,6 +175,7 @@ import {
   collapseAdjacentDuplicateDeckSiblings,
   pinDeckSlidesToFixedCanvas,
   renderPluginBlock,
+  findDeckSparseContentEvidence,
   repairArtifactStyleSheets,
   salvageMalformedMiniMaxSlideMarkup,
   slimTemplateVisualKitForFill,
@@ -557,10 +558,13 @@ import {
   SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX,
   SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
   SLIDE_COUNT_TOP_UP_ENTRY_FROM,
+  SPARSE_CONTENT_TOP_UP_ENTRY_FROM,
   THIN_PRIOR_FULL_REWRITE_ENTRY_FROM,
   buildSlideCountTopUpPrompt,
+  buildSparseContentTopUpPrompt,
   buildThinPriorFullRewritePrompt,
   applyHonorSlideCeilingToHtml,
+  countSparseContentTopUpAttemptsInConversation,
   countThinPriorFullRewriteAttemptsInConversation,
   extractRequestedSlideCountSpecFromMessages,
   honorSlideCountCeiling,
@@ -570,6 +574,7 @@ import {
   parseSlideCountSpec,
   rollbackSlideCountTopUpCount,
   shouldQueueSlideCountTopUp,
+  shouldQueueSparseContentTopUp,
   shouldQueueThinPriorFullRewrite,
   syncSlideCountTopUpCountFromMessages,
 } from '../teamver/slideCountTopUp';
@@ -12743,6 +12748,53 @@ export function ProjectView({
             );
           };
           slideCountTopUpTimerRef.current = window.setTimeout(fireRewrite, 600);
+          return;
+        }
+        // 루프480 — The deck landed, but a heading had to be renumbered down or
+        // a card body never arrived. Repair the named slides once; a genuinely
+        // short deck leaves no evidence and never reaches here.
+        const sparseEvidence = findDeckSparseContentEvidence(html);
+        if (
+          shouldQueueSparseContentTopUp({
+            evidenceCount: sparseEvidence.length,
+            slideCount: produced,
+            topUpCount: countSparseContentTopUpAttemptsInConversation(conversationMessages),
+            thinPrior,
+            commentAttachmentCount: runCommentAttachmentsRef.current.length,
+          })
+        ) {
+          const scheduledProjectId = project.id;
+          const scheduledConversationId = activeConversationId;
+          pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
+          const repairPrompt = buildSparseContentTopUpPrompt(sparseEvidence);
+          let busyRetries = 0;
+          const fireRepair = () => {
+            slideCountTopUpTimerRef.current = null;
+            pendingSlideCountTopUpConversationIdRef.current = null;
+            if (project.id !== scheduledProjectId) return;
+            if (messagesConversationIdRef.current !== scheduledConversationId) return;
+            if (autoContinueTimerRef.current !== null) return;
+            if (abortRef.current) {
+              if (busyRetries < SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX) {
+                busyRetries += 1;
+                pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
+                slideCountTopUpTimerRef.current = window.setTimeout(
+                  fireRepair,
+                  SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
+                );
+              }
+              return;
+            }
+            const sendNow = handleSendRef.current;
+            if (!sendNow) return;
+            void Promise.resolve(
+              sendNow(repairPrompt, [], [], {
+                entryFrom: SPARSE_CONTENT_TOP_UP_ENTRY_FROM as ChatAnalyticsEntryFrom,
+                templateClonePromptFill: true,
+              }),
+            );
+          };
+          slideCountTopUpTimerRef.current = window.setTimeout(fireRepair, 600);
           return;
         }
         const already = syncSlideCountTopUpCountFromMessages(

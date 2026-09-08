@@ -111,6 +111,71 @@ export function buildThinPriorFullRewritePrompt(input: {
   ].join("\n");
 }
 
+/**
+ * 루프480 — Slides that rendered but stopped short: a heading we had to
+ * renumber down («4가지» with 3 cards) or a card whose body never arrived
+ * («Enterprise / SSO»). The deck is a real deliverable, so this is a content
+ * repair turn, not a thin-prior rewrite and not a slide-count expansion.
+ */
+export const SPARSE_CONTENT_TOP_UP_PROMPT_SENTINEL = "[od:sparse_content_top_up]";
+export const SPARSE_CONTENT_TOP_UP_ENTRY_FROM = "sparse_content_top_up";
+export const SPARSE_CONTENT_TOP_UP_MAX_PER_CONVERSATION = 1;
+/** Below this the deck is thin everywhere — thin-prior rewrite owns it. */
+export const SPARSE_CONTENT_TOP_UP_MAX_SLIDES = 4;
+
+export function isSparseContentTopUpPrompt(content: string | null | undefined): boolean {
+  const text = (content ?? "").trimStart();
+  if (!text) return false;
+  return (
+    text.startsWith(SPARSE_CONTENT_TOP_UP_PROMPT_SENTINEL)
+    || /\[od:sparse_content_top_up\]|slides below are missing items or card bodies/i.test(text)
+  );
+}
+
+export function countSparseContentTopUpAttemptsInConversation(
+  messages: readonly ChatMessage[],
+): number {
+  return messages.filter(
+    (message) => message.role === "user" && isSparseContentTopUpPrompt(message.content),
+  ).length;
+}
+
+export function shouldQueueSparseContentTopUp(input: {
+  evidenceCount: number;
+  slideCount: number;
+  topUpCount: number;
+  thinPrior: boolean;
+  commentAttachmentCount?: number;
+}): boolean {
+  if ((input.commentAttachmentCount ?? 0) > 0) return false;
+  // A hollow scaffold is not "almost done" — leave it to the full rewrite.
+  if (input.thinPrior) return false;
+  if (input.evidenceCount <= 0) return false;
+  if (input.evidenceCount > SPARSE_CONTENT_TOP_UP_MAX_SLIDES) return false;
+  if (!Number.isFinite(input.slideCount) || input.slideCount < 3) return false;
+  if (input.topUpCount >= SPARSE_CONTENT_TOP_UP_MAX_PER_CONVERSATION) return false;
+  return true;
+}
+
+export function buildSparseContentTopUpPrompt(
+  evidence: ReadonlyArray<{ slideIndex: number; reason: string; detail: string }>,
+): string {
+  const lines = evidence.map((item) => {
+    const where = `Slide ${item.slideIndex + 1}`;
+    return item.reason === "heading_count_shortfall"
+      ? `- ${where}: the heading promised more items than were emitted — ${item.detail}. Write the missing item(s) with the same card shape as its peers.`
+      : `- ${where}: a card carries a title with no body — ${item.detail}. Write its 1–2 sentence body.`;
+  });
+  return [
+    SPARSE_CONTENT_TOP_UP_PROMPT_SENTINEL,
+    "The saved deck is complete except that the slides below are missing items or card bodies.",
+    ...lines,
+    "Re-emit the FULL deck artifact. Keep every other slide's copy, layout, and kit styling byte-for-byte — only fill what is listed above.",
+    "Do NOT add slides, do NOT restyle, do NOT reword the slides that are already fine.",
+    "Emit `<artifact type=\"deck\" identifier=\"deck\">` and finish a closed `</html></artifact>` this turn.",
+  ].join("\n");
+}
+
 /** User follow-up that wants more pages — not a title/color surgical edit. */
 export function looksLikeSlideCountExpansionRequest(
   text: string | null | undefined,
