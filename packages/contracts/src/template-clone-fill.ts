@@ -75,11 +75,22 @@ const TEMPLATE_CLONE_GENERIC_SECTION_LABELS = [
   '요약',
 ] as const;
 
+const TEMPLATE_CLONE_BARE_DOMAIN_RE =
+  /\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|co\.kr|kr|io|net|ai|app|dev|org|co|xyz)\b/i;
+
 /** www / 사이트 / 서비스 소개 — Home's usual Teamver brief shape. */
 export function looksLikeTemplateCloneServiceIntroBrief(
   text: string | null | undefined,
 ): boolean {
-  return /사이트|서비스\s*소개|www\.|https?:\/\//i.test(String(text ?? ''));
+  const raw = String(text ?? '');
+  if (/사이트|서비스\s*소개|www\.|https?:\/\//i.test(raw)) return true;
+  if (
+    TEMPLATE_CLONE_BARE_DOMAIN_RE.test(raw)
+    && /회사|기업|서비스|소개|분석|브랜드|제품/u.test(raw)
+  ) {
+    return true;
+  }
+  return /(?:회사|기업|브랜드|서비스|제품)\s*(?:소개|분석|발표|슬라이드|피피티|PPT|덱|자료)/iu.test(raw);
 }
 
 type SlideShell = {
@@ -1478,7 +1489,12 @@ export function classifyTemplateCloneShellRole(shell: {
   if (/\bslide-title\b|\bcover\b|\bhero\b|\btitle-box\b/i.test(hay)) return 'cover';
   if (/\bslide-quote\b|\bquote-text\b|\bquote-mark\b/i.test(hay)) return 'quote';
   if (/\bslide-timeline\b|\btimeline\b/i.test(hay)) return 'timeline';
-  if (/\bslide-donut\b|\bslide-chart|\bdonut\b|\bchart-bar\b|\bkpi\b/i.test(hay)) return 'stat';
+  if (
+    /\bslide-donut\b|\bslide-chart|\bdonut\b|\bchart-bar\b|\bchart-frame\b|\bdata-column\b|\bdata-box\b|\bstats-grid\b|\bkpi\b/i
+      .test(hay)
+  ) {
+    return 'stat';
+  }
   if (/\bslide-team\b|\bteam-member\b|\bteam-avatar\b/i.test(hay)) return 'team';
   if (/\bslide-process\b|\bprocess-|\bstep-circle\b/i.test(hay)) return 'process';
   if (/\bslide-cards\b|\bslide-weekly\b|\bcards-grid\b|\binfo-card\b|\bweekly-grid\b/i.test(hay)) {
@@ -1647,6 +1663,80 @@ function leastUsedCardsShell(
   return best;
 }
 
+function statShellFillScore(shell: SlideShell, lineCount = 0): number {
+  const body = shell.body;
+  const statCards = countClassTokenPeers(body, 'stat-card');
+  const dataBoxes = countClassTokenPeers(body, 'data-box');
+  const metricCards = countClassTokenPeers(body, 'metric-card');
+  const peers = Math.max(statCards, dataBoxes, metricCards);
+  let score = 0;
+  if (statCards > 0 || /\bstats-grid\b/i.test(body)) score = 4;
+  else if (dataBoxes > 0 || /\bdata-column\b|\bchart-frame\b/i.test(body)) score = 3;
+  else if (metricCards > 0) score = 2;
+  else if (classifyTemplateCloneShellRole(shell) === 'stat') score = 1;
+  else return 0;
+  if (lineCount > 0 && peers > 0) {
+    if (peers === lineCount) score += 3;
+    else if (peers > lineCount) score += 1;
+    else score -= 2;
+  }
+  return score;
+}
+
+function leastUsedStatShell(
+  pool: SlideShell[],
+  usage: Map<SlideShell, number>,
+  lineCount = 0,
+): SlideShell | null {
+  const scored = pool.filter((shell) => statShellFillScore(shell, lineCount) > 0);
+  if (scored.length === 0) return leastUsedShell(pool, usage);
+  let best = scored[0]!;
+  let bestUses = usage.get(best) ?? 0;
+  let bestScore = statShellFillScore(best, lineCount);
+  for (const shell of scored) {
+    const uses = usage.get(shell) ?? 0;
+    const score = statShellFillScore(shell, lineCount);
+    if (score > bestScore || (score === bestScore && uses < bestUses)) {
+      best = shell;
+      bestUses = uses;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+function shellSupportsContentRole(
+  shell: SlideShell,
+  role: TemplateCloneShellRole,
+  lineCount = 0,
+): boolean {
+  const shellRole = classifyTemplateCloneShellRole(shell);
+  if (shellRole === role) return true;
+  const hay = `${shell.attrs}\n${shell.body}`;
+  switch (role) {
+    case 'cover':
+      return shellRole === 'cover';
+    case 'list':
+    case 'process':
+    case 'timeline':
+      return /<[uo]l\b|\b(?:content-list|welcome-list|timeline|timeline-step|process-|feature-card|intro-card|stat-card|stats-grid)\b/i
+        .test(hay);
+    case 'cards':
+      return cardsShellFillScore(shell, lineCount) > 0;
+    case 'stat':
+      return shellRole === 'stat' || /\b(?:data-box|stat-card|stats-grid|chart-frame|kpi|metric-card)\b/i.test(hay);
+    case 'team':
+      return shellRole === 'team' || /\b(?:team-card|team-member|member-card)\b/i.test(hay);
+    case 'closing':
+      return shellRole === 'closing' || shellRole === 'quote' || shellRole === 'body';
+    case 'quote':
+      return shellRole === 'quote' || shellRole === 'body';
+    case 'body':
+    default:
+      return shellRole === 'body' || shellRole === 'list' || shellRole === 'cards' || shellRole === 'quote';
+  }
+}
+
 function pickShellByRole(
   role: TemplateCloneShellRole,
   byRole: Map<TemplateCloneShellRole, SlideShell[]>,
@@ -1684,10 +1774,14 @@ function pickShellByRole(
 
   for (const candidateRole of fallbacks) {
     // Never reuse the cover shell for body roles — title layouts lack list/card slots.
-    const pool = (byRole.get(candidateRole) ?? []).filter((shell) => shell !== cover);
+    const pool = role === 'cards' && candidateRole === 'cards'
+      ? bodyPool.filter((shell) => cardsShellFillScore(shell, lineCount) > 0)
+      : (byRole.get(candidateRole) ?? []).filter((shell) => shell !== cover);
     const best = role === 'cards' && candidateRole === 'cards'
       ? leastUsedCardsShell(pool, usage, lineCount)
-      : leastUsedShell(pool, usage);
+      : role === 'stat' && candidateRole === 'stat'
+        ? leastUsedStatShell(pool, usage, lineCount)
+        : leastUsedShell(pool, usage);
     if (best) return best;
   }
 
@@ -1722,12 +1816,21 @@ export function pickTemplateShellsForContent(
       .map((line) => line.trim())
       .filter(Boolean).length;
     let shell = pickShellByRole(role, byRole, cover, bodyPool, usage, lineCount);
-    // 루프430 — Never reuse a shell while unused body shells exist. Role
-    // classification is too coarse for Biennale-family kits (s-chapter and
-    // s-colophon classify as 'closing' so the 'timeline'/'stat' picker
-    // fallback misses them). Prefer any remaining unused body shell before
-    // duplicating an already-picked one.
+    // 루프480 — Prefer unused shells only when they can actually host this
+    // content role. The older unconditional "any unused shell" rule pushed
+    // prose/list slides into BlockFrame's sparse stats/data slide, producing
+    // tiny centered cards and underfilled pages. Unique-role editorial kits
+    // still get the old diversity behavior because duplicate manifesto/data
+    // shells look worse there.
     if ((usage.get(shell) ?? 0) > 0) {
+      const unused = bodyPool.find(
+        (candidate) =>
+          (usage.get(candidate) ?? 0) === 0
+          && shellSupportsContentRole(candidate, role, lineCount),
+      );
+      if (unused) shell = unused;
+    }
+    if ((usage.get(shell) ?? 0) > 0 && templateShellsAreUniqueRole(shells)) {
       const unused = bodyPool.find((candidate) => (usage.get(candidate) ?? 0) === 0);
       if (unused) shell = unused;
     }
@@ -7064,7 +7167,9 @@ function fillOneCardPeer(cardHtml: string, line: TemplateCloneCardFillLine): str
   // metric was supplied.
   if (/\bdata-box\b/i.test(cardHtml) && /\bdata-(?:num|label)\b/i.test(next)) {
     const slots = assignStatSlots(text, body);
-    const value = titleLooksLikeMetric(slots.value) ? slots.value : '';
+    const metricValue = titleLooksLikeMetric(slots.value) ? slots.value : '';
+    const value = metricValue || slots.label || text;
+    const label = metricValue ? (slots.label || slots.value) : (slots.value || body || text);
     next = fillClassInner(
       next,
       /(<[^>]*\bdata-num\b[^>]*>)([\s\S]*?)(<\/)/i,
@@ -7073,7 +7178,7 @@ function fillOneCardPeer(cardHtml: string, line: TemplateCloneCardFillLine): str
     next = fillClassInner(
       next,
       /(<[^>]*\bdata-label\b[^>]*>)([\s\S]*?)(<\/)/i,
-      slots.label || slots.value,
+      label,
     );
     return next;
   }
@@ -8173,11 +8278,15 @@ function deriveTitleFromBrief(brief: string, deckTitle?: string | null): string 
     )?.[0] ?? '',
     brief,
   );
-  let title = siteBrand || aboutTopic || first
+  const domainBrand = polishUrlSiteCoverTitle(
+    first.match(TEMPLATE_CLONE_BARE_DOMAIN_RE)?.[0] ?? '',
+    brief,
+  );
+  let title = siteBrand || domainBrand || aboutTopic || first
     .replace(/^(?:please\s+)?(?:make|create|build|write)\s+(?:me\s+)?(?:a|an|the)?\s*/i, '')
     .replace(/\s+(?:slides?|deck|presentation)\s*\.?$/i, '')
     .replace(
-      /\s*(?:에\s*대해(?:서)?|에\s*대한|에\s*관한)?\s*(?:설명하는\s*)?(?:발표\s*자료|피피티|PPT|슬라이드|덱|프레젠테이션)?\s*(?:을|를)?\s*(?:만들어|작성|생성|설명해?).*$/i,
+      /\s*(?:에\s*대해(?:서)?|에\s*대한|에\s*관한)?\s*(?:설명하는\s*)?(?:발표\s*자료|피피티|PPT|슬라이드|덱|프레젠테이션)?\s*(?:을|를)?\s*(?:만들어|작성|생성|구성|채워|담아|보내|설명해?).*$/iu,
       '',
     )
     .replace(/^(?:슬라이드|발표자료|덱)\s*/i, '')
@@ -8244,6 +8353,12 @@ export function looksLikeInstructionCopy(text: string): boolean {
   if (/첨부(?:한)?\s*.+\s*바탕으로\s*슬라이드/i.test(t)) return true;
   if (/요청한\s*내용으로\s*슬라이드/i.test(t)) return true;
   if (/^슬라이드\s*(?:덱|내용)을?\s*(?:만들어|채워)\s*줘\.?$/u.test(t)) return true;
+  if (
+    /(?:만들어|작성|생성|구성(?:하여)?|채워\s*담아|채워|담아|보내|출력|적용)\s*(?:줘|주세요|드립니다|드릴게요)?/iu.test(t)
+    && /(?:슬라이드|덱|피피티|PPT|템플릿|본문|비주얼|자료|발표|페이지)/iu.test(t)
+  ) {
+    return true;
+  }
   if (/(?:만들어|작성|생성)\s*(?:줘|주세요)|설명해?\s*(?:줘|주세요)/i.test(t)) return true;
   if (/^(?:please\s+)?(?:make|create|build|write|generate)\s+/i.test(t)) return true;
   if (/피피티|PPT|슬라이드\s*덱/i.test(t) && /(?:만들어|작성|생성|설명)/i.test(t)) return true;

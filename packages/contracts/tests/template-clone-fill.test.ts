@@ -14,6 +14,7 @@ import {
   inferTemplateCloneContentRole,
   listTemplateCloneSlideShells,
   looksLikeInstructionCopy,
+  looksLikeTemplateCloneServiceIntroBrief,
   catalogExampleShouldBeScrubbed,
   looksLikeLeakedApiModeFilesystemProse,
   looksLikeLeftoverTemplateDemoDeck,
@@ -504,6 +505,58 @@ describe('루프450/459/469/470/472 Zhangzara template quality gates', () => {
     const statsGrids = [...healed.matchAll(/\bclass="[^"]*\bstats-grid\b/gi)];
     expect(statsGrids.length).toBe(1);
     expect(healed).not.toMatch(/stat-card"\s*>\s*<\/div>\s*<div class="stat-number"/i);
+  });
+
+  it('루프480: bare domain company Block Frame fill keeps dense service content', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-block-frame/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const brief = 'neuralstudio.kr 회사 BlockFrame 템플릿 비주얼로 구성하여 슬라이드 본문을 채워 담아줘. 9장';
+    expect(looksLikeTemplateCloneServiceIntroBrief(brief)).toBe(true);
+    expect(looksLikeInstructionCopy(brief)).toBe(true);
+    expect(deriveDeckCoverTitleFromBrief(brief, 'Neuralstudio KR 회사')).toBe('Neuralstudio KR 회사');
+
+    const slides = resolveTemplateCloneSlidesForDeterministicFill({
+      userInstruction: brief,
+      deckTitle: 'Neuralstudio KR 회사',
+      slideCount: 9,
+    });
+    expect(slides).toHaveLength(9);
+    expect(slides[0]?.title).toBe('NeuralStudio');
+    expect(JSON.stringify(slides)).not.toMatch(/BlockFrame\s*템플릿|채워\s*담아줘|비주얼로\s*구성/);
+    expect(JSON.stringify(slides)).toMatch(/서비스\s*가치|도입\s*로드맵|대상\s*고객|신뢰/);
+
+    const picked = pickTemplateShellsForContent(listTemplateCloneSlideShells(html), slides);
+    expect(picked[5]!.body).not.toMatch(/\bdata-box\b/i);
+
+    const cloned = buildTemplateClonedDeckHtml(html, slides, {
+      title: 'Neuralstudio KR 회사',
+      templateId: 'html-ppt-zhangzara-block-frame',
+      brief,
+      maxSlides: 9,
+    });
+    expect(cloned).toBeTruthy();
+    const shells = listTemplateCloneSlideShells(cloned!);
+    expect(shells).toHaveLength(9);
+    const sixthText = shells[5]!.full
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    expect(sixthText.length).toBeGreaterThan(80);
+    expect(sixthText).toMatch(/신뢰|제품|사례|운영/);
+    expect(sixthText).not.toMatch(/^고객 경험\s+준비\s+운영\s+검증$/);
+    const eighthText = shells[7]!.full
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    expect(eighthText).toMatch(/전환.*방문에서 문의|활성.*반복 사용|품질.*완성도/);
+    expect(cloned).not.toMatch(/BlockFrame\s*템플릿|채워\s*담아줘|비주얼로\s*구성/);
   });
 });
 
