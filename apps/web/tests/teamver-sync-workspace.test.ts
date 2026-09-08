@@ -17,7 +17,10 @@ vi.mock("../src/teamver/designBffClient", () => ({
   })),
 }));
 
-import { syncTeamverWorkspaceFromSession } from "../src/teamver/syncTeamverWorkspace";
+import {
+  readStoredWorkspaceIdOnSession,
+  syncTeamverWorkspaceFromSession,
+} from "../src/teamver/syncTeamverWorkspace";
 
 describe("syncTeamverWorkspaceFromSession", () => {
   beforeEach(() => {
@@ -215,5 +218,50 @@ describe("syncTeamverWorkspaceFromSession", () => {
 
     expect(active).toBe("WS-last");
     expect(storeSetMock).toHaveBeenCalledWith("WS-last");
+  });
+});
+
+/**
+ * 루프477 (0908-N01 P1) — boot and `/auth/callback` use this to decide whether
+ * Main FE's launch `workspace_id` may seed the store. An existing in-Design
+ * pick must win, otherwise every re-entry from Main overwrites it.
+ */
+describe("readStoredWorkspaceIdOnSession", () => {
+  beforeEach(() => {
+    storeGetMock.mockReset();
+    storeGetMock.mockResolvedValue(null);
+  });
+
+  const session = {
+    authenticated: true,
+    user: { userId: "user-1" },
+    defaultWorkspaceId: "WS-default",
+    workspaces: [
+      { id: "WS-picked", name: "Picked", role: "owner", appEnabled: false },
+      { id: "WS-default", name: "Default", role: "owner", appEnabled: true },
+    ],
+  };
+
+  it("returns the stored pick even when the Design app is disabled on it", async () => {
+    storeGetMock.mockResolvedValue("WS-picked");
+    // `appEnabled` is the auto-switch path's concern (P2), not this guard's.
+    expect(await readStoredWorkspaceIdOnSession(session)).toBe("WS-picked");
+  });
+
+  it("returns null when the stored pick is no longer on the session list", async () => {
+    storeGetMock.mockResolvedValue("WS-revoked");
+    expect(await readStoredWorkspaceIdOnSession(session)).toBeNull();
+  });
+
+  it("returns null on a first-ever entry so the launch hint may seed the store", async () => {
+    storeGetMock.mockResolvedValue(null);
+    expect(await readStoredWorkspaceIdOnSession(session)).toBeNull();
+  });
+
+  it("returns null for an unauthenticated session", async () => {
+    storeGetMock.mockResolvedValue("WS-picked");
+    expect(
+      await readStoredWorkspaceIdOnSession({ ...session, authenticated: false }),
+    ).toBeNull();
   });
 });

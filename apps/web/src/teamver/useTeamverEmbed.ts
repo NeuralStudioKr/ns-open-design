@@ -615,7 +615,30 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         return;
       }
     }
-    void refresh({ silent: boot?.session.authenticated === true });
+
+    // Refreshing while session boot is still running fires a second workspace
+    // reconcile with `preserveStoredWorkspace: false` (boot is not complete
+    // yet), racing boot's own reconcile and letting the loser overwrite the
+    // stored pick. Wait for boot — `waitForTeamverEmbedBoot` races a 3.5s
+    // fallback, so a hung probe cannot strand us here (0908-N01 P3).
+    let cancelled = false;
+    void (async () => {
+      if (!isTeamverEmbedBootComplete()) {
+        await waitForTeamverEmbedBoot();
+        if (cancelled) return;
+        const settled = peekEmbedBootstrapSession();
+        if (settled?.session.authenticated) {
+          setState(applySessionToEmbedState(settled.session, settled.activeWorkspaceId));
+          return;
+        }
+      }
+      if (cancelled) return;
+      void refresh({ silent: boot?.session.authenticated === true });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [refresh]);
 
   useEffect(() => {

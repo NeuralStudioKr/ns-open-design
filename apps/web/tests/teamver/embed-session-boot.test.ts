@@ -65,6 +65,47 @@ describe("teamver embed session boot", () => {
     );
     expect(client).toContain("prefetchEmbedAuthSessionOnBoot");
   });
+
+  it("루프477: an in-Design workspace pick outranks Main's launch hint", () => {
+    const boot = readFileSync(
+      resolve(webRoot, "src/teamver/teamverEmbedSessionBoot.ts"),
+      "utf8",
+    );
+
+    // Consume, not peek — the hint lives in sessionStorage and would otherwise
+    // re-apply on every refresh (0908-N01 P1).
+    expect(boot).toContain("consumeLaunchWorkspaceIdHint()");
+    expect(boot).not.toContain("readLaunchWorkspaceIdFromBrowserUrl");
+    expect(boot).toContain("readStoredWorkspaceIdOnSession(session)");
+    expect(boot).toContain("if (launchWorkspaceId && !storedOnSession)");
+  });
+
+  it("루프477: the auth callback applies the same precedence and realigns the BFF", () => {
+    const callback = readFileSync(
+      resolve(webRoot, "app/auth/callback/page.tsx"),
+      "utf8",
+    );
+
+    expect(callback).toContain("readStoredWorkspaceIdOnSession(session)");
+    expect(callback).toContain("const preferred = storedOnSession ?? launchWs");
+    // Exchange pinned the BFF session to the launch hint — keeping the stored
+    // pick locally without a server POST drifts X-Workspace-Id (§13/§14).
+    expect(callback).toContain("const needsRealign = preferred !== launchWs");
+  });
+
+  it("루프477: mount does not reconcile the workspace while boot is still running", () => {
+    const hook = readFileSync(
+      resolve(webRoot, "src/teamver/useTeamverEmbed.ts"),
+      "utf8",
+    );
+
+    // Both boot and a boot-time refresh reconcile with preserveStoredWorkspace
+    // false, so racing them lets the loser overwrite the stored pick.
+    expect(hook).toMatch(
+      /if \(!isTeamverEmbedBootComplete\(\)\) \{\s*await waitForTeamverEmbedBoot\(\);/,
+    );
+    expect(hook).toContain("preserveStoredWorkspace: !resetRefreshState && isTeamverEmbedBootComplete()");
+  });
 });
 
 describe("embed bootstrap gate boot fallback", () => {

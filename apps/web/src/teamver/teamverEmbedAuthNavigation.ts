@@ -4,6 +4,12 @@ import { isTeamverEmbedMode } from "./designApiBase";
 
 const COSMETIC_LAUNCH_PARAMS = ["theme", "locale", "workspace_id", "workspace"] as const;
 const LAUNCH_PREFS_KEY = "teamver:embed-launch-prefs";
+/**
+ * Kept apart from `LAUNCH_PREFS_KEY` — `consumeEmbedLaunchPrefs` clears prefs
+ * while reading them, so sharing one key would let the theme/locale consumer
+ * swallow the workspace hint before boot sees it.
+ */
+const LAUNCH_WORKSPACE_KEY = "teamver:embed-launch-workspace";
 
 type LaunchPrefs = {
   theme?: AppTheme;
@@ -104,6 +110,33 @@ export function readLaunchWorkspaceIdFromBrowserUrl(): string | null {
   );
 }
 
+function stashLaunchWorkspaceId(workspaceId: string): void {
+  try {
+    sessionStorage.setItem(LAUNCH_WORKSPACE_KEY, workspaceId);
+  } catch {
+    // sessionStorage blocked
+  }
+}
+
+/**
+ * Launch workspace hint for boot, surviving the address-bar scrub above.
+ *
+ * One-shot on purpose: sessionStorage outlives a refresh, so leaving the hint
+ * behind would re-apply Main's workspace on every reload and override the pick
+ * the user made inside Design (0908-N01 P1).
+ */
+export function consumeLaunchWorkspaceIdHint(): string | null {
+  if (typeof window === "undefined") return null;
+  const fromUrl = readLaunchWorkspaceIdFromBrowserUrl();
+  try {
+    const stashed = sessionStorage.getItem(LAUNCH_WORKSPACE_KEY)?.trim() || null;
+    sessionStorage.removeItem(LAUNCH_WORKSPACE_KEY);
+    return fromUrl || stashed;
+  } catch {
+    return fromUrl;
+  }
+}
+
 export function scrubCosmeticLaunchParamsFromBrowserUrl(): LaunchPrefs {
   if (typeof window === "undefined") return {};
   const url = new URL(window.location.href);
@@ -112,6 +145,11 @@ export function scrubCosmeticLaunchParamsFromBrowserUrl(): LaunchPrefs {
   const prefs: LaunchPrefs = {};
   if (isThemePreference(themeRaw)) prefs.theme = themeRaw;
   if (localeRaw?.trim()) prefs.locale = localeRaw.trim();
+
+  // Read before the delete loop below — boot runs after this scrub and would
+  // otherwise never see Main's workspace hint.
+  const workspaceHint = readLaunchWorkspaceIdFromBrowserUrl();
+  if (workspaceHint) stashLaunchWorkspaceId(workspaceHint);
 
   let changed = false;
   for (const key of COSMETIC_LAUNCH_PARAMS) {

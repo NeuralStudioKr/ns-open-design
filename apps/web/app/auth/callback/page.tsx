@@ -17,7 +17,10 @@ import { EmbedLoadingShell } from '@/src/components/EmbedLoadingShell';
 import { seedEmbedBootstrapSession } from '@/src/teamver/embedBootstrapSession';
 import { setTeamverEmbedSessionAuthenticated } from '@/src/teamver/teamverEmbedSession';
 import { setActiveTeamverWorkspace } from '@/src/teamver/setActiveTeamverWorkspace';
-import { syncTeamverWorkspaceFromSession } from '@/src/teamver/syncTeamverWorkspace';
+import {
+  readStoredWorkspaceIdOnSession,
+  syncTeamverWorkspaceFromSession,
+} from '@/src/teamver/syncTeamverWorkspace';
 import {
   finishEmbedAuthNavigation,
   normalizeEmbedAuthReturnDestination,
@@ -55,15 +58,23 @@ function AuthCallbackInner() {
         const session = await fetchDesignAuthSession({ force: true, resetRefreshState: true });
         if (session?.authenticated) {
           setTeamverEmbedSessionAuthenticated(true);
-          const preferred = ws?.trim() || null;
+          // 0908-N01 P1 — same precedence as the warm boot path: an existing
+          // in-Design pick outranks the launch hint carried through sign-in.
+          const storedOnSession = await readStoredWorkspaceIdOnSession(session);
+          const launchWs = ws?.trim() || null;
+          const preferred = storedOnSession ?? launchWs;
           let activeWorkspaceId: string | null = null;
           if (preferred) {
+            // The exchange above pinned the BFF session to `launchWs`, so when
+            // we keep the stored pick instead we must realign the server too or
+            // `X-Workspace-Id` drifts ahead of the cookie (§13/§14).
+            const needsRealign = preferred !== launchWs;
             // Use recovery ladder + boolean contract — raw POST swallow drifted
             // local store ahead of BFF cookie (§16).
-            const advanced = await setActiveTeamverWorkspace(
-              preferred,
-              session.user?.userId,
-            );
+            const advanced =
+              needsRealign || !storedOnSession
+                ? await setActiveTeamverWorkspace(preferred, session.user?.userId)
+                : true;
             activeWorkspaceId = await syncTeamverWorkspaceFromSession(
               session,
               undefined,

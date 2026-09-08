@@ -38,6 +38,43 @@ describe("teamverEmbedAuthNavigation", () => {
     expect(consumeEmbedLaunchPrefs()).toEqual({});
   });
 
+  it("루프477: stashes the launch workspace hint before scrubbing it from the URL", async () => {
+    window.history.replaceState({}, "", "/?workspace_id=ws-launch&theme=dark");
+    const { scrubCosmeticLaunchParamsFromBrowserUrl, consumeLaunchWorkspaceIdHint } = await import(
+      "../../src/teamver/teamverEmbedAuthNavigation"
+    );
+
+    scrubCosmeticLaunchParamsFromBrowserUrl();
+    expect(window.location.search).toBe("");
+
+    // Boot runs after the scrub — the hint must survive it.
+    expect(consumeLaunchWorkspaceIdHint()).toBe("ws-launch");
+  });
+
+  it("루프477: launch workspace hint is one-shot so a refresh cannot re-apply it", async () => {
+    window.history.replaceState({}, "", "/?workspace=ws-launch");
+    const { scrubCosmeticLaunchParamsFromBrowserUrl, consumeLaunchWorkspaceIdHint } = await import(
+      "../../src/teamver/teamverEmbedAuthNavigation"
+    );
+
+    scrubCosmeticLaunchParamsFromBrowserUrl();
+    expect(consumeLaunchWorkspaceIdHint()).toBe("ws-launch");
+    expect(consumeLaunchWorkspaceIdHint()).toBeNull();
+  });
+
+  it("루프477: prefers a live URL hint over a stale stash", async () => {
+    const { scrubCosmeticLaunchParamsFromBrowserUrl, consumeLaunchWorkspaceIdHint } = await import(
+      "../../src/teamver/teamverEmbedAuthNavigation"
+    );
+
+    window.history.replaceState({}, "", "/?workspace_id=ws-stashed");
+    scrubCosmeticLaunchParamsFromBrowserUrl();
+
+    // `/auth/callback` reads params before its own scrub runs.
+    window.history.replaceState({}, "", "/auth/callback?workspace_id=ws-fresh");
+    expect(consumeLaunchWorkspaceIdHint()).toBe("ws-fresh");
+  });
+
   it("defers login redirect while auth return is pending", async () => {
     sessionStorage.setItem(TEAMVER_AUTH_RETURN_PENDING_KEY, String(Date.now()));
     const { shouldDeferEmbedLoginRedirect } = await import(

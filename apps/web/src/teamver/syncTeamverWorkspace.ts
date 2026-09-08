@@ -12,6 +12,32 @@ function readSessionUserId(session: DesignAuthSession): string | null {
 }
 
 /**
+ * The workspace the user last picked inside Design, when it is still present on
+ * the session list.
+ *
+ * `appEnabled` is deliberately ignored — that judgement belongs to the
+ * auto-switch path in `syncTeamverWorkspaceFromSession`. Callers use this only
+ * to decide whether a launch-URL hint from Main FE may seed the store at all
+ * (0908-N01 P1: an existing in-Design pick outranks the hint).
+ */
+export async function readStoredWorkspaceIdOnSession(
+  session: DesignAuthSession,
+  workspacesInput?: WorkspaceListItem[],
+): Promise<string | null> {
+  if (!session.authenticated) return null;
+
+  const client = getDesignBffClient();
+  const store = client?.workspaceStore as LocalStorageWorkspaceStore | null | undefined;
+  if (!store) return null;
+
+  const stored = (await store.get())?.trim() || null;
+  if (!stored) return null;
+
+  const workspaces = workspacesInput ?? normalizeWorkspaceList(session.workspaces);
+  return workspaces.some((workspace) => workspace.id === stored) ? stored : null;
+}
+
+/**
  * Embed boot: seed `teamver_design_active_workspace_id` from Main BE session/bootstrap.
  * Registry, usage, and publish send `X-Workspace-Id` from this store.
  */

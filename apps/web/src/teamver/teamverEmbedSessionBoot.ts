@@ -15,7 +15,7 @@ import {
   redirectToDesignLoginIfBffMissing,
   resolveEmbedBootSessionOptions,
 } from "./teamverEmbedAuthFlow";
-import { readLaunchWorkspaceIdFromBrowserUrl } from "./teamverEmbedAuthNavigation";
+import { consumeLaunchWorkspaceIdHint } from "./teamverEmbedAuthNavigation";
 import {
   clearTeamverEmbedSessionState,
   setTeamverEmbedSessionAuthenticated,
@@ -24,7 +24,10 @@ import {
   completeTeamverEmbedBoot,
   isTeamverEmbedBootComplete,
 } from "./teamverEmbedBoot";
-import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
+import {
+  readStoredWorkspaceIdOnSession,
+  syncTeamverWorkspaceFromSession,
+} from "./syncTeamverWorkspace";
 import { setActiveTeamverWorkspace } from "./setActiveTeamverWorkspace";
 import {
   ensureTeamverProjectRegisteredById,
@@ -110,9 +113,14 @@ export async function runTeamverEmbedSessionBoot(
       // Announce after the ladder settles (live cookie or soft sticky).
       setTeamverEmbedSessionAuthenticated(true);
 
-      const launchWorkspaceId = readLaunchWorkspaceIdFromBrowserUrl();
+      // Consume (not peek): the hint lives in sessionStorage, which survives a
+      // refresh, so leaving it would re-apply Main's workspace on every reload.
+      const launchWorkspaceId = consumeLaunchWorkspaceIdHint();
+      // 0908-N01 P1 — a workspace the user already picked inside Design wins
+      // over Main's launch hint. The hint only seeds a first-ever entry.
+      const storedOnSession = await readStoredWorkspaceIdOnSession(session);
       let activeWorkspaceId: string | null = null;
-      if (launchWorkspaceId) {
+      if (launchWorkspaceId && !storedOnSession) {
         // Launch URL override must go through BFF workspace POST + recovery
         // ladder — local-only store seed drifts X-Workspace-Id vs cookie (§16).
         const advanced = await setActiveTeamverWorkspace(
