@@ -18,7 +18,7 @@ describe("canvasLaunchHandoff", () => {
     window.history.replaceState(
       {},
       "",
-      "/?teamverCanvasSessionId=s1&teamverCanvasArtifactId=a1&teamverCanvasRev=rev1&teamverCanvasTitle=Hello&teamverCanvasPreview=Body+preview&teamverCanvasSections=3&teamverDriveIntent=create-slides",
+      "/?teamverCanvasSessionId=s1&teamverCanvasArtifactId=a1&teamverCanvasRev=rev1&teamverCanvasTitle=Hello&teamverCanvasPreview=Body+preview&teamverCanvasSections=3&teamverCanvasUpdatedAt=2026-08-07T07%3A17%3A21Z&teamverDriveIntent=create-slides",
     );
     expect(readTeamverCanvasLaunchHandoff()).toEqual({
       sessionId: "s1",
@@ -27,8 +27,19 @@ describe("canvasLaunchHandoff", () => {
       title: "Hello",
       preview: "Body preview",
       sectionCount: 3,
-      updatedAt: "rev1",
+      updatedAt: "2026-08-07T07:17:21Z",
     });
+  });
+
+  it("does not echo the revision id as updatedAt", () => {
+    // rev ids are not dates: the `updatedAt = … || revision` fallback was removed in 3bec4255ee
+    // so the modal no longer renders a revision id where a timestamp belongs.
+    window.history.replaceState(
+      {},
+      "",
+      "/?teamverCanvasSessionId=s1&teamverCanvasArtifactId=a1&teamverCanvasRev=rev1&teamverDriveIntent=create-slides",
+    );
+    expect(readTeamverCanvasLaunchHandoff()?.updatedAt).toBeUndefined();
   });
 
   it("builds and consumes canvas handoff query including display meta", () => {

@@ -248,7 +248,8 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(projectView).toContain('Do NOT wrap every deck skill as "user explicitly picked this template"');
     // Guard copy lives in the helper (not inlined in ProjectView).
     const helper = readSource('src/runtime/selected-deck-template.ts');
-    expect(helper).toContain('Teamver selected deck template guard');
+    // Header was renamed (Teamver 접두 제거) in 0684989010 so the model does not parrot branding.
+    expect(helper).toContain('# Selected deck template guard');
     expect(helper).toContain('primary visual contract');
     expect(helper).toContain('use it only as secondary brand');
     expect(helper).toContain('secondary brand');

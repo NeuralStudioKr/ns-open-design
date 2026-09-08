@@ -131,6 +131,22 @@ staging이 아직 수정 이전 빌드를 서비스해(아래 §bake) 브라우�
 
 고정 문자 거리 정규식은 무관한 커밋이 사이에 코드를 끼워 넣으면 깨진다(이번엔 옆 에픽 `97593bb46f`의 `ProjectView.tsx` 편집). 숫자를 키우는 대신 가까운 앵커나 순서 검사로 바꿨다.
 
+나머지 5파일은 전부 **의도된 소스 변경**을 테스트가 따라가지 못한 경우로, 커밋 SHA로 확인했다.
+
+| 파일 | 노후화 → 현재 사실 | 근거 |
+|------|------|------|
+| `teamver-canvas-launch-handoff` | `updatedAt`의 `\|\| revision` 폴백 제거 (rev id는 날짜가 아님) | `3bec4255ee` |
+| `teamver-canvas-slide-launch-modal` | quick settings에 `customSlideCount: null` 추가 | `11756c415e` |
+| `teamver-report-usage` | 상시 마커에서 workspaceId/runId/modelName/토큰수 제거(서버 metric 소관) | `e9e1b78060` |
+| `teamver-embed-slide-only` | `Teamver selected deck template guard` → `# Selected deck template guard` (브랜딩 접두 제거) | `0684989010` |
+| `teamver/persistDeckDisplayTitle` | 제네릭 `슬라이드`가 제목을 고정하지 않고 브리프 주제(`expo`)를 추출 | `b29cd711d4` |
+
+단정을 지우고 통과시키지 않도록, 제거된 필드는 다른 테스트(`console-leak-sanitization.test.ts`)가 커버함을 확인한 뒤 주석으로 위치를 남기고 마커의 실제 payload(`error`·`ts`)에 대한 단정을 새로 넣었다. `updatedAt` 건도 "rev를 timestamp 자리에 넣지 않는다"는 새 사실을 지키는 테스트를 추가했다.
+
+### 결과
+
+**192파일 1275테스트 전부 통과 (실패 0).** 착수 시점 41건 실패에서 전부 해소됐다.
+
 ## 남은 일
 
 - **staging 배포 후** 수동 검증: Design에서 B 선택 → F5 → B 유지 / Main `?workspace_id=A` 재진입 → B 유지 / 최초 진입 → A 시드 / 비활성 WS에서 전환 안내 노출 — 배포는 사용자가 직접 진행
@@ -165,9 +181,14 @@ staging이 아직 수정 이전 빌드를 서비스해(아래 §bake) 브라우�
 
 레포는 `"node": "~24"`를 요구하는데 Node 22.11에서는 jsdom 스위트가 **전부** 기동 실패한다(`html-encoding-sniffer@6` → `@exodus/bytes` ESM을 `require`). 무플래그 `require(ESM)`은 22.12부터라 22.11이 경계 바로 아래다. 테스트 전 Node 24 확인이 필요하다.
 
-### 회귀 대조 (슬라이스 B 이후)
+### 회귀 대조
 
-관련 8스위트 **89 통과 / 6 실패**. 실패 6건은 전부 `teamver-use-embed.test.tsx`의 선행 부채(HEAD 베이스라인 7건)이며, 이번 변경으로 1건이 줄었다.
+| 시점 | 결과 |
+|------|------|
+| 슬라이스 B | 관련 8스위트 89 통과 / 6 실패 — 6건을 `use-embed`의 선행 부채로 판단 |
+| 슬라이스 D | **192파일 1275테스트 전부 통과 / 실패 0** |
+
+슬라이스 B에서 "어쩔 수 없는 코드베이스 부채"로 넘긴 6건은 오판이었다. 원인은 인증 래더 mock 누락이었고 지금은 통과한다.
 `tsc -b --noEmit`: 레포 전체 451건(슬라이스 A 시점 457건) — 이번에 만진 파일 에러 0.
 
 ## 주의 — 동시 세션 충돌

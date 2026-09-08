@@ -193,11 +193,13 @@ describe("TeamverCanvasSlideLaunchModal", () => {
 
     expect(screen.getByTestId("teamver-canvas-slide-launch-quick-settings")).toBeTruthy();
     fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-quick-audience-education"));
+    // customSlideCount는 DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS의 일부 (11756c415e, Home 커스텀 장수 입력).
     expect(onQuickSettingsChange).toHaveBeenCalledWith({
       audience: "education",
       length: "auto",
       transformMode: "presentation",
       tone: "auto",
+      customSlideCount: null,
     });
 
     fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-footer-back"));

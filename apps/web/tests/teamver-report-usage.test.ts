@@ -118,14 +118,16 @@ describe('reportTeamverDesignUsage', () => {
       expect(post).toHaveBeenCalledTimes(1);
       expect(warnSpy).toHaveBeenCalledTimes(1);
       const payload = JSON.parse(warnSpy.mock.calls[0][0] as string);
+      // workspaceId / runId / modelName / token counts were dropped from this always-on marker
+      // in e9e1b78060 (log sanitization — they belong on the server metric). The
+      // "must not leak" side is now guarded by tests/console-leak-sanitization.test.ts.
       expect(payload).toMatchObject({
         metric: 'teamver_usage_client_error',
         stage: 'usage.events_client_drop',
-        workspaceId: 'ws-1',
-        runId: 'run-drop',
         runStatus: 'succeeded',
-        modelName: 'claude-sonnet-4-5',
+        error: 'network down',
       });
+      expect(typeof payload.ts).toBe('number');
     });
 
     it('retries once on generic network Error', async () => {
