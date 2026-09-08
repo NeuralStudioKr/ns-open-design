@@ -1646,16 +1646,6 @@ function isMagazinePaperInsetProp(prop: string): boolean {
   return /(?:^|-)padding(?:-|$)/i.test(prop) || /justify-content$/i.test(prop);
 }
 
-const FLOW_PADDING_DECL_RE = /(?:^|;)\s*(?:-[a-z]+-)?padding(?:-[a-z]+)?\s*:[^;]*/i;
-
-function styleHasPaddingDeclaration(style: string): boolean {
-  return FLOW_PADDING_DECL_RE.test(String(style ?? ''));
-}
-
-function isFlowPaddingProp(prop: string): boolean {
-  return /(?:^|-)padding(?:-|$)/i.test(prop);
-}
-
 function slimMagazineFlowStyleAttr(attrs: string): string {
   if (!/\bstyle\s*=/i.test(attrs)) return attrs;
   return attrs.replace(
@@ -1682,7 +1672,7 @@ function slimExistingMagazineSlideFlow(inner: string): string {
   );
 }
 
-function slimFlowOverlayStyleAttr(attrs: string, dropPadding = false): string {
+function slimFlowOverlayStyleAttr(attrs: string): string {
   if (!/\bstyle\s*=/i.test(attrs)) return attrs;
   return attrs.replace(
     /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i,
@@ -1690,7 +1680,6 @@ function slimFlowOverlayStyleAttr(attrs: string, dropPadding = false): string {
       const slimmed = String(style)
         .replace(/(?:^|;)\s*position\s*:[^;]*/gi, ';')
         .replace(/(?:^|;)\s*background(?:-color|-image)?\s*:[^;]*/gi, ';')
-        .replace(dropPadding ? /(?:^|;)\s*(?:-[a-z]+-)?padding(?:-[a-z]+)?\s*:[^;]*/gi : /$^/g, ';')
         .replace(/;;+/g, ';')
         .replace(/^;|;$/g, '')
         .trim();
@@ -1699,11 +1688,10 @@ function slimFlowOverlayStyleAttr(attrs: string, dropPadding = false): string {
   );
 }
 
-function slimExistingFlowOverlay(inner: string, hostAttrs = ''): string {
-  const dropPadding = styleHasPaddingDeclaration(extractStyleAttr(hostAttrs));
+function slimExistingFlowOverlay(inner: string): string {
   return inner.replace(
     /<(div|span)\b([^>]*\bdata-od-slide-flow\b[^>]*)>/gi,
-    (_open, tag: string, attrs: string) => `<${tag}${slimFlowOverlayStyleAttr(attrs, dropPadding)}>`,
+    (_open, tag: string, attrs: string) => `<${tag}${slimFlowOverlayStyleAttr(attrs)}>`,
   );
 }
 
@@ -1713,7 +1701,6 @@ function wrapFlowOpenTag(hostAttrs: string, inner = ''): string {
   const parts: string[] = [];
   for (const prop of FLOW_COPIED_STYLE_PROPS) {
     if (/^(?:position|background|background-color|background-image)$/i.test(prop)) continue;
-    if (isFlowPaddingProp(prop) && styleHasPaddingDeclaration(style)) continue;
     if (magazinePaper && isMagazinePaperInsetProp(prop)) continue;
     const escaped = prop.replace(/-/g, '\\-');
     const value = new RegExp(`(?:^|;)\\s*${escaped}\\s*:\\s*([^;]+)`, 'i')
@@ -1752,7 +1739,7 @@ function wrapNonMotifInSpan(inner: string, hostAttrs: string): string {
     siblingContent += 1;
   }
   if (flowCount === 1 && siblingContent === 0) {
-    return slimExistingMagazineSlideFlow(slimExistingFlowOverlay(inner, hostAttrs));
+    return slimExistingMagazineSlideFlow(slimExistingFlowOverlay(inner));
   }
   const pieces: Array<{ kind: 'chrome' | 'content'; raw: string }> = [];
   for (const seg of segs) {
