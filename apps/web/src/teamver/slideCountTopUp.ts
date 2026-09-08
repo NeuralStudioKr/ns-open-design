@@ -157,23 +157,66 @@ export function shouldQueueSparseContentTopUp(input: {
   return true;
 }
 
+/**
+ * 루프481 — Ask for a `deck-patch` of the affected slides only.
+ *
+ * The first cut asked for a full deck re-emit, which is the exact operation
+ * that stalls at ~3분 on a 7-slide kit deck: the model re-streams tens of KB
+ * it already wrote, and any silence lands as a run failure on top of a deck
+ * that was already saved fine. A patch carries only the slides with holes, so
+ * the turn is seconds instead of minutes, and the client merges it into the
+ * on-disk deck by `data-slide-index`.
+ */
 export function buildSparseContentTopUpPrompt(
   evidence: ReadonlyArray<{ slideIndex: number; reason: string; detail: string }>,
 ): string {
   const lines = evidence.map((item) => {
-    const where = `Slide ${item.slideIndex + 1}`;
+    const where = `data-slide-index="${item.slideIndex}"`;
     return item.reason === "heading_count_shortfall"
-      ? `- ${where}: the heading promised more items than were emitted — ${item.detail}. Write the missing item(s) with the same card shape as its peers.`
-      : `- ${where}: a card carries a title with no body — ${item.detail}. Write its 1–2 sentence body.`;
+      ? `- ${where} (slide ${item.slideIndex + 1}): the heading promised more items than were emitted — ${item.detail}. Write the missing item(s) with the same card markup as its peers.`
+      : `- ${where} (slide ${item.slideIndex + 1}): a card carries a title with no body — ${item.detail}. Write its 1–2 sentence body.`;
   });
+  const indexes = evidence.map((item) => item.slideIndex).join(", ");
   return [
     SPARSE_CONTENT_TOP_UP_PROMPT_SENTINEL,
     "The saved deck is complete except that the slides below are missing items or card bodies.",
     ...lines,
-    "Re-emit the FULL deck artifact. Keep every other slide's copy, layout, and kit styling byte-for-byte — only fill what is listed above.",
-    "Do NOT add slides, do NOT restyle, do NOT reword the slides that are already fine.",
-    "Emit `<artifact type=\"deck\" identifier=\"deck\">` and finish a closed `</html></artifact>` this turn.",
+    "Emit ONE patch artifact carrying ONLY those slides — never a full deck:",
+    "`<artifact type=\"deck-patch\" identifier=\"deck\">`",
+    `Inside it, one \`<section class="slide" data-slide-index="{N}">\` per listed slide (N = ${indexes}). Copy that slide's FULL outer HTML from the deck you just wrote — same classes, same inline styles, same kit palette — and fill only the missing item(s) or card body.`,
+    "Close with `</artifact>` this turn. Do NOT emit `<artifact type=\"deck\">`, do NOT touch other slides, do NOT restyle or reword what is already fine.",
   ].join("\n");
+}
+
+/**
+ * 루프481 — Hidden turns that only try to *improve* an already-saved deck.
+ *
+ * When one of these fails, the deliverable on disk is untouched and complete
+ * enough to present. Painting the run-failure card (red banner + Retry dock)
+ * tells the user their deck broke, which is false and is what the 2026-09-08
+ * `AGENT_EXECUTION_FAILED` report looked like from the outside. Auto-continue
+ * and the thin-prior rewrite are deliberately NOT in this set: there the saved
+ * deck is incomplete or a hollow scaffold, so the failure is real news.
+ */
+export const SOFT_IMPROVEMENT_TURN_STATUS_CODE = "soft_improvement_turn_failed";
+
+export function isSoftImprovementAutomationEntryFrom(
+  entryFrom: string | null | undefined,
+): boolean {
+  const value = String(entryFrom ?? "").trim();
+  return value === SLIDE_COUNT_TOP_UP_ENTRY_FROM
+    || value === SPARSE_CONTENT_TOP_UP_ENTRY_FROM;
+}
+
+export function isSoftImprovementAutomationPrompt(
+  content: string | null | undefined,
+): boolean {
+  return isSlideCountTopUpPrompt(content) || isSparseContentTopUpPrompt(content);
+}
+
+/** User-facing notice when an improvement turn failed but the deck survived. */
+export function formatSoftImprovementTurnFailureNotice(): string {
+  return "슬라이드 보완을 마치지 못했지만, 저장된 슬라이드는 그대로 유지됩니다. 더 채우고 싶으면 다시 요청해 주세요.";
 }
 
 /** User follow-up that wants more pages — not a title/color surgical edit. */

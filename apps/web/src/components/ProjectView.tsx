@@ -560,9 +560,12 @@ import {
   SLIDE_COUNT_TOP_UP_ENTRY_FROM,
   SPARSE_CONTENT_TOP_UP_ENTRY_FROM,
   THIN_PRIOR_FULL_REWRITE_ENTRY_FROM,
+  SOFT_IMPROVEMENT_TURN_STATUS_CODE,
   buildSlideCountTopUpPrompt,
   buildSparseContentTopUpPrompt,
   buildThinPriorFullRewritePrompt,
+  formatSoftImprovementTurnFailureNotice,
+  isSoftImprovementAutomationEntryFrom,
   applyHonorSlideCeilingToHtml,
   countSparseContentTopUpAttemptsInConversation,
   countThinPriorFullRewriteAttemptsInConversation,
@@ -12157,8 +12160,27 @@ export function ProjectView({
             releaseOwnedDaemonRun();
             return;
           }
+          // 루프481 — A top-up / sparse-repair turn only tries to improve a deck
+          // that is already saved on disk. Its failure must not read as "your
+          // slides broke": no banner, no Retry dock, just a quiet notice.
+          const softImprovementTurn =
+            isSoftImprovementAutomationEntryFrom(meta?.entryFrom)
+            && (latestAssistantMsg.producedFiles?.length ?? 0) === 0;
           let finalizedAssistant = latestAssistantMsg;
-          if (runMayFinalize) {
+          if (runMayFinalize && softImprovementTurn) {
+            updateAssistant((prev) => {
+              finalizedAssistant = {
+                ...appendWarningStatusEvent(
+                  prev,
+                  formatSoftImprovementTurnFailureNotice(),
+                  SOFT_IMPROVEMENT_TURN_STATUS_CODE,
+                ),
+                endedAt: prev.endedAt ?? endedAt,
+                runStatus: 'canceled',
+              };
+              return finalizedAssistant;
+            });
+          } else if (runMayFinalize) {
             if (runIsVisible()) setError(persisted.userMessage);
             updateAssistant((prev) => {
               const withError = attachPersistedChatError(prev, persisted.detail, persisted.code);
@@ -12181,7 +12203,12 @@ export function ProjectView({
             controller,
             cancelController,
           );
-          if (ownsCurrentRun) updateConversationLatestRun('failed', endedAt);
+          if (ownsCurrentRun) {
+            updateConversationLatestRun(
+              softImprovementTurn ? 'canceled' : 'failed',
+              endedAt,
+            );
+          }
           runPersistTargetFileRef.current = null;
           runSkipDiscoveryBriefRef.current = false;
           runSelectedDeckTemplateIdRef.current = null;
@@ -12768,21 +12795,37 @@ export function ProjectView({
           pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
           const repairPrompt = buildSparseContentTopUpPrompt(sparseEvidence);
           let busyRetries = 0;
-          const fireRepair = () => {
+          const retryRepair = () => {
+            if (busyRetries >= SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX) return false;
+            if (slideCountTopUpTimerRef.current !== null) return false;
+            busyRetries += 1;
+            pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
+            slideCountTopUpTimerRef.current = window.setTimeout(
+              fireRepair,
+              SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
+            );
+            return true;
+          };
+          function fireRepair() {
             slideCountTopUpTimerRef.current = null;
             pendingSlideCountTopUpConversationIdRef.current = null;
             if (project.id !== scheduledProjectId) return;
             if (messagesConversationIdRef.current !== scheduledConversationId) return;
             if (autoContinueTimerRef.current !== null) return;
-            if (abortRef.current) {
-              if (busyRetries < SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX) {
-                busyRetries += 1;
-                pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
-                slideCountTopUpTimerRef.current = window.setTimeout(
-                  fireRepair,
-                  SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
-                );
+            // Mirror the slide-count top-up: a phantom BYOK recovery marker
+            // would make React reject this send outright, and the repair would
+            // be dropped without a trace.
+            if (!abortRef.current) {
+              if (apiBackgroundRecoveryRef.current) {
+                apiBackgroundRecoveryRef.current = false;
+                clearApiBackgroundRecoveryBanner();
               }
+              if (streamingConversationIdRef.current === scheduledConversationId) {
+                clearStreamingMarker(scheduledConversationId);
+              }
+            }
+            if (abortRef.current) {
+              retryRepair();
               return;
             }
             const sendNow = handleSendRef.current;
@@ -12790,10 +12833,12 @@ export function ProjectView({
             void Promise.resolve(
               sendNow(repairPrompt, [], [], {
                 entryFrom: SPARSE_CONTENT_TOP_UP_ENTRY_FROM as ChatAnalyticsEntryFrom,
-                templateClonePromptFill: true,
               }),
-            );
-          };
+            ).then((ok) => {
+              if (ok !== false) return;
+              retryRepair();
+            });
+          }
           slideCountTopUpTimerRef.current = window.setTimeout(fireRepair, 600);
           return;
         }

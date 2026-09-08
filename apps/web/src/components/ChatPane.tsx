@@ -4,6 +4,7 @@ import {
   useCallback,
   useDeferredValue,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -1078,17 +1079,24 @@ export function ChatPane({
   const displayError = runFailureUi?.messageKey
     ? t(runFailureUi.messageKey)
     : userFacingRunErrorDetail(rawError);
-  const persistDiagnostic = extractPersistedRunErrorDiagnostic(rawError);
+  // 루프481 — `error` is the ephemeral banner sentence and carries no hidden
+  // diagnostic tail, so a live failure produced a copy-diagnostic with nothing
+  // but `error_code: AGENT_EXECUTION_FAILED` (사용자 리포트 2026-09-08 18:07).
+  // Always read the raw upstream reason from a persisted status:error row when
+  // one exists, and say so explicitly when none does.
+  const diagnosticRawError =
+    failedRunErrorEvent?.detail ?? diagnosticRunErrorEvent?.detail ?? rawError;
+  const persistDiagnostic = extractPersistedRunErrorDiagnostic(diagnosticRawError);
   const errorDiagnosticText = displayError
     ? buildRunErrorDiagnosticText({
         message: displayError,
         rawMessage: persistDiagnostic
           ? `${displayError}\n\n${persistDiagnostic}`
-          : rawError,
+          : `${displayError}\n\nreason=unavailable (no persisted status:error detail on this turn)`,
         errorCode:
           failedRunErrorEvent?.code
           ?? diagnosticRunErrorEvent?.code
-          ?? extractProjectRunErrorCodeFromDetail(rawError)
+          ?? extractProjectRunErrorCodeFromDetail(diagnosticRawError)
           ?? (rawError ? 'AGENT_EXECUTION_FAILED' : undefined),
         traceId: diagnosticAssistant?.runId,
         runId: diagnosticAssistant?.runId,
@@ -2678,7 +2686,9 @@ function ChatRows({
         message: detail,
         diagnosticText: buildRunErrorDiagnosticText({
           message: detail,
-          rawMessage: persistDiagnostic ? `${detail}\n\n${persistDiagnostic}` : detail,
+          rawMessage: persistDiagnostic
+            ? `${detail}\n\n${persistDiagnostic}`
+            : `${detail}\n\nreason=unavailable (no persisted status:error detail on this turn)`,
           errorCode,
           traceId: message.runId,
           runId: message.runId,

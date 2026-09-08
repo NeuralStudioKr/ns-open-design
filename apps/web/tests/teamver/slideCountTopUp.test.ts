@@ -7,7 +7,13 @@ import {
   SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
   SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL,
   SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL_LEGACY,
+  SLIDE_COUNT_TOP_UP_ENTRY_FROM,
+  SPARSE_CONTENT_TOP_UP_ENTRY_FROM,
   SPARSE_CONTENT_TOP_UP_PROMPT_SENTINEL,
+  THIN_PRIOR_FULL_REWRITE_ENTRY_FROM,
+  formatSoftImprovementTurnFailureNotice,
+  isSoftImprovementAutomationEntryFrom,
+  isSoftImprovementAutomationPrompt,
   buildSlideCountTopUpPrompt,
   buildSparseContentTopUpPrompt,
   buildThinPriorFullRewritePrompt,
@@ -578,14 +584,35 @@ describe("slideCountTopUp", () => {
     expect(isSparseContentTopUpPrompt(prompt)).toBe(true);
     expect(isSlideCountTopUpPrompt(prompt)).toBe(false);
     expect(isThinPriorFullRewritePrompt(prompt)).toBe(false);
-    expect(prompt).toMatch(/Slide 3: the heading promised more items/);
-    expect(prompt).toMatch(/Slide 7: a card carries a title with no body/);
-    expect(prompt).toMatch(/Do NOT add slides/);
+    expect(prompt).toMatch(/data-slide-index="2" \(slide 3\): the heading promised more items/);
+    expect(prompt).toMatch(/data-slide-index="6" \(slide 7\): a card carries a title with no body/);
+    // 루프481 — patch only the named slides; a full deck re-emit is what stalled.
+    expect(prompt).toMatch(/type="deck-patch"/);
+    expect(prompt).toMatch(/Do NOT emit `<artifact type="deck">`/);
+    expect(prompt).not.toMatch(/Re-emit the FULL deck/i);
+    expect(prompt).toMatch(/N = 2, 6/);
 
     const messages = [
       { id: "u1", role: "user", content: prompt } as ChatMessage,
       { id: "a1", role: "assistant", content: "ok" } as ChatMessage,
     ];
     expect(countSparseContentTopUpAttemptsInConversation(messages)).toBe(1);
+  });
+
+  it("treats top-up turns as soft improvements, not the rewrite/continue turns (루프481)", () => {
+    expect(isSoftImprovementAutomationEntryFrom(SLIDE_COUNT_TOP_UP_ENTRY_FROM)).toBe(true);
+    expect(isSoftImprovementAutomationEntryFrom(SPARSE_CONTENT_TOP_UP_ENTRY_FROM)).toBe(true);
+    // The saved deck is incomplete on these — their failure is real news.
+    expect(isSoftImprovementAutomationEntryFrom(THIN_PRIOR_FULL_REWRITE_ENTRY_FROM)).toBe(false);
+    expect(isSoftImprovementAutomationEntryFrom("chat_composer")).toBe(false);
+    expect(isSoftImprovementAutomationEntryFrom(undefined)).toBe(false);
+
+    expect(isSoftImprovementAutomationPrompt(buildSparseContentTopUpPrompt([
+      { slideIndex: 1, reason: "title_only_card", detail: "Pro" },
+    ]))).toBe(true);
+    expect(isSoftImprovementAutomationPrompt(
+      buildThinPriorFullRewritePrompt({ hostCount: 9, requested: 8 }),
+    )).toBe(false);
+    expect(formatSoftImprovementTurnFailureNotice()).toMatch(/그대로 유지/);
   });
 });
