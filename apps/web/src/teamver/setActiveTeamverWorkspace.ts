@@ -86,12 +86,23 @@ async function postDesignAuthWorkspaceWithRecovery(workspaceId: string): Promise
   throw err;
 }
 
+export type SetActiveTeamverWorkspaceOptions = {
+  /**
+   * Boot realign (0908-N01 slice E) re-asserts the workspace the store already
+   * holds so the BFF cookie agrees with `X-Workspace-Id`. Announcing that as a
+   * change would make every refresh replay the full switch side effects — list
+   * wipe, registry resync, home bounce — for a workspace that never moved.
+   */
+  skipEventWhenUnchanged?: boolean;
+};
+
 /**
  * @returns `true` when local store (and callers' UI) may advance to `workspaceId`.
  */
 export async function setActiveTeamverWorkspace(
   workspaceId: string,
   userId?: string | null,
+  options?: SetActiveTeamverWorkspaceOptions,
 ): Promise<boolean> {
   const trimmed = workspaceId.trim();
   if (!trimmed) return false;
@@ -113,11 +124,18 @@ export async function setActiveTeamverWorkspace(
   const store = client?.workspaceStore as LocalStorageWorkspaceStore | null | undefined;
   if (!store) return true;
 
+  const previous =
+    options?.skipEventWhenUnchanged && typeof store.get === "function"
+      ? (await store.get())?.trim() || null
+      : null;
+
   await store.set(trimmed);
   bumpTeamverWorkspaceStoreRevision();
   if (userId?.trim() && typeof store.setLastForUser === "function") {
     store.setLastForUser(userId.trim(), trimmed);
   }
-  dispatchTeamverWorkspaceChanged(trimmed);
+  if (!(options?.skipEventWhenUnchanged && previous === trimmed)) {
+    dispatchTeamverWorkspaceChanged(trimmed);
+  }
   return true;
 }

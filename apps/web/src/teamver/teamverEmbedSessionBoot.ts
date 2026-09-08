@@ -118,18 +118,23 @@ export async function runTeamverEmbedSessionBoot(
       // 0908-N01 P1 — a workspace the user already picked inside Design wins
       // over Main's launch hint. The hint only seeds a first-ever entry.
       const storedOnSession = await readStoredWorkspaceIdOnSession(session);
+      const preferredWorkspaceId = storedOnSession ?? launchWorkspaceId;
       let activeWorkspaceId: string | null = null;
-      if (launchWorkspaceId && !storedOnSession) {
-        // Launch URL override must go through BFF workspace POST + recovery
-        // ladder — local-only store seed drifts X-Workspace-Id vs cookie (§16).
+      if (preferredWorkspaceId) {
+        // Whichever side wins, the BFF session must be told — a local-only seed
+        // drifts X-Workspace-Id ahead of the cookie (§16), and slice A left the
+        // stored-wins branch server-silent so the cookie kept Main's workspace
+        // while Design rendered the stored one (0908-N01 slice E). The callback
+        // page already did this; refresh and direct entry did not.
         const advanced = await setActiveTeamverWorkspace(
-          launchWorkspaceId,
+          preferredWorkspaceId,
           session.user?.userId,
+          { skipEventWhenUnchanged: true },
         );
         activeWorkspaceId = await syncTeamverWorkspaceFromSession(
           session,
           undefined,
-          advanced ? { preferredIdOverride: launchWorkspaceId } : undefined,
+          advanced ? { preferredIdOverride: preferredWorkspaceId } : undefined,
         );
       } else {
         activeWorkspaceId = await syncTeamverWorkspaceFromSession(session);

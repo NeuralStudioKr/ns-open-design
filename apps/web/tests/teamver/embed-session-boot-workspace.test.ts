@@ -130,12 +130,56 @@ describe("runTeamverEmbedSessionBoot workspace precedence (0908-N01 P1)", () => 
 
     await runTeamverEmbedSessionBoot(bootDeps());
 
-    // The launch hint must not be pushed to the BFF, otherwise the server
-    // session drifts to WS-A while the client renders WS-B.
-    expect(h.setActiveTeamverWorkspace).not.toHaveBeenCalled();
+    // The hint must not win, but staying silent is not the way to achieve that:
+    // the BFF cookie would keep whatever Main last pinned (WS-A) while Design
+    // renders and sends WS-B. Push the winner instead (0908-N01 slice E).
+    expect(h.setActiveTeamverWorkspace).toHaveBeenCalledWith("WS-B", "user-1", {
+      skipEventWhenUnchanged: true,
+    });
+    expect(h.setActiveTeamverWorkspace).not.toHaveBeenCalledWith(
+      "WS-A",
+      expect.anything(),
+      expect.anything(),
+    );
     expect(h.syncTeamverWorkspaceFromSession).toHaveBeenCalledTimes(1);
-    expect(h.syncTeamverWorkspaceFromSession).toHaveBeenCalledWith(SESSION);
+    expect(h.syncTeamverWorkspaceFromSession).toHaveBeenCalledWith(SESSION, undefined, {
+      preferredIdOverride: "WS-B",
+    });
     expect(peekEmbedBootstrapSession()?.activeWorkspaceId).toBe("WS-B");
+  });
+
+  it("realigns the BFF on a plain refresh, not only through /auth/callback", async () => {
+    // Reproduces the deployed-but-still-broken case: no launch hint at all
+    // (F5 or direct entry), stored pick present. Slice A took the local-only
+    // branch here, so the server was never told and the next reconcile pulled
+    // the store back to the cookie's workspace.
+    h.consumeLaunchWorkspaceIdHint.mockReturnValue(null);
+    h.readStoredWorkspaceIdOnSession.mockResolvedValue("WS-B");
+    h.syncTeamverWorkspaceFromSession.mockResolvedValue("WS-B");
+
+    await runTeamverEmbedSessionBoot(bootDeps());
+
+    expect(h.setActiveTeamverWorkspace).toHaveBeenCalledWith("WS-B", "user-1", {
+      skipEventWhenUnchanged: true,
+    });
+  });
+
+  it("falls back to server truth when the BFF refuses the stored workspace", async () => {
+    h.consumeLaunchWorkspaceIdHint.mockReturnValue(null);
+    h.readStoredWorkspaceIdOnSession.mockResolvedValue("WS-B");
+    h.setActiveTeamverWorkspace.mockResolvedValue(false);
+    h.syncTeamverWorkspaceFromSession.mockResolvedValue("WS-A");
+
+    await runTeamverEmbedSessionBoot(bootDeps());
+
+    // No override — pinning a workspace the server rejected is the drift we
+    // are trying to remove, just in the opposite direction.
+    expect(h.syncTeamverWorkspaceFromSession).toHaveBeenCalledWith(
+      SESSION,
+      undefined,
+      undefined,
+    );
+    expect(peekEmbedBootstrapSession()?.activeWorkspaceId).toBe("WS-A");
   });
 
   it("seeds from the launch hint only when Design has no stored pick yet", async () => {
@@ -145,7 +189,9 @@ describe("runTeamverEmbedSessionBoot workspace precedence (0908-N01 P1)", () => 
 
     await runTeamverEmbedSessionBoot(bootDeps());
 
-    expect(h.setActiveTeamverWorkspace).toHaveBeenCalledWith("WS-A", "user-1");
+    expect(h.setActiveTeamverWorkspace).toHaveBeenCalledWith("WS-A", "user-1", {
+      skipEventWhenUnchanged: true,
+    });
     expect(h.syncTeamverWorkspaceFromSession).toHaveBeenCalledWith(
       SESSION,
       undefined,
@@ -170,13 +216,15 @@ describe("runTeamverEmbedSessionBoot workspace precedence (0908-N01 P1)", () => 
     );
   });
 
-  it("reconciles plainly when Main sends no hint", async () => {
+  it("reconciles plainly on a first-ever entry with neither hint nor stored pick", async () => {
     h.consumeLaunchWorkspaceIdHint.mockReturnValue(null);
-    h.readStoredWorkspaceIdOnSession.mockResolvedValue("WS-B");
-    h.syncTeamverWorkspaceFromSession.mockResolvedValue("WS-B");
+    h.readStoredWorkspaceIdOnSession.mockResolvedValue(null);
+    h.syncTeamverWorkspaceFromSession.mockResolvedValue("WS-A");
 
     await runTeamverEmbedSessionBoot(bootDeps());
 
+    // Nothing to assert to the server — the account default already is the
+    // cookie's workspace, so a POST would be a wasted round trip on every boot.
     expect(h.setActiveTeamverWorkspace).not.toHaveBeenCalled();
     expect(h.syncTeamverWorkspaceFromSession).toHaveBeenCalledWith(SESSION);
   });

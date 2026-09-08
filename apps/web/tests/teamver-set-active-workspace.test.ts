@@ -12,6 +12,7 @@ const shouldSkipTeamverBffAuthCallsMock = vi.fn(() => false);
 const isDesignAuthRefreshDeclinedMock = vi.fn(() => false);
 const isBootstrapAuthModeMock = vi.fn(() => true);
 const workspaceStoreSet = vi.fn();
+const workspaceStoreGet = vi.fn<() => string | null>(() => null);
 const dispatchWorkspaceChanged = vi.fn();
 const bumpRevision = vi.fn();
 
@@ -23,6 +24,7 @@ vi.mock("../src/teamver/designBffClient", () => ({
   getDesignBffClient: () => ({
     workspaceStore: {
       set: (id: string) => workspaceStoreSet(id),
+      get: () => workspaceStoreGet(),
     },
   }),
   ensureDesignAuthLadder: (tag: string, options?: { mode?: string }) =>
@@ -53,6 +55,8 @@ describe("setActiveTeamverWorkspace recovery ladder", () => {
     isDesignAuthRefreshDeclinedMock.mockReset();
     isDesignAuthRefreshDeclinedMock.mockReturnValue(false);
     workspaceStoreSet.mockReset();
+    workspaceStoreGet.mockReset();
+    workspaceStoreGet.mockReturnValue(null);
     dispatchWorkspaceChanged.mockReset();
     bumpRevision.mockReset();
     isBootstrapAuthModeMock.mockReturnValue(true);
@@ -221,5 +225,53 @@ describe("setActiveTeamverWorkspace recovery ladder", () => {
     expect(postDesignAuthWorkspaceMock).not.toHaveBeenCalled();
     expect(ladderRefreshMock).not.toHaveBeenCalled();
     expect(workspaceStoreSet).not.toHaveBeenCalled();
+  });
+
+  describe("boot realign (0908-N01 slice E)", () => {
+    it("re-asserts the workspace to the BFF without announcing a change", async () => {
+      workspaceStoreGet.mockReturnValue("ws-boot");
+      postDesignAuthWorkspaceMock.mockResolvedValue(undefined);
+      const { setActiveTeamverWorkspace } = await import(
+        "../src/teamver/setActiveTeamverWorkspace"
+      );
+
+      const ok = await setActiveTeamverWorkspace("ws-boot", "user-1", {
+        skipEventWhenUnchanged: true,
+      });
+
+      expect(ok).toBe(true);
+      // The point of the realign: the cookie hears about it.
+      expect(postDesignAuthWorkspaceMock).toHaveBeenCalledWith("ws-boot");
+      // But nothing moved, so no refresh may replay the switch side effects.
+      expect(dispatchWorkspaceChanged).not.toHaveBeenCalled();
+    });
+
+    it("still announces when the realign actually moves the workspace", async () => {
+      workspaceStoreGet.mockReturnValue("ws-old");
+      postDesignAuthWorkspaceMock.mockResolvedValue(undefined);
+      const { setActiveTeamverWorkspace } = await import(
+        "../src/teamver/setActiveTeamverWorkspace"
+      );
+
+      const ok = await setActiveTeamverWorkspace("ws-new", "user-1", {
+        skipEventWhenUnchanged: true,
+      });
+
+      expect(ok).toBe(true);
+      expect(dispatchWorkspaceChanged).toHaveBeenCalledWith("ws-new");
+    });
+
+    it("announces every explicit switch, even onto the same workspace", async () => {
+      workspaceStoreGet.mockReturnValue("ws-same");
+      postDesignAuthWorkspaceMock.mockResolvedValue(undefined);
+      const { setActiveTeamverWorkspace } = await import(
+        "../src/teamver/setActiveTeamverWorkspace"
+      );
+
+      const ok = await setActiveTeamverWorkspace("ws-same", "user-1");
+
+      expect(ok).toBe(true);
+      expect(dispatchWorkspaceChanged).toHaveBeenCalledWith("ws-same");
+    });
   });
 });
