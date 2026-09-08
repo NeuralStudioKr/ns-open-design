@@ -16,6 +16,7 @@ import {
   filterAnthropicImageCandidatesByProjectFiles,
   isValidAnthropicImageBytes,
   MAX_ANTHROPIC_PROXY_IMAGE_BYTES,
+  PROXY_SOFT_RETRY_DELAY_MS,
   PROXY_STREAM_IDLE_TIMEOUT_DECK_MS,
   PROXY_STREAM_IDLE_TIMEOUT_MS,
   normalizeAnthropicProxyMessageRoles,
@@ -1290,6 +1291,140 @@ describe('streamProxyEndpoint idle-timeout stall (AGENT_EXECUTION_STALLED)', () 
       { code: 'AGENT_EXECUTION_STALLED', retryable: false },
     );
     expect(shouldSoftRetryProxyFailure(postDeltaStall)).toBe(false);
+  });
+
+  function hangingProxyStreamBody() {
+    return {
+      getReader() {
+        return {
+          read() {
+            return new Promise(() => {});
+          },
+          cancel() {},
+          releaseLock() {},
+        };
+      },
+    };
+  }
+
+  function completedProxyStreamBody(delta: string) {
+    return {
+      getReader() {
+        let step = 0;
+        return {
+          read() {
+            step += 1;
+            if (step === 1) {
+              return Promise.resolve({
+                done: false,
+                value: new TextEncoder().encode(
+                  `event: delta\ndata: ${JSON.stringify({ delta })}\n\n`,
+                ),
+              });
+            }
+            if (step === 2) {
+              return Promise.resolve({
+                done: false,
+                value: new TextEncoder().encode('event: end\ndata: {}\n\n'),
+              });
+            }
+            return Promise.resolve({ done: true, value: undefined });
+          },
+          cancel() {},
+          releaseLock() {},
+        };
+      },
+    };
+  }
+
+  const stallSoftRetryCfg = {
+    apiKey: 'test-api-key',
+    baseUrl: 'https://api.minimaxi.com',
+    model: 'MiniMax-M3',
+  } as const;
+
+  it('루프478: pre-token stall soft-retries once and completes the second attempt', async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(() => {
+        calls += 1;
+        return Promise.resolve({
+          ok: true,
+          body: calls === 1 ? hangingProxyStreamBody() : completedProxyStreamBody('Hello'),
+        });
+      }),
+    );
+
+    const onDelta = vi.fn();
+    const onError = vi.fn();
+    const onDone = vi.fn();
+    const runPromise = streamProxyEndpoint(
+      '/api/proxy/minimax/stream',
+      stallSoftRetryCfg as any,
+      'System',
+      [{ id: 'm1', role: 'user', content: 'hi', createdAt: 1 }],
+      new AbortController().signal,
+      { onDelta, onDone, onError },
+      { streamIdleTimeoutMs: 250 },
+    );
+
+    await Promise.resolve();
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(250 + PROXY_SOFT_RETRY_DELAY_MS + 250);
+    await runPromise;
+
+    expect(onError).not.toHaveBeenCalled();
+    expect(onDelta).toHaveBeenCalledWith('Hello');
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(onDone.mock.calls[0]?.[0]).toBe('Hello');
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('루프478: three pre-token stalls exhaust soft-retry and keep the failure card retryable', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        body: hangingProxyStreamBody(),
+      }),
+    );
+
+    const onDelta = vi.fn();
+    const onError = vi.fn();
+    const onDone = vi.fn();
+    const runPromise = streamProxyEndpoint(
+      '/api/proxy/minimax/stream',
+      stallSoftRetryCfg as any,
+      'System',
+      [{ id: 'm1', role: 'user', content: 'hi', createdAt: 1 }],
+      new AbortController().signal,
+      { onDelta, onDone, onError },
+      { streamIdleTimeoutMs: 250 },
+    );
+
+    await Promise.resolve();
+    await Promise.resolve();
+    // 3 idle windows + delays 600*(1) and 600*(2)
+    await vi.advanceTimersByTimeAsync(
+      250 + PROXY_SOFT_RETRY_DELAY_MS + 250 + PROXY_SOFT_RETRY_DELAY_MS * 2 + 250 + 100,
+    );
+    await runPromise;
+
+    expect(onDelta).not.toHaveBeenCalled();
+    expect(onDone).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(3);
+    const err = onError.mock.calls[0]?.[0] as Error & {
+      code?: string;
+      retryable?: boolean;
+      resumable?: boolean;
+    };
+    expect(err.code).toBe('AGENT_EXECUTION_STALLED');
+    expect(err.retryable).toBe(true);
+    expect(err.resumable).toBe(true);
   });
 
   it('loop423 — daemon : keepalive comments do not reset the content idle clock', async () => {

@@ -74,6 +74,8 @@ function createProxyStreamIdleError(): Error & {
     retryable: true,
     // 루프477 — soft-retry is dropped once tokens painted (UI duplication), but a
     // stalled turn with partial output must still offer the manual continue.
+    // 루프478 — pre-token / pre-thinking silence keeps retryable so
+    // streamProxyEndpoint actually opens the next attempt.
     resumable: true,
   });
 }
@@ -222,7 +224,8 @@ export async function streamProxyEndpoint(
   }
 }
 
-const PROXY_SOFT_RETRY_DELAY_MS = 600;
+/** @internal vitest — delay between pre-token stall soft-retries */
+export const PROXY_SOFT_RETRY_DELAY_MS = 600;
 
 function delayMs(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
