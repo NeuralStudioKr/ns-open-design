@@ -64,10 +64,17 @@ export function isProxySseContentActivityFrame(
   return parsed?.kind === 'event';
 }
 
-function createProxyStreamIdleError(): Error & { code: string; retryable: boolean } {
+function createProxyStreamIdleError(): Error & {
+  code: string;
+  retryable: boolean;
+  resumable: boolean;
+} {
   return Object.assign(new Error('BYOK proxy stream timed out due to inactivity'), {
     code: 'AGENT_EXECUTION_STALLED',
     retryable: true,
+    // 루프477 — soft-retry is dropped once tokens painted (UI duplication), but a
+    // stalled turn with partial output must still offer the manual continue.
+    resumable: true,
   });
 }
 

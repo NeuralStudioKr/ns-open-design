@@ -505,6 +505,11 @@ import {
   formatProjectRunStalledErrorForUser,
   formatProjectForkConversationError,
 } from '../teamver/projectErrorMessages';
+import {
+  STALLED_PARTIAL_DECK_STATUS_CODE,
+  formatStalledPartialDeckNotice,
+  stalledRunPartialDeckText,
+} from '../teamver/stalledRunDeckSalvage';
 import { resolvePersistDeckDisplayTitle } from '../teamver/persistDeckDisplayTitle';
 import { subscribeTeamverWorkspaceChanged } from '../teamver/teamverWorkspaceEvents';
 import { shouldSkipWorkspaceSwitchSideEffects } from '../teamver/workspaceSwitchGuards';
@@ -11631,6 +11636,57 @@ export function ProjectView({
         }
       };
 
+      // Materialize the unclosed trailing `<artifact>` block. Both terminal
+      // paths need it: onDone, and the 루프477 stall salvage — a stalled deck
+      // never closes its artifact, so without this flush the partial HTML is
+      // invisible to resolveTerminalArtifactToPersist.
+      const flushTerminalParserArtifacts = () => {
+        for (const ev of parser.flush()) {
+          if (ev.type !== 'artifact:end') continue;
+          parsedArtifact = parsedArtifact
+            ? { ...parsedArtifact, html: ev.fullContent }
+            : {
+                identifier: ev.identifier,
+                title: '',
+                html: ev.fullContent,
+              };
+          if (runIsVisible()) {
+            setArtifact((prev) => (prev ? { ...prev, html: ev.fullContent } : null));
+          }
+          // Same best-artifact tracking as mid-stream artifact:end —
+          // unclosed blocks only land here via flush(), and without
+          // this the trailing truncated deck is invisible to
+          // resolveTerminalArtifactToPersist's bestArtifactSoFar fallback.
+          try {
+            const candidate = parsedArtifact;
+            const salvagedHtml = candidate?.html
+              ? salvageTruncatedHtmlDocument(candidate.html)
+              : null;
+            const effective = salvagedHtml && candidate
+              ? { ...candidate, html: salvagedHtml }
+              : candidate;
+            const candidateOk = isUsableDeckHtmlArtifact(
+              effective?.html,
+              runVisiblePromptRef.current || '',
+              project.name || '슬라이드',
+            )
+              || Boolean(salvagedHtml);
+            const bestOk = isUsableDeckHtmlArtifact(
+              bestArtifactSoFar?.html,
+              runVisiblePromptRef.current || '',
+              project.name || '슬라이드',
+            );
+            if (candidateOk && (!bestOk || (effective?.html?.length ?? 0) > (bestArtifactSoFar?.html?.length ?? 0))) {
+              bestArtifactSoFar = effective;
+            } else if (!bestArtifactSoFar && effective) {
+              bestArtifactSoFar = effective;
+            } else if (!bestArtifactSoFar && candidate) {
+              bestArtifactSoFar = candidate;
+            }
+          } catch { /* defensive — never throw from stream handling */ }
+        }
+      };
+
       const updateAssistant = (updater: (prev: ChatMessage) => ChatMessage) => {
         latestAssistantMsg = updater(latestAssistantMsg);
         if (!runIsVisible()) return;
@@ -11973,51 +12029,7 @@ export function ProjectView({
             streamedText = fullText;
             rewriteLiveContent(fullText);
           }
-          for (const ev of parser.flush()) {
-            if (ev.type === 'artifact:end') {
-              parsedArtifact = parsedArtifact
-                ? { ...parsedArtifact, html: ev.fullContent }
-                : {
-                    identifier: ev.identifier,
-                    title: '',
-                    html: ev.fullContent,
-                  };
-              if (runIsVisible()) {
-                setArtifact((prev) => (prev ? { ...prev, html: ev.fullContent } : null));
-              }
-              // Same best-artifact tracking as mid-stream artifact:end —
-              // unclosed blocks only land here via flush(), and without
-              // this the trailing truncated deck is invisible to
-              // resolveTerminalArtifactToPersist's bestArtifactSoFar fallback.
-              try {
-                const candidate = parsedArtifact;
-                const salvagedHtml = candidate?.html
-                  ? salvageTruncatedHtmlDocument(candidate.html)
-                  : null;
-                const effective = salvagedHtml && candidate
-                  ? { ...candidate, html: salvagedHtml }
-                  : candidate;
-                const candidateOk = isUsableDeckHtmlArtifact(
-                  effective?.html,
-                  runVisiblePromptRef.current || '',
-                  project.name || '슬라이드',
-                )
-                  || Boolean(salvagedHtml);
-                const bestOk = isUsableDeckHtmlArtifact(
-                  bestArtifactSoFar?.html,
-                  runVisiblePromptRef.current || '',
-                  project.name || '슬라이드',
-                );
-                if (candidateOk && (!bestOk || (effective?.html?.length ?? 0) > (bestArtifactSoFar?.html?.length ?? 0))) {
-                  bestArtifactSoFar = effective;
-                } else if (!bestArtifactSoFar && effective) {
-                  bestArtifactSoFar = effective;
-                } else if (!bestArtifactSoFar && candidate) {
-                  bestArtifactSoFar = candidate;
-                }
-              } catch { /* defensive — never throw from stream handling */ }
-            }
-          }
+          flushTerminalParserArtifacts();
           const emptyApiResponse =
             config.mode === 'api' &&
             !fullText.trim() &&
@@ -12096,6 +12108,50 @@ export function ProjectView({
             !supersededRunsRef.current.has(controller);
           textBuffer.flush();
           releaseOwnTextBuffer();
+          // 루프477 — A stall that already streamed deck HTML goes through the
+          // same terminal finalize as a clean end, so the partial deck is
+          // salvaged/persisted (or hands off to auto-continue) instead of being
+          // dropped for a bare failure card. Run refs are intentionally left
+          // alone here: the finalize pipeline's `finally` owns them, and
+          // clearing them early would erase the persist target.
+          const stalledPartialDeck = runMayFinalize
+            ? stalledRunPartialDeckText({
+                errorCode: persisted.code,
+                slideOnlyMvp,
+                streamedText: latestAssistantMsg.content,
+              })
+            : null;
+          if (stalledPartialDeck) {
+            updateAssistant((prev) => ({
+              ...appendWarningStatusEvent(
+                prev,
+                formatStalledPartialDeckNotice(),
+                STALLED_PARTIAL_DECK_STATUS_CODE,
+              ),
+              resumable: true,
+            }));
+            if (runCommentAttachments.length > 0) {
+              void patchAttachedStatuses(runCommentAttachments, 'needs_review');
+            }
+            flushTerminalParserArtifacts();
+            clearCurrentRunStreamingMarker(
+              runConversationId,
+              controller,
+              cancelController,
+            );
+            if (config.mode === 'api') {
+              dispatchTeamverBackgroundChat({
+                projectId: project.id,
+                conversationId: runConversationId,
+                assistantMessageId: assistantId,
+                active: false,
+              });
+            }
+            scheduleStreamRunHtmlAutoOpen(stalledPartialDeck);
+            onProjectsRefresh();
+            releaseOwnedDaemonRun();
+            return;
+          }
           let finalizedAssistant = latestAssistantMsg;
           if (runMayFinalize) {
             if (runIsVisible()) setError(persisted.userMessage);

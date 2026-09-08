@@ -38,6 +38,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프477 / 0908-N02 — 스톨 런의 부분 덱 salvage · 이어쓰기
+
+체감: `AGENT_EXECUTION_STALLED` 진단 후 10분 대기 끝에 결과물이 하나도 남지 않음. 미리보기에 그려졌던 부분 덱도 사라짐.
+
+원인: 루프423 content-idle 게이트는 정상(업스트림 침묵). 그런데 onError가 terminal finalize(`scheduleStreamRunHtmlAutoOpen`)를 호출하지 않아 salvage·auto-continue 미도달, 스톨 에러에 `resumable`도 없어 이어쓰기 dock 미표시.
+
+수정: 스톨 + 부분 덱(400자·`<!doctype html`)이면 성공 경로와 같은 finalize에 태움 · 경고 notice `stalled_partial_deck` · 스톨 에러 `resumable: true`(`retryable`은 기존 게이트 유지). [0908-N02-1](./0908-N02-1-상위설계-[스톨_부분덱_salvage_이어쓰기].md).
+
 ### 루프476 / 0907-N08 — Studio / Creative leftover denylist
 
 체감: Hangul Clone 후에도 Studio `WHO WE ARE` / `[Studio Name]` · Creative `Lift In Engagement` / `Layer alpha` 카탈로그 데모가 남음.

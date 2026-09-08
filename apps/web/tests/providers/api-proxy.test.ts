@@ -1262,6 +1262,8 @@ describe('streamProxyEndpoint idle-timeout stall (AGENT_EXECUTION_STALLED)', () 
     // Substantive delta was already painted — soft-retry would duplicate the
     // "Answer" tokens in the assistant card, so retryable must be forced off.
     expect(err.retryable).toBe(false);
+    // 루프477 — but the partial turn stays continuable by hand.
+    expect((err as Error & { resumable?: boolean }).resumable).toBe(true);
     // Only one upstream attempt because retryable=false short-circuits the
     // soft-retry loop.
     expect(fetch).toHaveBeenCalledTimes(1);

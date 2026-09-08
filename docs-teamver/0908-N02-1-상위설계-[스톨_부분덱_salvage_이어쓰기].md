@@ -1,4 +1,4 @@
-# 0908-N01-1 상위설계 — 스톨 런의 부분 덱 salvage · 이어쓰기
+# 0908-N02-1 상위설계 — 스톨 런의 부분 덱 salvage · 이어쓰기
 
 **날짜:** 2026-09-08 · **루프:** 477
 **관련:** 루프423(keepalive content-idle) · [54-2](./54-2-구현현황-[MiniMax_품질루프].md) · `apps/web/src/providers/api-proxy.ts` · `apps/web/src/components/ProjectView.tsx`
