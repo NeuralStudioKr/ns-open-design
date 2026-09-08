@@ -197,8 +197,107 @@ staging이 아직 수정 이전 빌드를 서비스해(아래 §bake) 브라우�
 
 또한 같은 날 다른 에픽(`스톨_부분덱_salvage_이어쓰기`)이 **동일한 `0908-N01`** 을 사용해 넘버링이 충돌했다(`5f2cbd654b`). 해당 세션이 `97593bb46f`에서 스스로 `N02`로 재부여해 해소됐다.
 
+---
+
+# 슬라이스 E·F — 배포 후 재발 (루프481)
+
+## 배포 커밋 범위 확정 (이전 판정 정정)
+
+슬라이스 C의 "staging 미배포" 판정은 **틀렸다**. 그 시점에는 사실이었으나 이후 배포가 일어났고,
+사용자 신고는 배포된 빌드에서 나온 것이다. 재측정 방법과 결과:
+
+```bash
+curl -s https://stg-design.teamver.com/ -o /tmp/p.html
+# index.html 은 eager 청크만 참조한다 — 그 청크들에서 다시 청크 URL 을 긁어야 전수가 된다
+grep -ohE 'static/chunks/[A-Za-z0-9_~.-]+\.js' /tmp/p.html *.js | sort -u   # 21개
+```
+
+| 마커 | 도입 커밋 (KST) | 배포 번들 |
+|---|---|---|
+| `teamver:embed-launch-workspace` | `8c2ca83e7e` 13:49 (슬라이스 A) | ☑ |
+| `teamver-design-workspace-auto-switched` | `9a649a2955` 13:59 (슬라이스 B) | ☑ |
+| `heading_count_shortfall` · `sparse_content_top_up` | `62cc1fce6a` **17:22** (레포 최신 커밋) | ☑ |
+
+번들 `last-modified: 2026-09-08 08:58:52 GMT` = **17:58 KST** — 최신 커밋(17:22)보다 뒤다.
+**배포본은 레포 HEAD, 즉 0908-N01 슬라이스 A~D 전부를 포함한다.**
+
+첫 조사에서 `sparse_content_top_up`이 안 잡혀 판정이 흔들렸는데, 원인은 코드가 아니라 방법이었다:
+App은 `dynamic(() => import('../../src/App'))`이라 **lazy 청크가 index.html에 안 실린다**.
+eager 청크 14개만 받아 검색하면 미배포로 오판한다. 청크에서 청크를 재귀로 긁어 21개를 받으면 잡힌다.
+
+**결론: "미배포 때문" 가설 폐기.** 배포된 P1/P2가 브라우저에서 듣지 않는 이유를 찾는 것이 이 슬라이스다.
+
+## 무대 확정 — Design 단독
+
+| 근거 | 내용 |
+|---|---|
+| 사용자 확인 호스트 | `stg-design.teamver.com` |
+| "최근 프로젝트 목록" | Design 전용 — `recentProjects.title` (`RecentProjectsStrip.tsx`). fe-v2 `web/src`·`web/messages`에 해당 문자열·개념 **0건** |
+| "프로젝트 상세 / 루트" | Design 클라이언트 라우터 `/projects/:id` ↔ `/` (`src/router.ts`) |
+
+Main FE는 무대가 아니다. 다만 Design이 받는 `?workspace_id=` 힌트 경로는 그대로 관련이 있다.
+
+## 뒤로가기 경로 판정 — 부트가 아니라 **부트 부재**가 문제
+
+Design은 `app/[[...slug]]/page.tsx` 단일 catch-all + 자체 라우터(`pushState` + `popstate`) SPA다.
+
+- `scrubCosmeticLaunchParamsFromBrowserUrl()`는 `client-app.tsx` **모듈 평가 시 1회**만 돈다.
+- `runTeamverEmbedSessionBoot`도 `teamverEmbedBoot.bootDone` 모듈 플래그로 **문서당 1회**다.
+- `navigate()`의 `buildPath()`는 쿼리를 만들지 않으므로 히스토리에 `?workspace_id=`가 남지 않는다.
+
+→ **뒤로가기가 런치 힌트를 되살리지는 않는다.** 조사 지침의 "히스토리에 남은 낡은 쿼리" 가설은 배제됐다.
+
+뒤로가기가 실제로 하는 일은 **활성 WS 재해결을 대량으로 트리거**하는 것이다.
+`route.kind`가 `project → home`으로 바뀌면 `App.tsx:4305` effect가 `loadRecentProjectsForHome()`을 돌리고,
+그 한 번의 호출이 `resolveActiveTeamverWorkspaceId()`를 여러 번 부른다
+(inflight 키 산출 → 레지스트리 목록 → 툼스톤 필터 → 데몬 enrich 헤더). `HomeView` 마운트도 한 번 더 부른다.
+이 함수는 **읽기 함수인데 저장값을 덮어쓰는 부수효과**를 갖는다(`syncTeamverWorkspaceFromSession`, 비보존).
+그래서 뒤로가기는 "새로고침과 같은 판정을 훨씬 자주, 동시에" 돌리는 증폭기다.
+
+## 근본 원인
+
+| # | 결함 | 위치 | 증상 |
+|---|---|---|---|
+| E | 부트가 저장값을 **BFF에 알리지 않는다** | `teamverEmbedSessionBoot.ts:122-136` | 라벨/헤더 = 저장값, BFF 세션 = 이전 값 → 다음 reconcile이 저장값을 서버 값으로 되돌림 (증상 1) |
+| F1 | 홈 레일 실패 시 **다른 WS의 행을 잔존** | `App.tsx:4322-4327` · `1600-1612` | WS는 바뀌었는데 목록은 그대로 (증상 2) |
+| F2 | 성공 시에도 **합집합 병합** | `embedProjectListRefresh.ts:56-79` | 두 WS 프로젝트가 홈에 동시 노출 |
+
+E의 근거는 `8c2ca83e7e` 커밋 메시지가 약속한 "stored 유지 시 BFF 재정렬"이
+`app/auth/callback/page.tsx`에만 들어갔고 `runTeamverEmbedSessionBoot`에는 빠진 것이다.
+경로별 표는 구현설계 §E1.
+
+## 유닛 테스트가 통과한 이유 (간극의 정체)
+
+`tests/teamver/embed-session-boot-workspace.test.ts:126`이
+
+```ts
+expect(h.setActiveTeamverWorkspace).not.toHaveBeenCalled();
+```
+
+를 단정한다. 의도는 "런치 힌트를 서버에 밀지 말라"였지만, 실제로 고정한 것은
+**서버에 아무 말도 하지 않는 상태**다. 협력자 mock만 관찰하므로 "서버가 지금 어느 WS인지"가
+테스트 세계에 존재하지 않고, 따라서 드리프트가 결함으로 보이지 않았다.
+슬라이스 E에서 이 단정을 **뒤집어** 재현 테스트로 만들었다.
+
+## 교차 노출 판정
+
+- WS별 캐시(`registryListCache`·`driveHomeRecentCache`·`listRecentProjectsInflight`)는 **모두 workspaceId 키**를 갖는다 → 서버 데이터 교차 fetch 없음.
+- 반면 `App.tsx`의 `projects` state는 WS 태그가 없어 **화면에는 섞일 수 있다**.
+  상세 진입은 `assertTeamverProjectAccessIfNeeded`가 막지만 제목·시각·표지는 이미 렌더된다.
+  → 등급: 데이터 유출 아님 / **UI 교차 노출 있음**. 슬라이스 F가 대상.
+
+## 진행
+
+| 단계 | 상태 |
+|---|---|
+| 슬라이스 E·F 구현설계 append | ☑ |
+| E — 부트 BFF 재정렬 + `skipEventWhenUnchanged` | ☐ |
+| F — 홈 레일 WS 태그 (실패 시 비움 / 성공 시 교체) | ☐ |
+| 테스트 | ☐ |
+
 ## 변경 이력
 
+| 2026-09-08 18:45 | 루프481 슬라이스 E·F — 배포 범위 확정(HEAD 배포됨) · 부트 BFF 재정렬 누락 · 홈 레일 WS 태그 |
 | 2026-09-08 | 루프477 현황 초안 (진단 확정 · 정책 P1/P2/P3 반영) |
 | 2026-09-08 | 슬라이스 A 완료 (`8c2ca83e7e`) · 베이스라인 대조 기록 |
 | 2026-09-08 | 슬라이스 B 완료 (`9a649a2955`) · 알림 UI·테스트·부수 정리 |

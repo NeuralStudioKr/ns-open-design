@@ -130,6 +130,157 @@ reason 판정: 직전 저장값(`storedRaw`)이 세션 목록에 있으나 `appE
 - BE `_resolve_default_workspace_id` org-claim 정책
 - `driveWorkspaceRecovery` 비보존 전환
 
+---
+
+# 슬라이스 E·F — 배포된 P1이 브라우저에서 듣지 않는 이유 (루프481)
+
+슬라이스 A~D가 **staging에 배포된 상태에서** 같은 증상이 재현된다는 신고를 받았다.
+배포 여부는 실측으로 확정했다(현황 문서 §배포 커밋 범위 확정). 따라서 원인은 P1 로직이 아니라
+**P1이 서버 세션을 정렬하지 않는다**는 절반짜리 구현과, **WS가 바뀐 뒤에도 이전 WS 카드가 남는**
+목록 적용 규칙이다.
+
+## E. 부트 경로가 BFF 세션을 정렬하지 않는다 (증상 1·2 공통 뿌리)
+
+### E1. 진단
+
+슬라이스 A는 `runTeamverEmbedSessionBoot`의 분기를 이렇게 바꿨다.
+
+```text
+if (launchWorkspaceId && !storedOnSession) → setActiveTeamverWorkspace(hint)  // BFF POST
+else                                       → syncTeamverWorkspaceFromSession(session)  // 로컬 전용
+```
+
+`else`가 **로컬 전용**이다. 저장값이 이기는 정상 경로에서 Design은 자신이 고른 WS를
+BFF에 **한 번도 알리지 않는다**. 커밋 메시지(`8c2ca83e7e`)는 "stored 를 유지할 때 BFF 세션도
+재정렬해 X-Workspace-Id 드리프트 방지"라고 적었지만, 그 재정렬은 `app/auth/callback/page.tsx`
+**에만** 들어갔다.
+
+| 진입 경로 | 부트 함수 | BFF 재정렬 |
+|---|---|---|
+| Main FE 로그인 왕복 (`/auth/callback?code=…`) | 콜백 페이지 인라인 | ☑ `needsRealign` |
+| **새로고침(F5)** | `runTeamverEmbedSessionBoot` | ☐ |
+| **주소 직접 진입 · Main FE 재진입(쿠키 살아있음)** | `runTeamverEmbedSessionBoot` | ☐ |
+| 탭 포커스/유휴 세션 갱신 | `useTeamverEmbed.refresh` | ☐ (`preserveStoredWorkspace: true`) |
+| Drive 403 복구 | `recoverStaleDriveWorkspace` | ☐ |
+| 뒤로가기(popstate) | **부트 없음** — 모듈 1회성(`teamverEmbedBoot.bootDone`) | 해당 없음 |
+
+즉 **로그인 왕복만 정렬되고, 그 뒤의 모든 새로고침·재진입은 정렬되지 않는다.**
+사용자가 신고한 "새로고침 하는 경우"가 정확히 이 칸이다.
+
+### E2. 드리프트가 두 증상으로 갈라지는 경로
+
+`X-Workspace-Id`는 로컬 저장값에서 나오고(`teamverDaemonHeaders.ts:328`, `driveApi.ts:254`),
+`DesignAuthSession`에는 **BFF 세션의 현재 WS 필드가 아예 없다**(`designBffClient.ts:57-67`).
+클라이언트는 드리프트를 관측할 수단이 없다.
+
+```text
+Main FE 런치 → BFF 세션 = A
+Design 저장값 = B (사용자가 Design 안에서 고름)
+새로고침 → P1: 로컬 B 유지, BFF에는 아무 말도 안 함
+  → 라벨·헤더 = B / BFF 쿠키 세션 = A
+  → 레지스트리 GET /projects (X-Workspace-Id: B) 가 서버 정책과 어긋남
+      · 거절되면    → 증상 2 (목록 잔존, 아래 F)
+      · 서버가 이기면 → 다음 reconcile이 저장값을 A로 되돌림 = 증상 1
+```
+
+### E3. 유닛 테스트가 이 간극을 못 잡은 이유
+
+`tests/teamver/embed-session-boot-workspace.test.ts:126`
+
+```ts
+// The launch hint must not be pushed to the BFF, otherwise the server
+// session drifts to WS-A while the client renders WS-B.
+expect(h.setActiveTeamverWorkspace).not.toHaveBeenCalled();
+```
+
+단정이 **반대로** 걸려 있다. 힌트를 밀지 않으면 "힌트로의 드리프트"는 막지만,
+서버는 **이전 값 그대로** 남는다. 이 테스트는 드리프트 없음을 검증한 게 아니라
+**드리프트를 계약으로 고정**했다. 협력자 mock만 보는 테스트라 "서버에 아무 말도 안 한 상태"가
+정상인지 비정상인지 판단할 근거가 테스트 안에 없었다.
+
+### E4. 수정
+
+부트도 콜백과 같은 모양으로 만든다 — **이긴 쪽을 서버에 밀어준다.**
+
+```text
+preferred = storedOnSession ?? launchWorkspaceId
+if (preferred) {
+  advanced = setActiveTeamverWorkspace(preferred, userId, { skipEventWhenUnchanged: true })
+  sync(session, undefined, advanced ? { preferredIdOverride: preferred } : undefined)
+} else {
+  sync(session)
+}
+```
+
+- `advanced === false`(BFF 거절)이면 override를 붙이지 않아 서버 진실로 재조정된다 — 기존 계약 유지.
+- `skipEventWhenUnchanged`: 저장값이 이미 `preferred`인 정상 경로에서 `setActiveTeamverWorkspace`가
+  `workspace-changed`를 발행하면, `App.tsx:1877`의 부트 전 가드가 이를 `pendingWorkspaceSwitchIdRef`에
+  넣고 부트 후 재발행 → **모든 새로고침이 전체 워크스페이스 전환 사이드이펙트(목록 wipe + 레지스트리 동기)를
+  돌게 된다.** 값이 실제로 바뀌지 않았으면 발행하지 않는 것이 옳은 불변식이다.
+
+## F. WS가 바뀐 뒤에도 이전 WS 카드가 남는다 (증상 2)
+
+### F1. 진단 — 캐시가 아니라 React state
+
+WS별 캐시는 이미 정상적으로 키가 잡혀 있다.
+
+| 캐시 | 키 | 교차 노출 |
+|---|---|---|
+| `projectRegistry.registryListCache` | `workspaceId` + `userId` | 없음 |
+| `driveHomeRecentCache` | `${workspaceId}::${include}` | 없음 |
+| `listRecentProjectsInflight` | `embed:${workspaceId}:${limit}` | 없음 |
+
+문제는 `App.tsx`의 `projects` state가 **WS 태그를 갖지 않는다**는 점이다. 두 지점이 겹친다.
+
+1. **실패 시 잔존** — 뒤로가기로 루트에 돌아오면 `App.tsx:4305`의 라우트 전이 effect가
+   `loadRecentProjectsForHome()`을 돌린다. `!result.ok`면 "transient 401에 빈 화면을 깜빡이지 않는다"는
+   의도로 **이전 행을 그대로 남긴다**(`4322-4327`). 그 이전 행이 *다른 WS* 것일 수 있다는 판단이 없다.
+2. **합집합 병합** — 성공 시에도 `upsertRecentProjects` → `mergeRecentProjectsIntoList`는
+   `current ∪ incoming`이다(`embedProjectListRefresh.ts:56-79`). WS가 바뀐 뒤 이 경로로 들어오면
+   홈 레일에 **두 워크스페이스의 프로젝트가 동시에** 뜬다.
+
+`beginProjectListRequest()`가 워크스페이스를 캡처하지만(`App.tsx:757`) 부트 경로에서는
+`embedActiveWorkspaceIdRef.current`가 아직 `null`이라 `request.workspaceId = null`이 되고,
+`isStaleProjectListWorkspace`는 `request.workspaceId`가 falsy면 **항상 false**를 반환한다(`783-797`).
+즉 부트에서 시작한 apply는 어떤 WS 변경으로도 무효화되지 않는다.
+
+### F2. 교차 노출 판정
+
+- **서버에서 남의 WS 데이터를 받아오는 경로는 없다** — 멤버십 SSOT는 워크스페이스 스코프 레지스트리이고,
+  캐시 키에 WS가 들어 있다.
+- **그러나 화면에는 두 WS가 섞여 보일 수 있다.** 카드 클릭 시 상세는 `assertTeamverProjectAccessIfNeeded`로
+  막히지만, **제목·타임스탬프·표지 썸네일은 이미 렌더된 상태**다. 데이터 유출 등급은 낮지만
+  "이전 워크스페이스의 프로젝트 제목이 새 워크스페이스 홈에 남는다"는 사용자 관점 결함이다.
+
+### F3. 수정
+
+`projects` state에 **어느 WS에서 칠했는지** 태그를 붙인다.
+
+- 신규 순수 모듈 `teamver/embedProjectListWorkspaceTag.ts`
+  - `isProjectListWorkspaceMismatch(painted, active)` = `Boolean(painted && active && painted !== active)`
+  - 둘 중 하나라도 모르면 **불일치로 보지 않는다**(보수적) — 부트처럼 태그가 아직 없는 구간에서
+    멀쩡한 목록을 지우지 않기 위함.
+- `App.tsx`
+  - `paintedProjectsWorkspaceIdRef` — apply가 성공할 때 현재 활성 WS로 갱신.
+  - `upsertRecentProjects` — 불일치면 병합이 아니라 **교체**.
+  - 홈 recent 실패 경로 2곳(`refreshProjects` · 라우트 전이 effect) — 불일치면 잔존이 아니라 **비운다**.
+
+## 테스트
+
+| 파일 | 무엇을 고정하나 |
+|---|---|
+| `tests/teamver/embed-session-boot-workspace.test.ts` | 저장값이 이길 때도 **BFF에 그 값을 POST**한다 (E3의 뒤집힌 단정 정정) · BFF 거절 시 override 없음 · 저장값·힌트 모두 없으면 POST 없음 |
+| `tests/teamver-set-active-workspace.test.ts` | `skipEventWhenUnchanged`가 값이 같을 때 `workspace-changed`를 발행하지 않고, 다를 때는 발행한다 |
+| 신규 `tests/teamver/embedProjectListWorkspaceTag.test.ts` | 불일치 판정 · 모르는 값은 불일치 아님 |
+| 신규 `tests/teamver/embed-home-recent-workspace-retention.test.ts` | 실패 시 같은 WS면 잔존 / 다른 WS면 비움 · 성공 시 다른 WS면 교체 |
+
+## 비범위
+
+- design-api(`stg-design-api.teamver.com`) 쪽 `POST /auth/workspace` 구현 — 이 모노레포에 소스가 없다.
+- `/auth/session`에 BFF 세션의 현재 WS를 실어 클라이언트가 드리프트를 **관측**하게 하는 것 —
+  BE 변경이 필요하므로 후속(현황 §남은 위험).
+
 ## 변경 이력
 
+| 2026-09-08 18:40 | 루프481 슬라이스 E·F 설계 — 부트 BFF 재정렬 누락 · 홈 레일 WS 태그 |
 | 2026-09-08 | 루프477 구현설계 (슬라이스 A: P1·P3 / 슬라이스 B: P2 알림) |
