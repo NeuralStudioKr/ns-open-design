@@ -2,6 +2,9 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("../src/teamver/designBffClient", () => ({
   fetchDesignAuthSession: vi.fn(),
+  // driveApi funnels 401 recovery through the ladder now; the bare
+  // refresh/probe pair below is kept only for still-imported call sites.
+  ensureDesignAuthLadder: vi.fn(async () => false),
   refreshDesignAuthCookie: vi.fn(),
   probeDesignBffSessionAuthenticated: vi.fn(async () => false),
   isDesignAuthRefreshDeclined: vi.fn(() => false),
@@ -43,6 +46,7 @@ import { beginMainSsoMismatchRecovery } from "../src/teamver/mainSsoMismatchReco
 import {
   fetchDesignAuthSession,
   isDesignAuthRefreshDeclineHard,
+  ensureDesignAuthLadder,
   isDesignAuthRefreshDeclined,
   probeDesignBffSessionAuthenticated,
   refreshDesignAuthCookie,
@@ -50,7 +54,7 @@ import {
 import { recoverStaleDriveWorkspace } from "../src/teamver/driveWorkspaceRecovery";
 import { isTeamverEmbedSessionAuthenticated } from "../src/teamver/teamverEmbedSession";
 
-const mockedRefresh = vi.mocked(refreshDesignAuthCookie);
+const mockedLadder = vi.mocked(ensureDesignAuthLadder);
 const mockedFetchSession = vi.mocked(fetchDesignAuthSession);
 const mockedProbe = vi.mocked(probeDesignBffSessionAuthenticated);
 const mockedRecoverWorkspace = vi.mocked(recoverStaleDriveWorkspace);
@@ -125,7 +129,7 @@ describe("shouldSkipDriveAuthRefresh", () => {
 describe("getTeamverDriveJson", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    mockedRefresh.mockReset();
+    mockedLadder.mockReset();
     mockedFetchSession.mockReset();
     mockedProbe.mockReset();
     mockedProbe.mockResolvedValue(false);
@@ -156,7 +160,7 @@ describe("getTeamverDriveJson", () => {
       "/teamver-bff/drive/api/foo",
       expect.objectContaining({ credentials: "include", method: "GET" }),
     );
-    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(mockedLadder).not.toHaveBeenCalled();
   });
 
   it("retries once after BFF refresh on 401 and returns the second body", async () => {
@@ -166,12 +170,12 @@ describe("getTeamverDriveJson", () => {
       if (callCount === 1) return new Response("", { status: 401 });
       return jsonResponse({ ok: true });
     });
-    mockedRefresh.mockResolvedValue(true);
+    mockedLadder.mockResolvedValue(true);
 
     const json = await getTeamverDriveJson("/api/foo");
 
     expect(json).toEqual({ ok: true });
-    expect(mockedRefresh).toHaveBeenCalledTimes(1);
+    expect(mockedLadder).toHaveBeenCalledTimes(1);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
@@ -184,7 +188,7 @@ describe("getTeamverDriveJson", () => {
     const pending = getTeamverDriveJson("/api/foo");
     await vi.advanceTimersByTimeAsync(400);
     await expect(pending).resolves.toEqual({ ok: true });
-    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(mockedLadder).not.toHaveBeenCalled();
     expect(mockedFetchSession).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
@@ -198,14 +202,14 @@ describe("getTeamverDriveJson", () => {
     const expectation = expect(pending).rejects.toThrow("teamver_drive_fetch_failed:401");
     await vi.advanceTimersByTimeAsync(400);
     await expectation;
-    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(mockedLadder).not.toHaveBeenCalled();
     expect(mockedFetchSession).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
   it("recovers session_expired after soft retry when embed still looks signed in", async () => {
     mockedEmbedAuthed.mockReturnValue(true);
-    mockedRefresh.mockResolvedValue(false);
+    mockedLadder.mockResolvedValue(false);
     mockedFetchSession.mockResolvedValue({ authenticated: true } as never);
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
@@ -216,7 +220,7 @@ describe("getTeamverDriveJson", () => {
     const pending = getTeamverDriveJson("/api/foo");
     await vi.advanceTimersByTimeAsync(400);
     await expect(pending).resolves.toEqual({ ok: true });
-    expect(mockedRefresh).toHaveBeenCalledTimes(1);
+    expect(mockedLadder).toHaveBeenCalledTimes(1);
     expect(mockedFetchSession).toHaveBeenCalledTimes(1);
     expect(fetchSpy).toHaveBeenCalledTimes(3);
   });
@@ -231,7 +235,7 @@ describe("getTeamverDriveJson", () => {
     const expectation = expect(pending).rejects.toThrow("teamver_drive_fetch_failed:401");
     await vi.advanceTimersByTimeAsync(400);
     await expectation;
-    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(mockedLadder).not.toHaveBeenCalled();
     expect(mockedFetchSession).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
@@ -251,7 +255,7 @@ describe("getTeamverDriveJson", () => {
     await expect(getTeamverDriveJson("/api/v2/shared-drive")).rejects.toThrow(
       "teamver_drive_main_sso_user_mismatch",
     );
-    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(mockedLadder).not.toHaveBeenCalled();
     expect(mockedFetchSession).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(beginMainSsoMismatchRecovery).toHaveBeenCalled();
@@ -261,7 +265,7 @@ describe("getTeamverDriveJson", () => {
     mockedEmbedAuthed.mockReturnValue(true);
     mockedDeclined.mockReturnValue(true);
     mockedHardDecline.mockReturnValue(true);
-    mockedRefresh.mockResolvedValue(false);
+    mockedLadder.mockResolvedValue(false);
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(jsonResponse({ detail: "session_expired", login_url: "https://x" }, 401));
@@ -271,7 +275,7 @@ describe("getTeamverDriveJson", () => {
     await vi.advanceTimersByTimeAsync(400);
     await expectation;
     // Sticky: fail-fast — no refresh/survival ladder (C1 owns recovery).
-    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(mockedLadder).not.toHaveBeenCalled();
     expect(mockedProbe).not.toHaveBeenCalled();
     expect(mockedFetchSession).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(2);
@@ -281,7 +285,7 @@ describe("getTeamverDriveJson", () => {
     mockedEmbedAuthed.mockReturnValue(true);
     mockedDeclined.mockReturnValue(true);
     mockedHardDecline.mockReturnValue(true);
-    mockedRefresh.mockResolvedValue(true);
+    mockedLadder.mockResolvedValue(true);
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(jsonResponse({ detail: "session_expired", login_url: "https://x" }, 401));
@@ -290,7 +294,7 @@ describe("getTeamverDriveJson", () => {
     const expectation = expect(pending).rejects.toThrow("teamver_drive_fetch_failed:401");
     await vi.advanceTimersByTimeAsync(400);
     await expectation;
-    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(mockedLadder).not.toHaveBeenCalled();
     expect(mockedProbe).not.toHaveBeenCalled();
     expect(mockedFetchSession).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(2);
@@ -308,7 +312,7 @@ describe("getTeamverDriveJson", () => {
     await vi.advanceTimersByTimeAsync(400);
     const json = await pending;
     expect(json).toEqual({ items: [] });
-    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(mockedLadder).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
@@ -321,7 +325,7 @@ describe("getTeamverDriveJson", () => {
     const expectation = expect(pending).rejects.toThrow("teamver_drive_fetch_failed:401");
     await vi.advanceTimersByTimeAsync(400);
     await expectation;
-    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(mockedLadder).not.toHaveBeenCalled();
     expect(mockedFetchSession).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
@@ -330,7 +334,7 @@ describe("getTeamverDriveJson", () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(new Response("", { status: 401 }));
-    mockedRefresh.mockResolvedValue(false);
+    mockedLadder.mockResolvedValue(false);
     mockedFetchSession.mockResolvedValue({ authenticated: false });
 
     await expect(getTeamverDriveJson("/api/foo")).rejects.toThrow(
@@ -349,7 +353,7 @@ describe("getTeamverDriveJson", () => {
     await expect(getTeamverDriveJson("/api/v2/shared-drive", "ws-stale")).rejects.toThrow(
       "teamver_drive_fetch_failed:403",
     );
-    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(mockedLadder).not.toHaveBeenCalled();
     expect(mockedFetchSession).not.toHaveBeenCalled();
     expect(mockedRecoverWorkspace).toHaveBeenCalledWith("ws-stale");
     expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -371,7 +375,7 @@ describe("getTeamverDriveJson", () => {
     await expect(getTeamverDriveJson("/api/v2/shared-drive", "ws-1")).rejects.toThrow(
       "teamver_drive_main_sso_user_mismatch",
     );
-    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(mockedLadder).not.toHaveBeenCalled();
     expect(mockedFetchSession).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(beginMainSsoMismatchRecovery).toHaveBeenCalled();
@@ -393,7 +397,7 @@ describe("getTeamverDriveJson", () => {
     await expect(getTeamverDriveJson("/api/v2/shared-drive")).rejects.toThrow(
       "teamver_drive_main_sso_required",
     );
-    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(mockedLadder).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -426,7 +430,7 @@ describe("getTeamverDriveJson", () => {
     await vi.advanceTimersByTimeAsync(400);
     await vi.advanceTimersByTimeAsync(400);
     await expect(pending).resolves.toEqual({ drives: [] });
-    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(mockedLadder).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(3);
   });
 
@@ -444,7 +448,7 @@ describe("getTeamverDriveJson", () => {
     const json = await getTeamverDriveJson("/api/v2/shared-drive", "ws-stale");
     expect(json).toEqual({ ok: true, ws: "ws-fresh" });
     expect(mockedRecoverWorkspace).toHaveBeenCalledWith("ws-stale");
-    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(mockedLadder).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
@@ -461,7 +465,7 @@ describe("getTeamverDriveJson", () => {
 describe("postTeamverDriveJson", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    mockedRefresh.mockReset();
+    mockedLadder.mockReset();
     mockedFetchSession.mockReset();
     resetTeamverDriveFetchQueueForTests();
   });

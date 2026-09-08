@@ -762,8 +762,14 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).toContain("allowSlideCountReduction: allowReplaceSeedOrLeftover");
     expect(projectView).toContain("skipArtifactStubGuard: true");
     expect(projectView).toContain("shouldSkipDaemonArtifactStubGuard");
+    // Anchor on the binding rather than spanning the whole revision payload —
+    // the guard result and the daemon flag sit on either side of it, so any
+    // edit to the payload used to push them past a fixed character window.
     expect(projectView).toMatch(
-      /shouldSkipDaemonArtifactStubGuard[\s\S]{0,400}skipArtifactStubGuard:\s*true/,
+      /const skipDaemonStubGuard = shouldSkipDaemonArtifactStubGuard\(/,
+    );
+    expect(projectView).toMatch(
+      /skipDaemonStubGuard[\s\S]{0,80}skipArtifactStubGuard:\s*true/,
     );
     expect(projectView).toContain("templateCloneFillSlideCountOverrideNotice(");
     expect(projectView).toContain("slimTemplateVisualKitForFill(");
@@ -786,20 +792,34 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).toContain("stripAbandonedMotifSvgDumpFromStreamedText");
     expect(projectView).toContain("stripAbandonedHeadKitDumpFromStreamedText");
     expect(projectView).toContain("templateCloneContentFill: true");
-    expect(projectView).toMatch(/includeExistingDeckImageEditRule:\s*\n\s*!isCloneContentFillTurn/);
-    expect(projectView).toContain("templateCloneContentFill: autoContinueOriginIsFill");
+    // `isCloneHostFillTurn` widened the guard to prompt-fill turns as well
+    // (`isCloneContentFillTurn || isClonePromptFillTurn`, loop391/402).
+    expect(projectView).toMatch(/includeExistingDeckImageEditRule:\s*\n\s*!isCloneHostFillTurn/);
+    // `autoContinueOriginIsFill` became `templateCloneAutoContinueFlags(...)`
+    // and the fill flag now rides on `.jsonFill` (loop391).
+    expect(projectView).toContain("templateCloneAutoContinueFlags(");
+    expect(projectView).toContain("templateCloneContentFill: autoContinueFill.jsonFill");
     expect(projectView).toContain("ensureTemplateCloneContentFillContinuePrompt(");
     expect(app).toContain("withoutCanonicalDeckAttachments(");
     const fillSrc = readWebSource("src/teamver/templateCloneContentFill.ts");
     expect(fillSrc).toContain("withoutCanonicalDeckAttachments(");
     expect(fillSrc).toContain("isCanonicalDeckAttachment(");
     expect(fillSrc).toContain("withTemplateCloneFillPluginInputs(");
-    expect(fillSrc).toContain("`<head>` is FORBIDDEN on this fill turn");
-    expect(fillSrc).toContain("first 800 characters after `<artifact`");
+    // Fill now slot-fills a JSON outline instead of emitting deck HTML, so the
+    // old per-turn `<head>` / early-character budget wording was replaced by a
+    // single forbidden-output line. Same intent: no HTML dump on a fill turn.
+    expect(fillSrc).toContain(
+      "FORBIDDEN: <!doctype, <html, <head, <style, <section class=\"slide\">, Motif <svg>.",
+    );
+    expect(fillSrc).toContain(
+      "- Forbidden output: <!doctype, <html, <head, <style, <section class=\"slide\">, Motif <svg>, full example.html rewrite.",
+    );
+    expect(fillSrc).toContain("Do not regenerate deck HTML");
     expect(fillSrc).toContain("FIRST_FILL_SLIDE_COUNT_GUIDANCE");
     expect(fillSrc).not.toContain("close exactly 3 complete body-first slides");
-    expect(fillSrc).toContain("large SVG sprites this turn");
-    expect(fillSrc).toContain("compact template-identifying motif/deco cues");
+    // Motif/deco sprite budget moved to the HTML-generating turn's prompt
+    // (`packages/contracts/src/prompts/deck-framework.ts`) once fill stopped
+    // emitting HTML; `deck-framework-compact.test.ts` owns it now.
     expect(projectView).not.toMatch(/lastResortTitle:\s*[\s\S]{0,120}'초안'/);
     expect(projectView).toContain("deriveDeckCoverTitleFromBrief(brief || '', deckTitle || '슬라이드')");
     expect(projectView).toContain("coverTitle || '슬라이드'");
@@ -880,8 +900,11 @@ describe("canvasSlideLaunch", () => {
     // 루프283 — cover+body / substance-rich prior top-up noop stays calm
     // skipped-noop (thin hosts use thin-prior incomplete above).
     expect(projectView).toContain("top-up-did-not-append-slides");
-    expect(projectView).toMatch(
-      /thin-prior-top-up-no-append[\s\S]{0,400}top-up-did-not-append-slides/,
+    // Sibling branches of one if/else — assert the order (thin prior first,
+    // substance-rich second) instead of a character window, which a comment or
+    // an edit between the two branches breaks without changing behaviour.
+    expect(projectView.indexOf("thin-prior-top-up-no-append")).toBeLessThan(
+      projectView.indexOf("top-up-did-not-append-slides"),
     );
     expect(projectView).toMatch(
       /top-up-did-not-append-slides[\s\S]{0,200}skipped-noop|skipped-noop[\s\S]{0,200}top-up-did-not-append-slides/,

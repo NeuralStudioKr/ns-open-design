@@ -3,8 +3,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const postDesignAuthWorkspaceMock = vi.fn();
-const refreshDesignAuthCookieMock = vi.fn();
-const ensureDesignBffSessionAuthenticatedMock = vi.fn();
+// The bare refresh + ensure pair became one `ensureDesignAuthLadder(tag, opts)`
+// with the rung selected by `opts.mode`. Split it back into two spies so each
+// rung keeps its own call count.
+const ladderRefreshMock = vi.fn();
+const ladderEnsureMock = vi.fn();
 const shouldSkipTeamverBffAuthCallsMock = vi.fn(() => false);
 const isDesignAuthRefreshDeclinedMock = vi.fn(() => false);
 const isBootstrapAuthModeMock = vi.fn(() => true);
@@ -22,8 +25,8 @@ vi.mock("../src/teamver/designBffClient", () => ({
       set: (id: string) => workspaceStoreSet(id),
     },
   }),
-  refreshDesignAuthCookie: () => refreshDesignAuthCookieMock(),
-  ensureDesignBffSessionAuthenticated: () => ensureDesignBffSessionAuthenticatedMock(),
+  ensureDesignAuthLadder: (tag: string, options?: { mode?: string }) =>
+    options?.mode === "ensure" ? ladderEnsureMock(tag) : ladderRefreshMock(tag),
   shouldSkipTeamverBffAuthCalls: () => shouldSkipTeamverBffAuthCallsMock(),
   isDesignAuthRefreshDeclined: () => isDesignAuthRefreshDeclinedMock(),
 }));
@@ -43,8 +46,8 @@ vi.mock("../src/teamver/teamverWorkspaceStoreRevision", () => ({
 describe("setActiveTeamverWorkspace recovery ladder", () => {
   beforeEach(() => {
     postDesignAuthWorkspaceMock.mockReset();
-    refreshDesignAuthCookieMock.mockReset();
-    ensureDesignBffSessionAuthenticatedMock.mockReset();
+    ladderRefreshMock.mockReset();
+    ladderEnsureMock.mockReset();
     shouldSkipTeamverBffAuthCallsMock.mockReset();
     shouldSkipTeamverBffAuthCallsMock.mockReturnValue(false);
     isDesignAuthRefreshDeclinedMock.mockReset();
@@ -68,8 +71,8 @@ describe("setActiveTeamverWorkspace recovery ladder", () => {
     const ok = await setActiveTeamverWorkspace("ws-1");
 
     expect(ok).toBe(false);
-    expect(refreshDesignAuthCookieMock).not.toHaveBeenCalled();
-    expect(ensureDesignBffSessionAuthenticatedMock).not.toHaveBeenCalled();
+    expect(ladderRefreshMock).not.toHaveBeenCalled();
+    expect(ladderEnsureMock).not.toHaveBeenCalled();
     expect(workspaceStoreSet).not.toHaveBeenCalled();
     expect(dispatchWorkspaceChanged).not.toHaveBeenCalled();
   });
@@ -81,12 +84,12 @@ describe("setActiveTeamverWorkspace recovery ladder", () => {
     postDesignAuthWorkspaceMock
       .mockRejectedValueOnce({ status: 401, code: "session_expired" })
       .mockResolvedValueOnce(undefined);
-    refreshDesignAuthCookieMock.mockResolvedValue(true);
+    ladderRefreshMock.mockResolvedValue(true);
 
     const ok = await setActiveTeamverWorkspace("ws-2");
 
     expect(ok).toBe(true);
-    expect(refreshDesignAuthCookieMock).toHaveBeenCalledTimes(1);
+    expect(ladderRefreshMock).toHaveBeenCalledTimes(1);
     expect(postDesignAuthWorkspaceMock).toHaveBeenCalledTimes(2);
     expect(workspaceStoreSet).toHaveBeenCalledWith("ws-2");
   });
@@ -99,14 +102,14 @@ describe("setActiveTeamverWorkspace recovery ladder", () => {
       .mockRejectedValueOnce({ status: 401 })
       .mockRejectedValueOnce({ status: 401 })
       .mockResolvedValueOnce(undefined);
-    refreshDesignAuthCookieMock.mockResolvedValue(true);
-    ensureDesignBffSessionAuthenticatedMock.mockResolvedValue(true);
+    ladderRefreshMock.mockResolvedValue(true);
+    ladderEnsureMock.mockResolvedValue(true);
 
     const ok = await setActiveTeamverWorkspace("ws-3");
 
     expect(ok).toBe(true);
-    expect(refreshDesignAuthCookieMock).toHaveBeenCalledTimes(1);
-    expect(ensureDesignBffSessionAuthenticatedMock).toHaveBeenCalledTimes(1);
+    expect(ladderRefreshMock).toHaveBeenCalledTimes(1);
+    expect(ladderEnsureMock).toHaveBeenCalledTimes(1);
     expect(postDesignAuthWorkspaceMock).toHaveBeenCalledTimes(3);
     expect(workspaceStoreSet).toHaveBeenCalledWith("ws-3");
   });
@@ -116,8 +119,8 @@ describe("setActiveTeamverWorkspace recovery ladder", () => {
       "../src/teamver/setActiveTeamverWorkspace"
     );
     postDesignAuthWorkspaceMock.mockRejectedValue({ status: 401 });
-    refreshDesignAuthCookieMock.mockResolvedValue(false);
-    ensureDesignBffSessionAuthenticatedMock.mockResolvedValue(false);
+    ladderRefreshMock.mockResolvedValue(false);
+    ladderEnsureMock.mockResolvedValue(false);
 
     const ok = await setActiveTeamverWorkspace("ws-4");
 
@@ -156,12 +159,12 @@ describe("setActiveTeamverWorkspace recovery ladder", () => {
         },
       })
       .mockResolvedValueOnce(undefined);
-    refreshDesignAuthCookieMock.mockResolvedValue(true);
+    ladderRefreshMock.mockResolvedValue(true);
 
     const ok = await setActiveTeamverWorkspace("ws-nested");
 
     expect(ok).toBe(true);
-    expect(refreshDesignAuthCookieMock).toHaveBeenCalledTimes(1);
+    expect(ladderRefreshMock).toHaveBeenCalledTimes(1);
     expect(postDesignAuthWorkspaceMock).toHaveBeenCalledTimes(2);
     expect(workspaceStoreSet).toHaveBeenCalledWith("ws-nested");
   });
@@ -181,12 +184,12 @@ describe("setActiveTeamverWorkspace recovery ladder", () => {
         },
       })
       .mockResolvedValueOnce(undefined);
-    refreshDesignAuthCookieMock.mockResolvedValue(true);
+    ladderRefreshMock.mockResolvedValue(true);
 
     const ok = await setActiveTeamverWorkspace("ws-mangled");
 
     expect(ok).toBe(true);
-    expect(refreshDesignAuthCookieMock).toHaveBeenCalledTimes(1);
+    expect(ladderRefreshMock).toHaveBeenCalledTimes(1);
     expect(postDesignAuthWorkspaceMock).toHaveBeenCalledTimes(2);
     expect(workspaceStoreSet).toHaveBeenCalledWith("ws-mangled");
   });
@@ -201,7 +204,7 @@ describe("setActiveTeamverWorkspace recovery ladder", () => {
 
     expect(ok).toBe(false);
     expect(postDesignAuthWorkspaceMock).not.toHaveBeenCalled();
-    expect(refreshDesignAuthCookieMock).not.toHaveBeenCalled();
+    expect(ladderRefreshMock).not.toHaveBeenCalled();
     expect(workspaceStoreSet).not.toHaveBeenCalled();
   });
 
@@ -216,7 +219,7 @@ describe("setActiveTeamverWorkspace recovery ladder", () => {
 
     expect(ok).toBe(false);
     expect(postDesignAuthWorkspaceMock).not.toHaveBeenCalled();
-    expect(refreshDesignAuthCookieMock).not.toHaveBeenCalled();
+    expect(ladderRefreshMock).not.toHaveBeenCalled();
     expect(workspaceStoreSet).not.toHaveBeenCalled();
   });
 });

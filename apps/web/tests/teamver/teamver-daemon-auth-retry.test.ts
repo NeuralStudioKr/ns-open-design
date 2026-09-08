@@ -23,6 +23,12 @@ vi.mock("../../src/teamver/designBffClient", () => ({
   refreshDesignAuthCookie: (...args: unknown[]) => refreshMock(...args),
   probeDesignBffSessionAuthenticated: (...args: unknown[]) => probeSessionMock(...args),
   ensureDesignBffSessionAuthenticated: (...args: unknown[]) => ensureSessionMock(...args),
+  // One ladder call replaced the three helpers above; `mode` picks the rung.
+  ensureDesignAuthLadder: (_tag: string, options?: { mode?: string }) => {
+    if (options?.mode === "probe") return probeSessionMock();
+    if (options?.mode === "ensure") return ensureSessionMock();
+    return refreshMock();
+  },
   clearDesignAuthRefreshDecline: (...args: unknown[]) => clearDeclineMock(...args),
   isDesignAuthRefreshDeclined: (...args: unknown[]) => declinedMock(...args),
   isDesignAuthRefreshDeclineHard: (...args: unknown[]) => hardDeclineMock(...args),

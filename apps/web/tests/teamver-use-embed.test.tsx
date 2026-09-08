@@ -48,22 +48,35 @@ vi.mock("../src/teamver/teamverEmbedSession", () => ({
   subscribeTeamverEmbedSessionChanged: vi.fn(() => () => {}),
 }));
 
-vi.mock("../src/teamver/designBffClient", () => ({
-  fetchDesignAuthSession: vi.fn(),
-  getDesignBffClient: vi.fn(),
-  prepareDesignAuthSessionReload: vi.fn(),
-  refreshDesignAuthCookie: vi.fn(async () => true),
-  invalidateDesignAuthSessionCache: vi.fn(),
-  resetDesignAuthRefreshState: vi.fn(),
-  resetDesignAuthBareRefreshAttempt: vi.fn(),
-  isDesignAuthRefreshDeclined: vi.fn(() => false),
-  isDesignAuthRefreshDeclineHard: vi.fn(() => false),
-  isTeamverRuntimeConfigAuthBlocked: vi.fn(() => false),
-  shouldSkipTeamverBffAuthCalls: vi.fn(() => false),
-  probeDesignBffSessionAuthenticated: vi.fn(async () => false),
-  ensureDesignBffSessionAuthenticated: vi.fn(async () => false),
-  clearDesignAuthRefreshDecline: vi.fn(),
-}));
+vi.mock("../src/teamver/designBffClient", () => {
+  const refresh = vi.fn(async () => true);
+  const probe = vi.fn(async () => false);
+  const ensure = vi.fn(async () => false);
+  return {
+    fetchDesignAuthSession: vi.fn(),
+    getDesignBffClient: vi.fn(),
+    prepareDesignAuthSessionReload: vi.fn(),
+    refreshDesignAuthCookie: refresh,
+    invalidateDesignAuthSessionCache: vi.fn(),
+    resetDesignAuthRefreshState: vi.fn(),
+    resetDesignAuthBareRefreshAttempt: vi.fn(),
+    isDesignAuthRefreshDeclined: vi.fn(() => false),
+    isDesignAuthRefreshDeclineHard: vi.fn(() => false),
+    isTeamverRuntimeConfigAuthBlocked: vi.fn(() => false),
+    shouldSkipTeamverBffAuthCalls: vi.fn(() => false),
+    probeDesignBffSessionAuthenticated: probe,
+    ensureDesignBffSessionAuthenticated: ensure,
+    clearDesignAuthRefreshDecline: vi.fn(),
+    pauseDesignBffAuthDuringTransition: vi.fn(),
+    // C1 escalation and soft-force now go through one ladder call; route each
+    // rung to the spy that used to own it so per-rung counts still hold.
+    ensureDesignAuthLadder: vi.fn(async (_tag: string, options?: { mode?: string }) => {
+      if (options?.mode === "probe") return probe();
+      if (options?.mode === "ensure") return ensure();
+      return refresh();
+    }),
+  };
+});
 
 vi.mock("../src/teamver/designAuthClient", () => ({
   postDesignAuthWorkspace: vi.fn(async () => undefined),

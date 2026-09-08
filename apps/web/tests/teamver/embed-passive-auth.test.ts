@@ -43,6 +43,13 @@ vi.mock("../../src/teamver/designBffClient", () => ({
   prepareDesignAuthSessionReload: () => prepareReloadMock(),
   probeDesignBffSessionAuthenticated: () => probeSessionMock(),
   ensureDesignBffSessionAuthenticated: () => ensureSessionMock(),
+  // Passive auth now drives all three rungs through one ladder call, picked by
+  // `mode` — route each rung back to the spy that used to own it.
+  ensureDesignAuthLadder: (_tag: string, options?: { mode?: string }) => {
+    if (options?.mode === "probe") return probeSessionMock();
+    if (options?.mode === "ensure") return ensureSessionMock();
+    return refreshMock();
+  },
   isDesignAuthRefreshDeclined: vi.fn(() => false),
   isTeamverRuntimeConfigAuthBlocked: vi.fn(() => false),
 }));

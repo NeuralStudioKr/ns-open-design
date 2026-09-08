@@ -16,6 +16,16 @@ vi.mock('../../src/teamver/designBffClient', () => ({
 vi.mock('../../src/teamver/teamverDaemonHeaders', () => ({
   fetchTeamverDaemon: vi.fn(),
   buildTeamverDaemonRequestHeaders: vi.fn(async () => ({})),
+  // Consumers narrow daemon 401s with `instanceof`. Importing the real module
+  // here drags in its whole graph (~25s), and the class is only ever compared
+  // against itself through this mock, so a matching stub is equivalent.
+  TeamverDaemonUnauthorizedError: class TeamverDaemonUnauthorizedError extends Error {
+    readonly code = 'TEAMVER_DAEMON_UNAUTHORIZED';
+    constructor() {
+      super('teamver_daemon_unauthorized');
+      this.name = 'TeamverDaemonUnauthorizedError';
+    }
+  },
 }));
 
 vi.mock('../../src/teamver/activeTeamverWorkspace', () => ({

@@ -92,19 +92,50 @@ staging이 아직 수정 이전 빌드를 서비스해(아래 §bake) 브라우�
 
 **뮤테이션 확인:** `if (launchWorkspaceId && !storedOnSession)`을 `if (launchWorkspaceId)`로 되돌리면 첫 테스트가 실패한다 — 소스 문자열 검사와 달리 회귀를 실제로 잡는다.
 
-## 발견 — 테스트 스위트 부채 (에픽 외)
+## 슬라이스 D — 테스트 스위트 부채 정리
 
-관련 192스위트를 Node 24로 돌리면 **41건 실패**하는데, 전부 `vi.mock`에 export 4종이 빠진 것으로 환원된다: `ensureDesignAuthLadder`(30) · `shouldSkipTeamverBffAuthCalls`(9) · `pauseDesignBffAuthDuringTransition`(1) · `TeamverDaemonUnauthorizedError`(1). `8096e5b419`~`607bca0884`의 인증 래더 리팩토링이 소스만 옮기고 mock을 따라가지 않아 누적된 것으로, 이 에픽과 무관한 선행 부채다.
+관련 192스위트를 Node 24로 돌리면 **41건 실패**했다. 이 에픽과 무관한 선행 부채로, 원인은 두 부류다.
 
-**위험한 형태:** `teamver-set-active-workspace.test.ts`의 4건은 mock 누락 예외가 `setActiveTeamverWorkspace`의 catch-all(`setActiveTeamverWorkspace.ts:105-108`)에 삼켜져 `ok=false`가 되고, 그래서 "mock 미완"이 아니라 **평범한 단정 실패**로 보인다. 이 테스트들은 구 API(`refreshDesignAuthCookie` / `ensureDesignBffSessionAuthenticated`) 기준이라 래더 API로 다시 써야 한다. 프로덕션 코드는 정상이다.
+### 부류 1 — 인증 래더 리팩토링이 mock을 두고 감
 
-`activeTeamverWorkspace` 2파일(10건)만 이번에 복구했다. 나머지 12파일 31건은 mock 갱신 + 일부 재작성이 필요해 별도 슬라이스로 남긴다.
+`8096e5b419`~`607bca0884`가 `refreshDesignAuthCookie` / `probeDesignBffSessionAuthenticated` / `ensureDesignBffSessionAuthenticated` 세 헬퍼를 **`ensureDesignAuthLadder(tag, { mode })` 한 호출로 통합**했는데 테스트 mock은 구 API에 남아 있었다. 각 파일에서 mode별로 기존 spy에 라우팅해 **단정을 1:1로 보존**하며 복구했다.
+
+| 파일 | 조치 | 결과 |
+|------|------|------|
+| `teamver-use-embed.test.tsx` | 래더 + `pauseDesignBffAuthDuringTransition` 보강 | 22/22 |
+| `teamver/teamver-daemon-auth-retry.test.ts` | 래더 3단(mode) 라우팅 | 14/14 |
+| `teamver/embed-passive-auth.test.ts` | 래더 3단(mode) 라우팅 | 13/13 |
+| `teamver-set-active-workspace.test.ts` | 래더 2단(refresh/ensure)으로 스파이 재작성 | 9/9 |
+| `teamver-drive-api.test.ts` | 401 복구를 래더로 재지정 (`mockedRefresh`→`mockedLadder`) | 25/25 |
+| `teamver-active-workspace{,-reconcile}.test.ts` | `shouldSkipTeamverBffAuthCalls` 보강 | 10/10 |
+| `teamver/bootFetchDedup.test.ts` | `TeamverDaemonUnauthorizedError` 스텁 추가 | 10/10 |
+
+**주목:** 슬라이스 A·B에서 "선행 부채"로 넘겨두었던 `teamver-use-embed.test.tsx` 6건은 실제로 이 mock 누락이 원인이었고, 지금 22/22로 전부 통과한다.
+
+**가려짐 주의:** `teamver-set-active-workspace.test.ts`의 4건은 mock 누락 예외가 `setActiveTeamverWorkspace`의 catch-all(`setActiveTeamverWorkspace.ts:105-108`)에 삼켜져 `ok=false`가 되므로, "mock 미완"이 아니라 평범한 단정 실패처럼 보였다. 프로덕션 코드는 정상이다.
+
+`bootFetchDedup`에서 `importOriginal`로 실모듈을 끌어오면 그래프 전체를 컴파일해 26.5초가 걸린다. 동일 mock 안에서만 `instanceof` 비교가 일어나므로 스텁 클래스로 대체해 8.4초로 줄였다.
+
+### 부류 2 — 소스-문자열 단정의 노후화
+
+소스를 문자열로 읽어 `toContain` 하는 테스트가 기능 진화를 따라가지 못한 경우. **한 테스트 안에서 앞 단정이 실패하면 뒤쪽 노후화가 가려지므로, 보고된 실패 수보다 고칠 곳이 많다** — `teamver-canvas-slide-launch.test.ts`는 2건 보고였으나 실제로 6곳을 고쳐야 했다.
+
+| 노후화 | 조치 |
+|------|------|
+| `shouldSkipDaemonArtifactStubGuard` → `skipArtifactStubGuard: true` 400자 창 (실제 1418자) | 중간 바인딩 `skipDaemonStubGuard`를 앵커로 쪼갬 |
+| `thin-prior-top-up-no-append` → `top-up-did-not-append-slides` 400자 창 (실제 423자) | if/else 형제 분기이므로 거리 대신 **순서**만 검사 |
+| `!isCloneContentFillTurn` | `isCloneHostFillTurn`(= content ∥ prompt fill, loop391/402)로 갱신 |
+| `templateCloneContentFill: autoContinueOriginIsFill` | `templateCloneAutoContinueFlags(...).jsonFill`로 갱신 |
+| fill 턴의 `<head>`/800자 가드레일 문구 | fill이 HTML→**JSON 아웃라인 슬롯필**로 바뀌어 현재 forbidden-output 문구로 재고정 |
+| fill의 motif/deco sprite 예산 문구 | HTML 생성 턴 프롬프트로 이전 — `deck-framework-compact.test.ts`가 커버하므로 위치만 주석으로 남기고 제거 |
+
+고정 문자 거리 정규식은 무관한 커밋이 사이에 코드를 끼워 넣으면 깨진다(이번엔 옆 에픽 `97593bb46f`의 `ProjectView.tsx` 편집). 숫자를 키우는 대신 가까운 앵커나 순서 검사로 바꿨다.
 
 ## 남은 일
 
-- **staging 배포 후** 수동 검증: Design에서 B 선택 → F5 → B 유지 / Main `?workspace_id=A` 재진입 → B 유지 / 최초 진입 → A 시드 / 비활성 WS에서 전환 안내 노출
-- 잔여 테스트 부채 12파일 31건 (mock 4종 보강 + set-active-workspace 4건 래더 API 재작성)
+- **staging 배포 후** 수동 검증: Design에서 B 선택 → F5 → B 유지 / Main `?workspace_id=A` 재진입 → B 유지 / 최초 진입 → A 시드 / 비활성 WS에서 전환 안내 노출 — 배포는 사용자가 직접 진행
 - Main FE 4건은 별도 에픽으로 착수 (0908-N03)
+- `.cursor/rules`에 Node 24 요구·소스-문자열 단정의 취약성 반영 검토
 
 ## 검증
 
@@ -151,3 +182,4 @@ staging이 아직 수정 이전 빌드를 서비스해(아래 §bake) 브라우�
 | 2026-09-08 | 슬라이스 A 완료 (`8c2ca83e7e`) · 베이스라인 대조 기록 |
 | 2026-09-08 | 슬라이스 B 완료 (`9a649a2955`) · 알림 UI·테스트·부수 정리 |
 | 2026-09-08 | 슬라이스 C — 부트 동작 테스트 승격 · 죽은 섀도 변수 제거 · 읽기경로 가드 10건 복구 · staging 미배포 확인 |
+| 2026-09-08 | 슬라이스 D — 인증 래더 mock 부채 7파일 복구(use-embed 6건 포함) · 소스-문자열 단정 노후화 정정 |
