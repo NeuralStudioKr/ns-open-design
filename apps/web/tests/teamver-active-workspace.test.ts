@@ -32,6 +32,7 @@ vi.mock('../src/teamver/designBffClient', () => ({
   fetchDesignAuthSession: vi.fn(async () => null),
   readCachedDesignAuthSessionMeta: vi.fn(() => null),
   isDesignAuthRefreshDeclined: vi.fn(() => false),
+  shouldSkipTeamverBffAuthCalls: vi.fn(() => false),
 }));
 
 describe('activeTeamverWorkspace', () => {
@@ -41,6 +42,7 @@ describe('activeTeamverWorkspace', () => {
     vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue(null);
     vi.mocked(designBffClient.readCachedDesignAuthSessionMeta).mockReturnValue(null);
     vi.mocked(designBffClient.isDesignAuthRefreshDeclined).mockReturnValue(false);
+    vi.mocked(designBffClient.shouldSkipTeamverBffAuthCalls).mockReturnValue(false);
     storeGetMock.mockReset();
     storeGetMock.mockResolvedValue(null);
     localStorage.clear();

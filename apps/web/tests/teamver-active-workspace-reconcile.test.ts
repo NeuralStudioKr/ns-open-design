@@ -26,6 +26,7 @@ vi.mock("../src/teamver/designBffClient", () => ({
     defaultWorkspaceId: "WS-default",
   })),
   isDesignAuthRefreshDeclined: vi.fn(() => false),
+  shouldSkipTeamverBffAuthCalls: vi.fn(() => false),
 }));
 
 vi.mock("../src/teamver/syncTeamverWorkspace", () => ({

@@ -78,10 +78,33 @@
 - `tests/teamver-use-embed.test.tsx`의 `teamverWorkspaceEvents` mock에 신규 export 3개 추가.
 - `TeamverSessionBanner.test.tsx`의 `'Design 사용 불가'` 기대값이 브랜딩 리네임(`슬라이드`) 이후 갱신되지 않아 실패하던 것을 정정.
 
+## 슬라이스 C — 검증 강화 (완료)
+
+staging이 아직 수정 이전 빌드를 서비스해(아래 §bake) 브라우저 검증을 할 수 없으므로, 부트 정책을 **소스 문자열 검사에서 실제 동작 검사로** 승격했다.
+
+| 파일 | 변경 |
+|------|------|
+| `teamverEmbedSessionBoot.ts` | 슬라이스 A에서 들어간 죽은 `activeWorkspaceId` 선언 제거 — 인증 분기 안쪽 선언이 이를 섀도잉해 외부 선언은 write-only였다. 기능 영향은 없으나 내부 선언을 지우면 조용히 동작이 바뀌는 함정이었다 |
+| `tests/teamver/embed-session-boot-workspace.test.ts` | **신규.** `runTeamverEmbedSessionBoot`를 실제로 실행해 협력자 호출로 P1을 단정 (6건) |
+| `tests/teamver-active-workspace.test.ts` · `…-reconcile.test.ts` | `designBffClient` mock에 `shouldSkipTeamverBffAuthCalls` 추가 — 아래 §부채로 죽어 있던 10건 복구 |
+
+신규 테스트가 단정하는 것: 저장값이 있으면 런치 힌트를 **BFF에 밀지 않음**(서버 세션 드리프트 방지) · 저장값이 없을 때만 `preferredIdOverride`로 시드 · BFF가 전환을 거부하면 override를 붙이지 않음 · 힌트 소비 **정확히 1회** · 스냅샷에 힌트가 아니라 해소된 워크스페이스를 저장.
+
+**뮤테이션 확인:** `if (launchWorkspaceId && !storedOnSession)`을 `if (launchWorkspaceId)`로 되돌리면 첫 테스트가 실패한다 — 소스 문자열 검사와 달리 회귀를 실제로 잡는다.
+
+## 발견 — 테스트 스위트 부채 (에픽 외)
+
+관련 192스위트를 Node 24로 돌리면 **41건 실패**하는데, 전부 `vi.mock`에 export 4종이 빠진 것으로 환원된다: `ensureDesignAuthLadder`(30) · `shouldSkipTeamverBffAuthCalls`(9) · `pauseDesignBffAuthDuringTransition`(1) · `TeamverDaemonUnauthorizedError`(1). `8096e5b419`~`607bca0884`의 인증 래더 리팩토링이 소스만 옮기고 mock을 따라가지 않아 누적된 것으로, 이 에픽과 무관한 선행 부채다.
+
+**위험한 형태:** `teamver-set-active-workspace.test.ts`의 4건은 mock 누락 예외가 `setActiveTeamverWorkspace`의 catch-all(`setActiveTeamverWorkspace.ts:105-108`)에 삼켜져 `ok=false`가 되고, 그래서 "mock 미완"이 아니라 **평범한 단정 실패**로 보인다. 이 테스트들은 구 API(`refreshDesignAuthCookie` / `ensureDesignBffSessionAuthenticated`) 기준이라 래더 API로 다시 써야 한다. 프로덕션 코드는 정상이다.
+
+`activeTeamverWorkspace` 2파일(10건)만 이번에 복구했다. 나머지 12파일 31건은 mock 갱신 + 일부 재작성이 필요해 별도 슬라이스로 남긴다.
+
 ## 남은 일
 
-- staging 수동 검증: Design에서 B 선택 → F5 → B 유지 / Main `?workspace_id=A` 재진입 → B 유지 / 최초 진입 → A 시드 / 비활성 WS에서 전환 안내 노출
-- Main FE 4건(비범위) 별도 에픽 착수 여부 결정
+- **staging 배포 후** 수동 검증: Design에서 B 선택 → F5 → B 유지 / Main `?workspace_id=A` 재진입 → B 유지 / 최초 진입 → A 시드 / 비활성 WS에서 전환 안내 노출
+- 잔여 테스트 부채 12파일 31건 (mock 4종 보강 + set-active-workspace 4건 래더 API 재작성)
+- Main FE 4건은 별도 에픽으로 착수 (0908-N03)
 
 ## 검증
 
@@ -91,12 +114,25 @@
 | 저장값 없음 + 런치 A → A 시드 | ☑ 단위 |
 | 런치 힌트 one-shot (2회 새로고침에서 재적용 없음) | ☑ 단위 |
 | 스크럽 후에도 힌트 생존 | ☑ 단위 |
-| 부트 중 비보존 reconcile 1회 | ☑ 소스 계약 (`waitForTeamverEmbedBoot` 선행) |
+| 부트 중 비보존 reconcile 1회 | ☑ 소스 계약 (`waitForTeamverEmbedBoot` 선행) + 부트 1회 실행당 sync 1회 단정 |
+| 저장값 있을 때 런치 힌트를 BFF에 밀지 않음 | ☑ 동작 (신규 부트 테스트) |
+| BFF가 전환 거부 시 override 미적용 | ☑ 동작 (신규 부트 테스트) |
+| 하드 리프레시에서 명시적 선택 유지 (읽기 경로) | ☑ 동작 (`teamver-active-workspace-reconcile` 복구) |
 | `appEnabled=false` → 전환 + `app-disabled` 알림 | ☑ 단위 |
 | 목록에서 사라짐 → 전환 + `revoked` 알림 | ☑ 단위 |
 | 명시적 전환·최초 시드는 알림 없음 | ☑ 단위 |
 | 배너 칩 노출 + 닫기 동작 | ☑ 단위 |
-| staging bake | ☐ |
+| staging bake | ☐ **배포 대기** — 아래 참조 |
+
+### staging bake 상태 (미배포)
+
+`https://stg-design.teamver.com`이 서비스하는 번들에서 이번 변경의 지문이 **둘 다 없다**: 슬라이스 A의 `teamver:embed-launch-workspace`(JS 청크 9개 전수), 슬라이스 B의 `auto-switch`(CSS 청크 2개). 대조로 기존 `teamver:embed-launch-prefs`·`teamver-embed-bar`는 존재하므로 번들 자체는 정상 수집됐다.
+
+`ns-open-design`은 ns_cicd 미등록이고 staging 자동 배포 워크플로도 없어, Staging EC2에서 `deploy/teamver/deploy.sh --staging`을 직접 돌려야 반영된다. push만으로는 bake되지 않는다.
+
+### 로컬 실행 환경 주의
+
+레포는 `"node": "~24"`를 요구하는데 Node 22.11에서는 jsdom 스위트가 **전부** 기동 실패한다(`html-encoding-sniffer@6` → `@exodus/bytes` ESM을 `require`). 무플래그 `require(ESM)`은 22.12부터라 22.11이 경계 바로 아래다. 테스트 전 Node 24 확인이 필요하다.
 
 ### 회귀 대조 (슬라이스 B 이후)
 
@@ -107,10 +143,11 @@
 
 작업 중 다른 세션이 `git stash`로 공유 작업 트리를 두 번 쓸어가 이 에픽의 편집이 유실됐다(한 번은 `teamverWorkspaceEvents.ts`의 상수 선언 블록만 사라져 `ReferenceError`로 드러났다). 백업 후 복원해 복구했으며, 이 현상 자체가 사용자가 신고한 "워크스페이스 상태가 바뀌는" 문제의 개발환경 판본이다.
 
-또한 같은 날 다른 에픽(`스톨_부분덱_salvage_이어쓰기`)이 **동일한 `0908-N01`** 을 사용해 넘버링이 충돌했다(`5f2cbd654b`). 규칙상 다른 주제는 `N02`여야 하므로 재부여가 필요하다.
+또한 같은 날 다른 에픽(`스톨_부분덱_salvage_이어쓰기`)이 **동일한 `0908-N01`** 을 사용해 넘버링이 충돌했다(`5f2cbd654b`). 해당 세션이 `97593bb46f`에서 스스로 `N02`로 재부여해 해소됐다.
 
 ## 변경 이력
 
 | 2026-09-08 | 루프477 현황 초안 (진단 확정 · 정책 P1/P2/P3 반영) |
 | 2026-09-08 | 슬라이스 A 완료 (`8c2ca83e7e`) · 베이스라인 대조 기록 |
 | 2026-09-08 | 슬라이스 B 완료 (`9a649a2955`) · 알림 UI·테스트·부수 정리 |
+| 2026-09-08 | 슬라이스 C — 부트 동작 테스트 승격 · 죽은 섀도 변수 제거 · 읽기경로 가드 10건 복구 · staging 미배포 확인 |

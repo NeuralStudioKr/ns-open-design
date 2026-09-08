@@ -79,7 +79,6 @@ export async function runTeamverEmbedSessionBoot(
     const session = await fetchDesignAuthSession(bootSessionOptions);
     if (deps.isCancelled()) return null;
 
-    let activeWorkspaceId: string | null = null;
     const detailRoute = deps.readDetailRoute();
 
     if (
