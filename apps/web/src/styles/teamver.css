@@ -43,6 +43,40 @@
   color: var(--amber);
 }
 
+.teamver-embed-bar__auto-switch {
+  gap: 0.4rem;
+  border-color: color-mix(in srgb, var(--amber) 45%, var(--border));
+  color: var(--amber);
+  /* The reason sentence is longer than the sibling chips — let it shrink and
+     ellipsize instead of pushing the account group off the bar. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.teamver-embed-bar__auto-switch-dismiss {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.teamver-embed-bar__auto-switch-dismiss:hover {
+  opacity: 1;
+}
+
+.teamver-embed-bar__auto-switch-dismiss:focus-visible {
+  outline: none;
+  opacity: 1;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--amber) 32%, transparent);
+  border-radius: 0.25rem;
+}
+
 .teamver-embed-bar__signin {
   text-decoration: none;
   color: var(--text);

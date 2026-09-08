@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { TEAMVER_WORKSPACE_CHANGED_EVENT } from "../src/teamver/teamverWorkspaceEvents";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  TEAMVER_WORKSPACE_AUTO_SWITCHED_EVENT,
+  TEAMVER_WORKSPACE_CHANGED_EVENT,
+  type TeamverWorkspaceAutoSwitchedDetail,
+} from "../src/teamver/teamverWorkspaceEvents";
 
 const storeSetMock = vi.fn(async () => undefined);
 const storeGetMock = vi.fn(async () => null);
@@ -263,5 +267,94 @@ describe("readStoredWorkspaceIdOnSession", () => {
     expect(
       await readStoredWorkspaceIdOnSession({ ...session, authenticated: false }),
     ).toBeNull();
+  });
+});
+
+/** 루프477 (0908-N01 P2) — an unrequested move must never be silent. */
+describe("workspace auto-switch notice", () => {
+  const notices: TeamverWorkspaceAutoSwitchedDetail[] = [];
+  const collect = (event: Event) => {
+    notices.push((event as CustomEvent<TeamverWorkspaceAutoSwitchedDetail>).detail);
+  };
+
+  beforeEach(() => {
+    notices.length = 0;
+    storeSetMock.mockClear();
+    storeGetMock.mockReset();
+    storeGetMock.mockResolvedValue(null);
+    storeGetPreferredMock.mockReset();
+    storeGetPreferredMock.mockReturnValue(null);
+    window.addEventListener(TEAMVER_WORKSPACE_AUTO_SWITCHED_EVENT, collect);
+  });
+
+  afterEach(() => {
+    window.removeEventListener(TEAMVER_WORKSPACE_AUTO_SWITCHED_EVENT, collect);
+  });
+
+  it("reports app-disabled when the pick is still listed but Design is off", async () => {
+    storeGetMock.mockResolvedValue("WS-disabled");
+
+    const active = await syncTeamverWorkspaceFromSession({
+      authenticated: true,
+      user: { userId: "user-1" },
+      defaultWorkspaceId: "WS-other",
+      workspaces: [
+        { id: "WS-disabled", name: "Disabled", role: "owner", appEnabled: false },
+        { id: "WS-other", name: "Other", role: "owner", appEnabled: true },
+      ],
+    });
+
+    expect(active).toBe("WS-other");
+    expect(notices).toEqual([
+      { from: "WS-disabled", to: "WS-other", reason: "app-disabled" },
+    ]);
+  });
+
+  it("reports revoked when the pick vanished from the session list", async () => {
+    storeGetMock.mockResolvedValue("WS-revoked");
+
+    const active = await syncTeamverWorkspaceFromSession({
+      authenticated: true,
+      user: { userId: "user-1" },
+      defaultWorkspaceId: "WS-other",
+      workspaces: [{ id: "WS-other", name: "Other", role: "owner" }],
+    });
+
+    expect(active).toBe("WS-other");
+    expect(notices).toEqual([
+      { from: "WS-revoked", to: "WS-other", reason: "revoked" },
+    ]);
+  });
+
+  it("stays quiet for a requested switch and for a first-ever seed", async () => {
+    const workspaces = [
+      { id: "WS-a", name: "A", role: "owner" },
+      { id: "WS-b", name: "B", role: "owner" },
+    ];
+
+    storeGetMock.mockResolvedValue("WS-a");
+    await syncTeamverWorkspaceFromSession(
+      {
+        authenticated: true,
+        user: { userId: "user-1" },
+        defaultWorkspaceId: "WS-a",
+        workspaces,
+      },
+      workspaces,
+      { preferredIdOverride: "WS-b" },
+    );
+
+    storeGetMock.mockResolvedValue(null);
+    await syncTeamverWorkspaceFromSession(
+      {
+        authenticated: true,
+        user: { userId: "user-1" },
+        defaultWorkspaceId: "WS-a",
+        workspaces,
+      },
+      workspaces,
+    );
+
+    expect(notices).toEqual([]);
   });
 });

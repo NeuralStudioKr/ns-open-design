@@ -43,6 +43,10 @@ import {
   isWorkspaceAppEnabled,
   readAppDisabledReason,
 } from "./workspaceUtils";
+import {
+  subscribeTeamverWorkspaceAutoSwitched,
+  type TeamverWorkspaceAutoSwitchedDetail,
+} from "./teamverWorkspaceEvents";
 import { readUserImageUrl } from "./teamverEmbedVisuals";
 import { snapshotFromWorkspace } from "./teamverDesignAccess";
 import { syncAllDaemonProjectsToRegistry } from "./projectRegistry";
@@ -80,6 +84,12 @@ export type TeamverEmbedState = {
   designDisabledReason: string | null;
   workspaces: WorkspaceListItem[];
   error: string | null;
+  /**
+   * A workspace move the user did not ask for — Design disabled on their pick,
+   * or access revoked. Surfaced so the switch is never silent (0908-N01 P2).
+   */
+  workspaceAutoSwitch: TeamverWorkspaceAutoSwitchedDetail | null;
+  dismissWorkspaceAutoSwitch: () => void;
   switchWorkspace: (workspaceId: string) => Promise<void>;
   /**
    * Re-probe `/teamver-bff/auth/session`.
@@ -97,7 +107,17 @@ export type TeamverEmbedState = {
   }) => Promise<TeamverEmbedRefreshResult>;
 };
 
-const INITIAL: Omit<TeamverEmbedState, "switchWorkspace" | "refresh"> = {
+/**
+ * The part of the state that is derived from an `/auth/session` payload.
+ * The auto-switch notice is tracked separately — it is driven by workspace
+ * events, not by the session snapshot.
+ */
+type TeamverEmbedSessionState = Omit<
+  TeamverEmbedState,
+  "switchWorkspace" | "refresh" | "workspaceAutoSwitch" | "dismissWorkspaceAutoSwitch"
+>;
+
+const INITIAL: TeamverEmbedSessionState = {
   loading: false,
   authenticated: false,
   userLabel: null,
@@ -163,7 +183,7 @@ function pickSessionUnreachableDelayMs(attempt: number): number {
 
 function buildEmbedStateFromBootSnapshot(
   boot: EmbedBootstrapSessionSnapshot,
-): Omit<TeamverEmbedState, "switchWorkspace" | "refresh"> {
+): TeamverEmbedSessionState {
   const session = boot.session;
   const workspaces = normalizeWorkspaceList(session.workspaces);
   const activeWorkspace =
@@ -185,7 +205,7 @@ function buildEmbedStateFromBootSnapshot(
 
 function resolveInitialEmbedState(
   enabled: boolean,
-): Omit<TeamverEmbedState, "switchWorkspace" | "refresh"> {
+): TeamverEmbedSessionState {
   if (!enabled || !isTeamverEmbedMode()) return INITIAL;
   const boot = peekEmbedBootstrapSession();
   if (boot?.session.authenticated) {
@@ -200,7 +220,7 @@ function resolveInitialEmbedState(
 function applySessionToEmbedState(
   session: DesignAuthSession,
   activeWorkspaceId: string | null,
-): Omit<TeamverEmbedState, "switchWorkspace" | "refresh"> {
+): TeamverEmbedSessionState {
   const workspaces = normalizeWorkspaceList(session.workspaces);
   const activeWorkspace =
     workspaces.find((workspace) => readWorkspaceId(workspace) === activeWorkspaceId) ?? null;
@@ -222,6 +242,8 @@ function applySessionToEmbedState(
 
 export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
   const [state, setState] = useState(() => resolveInitialEmbedState(enabled));
+  const [workspaceAutoSwitch, setWorkspaceAutoSwitch] =
+    useState<TeamverWorkspaceAutoSwitchedDetail | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
 
@@ -596,6 +618,8 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       return;
     }
     snapshotFromWorkspace(trimmed, target);
+    // An explicit pick answers any pending auto-switch notice.
+    setWorkspaceAutoSwitch(null);
     setState((prev) => ({
       ...prev,
       activeWorkspaceId: trimmed,
@@ -604,6 +628,17 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       designDisabledReason: readAppDisabledReason(target),
     }));
   }, []);
+
+  const dismissWorkspaceAutoSwitch = useCallback(() => {
+    setWorkspaceAutoSwitch(null);
+  }, []);
+
+  useEffect(() => {
+    if (!enabled || !isTeamverEmbedMode()) return;
+    return subscribeTeamverWorkspaceAutoSwitched((detail) => {
+      setWorkspaceAutoSwitch(detail);
+    });
+  }, [enabled]);
 
   useEffect(() => {
     const boot = peekEmbedBootstrapSession();
@@ -904,6 +939,8 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
 
   return {
     ...state,
+    workspaceAutoSwitch,
+    dismissWorkspaceAutoSwitch,
     switchWorkspace,
     refresh,
   };

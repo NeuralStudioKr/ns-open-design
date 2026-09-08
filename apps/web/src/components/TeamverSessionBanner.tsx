@@ -42,6 +42,11 @@ export function TeamverSessionBanner({ teamverEmbed }: Props) {
 
   if (embed.authenticated) {
     const barState = !embed.designAppEnabled ? "warn" : "ok";
+    const autoSwitch = embed.workspaceAutoSwitch;
+    const autoSwitchLabel =
+      autoSwitch?.reason === "revoked"
+        ? "이전 워크스페이스 접근 권한이 없어 전환했습니다"
+        : "이전 워크스페이스에서 슬라이드를 쓸 수 없어 전환했습니다";
     return (
       <div className="teamver-embed-bar" data-state={barState} data-testid="teamver-embed-bar">
         <div className="teamver-embed-bar__group teamver-embed-bar__group--workspace">
@@ -65,6 +70,22 @@ export function TeamverSessionBanner({ teamverEmbed }: Props) {
               data-testid="teamver-embed-session-warn"
             >
               연결 확인 중…
+            </span>
+          ) : null}
+          {autoSwitch ? (
+            <span
+              className="teamver-embed-bar__status teamver-embed-bar__auto-switch"
+              data-testid="teamver-embed-workspace-auto-switch"
+            >
+              {autoSwitchLabel}
+              <button
+                type="button"
+                className="teamver-embed-bar__auto-switch-dismiss"
+                onClick={embed.dismissWorkspaceAutoSwitch}
+                aria-label="전환 안내 닫기"
+              >
+                <Icon name="close" size={12} />
+              </button>
             </span>
           ) : null}
         </div>

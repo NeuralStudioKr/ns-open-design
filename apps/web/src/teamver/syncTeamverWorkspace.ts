@@ -1,6 +1,9 @@
 import type { LocalStorageWorkspaceStore, WorkspaceListItem } from "@teamver/app-sdk";
 import { getDesignBffClient, type DesignAuthSession } from "./designBffClient";
-import { dispatchTeamverWorkspaceChanged } from "./teamverWorkspaceEvents";
+import {
+  dispatchTeamverWorkspaceAutoSwitched,
+  dispatchTeamverWorkspaceChanged,
+} from "./teamverWorkspaceEvents";
 import {
   normalizeWorkspaceList,
   pickDefaultWorkspaceId,
@@ -103,6 +106,18 @@ export async function syncTeamverWorkspaceFromSession(
     await store.set(resolved);
     active = resolved;
     dispatchTeamverWorkspaceChanged(resolved);
+    // Only an unrequested move deserves a notice: `override` means the caller
+    // (parent-app switch / launch seed) asked for this one, and a missing
+    // `storedRaw` means there was no earlier pick to move away from.
+    if (!override && storedRaw && storedRaw !== resolved) {
+      dispatchTeamverWorkspaceAutoSwitched({
+        from: storedRaw,
+        to: resolved,
+        reason: workspaces.some((workspace) => workspace.id === storedRaw)
+          ? "app-disabled"
+          : "revoked",
+      });
+    }
   } else if (!stored && resolved) {
     await store.set(resolved);
     active = resolved;
