@@ -288,12 +288,50 @@ expect(h.setActiveTeamverWorkspace).not.toHaveBeenCalled();
 
 ## 진행
 
-| 단계 | 상태 |
+| 단계 | commit | 상태 |
+|---|---|---|
+| 슬라이스 E·F 구현설계 append | `42e38f29bf` | ☑ |
+| E — 부트 BFF 재정렬 + `skipEventWhenUnchanged` | `837d61f203` | ☑ |
+| F — 홈 레일 WS 태그 (실패 시 비움 / 성공 시 교체) | `6bde193b53` | ☑ |
+| 소스-문자열 단정 정정 | `f7c56a1077` | ☑ |
+
+## 검증
+
+### 재현성 — 수정 없이는 실패한다
+
+`teamverEmbedSessionBoot.ts`만 되돌리고 부트 테스트를 돌리면 **4건 실패**:
+
+```text
+× keeps the pick made inside Design when Main also sends a launch hint
+× realigns the BFF on a plain refresh, not only through /auth/callback
+× falls back to server truth when the BFF refuses the stored workspace
+× seeds from the launch hint only when Design has no stored pick yet
+  Tests  4 failed | 4 passed (8)
+```
+
+수정 적용 후 8/8 통과. 즉 새 테스트는 **배포된 코드에서 실패하고 수정본에서 통과**한다.
+
+### 스코프 회귀 — `tests/teamver*` 192 파일
+
+| 항목 | 결과 |
 |---|---|
-| 슬라이스 E·F 구현설계 append | ☑ |
-| E — 부트 BFF 재정렬 + `skipEventWhenUnchanged` | ☐ |
-| F — 홈 레일 WS 태그 (실패 시 비움 / 성공 시 교체) | ☐ |
-| 테스트 | ☐ |
+| 워크스페이스 핵심 12파일 | 78/78 통과 |
+| `tests/teamver/` + `tests/teamver-*` 전체 | **192 파일 / 1279 테스트 — 1건 실패 → 정정 후 0건** |
+| 유일한 실패 | `embed-session-boot.test.ts:80` — 부트 분기 **소스 문자열**을 그대로 매칭하던 단정. 슬라이스 D에서 이미 "노후화" 부채로 지목된 종류. `f7c56a1077`에서 정책 단정으로 교체 |
+| `tsc --noEmit` | 신규·수정 파일 오류 0 (`_archive/`·`AssistantMessage`·`ChatComposer`·`RecentProjectsStrip` 기존 오류는 무관) |
+
+전체 스위트(695파일)는 이 머신에서 forks worker timeout이 대량 발생해(37 errors / 11.7시간)
+기준선으로 쓸 수 없다. 워크스페이스·프로젝트목록 표면을 덮는 192파일 스코프로 대조했다.
+
+## 남은 위험
+
+| # | 내용 | 대응 |
+|---|---|---|
+| 1 | **클라이언트가 BFF 세션의 현재 WS를 관측할 수 없다.** `DesignAuthSession`에 해당 필드가 없어(`designBffClient.ts:57-67`) 드리프트를 **탐지**하지 못하고 매 부트 재정렬로 **예방**만 한다. 부트 이후 서버 쪽에서 WS가 바뀌면 다음 부트까지 어긋난 채로 있다 | 후속: `/auth/session`에 `active_workspace_id` 추가 (BE 변경 — design-api 소스가 이 모노레포에 없음) |
+| 2 | `resolveActiveTeamverWorkspaceId`는 **읽기 함수인데 비보존 reconcile로 저장값을 덮어쓴다**. 뒤로가기 1회가 이 함수를 4~10회 동시 호출하므로 세션 응답이 한 번만 흔들려도 durable 선택이 날아갈 수 있다 | 후속 슬라이스 G 후보: 부트 이후 읽기는 `preserveStoredWorkspace`, reconcile은 부트·명시 복구에만 허용 + single-flight |
+| 3 | `beginProjectListRequest()`가 부트 시점에 `workspaceId: null`을 캡처해 `isStaleProjectListWorkspace`가 **항상 false** → 부트에서 시작한 apply는 어떤 WS 변경으로도 무효화되지 않는다. 슬라이스 F의 painted 태그가 결과는 막지만 원인은 남아 있다 | 후속: 부트 요청도 실제 WS를 캡처하도록 |
+| 4 | 자동 전환 알림(P2)이 **부트 중 dispatch**되므로 구독 설치 시점에 따라 유실 가능 | 미검증 — 사용자 재현 시 확인 필요 |
+| 5 | `ns-open-design`은 ns_cicd 미등록 — 이번 수정도 **수동 배포**가 필요하다 (`deploy/teamver/deploy.sh --staging`) | 사용자 조치 |
 
 ## 변경 이력
 
