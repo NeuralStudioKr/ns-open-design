@@ -325,6 +325,8 @@ expect(h.setActiveTeamverWorkspace).not.toHaveBeenCalled();
 
 ## 남은 위험
 
+> **이 표는 슬라이스 G 시점 기준으로 갱신됐다 — 최신은 아래 §슬라이스 G 의 「남은 위험」.** 2·3은 슬라이스 G 에서 해소.
+
 | # | 내용 | 대응 |
 |---|---|---|
 | 1 | **클라이언트가 BFF 세션의 현재 WS를 관측할 수 없다.** `DesignAuthSession`에 해당 필드가 없어(`designBffClient.ts:57-67`) 드리프트를 **탐지**하지 못하고 매 부트 재정렬로 **예방**만 한다. 부트 이후 서버 쪽에서 WS가 바뀌면 다음 부트까지 어긋난 채로 있다 | 후속: `/auth/session`에 `active_workspace_id` 추가 (BE 변경 — design-api 소스가 이 모노레포에 없음) |
@@ -333,8 +335,34 @@ expect(h.setActiveTeamverWorkspace).not.toHaveBeenCalled();
 | 4 | 자동 전환 알림(P2)이 **부트 중 dispatch**되므로 구독 설치 시점에 따라 유실 가능 | 미검증 — 사용자 재현 시 확인 필요 |
 | 5 | `ns-open-design`은 ns_cicd 미등록 — 이번 수정도 **수동 배포**가 필요하다 (`deploy/teamver/deploy.sh --staging`) | 사용자 조치 |
 
+---
+
+# 슬라이스 G — 읽기 순수화 · single-flight · durable 선호 보존 (루프482)
+
+설계: 구현설계 §슬라이스 G. 대상은 슬라이스 E·F 가 남긴 **남은 위험 2·3**.
+
+## 진행
+
+| 단계 | commit | 상태 |
+|---|---|---|
+| 슬라이스 G 구현설계·현황 append | (아래 이력) | ☑ |
+| G1·G2·G3 — 읽기 순수화 + single-flight + durable 보존 | | ☐ |
+| G4 — 부트 durable 복구 | | ☐ |
+| G5 — 부트 프로젝트 목록 요청 WS 캡처 (위험 3) | | ☐ |
+
+## 남은 위험
+
+| # | 내용 | 대응 |
+|---|---|---|
+| 1 | **클라이언트가 BFF 세션의 현재 WS를 관측할 수 없다.** `DesignAuthSession`에 해당 필드가 없어(`designBffClient.ts:57-67`) 드리프트를 **탐지**하지 못하고 매 부트 재정렬로 **예방**만 한다. 부트 이후 서버 쪽에서 WS가 바뀌면 다음 부트까지 어긋난 채로 있다 | 후속: `/auth/session`에 `active_workspace_id` 추가 (BE 변경 — design-api 소스가 이 모노레포에 없음) |
+| 2 | ~~`resolveActiveTeamverWorkspaceId`가 읽기 함수인데 비보존 reconcile 로 저장값을 덮어쓴다~~ | **해소 — 슬라이스 G1·G2·G3.** 읽기 경로 쓰기 0회 · 버스트당 판정 1회 · 재조정이 durable 선호를 승격하지 않음 |
+| 3 | ~~`beginProjectListRequest()`가 부트 시점에 `workspaceId: null`을 캡처해 `isStaleProjectListWorkspace`가 항상 false~~ | **해소 — 슬라이스 G5.** 동기 스냅샷으로 부트 요청도 실제 WS 캡처 |
+| 4 | 자동 전환 알림(P2)이 **부트 중 dispatch**되므로 구독 설치 시점에 따라 유실 가능 | 미검증 — 사용자 재현 시 확인 필요 |
+| 5 | `ns-open-design`은 ns_cicd 미등록 — 이번 수정도 **수동 배포**가 필요하다 (`deploy/teamver/deploy.sh --staging`) | 사용자 조치 |
+
 ## 변경 이력
 
+| 2026-09-09 11:55 | 루프482 슬라이스 G 착수 — 위험 2·3 대상, 설계 선행 |
 | 2026-09-08 18:45 | 루프481 슬라이스 E·F — 배포 범위 확정(HEAD 배포됨) · 부트 BFF 재정렬 누락 · 홈 레일 WS 태그 |
 | 2026-09-08 | 루프477 현황 초안 (진단 확정 · 정책 P1/P2/P3 반영) |
 | 2026-09-08 | 슬라이스 A 완료 (`8c2ca83e7e`) · 베이스라인 대조 기록 |

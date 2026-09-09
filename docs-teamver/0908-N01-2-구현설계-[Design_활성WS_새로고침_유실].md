@@ -280,7 +280,189 @@ WS별 캐시는 이미 정상적으로 키가 잡혀 있다.
 - `/auth/session`에 BFF 세션의 현재 WS를 실어 클라이언트가 드리프트를 **관측**하게 하는 것 —
   BE 변경이 필요하므로 후속(현황 §남은 위험).
 
+---
+
+# 슬라이스 G — 읽기 함수가 durable 선택을 덮어쓰는 문제 (남은 위험 2·3)
+
+슬라이스 E·F 이후에도 남은 위험 2·3을 처리한다. 대상은 **뒤로가기 증폭**이다:
+`route.kind`가 `project → home`으로 바뀌면 `resolveActiveTeamverWorkspaceId()`가 4~10회 **동시** 호출되고,
+이 함수는 읽기 함수인데 **비보존 reconcile로 저장값을 쓴다**. 세션 응답이 한 번만 흔들려도
+사용자의 durable 선택이 날아가고, 그 판정이 동시 호출 수만큼 중복된다.
+
+## G0. 결함의 정확한 기계 (코드로 확정)
+
+`activeTeamverWorkspace.ts:24-54` 현재 흐름:
+
+```text
+storeId = store.get()
+skip/decline        → storeId                      (쓰기 없음)
+session 실패·미인증  → storeId                      (쓰기 없음)
+storeId ∈ workspaces → storeId                     (쓰기 없음)
+그 외               → syncTeamverWorkspaceFromSession(session, workspaces)   ← 옵션 없음 = 비보존
+```
+
+마지막 줄이 문제다. `storeId`가 세션 목록에 **없을 때**만 도달하지만, 그 조건은 진짜 회수 말고도
+**세션 응답이 흔들릴 때** 성립한다.
+
+| 세션 응답 | `pickDefaultWorkspaceId` | 결과 |
+|---|---|---|
+| `workspaces: []` (또는 필드 누락) | pool 없음 → `null` | `store.set` 없음, `active`(=bootstrap 선호=storeId) 반환 — **무해** |
+| `workspaces`가 **비어 있지 않은데 B가 빠진** 부분 응답 | `preferredId=B`는 pool에 없음 → `defaultWorkspaceId`(A) | `store.set(A)` + `setLastForUser(A)` + `workspace-changed` + auto-switch(`revoked`) — **durable 유실** |
+
+즉 위험한 칸은 **"목록은 왔지만 B가 빠진"** 한 가지다. 그리고 그 한 번이
+`store.set` 뿐 아니라 `setLastForUser`까지 덮어써 **계정별 마지막 선택까지 A로 승격**시킨다.
+그래서 B가 목록에 다시 나타나도 돌아갈 좌표가 남지 않는다 — 사용자가 말한 "계속 바뀐다"의 지속성이 여기서 나온다.
+
+동시성이 이걸 증폭한다. 8회 동시 호출은 8개의 독립 판정이고, 그중 **하나만** 흔들린 응답을 보면
+그 하나가 저장값을 옮긴다(각 호출은 서로를 모른다). 앞의 7개가 정상이어도 결과는 이동이다.
+
+## G1. 읽기를 진짜 읽기로 만든다 (위험 2 주 처리)
+
+`resolveActiveTeamverWorkspaceId`는 **어떤 경우에도 쓰지 않는다.** 대신 그 요청에 유효한 좌표를
+계산해 반환한다. reconcile 권한은 부트 / 세션 refresh / 명시적 복구가 그대로 갖는다.
+
+신규 순수 모듈 `teamver/activeWorkspaceReadPolicy.ts`:
+
+```ts
+resolveActiveWorkspaceIdForRead({
+  storedId, workspaces, defaultWorkspaceId, durablePreferenceId,
+}): string | null
+```
+
+| 입력 | 판정 | 근거 |
+|---|---|---|
+| `workspaces` 비어 있음 | `storedId` | **근거 없음**. 빈 목록은 회수의 증거가 아니다 |
+| `storedId ∈ workspaces` | `storedId` | 기존 계약 |
+| 그 외 | `pickDefaultWorkspaceId(workspaces, { preferredId: durablePreferenceId, defaultWorkspaceId })` ?? `storedId` | 헤더는 항상 **유효한** WS 를 가리킨다 |
+
+교착이 생기지 않는 이유: 세 번째 칸이 항상 유효한 WS 를 돌려주므로 `X-Workspace-Id`가 죽은 WS 로 고정되지 않는다.
+`teamverDaemonHeaders.ts:326`·`driveApi.ts:254`가 요청 시점에 이 함수를 호출하므로,
+저장하지 않아도 "활성 상태는 항상 요청에 유효"가 유지된다(슬라이스 E 성질 보존).
+
+저장값의 실제 수리는 다음 지점이 계속 담당한다 — 각각 **문서당/포커스당 1회**이고 P2 알림을 발행한다.
+
+| 수리 지점 | 함수 | 옵션 |
+|---|---|---|
+| 부트 | `runTeamverEmbedSessionBoot` | 비보존 reconcile (+ BFF 재정렬, 슬라이스 E) |
+| 포커스·유휴 세션 refresh | `useTeamverEmbed.refresh` | `preserveStoredWorkspace: !resetRefreshState && bootComplete` — 저장값이 목록에 없으면 preserve 분기를 타지 못해 비보존으로 떨어진다 |
+| 명시적 "다시 시도" | `refresh({ resetRefreshState: true })` | 비보존 |
+| Drive 403 복구 | `recoverStaleDriveWorkspace` | 명시 복구 |
+
+## G2. 동시 호출 single-flight
+
+읽기가 쓰지 않게 되면 중복 판정은 무해해지지만, 8회 동시 호출이 8번 판정하는 것 자체가
+"한 번만 흔들려도 진다"의 표면을 8배로 넓힌다. 합류시켜 **버스트당 판정 1회**로 만든다.
+
+`activeTeamverWorkspace.ts` 모듈 스코프:
+
+```text
+inflightPromise / inflightRevision = readTeamverWorkspaceStoreRevisionMs()
+
+resolve():
+  revision = readTeamverWorkspaceStoreRevisionMs()
+  inflight 있고 revision 동일 → 같은 promise 반환 (합류)
+  아니면 새 flight 시작, finally 에서 자기 자신일 때만 정리
+```
+
+**revision 키가 필요한 이유:** `bumpTeamverWorkspaceStoreRevision()`은 `setActiveTeamverWorkspace`
+(=명시적 전환·부트 재정렬)만 호출한다. 전환 직후의 호출이 전환 이전에 시작된 flight 에 합류하면
+새 WS 를 물어봤는데 옛 WS 를 받는다. revision 을 키로 두면 전환이 곧 flight 무효화가 된다.
+
+`resetActiveTeamverWorkspaceFlightForTests()`를 export 한다 (선례: `resetTeamverEmbedSessionRelayForTests`).
+
+## G3. durable 선호는 재조정으로 승격되지 않는다 (Main T3 정합)
+
+`syncTeamverWorkspaceFromSession`의 꼬리에서 `setLastForUser(userId, active)`가 **무조건** 돈다.
+비보존 reconcile 이 이 줄을 타면 시스템이 떠넘긴 값이 "사용자의 계정별 마지막 선택"으로 승격된다.
+
+신규 순수 모듈 `teamver/workspaceDurablePreference.ts`:
+
+```ts
+mayPromoteWorkspaceToDurablePreference({ storedBefore, resolved, requestedByCaller }): boolean
+```
+
+`false`는 **요청되지 않은 이동**일 때만 — `!requestedByCaller && storedBefore && resolved !== storedBefore`.
+시드(`storedBefore === null`)와 확인(`resolved === storedBefore`)과 명시 요청(`override`)은 모두 승격한다.
+
+`store.set`(=활성/헤더 키)은 그대로 이동하므로 교착이 없다. Main FE `setSessionActiveWorkspaceId`와 같은 균형이다.
+
+## G4. 부트가 durable 선택으로 되돌아온다
+
+G3이 `teamver_design_last_workspace_by_user`에 B 를 남겨도, 읽는 쪽이 없으면 의미가 없다.
+`store.getPreferredWorkspaceIdForBootstrap`은 **활성 키를 먼저** 보므로 재조정된 A 를 그대로 돌려준다.
+
+`readStoredWorkspaceIdOnSession`(부트·콜백 전용)이 durable 선호를 본다.
+
+```text
+active     = store.get()            // 목록에 있으면 후보
+durable    = store.getLastForUser(userId)
+durable 이 목록에 있고 appEnabled 이고 active 와 다르면 → durable  (한 번의 플레이크 복구)
+그 외                                                  → active
+```
+
+- **`appEnabled` 조건이 필수:** B 가 Design 비활성이라 P2 로 A 로 옮겼는데 다시 B 를 집어오면
+  매 새로고침이 A↔B 를 왕복한다.
+- **부트에서만** 한다. 세션 중간에 B 가 재활성됐다고 사용자를 끌어가면 놀란다.
+- 명시적 전환은 활성·durable 을 **같이** 쓰므로(`setActiveTeamverWorkspace.ts:132-136`) 둘이 어긋나는 경우는
+  **재조정이 활성만 옮겼을 때뿐**이다. 그래서 "다르면 durable" 이 곧 "플레이크 복구"다.
+
+## G5. 부트 프로젝트 목록 요청이 실제 WS 를 캡처한다 (위험 3)
+
+`beginProjectListRequest()`(`App.tsx:760-767`)는 `embedActiveWorkspaceIdRef.current`를 캡처하는데,
+그 ref 는 `App.tsx:1757`의 부트 대기 effect 가 채운다. 부트에서 시작한 요청은 `workspaceId: null`을 갖고,
+`isStaleProjectListWorkspace`는 `request.workspaceId`가 falsy 면 **항상 false** 다.
+슬라이스 F 의 painted 태그도 같은 이유로 부트 첫 페인트에서는 `null` 이라 판정을 못 한다.
+
+동기 스냅샷을 도입한다.
+
+- 신규 `teamver/activeWorkspaceIdSnapshot.ts` — `TEAMVER_ACTIVE_WORKSPACE_STORAGE_KEY` 상수 +
+  `readTeamverActiveWorkspaceIdSnapshot()`. `store.get()`은 `Promise`라 동기 캡처에 쓸 수 없어
+  같은 localStorage 키를 직접 읽는다. `designBffClient`의 `activeKey`가 이 상수를 쓰게 해
+  읽는 키와 쓰는 키가 갈라지지 않게 한다.
+- `embedProjectListWorkspaceTag.ts`(슬라이스 F 모듈)에 순수 판정 2개 추가:
+  - `resolveProjectListWorkspaceId(refWorkspaceId, snapshotWorkspaceId)` — ref 우선, 없으면 스냅샷.
+  - `isProjectListWorkspaceStale(requestWorkspaceId, activeWorkspaceId)` — 양쪽을 알 때만 판정.
+- `App.tsx`는 `beginProjectListRequest` · `isStaleProjectListWorkspace` ·
+  `markProjectsPaintedByActiveWorkspace` · `isPaintedProjectListFromOtherWorkspace` 네 곳에서
+  ref 대신 이 결합값을 쓴다.
+
+`\0boot-flush:` 센티넬(`App.tsx:1765`)은 non-null 이므로 ref 우선 규칙에 그대로 걸린다 — 스냅샷이 이를 덮지 않는다.
+
+## Main FE T3 와 같은 점 / 다른 점
+
+| 항목 | Main FE (T3) | Design 슬라이스 G |
+|---|---|---|
+| durable 키에 재조정 쓰기 | 0회 (`setSessionActiveWorkspaceId`가 `ACTIVE_STORAGE_KEY`만 쓴다) | 0회 (G3 — `setLastForUser` 승격 차단) |
+| 헤더 키 이동 | 항상 허용 (교착 방지) | 항상 허용 (`store.set`) |
+| 읽기 경로의 쓰기 | Provider 가 소유, 읽기 헬퍼는 순수 | **읽기 경로 쓰기 0회** (G1) — Design 은 읽기 함수가 요청 헤더를 만들므로 더 강하게 잡아야 한다 |
+| single-flight | 불필요 (Provider 단일 소유자, React state) | **필요** (모듈 함수를 5개 표면이 각자 await) |
+| durable 복구 | `getPreferredWorkspaceIdForBootstrap`이 부트에서 읽음 | 같음 + `appEnabled` 조건 (G4) — Design 은 WS 별 앱 활성 개념이 있어 조건이 하나 더 필요하다 |
+
+다른 이유의 핵심은 **소유 구조**다. Main 은 `WorkspaceContext` 라는 단일 소유자가 활성 WS 를 들고 있어
+"읽기 헬퍼"가 순수한 것이 자연스럽다. Design 은 `resolveActiveTeamverWorkspaceId`가
+`teamverDaemonHeaders`·`driveApi`·`projectRegistry`·`publishToDrive` 등 **여러 표면에서 직접 await 되는 모듈 함수**다.
+그래서 Main 에는 없던 single-flight 가 필요하고, 읽기의 순수성이 Main 보다 더 엄격해야 한다.
+
+## 테스트
+
+| 파일 | 무엇을 고정하나 |
+|---|---|
+| 신규 `tests/teamver/active-workspace-read-single-flight.test.ts` | **N=8 동시 호출**이 세션 1회·판정 1회로 합류 · 저장값이 목록에서 빠져도 `set`·`setLastForUser` **0회** · 흔들린 응답 후 목록이 회복되면 durable 선택으로 **되돌아온다** · 빈 목록은 저장값 유지 · revision 이 바뀌면 합류하지 않는다 |
+| 신규 `tests/teamver/active-workspace-read-policy.test.ts` | 순수 판정 3칸 (근거 없음 / 저장값 유효 / 유효한 대체) |
+| 신규 `tests/teamver/workspace-durable-preference.test.ts` | 요청되지 않은 이동만 승격 차단 |
+| 신규 `tests/teamver/embed-project-list-workspace-capture.test.ts` | 부트(ref=null)에서 스냅샷 캡처 · ref 우선 · 양쪽을 알 때만 stale |
+| `tests/teamver-sync-workspace.test.ts` 확장 | 비보존 reconcile 은 `setLastForUser` 미호출 · override·시드는 호출 |
+| `tests/teamver-active-workspace{,-reconcile}.test.ts` 갱신 | 읽기 경로가 `syncTeamverWorkspaceFromSession`을 **부르지 않고**도 같은 id 를 반환한다 (반환값 동일, 쓰기만 제거) |
+| `tests/teamver/embed-session-boot-durable-restore.test.ts` 신규 | 부트가 durable 선택을 복구한다 · 비활성이면 복구하지 않는다 |
+
+## 비범위
+
+- `/auth/session`에 BFF 세션의 현재 WS 를 실어 드리프트를 **관측**하게 하는 것 (남은 위험 1, BE 변경).
+- 세션 중간의 durable 복구 — 부트로 제한한다(G4).
+- P2 알림 dispatch 시점 (남은 위험 4).
+
 ## 변경 이력
 
+| 2026-09-09 11:55 | 루프482 슬라이스 G 설계 — 읽기 순수화·single-flight·durable 선호 보존·부트 WS 캡처 |
 | 2026-09-08 18:40 | 루프481 슬라이스 E·F 설계 — 부트 BFF 재정렬 누락 · 홈 레일 WS 태그 |
 | 2026-09-08 | 루프477 구현설계 (슬라이스 A: P1·P3 / 슬라이스 B: P2 알림) |
