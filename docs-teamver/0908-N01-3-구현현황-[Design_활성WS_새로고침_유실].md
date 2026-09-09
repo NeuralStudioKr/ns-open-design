@@ -407,11 +407,19 @@ G5가 그 판정을 `embedProjectListWorkspaceTag`로 옮기면서 깨졌다 —
 표현식 대신 **위임**(`readEmbedActiveWorkspaceId` · `resolveProjectListWorkspaceId` ·
 `isProjectListWorkspaceStale`)을 고정하고, 실제 판정은 신규 순수 모듈 테스트가 덮게 했다.
 
-### 재현성 확인
+### 재현성 확인 (뮤테이션 3종 실측)
 
-`activeTeamverWorkspace.ts`를 되돌리면 `active-workspace-read-single-flight`의
-"joins a burst" · "keeps the durable pick when one response in a burst omits it" 이 실패한다
-(세션 8회 호출 · `store.set` 호출). 즉 신규 테스트는 배포된 코드에서 실패하고 수정본에서 통과한다.
+파일 전체 revert 는 `resetActiveTeamverWorkspaceFlightForTests` export 가 사라져 스위트가 통째로
+기동 실패하므로, 결함별로 **한 줄씩** 되돌려 어떤 단정이 잡는지 확인했다.
+
+| 되돌린 것 | 실패하는 테스트 |
+|---|---|
+| G2 — flight 합류 분기(`if (inflight && …) return inflight`) 제거 | `joins a burst of concurrent calls into one judgement` (세션 8회 호출) |
+| G1 — 읽기 결과를 다시 `store.set` + `setLastForUser` 로 저장 | `keeps the durable pick when one response in a burst omits it` · `prefers the durable pick over the account default as a fallback` |
+| G3 — 꼬리의 `setLastForUser` 게이팅 제거(무조건 승격) | `does not promote an unrequested move to the durable pick` |
+
+즉 신규 단정은 배포된 코드의 동작에서 실패하고 수정본에서 통과한다 —
+소스 문자열이 아니라 결함 자체를 잡는다. 확인 후 백업에서 원상복구했다(`git status` clean).
 
 ## 사용자 증상 ↔ 방어 슬라이스 대응표
 
@@ -440,6 +448,7 @@ G5가 그 판정을 `embedProjectListWorkspaceTag`로 옮기면서 깨졌다 —
 
 ## 변경 이력
 
+| 2026-09-09 13:35 | 루프482 슬라이스 G 재현성 — 결함별 뮤테이션 3종 실측으로 대체(파일 전체 revert 는 스위트 기동 실패) |
 | 2026-09-09 13:20 | 루프482 슬라이스 G 완료 — 읽기 순수화·single-flight·durable 보존·부트 복구·WS 캡처 · 196파일 1312테스트 통과 · 위험 2·3 해소, 신규 위험 3건 |
 | 2026-09-09 11:55 | 루프482 슬라이스 G 착수 — 위험 2·3 대상, 설계 선행 |
 | 2026-09-08 18:45 | 루프481 슬라이스 E·F — 배포 범위 확정(HEAD 배포됨) · 부트 BFF 재정렬 누락 · 홈 레일 WS 태그 |
