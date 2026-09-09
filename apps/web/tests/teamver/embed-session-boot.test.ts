@@ -77,7 +77,11 @@ describe("teamver embed session boot", () => {
     expect(boot).toContain("consumeLaunchWorkspaceIdHint()");
     expect(boot).not.toContain("readLaunchWorkspaceIdFromBrowserUrl");
     expect(boot).toContain("readStoredWorkspaceIdOnSession(session)");
-    expect(boot).toContain("if (launchWorkspaceId && !storedOnSession)");
+    // Precedence itself — and the BFF realign that 0908-N01 slice E added on
+    // top of it — is asserted through the collaborators in
+    // `embed-session-boot-workspace.test.ts`. Matching the branch source here
+    // only broke that fix without catching anything.
+    expect(boot).toContain("storedOnSession ?? launchWorkspaceId");
   });
 
   it("루프477: the auth callback applies the same precedence and realigns the BFF", () => {
