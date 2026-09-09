@@ -9,13 +9,14 @@ import {
 const storeSetMock = vi.fn(async () => undefined);
 const storeGetMock = vi.fn(async (): Promise<string | null> => null);
 const storeGetPreferredMock = vi.fn(() => null as string | null);
+const storeSetLastForUserMock = vi.fn();
 
 vi.mock("../src/teamver/designBffClient", () => ({
   getDesignBffClient: vi.fn(() => ({
     workspaceStore: {
       get: storeGetMock,
       set: storeSetMock,
-      setLastForUser: vi.fn(),
+      setLastForUser: storeSetLastForUserMock,
       getPreferredWorkspaceIdForBootstrap: storeGetPreferredMock,
     },
   })),
@@ -222,6 +223,74 @@ describe("syncTeamverWorkspaceFromSession", () => {
 
     expect(active).toBe("WS-last");
     expect(storeSetMock).toHaveBeenCalledWith("WS-last");
+  });
+});
+
+/**
+ * 루프482 (0908-N01 슬라이스 G / Main FE T3) — 재조정이 떠넘긴 값은
+ * "사용자의 계정별 마지막 선택"이 아니다. durable 키에 승격시키면 그 WS 가
+ * 목록에 다시 나타나도 돌아갈 좌표가 남지 않는다. 활성/헤더 키는 계속
+ * 이동하므로 교착은 생기지 않는다.
+ */
+describe("durable preference on reconcile", () => {
+  beforeEach(() => {
+    storeSetMock.mockClear();
+    storeGetMock.mockReset();
+    storeGetMock.mockResolvedValue(null);
+    storeGetPreferredMock.mockReset();
+    storeGetPreferredMock.mockReturnValue(null);
+    storeSetLastForUserMock.mockClear();
+  });
+
+  const workspaces = [
+    { id: "WS-picked", name: "Picked", role: "owner" as const },
+    { id: "WS-default", name: "Default", role: "owner" as const },
+  ];
+
+  const session = {
+    authenticated: true,
+    user: { userId: "user-1" },
+    defaultWorkspaceId: "WS-default",
+    workspaces,
+  };
+
+  it("does not promote an unrequested move to the durable pick", async () => {
+    storeGetMock.mockResolvedValue("WS-revoked");
+
+    const active = await syncTeamverWorkspaceFromSession(session, workspaces);
+
+    expect(active).toBe("WS-default");
+    // Header follows so requests stay valid …
+    expect(storeSetMock).toHaveBeenCalledWith("WS-default");
+    // … but the account's last pick is untouched.
+    expect(storeSetLastForUserMock).not.toHaveBeenCalled();
+  });
+
+  it("promotes an explicitly requested switch", async () => {
+    storeGetMock.mockResolvedValue("WS-picked");
+
+    await syncTeamverWorkspaceFromSession(session, workspaces, {
+      preferredIdOverride: "WS-default",
+    });
+
+    expect(storeSetLastForUserMock).toHaveBeenCalledWith("user-1", "WS-default");
+  });
+
+  it("promotes a first-ever seed", async () => {
+    storeGetMock.mockResolvedValue(null);
+
+    await syncTeamverWorkspaceFromSession(session, workspaces);
+
+    expect(storeSetLastForUserMock).toHaveBeenCalledWith("user-1", "WS-default");
+  });
+
+  it("promotes a re-confirmation of the workspace already stored", async () => {
+    storeGetMock.mockResolvedValue("WS-picked");
+
+    await syncTeamverWorkspaceFromSession(session, workspaces);
+
+    expect(storeSetMock).not.toHaveBeenCalled();
+    expect(storeSetLastForUserMock).toHaveBeenCalledWith("user-1", "WS-picked");
   });
 });
 

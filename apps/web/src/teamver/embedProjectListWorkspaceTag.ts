@@ -28,3 +28,36 @@ export function isProjectListWorkspaceMismatch(
   if (!painted || !active) return false;
   return painted !== active;
 }
+
+/**
+ * The workspace a project-list request (or a fresh paint) belongs to.
+ *
+ * `embedActiveWorkspaceIdRef` is only filled after the boot-wait effect
+ * resolves, so requests and paints that start during boot used to carry `null`.
+ * That made both `isProjectListWorkspaceStale` and
+ * `isProjectListWorkspaceMismatch` undecidable for exactly the window where a
+ * workspace reconcile is most likely (0908-N01 slice G, risk 3). The stored
+ * snapshot is the same value boot is about to confirm, so it is the right
+ * stand-in — and the ref still wins once it exists, including the
+ * `\0boot-flush:` sentinel, which must not be masked by the snapshot.
+ */
+export function resolveProjectListWorkspaceId(
+  refWorkspaceId: string | null | undefined,
+  snapshotWorkspaceId: string | null | undefined,
+): string | null {
+  return (refWorkspaceId?.trim() || null) ?? (snapshotWorkspaceId?.trim() || null);
+}
+
+/**
+ * Whether a project-list response belongs to a workspace Design has left.
+ *
+ * Unknown on either side means "do not decide", same as
+ * `isProjectListWorkspaceMismatch`: dropping a response we cannot place is
+ * worse than applying it, because the painted tag catches the leak downstream.
+ */
+export function isProjectListWorkspaceStale(
+  requestWorkspaceId: string | null | undefined,
+  activeWorkspaceId: string | null | undefined,
+): boolean {
+  return isProjectListWorkspaceMismatch(requestWorkspaceId, activeWorkspaceId);
+}

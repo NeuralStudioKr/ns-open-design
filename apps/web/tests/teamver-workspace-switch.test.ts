@@ -67,10 +67,19 @@ describe("embed workspace switch side effects", () => {
     expect(block).toContain("clearTeamverEmbedListCaches()");
   });
 
+  /**
+   * 0908-N01 슬라이스 G — 판정이 `embedProjectListWorkspaceTag`로 빠졌다.
+   * 비교 표현식을 그대로 매칭하면 리팩토링마다 깨지므로(슬라이스 D §부류 2)
+   * 여기서는 **위임**만 고정하고, 실제 판정은
+   * `tests/teamver/embed-project-list-workspace-capture.test.ts`가 덮는다.
+   */
   it("ignores stale project-list responses from a previous workspace", () => {
     const app = readSource("src/App.tsx");
-    expect(app).toContain("workspaceId: isTeamverEmbedMode() ? embedActiveWorkspaceIdRef.current : null");
-    expect(app).toContain("request.workspaceId !== embedActiveWorkspaceIdRef.current");
+    // 캡처가 ref 단독이면 부트 요청이 `null`로 스탬프돼 영구히 무효화 불가였다(위험 3).
+    expect(app).toContain("workspaceId: readEmbedActiveWorkspaceId()");
+    expect(app).toContain("resolveProjectListWorkspaceId(");
+    expect(app).toContain("readTeamverActiveWorkspaceIdSnapshot()");
+    expect(app).toContain("isProjectListWorkspaceStale(request.workspaceId, activeWorkspaceId)");
     expect(app).toContain("project list response ignored after workspace changed");
   });
 

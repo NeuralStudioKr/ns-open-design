@@ -14,6 +14,7 @@ import {
   resolveDesignBffRefreshUrl,
   prepareTeamverLoginNavigation,
 } from "./designApiBase";
+import { TEAMVER_ACTIVE_WORKSPACE_STORAGE_KEY } from "./activeWorkspaceIdSnapshot";
 import { handleEmbedPassiveUnauthorized } from "./teamverEmbedPassiveAuth";
 import { devLog } from '../lib/devLog';
 import {
@@ -126,7 +127,7 @@ export function getDesignBffClient(): TeamverClient | null {
       appKey: "design",
       tokenStore: null,
       workspaceStore: createLocalStorageWorkspaceStore({
-        activeKey: "teamver_design_active_workspace_id",
+        activeKey: TEAMVER_ACTIVE_WORKSPACE_STORAGE_KEY,
         lastByUserKey: "teamver_design_last_workspace_by_user",
       }),
       withCredentials: true,

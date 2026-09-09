@@ -38,7 +38,10 @@ vi.mock("../src/teamver/designApiBase", () => ({
 }));
 
 import { syncTeamverWorkspaceFromSession } from "../src/teamver/syncTeamverWorkspace";
-import { resolveActiveTeamverWorkspaceId } from "../src/teamver/activeTeamverWorkspace";
+import {
+  resetActiveTeamverWorkspaceFlightForTests,
+  resolveActiveTeamverWorkspaceId,
+} from "../src/teamver/activeTeamverWorkspace";
 
 describe("resolveActiveTeamverWorkspaceId", () => {
   beforeEach(() => {
@@ -48,6 +51,7 @@ describe("resolveActiveTeamverWorkspaceId", () => {
     vi.mocked(syncTeamverWorkspaceFromSession).mockClear();
     vi.mocked(syncTeamverWorkspaceFromSession).mockResolvedValue("WS-default");
     localStorage.removeItem("teamver_design_workspace_store_revision_ms");
+    resetActiveTeamverWorkspaceFlightForTests();
   });
 
   it("keeps an explicit store pick on hard refresh even when session default differs", async () => {
@@ -63,9 +67,15 @@ describe("resolveActiveTeamverWorkspaceId", () => {
     expect(syncTeamverWorkspaceFromSession).not.toHaveBeenCalled();
   });
 
-  it("reconciles via sync when stored id is absent from the session list", async () => {
+  /**
+   * 0908-N01 slice G — the answer is unchanged, but producing it must not
+   * persist anything. A read that reconciled let one flaky session response
+   * move the pick, and a back-navigation fires this read 4-10 times at once.
+   */
+  it("answers with a valid workspace without writing when the stored id is absent", async () => {
     storeGetMock.mockResolvedValue("WS-revoked");
     await expect(resolveActiveTeamverWorkspaceId()).resolves.toBe("WS-default");
-    expect(syncTeamverWorkspaceFromSession).toHaveBeenCalled();
+    expect(syncTeamverWorkspaceFromSession).not.toHaveBeenCalled();
+    expect(storeSetMock).not.toHaveBeenCalled();
   });
 });

@@ -195,7 +195,12 @@ import {
   readEmbedProjectDetailRoute,
   shouldDeferEmbedProjectListRefresh,
 } from './teamver/embedProjectListRefresh';
-import { isProjectListWorkspaceMismatch } from './teamver/embedProjectListWorkspaceTag';
+import {
+  isProjectListWorkspaceMismatch,
+  isProjectListWorkspaceStale,
+  resolveProjectListWorkspaceId,
+} from './teamver/embedProjectListWorkspaceTag';
+import { readTeamverActiveWorkspaceIdSnapshot } from './teamver/activeWorkspaceIdSnapshot';
 import { prefetchLatestPublishSummaries } from './teamver/latestPublishSummary';
 import {
   patchEmbedBackgroundRunSummaryForProject,
@@ -757,14 +762,28 @@ function AppInner() {
     }
   }, []);
 
+  /**
+   * 0908-N01 slice G — the ref is only filled once the boot-wait effect below
+   * resolves, so anything that begins during boot used to be stamped `null` and
+   * became permanently un-invalidatable. The stored snapshot is the workspace
+   * boot is about to confirm, so it stands in until the ref exists.
+   */
+  const readEmbedActiveWorkspaceId = useCallback(() => {
+    if (!isTeamverEmbedMode()) return null;
+    return resolveProjectListWorkspaceId(
+      embedActiveWorkspaceIdRef.current,
+      readTeamverActiveWorkspaceIdSnapshot(),
+    );
+  }, []);
+
   const beginProjectListRequest = useCallback((): ProjectListRequest => {
     projectListRequestGenerationRef.current += 1;
     return {
       generation: projectListRequestGenerationRef.current,
       mutationVersion: projectListMutationVersionRef.current,
-      workspaceId: isTeamverEmbedMode() ? embedActiveWorkspaceIdRef.current : null,
+      workspaceId: readEmbedActiveWorkspaceId(),
     };
-  }, []);
+  }, [readEmbedActiveWorkspaceId]);
 
   // Re-fetch design-api `runtime-config` after workspace switch / session restore
   // so BE env rotations propagate without a full reload. Skips persist/state when
@@ -784,20 +803,17 @@ function AppInner() {
   }, []);
 
   const isStaleProjectListWorkspace = useCallback((request: ProjectListRequest) => {
-    if (
-      isTeamverEmbedMode()
-      && request.workspaceId
-      && embedActiveWorkspaceIdRef.current
-      && request.workspaceId !== embedActiveWorkspaceIdRef.current
-    ) {
+    if (!isTeamverEmbedMode()) return false;
+    const activeWorkspaceId = readEmbedActiveWorkspaceId();
+    if (isProjectListWorkspaceStale(request.workspaceId, activeWorkspaceId)) {
       devLog.info('[teamver] project list response ignored after workspace changed', {
         requestWorkspaceId: request.workspaceId,
-        activeWorkspaceId: embedActiveWorkspaceIdRef.current,
+        activeWorkspaceId,
       });
       return true;
     }
     return false;
-  }, []);
+  }, [readEmbedActiveWorkspaceId]);
 
   /**
    * 0908-N01 slice F — `projects` holds rows from whichever workspace was
@@ -810,27 +826,28 @@ function AppInner() {
     if (!isTeamverEmbedMode()) return false;
     return isProjectListWorkspaceMismatch(
       paintedProjectsWorkspaceIdRef.current,
-      embedActiveWorkspaceIdRef.current,
+      readEmbedActiveWorkspaceId(),
     );
-  }, []);
+  }, [readEmbedActiveWorkspaceId]);
 
   /** Retaining rows through a failed refetch is only safe within one workspace. */
   const dropProjectsPaintedByOtherWorkspace = useCallback(() => {
     if (!isPaintedProjectListFromOtherWorkspace()) return false;
+    const activeWorkspaceId = readEmbedActiveWorkspaceId();
     devLog.info('[teamver] home rail cleared — rows belonged to another workspace', {
       paintedWorkspaceId: paintedProjectsWorkspaceIdRef.current,
-      activeWorkspaceId: embedActiveWorkspaceIdRef.current,
+      activeWorkspaceId,
     });
-    paintedProjectsWorkspaceIdRef.current = embedActiveWorkspaceIdRef.current;
+    paintedProjectsWorkspaceIdRef.current = activeWorkspaceId;
     setProjects([]);
     return true;
-  }, [isPaintedProjectListFromOtherWorkspace]);
+  }, [isPaintedProjectListFromOtherWorkspace, readEmbedActiveWorkspaceId]);
 
   const markProjectsPaintedByActiveWorkspace = useCallback(() => {
     if (!isTeamverEmbedMode()) return;
-    const active = embedActiveWorkspaceIdRef.current;
+    const active = readEmbedActiveWorkspaceId();
     if (active) paintedProjectsWorkspaceIdRef.current = active;
-  }, []);
+  }, [readEmbedActiveWorkspaceId]);
 
   /**
    * Home recent rail refresh — upsert status/metadata without dropping the

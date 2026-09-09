@@ -1,3 +1,4 @@
+import type { LocalStorageWorkspaceStore } from "@teamver/app-sdk";
 import {
   fetchDesignAuthSession,
   getDesignBffClient,
@@ -5,8 +6,9 @@ import {
   shouldSkipTeamverBffAuthCalls,
 } from "./designBffClient";
 import { isTeamverEmbedMode } from "./designApiBase";
-import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
-import { normalizeWorkspaceList, readWorkspaceId } from "./workspaceUtils";
+import { resolveActiveWorkspaceIdForRead } from "./activeWorkspaceReadPolicy";
+import { readTeamverWorkspaceStoreRevisionMs } from "./teamverWorkspaceStoreRevision";
+import { normalizeWorkspaceList } from "./workspaceUtils";
 
 /**
  * Active workspace for embed BFF/Drive/usage calls.
@@ -17,15 +19,22 @@ import { normalizeWorkspaceList, readWorkspaceId } from "./workspaceUtils";
  * working in. Hard refresh used to re-fetch `/auth/session` (new `fetchedAt`)
  * and snap back to the account default, wiping the user's explicit pick.
  *
+ * This is a read: it never writes the store (0908-N01 slice G). When the stored
+ * workspace is missing from the session it answers with a workspace that does
+ * exist, so the request stays valid, but persisting that answer belongs to
+ * `syncTeamverWorkspaceFromSession` through boot, session refresh, and explicit
+ * recovery — paths that run once and announce the move (P2).
+ *
  * Explicit workspace picks and parent-app switches go through
  * `setActiveTeamverWorkspace` / `syncTeamverWorkspaceFromSession` dispatch paths
  * (URL `workspace_id` / preferredIdOverride on boot).
  */
-export async function resolveActiveTeamverWorkspaceId(): Promise<string | null> {
+async function readActiveWorkspaceIdOnce(): Promise<string | null> {
   const client = getDesignBffClient();
   if (!client) return null;
 
-  const storeId = (await client.workspaceStore?.get())?.trim() || null;
+  const store = client.workspaceStore as LocalStorageWorkspaceStore | null | undefined;
+  const storeId = (await store?.get())?.trim() || null;
 
   // Soft/hard sticky: C1 owns recovery. Routine workspace resolve must not
   // re-hit `/auth/session` (ensure) and reset sticky cooldowns.
@@ -44,13 +53,62 @@ export async function resolveActiveTeamverWorkspaceId(): Promise<string | null> 
   // persisted workspace and BFF cookies are still valid — same rationale as catch.
   if (!session?.authenticated) return storeId;
 
-  const workspaces = normalizeWorkspaceList(session.workspaces);
+  const userId = session.user?.userId?.trim() || null;
+  const durablePreferenceId =
+    userId && typeof store?.getLastForUser === "function"
+      ? store.getLastForUser(userId)?.trim() || null
+      : null;
 
-  if (storeId && workspaces.some((workspace) => readWorkspaceId(workspace) === storeId)) {
-    return storeId;
-  }
+  return resolveActiveWorkspaceIdForRead({
+    storedId: storeId,
+    workspaces: normalizeWorkspaceList(session.workspaces),
+    defaultWorkspaceId: session.defaultWorkspaceId ?? null,
+    durablePreferenceId,
+  });
+}
 
-  return (await syncTeamverWorkspaceFromSession(session, workspaces))?.trim() || null;
+let inflight: Promise<string | null> | null = null;
+let inflightRevisionMs = -1;
+let flightSeq = 0;
+
+/**
+ * Returning from a project detail to the root fires this 4-10 times at once
+ * (inflight key, registry list, tombstone filter, daemon enrich headers, plus
+ * the `HomeView` mount). Each call independently probed the session and made
+ * its own judgement, so the burst multiplied the chance that one flaky response
+ * decided for all of them. Joining a burst leaves one judgement per burst.
+ *
+ * The flight is keyed on the store revision, which only
+ * `setActiveTeamverWorkspace` bumps. Without that key a caller that runs just
+ * after an explicit switch would join a flight started before it and get the
+ * previous workspace back.
+ */
+export async function resolveActiveTeamverWorkspaceId(): Promise<string | null> {
+  const revisionMs = readTeamverWorkspaceStoreRevisionMs();
+  if (inflight && inflightRevisionMs === revisionMs) return inflight;
+
+  const seq = ++flightSeq;
+  const flight = (async () => {
+    try {
+      return await readActiveWorkspaceIdOnce();
+    } finally {
+      // Only the newest flight clears the slot; a settled older flight must not
+      // evict the one that replaced it after an explicit switch.
+      if (flightSeq === seq) {
+        inflight = null;
+        inflightRevisionMs = -1;
+      }
+    }
+  })();
+  inflight = flight;
+  inflightRevisionMs = revisionMs;
+  return flight;
+}
+
+/** @internal test — drop a joined flight between cases. */
+export function resetActiveTeamverWorkspaceFlightForTests(): void {
+  inflight = null;
+  inflightRevisionMs = -1;
 }
 
 export async function resolveActiveTeamverWorkspaceIdForEmbed(): Promise<string | null> {

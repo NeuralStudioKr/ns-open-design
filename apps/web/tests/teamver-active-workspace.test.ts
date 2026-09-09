@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   readActiveTeamverWorkspaceId,
   requireActiveTeamverWorkspaceId,
+  resetActiveTeamverWorkspaceFlightForTests,
   resolveActiveTeamverWorkspaceId,
 } from '../src/teamver/activeTeamverWorkspace';
 import * as designApiBase from '../src/teamver/designApiBase';
@@ -47,13 +48,14 @@ describe('activeTeamverWorkspace', () => {
     storeGetMock.mockResolvedValue(null);
     localStorage.clear();
     vi.mocked(syncTeamverWorkspaceFromSession).mockClear();
+    resetActiveTeamverWorkspaceFlightForTests();
   });
 
   it('returns null outside embed mode for readActiveTeamverWorkspaceId', async () => {
     await expect(readActiveTeamverWorkspaceId()).resolves.toBeNull();
   });
 
-  it('bootstraps workspace from session when store is empty', async () => {
+  it('answers from the session list when store is empty, without seeding it', async () => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
     vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue({
       authenticated: true,
@@ -65,7 +67,9 @@ describe('activeTeamverWorkspace', () => {
 
     await expect(resolveActiveTeamverWorkspaceId()).resolves.toBe('ws-session');
     await expect(readActiveTeamverWorkspaceId()).resolves.toBe('ws-session');
-    expect(vi.mocked(syncTeamverWorkspaceFromSession)).toHaveBeenCalled();
+    // 0908-N01 slice G — boot owns the seed. A read that wrote the store made
+    // every concurrent read a chance to persist a flaky session's answer.
+    expect(vi.mocked(syncTeamverWorkspaceFromSession)).not.toHaveBeenCalled();
   });
 
   it('keeps the embed store when it still exists on the session list', async () => {
@@ -91,7 +95,7 @@ describe('activeTeamverWorkspace', () => {
     expect(vi.mocked(syncTeamverWorkspaceFromSession)).not.toHaveBeenCalled();
   });
 
-  it('reconciles through session sync when the stored workspace was revoked', async () => {
+  it('routes to a listed workspace when the stored one was revoked', async () => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
     storeGetMock.mockResolvedValue('ws-revoked');
     vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue({
@@ -103,8 +107,10 @@ describe('activeTeamverWorkspace', () => {
       workspaceStore: { get: storeGetMock },
     } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
 
+    // Requests must not pin themselves to a dead workspace (no deadlock), but
+    // the durable pick is repaired by boot / session refresh, not by this read.
     await expect(resolveActiveTeamverWorkspaceId()).resolves.toBe('ws-current');
-    expect(vi.mocked(syncTeamverWorkspaceFromSession)).toHaveBeenCalled();
+    expect(vi.mocked(syncTeamverWorkspaceFromSession)).not.toHaveBeenCalled();
   });
 
   it('returns the persisted workspace when session briefly reads unauthenticated', async () => {

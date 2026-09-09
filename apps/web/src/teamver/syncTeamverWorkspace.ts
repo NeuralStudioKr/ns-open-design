@@ -5,10 +5,12 @@ import {
   dispatchTeamverWorkspaceChanged,
 } from "./teamverWorkspaceEvents";
 import {
+  isWorkspaceAppEnabled,
   normalizeWorkspaceList,
   pickDefaultWorkspaceId,
   readWorkspaceId,
 } from "./workspaceUtils";
+import { mayPromoteWorkspaceToDurablePreference } from "./workspaceDurablePreference";
 
 function readSessionUserId(session: DesignAuthSession): string | null {
   return session.user?.userId?.trim() || null;
@@ -18,10 +20,18 @@ function readSessionUserId(session: DesignAuthSession): string | null {
  * The workspace the user last picked inside Design, when it is still present on
  * the session list.
  *
- * `appEnabled` is deliberately ignored — that judgement belongs to the
- * auto-switch path in `syncTeamverWorkspaceFromSession`. Callers use this only
- * to decide whether a launch-URL hint from Main FE may seed the store at all
- * (0908-N01 P1: an existing in-Design pick outranks the hint).
+ * `appEnabled` is deliberately ignored for the active key — that judgement
+ * belongs to the auto-switch path in `syncTeamverWorkspaceFromSession`. Callers
+ * use this only to decide whether a launch-URL hint from Main FE may seed the
+ * store at all (0908-N01 P1: an existing in-Design pick outranks the hint).
+ *
+ * Boot only. The active key and the per-user durable pick can only disagree
+ * when a reconcile moved the active key on its own, because an explicit switch
+ * writes both (`setActiveTeamverWorkspace`). So preferring the durable pick
+ * here is exactly "undo a reconcile that was driven by one flaky session
+ * response" (0908-N01 slice G) — which is what P1 promises. It is deliberately
+ * not done on routine reads: dragging a mid-session user back to a workspace
+ * they were moved off hours ago would read as another spontaneous switch.
  */
 export async function readStoredWorkspaceIdOnSession(
   session: DesignAuthSession,
@@ -34,10 +44,24 @@ export async function readStoredWorkspaceIdOnSession(
   if (!store) return null;
 
   const stored = (await store.get())?.trim() || null;
-  if (!stored) return null;
-
   const workspaces = workspacesInput ?? normalizeWorkspaceList(session.workspaces);
-  return workspaces.some((workspace) => workspace.id === stored) ? stored : null;
+  const activeOnSession =
+    stored && workspaces.some((workspace) => workspace.id === stored) ? stored : null;
+
+  const userId = readSessionUserId(session);
+  const durable =
+    userId && typeof store.getLastForUser === "function"
+      ? store.getLastForUser(userId)?.trim() || null
+      : null;
+  if (durable && durable !== activeOnSession) {
+    const durableWorkspace = workspaces.find((workspace) => workspace.id === durable);
+    // Requiring `appEnabled` is not optional: P2 moves off a workspace whose
+    // Design app was turned off, and restoring it here would make every
+    // refresh bounce between the two.
+    if (durableWorkspace && isWorkspaceAppEnabled(durableWorkspace)) return durable;
+  }
+
+  return activeOnSession;
 }
 
 /**
@@ -126,7 +150,16 @@ export async function syncTeamverWorkspaceFromSession(
     active = resolved;
   }
 
-  if (userId && active && typeof store.setLastForUser === "function") {
+  if (
+    userId
+    && active
+    && typeof store.setLastForUser === "function"
+    && mayPromoteWorkspaceToDurablePreference({
+      storedBefore: storedRaw,
+      resolved: active,
+      requestedByCaller: Boolean(override),
+    })
+  ) {
     store.setLastForUser(userId, active);
   }
 
