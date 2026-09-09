@@ -195,6 +195,7 @@ import {
   readEmbedProjectDetailRoute,
   shouldDeferEmbedProjectListRefresh,
 } from './teamver/embedProjectListRefresh';
+import { isProjectListWorkspaceMismatch } from './teamver/embedProjectListWorkspaceTag';
 import { prefetchLatestPublishSummaries } from './teamver/latestPublishSummary';
 import {
   patchEmbedBackgroundRunSummaryForProject,
@@ -618,6 +619,8 @@ function AppInner() {
   >(new Map());
   const byokProxyIdlePollsRef = useRef<Map<string, number>>(new Map());
   const embedActiveWorkspaceIdRef = useRef<string | null>(null);
+  /** Workspace that painted the rows in `projects` — see slice F note below. */
+  const paintedProjectsWorkspaceIdRef = useRef<string | null>(null);
   /** Workspace id changed before embed boot finished — flush after boot. */
   const pendingWorkspaceSwitchIdRef = useRef<string | null>(null);
   const workspaceSwitchReconcilingRef = useRef(false);
@@ -797,6 +800,39 @@ function AppInner() {
   }, []);
 
   /**
+   * 0908-N01 slice F — `projects` holds rows from whichever workspace was
+   * active when they landed, with nothing recording which one that was. So a
+   * failed recent refetch (which deliberately retains rows rather than flash an
+   * empty rail) and the union merge below both keep showing the previous
+   * tenant's cards after a switch. Remembering the painter makes both decidable.
+   */
+  const isPaintedProjectListFromOtherWorkspace = useCallback(() => {
+    if (!isTeamverEmbedMode()) return false;
+    return isProjectListWorkspaceMismatch(
+      paintedProjectsWorkspaceIdRef.current,
+      embedActiveWorkspaceIdRef.current,
+    );
+  }, []);
+
+  /** Retaining rows through a failed refetch is only safe within one workspace. */
+  const dropProjectsPaintedByOtherWorkspace = useCallback(() => {
+    if (!isPaintedProjectListFromOtherWorkspace()) return false;
+    devLog.info('[teamver] home rail cleared — rows belonged to another workspace', {
+      paintedWorkspaceId: paintedProjectsWorkspaceIdRef.current,
+      activeWorkspaceId: embedActiveWorkspaceIdRef.current,
+    });
+    paintedProjectsWorkspaceIdRef.current = embedActiveWorkspaceIdRef.current;
+    setProjects([]);
+    return true;
+  }, [isPaintedProjectListFromOtherWorkspace]);
+
+  const markProjectsPaintedByActiveWorkspace = useCallback(() => {
+    if (!isTeamverEmbedMode()) return;
+    const active = embedActiveWorkspaceIdRef.current;
+    if (active) paintedProjectsWorkspaceIdRef.current = active;
+  }, []);
+
+  /**
    * Home recent rail refresh — upsert status/metadata without dropping the
    * projects-tab page (or detail-prefetch rows) already held in memory.
    */
@@ -817,13 +853,20 @@ function AppInner() {
       activeDeletedProjectIds.size > 0
         ? list.filter((project) => !activeDeletedProjectIds.has(project.id))
         : list;
+    // Merging across workspaces would put both tenants' cards on one rail.
+    const replacePaintedRows = isPaintedProjectListFromOtherWorkspace();
+    markProjectsPaintedByActiveWorkspace();
     setProjects((current) =>
-      mergeRecentProjectsIntoList(current, visibleList, {
+      mergeRecentProjectsIntoList(replacePaintedRows ? [] : current, visibleList, {
         excludeIds: activeDeletedProjectIds,
       }),
     );
     return true;
-  }, [isStaleProjectListWorkspace]);
+  }, [
+    isStaleProjectListWorkspace,
+    isPaintedProjectListFromOtherWorkspace,
+    markProjectsPaintedByActiveWorkspace,
+  ]);
 
   const reconcileFetchedProjects = useCallback((list: Project[], request: ProjectListRequest) => {
     if (isStaleProjectListWorkspace(request)) return false;
@@ -893,6 +936,7 @@ function AppInner() {
       activeDeletedProjectIds.size > 0
         ? new Set(visibleList.map((project) => project.id))
         : fetchedIds;
+    markProjectsPaintedByActiveWorkspace();
     setProjects((current) => {
       const displaySafeVisibleList = preserveProjectListDisplayNames(current, visibleList);
       const preserved = current.filter(
@@ -904,7 +948,7 @@ function AppInner() {
       return preserved.length > 0 ? [...preserved, ...displaySafeVisibleList] : displaySafeVisibleList;
     });
     return true;
-  }, [isStaleProjectListWorkspace]);
+  }, [isStaleProjectListWorkspace, markProjectsPaintedByActiveWorkspace]);
 
   // Propagate the Privacy toggle through to PostHog without a reload —
   // posthog-js's opt_out_capturing flips a localStorage flag that makes
@@ -1556,6 +1600,7 @@ function AppInner() {
       if (!result.ok) {
         projectsPageLoadedRef.current = false;
         setWorkingDirError(result.errorMessage);
+        dropProjectsPaintedByOtherWorkspace();
         return;
       }
       setWorkingDirError(null);
@@ -1563,7 +1608,11 @@ function AppInner() {
     } finally {
       setProjectsPageLoading(false);
     }
-  }, [applyProjectsPageResult, beginProjectListRequest]);
+  }, [
+    applyProjectsPageResult,
+    beginProjectListRequest,
+    dropProjectsPaintedByOtherWorkspace,
+  ]);
 
   const loadMoreProjects = useCallback(async () => {
     if (projectsLoadingMore || !projectsHasMore || !projectsNextCursorRef.current) return;
@@ -1600,9 +1649,11 @@ function AppInner() {
     if (homeRecent) {
       const result = await loadRecentProjectsForHome();
       if (!result.ok) {
-        // Retain the previous rail on transient 401 — do not flash empty.
+        // Retain the previous rail on transient 401 — do not flash empty. Rows
+        // from another workspace are not "the previous rail" though (slice F).
         homeRecentNeedsAuthRetryRef.current = true;
         setWorkingDirError(result.errorMessage);
+        dropProjectsPaintedByOtherWorkspace();
         return;
       }
       homeRecentNeedsAuthRetryRef.current = false;
@@ -1617,12 +1668,18 @@ function AppInner() {
       // not flash empty. Reset the ref so the next `/projects` visit retries.
       projectsPageLoadedRef.current = false;
       setWorkingDirError(result.errorMessage);
+      dropProjectsPaintedByOtherWorkspace();
       return;
     }
     setWorkingDirError(null);
     projectsPageLoadedRef.current = true;
     applyProjectsPageResult(result, request, 'replace');
-  }, [applyProjectsPageResult, beginProjectListRequest, upsertRecentProjects]);
+  }, [
+    applyProjectsPageResult,
+    beginProjectListRequest,
+    dropProjectsPaintedByOtherWorkspace,
+    upsertRecentProjects,
+  ]);
 
   const refreshEmbedProjectMetadata = useCallback(async (projectId: string) => {
     const trimmedId = projectId.trim();
@@ -1936,6 +1993,7 @@ function AppInner() {
           if (!result.ok) {
             projectsPageLoadedRef.current = false;
             // Do not leave the previous tenant's cards painted after a failed switch.
+            markProjectsPaintedByActiveWorkspace();
             setProjects([]);
             setProjectsHasMore(false);
             setWorkingDirError(result.errorMessage);
@@ -1980,6 +2038,7 @@ function AppInner() {
     beginProjectListRequest,
     isSessionTrustedEmbedProject,
     isStaleProjectListWorkspace,
+    markProjectsPaintedByActiveWorkspace,
     reloadTeamverRuntimeConfig,
   ]);
 
@@ -4323,6 +4382,10 @@ function AppInner() {
         if (!result.ok) {
           homeRecentNeedsAuthRetryRef.current = true;
           setWorkingDirError(result.errorMessage);
+          // Back-navigation lands here on every home return. Keeping the rows
+          // through a transient failure is the point — but only while they still
+          // belong to the workspace Design is on (0908-N01 slice F).
+          dropProjectsPaintedByOtherWorkspace();
           return;
         }
         homeRecentNeedsAuthRetryRef.current = false;
@@ -4340,7 +4403,12 @@ function AppInner() {
     return () => {
       cancelled = true;
     };
-  }, [beginProjectListRequest, route.kind, upsertRecentProjects]);
+  }, [
+    beginProjectListRequest,
+    dropProjectsPaintedByOtherWorkspace,
+    route.kind,
+    upsertRecentProjects,
+  ]);
 
   // Existing card grids (DesignsTab, ProjectView), pickers (NewProjectPanel,
   // ChatComposer mention) all look skills up by id without caring whether
