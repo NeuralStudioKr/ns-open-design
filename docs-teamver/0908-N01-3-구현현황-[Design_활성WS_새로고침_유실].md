@@ -345,10 +345,85 @@ expect(h.setActiveTeamverWorkspace).not.toHaveBeenCalled();
 
 | 단계 | commit | 상태 |
 |---|---|---|
-| 슬라이스 G 구현설계·현황 append | (아래 이력) | ☑ |
-| G1·G2·G3 — 읽기 순수화 + single-flight + durable 보존 | | ☐ |
-| G4 — 부트 durable 복구 | | ☐ |
-| G5 — 부트 프로젝트 목록 요청 WS 캡처 (위험 3) | | ☐ |
+| 슬라이스 G 구현설계·현황 append | `6b36ba54ad` | ☑ |
+| G1·G2·G3 — 읽기 순수화 + single-flight + durable 보존 | `8e0784c791` | ☑ |
+| G4 — 부트 durable 복구 | `8e0784c791` | ☑ |
+| G5 — 부트 프로젝트 목록 요청 WS 캡처 (위험 3) | `8e0784c791` | ☑ |
+| 노후 소스-문자열 단정 정정 | `8e0784c791` | ☑ |
+
+## 구현 (완료)
+
+| 파일 | 변경 |
+|---|---|
+| `activeTeamverWorkspace.ts` | `readActiveWorkspaceIdOnce`(판정) / `resolveActiveTeamverWorkspaceId`(single-flight)로 분리. **쓰기 0회** — `syncTeamverWorkspaceFromSession` import 자체를 제거해 이 모듈에서 다시 쓰기 경로가 생기지 않게 했다 |
+| 신규 `activeWorkspaceReadPolicy.ts` | 순수 판정. 빈 목록 → 저장값 유지(근거 부재) · 저장값 유효 → 저장값 · 그 외 → `pickDefaultWorkspaceId(preferredId: durable)` ?? 저장값 |
+| 신규 `workspaceDurablePreference.ts` | `mayPromoteWorkspaceToDurablePreference` — **요청되지 않은 이동**만 `false`. 시드·재확인·override 는 승격 |
+| `syncTeamverWorkspace.ts` | 꼬리의 무조건 `setLastForUser`를 위 판정으로 게이팅(G3) · `readStoredWorkspaceIdOnSession`이 durable 선호를 복구(G4, `appEnabled` 조건) |
+| 신규 `activeWorkspaceIdSnapshot.ts` | `TEAMVER_ACTIVE_WORKSPACE_STORAGE_KEY` + 동기 스냅샷. `designBffClient`의 `activeKey`가 이 상수를 쓰므로 읽는 키와 쓰는 키가 갈라질 수 없다 |
+| `embedProjectListWorkspaceTag.ts` | `resolveProjectListWorkspaceId`(ref 우선, 없으면 스냅샷) · `isProjectListWorkspaceStale` 추가 |
+| `App.tsx` | `readEmbedActiveWorkspaceId()` 도입 후 `beginProjectListRequest` · `isStaleProjectListWorkspace` · `markProjectsPaintedByActiveWorkspace` · `isPaintedProjectListFromOtherWorkspace` 네 곳이 이를 사용 |
+
+### single-flight 정리 규칙
+
+`finally`가 `flightSeq === seq`일 때만 슬롯을 비운다. 명시적 전환이 revision 을 bump 해 새 flight 가 슬롯을
+차지한 뒤, **먼저 시작한 낡은 flight 가 늦게 끝나면서 새 flight 를 몰아내는** 것을 막는다.
+
+## 검증
+
+| 항목 | 상태 |
+|---|---|
+| N=8 동시 호출이 세션 1회·`store.get` 1회로 합류 | ☑ 동작 (`active-workspace-read-single-flight`) |
+| 목록이 저장값을 빠뜨린 응답에서 `set`·`setLastForUser` 0회 | ☑ 동작 |
+| 흔들린 응답 직후 목록 회복 → 별도 복구 없이 durable 선택으로 복귀 | ☑ 동작 |
+| 빈 목록을 회수로 오판하지 않음 | ☑ 동작 |
+| 요청은 항상 세션이 인정하는 WS 를 받는다 (교착 없음) | ☑ 동작 (`ws-current`·`WS-default` 반환 단정 유지) |
+| 명시 전환 후 호출이 전환 이전 flight 에 합류하지 않음 | ☑ 동작 (revision 키) |
+| 재조정이 durable 선호를 승격하지 않음 / 시드·override 는 승격 | ☑ 단위 (`teamver-sync-workspace` 4건) |
+| 부트가 durable 선택을 복구, 단 `appEnabled=false`면 복구하지 않음 | ☑ 동작 (`embed-workspace-durable-restore` 6건) |
+| 부트 요청(ref=null)이 스냅샷으로 실제 WS 를 캡처 → WS 변경으로 무효화됨 | ☑ 동작 (`embed-project-list-workspace-capture`) |
+| `\0boot-flush:` 센티넬이 스냅샷에 가려지지 않음 | ☑ 동작 |
+
+### 회귀 대조
+
+기준선은 **슬라이스 G 코드 착수 직전**(설계 commit `6b36ba54ad` 시점)에 직접 측정했다.
+
+| 시점 | 결과 |
+|---|---|
+| 기준선 (`tests/teamver/` + `tests/teamver-*`) | 192 파일 / 1279 테스트 — **실패 0** |
+| 슬라이스 G 적용 후 | **196 파일 / 1312 테스트 — 실패 0** (+4 파일 / +33 테스트) |
+| 인접 스위트 (`orphan-jwt-auto-cleanup` · `TeamverSessionBanner` · `state/projects` · `byok-proxy-active` · `console-leak-sanitization`) | 5 파일 / 74 통과 |
+| `tsc -b --noEmit` | 레포 전체 **450건**(기준선과 동일) — 이번에 만진 파일에 **신규 오류 0** |
+
+`App.tsx(3243)`·`designBffClient.ts(961)`은 선행 오류다. 각각 HEAD 의 `App.tsx(3226)`·
+`designBffClient.ts:358`에 같은 코드가 있고, 슬라이스 G 편집 지점(App 762~835 / designBffClient 127)과 무관하다.
+
+전체 스위트(695파일)는 슬라이스 E·F 때와 같은 이유로 이 머신에서 기준선이 되지 못한다(forks worker timeout).
+
+### 노후 소스-문자열 단정 1건 정정
+
+`tests/teamver-workspace-switch.test.ts`의 "ignores stale project-list responses"가
+`request.workspaceId !== embedActiveWorkspaceIdRef.current`라는 **표현식**을 매칭하고 있었다.
+G5가 그 판정을 `embedProjectListWorkspaceTag`로 옮기면서 깨졌다 — 슬라이스 D §부류 2와 같은 종류다.
+표현식 대신 **위임**(`readEmbedActiveWorkspaceId` · `resolveProjectListWorkspaceId` ·
+`isProjectListWorkspaceStale`)을 고정하고, 실제 판정은 신규 순수 모듈 테스트가 덮게 했다.
+
+### 재현성 확인
+
+`activeTeamverWorkspace.ts`를 되돌리면 `active-workspace-read-single-flight`의
+"joins a burst" · "keeps the durable pick when one response in a burst omits it" 이 실패한다
+(세션 8회 호출 · `store.set` 호출). 즉 신규 테스트는 배포된 코드에서 실패하고 수정본에서 통과한다.
+
+## 사용자 증상 ↔ 방어 슬라이스 대응표
+
+| 사용자 증상 | 직접 원인 | 막는 슬라이스 |
+|---|---|---|
+| 프로젝트 상세 → **뒤로가기**로 루트 복귀 시 활성 WS 가 바뀐다 | 읽기 함수의 비보존 reconcile 이 4~10회 동시 실행 | **G1**(읽기 쓰기 0회) + **G2**(버스트당 판정 1회) |
+| **새로고침**에서 활성 WS 가 바뀐다 | 부트가 저장값을 BFF 에 알리지 않아 다음 reconcile 이 서버 값으로 되돌림 | **E**(부트 BFF 재정렬) |
+| 한 번 바뀐 뒤 **계속 그 상태로 유지**된다 (되돌아오지 않는다) | 재조정이 `setLastForUser`까지 덮어써 돌아갈 좌표 소실 | **G3**(durable 승격 차단) + **G4**(부트 복구) |
+| WS 가 바뀌었는데 **최근 프로젝트 목록은 그대로** | 실패 시 잔존 · 성공 시 합집합 병합 (WS 태그 없음) | **F**(painted 태그) |
+| 부트에서 시작한 목록 apply 가 WS 변경에도 적용된다 | `beginProjectListRequest`가 `null` 캡처 → stale 판정 항상 false | **G5**(동기 스냅샷 캡처) |
+| Main 재진입(`?workspace_id=`)이 Design 선택을 덮는다 | 힌트가 저장값보다 우선 · 힌트 재적용 | **A**(P1 stored_wins · one-shot) |
+| 비활성/회수 WS 로 인한 전환이 조용히 일어난다 | 알림 없음 | **B**(P2 auto-switch 배너) |
 
 ## 남은 위험
 
@@ -359,9 +434,13 @@ expect(h.setActiveTeamverWorkspace).not.toHaveBeenCalled();
 | 3 | ~~`beginProjectListRequest()`가 부트 시점에 `workspaceId: null`을 캡처해 `isStaleProjectListWorkspace`가 항상 false~~ | **해소 — 슬라이스 G5.** 동기 스냅샷으로 부트 요청도 실제 WS 캡처 |
 | 4 | 자동 전환 알림(P2)이 **부트 중 dispatch**되므로 구독 설치 시점에 따라 유실 가능 | 미검증 — 사용자 재현 시 확인 필요 |
 | 5 | `ns-open-design`은 ns_cicd 미등록 — 이번 수정도 **수동 배포**가 필요하다 (`deploy/teamver/deploy.sh --staging`) | 사용자 조치 |
+| 6 | **신규.** 읽기가 저장하지 않으므로 저장값이 무효인 채 남는 구간이 생긴다. 그 구간에 **라벨(저장값 기반)과 요청 헤더(계산값)가 어긋날 수 있다.** 지속 시간은 "다음 부트 / 포커스 refresh 까지"로 유한하다 | 의도된 트레이드오프. 관측을 원하면 남은 위험 1(`/auth/session`에 `active_workspace_id`)이 선행 |
+| 7 | **신규.** G4 durable 복구는 **부트 한정**이므로, 사용자가 A 에서 오래 작업한 뒤 원래 pick B 가 재활성되면 다음 부트에서 B 로 끌려갈 수 있다 | 완화 있음 — A 를 **명시적으로** 고르면 `setActiveTeamverWorkspace`가 durable 도 A 로 써서 이 경로가 사라진다. 사용자 신고가 나오면 "복구는 1회만" 마커로 좁힌다 |
+| 8 | **신규.** single-flight 가 모듈 스코프이므로 세션 probe 가 걸리면 버스트 전체가 함께 대기한다 | 실질 차이 작음 — `fetchDesignAuthSession`이 이미 in-flight 합류/60s 캐시라 이전에도 같은 probe 를 함께 기다렸다 |
 
 ## 변경 이력
 
+| 2026-09-09 13:20 | 루프482 슬라이스 G 완료 — 읽기 순수화·single-flight·durable 보존·부트 복구·WS 캡처 · 196파일 1312테스트 통과 · 위험 2·3 해소, 신규 위험 3건 |
 | 2026-09-09 11:55 | 루프482 슬라이스 G 착수 — 위험 2·3 대상, 설계 선행 |
 | 2026-09-08 18:45 | 루프481 슬라이스 E·F — 배포 범위 확정(HEAD 배포됨) · 부트 BFF 재정렬 누락 · 홈 레일 WS 태그 |
 | 2026-09-08 | 루프477 현황 초안 (진단 확정 · 정책 P1/P2/P3 반영) |
