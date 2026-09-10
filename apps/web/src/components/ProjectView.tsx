@@ -9904,6 +9904,8 @@ export function ProjectView({
         embedSubmitDisabled
         && meta?.entryFrom !== AUTO_CONTINUE_ENTRY_FROM
         && meta?.entryFrom !== SLIDE_COUNT_TOP_UP_ENTRY_FROM
+        && meta?.entryFrom !== SPARSE_CONTENT_TOP_UP_ENTRY_FROM
+        && meta?.entryFrom !== THIN_PRIOR_FULL_REWRITE_ENTRY_FROM
         && meta?.entryFrom !== CLONE_SLOT_FILL_REPAIR_ENTRY_FROM
       ) {
         onEmbedSubmitBlocked?.();

@@ -12,7 +12,14 @@ import {
   shouldOmitMessageFromChatRender,
   shouldOmitSupersededAutoContinueFailure,
 } from "../../src/runtime/chat-message-render";
-import { SLIDE_COUNT_TOP_UP_ENTRY_FROM, SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL } from "../../src/teamver/slideCountTopUp";
+import {
+  SLIDE_COUNT_TOP_UP_ENTRY_FROM,
+  SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL,
+  SPARSE_CONTENT_TOP_UP_ENTRY_FROM,
+  SPARSE_CONTENT_TOP_UP_PROMPT_SENTINEL,
+  THIN_PRIOR_FULL_REWRITE_ENTRY_FROM,
+  THIN_PRIOR_FULL_REWRITE_PROMPT_SENTINEL,
+} from "../../src/teamver/slideCountTopUp";
 import {
   CLONE_SLOT_FILL_REPAIR_ENTRY_FROM,
   TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER,
@@ -27,9 +34,15 @@ const embedCtx = {
 };
 
 describe("chat-message-render", () => {
-  it("treats slide-count top-up / auto-continue / slot-fill repair as hidden automation", () => {
+  it("treats slide-count top-up / sparse repair / thin rewrite / auto-continue / slot-fill repair as hidden automation", () => {
     expect(isHiddenAutomationUserPrompt(
       `${SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL}\nAPPEND only new slides`,
+    )).toBe(true);
+    expect(isHiddenAutomationUserPrompt(
+      `${SPARSE_CONTENT_TOP_UP_PROMPT_SENTINEL}\npatch sparse slides`,
+    )).toBe(true);
+    expect(isHiddenAutomationUserPrompt(
+      `${THIN_PRIOR_FULL_REWRITE_PROMPT_SENTINEL}\nrewrite thin seed`,
     )).toBe(true);
     expect(isHiddenAutomationUserPrompt(
       `${AUTO_CONTINUE_PROMPT_SENTINEL}\ncontinue`,
@@ -45,6 +58,14 @@ describe("chat-message-render", () => {
     expect(isHiddenAutomationQueuedSend({
       prompt: "user follow-up",
       meta: { entryFrom: SLIDE_COUNT_TOP_UP_ENTRY_FROM },
+    })).toBe(true);
+    expect(isHiddenAutomationQueuedSend({
+      prompt: "user follow-up",
+      meta: { entryFrom: SPARSE_CONTENT_TOP_UP_ENTRY_FROM },
+    })).toBe(true);
+    expect(isHiddenAutomationQueuedSend({
+      prompt: "user follow-up",
+      meta: { entryFrom: THIN_PRIOR_FULL_REWRITE_ENTRY_FROM },
     })).toBe(true);
     expect(isHiddenAutomationQueuedSend({
       prompt: "user follow-up",
