@@ -196,9 +196,9 @@ import {
   shouldDeferEmbedProjectListRefresh,
 } from './teamver/embedProjectListRefresh';
 import {
-  isProjectListWorkspaceMismatch,
   isProjectListWorkspaceStale,
   resolveProjectListWorkspaceId,
+  decideProjectListPaintAction,
 } from './teamver/embedProjectListWorkspaceTag';
 import { readTeamverActiveWorkspaceIdSnapshot } from './teamver/activeWorkspaceIdSnapshot';
 import { prefetchLatestPublishSummaries } from './teamver/latestPublishSummary';
@@ -821,19 +821,18 @@ function AppInner() {
    * failed recent refetch (which deliberately retains rows rather than flash an
    * empty rail) and the union merge below both keep showing the previous
    * tenant's cards after a switch. Remembering the painter makes both decidable.
+   * Decision table: `decideProjectListPaintAction`.
    */
-  const isPaintedProjectListFromOtherWorkspace = useCallback(() => {
-    if (!isTeamverEmbedMode()) return false;
-    return isProjectListWorkspaceMismatch(
-      paintedProjectsWorkspaceIdRef.current,
-      readEmbedActiveWorkspaceId(),
-      { hasPaintedRows: projectsRef.current.length > 0 },
-    );
-  }, [readEmbedActiveWorkspaceId]);
-
-  /** Retaining rows through a failed refetch is only safe within one workspace. */
   const dropProjectsPaintedByOtherWorkspace = useCallback(() => {
-    if (!isPaintedProjectListFromOtherWorkspace()) return false;
+    if (!isTeamverEmbedMode()) return false;
+    const action = decideProjectListPaintAction({
+      outcome: "failure",
+      requestWorkspaceId: readEmbedActiveWorkspaceId(),
+      paintedWorkspaceId: paintedProjectsWorkspaceIdRef.current,
+      activeWorkspaceId: readEmbedActiveWorkspaceId(),
+      hasPaintedRows: projectsRef.current.length > 0,
+    });
+    if (action !== "clear") return false;
     const activeWorkspaceId = readEmbedActiveWorkspaceId();
     devLog.info('[teamver] home rail cleared — rows belonged to another workspace', {
       paintedWorkspaceId: paintedProjectsWorkspaceIdRef.current,
@@ -842,7 +841,7 @@ function AppInner() {
     paintedProjectsWorkspaceIdRef.current = activeWorkspaceId;
     setProjects([]);
     return true;
-  }, [isPaintedProjectListFromOtherWorkspace, readEmbedActiveWorkspaceId]);
+  }, [readEmbedActiveWorkspaceId]);
 
   const markProjectsPaintedByActiveWorkspace = useCallback(() => {
     if (!isTeamverEmbedMode()) return;
@@ -871,8 +870,16 @@ function AppInner() {
       activeDeletedProjectIds.size > 0
         ? list.filter((project) => !activeDeletedProjectIds.has(project.id))
         : list;
+    const action = decideProjectListPaintAction({
+      outcome: "success",
+      requestWorkspaceId: request.workspaceId,
+      paintedWorkspaceId: paintedProjectsWorkspaceIdRef.current,
+      activeWorkspaceId: readEmbedActiveWorkspaceId(),
+      hasPaintedRows: projectsRef.current.length > 0,
+    });
+    if (action === "ignore-stale") return false;
     // Merging across workspaces would put both tenants' cards on one rail.
-    const replacePaintedRows = isPaintedProjectListFromOtherWorkspace();
+    const replacePaintedRows = action === "replace";
     markProjectsPaintedByActiveWorkspace();
     setProjects((current) =>
       mergeRecentProjectsIntoList(replacePaintedRows ? [] : current, visibleList, {
@@ -882,8 +889,8 @@ function AppInner() {
     return true;
   }, [
     isStaleProjectListWorkspace,
-    isPaintedProjectListFromOtherWorkspace,
     markProjectsPaintedByActiveWorkspace,
+    readEmbedActiveWorkspaceId,
   ]);
 
   const reconcileFetchedProjects = useCallback((list: Project[], request: ProjectListRequest) => {
@@ -1611,21 +1618,28 @@ function AppInner() {
     if (mode === 'replace') {
       reconcileFetchedProjects(result.projects, request);
     } else {
-      const replacePaintedRows = isPaintedProjectListFromOtherWorkspace();
+      const action = decideProjectListPaintAction({
+        outcome: "success",
+        requestWorkspaceId: request.workspaceId,
+        paintedWorkspaceId: paintedProjectsWorkspaceIdRef.current,
+        activeWorkspaceId: readEmbedActiveWorkspaceId(),
+        hasPaintedRows: projectsRef.current.length > 0,
+      });
+      if (action === "ignore-stale") return;
       markProjectsPaintedByActiveWorkspace();
       setProjects((current) =>
         mergeProjectsByRecency(
-          replacePaintedRows ? [] : current,
+          action === "replace" ? [] : current,
           result.projects,
         ),
       );
     }
     warmEmbedProjectListCaches(result.projects);
   }, [
-    isPaintedProjectListFromOtherWorkspace,
     isStaleProjectListWorkspace,
     markProjectsPaintedByActiveWorkspace,
     mergeProjectsByRecency,
+    readEmbedActiveWorkspaceId,
     reconcileFetchedProjects,
   ]);
 
@@ -1674,11 +1688,18 @@ function AppInner() {
         projectsNextCursorRef.current = result.nextCursor;
         setProjectsHasMore(result.hasMore);
         if (result.projects.length > 0) {
-          const replacePaintedRows = isPaintedProjectListFromOtherWorkspace();
+          const action = decideProjectListPaintAction({
+            outcome: "success",
+            requestWorkspaceId: request.workspaceId,
+            paintedWorkspaceId: paintedProjectsWorkspaceIdRef.current,
+            activeWorkspaceId: readEmbedActiveWorkspaceId(),
+            hasPaintedRows: projectsRef.current.length > 0,
+          });
+          if (action === "ignore-stale") return;
           markProjectsPaintedByActiveWorkspace();
           setProjects((current) =>
             mergeProjectsByRecency(
-              replacePaintedRows ? [] : current,
+              action === "replace" ? [] : current,
               result.projects,
             ),
           );
@@ -1693,12 +1714,12 @@ function AppInner() {
   }, [
     beginProjectListRequest,
     dropProjectsPaintedByOtherWorkspace,
-    isPaintedProjectListFromOtherWorkspace,
     isStaleProjectListWorkspace,
     markProjectsPaintedByActiveWorkspace,
     mergeProjectsByRecency,
     projectsHasMore,
     projectsLoadingMore,
+    readEmbedActiveWorkspaceId,
   ]);
 
   const refreshProjects = useCallback(async () => {

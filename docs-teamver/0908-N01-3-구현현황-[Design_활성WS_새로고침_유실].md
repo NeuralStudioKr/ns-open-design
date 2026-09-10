@@ -323,17 +323,17 @@ expect(h.setActiveTeamverWorkspace).not.toHaveBeenCalled();
 전체 스위트(695파일)는 이 머신에서 forks worker timeout이 대량 발생해(37 errors / 11.7시간)
 기준선으로 쓸 수 없다. 워크스페이스·프로젝트목록 표면을 덮는 192파일 스코프로 대조했다.
 
-## 남은 위험
+## 남은 위험 (E·F 직후 — 역사 기록)
 
-> **이 표는 슬라이스 G 시점 기준으로 갱신됐다 — 최신은 아래 §슬라이스 G 의 「남은 위험」.** 2·3은 슬라이스 G 에서 해소.
+> **최신 표는 아래 §슬라이스 G 「남은 위험」(+ H에서 갱신).** 여기 2·3·4는 G·H에서 해소됨.
 
-| # | 내용 | 대응 |
+| # | 내용 (당시) | 이후 |
 |---|---|---|
-| 1 | **클라이언트가 BFF 세션의 현재 WS를 관측할 수 없다.** `DesignAuthSession`에 해당 필드가 없어(`designBffClient.ts:57-67`) 드리프트를 **탐지**하지 못하고 매 부트 재정렬로 **예방**만 한다. 부트 이후 서버 쪽에서 WS가 바뀌면 다음 부트까지 어긋난 채로 있다 | 후속: `/auth/session`에 `active_workspace_id` 추가 (BE 변경 — design-api 소스가 이 모노레포에 없음) |
-| 2 | `resolveActiveTeamverWorkspaceId`는 **읽기 함수인데 비보존 reconcile로 저장값을 덮어쓴다**. 뒤로가기 1회가 이 함수를 4~10회 동시 호출하므로 세션 응답이 한 번만 흔들려도 durable 선택이 날아갈 수 있다 | 후속 슬라이스 G 후보: 부트 이후 읽기는 `preserveStoredWorkspace`, reconcile은 부트·명시 복구에만 허용 + single-flight |
-| 3 | `beginProjectListRequest()`가 부트 시점에 `workspaceId: null`을 캡처해 `isStaleProjectListWorkspace`가 **항상 false** → 부트에서 시작한 apply는 어떤 WS 변경으로도 무효화되지 않는다. 슬라이스 F의 painted 태그가 결과는 막지만 원인은 남아 있다 | 후속: 부트 요청도 실제 WS를 캡처하도록 |
-| 4 | 자동 전환 알림(P2)이 **부트 중 dispatch**되므로 구독 설치 시점에 따라 유실 가능 | 미검증 — 사용자 재현 시 확인 필요 |
-| 5 | `ns-open-design`은 ns_cicd 미등록 — 이번 수정도 **수동 배포**가 필요하다 (`deploy/teamver/deploy.sh --staging`) | 사용자 조치 |
+| 1 | BFF 세션 WS 관측 불가 | **여전히 열림** — BE |
+| 2 | 읽기 함수 비보존 reconcile | **G에서 해소** |
+| 3 | 부트 request `workspaceId: null` | **G5에서 해소** |
+| 4 | P2 알림 부트 dispatch 유실 | **H1에서 해소** |
+| 5 | 수동 배포 | **여전히 열림** |
 
 ---
 
@@ -428,7 +428,7 @@ G5가 그 판정을 `embedProjectListWorkspaceTag`로 옮기면서 깨졌다 —
 | 프로젝트 상세 → **뒤로가기**로 루트 복귀 시 활성 WS 가 바뀐다 | 읽기 함수의 비보존 reconcile 이 4~10회 동시 실행 | **G1**(읽기 쓰기 0회) + **G2**(버스트당 판정 1회) |
 | **새로고침**에서 활성 WS 가 바뀐다 | 부트가 저장값을 BFF 에 알리지 않아 다음 reconcile 이 서버 값으로 되돌림 | **E**(부트 BFF 재정렬) |
 | 한 번 바뀐 뒤 **계속 그 상태로 유지**된다 (되돌아오지 않는다) | 재조정이 `setLastForUser`까지 덮어써 돌아갈 좌표 소실 | **G3**(durable 승격 차단) + **G4**(부트 복구) |
-| WS 가 바뀌었는데 **최근 프로젝트 목록은 그대로** | 실패 시 잔존 · 성공 시 합집합 병합 (WS 태그 없음) | **F**(painted 태그) |
+| WS 가 바뀌었는데 **최근 프로젝트 목록은 그대로** | 실패 시 잔존 · 성공 시 합집합 병합 (WS 태그 없음) · 딥링크 untagged | **F** + **H2** + **H3** |
 | 부트에서 시작한 목록 apply 가 WS 변경에도 적용된다 | `beginProjectListRequest`가 `null` 캡처 → stale 판정 항상 false | **G5**(동기 스냅샷 캡처) |
 | Main 재진입(`?workspace_id=`)이 Design 선택을 덮는다 | 힌트가 저장값보다 우선 · 힌트 재적용 | **A**(P1 stored_wins · one-shot) |
 | 비활성/회수 WS 로 인한 전환이 조용히 일어난다 | 알림 없음 · 또는 부트 dispatch가 구독 전 유실 | **B**(P2 배너) + **H1**(latch) |
@@ -462,9 +462,25 @@ G5가 그 판정을 `embedProjectListWorkspaceTag`로 옮기면서 깨졌다 —
 | H3 painted=null 소급 · prefetch/hydrate mark | ☑ |
 | H4 sync revision bump | ☑ |
 | H5 부트 recent 실패 drop | ☑ |
+| H6 `decideProjectListPaintAction` + retention 결정표 테스트 | ☑ |
+
+## 배포 전 수동 검증 체크리스트 (stg-design)
+
+`deploy/teamver/deploy.sh --staging` 후 번들 마커로 확인:
+`activeWorkspaceReadPolicy` · `isProjectListWorkspaceMismatch` · `skipEventWhenUnchanged`(또는 동등) · latch 관련 문자열이 배포 청크에 있는지.
+
+1. Design에서 B 선택 → F5 → 스위처·목록 **B** 유지
+2. Main `?workspace_id=A` 재진입 → **B** 유지
+3. B Design 비활성 → A 전환 + 배너 · F5 후 A↔B 왕복 없음
+4. 프로젝트 상세 → 뒤로가기 홈 → 활성 WS 임의 변경 없음 (여러 번)
+5. A 목록 로드 후 B 전환 → 홈/projects에 A 카드 잔존·합집합 없음 (전환 직후 실패 포함)
+6. B 프로젝트 딥링크 진입 → WS 전환 후 홈 → 이전 WS 카드 없음 · P2 배너(해당 시)
+7. `/projects` load-more 중 WS 전환 → 페이지 혼합 없음
+8. 헤더 `X-Workspace-Id`와 라벨이 잠깐 어긋나도 다음 포커스/F5에서 수렴
 
 ## 변경 이력
 
+| 2026-09-10 | 루프483 H6 — F 결정표 순수화 · retention 테스트 (검토 gap) |
 | 2026-09-10 | 루프483 H3~H5 — painted 소급 · sync revision · 부트 drop (검토 후속) |
 | 2026-09-10 | 루프483 슬라이스 H — P2 latch · loadMore WS 가드 · 위험 4·9 해소 |
 | 2026-09-09 13:35 | 루프482 슬라이스 G 재현성 — 결함별 뮤테이션 3종 실측으로 대체(파일 전체 revert 는 스위트 기동 실패) |

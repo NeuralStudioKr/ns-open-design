@@ -68,3 +68,38 @@ export function isProjectListWorkspaceStale(
 ): boolean {
   return isProjectListWorkspaceMismatch(requestWorkspaceId, activeWorkspaceId);
 }
+
+/**
+ * What the home / projects rail should do with currently painted rows after a
+ * list fetch settles (0908-N01 F · H). Kept pure so App wiring and tests share
+ * one decision table — the review gap was App callbacks without a unit surface.
+ */
+export type ProjectListPaintAction =
+  | "ignore-stale"
+  | "retain"
+  | "clear"
+  | "merge"
+  | "replace";
+
+export function decideProjectListPaintAction(input: {
+  outcome: "success" | "failure";
+  requestWorkspaceId: string | null | undefined;
+  paintedWorkspaceId: string | null | undefined;
+  activeWorkspaceId: string | null | undefined;
+  hasPaintedRows: boolean;
+}): ProjectListPaintAction {
+  if (
+    isProjectListWorkspaceStale(input.requestWorkspaceId, input.activeWorkspaceId)
+  ) {
+    return "ignore-stale";
+  }
+  const mismatch = isProjectListWorkspaceMismatch(
+    input.paintedWorkspaceId,
+    input.activeWorkspaceId,
+    { hasPaintedRows: input.hasPaintedRows },
+  );
+  if (input.outcome === "failure") {
+    return mismatch ? "clear" : "retain";
+  }
+  return mismatch ? "replace" : "merge";
+}
