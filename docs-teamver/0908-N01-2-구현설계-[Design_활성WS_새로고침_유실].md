@@ -501,6 +501,19 @@ merge 전에 현재 목록을 비운 뒤(또는 drop 후) 새 페이지만 넣�
   stale 호출을 소스/단위로 고정. 복잡하면 `isStale`/`mismatch` 사용 여부만 단정하지 말고
   loadMore 콜백이 request generation을 쓰도록 리팩터 후 작은 추출 함수 테스트 |
 
+## H3~H5 — 검토 후속
+
+### H3. painted=null 소급 (F high)
+딥링크 prefetch/hydrate가 행을 넣으면서 태그를 안 남기면 wipe가 스킵된다.
+- prefetch·hydrate에서 `markProjectsPaintedByActiveWorkspace`
+- `isProjectListWorkspaceMismatch(..., { hasPaintedRows })`: 행이 있고 활성 WS를 알면 untagged도 mismatch
+
+### H4. sync `store.set` → revision bump (G2 medium)
+`syncTeamverWorkspaceFromSession`이 id를 바꿀 때 `bumpTeamverWorkspaceStoreRevision()` 호출.
+
+### H5. 부트 첫 recent 실패 drop
+boot catalog 실패 분기에 `dropProjectsPaintedByOtherWorkspace` 대칭.
+
 ## 변경 이력
 
 | 2026-09-10 | 루프483 슬라이스 H 설계 — P2 latch · loadMore WS 가드 |

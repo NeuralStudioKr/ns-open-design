@@ -31,12 +31,23 @@ describe("isProjectListWorkspaceMismatch", () => {
     expect(isProjectListWorkspaceMismatch("  WS-A  ", "WS-A")).toBe(false);
   });
 
-  it("stays undecided while either side is unknown", () => {
+  it("stays undecided while either side is unknown and the rail is empty", () => {
     // Boot paints before the active-workspace ref is seeded. Calling that a
     // mismatch would wipe the very first rail on every cold entry.
     expect(isProjectListWorkspaceMismatch(null, "WS-B")).toBe(false);
     expect(isProjectListWorkspaceMismatch("WS-A", null)).toBe(false);
     expect(isProjectListWorkspaceMismatch("", "")).toBe(false);
+  });
+
+  it("treats untagged rows as a mismatch once an active workspace is known (H3)", () => {
+    // Deeplink prefetch left rows without a painter tag; keeping them across a
+    // switch is the F leak. Empty rail stays undecided (cold boot).
+    expect(
+      isProjectListWorkspaceMismatch(null, "WS-B", { hasPaintedRows: true }),
+    ).toBe(true);
+    expect(
+      isProjectListWorkspaceMismatch(null, "WS-B", { hasPaintedRows: false }),
+    ).toBe(false);
   });
 });
 

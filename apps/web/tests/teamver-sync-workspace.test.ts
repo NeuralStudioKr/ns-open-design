@@ -10,6 +10,7 @@ const storeSetMock = vi.fn(async () => undefined);
 const storeGetMock = vi.fn(async (): Promise<string | null> => null);
 const storeGetPreferredMock = vi.fn(() => null as string | null);
 const storeSetLastForUserMock = vi.fn();
+const bumpRevisionMock = vi.fn();
 
 vi.mock("../src/teamver/designBffClient", () => ({
   getDesignBffClient: vi.fn(() => ({
@@ -20,6 +21,11 @@ vi.mock("../src/teamver/designBffClient", () => ({
       getPreferredWorkspaceIdForBootstrap: storeGetPreferredMock,
     },
   })),
+}));
+
+vi.mock("../src/teamver/teamverWorkspaceStoreRevision", () => ({
+  bumpTeamverWorkspaceStoreRevision: () => bumpRevisionMock(),
+  readTeamverWorkspaceStoreRevisionMs: () => 0,
 }));
 
 import {
@@ -34,6 +40,8 @@ describe("syncTeamverWorkspaceFromSession", () => {
     storeGetMock.mockResolvedValue(null);
     storeGetPreferredMock.mockReset();
     storeGetPreferredMock.mockReturnValue(null);
+    storeSetLastForUserMock.mockClear();
+    bumpRevisionMock.mockClear();
   });
 
   it("dispatches workspace-changed when bootstrap resolves a new active id", async () => {
@@ -62,7 +70,24 @@ describe("syncTeamverWorkspaceFromSession", () => {
 
     expect(active).toBe("WS-2");
     expect(storeSetMock).toHaveBeenCalledWith("WS-2");
+    expect(bumpRevisionMock).toHaveBeenCalled();
     expect(events).toContain("WS-2");
+  });
+
+  it("does not bump the store revision when the active id is already resolved", async () => {
+    storeGetMock.mockResolvedValue("WS-1");
+    const active = await syncTeamverWorkspaceFromSession(
+      {
+        authenticated: true,
+        user: { userId: "user-1" },
+        defaultWorkspaceId: "WS-1",
+        workspaces: [{ id: "WS-1", name: "Alpha", role: "owner" }],
+      },
+      [{ id: "WS-1", name: "Alpha", role: "owner" }],
+    );
+    expect(active).toBe("WS-1");
+    expect(storeSetMock).not.toHaveBeenCalled();
+    expect(bumpRevisionMock).not.toHaveBeenCalled();
   });
 
   it("does not dispatch when active workspace already matches resolved id", async () => {

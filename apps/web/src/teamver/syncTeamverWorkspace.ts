@@ -11,6 +11,7 @@ import {
   readWorkspaceId,
 } from "./workspaceUtils";
 import { mayPromoteWorkspaceToDurablePreference } from "./workspaceDurablePreference";
+import { bumpTeamverWorkspaceStoreRevision } from "./teamverWorkspaceStoreRevision";
 
 function readSessionUserId(session: DesignAuthSession): string | null {
   return session.user?.userId?.trim() || null;
@@ -128,6 +129,10 @@ export async function syncTeamverWorkspaceFromSession(
 
   if (resolved && resolved !== stored) {
     await store.set(resolved);
+    // Invalidate in-flight resolveActiveTeamverWorkspaceId bursts that keyed
+    // on the previous revision (0908-N01 H4). setActive already bumps; sync
+    // must too or a focus reconcile leaves callers joining a stale flight.
+    bumpTeamverWorkspaceStoreRevision();
     active = resolved;
     dispatchTeamverWorkspaceChanged(resolved);
     // Only an unrequested move deserves a notice: `override` means the caller
@@ -144,6 +149,7 @@ export async function syncTeamverWorkspaceFromSession(
     }
   } else if (!stored && resolved) {
     await store.set(resolved);
+    bumpTeamverWorkspaceStoreRevision();
     active = resolved;
     dispatchTeamverWorkspaceChanged(resolved);
   } else if (resolved) {

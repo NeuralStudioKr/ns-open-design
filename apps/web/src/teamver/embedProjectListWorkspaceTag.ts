@@ -15,17 +15,24 @@
  * Whether the rows currently on screen belong to a different workspace than the
  * one Design is acting on.
  *
- * Unknown on either side means "do not decide": boot paints before
- * `embedActiveWorkspaceIdRef` is seeded, and treating that as a mismatch would
+ * Unknown on either side usually means "do not decide": boot paints before
+ * the active-workspace ref is seeded, and treating that as a mismatch would
  * wipe a perfectly good first rail.
+ *
+ * Exception (0908-N01 H3): when rows are already on screen but nobody tagged
+ * them (deeplink prefetch / hydrate), `painted === null` must not mean
+ * "keep forever". With an active workspace known, untagged rows are treated
+ * as a mismatch so wipe/replace can run.
  */
 export function isProjectListWorkspaceMismatch(
   paintedWorkspaceId: string | null | undefined,
   activeWorkspaceId: string | null | undefined,
+  options?: { hasPaintedRows?: boolean },
 ): boolean {
   const painted = paintedWorkspaceId?.trim() || null;
   const active = activeWorkspaceId?.trim() || null;
-  if (!painted || !active) return false;
+  if (!active) return false;
+  if (!painted) return Boolean(options?.hasPaintedRows);
   return painted !== active;
 }
 

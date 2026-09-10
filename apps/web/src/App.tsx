@@ -827,6 +827,7 @@ function AppInner() {
     return isProjectListWorkspaceMismatch(
       paintedProjectsWorkspaceIdRef.current,
       readEmbedActiveWorkspaceId(),
+      { hasPaintedRows: projectsRef.current.length > 0 },
     );
   }, [readEmbedActiveWorkspaceId]);
 
@@ -1180,6 +1181,9 @@ function AppInner() {
             isCancelled: () => cancelled,
             readDetailRoute: () => readEmbedProjectDetailRoute(routeRef.current),
             onProjectPrefetched: (project) => {
+              // Deeplink prefetch must tag the painter — otherwise painted stays
+              // null and F wipe/replace never runs after a later WS move (H3).
+              markProjectsPaintedByActiveWorkspace();
               setProjects((current) => {
                 const existingIndex = current.findIndex(
                   (candidate) => candidate.id === project.id,
@@ -1343,6 +1347,8 @@ function AppInner() {
           if (!result.ok) {
             homeRecentNeedsAuthRetryRef.current = true;
             setWorkingDirError(result.errorMessage);
+            // Prefetch may have already put untagged rows on the rail (H3/H5).
+            dropProjectsPaintedByOtherWorkspace();
           } else {
             homeRecentNeedsAuthRetryRef.current = false;
             setWorkingDirError(null);
@@ -1471,8 +1477,10 @@ function AppInner() {
   }, [
     beginAgentStreamRequest,
     beginProjectListRequest,
+    dropProjectsPaintedByOtherWorkspace,
     fetchDesignTemplatesForCurrentBranding,
     isCurrentAgentStreamRequest,
+    markProjectsPaintedByActiveWorkspace,
     reconcileFetchedProjects,
   ]);
 
@@ -1597,15 +1605,29 @@ function AppInner() {
     request: ProjectListRequest,
     mode: 'replace' | 'append',
   ) => {
+    if (isStaleProjectListWorkspace(request)) return;
     projectsNextCursorRef.current = result.nextCursor;
     setProjectsHasMore(result.hasMore);
     if (mode === 'replace') {
       reconcileFetchedProjects(result.projects, request);
     } else {
-      setProjects((current) => mergeProjectsByRecency(current, result.projects));
+      const replacePaintedRows = isPaintedProjectListFromOtherWorkspace();
+      markProjectsPaintedByActiveWorkspace();
+      setProjects((current) =>
+        mergeProjectsByRecency(
+          replacePaintedRows ? [] : current,
+          result.projects,
+        ),
+      );
     }
     warmEmbedProjectListCaches(result.projects);
-  }, [mergeProjectsByRecency, reconcileFetchedProjects]);
+  }, [
+    isPaintedProjectListFromOtherWorkspace,
+    isStaleProjectListWorkspace,
+    markProjectsPaintedByActiveWorkspace,
+    mergeProjectsByRecency,
+    reconcileFetchedProjects,
+  ]);
 
   const ensureProjectsListPageLoaded = useCallback(async () => {
     if (projectsPageLoadedRef.current) return;
@@ -4182,6 +4204,8 @@ function AppInner() {
           }
           return curr.map((candidate) => (candidate.id === project.id ? project : candidate));
         });
+        // Same as boot prefetch — tag so F wipe can run after a later switch (H3).
+        markProjectsPaintedByActiveWorkspace();
         warmEmbedProjectListCaches([project]);
         return;
       }
@@ -4247,6 +4271,7 @@ function AppInner() {
     daemonLive,
     beginProjectListRequest,
     isSessionTrustedEmbedProject,
+    markProjectsPaintedByActiveWorkspace,
     reconcileFetchedProjects,
   ]);
 

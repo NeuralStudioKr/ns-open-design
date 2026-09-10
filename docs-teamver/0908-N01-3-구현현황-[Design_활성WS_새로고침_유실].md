@@ -442,31 +442,30 @@ G5가 그 판정을 `embedProjectListWorkspaceTag`로 옮기면서 깨졌다 —
 | 3 | ~~`beginProjectListRequest()`가 부트 시점에 `workspaceId: null`을 캡처해 `isStaleProjectListWorkspace`가 항상 false~~ | **해소 — 슬라이스 G5.** 동기 스냅샷으로 부트 요청도 실제 WS 캡처 |
 | 4 | ~~자동 전환 알림(P2)이 **부트 중 dispatch**되므로 구독 설치 시점에 따라 유실 가능~~ | **해소 — 슬라이스 H1.** last-event latch(TTL 60s) + dismiss/명시 전환 시 clear |
 | 5 | `ns-open-design`은 ns_cicd 미등록 — 이번 수정도 **수동 배포**가 필요하다 (`deploy/teamver/deploy.sh --staging`) | 사용자 조치 |
-| 6 | **신규.** 읽기가 저장하지 않으므로 저장값이 무효인 채 남는 구간이 생긴다. 그 구간에 **라벨(저장값 기반)과 요청 헤더(계산값)가 어긋날 수 있다.** 지속 시간은 "다음 부트 / 포커스 refresh 까지"로 유한하다 | 의도된 트레이드오프. 관측을 원하면 남은 위험 1(`/auth/session`에 `active_workspace_id`)이 선행 |
-| 7 | **신규.** G4 durable 복구는 **부트 한정**이므로, 사용자가 A 에서 오래 작업한 뒤 원래 pick B 가 재활성되면 다음 부트에서 B 로 끌려갈 수 있다 | 완화 있음 — A 를 **명시적으로** 고르면 `setActiveTeamverWorkspace`가 durable 도 A 로 써서 이 경로가 사라진다. 사용자 신고가 나오면 "복구는 1회만" 마커로 좁힌다 |
-| 8 | **신규.** single-flight 가 모듈 스코프이므로 세션 probe 가 걸리면 버스트 전체가 함께 대기한다 | 실질 차이 작음 — `fetchDesignAuthSession`이 이미 in-flight 합류/60s 캐시라 이전에도 같은 probe 를 함께 기다렸다 |
-| 9 | ~~`loadMoreProjects`가 WS stale/painted 검사를 건너뛰어 전환 중 더보기가 이전 WS 페이지를 합칠 수 있다~~ | **해소 — 슬라이스 H2.** |
+| 6 | 읽기가 저장하지 않으므로 저장값이 무효인 채 남는 구간이 생긴다. 그 구간에 **라벨(저장값 기반)과 요청 헤더(계산값)가 어긋날 수 있다.** 지속 시간은 "다음 부트 / 포커스 refresh 까지"로 유한하다 | 의도된 트레이드오프. 관측을 원하면 남은 위험 1 |
+| 7 | G4 durable 복구는 **부트 한정**이므로, 사용자가 A 에서 오래 작업한 뒤 원래 pick B 가 재활성되면 다음 부트에서 B 로 끌려갈 수 있다 | 완화 있음 — A 를 명시적으로 고르면 durable 도 A. 신고 시 "복구 1회만" |
+| 8 | single-flight 가 모듈 스코프이므로 세션 probe 가 걸리면 버스트 전체가 함께 대기한다 | 실질 차이 작음 |
+| 9 | ~~`loadMoreProjects`가 WS stale/painted 검사를 건너뜀~~ | **해소 — H2** |
+| 10 | ~~painted=null 이면 wipe/교체 영구 스킵 (딥링크 prefetch)~~ | **해소 — H3** (`hasPaintedRows` + prefetch/hydrate mark) |
+| 11 | ~~sync `store.set`이 revision을 bump하지 않아 flight가 옛 WS를 반환~~ | **해소 — H4** |
 
 ---
 
-# 슬라이스 H — P2 latch · loadMore WS 가드 (루프483)
+# 슬라이스 H 검토 후속 (H3~H5, 루프483)
 
-설계: 구현설계 §슬라이스 H.
+[Design E·F·G 코드 검토](c341f54f-f23f-4b29-9d9d-03da497a4dd1) 반영.
 
-| 항목 | 커밋 | 상태 |
-|---|---|---|
-| 슬라이스 H 구현설계 append | `5a6b38ad88` | ☑ |
-| H1 last-event latch + dismiss/switch clear | (본 커밋) | ☑ |
-| H2 `loadMoreProjects` stale · painted 가드 | (본 커밋) | ☑ |
-| `workspace-auto-switched-latch.test.ts` 4건 | (본 커밋) | ☑ |
-
-## 검증
-
-- ☑ latch 테스트 4/4 — 구독 전 dispatch replay · clear 후 무재생 · TTL 만료 · 라이브 구독 전달
-- ☑ `teamver-use-embed` · `set-active-workspace` · `active-workspace-read-single-flight` 회귀 통과
+| 항목 | 상태 |
+|---|---|
+| H1 P2 latch | ☑ `aa13a55ff2` |
+| H2 loadMore WS 가드 | ☑ `aa13a55ff2` |
+| H3 painted=null 소급 · prefetch/hydrate mark | ☑ |
+| H4 sync revision bump | ☑ |
+| H5 부트 recent 실패 drop | ☑ |
 
 ## 변경 이력
 
+| 2026-09-10 | 루프483 H3~H5 — painted 소급 · sync revision · 부트 drop (검토 후속) |
 | 2026-09-10 | 루프483 슬라이스 H — P2 latch · loadMore WS 가드 · 위험 4·9 해소 |
 | 2026-09-09 13:35 | 루프482 슬라이스 G 재현성 — 결함별 뮤테이션 3종 실측으로 대체(파일 전체 revert 는 스위트 기동 실패) |
 | 2026-09-09 13:20 | 루프482 슬라이스 G 완료 — 읽기 순수화·single-flight·durable 보존·부트 복구·WS 캡처 · 196파일 1312테스트 통과 · 위험 2·3 해소, 신규 위험 3건 |
