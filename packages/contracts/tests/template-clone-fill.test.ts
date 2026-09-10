@@ -77,6 +77,9 @@ import {
   restyleBiennaleSparseDataBodies,
   restyleBiennaleSparseQuoteBodies,
   injectBiennaleSparseFillCss,
+  stripBiennaleInventedVerticalWriting,
+  restyleBiennaleSparseCoverBodies,
+  restyleBiennaleSparseColophonBodies,
   polishInstructionCoverTitle,
   polishUrlSiteCoverTitle,
   looksLikeRawUrlSiteCoverTitle,
@@ -2161,6 +2164,51 @@ ${capsuleLook}
     expect(injectBiennaleSparseFillCss(quoted)).toMatch(/data-od-biennale-sparse-fill/);
     expect(injectBiennaleSparseFillCss(injectBiennaleSparseFillCss(quoted)))
       .toBe(injectBiennaleSparseFillCss(quoted));
+  });
+
+  it('루프482 strips vertical writing and peels invented cover columns on Biennale', () => {
+    const look = '<style data-od-official-look-css="">:root{--sun:#F1EE2E;--paper:#E9E5DB;--ink:#1B2566}.s-cover .sunglow{}</style>';
+    const html = [
+      '<section class="slide s-cover">',
+      '<div class="blocks" aria-hidden="true"><div class="b1"></div></div>',
+      '<div class="sunglow" aria-hidden="true"></div>',
+      '<div class="titlewrap"><h1 class="title" style="writing-mode:vertical-rl">팀버</h1></div>',
+      '<div style="writing-mode:vertical-rl;position:absolute;left:40%;top:10%">에이전트가 하고 싶은 일</div>',
+      '<div style="writing-mode:vertical-rl;position:absolute;left:55%;top:10%">사람은 판단하러</div>',
+      '</section>',
+      look,
+    ].join('');
+    const stripped = stripBiennaleInventedVerticalWriting(html);
+    expect(stripped).not.toMatch(/writing-mode\s*:\s*vertical/i);
+    expect(stripped).toContain('팀버');
+    const peeled = restyleBiennaleSparseCoverBodies(html);
+    expect(peeled).toContain('titlewrap');
+    expect(peeled).toContain('팀버');
+    expect(peeled).toContain('class="blocks"');
+    expect(peeled).not.toContain('에이전트가 하고 싶은 일');
+    expect(peeled).not.toContain('사람은 판단하러');
+    const css = injectBiennaleSparseFillCss(peeled);
+    expect(css).toMatch(/writing-mode:horizontal-tb!important/);
+  });
+
+  it('루프482 collapses duplicated colophon copy and caps display type', () => {
+    const look = '<style data-od-official-look-css="">:root{--sun:#F1EE2E;--paper:#E9E5DB;--ink:#1B2566}.s-cover .sunglow{}</style>';
+    const quote = '결정을 비워두고, 사람은 <mark style="background:var(--sun)">판단</mark>하러 갑니다.';
+    const html = [
+      '<section class="slide s-colophon">',
+      '<div class="glow" aria-hidden="true"></div>',
+      `<div class="titlewrap"><h2 class="ttl">${quote}</h2><h2 class="ttl">${quote}</h2></div>`,
+      `<p>${quote}</p>`,
+      `<p>${quote}</p>`,
+      '</section>',
+      look,
+    ].join('');
+    const healed = restyleBiennaleSparseColophonBodies(html);
+    const ttlHits = healed.match(/class="ttl"/g) ?? [];
+    expect(ttlHits.length).toBe(1);
+    expect((healed.match(/결정을 비워두고/g) ?? []).length).toBe(1);
+    const css = injectBiennaleSparseFillCss(healed);
+    expect(css).toMatch(/\.s-colophon \.titlewrap \.ttl\{font-size:clamp\(56px/);
   });
 
   it('reparents MiniMax auto-auto-1fr cards and 64px step lists', () => {

@@ -23,6 +23,9 @@ import {
   restyleBiennaleSparseChapterBodies,
   restyleBiennaleSparseDataBodies,
   restyleBiennaleSparseQuoteBodies,
+  restyleBiennaleSparseCoverBodies,
+  restyleBiennaleSparseColophonBodies,
+  stripBiennaleInventedVerticalWriting,
   restyleForeignIbMagazineCover,
   scrubCobaltFieldOfficeDemoSlots,
 } from '../template-clone-fill.js';
@@ -1358,6 +1361,9 @@ export function healOfficialMagazineLayoutDensity(
     healOfficialMagazineBodyFrames(
       healSparseOfficialMagazineCover(
         dropEmptyDeckSlides(
+          restyleBiennaleSparseColophonBodies(
+          restyleBiennaleSparseCoverBodies(
+          stripBiennaleInventedVerticalWriting(
           restyleBiennaleSparseQuoteBodies(
             restyleBiennaleSparseDataBodies(
               collapseLonelyRepeatGrids(
@@ -1386,6 +1392,9 @@ export function healOfficialMagazineLayoutDensity(
                 ),
               ),
             ),
+          ),
+          ),
+          ),
           ),
         ),
         brief,

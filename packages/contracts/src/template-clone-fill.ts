@@ -4421,7 +4421,177 @@ const BIENNALE_SPARSE_FILL_CSS = [
   '.s-chapter .stack:not(:has(.nm)) .ttl{font-size:clamp(64px,min(8vw,14vh),160px);max-width:92%}',
   '.s-data .frame:not(:has(.chart)){grid-template-columns:1fr}',
   '.s-data .frame:not(:has(.chart)) .head,.s-data .frame:not(:has(.chart)) .col-a{grid-column:1/-1}',
+  // 루프482 — Official Biennale never sets vertical writing; MiniMax invents it
+  // on cover/colophon and the glyphs pile on kit .blocks.
+  '.s-cover .title,.s-cover .titlewrap,.s-colophon .ttl,.s-colophon .titlewrap{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}',
+  // Cap colophon display type — kit clamp(80…200) + a pasted quote overflows mid-word.
+  '.s-colophon .titlewrap .ttl{font-size:clamp(56px,min(7vw,12vh),120px);max-width:90%;line-height:1.05}',
 ].join('');
+
+const VERTICAL_WRITING_MODE_DECL_RE =
+  /(?:^|;)\s*(?:-webkit-|-ms-|-epub-)?writing-mode\s*:\s*vertical(?:-r[lr])?\s*(?:;|$)/gi;
+
+const BIENNALE_COVER_KIT_SLOT_RE =
+  /\b(?:blocks|sunglow|titlewrap|footer-row|date-rail|pagenum|nav-hint|data-od-official-motif-html|deco|floating-pills)\b/i;
+
+const BIENNALE_COLOPHON_KIT_SLOT_RE =
+  /\b(?:blocks|glow|titlewrap|colofo|pagenum|nav-hint|data-od-official-motif-html|deco|floating-pills)\b/i;
+
+function stripVerticalWritingModeFromStyleAttr(open: string): string {
+  return open.replace(/\bstyle\s*=\s*(['"])([\s\S]*?)\1/i, (whole, quote: string, style: string) => {
+    if (!/writing-mode\s*:/i.test(style)) return whole;
+    const next = style
+      .replace(VERTICAL_WRITING_MODE_DECL_RE, ';')
+      .replace(/;;+/g, ';')
+      .replace(/^\s*;\s*|\s*;\s*$/g, '')
+      .trim();
+    if (!next) {
+      return whole.replace(/\s*style\s*=\s*(['"])[\s\S]*?\1/i, '');
+    }
+    return `style=${quote}${next}${quote}`;
+  });
+}
+
+function openHadVerticalWriting(open: string): boolean {
+  const style = /\bstyle\s*=\s*(['"])([\s\S]*?)\1/i.exec(open)?.[2] ?? '';
+  return /writing-mode\s*:\s*vertical/i.test(style);
+}
+
+function normalizeVisibleCopyKey(html: string): string {
+  return officialMotifVisibleText(html)
+    .replace(/\s+/g, '')
+    .replace(/[·•.,，、。!！?？:：;；"'“”‘’()[\]{}]/g, '')
+    .toLowerCase();
+}
+
+/**
+ * 루프482 — Biennale kit is horizontal-only. MiniMax invents
+ * `writing-mode:vertical-rl` on cover/colophon copy so glyphs stack on the
+ * yellow `.blocks` and become illegible (사용자 리포트 2026-09-10).
+ */
+export function stripBiennaleInventedVerticalWriting(html: string): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsBiennaleYellow(dest)) return dest;
+  if (!/writing-mode\s*:\s*vertical/i.test(dest)) return dest;
+  return dest.replace(/<[a-zA-Z][\w-]*\b(?:[^>"']|"[^"]*"|'[^']*')*>/g, (open) => {
+    if (!/writing-mode\s*:\s*vertical/i.test(open)) return open;
+    return stripVerticalWritingModeFromStyleAttr(open);
+  });
+}
+
+/**
+ * 루프482 — Once `.titlewrap` is present, drop invented vertical text columns
+ * that sit as siblings of kit chrome. Never invent copy; never touch Motif /
+ * blocks / sunglow / footer-row. Non-vertical foreign copy is left alone —
+ * that is a fill problem, not a layout garble.
+ */
+export function restyleBiennaleSparseCoverBodies(html: string): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsBiennaleYellow(dest)) return dest;
+  const spans = listHealSlideHostSpans(dest);
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    if (!/\bs-cover\b/i.test(span.attrs)) continue;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    if (!/\btitlewrap\b/i.test(body)) continue;
+    const blocks = listTopLevelBlocks(body);
+    if (blocks.length < 2) continue;
+    const kept: string[] = [];
+    let changed = false;
+    for (const block of blocks) {
+      const open = /^<[a-zA-Z][\w-]*\b[^>]*>/.exec(block)?.[0] ?? '';
+      if (BIENNALE_COVER_KIT_SLOT_RE.test(open) || BIENNALE_COVER_KIT_SLOT_RE.test(block.slice(0, 120))) {
+        kept.push(stripVerticalWritingModeFromStyleAttr(open) === open
+          ? block
+          : block.replace(open, stripVerticalWritingModeFromStyleAttr(open)));
+        continue;
+      }
+      const vertical = openHadVerticalWriting(open) || /writing-mode\s*:\s*vertical/i.test(block);
+      if (vertical && officialMotifVisibleText(block).length >= 2) {
+        changed = true;
+        continue;
+      }
+      kept.push(block);
+    }
+    if (!changed) continue;
+    out = `${out.slice(0, span.bodyStart)}${kept.join('')}${out.slice(span.bodyEnd)}`;
+  }
+  return out;
+}
+
+/**
+ * 루프482 — Colophon has no quote slot. MiniMax pastes the same sentence twice
+ * (often as div/p twins with a yellow mark on one word). Phrasing-only
+ * collapseAdjacentDuplicate misses div wrappers — drop adjacent identical
+ * visible copy here.
+ */
+export function restyleBiennaleSparseColophonBodies(html: string): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsBiennaleYellow(dest)) return dest;
+  const spans = listHealSlideHostSpans(dest);
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    if (!/\bs-colophon\b/i.test(span.attrs)) continue;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    const { overlays, content } = splitOverlayAndContent(body);
+    if (content.length < 2) continue;
+    const kept: string[] = [];
+    let changed = false;
+    for (const block of content) {
+      const open = /^<[a-zA-Z][\w-]*\b[^>]*>/.exec(block)?.[0] ?? '';
+      if (BIENNALE_COLOPHON_KIT_SLOT_RE.test(open)) {
+        // Inside titlewrap, still collapse duplicated children.
+        if (/\btitlewrap\b/i.test(open)) {
+          const deduped = dedupeAdjacentSameVisibleChildren(block);
+          if (deduped !== block) changed = true;
+          kept.push(deduped);
+        } else {
+          kept.push(block);
+        }
+        continue;
+      }
+      const key = normalizeVisibleCopyKey(block);
+      if (key.length >= 8) {
+        const prev = kept[kept.length - 1];
+        if (prev && normalizeVisibleCopyKey(prev) === key) {
+          changed = true;
+          continue;
+        }
+      }
+      kept.push(block);
+    }
+    if (!changed) continue;
+    out = `${out.slice(0, span.bodyStart)}${overlays.join('')}${kept.join('')}${out.slice(span.bodyEnd)}`;
+  }
+  return out;
+}
+
+function dedupeAdjacentSameVisibleChildren(hostHtml: string): string {
+  const open = /^<[a-zA-Z][\w-]*\b[^>]*>/.exec(hostHtml)?.[0];
+  if (!open) return hostHtml;
+  const closeMatch = /<\/[a-zA-Z][\w-]*\s*>$/i.exec(hostHtml);
+  if (!closeMatch) return hostHtml;
+  const inner = hostHtml.slice(open.length, hostHtml.length - closeMatch[0].length);
+  const kids = listTopLevelBlocks(inner).filter((part) => part.trim());
+  if (kids.length < 2) return hostHtml;
+  const kept: string[] = [];
+  let changed = false;
+  for (const kid of kids) {
+    const key = normalizeVisibleCopyKey(kid);
+    if (key.length >= 8) {
+      const prev = kept[kept.length - 1];
+      if (prev && normalizeVisibleCopyKey(prev) === key) {
+        changed = true;
+        continue;
+      }
+    }
+    kept.push(kid);
+  }
+  if (!changed) return hostHtml;
+  return `${open}${kept.join('')}${closeMatch[0]}`;
+}
 
 /**
  * Official look CSS sizes chapter `.ttl` and cover `.titlewrap` around
@@ -4518,6 +4688,10 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = restyleBiennaleSparseChapterBodies(next);
   next = restyleBiennaleSparseDataBodies(next);
   next = restyleBiennaleSparseQuoteBodies(next);
+  // 루프482 — Cover vertical garble + colophon stacked twin quotes.
+  next = stripBiennaleInventedVerticalWriting(next);
+  next = restyleBiennaleSparseCoverBodies(next);
+  next = restyleBiennaleSparseColophonBodies(next);
   next = injectBiennaleSparseFillCss(next);
   next = injectCobaltAbsoluteSlotCss(next);
   next = salvageOrphan2x2GridCards(next);
