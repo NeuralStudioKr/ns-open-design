@@ -2165,6 +2165,24 @@ export function officialLookIsCapsule(html: string): boolean {
     && /Bodoni Moda|--coral\b|\.deco-pill\b|#E85/i.test(source);
 }
 
+/**
+ * 루프487 — Daisy Days fingerprint (Fredoka + cream paper + title-box /
+ * deco-daisy chrome). Not a card-slot map — look detection for poster heals.
+ */
+export function officialLookIsDaisyDays(html: string): boolean {
+  const source = String(html ?? '');
+  if (!source.trim()) return false;
+  // Deny stronger fingerprints that share warm cream paper.
+  if (officialLookIsCapsule(source) || officialLookIsBiennaleYellow(source)) return false;
+  if (officialLookIsCobaltGrid(source) || officialLookIsSakuraChroma(source)) return false;
+  const css = lookCssWithoutNeutralize(source);
+  const hay = `${css}\n${source}`;
+  const cream = /--cream\s*:\s*#F5F0E6/i.test(hay) || /#F5F0E6/i.test(hay);
+  const fredoka = /Fredoka/i.test(hay);
+  const chrome = /\b(?:title-box|deco-daisy|slide-title)\b/i.test(hay);
+  return (cream || fredoka) && chrome;
+}
+
 function officialLookIsBiennaleYellow(html: string): boolean {
   const css = lookCssWithoutNeutralize(html);
   if (/\.sunglow\b/i.test(css) && /\.s-cover\b/i.test(css)) return true;
@@ -4444,19 +4462,51 @@ const COBALT_POSTER_LAYOUT_CSS = [
   '.s-colophon .titlewrap .ttl{font-size:clamp(56px,min(7vw,12vh),120px);max-width:90%;line-height:1.05}',
 ].join('');
 
+/** 루프487 — Capsule / Creative / Studio / Daisy: no kit vertical writing. */
+const CAPSULE_POSTER_LAYOUT_CSS = [
+  '.slide-1 .title-pill,.slide-1 .main-title,.slide-10 .closing-pill,.slide-10 .closing-line{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}',
+  '.slide-10 .closing-line{font-size:clamp(40px,min(6vw,10vh),96px);max-width:90%;line-height:1.1}',
+].join('');
+
+const CREATIVE_POSTER_LAYOUT_CSS = [
+  '.s1 .title,.s1 .tagline,.s8 .h,.s8 .strap{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}',
+  '.s8 .h.display{font-size:clamp(48px,min(7vw,12vh),120px);max-width:90%;line-height:1.05}',
+].join('');
+
+const STUDIO_POSTER_LAYOUT_CSS = [
+  '.slide--cover .cover-type,.slide--cover .display,.slide--end .h1{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}',
+  '.slide--end .h1{font-size:clamp(48px,min(7vw,12vh),120px);max-width:90%;line-height:1.05}',
+].join('');
+
+const DAISY_POSTER_LAYOUT_CSS = [
+  '.slide-title .title-box,.slide-title h1,.slide-title .subtitle{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}',
+].join('');
+
 const VERTICAL_WRITING_MODE_DECL_RE =
   /(?:^|;)\s*(?:-webkit-|-ms-|-epub-)?writing-mode\s*:\s*vertical(?:-r[lr])?\s*(?:;|$)/gi;
 
-type OfficialPosterKit = 'biennale' | 'sakura' | 'cobalt';
+type OfficialPosterKit =
+  | 'biennale'
+  | 'sakura'
+  | 'cobalt'
+  | 'capsule'
+  | 'creative'
+  | 'studio'
+  | 'daisy';
 
 type OfficialPosterKitPlan = {
   kind: OfficialPosterKit;
+  coverHostRe: RegExp;
+  /** null = kit has no closing/colophon slide (Daisy Days). */
+  closingHostRe: RegExp | null;
   coverSlotRe: RegExp;
   colophonSlotRe: RegExp;
   /** Cover needs a primary title slot before we peel foreign vertical columns. */
   coverPrimarySlotRe: RegExp;
   /** Cobalt kit vertical labels — never strip writing-mode from these opens. */
   preserveVerticalSlotRe: RegExp | null;
+  layoutCss: string;
+  layoutMark: string;
 };
 
 const BIENNALE_COVER_KIT_SLOT_RE =
@@ -4479,36 +4529,121 @@ const COBALT_COLOPHON_KIT_SLOT_RE =
 
 const COBALT_PRESERVE_VERTICAL_SLOT_RE = /\b(?:vstack|v-row)\b/i;
 
+const CAPSULE_COVER_KIT_SLOT_RE =
+  /\b(?:title-pill|main-title|deco-pills|deco-pill|floating-pills|grain-overlay|nav-dots|slide-counter|nav-hint|data-od-official-motif-html)\b/i;
+
+const CAPSULE_CLOSING_KIT_SLOT_RE =
+  /\b(?:closing-content|closing-pill|closing-line|closing-sub|deco-pills-closing|c-pill|nav-dots|slide-counter|nav-hint|data-od-official-motif-html)\b/i;
+
+const CREATIVE_COVER_KIT_SLOT_RE =
+  /\b(?:tagline|title|footnote|poster|switch|lever|label-on|label-off|slide-meta|topbar|pill|data-od-official-motif-html)\b/i;
+
+const CREATIVE_CLOSING_KIT_SLOT_RE =
+  /\b(?:topbar|strap|stamp|inner|slide-meta|pill|h|display|data-od-official-motif-html)\b/i;
+
+const STUDIO_COVER_KIT_SLOT_RE =
+  /\b(?:cover-img-area|cover-type|cover-meta|cover-meta-col|display|slide-chrome|slide-foot|data-od-official-motif-html)\b/i;
+
+const STUDIO_CLOSING_KIT_SLOT_RE =
+  /\b(?:cover-footer|cover-footer-col|h1|body|slide-chrome|slide-foot|data-od-official-motif-html)\b/i;
+
+const DAISY_COVER_KIT_SLOT_RE =
+  /\b(?:title-box|subtitle|deco(?:-[\w-]+)?|badge|nav-dots|slide-counter|slides-container|data-od-official-motif-html)\b/i;
+
 function resolveOfficialPosterKit(html: string): OfficialPosterKitPlan | null {
   const dest = String(html ?? '');
   if (!dest.trim()) return null;
-  // Cobalt before Biennale: Cobalt DOM has s-cover+titlewrap too, but fingerprint
-  // denies sunglow. Order matters when look CSS is incomplete.
+  // Order: Cobalt (vstack preserve) → Creative before Studio → Capsule →
+  // Sakura → Daisy → Biennale. Stronger/more specific fingerprints first.
   if (officialLookIsCobaltGrid(dest)) {
     return {
       kind: 'cobalt',
+      coverHostRe: /\bs-cover\b/i,
+      closingHostRe: /\bs-colophon\b/i,
       coverSlotRe: COBALT_COVER_KIT_SLOT_RE,
       colophonSlotRe: COBALT_COLOPHON_KIT_SLOT_RE,
       coverPrimarySlotRe: /\b(?:titlewrap|vstack)\b/i,
       preserveVerticalSlotRe: COBALT_PRESERVE_VERTICAL_SLOT_RE,
+      layoutCss: COBALT_POSTER_LAYOUT_CSS,
+      layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
+    };
+  }
+  if (officialLookIsCreativeMode(dest)) {
+    return {
+      kind: 'creative',
+      coverHostRe: /\bs1\b/i,
+      closingHostRe: /\bs8\b/i,
+      coverSlotRe: CREATIVE_COVER_KIT_SLOT_RE,
+      colophonSlotRe: CREATIVE_CLOSING_KIT_SLOT_RE,
+      coverPrimarySlotRe: /\btitle\b/i,
+      preserveVerticalSlotRe: null,
+      layoutCss: CREATIVE_POSTER_LAYOUT_CSS,
+      layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
+    };
+  }
+  if (officialLookIsStudio(dest)) {
+    return {
+      kind: 'studio',
+      coverHostRe: /\bslide--cover\b/i,
+      closingHostRe: /\bslide--end\b/i,
+      coverSlotRe: STUDIO_COVER_KIT_SLOT_RE,
+      colophonSlotRe: STUDIO_CLOSING_KIT_SLOT_RE,
+      coverPrimarySlotRe: /\b(?:cover-type|cover-meta)\b/i,
+      preserveVerticalSlotRe: null,
+      layoutCss: STUDIO_POSTER_LAYOUT_CSS,
+      layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
+    };
+  }
+  if (officialLookIsCapsule(dest)) {
+    return {
+      kind: 'capsule',
+      coverHostRe: /\bslide-1\b/i,
+      closingHostRe: /\bslide-10\b/i,
+      coverSlotRe: CAPSULE_COVER_KIT_SLOT_RE,
+      colophonSlotRe: CAPSULE_CLOSING_KIT_SLOT_RE,
+      coverPrimarySlotRe: /\b(?:title-pill|main-title)\b/i,
+      preserveVerticalSlotRe: null,
+      layoutCss: CAPSULE_POSTER_LAYOUT_CSS,
+      layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
     };
   }
   if (officialLookIsSakuraChroma(dest)) {
     return {
       kind: 'sakura',
+      coverHostRe: /\bs-cover\b/i,
+      closingHostRe: /\bs-colophon\b/i,
       coverSlotRe: SAKURA_COVER_KIT_SLOT_RE,
       colophonSlotRe: SAKURA_COLOPHON_KIT_SLOT_RE,
       coverPrimarySlotRe: /\b(?:hero|lockup|titlewrap)\b/i,
       preserveVerticalSlotRe: null,
+      layoutCss: SAKURA_POSTER_LAYOUT_CSS,
+      layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
+    };
+  }
+  if (officialLookIsDaisyDays(dest)) {
+    return {
+      kind: 'daisy',
+      coverHostRe: /\bslide-title\b/i,
+      closingHostRe: null,
+      coverSlotRe: DAISY_COVER_KIT_SLOT_RE,
+      colophonSlotRe: /(?!)/, // unused — Daisy has no closing slide
+      coverPrimarySlotRe: /\btitle-box\b/i,
+      preserveVerticalSlotRe: null,
+      layoutCss: DAISY_POSTER_LAYOUT_CSS,
+      layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
     };
   }
   if (officialLookIsBiennaleYellow(dest)) {
     return {
       kind: 'biennale',
+      coverHostRe: /\bs-cover\b/i,
+      closingHostRe: /\bs-colophon\b/i,
       coverSlotRe: BIENNALE_COVER_KIT_SLOT_RE,
       colophonSlotRe: BIENNALE_COLOPHON_KIT_SLOT_RE,
       coverPrimarySlotRe: /\btitlewrap\b/i,
       preserveVerticalSlotRe: null,
+      layoutCss: BIENNALE_SPARSE_FILL_CSS,
+      layoutMark: BIENNALE_SPARSE_FILL_MARK,
     };
   }
   return null;
@@ -4576,7 +4711,7 @@ export function restyleBiennaleSparseCoverBodies(html: string): string {
   let out = dest;
   for (let i = spans.length - 1; i >= 0; i -= 1) {
     const span = spans[i]!;
-    if (!/\bs-cover\b/i.test(span.attrs)) continue;
+    if (!kit.coverHostRe.test(span.attrs)) continue;
     const body = out.slice(span.bodyStart, span.bodyEnd);
     if (!kit.coverPrimarySlotRe.test(body)) continue;
     const blocks = listTopLevelBlocks(body);
@@ -4616,22 +4751,24 @@ export function restyleBiennaleSparseCoverBodies(html: string): string {
 export function restyleBiennaleSparseColophonBodies(html: string): string {
   const dest = String(html ?? '');
   const kit = resolveOfficialPosterKit(dest);
-  if (!kit) return dest;
+  if (!kit || !kit.closingHostRe) return dest;
   const spans = listHealSlideHostSpans(dest);
   let out = dest;
   for (let i = spans.length - 1; i >= 0; i -= 1) {
     const span = spans[i]!;
-    if (!/\bs-colophon\b/i.test(span.attrs)) continue;
+    if (!kit.closingHostRe.test(span.attrs)) continue;
     const body = out.slice(span.bodyStart, span.bodyEnd);
     const { overlays, content } = splitOverlayAndContent(body);
-    if (content.length < 2) continue;
+    // Capsule/Creative often wrap twins in a single host (closing-content /
+    // stamp) — still walk content.length === 1 so inner dedupe runs.
+    if (content.length < 1) continue;
     const kept: string[] = [];
     let changed = false;
     for (const block of content) {
       const open = /^<[a-zA-Z][\w-]*\b[^>]*>/.exec(block)?.[0] ?? '';
       if (isKitSlotOpen(open, block.slice(0, 120), kit.colophonSlotRe)) {
-        // Inside titlewrap / col-footer, still collapse duplicated children.
-        if (/\b(?:titlewrap|col-footer|colofo)\b/i.test(open)) {
+        // Inside title/closing copy hosts, still collapse duplicated children.
+        if (/\b(?:titlewrap|col-footer|colofo|closing-content|cover-footer|stamp)\b/i.test(open)) {
           const deduped = dedupeAdjacentSameVisibleChildren(block);
           if (deduped !== block) changed = true;
           kept.push(deduped);
@@ -4700,13 +4837,7 @@ export function injectBiennaleSparseFillCss(html: string): string {
   if (!dest.trim()) return dest;
   const kit = resolveOfficialPosterKit(dest);
   if (!kit) return dest;
-  if (kit.kind === 'biennale') {
-    return injectStyleMark(dest, BIENNALE_SPARSE_FILL_MARK, BIENNALE_SPARSE_FILL_CSS);
-  }
-  if (kit.kind === 'sakura') {
-    return injectStyleMark(dest, OFFICIAL_POSTER_LAYOUT_MARK, SAKURA_POSTER_LAYOUT_CSS);
-  }
-  return injectStyleMark(dest, OFFICIAL_POSTER_LAYOUT_MARK, COBALT_POSTER_LAYOUT_CSS);
+  return injectStyleMark(dest, kit.layoutMark, kit.layoutCss);
 }
 
 /**

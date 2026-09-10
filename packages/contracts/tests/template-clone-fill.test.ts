@@ -65,6 +65,7 @@ import {
   extractBlocksFromChromePills,
   absorbTrailingContentIntoSlideFlow,
   officialLookIsCapsule,
+  officialLookIsDaisyDays,
   stripNestedBoldNumberTypoPrefix,
   normalizeRotatedInlinePills,
   flattenNestedBorderPadCards,
@@ -2262,6 +2263,65 @@ ${capsuleLook}
     expect((healed.match(/class="ttl"/g) ?? []).length).toBe(1);
     expect(healed).toContain('col-footer');
     expect(healed).toContain('teamver.com');
+  });
+
+  it('루프487 peels invented vertical columns on Capsule slide-1 and dedupes slide-10', () => {
+    const look = [
+      '<style data-od-official-look-css="">',
+      ':root{--coral:#E85D4E;--paper:#FFF8F5}',
+      '.slide-1 .title-pill{} .main-title{font-family:Bodoni Moda,serif}',
+      '</style>',
+    ].join('');
+    const cover = [
+      '<section class="slide slide-1">',
+      '<div class="deco-pills" aria-hidden="true"><div class="deco-pill">A</div></div>',
+      '<div class="title-pill">TeamVer</div>',
+      '<h1 class="main-title">소개</h1>',
+      '<div style="writing-mode:vertical-rl;position:absolute;left:40%">발명된 세로</div>',
+      '</section>',
+    ].join('');
+    const closing = [
+      '<section class="slide slide-10">',
+      '<div class="closing-content">',
+      '<p class="closing-line">결정을 비워두고 판단하러 갑니다.</p>',
+      '<p class="closing-line">결정을 비워두고 판단하러 갑니다.</p>',
+      '</div>',
+      '</section>',
+    ].join('');
+    const html = `${cover}${closing}${look}`;
+    const peeled = restyleBiennaleSparseCoverBodies(html);
+    expect(peeled).toContain('title-pill');
+    expect(peeled).toContain('소개');
+    expect(peeled).not.toContain('발명된 세로');
+    const deduped = restyleBiennaleSparseColophonBodies(html);
+    expect((deduped.match(/결정을 비워두고/g) ?? []).length).toBe(1);
+    expect(injectBiennaleSparseFillCss(html)).toMatch(/data-od-official-poster-layout/);
+  });
+
+  it('루프487 strips Daisy Days cover vertical writing without a closing slide', () => {
+    const look = [
+      '<style data-od-official-look-css="">',
+      ':root{--cream:#F5F0E6}',
+      '.slide-title .title-box{} body{font-family:Fredoka,sans-serif}',
+      '</style>',
+    ].join('');
+    const html = [
+      '<section class="slide slide-title">',
+      '<div class="deco deco-daisy-tl" aria-hidden="true"></div>',
+      '<div class="title-box"><h1 style="writing-mode:vertical-rl">팀버</h1><p class="subtitle">소개</p></div>',
+      '<div style="writing-mode:vertical-rl">바깥 세로글</div>',
+      '</section>',
+      look,
+    ].join('');
+    expect(officialLookIsDaisyDays(html)).toBe(true);
+    const stripped = stripBiennaleInventedVerticalWriting(html);
+    expect(stripped).not.toMatch(/writing-mode\s*:\s*vertical/i);
+    expect(stripped).toContain('팀버');
+    const peeled = restyleBiennaleSparseCoverBodies(html);
+    expect(peeled).toContain('title-box');
+    expect(peeled).not.toContain('바깥 세로글');
+    // No closing host — colophon heal is a no-op.
+    expect(restyleBiennaleSparseColophonBodies(html)).toBe(html);
   });
 
   it('reparents MiniMax auto-auto-1fr cards and 64px step lists', () => {
