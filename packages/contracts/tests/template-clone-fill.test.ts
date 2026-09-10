@@ -47,6 +47,7 @@ import {
   officialLookIsSakuraChroma,
   officialLookIsLongTable,
   officialLookIsEditorialTriTone,
+  officialLookIsBoldPoster,
   officialLookIsStudio,
   officialLookIsCreativeMode,
   rewriteRawUrlSiteCoverTitles,
@@ -2510,6 +2511,51 @@ ${capsuleLook}
     expect(css).toMatch(/data-od-official-poster-layout/);
     expect(css).toMatch(/\.s-cover \.wordmark/);
     expect(css).toMatch(/\.s-closer \.big\{font-size:clamp/);
+  });
+
+  it('루프494 peels Bold Poster slide-hero vertical and dedupes slide-close .close-big', () => {
+    const look = [
+      '<style data-od-official-look-css="">',
+      ':root{--red:#D8000F;--bg:#F5F0E8}',
+      ".font-display{font-family:'Shrikhand',cursive}",
+      '.slide-hero .hero-title{} .slide-close .close-big{}',
+      '</style>',
+    ].join('');
+    const html = [
+      '<div class="slide slide-hero">',
+      '<div class="hero-meta">Q3 Overview</div>',
+      '<div class="hero-title-group">',
+      '<div class="hero-title" style="writing-mode:vertical-rl">Apex</div>',
+      '<div class="hero-title red">Group</div>',
+      '</div>',
+      '<div class="hero-tagline"><div class="tag-label">Annual</div></div>',
+      '<div style="writing-mode:vertical-rl;position:absolute;left:40%">발명된 세로</div>',
+      '</div>',
+      '<div class="slide slide-close">',
+      '<div class="close-big">Thank You</div>',
+      '<div class="close-big">Thank You</div>',
+      '<div class="close-sub">hello@apexgroup.co</div>',
+      '<div class="close-links"><a href="#">Contact</a></div>',
+      '</div>',
+      look,
+    ].join('');
+    expect(officialLookIsBoldPoster(html)).toBe(true);
+    expect(officialLookIsCapsule(html)).toBe(false);
+    const stripped = stripBiennaleInventedVerticalWriting(html);
+    expect(stripped).not.toMatch(/writing-mode\s*:\s*vertical/i);
+    expect(stripped).toContain('Apex');
+    const peeled = restyleBiennaleSparseCoverBodies(html);
+    expect(peeled).toContain('hero-title-group');
+    expect(peeled).toContain('Apex');
+    expect(peeled).not.toContain('발명된 세로');
+    const deduped = restyleBiennaleSparseColophonBodies(html);
+    expect((deduped.match(/class="close-big"/g) ?? []).length).toBe(1);
+    expect(deduped).toContain('close-sub');
+    expect(deduped).toContain('Contact');
+    const css = injectBiennaleSparseFillCss(peeled);
+    expect(css).toMatch(/data-od-official-poster-layout/);
+    expect(css).toMatch(/\.slide-hero \.hero-title/);
+    expect(css).toMatch(/\.slide-close \.close-big\{font-size:clamp/);
   });
 
   it('reparents MiniMax auto-auto-1fr cards and 64px step lists', () => {

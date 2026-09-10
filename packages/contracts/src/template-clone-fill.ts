@@ -2263,6 +2263,26 @@ export function officialLookIsEditorialTriTone(html: string): boolean {
 }
 
 /**
+ * 루프494 — Bold Poster fingerprint (Shrikhand + crimson `--red` + slide-hero).
+ * Hosts (`slide-hero` / `slide-close`) do not collide with Capsule/BlockFrame.
+ */
+export function officialLookIsBoldPoster(html: string): boolean {
+  const source = String(html ?? '');
+  if (!source.trim()) return false;
+  if (officialLookIsCapsule(source)) return false;
+  if (/\bhero-frame\b/i.test(source) || /--pink\s*:\s*#FE90E8/i.test(source)) return false;
+  if (/\btitle-pill\b/i.test(source) && /\bmain-title\b/i.test(source)) return false;
+  const css = lookCssWithoutNeutralize(source);
+  const hay = `${css}\n${source}`;
+  if (/--red\s*:\s*#D8000F/i.test(hay) && /Shrikhand/i.test(hay) && /\bslide-hero\b/i.test(hay)) {
+    return true;
+  }
+  return /\bslide-hero\b/i.test(source)
+    && /\bhero-title\b/i.test(source)
+    && (/\bslide-close\b/i.test(source) || /\bclose-big\b/i.test(source));
+}
+
+/**
  * 루프389 — Rewrite raw URL / truncated-site crumbs in headings (and cover
  * leaf chrome) even when preview/salvage never received a full brief.
  * `www.teamver.com 사이` → `팀버` / `팀버 소개` without inventing kit shape.
@@ -4558,6 +4578,12 @@ const EDITORIAL_POSTER_LAYOUT_CSS = [
   '.s-closer .big{font-size:clamp(72px,min(12vw,22vh),220px);max-width:95%;line-height:0.9}',
 ].join('');
 
+/** 루프494 — Bold Poster: no kit vertical writing; hero-title / close-big stay horizontal. */
+const BOLD_POSTER_POSTER_LAYOUT_CSS = [
+  '.slide-hero .hero-title,.slide-hero .hero-title-group,.slide-hero .hero-tagline,.slide-close .close-big,.slide-close .close-sub{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}',
+  '.slide-close .close-big{font-size:clamp(56px,min(10vw,18vh),180px);max-width:95%;line-height:0.9}',
+].join('');
+
 const VERTICAL_WRITING_MODE_DECL_RE =
   /(?:^|;)\s*(?:-webkit-|-ms-|-epub-)?writing-mode\s*:\s*vertical(?:-r[lr])?\s*(?:;|$)/gi;
 
@@ -4567,6 +4593,7 @@ type OfficialPosterKit =
   | 'cobalt'
   | 'longtable'
   | 'editorial'
+  | 'boldposter'
   | 'capsule'
   | 'creative'
   | 'studio'
@@ -4661,11 +4688,17 @@ const EDITORIAL_COVER_KIT_SLOT_RE =
 const EDITORIAL_CLOSING_KIT_SLOT_RE =
   /\b(?:top|kicker|big|corner-pills|grid|col|pill|mono|serif|nav-hint|pagenum|data-od-official-motif-html)\b/i;
 
+const BOLD_POSTER_COVER_KIT_SLOT_RE =
+  /\b(?:hero-meta|hero-title-group|hero-title|hero-tagline|tag-label|tag-body|nav-hint|pagenum|data-od-official-motif-html)\b/i;
+
+const BOLD_POSTER_CLOSING_KIT_SLOT_RE =
+  /\b(?:close-big|close-sub|close-links|nav-hint|pagenum|data-od-official-motif-html)\b/i;
+
 function resolveOfficialPosterKit(html: string): OfficialPosterKitPlan | null {
   const dest = String(html ?? '');
   if (!dest.trim()) return null;
   // Order: Cobalt (vstack) → Long Table → Editorial → Creative → Broadside before
-  // Studio → EightBit → BlockFrame before Capsule → Sakura → Daisy → Biennale.
+  // Studio → EightBit → BlockFrame → Bold Poster → Capsule → Sakura → Daisy → Biennale.
   if (officialLookIsCobaltGrid(dest)) {
     return {
       kind: 'cobalt',
@@ -4767,6 +4800,19 @@ function resolveOfficialPosterKit(html: string): OfficialPosterKitPlan | null {
       coverPrimarySlotRe: /\b(?:hero-frame|hero-title)\b/i,
       preserveVerticalSlotRe: null,
       layoutCss: BLOCKFRAME_POSTER_LAYOUT_CSS,
+      layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
+    };
+  }
+  if (officialLookIsBoldPoster(dest)) {
+    return {
+      kind: 'boldposter',
+      coverHostRe: /\bslide-hero\b/i,
+      closingHostRe: /\bslide-close\b/i,
+      coverSlotRe: BOLD_POSTER_COVER_KIT_SLOT_RE,
+      colophonSlotRe: BOLD_POSTER_CLOSING_KIT_SLOT_RE,
+      coverPrimarySlotRe: /\b(?:hero-title|hero-title-group)\b/i,
+      preserveVerticalSlotRe: null,
+      layoutCss: BOLD_POSTER_POSTER_LAYOUT_CSS,
       layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
     };
   }
@@ -4945,7 +4991,7 @@ export function restyleBiennaleSparseColophonBodies(html: string): string {
       let candidate = block;
       if (isKitSlotOpen(open, block.slice(0, 120), kit.colophonSlotRe)) {
         // Inside title/closing copy hosts, collapse duplicated children first.
-        if (/\b(?:titlewrap|col-footer|colofo|closing-content|cover-footer|stamp|close-frame|cta-content|cover-body|frame|top)\b/i.test(open)) {
+        if (/\b(?:titlewrap|col-footer|colofo|closing-content|cover-footer|stamp|close-frame|cta-content|cover-body|frame|top|hero-title-group)\b/i.test(open)) {
           const deduped = dedupeAdjacentSameVisibleChildren(block);
           if (deduped !== block) changed = true;
           candidate = deduped;
@@ -4954,7 +5000,7 @@ export function restyleBiennaleSparseColophonBodies(html: string): string {
       // Adjacent twin hosts (e.g. Broadside twin `.display` h1s) still collapse.
       // Display title slots may be short ("Fin.") — use a lower key floor than chrome.
       const key = normalizeVisibleCopyKey(candidate);
-      const minKeyLen = /\b(?:big|h|display|ttl|closing-line|close-title|main-title)\b/i.test(open)
+      const minKeyLen = /\b(?:big|h|display|ttl|closing-line|close-title|close-big|main-title|hero-title)\b/i.test(open)
         ? 2
         : 8;
       if (key.length >= minKeyLen) {
@@ -9176,14 +9222,24 @@ function listHealSlideHostSpans(html: string): HealHostSpan[] {
   }
   return opens.map((open, i) => {
     const limit = i + 1 < opens.length ? opens[i + 1]!.start : html.length;
-    const chunk = html.slice(open.openEnd, limit);
-    const close = new RegExp(`</${open.tag}\\s*>`, 'i').exec(chunk);
+    // 루프494 — Bold Poster (and other kits) use `<div class="slide …">` with
+    // nested div chrome. The first `</div>` is not the host close — balance.
+    const balanced = extractBalancedFrom(html, open.start);
+    let bodyEnd = limit;
+    if (balanced && balanced.length > open.openEnd - open.start) {
+      const closeLen = new RegExp(`</${open.tag}\\s*>$`, 'i').exec(balanced)?.[0]?.length ?? 0;
+      bodyEnd = Math.min(open.start + balanced.length - closeLen, limit);
+    } else {
+      const chunk = html.slice(open.openEnd, limit);
+      const close = new RegExp(`</${open.tag}\\s*>`, 'i').exec(chunk);
+      bodyEnd = close ? open.openEnd + close.index : limit;
+    }
     return {
       tag: open.tag,
       start: open.start,
       attrs: open.attrs,
       bodyStart: open.openEnd,
-      bodyEnd: close ? open.openEnd + close.index : limit,
+      bodyEnd,
     };
   });
 }
