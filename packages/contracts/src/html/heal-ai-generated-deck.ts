@@ -2720,7 +2720,16 @@ export function repairUnbalancedCardDivsInFragment(inner: string): string {
         // without closing the previous one (slides 4/5 nested `.card`).
         // 루프203 — skip that close when this card already closes on its
         // own (title + inner card host). Unclosed siblings still close.
-        while (stack.length > 0 && stack[stack.length - 1]!.cardish) {
+        // 루프489 — also close non-cardish inners (`.card-body`) that sit on
+        // top of an unclosed cardish ancestor, or peer closes never fire.
+        while (stack.length > 0) {
+          const top = stack[stack.length - 1]!;
+          if (!top.cardish) {
+            if (!stack.some((frame) => frame.cardish)) break;
+            out += `</${top.tag}>`;
+            stack.pop();
+            continue;
+          }
           if (openedCardLooksLikeNestedHostChild(source, i + full.length)) break;
           out += '</div>';
           stack.pop();
