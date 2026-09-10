@@ -4415,6 +4415,7 @@ export function restyleBiennaleSparseQuoteBodies(html: string): string {
 }
 
 const BIENNALE_SPARSE_FILL_MARK = 'data-od-biennale-sparse-fill';
+const OFFICIAL_POSTER_LAYOUT_MARK = 'data-od-official-poster-layout';
 const BIENNALE_SPARSE_FILL_CSS = [
   '.s-cover:not(:has(.footer-row)) .titlewrap{bottom:clamp(48px,6vh,96px)}',
   '.s-chapter .stack:not(:has(.nm)){left:clamp(40px,4vw,76px)}',
@@ -4428,14 +4429,90 @@ const BIENNALE_SPARSE_FILL_CSS = [
   '.s-colophon .titlewrap .ttl{font-size:clamp(56px,min(7vw,12vh),120px);max-width:90%;line-height:1.05}',
 ].join('');
 
+/** 루프486 — Sakura has no kit writing-mode; force horizontal on title slots + cap colophon. */
+const SAKURA_POSTER_LAYOUT_CSS = [
+  '.s-cover .hero,.s-cover .lockup,.s-cover .titlewrap,.s-colophon .ttl,.s-colophon .titlewrap{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}',
+  '.s-colophon .titlewrap .ttl{font-size:clamp(56px,min(7vw,12vh),120px);max-width:90%;line-height:1.05}',
+].join('');
+
+/**
+ * 루프486 — Cobalt kit *does* use vertical-rl on `.vstack .v-row`. Only force
+ * horizontal on the display title slots — never on `.vstack`.
+ */
+const COBALT_POSTER_LAYOUT_CSS = [
+  '.s-cover .titlewrap .title,.s-cover .titlewrap .subkicker,.s-colophon .ttl,.s-colophon .titlewrap{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}',
+  '.s-colophon .titlewrap .ttl{font-size:clamp(56px,min(7vw,12vh),120px);max-width:90%;line-height:1.05}',
+].join('');
+
 const VERTICAL_WRITING_MODE_DECL_RE =
   /(?:^|;)\s*(?:-webkit-|-ms-|-epub-)?writing-mode\s*:\s*vertical(?:-r[lr])?\s*(?:;|$)/gi;
+
+type OfficialPosterKit = 'biennale' | 'sakura' | 'cobalt';
+
+type OfficialPosterKitPlan = {
+  kind: OfficialPosterKit;
+  coverSlotRe: RegExp;
+  colophonSlotRe: RegExp;
+  /** Cover needs a primary title slot before we peel foreign vertical columns. */
+  coverPrimarySlotRe: RegExp;
+  /** Cobalt kit vertical labels — never strip writing-mode from these opens. */
+  preserveVerticalSlotRe: RegExp | null;
+};
 
 const BIENNALE_COVER_KIT_SLOT_RE =
   /\b(?:blocks|sunglow|titlewrap|footer-row|date-rail|pagenum|nav-hint|data-od-official-motif-html|deco|floating-pills)\b/i;
 
 const BIENNALE_COLOPHON_KIT_SLOT_RE =
   /\b(?:blocks|glow|titlewrap|colofo|pagenum|nav-hint|data-od-official-motif-html|deco|floating-pills)\b/i;
+
+const SAKURA_COVER_KIT_SLOT_RE =
+  /\b(?:petals|petal|brand|ribbons|ribbon|hero|lockup|specs|spec|cfooter|titlewrap|pagenum|nav-hint|data-od-official-motif-html|deco|floating-pills)\b/i;
+
+const SAKURA_COLOPHON_KIT_SLOT_RE =
+  /\b(?:ribbons|ribbon|col-petals|petal|seal-stack|seal|red-stamp|titlewrap|col-footer|pagenum|nav-hint|data-od-official-motif-html|deco|floating-pills)\b/i;
+
+const COBALT_COVER_KIT_SLOT_RE =
+  /\b(?:titlewrap|subkicker|pixel-glitch|vstack|v-row|cfooter|qr-block|pagenum|nav-hint|data-od-official-motif-html|deco|floating-pills)\b/i;
+
+const COBALT_COLOPHON_KIT_SLOT_RE =
+  /\b(?:pixel-glitch|qr-block|titlewrap|col-footer|pagenum|nav-hint|data-od-official-motif-html|deco|floating-pills)\b/i;
+
+const COBALT_PRESERVE_VERTICAL_SLOT_RE = /\b(?:vstack|v-row)\b/i;
+
+function resolveOfficialPosterKit(html: string): OfficialPosterKitPlan | null {
+  const dest = String(html ?? '');
+  if (!dest.trim()) return null;
+  // Cobalt before Biennale: Cobalt DOM has s-cover+titlewrap too, but fingerprint
+  // denies sunglow. Order matters when look CSS is incomplete.
+  if (officialLookIsCobaltGrid(dest)) {
+    return {
+      kind: 'cobalt',
+      coverSlotRe: COBALT_COVER_KIT_SLOT_RE,
+      colophonSlotRe: COBALT_COLOPHON_KIT_SLOT_RE,
+      coverPrimarySlotRe: /\b(?:titlewrap|vstack)\b/i,
+      preserveVerticalSlotRe: COBALT_PRESERVE_VERTICAL_SLOT_RE,
+    };
+  }
+  if (officialLookIsSakuraChroma(dest)) {
+    return {
+      kind: 'sakura',
+      coverSlotRe: SAKURA_COVER_KIT_SLOT_RE,
+      colophonSlotRe: SAKURA_COLOPHON_KIT_SLOT_RE,
+      coverPrimarySlotRe: /\b(?:hero|lockup|titlewrap)\b/i,
+      preserveVerticalSlotRe: null,
+    };
+  }
+  if (officialLookIsBiennaleYellow(dest)) {
+    return {
+      kind: 'biennale',
+      coverSlotRe: BIENNALE_COVER_KIT_SLOT_RE,
+      colophonSlotRe: BIENNALE_COLOPHON_KIT_SLOT_RE,
+      coverPrimarySlotRe: /\btitlewrap\b/i,
+      preserveVerticalSlotRe: null,
+    };
+  }
+  return null;
+}
 
 function stripVerticalWritingModeFromStyleAttr(open: string): string {
   return open.replace(/\bstyle\s*=\s*(['"])([\s\S]*?)\1/i, (whole, quote: string, style: string) => {
@@ -4464,47 +4541,57 @@ function normalizeVisibleCopyKey(html: string): string {
     .toLowerCase();
 }
 
+function isKitSlotOpen(open: string, blockHead: string, slotRe: RegExp): boolean {
+  return slotRe.test(open) || slotRe.test(blockHead);
+}
+
 /**
- * 루프482 — Biennale kit is horizontal-only. MiniMax invents
- * `writing-mode:vertical-rl` on cover/colophon copy so glyphs stack on the
- * yellow `.blocks` and become illegible (사용자 리포트 2026-09-10).
+ * 루프482/486 — Official poster kits (Biennale / Sakura / Cobalt) are
+ * horizontal-first. MiniMax invents `writing-mode:vertical-rl` on cover/
+ * colophon copy so glyphs stack on kit chrome. Cobalt's kit `.vstack .v-row`
+ * is the only intentional vertical writing — leave those opens alone.
  */
 export function stripBiennaleInventedVerticalWriting(html: string): string {
   const dest = String(html ?? '');
-  if (!dest.trim() || !officialLookIsBiennaleYellow(dest)) return dest;
+  const kit = resolveOfficialPosterKit(dest);
+  if (!kit) return dest;
   if (!/writing-mode\s*:\s*vertical/i.test(dest)) return dest;
   return dest.replace(/<[a-zA-Z][\w-]*\b(?:[^>"']|"[^"]*"|'[^']*')*>/g, (open) => {
     if (!/writing-mode\s*:\s*vertical/i.test(open)) return open;
+    if (kit.preserveVerticalSlotRe?.test(open)) return open;
     return stripVerticalWritingModeFromStyleAttr(open);
   });
 }
 
 /**
- * 루프482 — Once `.titlewrap` is present, drop invented vertical text columns
- * that sit as siblings of kit chrome. Never invent copy; never touch Motif /
- * blocks / sunglow / footer-row. Non-vertical foreign copy is left alone —
- * that is a fill problem, not a layout garble.
+ * 루프482/486 — Once a primary title slot is present, drop invented vertical
+ * text columns that sit as siblings of kit chrome. Cobalt `.vstack` is kit
+ * chrome and is never peeled.
  */
 export function restyleBiennaleSparseCoverBodies(html: string): string {
   const dest = String(html ?? '');
-  if (!dest.trim() || !officialLookIsBiennaleYellow(dest)) return dest;
+  const kit = resolveOfficialPosterKit(dest);
+  if (!kit) return dest;
   const spans = listHealSlideHostSpans(dest);
   let out = dest;
   for (let i = spans.length - 1; i >= 0; i -= 1) {
     const span = spans[i]!;
     if (!/\bs-cover\b/i.test(span.attrs)) continue;
     const body = out.slice(span.bodyStart, span.bodyEnd);
-    if (!/\btitlewrap\b/i.test(body)) continue;
+    if (!kit.coverPrimarySlotRe.test(body)) continue;
     const blocks = listTopLevelBlocks(body);
     if (blocks.length < 2) continue;
     const kept: string[] = [];
     let changed = false;
     for (const block of blocks) {
       const open = /^<[a-zA-Z][\w-]*\b[^>]*>/.exec(block)?.[0] ?? '';
-      if (BIENNALE_COVER_KIT_SLOT_RE.test(open) || BIENNALE_COVER_KIT_SLOT_RE.test(block.slice(0, 120))) {
-        kept.push(stripVerticalWritingModeFromStyleAttr(open) === open
-          ? block
-          : block.replace(open, stripVerticalWritingModeFromStyleAttr(open)));
+      if (isKitSlotOpen(open, block.slice(0, 120), kit.coverSlotRe)) {
+        if (kit.preserveVerticalSlotRe?.test(open)) {
+          kept.push(block);
+          continue;
+        }
+        const nextOpen = stripVerticalWritingModeFromStyleAttr(open);
+        kept.push(nextOpen === open ? block : block.replace(open, nextOpen));
         continue;
       }
       const vertical = openHadVerticalWriting(open) || /writing-mode\s*:\s*vertical/i.test(block);
@@ -4521,14 +4608,15 @@ export function restyleBiennaleSparseCoverBodies(html: string): string {
 }
 
 /**
- * 루프482 — Colophon has no quote slot. MiniMax pastes the same sentence twice
- * (often as div/p twins with a yellow mark on one word). Phrasing-only
- * collapseAdjacentDuplicate misses div wrappers — drop adjacent identical
- * visible copy here.
+ * 루프482/486 — Colophon has no quote slot. MiniMax pastes the same sentence
+ * twice (often as div/p twins). Phrasing-only collapseAdjacentDuplicate misses
+ * div wrappers — drop adjacent identical visible copy here. Footer slot is
+ * `colofo` (Biennale) or `col-footer` (Cobalt/Sakura).
  */
 export function restyleBiennaleSparseColophonBodies(html: string): string {
   const dest = String(html ?? '');
-  if (!dest.trim() || !officialLookIsBiennaleYellow(dest)) return dest;
+  const kit = resolveOfficialPosterKit(dest);
+  if (!kit) return dest;
   const spans = listHealSlideHostSpans(dest);
   let out = dest;
   for (let i = spans.length - 1; i >= 0; i -= 1) {
@@ -4541,9 +4629,9 @@ export function restyleBiennaleSparseColophonBodies(html: string): string {
     let changed = false;
     for (const block of content) {
       const open = /^<[a-zA-Z][\w-]*\b[^>]*>/.exec(block)?.[0] ?? '';
-      if (BIENNALE_COLOPHON_KIT_SLOT_RE.test(open)) {
-        // Inside titlewrap, still collapse duplicated children.
-        if (/\btitlewrap\b/i.test(open)) {
+      if (isKitSlotOpen(open, block.slice(0, 120), kit.colophonSlotRe)) {
+        // Inside titlewrap / col-footer, still collapse duplicated children.
+        if (/\b(?:titlewrap|col-footer|colofo)\b/i.test(open)) {
           const deduped = dedupeAdjacentSameVisibleChildren(block);
           if (deduped !== block) changed = true;
           kept.push(deduped);
@@ -4593,19 +4681,32 @@ function dedupeAdjacentSameVisibleChildren(hostHtml: string): string {
   return `${open}${kept.join('')}${closeMatch[0]}`;
 }
 
+function injectStyleMark(html: string, mark: string, css: string): string {
+  if (html.includes(mark)) return html;
+  const tag = `<style ${mark}>${css}</style>`;
+  if (/<\/head>/i.test(html)) return html.replace(/<\/head>/i, `${tag}</head>`);
+  if (/<\/body>/i.test(html)) return html.replace(/<\/body>/i, `${tag}</body>`);
+  return `${html}${tag}`;
+}
+
 /**
  * Official look CSS sizes chapter `.ttl` and cover `.titlewrap` around
  * optional chrome (`.nm`, `.footer-row`, `.chart`). MiniMax often omits
  * those slots — shift existing copy to fill the 16:9. No invented text.
+ * 루프486 — also injects horizontal-tb / ttl-cap CSS for Sakura and Cobalt.
  */
 export function injectBiennaleSparseFillCss(html: string): string {
   const dest = String(html ?? '');
-  if (!dest.trim() || !officialLookIsBiennaleYellow(dest)) return dest;
-  if (dest.includes(BIENNALE_SPARSE_FILL_MARK)) return dest;
-  const tag = `<style ${BIENNALE_SPARSE_FILL_MARK}>${BIENNALE_SPARSE_FILL_CSS}</style>`;
-  if (/<\/head>/i.test(dest)) return dest.replace(/<\/head>/i, `${tag}</head>`);
-  if (/<\/body>/i.test(dest)) return dest.replace(/<\/body>/i, `${tag}</body>`);
-  return `${dest}${tag}`;
+  if (!dest.trim()) return dest;
+  const kit = resolveOfficialPosterKit(dest);
+  if (!kit) return dest;
+  if (kit.kind === 'biennale') {
+    return injectStyleMark(dest, BIENNALE_SPARSE_FILL_MARK, BIENNALE_SPARSE_FILL_CSS);
+  }
+  if (kit.kind === 'sakura') {
+    return injectStyleMark(dest, OFFICIAL_POSTER_LAYOUT_MARK, SAKURA_POSTER_LAYOUT_CSS);
+  }
+  return injectStyleMark(dest, OFFICIAL_POSTER_LAYOUT_MARK, COBALT_POSTER_LAYOUT_CSS);
 }
 
 /**

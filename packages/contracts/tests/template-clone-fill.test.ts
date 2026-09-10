@@ -2211,6 +2211,59 @@ ${capsuleLook}
     expect(css).toMatch(/\.s-colophon \.titlewrap \.ttl\{font-size:clamp\(56px/);
   });
 
+  it('루프486 preserves Cobalt kit .vstack vertical labels while stripping invented ones', () => {
+    const look = [
+      '<style data-od-official-look-css="">',
+      ':root{--ink:#1F2BE0;--paper:#F4F1EA}',
+      '.s-cover .pixel-glitch{} .s-cover .titlewrap{} .s-cover .vstack .v-row{writing-mode:vertical-rl}',
+      '</style>',
+    ].join('');
+    const html = [
+      '<section class="slide s-cover">',
+      '<div class="pixel-glitch" aria-hidden="true"></div>',
+      '<div class="titlewrap"><h1 class="title" style="writing-mode:vertical-rl">팀버</h1></div>',
+      '<div class="vstack"><div class="v-row" style="writing-mode:vertical-rl">FIELD OFFICE</div></div>',
+      '<div style="writing-mode:vertical-rl;position:absolute;left:40%">발명된 세로글</div>',
+      '</section>',
+      look,
+    ].join('');
+    const stripped = stripBiennaleInventedVerticalWriting(html);
+    expect(stripped).toContain('팀버');
+    expect(stripped).not.toMatch(/class="title"[^>]*writing-mode\s*:\s*vertical/i);
+    expect(stripped).toMatch(/class="v-row"[^>]*writing-mode\s*:\s*vertical-rl/i);
+    const peeled = restyleBiennaleSparseCoverBodies(html);
+    expect(peeled).toContain('FIELD OFFICE');
+    expect(peeled).toContain('class="vstack"');
+    expect(peeled).not.toContain('발명된 세로글');
+    const css = injectBiennaleSparseFillCss(peeled);
+    expect(css).toMatch(/data-od-official-poster-layout/);
+    expect(css).toMatch(/\.s-cover \.titlewrap \.title/);
+    expect(css).not.toMatch(/\.vstack\{[^}]*horizontal-tb/);
+  });
+
+  it('루프486 collapses Sakura colophon twins using col-footer slots', () => {
+    const look = [
+      '<style data-od-official-look-css="">',
+      ':root{--ink:#3A2516;--paper:#FFF8F0}',
+      '.s-catalogue{} .petal{} .lockup{}',
+      '</style>',
+    ].join('');
+    const quote = '결정을 비워두고, 사람은 판단하러 갑니다.';
+    const html = [
+      '<section class="slide s-colophon">',
+      `<div class="titlewrap"><h2 class="ttl">${quote}</h2><h2 class="ttl">${quote}</h2></div>`,
+      '<div class="col-footer"><div><div class="ftag">SITE</div><div class="ftxt">teamver.com</div></div></div>',
+      '</section>',
+      look,
+    ].join('');
+    // Sakura fingerprint needs catalogue/lockup/petal cues in the document.
+    const withCue = `${html}<section class="slide s-catalogue"><div class="lockup">x</div><div class="petal"></div></section>`;
+    const healed = restyleBiennaleSparseColophonBodies(withCue);
+    expect((healed.match(/class="ttl"/g) ?? []).length).toBe(1);
+    expect(healed).toContain('col-footer');
+    expect(healed).toContain('teamver.com');
+  });
+
   it('reparents MiniMax auto-auto-1fr cards and 64px step lists', () => {
     const card = [
       '<div style="grid-template-rows:auto auto 1fr;background:var(--paper-warm)">',
