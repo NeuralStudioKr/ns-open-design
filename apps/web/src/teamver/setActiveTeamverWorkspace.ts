@@ -9,6 +9,7 @@ import { isBootstrapAuthMode } from "./designApiBase";
 import { postDesignAuthWorkspace } from "./designAuthClient";
 import { dispatchTeamverWorkspaceChanged } from "./teamverWorkspaceEvents";
 import { bumpTeamverWorkspaceStoreRevision } from "./teamverWorkspaceStoreRevision";
+import { clearUnrequestedWorkspaceMove } from "./durableRestoreWindow";
 
 const AUTH_WORKSPACE_ERROR_CODES = new Set([
   "unauthorized",
@@ -134,6 +135,8 @@ export async function setActiveTeamverWorkspace(
   if (userId?.trim() && typeof store.setLastForUser === "function") {
     store.setLastForUser(userId.trim(), trimmed);
   }
+  // Explicit (or boot) pick aligns active+durable — drop G4 undo stamp (J).
+  clearUnrequestedWorkspaceMove(userId);
   if (!(options?.skipEventWhenUnchanged && previous === trimmed)) {
     dispatchTeamverWorkspaceChanged(trimmed);
   }

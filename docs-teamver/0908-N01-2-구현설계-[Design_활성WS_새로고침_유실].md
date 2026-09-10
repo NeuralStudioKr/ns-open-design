@@ -575,6 +575,7 @@ planBffWorkspaceDriftRepair({ bffActiveWorkspaceId, localWorkspaceId })
 
 ## 변경 이력
 
+| 2026-09-10 | 루프485 슬라이스 J 설계 — G4 durable 복구 5분 TTL (위험 7) |
 | 2026-09-10 11:01 | 루프484 슬라이스 I 설계 — session `active_workspace_id` · focus 드리프트 수리 (위험 1) |
 | 2026-09-10 | 루프483 슬라이스 H 설계 — P2 latch · loadMore WS 가드 |
 | 2026-09-10 | 루프483 슬라이스 H2 검토 후속 — painted=null 소급 · sync revision bump · 부트 실패 drop |

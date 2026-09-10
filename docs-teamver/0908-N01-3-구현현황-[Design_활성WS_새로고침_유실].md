@@ -443,7 +443,7 @@ G5가 그 판정을 `embedProjectListWorkspaceTag`로 옮기면서 깨졌다 —
 | 4 | ~~자동 전환 알림(P2)이 **부트 중 dispatch**되므로 구독 설치 시점에 따라 유실 가능~~ | **해소 — 슬라이스 H1.** last-event latch(TTL 60s) + dismiss/명시 전환 시 clear |
 | 5 | `ns-open-design`은 ns_cicd 미등록 — 이번 수정도 **수동 배포**가 필요하다 (`deploy/teamver/deploy.sh --staging`) | 사용자 조치 |
 | 6 | 읽기가 저장하지 않으므로 저장값이 무효인 채 남는 구간이 생긴다. 그 구간에 **라벨(저장값 기반)과 요청 헤더(계산값)가 어긋날 수 있다.** 지속 시간은 "다음 부트 / 포커스 refresh 까지"로 유한하다 | 의도된 트레이드오프. 슬라이스 I가 focus에서 수렴을 당긴다 |
-| 7 | G4 durable 복구는 **부트 한정**이므로, 사용자가 A 에서 오래 작업한 뒤 원래 pick B 가 재활성되면 다음 부트에서 B 로 끌려갈 수 있다 | 완화 있음 — A 를 명시적으로 고르면 durable 도 A. 신고 시 "복구 1회만" |
+| 7 | ~~G4 durable 복구가 장기 A 체류 후 F5에 B로 끌림~~ | **해소 — 슬라이스 J** (비요청 reconcile 5분 TTL) |
 | 8 | single-flight 가 모듈 스코프이므로 세션 probe 가 걸리면 버스트 전체가 함께 대기한다 | 실질 차이 작음 |
 | 9 | ~~`loadMoreProjects`가 WS stale/painted 검사를 건너뜀~~ | **해소 — H2** |
 | 10 | ~~painted=null 이면 wipe/교체 영구 스킵 (딥링크 prefetch)~~ | **해소 — H3** (`hasPaintedRows` + prefetch/hydrate mark) |
@@ -488,6 +488,7 @@ G5가 그 판정을 `embedProjectListWorkspaceTag`로 옮기면서 깨졌다 —
 | 1 | ~~클라이언트가 BFF 세션의 현재 WS를 관측할 수 없다~~ | **해소 — 슬라이스 I** |
 | 5 | `ns-open-design`은 ns_cicd 미등록 — **수동 배포** 필요 | 사용자 조치 (`deploy/teamver/deploy.sh --staging`) |
 | 6 | 라벨↔헤더 일시 드리프트 | focus refresh가 이제 BFF도 수렴시킴. 유한 |
+| 7 | ~~G4 부트 복구가 장기 A 체류 후 F5에 B로 끌림~~ | **해소 — 슬라이스 J** (비요청 reconcile 5분 TTL) |
 
 ---
 
@@ -517,9 +518,11 @@ G5가 그 판정을 `embedProjectListWorkspaceTag`로 옮기면서 깨졌다 —
 6. B 프로젝트 딥링크 진입 → WS 전환 후 홈 → 이전 WS 카드 없음 · P2 배너(해당 시)
 7. `/projects` load-more 중 WS 전환 → 페이지 혼합 없음
 8. 헤더 `X-Workspace-Id`와 라벨이 잠깐 어긋나도 다음 포커스/F5에서 수렴
+9. 비요청 reconcile로 A에 머문 뒤 **5분 초과** F5 → A 유지(B로 yank 없음); 직후(5분 안) F5는 durable 복구 가능
 
 ## 변경 이력
 
+| 2026-09-10 | 루프485 슬라이스 J 완료 — G4 durable 복구 5분 TTL · 위험 7 해소 |
 | 2026-09-10 | 루프485 슬라이스 J 착수 — 위험 7 TTL 설계 선행 |
 | 2026-09-10 11:10 | 루프484 슬라이스 I 완료 — session `active_workspace_id` · focus 드리프트 수리 · 위험 1 해소 |
 | 2026-09-10 11:01 | 루프484 슬라이스 I 착수 — 위험 1 대상, 설계 선행 |
@@ -546,19 +549,51 @@ G5가 그 판정을 `embedProjectListWorkspaceTag`로 옮기면서 깨졌다 —
 
 | 단계 | commit | 상태 |
 |---|---|---|
-| 슬라이스 J 구현설계·현황 append | (본 커밋) | ☐ |
-| `durableRestoreWindow` + sync/boot/setActive 배선 | | ☐ |
-| 테스트 · push staging | | ☐ |
+| 슬라이스 J 구현설계·현황 append | `d990bb273c` | ☑ |
+| `durableRestoreWindow` + sync/setActive 배선 · 테스트 | (본 커밋) | ☑ |
+| push staging | (본 커밋 후) | ☐ |
 
-## 남은 위험 (예정)
+## 구현 (완료)
+
+| 파일 | 변경 |
+|---|---|
+| 신규 `durableRestoreWindow.ts` | localStorage 스탬프 · TTL 5m · `shouldRestoreDurableOverActive` |
+| `syncTeamverWorkspace.ts` | 비요청 이동 시 mark · G4 TTL 게이트 · stale heal + clear · focus preserve clear |
+| `setActiveTeamverWorkspace.ts` | 성공 시 clear |
+| `embed-workspace-durable-restore.test.ts` | TTL 안/밖 · 스탬프 없음 · 기존 케이스 |
+| `durable-restore-window.test.ts` | 순수 창 판정 |
+
+### 검증
+
+| 항목 | 결과 |
+|---|---|
+| FE durable restore + window + sync + boot-workspace | **38 passed** |
+
+## 남은 위험 (갱신)
 
 | # | 내용 | 대응 |
 |---|---|---|
-| 5 | 수동 배포 | 사용자 조치 |
+| 5 | 수동 배포 | 사용자 조치 (`deploy/teamver/deploy.sh --staging`) |
 | 6 | 라벨↔헤더 일시 드리프트 | 유한 · I로 수렴 |
-| 7 | G4 부트 복구가 장기 A 체류 후 F5에 B로 끌림 | **슬라이스 J** |
+| 7 | ~~G4 장기 F5 yank~~ | **해소 — 슬라이스 J** |
+| 8 | single-flight + session probe 대기 | skip (의도된 합류) |
+
 
 ## 변경 이력
 
+| 2026-09-10 | 루프485 슬라이스 J 완료 — G4 durable 복구 5분 TTL · 위험 7 해소 |
 | 2026-09-10 | 루프485 슬라이스 J 착수 — 위험 7 TTL 설계 선행 |
-
+| 2026-09-10 11:10 | 루프484 슬라이스 I 완료 — session `active_workspace_id` · focus 드리프트 수리 · 위험 1 해소 |
+| 2026-09-10 11:01 | 루프484 슬라이스 I 착수 — 위험 1 대상, 설계 선행 |
+| 2026-09-10 | 루프483 H6 — F 결정표 순수화 · retention 테스트 (검토 gap) |
+| 2026-09-10 | 루프483 H3~H5 — painted 소급 · sync revision · 부트 drop (검토 후속) |
+| 2026-09-10 | 루프483 슬라이스 H — P2 latch · loadMore WS 가드 · 위험 4·9 해소 |
+| 2026-09-09 13:35 | 루프482 슬라이스 G 재현성 — 결함별 뮤테이션 3종 실측으로 대체(파일 전체 revert 는 스위트 기동 실패) |
+| 2026-09-09 13:20 | 루프482 슬라이스 G 완료 — 읽기 순수화·single-flight·durable 보존·부트 복구·WS 캡처 · 196파일 1312테스트 통과 · 위험 2·3 해소, 신규 위험 3건 |
+| 2026-09-09 11:55 | 루프482 슬라이스 G 착수 — 위험 2·3 대상, 설계 선행 |
+| 2026-09-08 18:45 | 루프481 슬라이스 E·F — 배포 범위 확정(HEAD 배포됨) · 부트 BFF 재정렬 누락 · 홈 레일 WS 태그 |
+| 2026-09-08 | 루프477 현황 초안 (진단 확정 · 정책 P1/P2/P3 반영) |
+| 2026-09-08 | 슬라이스 A 완료 (`8c2ca83e7e`) · 베이스라인 대조 기록 |
+| 2026-09-08 | 슬라이스 B 완료 (`9a649a2955`) · 알림 UI·테스트·부수 정리 |
+| 2026-09-08 | 슬라이스 C — 부트 동작 테스트 승격 · 죽은 섀도 변수 제거 · 읽기경로 가드 10건 복구 · staging 미배포 확인 |
+| 2026-09-08 | 슬라이스 D — 인증 래더 mock 부채 7파일 복구(use-embed 6건 포함) · 소스-문자열 단정 노후화 정정 |

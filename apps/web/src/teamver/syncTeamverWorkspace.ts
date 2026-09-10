@@ -12,6 +12,11 @@ import {
 } from "./workspaceUtils";
 import { mayPromoteWorkspaceToDurablePreference } from "./workspaceDurablePreference";
 import { bumpTeamverWorkspaceStoreRevision } from "./teamverWorkspaceStoreRevision";
+import {
+  clearUnrequestedWorkspaceMove,
+  markUnrequestedWorkspaceMove,
+  shouldRestoreDurableOverActive,
+} from "./durableRestoreWindow";
 
 function readSessionUserId(session: DesignAuthSession): string | null {
   return session.user?.userId?.trim() || null;
@@ -30,9 +35,12 @@ function readSessionUserId(session: DesignAuthSession): string | null {
  * when a reconcile moved the active key on its own, because an explicit switch
  * writes both (`setActiveTeamverWorkspace`). So preferring the durable pick
  * here is exactly "undo a reconcile that was driven by one flaky session
- * response" (0908-N01 slice G) — which is what P1 promises. It is deliberately
- * not done on routine reads: dragging a mid-session user back to a workspace
- * they were moved off hours ago would read as another spontaneous switch.
+ * response" (0908-N01 slice G) — which is what P1 promises.
+ *
+ * Slice J time-boxes that undo: only while an unrequested-move stamp is fresh
+ * (5m). Outside the window — or with no stamp — keep a still-valid active key
+ * and heal durable to match (same as focus preserve), so long A sessions are
+ * not yanked back to B on F5.
  */
 export async function readStoredWorkspaceIdOnSession(
   session: DesignAuthSession,
@@ -59,7 +67,24 @@ export async function readStoredWorkspaceIdOnSession(
     // Requiring `appEnabled` is not optional: P2 moves off a workspace whose
     // Design app was turned off, and restoring it here would make every
     // refresh bounce between the two.
-    if (durableWorkspace && isWorkspaceAppEnabled(durableWorkspace)) return durable;
+    if (durableWorkspace && isWorkspaceAppEnabled(durableWorkspace)) {
+      if (!activeOnSession) return durable;
+      if (
+        shouldRestoreDurableOverActive({
+          userId,
+          durableId: durable,
+          activeId: activeOnSession,
+        })
+      ) {
+        return durable;
+      }
+      // Stale disagreement: keep active and align durable (focus-preserve twin).
+      if (userId && typeof store.setLastForUser === "function") {
+        store.setLastForUser(userId, activeOnSession);
+        clearUnrequestedWorkspaceMove(userId);
+      }
+      return activeOnSession;
+    }
   }
 
   return activeOnSession;
@@ -112,6 +137,7 @@ export async function syncTeamverWorkspaceFromSession(
     if (storedStillPresent) {
       if (userId && typeof store.setLastForUser === "function") {
         store.setLastForUser(userId, stored);
+        clearUnrequestedWorkspaceMove(userId);
       }
       return stored;
     }
@@ -139,6 +165,12 @@ export async function syncTeamverWorkspaceFromSession(
     // (parent-app switch / launch seed) asked for this one, and a missing
     // `storedRaw` means there was no earlier pick to move away from.
     if (!override && storedRaw && storedRaw !== resolved) {
+      // G3 left durable on `storedRaw`; stamp so boot G4 can undo only briefly.
+      markUnrequestedWorkspaceMove({
+        userId,
+        from: storedRaw,
+        to: resolved,
+      });
       dispatchTeamverWorkspaceAutoSwitched({
         from: storedRaw,
         to: resolved,
@@ -167,6 +199,7 @@ export async function syncTeamverWorkspaceFromSession(
     })
   ) {
     store.setLastForUser(userId, active);
+    clearUnrequestedWorkspaceMove(userId);
   }
 
   return active || resolved;
