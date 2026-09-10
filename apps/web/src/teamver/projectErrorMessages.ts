@@ -332,6 +332,32 @@ export function formatPersistedProjectRunError(err: unknown): {
   return { detail, code, userMessage };
 }
 
+/**
+ * 루프490 — API mode ended with zero tokens/HTML. Persist a real status:error
+ * so copy-diagnostics carries `kind=empty_response` instead of
+ * `reason=unavailable`.
+ */
+export function formatPersistedEmptyApiResponseError(input: {
+  userMessage: string;
+  model?: string | null;
+}): { detail: string; code: string; userMessage: string } {
+  const userMessage = String(input.userMessage ?? "").trim()
+    || "The provider ended the request without returning text or an artifact.";
+  const reason = sanitizeRunErrorDiagFragment(
+    String(input.model ?? "").trim() || "empty_api_response",
+  );
+  const code = "EMPTY_RESPONSE";
+  return {
+    userMessage,
+    code,
+    detail: encodePersistedRunErrorDetail(userMessage, {
+      kind: "empty_response",
+      reason,
+      code,
+    }),
+  };
+}
+
 /** Strip hidden diagnostic markers (and legacy inline suffixes) for UI display. */
 export function userFacingRunErrorDetail(detail: string | null | undefined): string {
   const value = String(detail ?? '');

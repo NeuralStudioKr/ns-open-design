@@ -502,6 +502,7 @@ import {
   formatEmergencyDeckFallbackNotice,
   formatOutlineDeckFallbackNotice,
   formatPersistedProjectRunError,
+  formatPersistedEmptyApiResponseError,
   extractProjectRunErrorCode,
   formatProjectRunStalledErrorForUser,
   formatProjectForkConversationError,
@@ -12065,18 +12066,37 @@ export function ProjectView({
                 return finalizedAssistant;
               });
             } else {
-              const diagnostic = t('assistant.emptyResponseMessage');
+              // 루프490 — Persist status:error with empty_response diag so
+              // copy-diagnostics is not stuck on reason=unavailable.
+              const persisted = formatPersistedEmptyApiResponseError({
+                userMessage: t('assistant.emptyResponseMessage'),
+                model: config.model,
+              });
               updateAssistant(
                 (prev) => {
+                  const withError = attachPersistedChatError(
+                    prev,
+                    persisted.detail,
+                    persisted.code,
+                  );
+                  const events = withError.events ?? [];
+                  const hasEmptyLabel = events.some(
+                    (ev) => ev.kind === 'status' && ev.label === 'empty_response',
+                  );
                   finalizedAssistant = {
-                    ...prev,
+                    ...withError,
                     endedAt,
                     runStatus: 'failed',
-                    events: [
-                      ...(prev.events ?? []),
-                      { kind: 'status', label: 'empty_response', detail: config.model },
-                      { kind: 'text', text: diagnostic },
-                    ],
+                    events: hasEmptyLabel
+                      ? events
+                      : [
+                          ...events,
+                          {
+                            kind: 'status',
+                            label: 'empty_response',
+                            detail: config.model,
+                          },
+                        ],
                   };
                   return finalizedAssistant;
                 },

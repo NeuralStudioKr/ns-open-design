@@ -67,6 +67,7 @@ describe("project conversation error messages", () => {
       extractProjectRunErrorCode,
       extractProjectRunErrorCodeFromDetail,
       formatPersistedProjectRunError,
+      formatPersistedEmptyApiResponseError,
       formatProjectRunErrorForUser,
       formatProjectConversationErrorForUser,
       formatProjectForkConversationError,
@@ -308,6 +309,17 @@ describe("project conversation error messages", () => {
     expect(opaque.code).toBe("AGENT_EXECUTION_FAILED");
     expect(userFacingRunErrorDetail(opaque.detail)).toContain("슬라이드 실행 중 오류");
     expect(extractPersistedRunErrorDiagnostic(opaque.detail)).toContain("some unclassified boom");
+    // 루프490 — empty API completion must persist empty_response diag, not unavailable.
+    const emptyApi = formatPersistedEmptyApiResponseError({
+      userMessage: "제공자가 텍스트나 아티팩트를 반환하지 않고 요청을 종료했습니다.",
+      model: "minimax-m2",
+    });
+    expect(emptyApi.code).toBe("EMPTY_RESPONSE");
+    expect(userFacingRunErrorDetail(emptyApi.detail)).toContain("반환하지 않고");
+    expect(extractPersistedRunErrorDiagnostic(emptyApi.detail)).toContain("terminalPersistResultKind=empty_response");
+    expect(extractPersistedRunErrorDiagnostic(emptyApi.detail)).toContain("minimax-m2");
+    expect(extractPersistedRunErrorDiagnostic(emptyApi.detail)).toContain("code=EMPTY_RESPONSE");
+    expect(extractProjectRunErrorCodeFromDetail(emptyApi.detail)).toBe("EMPTY_RESPONSE");
     expect(formatProjectRunErrorForUser(new Error("daemon exploded"))).toContain(
       "슬라이드 실행",
     );
