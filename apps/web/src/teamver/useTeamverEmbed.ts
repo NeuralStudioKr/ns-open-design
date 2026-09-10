@@ -17,6 +17,7 @@ import { isTeamverEmbedMode } from "./designApiBase";
 import { redirectToTeamverLoginPreservingRoute } from "./designAuthFlow";
 import { hasProbableTeamverAuthCookie } from "./teamverAuthCookieHints";
 import { setActiveTeamverWorkspace } from "./setActiveTeamverWorkspace";
+import { applyBffWorkspaceDriftRepair } from "./bffWorkspaceDrift";
 import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
 import { clearTeamverEmbedListCaches } from "./teamverEmbedListCaches";
 import {
@@ -425,6 +426,9 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         // registry list / access caches keyed under the same workspace.
         clearTeamverEmbedListCaches();
       }
+      // Slice I: detect BFF cookie vs local drift before reconcile. Local (P1)
+      // wins → realign BFF; BFF-only → seed local. Read path stays write-0.
+      await applyBffWorkspaceDriftRepair(session, userId);
       const activeWorkspaceId = await syncTeamverWorkspaceFromSession(session, workspaces, {
         // Only boot and explicit auth recovery may reconcile the stored
         // workspace onto a new one. Routine focus/idle refresh keeps the

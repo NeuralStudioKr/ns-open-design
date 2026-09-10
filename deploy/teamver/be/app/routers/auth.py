@@ -51,6 +51,14 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["auth"])
 
 
+def _active_workspace_id_from_session(session: BffSession | None) -> str | None:
+    """BFF cookie's current workspace — exposed on GET /auth/session for FE drift detect."""
+    if session is None:
+        return None
+    raw = (session.workspace_id or "").strip()
+    return raw or None
+
+
 def _empty_session() -> dict[str, Any]:
     return {
         "authenticated": False,
@@ -58,6 +66,7 @@ def _empty_session() -> dict[str, Any]:
         "app_key": settings.teamver_app_key,
         "user": None,
         "default_workspace_id": None,
+        "active_workspace_id": None,
         "workspaces": [],
     }
 
@@ -69,6 +78,15 @@ def _attach_main_sso_status(
 ) -> dict[str, Any]:
     if view.get("authenticated") and session is not None:
         view["main_sso_status"] = resolve_main_sso_status(request, session)
+    return view
+
+
+def _with_active_workspace_id(
+    view: dict[str, Any],
+    session: BffSession | None,
+) -> dict[str, Any]:
+    """Ensure session JSON always carries active_workspace_id (incl. public-view fallbacks)."""
+    view["active_workspace_id"] = _active_workspace_id_from_session(session)
     return view
 
 
@@ -85,6 +103,7 @@ def _session_from_bootstrap_payload(
         "app_key": payload.get("app_key") or settings.teamver_app_key,
         "user": payload.get("user"),
         "default_workspace_id": payload.get("default_workspace_id"),
+        "active_workspace_id": _active_workspace_id_from_session(session),
         "workspaces": payload.get("workspaces") or [],
     }
     if session is not None:
@@ -130,7 +149,7 @@ async def _bff_auth_session_response(request: Request) -> dict[str, Any]:
                     return _session_from_bootstrap_payload(
                         stale, auth_source="bff", session=session, request=request
                     )
-                view = bff_session_public_view(session)
+                view = _with_active_workspace_id(bff_session_public_view(session), session)
                 view["user"] = {"user_id": session.user_id}
                 return _attach_main_sso_status(view, request, session)
             refreshed = await force_refresh_bff_session(request)
@@ -158,7 +177,9 @@ async def _bff_auth_session_response(request: Request) -> dict[str, Any]:
                             return _session_from_bootstrap_payload(
                                 stale, auth_source="bff", session=refreshed, request=request
                             )
-                        view = bff_session_public_view(refreshed)
+                        view = _with_active_workspace_id(
+                            bff_session_public_view(refreshed), refreshed
+                        )
                         view["user"] = {"user_id": refreshed.user_id}
                         return _attach_main_sso_status(view, request, refreshed)
             # force_refresh None may still leave a not-expired retained cookie.
@@ -173,7 +194,9 @@ async def _bff_auth_session_response(request: Request) -> dict[str, Any]:
                     return _session_from_bootstrap_payload(
                         stale, auth_source="bff", session=remaining, request=request
                     )
-                view = bff_session_public_view(remaining)
+                view = _with_active_workspace_id(
+                    bff_session_public_view(remaining), remaining
+                )
                 view["user"] = {"user_id": remaining.user_id}
                 return _attach_main_sso_status(view, request, remaining)
             # Truly dead on this node — drop memory but do not emit delete
@@ -193,7 +216,7 @@ async def _bff_auth_session_response(request: Request) -> dict[str, Any]:
             return _session_from_bootstrap_payload(
                 stale, auth_source="bff", session=session, request=request
             )
-        view = bff_session_public_view(session)
+        view = _with_active_workspace_id(bff_session_public_view(session), session)
         view["user"] = {"user_id": session.user_id}
         return _attach_main_sso_status(view, request, session)
 
@@ -215,6 +238,7 @@ async def _legacy_plan_b_session_response(request: Request) -> Any:
             "app_key": settings.teamver_app_key,
             "user": None,
             "default_workspace_id": None,
+            "active_workspace_id": None,
             "workspaces": [],
         }
 

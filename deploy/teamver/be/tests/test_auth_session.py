@@ -70,6 +70,92 @@ async def test_auth_session_returns_empty_without_token_legacy(
 
     assert result["authenticated"] is False
     assert result["user"] is None
+    assert result["active_workspace_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_bff_auth_session_includes_active_workspace_id_on_bootstrap_ok(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import time
+
+    from app.auth.bff_session import BffSession
+    from app.routers import auth as auth_router
+
+    session = BffSession(
+        user_id="user-1",
+        access_token="apps-access",
+        refresh_token="apps-refresh",
+        access_expires_at=time.time() + 600,
+        workspace_id="  ws-active  ",
+        aud="teamver-design",
+        scope=["design"],
+    )
+    monkeypatch.setattr(auth_router, "bff_enabled", lambda: True)
+    monkeypatch.setattr(auth_router, "ensure_bff_session", AsyncMock(return_value=session))
+    monkeypatch.setattr(
+        auth_router,
+        "fetch_bootstrap",
+        AsyncMock(
+            return_value={
+                "app_key": "design",
+                "user": {"user_id": "user-1"},
+                "default_workspace_id": "ws-default",
+                "workspaces": [
+                    {"workspace_id": "ws-active", "app_enabled": True, "role": "owner"},
+                ],
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        auth_router, "resolve_main_sso_status", lambda _req, _sess: "unknown"
+    )
+
+    result = await auth_router.get_auth_session(_request_with_cookie_header("session=x"))
+
+    assert result["authenticated"] is True
+    assert result["active_workspace_id"] == "ws-active"
+
+
+@pytest.mark.asyncio
+async def test_bff_auth_session_active_workspace_id_empty_cookie_is_null(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import time
+
+    from app.auth.bff_session import BffSession
+    from app.routers import auth as auth_router
+
+    session = BffSession(
+        user_id="user-1",
+        access_token="apps-access",
+        refresh_token="apps-refresh",
+        access_expires_at=time.time() + 600,
+        workspace_id="   ",
+        aud="teamver-design",
+        scope=["design"],
+    )
+    monkeypatch.setattr(auth_router, "bff_enabled", lambda: True)
+    monkeypatch.setattr(auth_router, "ensure_bff_session", AsyncMock(return_value=session))
+    monkeypatch.setattr(
+        auth_router,
+        "fetch_bootstrap",
+        AsyncMock(
+            return_value={
+                "user": {"user_id": "user-1"},
+                "default_workspace_id": None,
+                "workspaces": [],
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        auth_router, "resolve_main_sso_status", lambda _req, _sess: "unknown"
+    )
+
+    result = await auth_router.get_auth_session(_request_with_cookie_header("session=x"))
+
+    assert result["authenticated"] is True
+    assert result["active_workspace_id"] is None
 
 
 @pytest.mark.asyncio
@@ -96,6 +182,9 @@ async def test_bff_auth_session_retains_usable_cookie_on_bootstrap_401(
     monkeypatch.setattr(auth_router, "bff_enabled", lambda: True)
     monkeypatch.setattr(auth_router, "ensure_bff_session", AsyncMock(return_value=session))
     monkeypatch.setattr(auth_router, "access_token_not_expired", lambda _s: True)
+    monkeypatch.setattr(
+        auth_router, "resolve_main_sso_status", lambda _req, _sess: "unknown"
+    )
     clear_mock = Mock()
     monkeypatch.setattr(auth_router, "clear_bff_session", clear_mock)
     bootstrap_exc = TeamverBootstrapError("upstream_401", status_code=401)
@@ -106,6 +195,7 @@ async def test_bff_auth_session_retains_usable_cookie_on_bootstrap_401(
 
     assert result["authenticated"] is True
     assert result["user"]["user_id"] == "user-1"
+    assert result["active_workspace_id"] == "ws-1"
     clear_mock.assert_not_called()
     assert request.scope.get(SUPPRESS_SESSION_COOKIE_SCOPE_KEY) is True
 
@@ -147,6 +237,9 @@ async def test_bff_auth_session_does_not_clear_when_force_refresh_retains_cookie
     monkeypatch.setattr(auth_router, "force_refresh_bff_session", force_refresh_retains)
     monkeypatch.setattr(auth_router, "load_bff_session", lambda _r: session)
     monkeypatch.setattr(auth_router, "peek_last_bootstrap_within_grace", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        auth_router, "resolve_main_sso_status", lambda _req, _sess: "unknown"
+    )
     clear_mock = Mock()
     monkeypatch.setattr(auth_router, "clear_bff_session", clear_mock)
     monkeypatch.setattr(
@@ -156,6 +249,7 @@ async def test_bff_auth_session_does_not_clear_when_force_refresh_retains_cookie
     )
     result = await auth_router.get_auth_session(_request_with_cookie_header("session=x"))
     assert result["authenticated"] is True
+    assert result["active_workspace_id"] == "ws-1"
     clear_mock.assert_not_called()
 
 

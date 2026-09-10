@@ -60,6 +60,11 @@ export type DesignAuthSession = {
   appKey?: string | null;
   user?: DesignAuthSessionUser | null;
   defaultWorkspaceId?: string | null;
+  /**
+   * BFF cookie's current workspace (`active_workspace_id` on GET /auth/session).
+   * Used to detect cookie↔local drift on focus refresh (0908-N01 slice I).
+   */
+  activeWorkspaceId?: string | null;
   workspaces?: WorkspaceListItem[];
   /** SHA-256 hex(casefold user id) — Main SSO pin at exchange (Stage 1). */
   mainSsoIdentityHash?: string | null;
@@ -1203,11 +1208,26 @@ export function resetDesignAuthBareRefreshAttempt(): void {
   unauthenticatedRefreshAttempted = false;
 }
 
+function readOptionalTrimmedString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
 function normalizeDesignAuthSession(raw: unknown): DesignAuthSession | null {
   if (typeof raw !== "object" || raw === null) return null;
   const record = raw as Record<string, unknown>;
   if (typeof record.authenticated !== "boolean") return null;
-  return raw as DesignAuthSession;
+  const session = { ...(raw as DesignAuthSession) };
+  // Prefer the dedicated session field; fall back to public-view `workspace_id`
+  // when an older BFF omits `active_workspace_id`.
+  session.activeWorkspaceId =
+    readOptionalTrimmedString(record.activeWorkspaceId)
+    ?? readOptionalTrimmedString(record.active_workspace_id)
+    ?? readOptionalTrimmedString(record.workspaceId)
+    ?? readOptionalTrimmedString(record.workspace_id)
+    ?? null;
+  return session;
 }
 
 async function probeDesignAuthSession(client: TeamverClient): Promise<DesignAuthSession> {
