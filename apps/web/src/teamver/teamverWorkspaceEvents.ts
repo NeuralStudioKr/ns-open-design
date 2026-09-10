@@ -74,27 +74,81 @@ export function dispatchTeamverWorkspaceChanged(workspaceId: string): void {
  * Not broadcast across tabs on purpose — the notice belongs to the tab where
  * the switch actually happened, while `dispatchTeamverWorkspaceChanged` above
  * already keeps peer tabs' data in sync.
+ *
+ * Boot / session sync can dispatch before `useTeamverEmbed` mounts its
+ * listener (0908-N01 risk 4). Keep a short-lived latch so a late subscriber
+ * still sees the notice instead of silently absorbing a P2 violation.
  */
+const AUTO_SWITCH_LATCH_TTL_MS = 60_000;
+
+let autoSwitchLatch: {
+  detail: TeamverWorkspaceAutoSwitchedDetail;
+  atMs: number;
+} | null = null;
+
+function normalizeAutoSwitchDetail(
+  detail: TeamverWorkspaceAutoSwitchedDetail,
+): TeamverWorkspaceAutoSwitchedDetail | null {
+  const from = detail.from?.trim() || "";
+  const to = detail.to?.trim() || "";
+  if (!from || !to) return null;
+  return { from, to, reason: detail.reason };
+}
+
 export function dispatchTeamverWorkspaceAutoSwitched(
   detail: TeamverWorkspaceAutoSwitchedDetail,
 ): void {
+  const normalized = normalizeAutoSwitchDetail(detail);
+  if (!normalized) return;
+  autoSwitchLatch = { detail: normalized, atMs: Date.now() };
   if (typeof window === "undefined") return;
   window.dispatchEvent(
     new CustomEvent<TeamverWorkspaceAutoSwitchedDetail>(
       TEAMVER_WORKSPACE_AUTO_SWITCHED_EVENT,
-      { detail },
+      { detail: normalized },
     ),
   );
+}
+
+/** Drop a pending notice after the user dismisses it or picks a workspace. */
+export function clearTeamverWorkspaceAutoSwitchedLatch(): void {
+  autoSwitchLatch = null;
+}
+
+/** @internal test */
+export function resetTeamverWorkspaceAutoSwitchedLatchForTests(): void {
+  autoSwitchLatch = null;
+}
+
+function readLiveAutoSwitchLatch(): TeamverWorkspaceAutoSwitchedDetail | null {
+  if (!autoSwitchLatch) return null;
+  if (Date.now() - autoSwitchLatch.atMs > AUTO_SWITCH_LATCH_TTL_MS) {
+    autoSwitchLatch = null;
+    return null;
+  }
+  return autoSwitchLatch.detail;
 }
 
 export function subscribeTeamverWorkspaceAutoSwitched(
   listener: (detail: TeamverWorkspaceAutoSwitchedDetail) => void,
 ): () => void {
   if (typeof window === "undefined") return () => {};
+  const pending = readLiveAutoSwitchLatch();
+  if (pending) {
+    queueMicrotask(() => {
+      // Cleared between schedule and flush — do not revive a dismissed banner.
+      const still = readLiveAutoSwitchLatch();
+      if (!still) return;
+      if (still.from !== pending.from || still.to !== pending.to) return;
+      listener(still);
+    });
+  }
   const handler = (event: Event) => {
     const custom = event as CustomEvent<TeamverWorkspaceAutoSwitchedDetail>;
-    const detail = custom.detail;
-    if (!detail?.from?.trim() || !detail?.to?.trim()) return;
+    const detail = normalizeAutoSwitchDetail(
+      custom.detail ?? { from: "", to: "", reason: "revoked" },
+    );
+    if (!detail) return;
     listener(detail);
   };
   window.addEventListener(TEAMVER_WORKSPACE_AUTO_SWITCHED_EVENT, handler);

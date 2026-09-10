@@ -45,6 +45,7 @@ import {
 } from "./workspaceUtils";
 import {
   subscribeTeamverWorkspaceAutoSwitched,
+  clearTeamverWorkspaceAutoSwitchedLatch,
   type TeamverWorkspaceAutoSwitchedDetail,
 } from "./teamverWorkspaceEvents";
 import { readUserImageUrl } from "./teamverEmbedVisuals";
@@ -619,6 +620,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
     }
     snapshotFromWorkspace(trimmed, target);
     // An explicit pick answers any pending auto-switch notice.
+    clearTeamverWorkspaceAutoSwitchedLatch();
     setWorkspaceAutoSwitch(null);
     setState((prev) => ({
       ...prev,
@@ -630,6 +632,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
   }, []);
 
   const dismissWorkspaceAutoSwitch = useCallback(() => {
+    clearTeamverWorkspaceAutoSwitchedLatch();
     setWorkspaceAutoSwitch(null);
   }, []);
 

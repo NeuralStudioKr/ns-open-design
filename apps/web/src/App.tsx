@@ -1634,20 +1634,32 @@ function AppInner() {
   const loadMoreProjects = useCallback(async () => {
     if (projectsLoadingMore || !projectsHasMore || !projectsNextCursorRef.current) return;
     setProjectsLoadingMore(true);
+    const request = beginProjectListRequest();
     try {
       let cursor: string | null = projectsNextCursorRef.current;
       // Embed registry filter can drop an entire daemon page — advance until
       // we surface rows or exhaust server pages (cap avoids runaway loops).
       for (let attempt = 0; attempt < 8 && cursor; attempt += 1) {
         const result = await loadProjectListPage(cursor);
+        if (isStaleProjectListWorkspace(request)) return;
         if (!result.ok) {
           setWorkingDirError(result.errorMessage);
+          // A failed page under another workspace must not keep the prior rail
+          // (0908-N01 slice H — loadMore was the one path that skipped F).
+          dropProjectsPaintedByOtherWorkspace();
           return;
         }
         projectsNextCursorRef.current = result.nextCursor;
         setProjectsHasMore(result.hasMore);
         if (result.projects.length > 0) {
-          setProjects((current) => mergeProjectsByRecency(current, result.projects));
+          const replacePaintedRows = isPaintedProjectListFromOtherWorkspace();
+          markProjectsPaintedByActiveWorkspace();
+          setProjects((current) =>
+            mergeProjectsByRecency(
+              replacePaintedRows ? [] : current,
+              result.projects,
+            ),
+          );
           warmEmbedProjectListCaches(result.projects);
         }
         if (result.projects.length > 0 || !result.hasMore) break;
@@ -1656,7 +1668,16 @@ function AppInner() {
     } finally {
       setProjectsLoadingMore(false);
     }
-  }, [mergeProjectsByRecency, projectsHasMore, projectsLoadingMore]);
+  }, [
+    beginProjectListRequest,
+    dropProjectsPaintedByOtherWorkspace,
+    isPaintedProjectListFromOtherWorkspace,
+    isStaleProjectListWorkspace,
+    markProjectsPaintedByActiveWorkspace,
+    mergeProjectsByRecency,
+    projectsHasMore,
+    projectsLoadingMore,
+  ]);
 
   const refreshProjects = useCallback(async () => {
     const request = beginProjectListRequest();

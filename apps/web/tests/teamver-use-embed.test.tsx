@@ -105,6 +105,8 @@ vi.mock("../src/teamver/teamverWorkspaceEvents", () => ({
   TEAMVER_WORKSPACE_CHANGED_EVENT: "teamver-workspace-changed",
   dispatchTeamverWorkspaceAutoSwitched: vi.fn(),
   subscribeTeamverWorkspaceAutoSwitched: vi.fn(() => () => {}),
+  clearTeamverWorkspaceAutoSwitchedLatch: vi.fn(),
+  resetTeamverWorkspaceAutoSwitchedLatchForTests: vi.fn(),
   TEAMVER_WORKSPACE_AUTO_SWITCHED_EVENT: "teamver-workspace-auto-switched",
 }));
 
