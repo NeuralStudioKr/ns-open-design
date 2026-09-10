@@ -12,6 +12,7 @@ import {
   fetchProjectFileText,
   fetchProjectFiles,
   patchPreviewCommentStatus,
+  pushProjectFileRevision,
   writeProjectTextFile,
   writeProjectTextFileDetailed,
 } from '../../src/providers/registry';
@@ -65,6 +66,17 @@ vi.mock('../../src/providers/project-events', () => ({
   useProjectFileEvents: vi.fn(),
 }));
 
+vi.mock('../../src/teamver/designApiBase', async () => {
+  const actual = await vi.importActual<typeof import('../../src/teamver/designApiBase')>(
+    '../../src/teamver/designApiBase',
+  );
+  return {
+    ...actual,
+    isTeamverEmbedMode: vi.fn(() => false),
+    shouldUseTeamverAuthenticatedProjectRawFetch: vi.fn(() => false),
+  };
+});
+
 vi.mock('../../src/utils/notifications', async () => {
   const actual = await vi.importActual<typeof import('../../src/utils/notifications')>(
     '../../src/utils/notifications',
@@ -90,6 +102,7 @@ vi.mock('../../src/providers/registry', async () => {
     fetchProjectFiles: vi.fn().mockResolvedValue([]),
     fetchSkill: vi.fn().mockResolvedValue(null),
     patchPreviewCommentStatus: vi.fn(),
+    pushProjectFileRevision: vi.fn(),
     upsertPreviewComment: vi.fn(),
     writeProjectTextFile: vi.fn(),
     writeProjectTextFileDetailed: vi.fn(),
@@ -200,6 +213,7 @@ const mockedFetchProjectFileText = vi.mocked(fetchProjectFileText);
 const mockedFetchProjectFiles = vi.mocked(fetchProjectFiles);
 const mockedListMessages = vi.mocked(listMessages);
 const mockedSaveMessage = vi.mocked(saveMessage);
+const mockedPushProjectFileRevision = vi.mocked(pushProjectFileRevision);
 const mockedWriteProjectTextFile = vi.mocked(writeProjectTextFile);
 const mockedWriteProjectTextFileDetailed = vi.mocked(writeProjectTextFileDetailed);
 const mockedPatchPreviewCommentStatus = vi.mocked(patchPreviewCommentStatus);
@@ -264,9 +278,31 @@ describe('ProjectView API empty response handling', () => {
     mockedFetchProjectFilePreview.mockReset();
     mockedFetchProjectFileText.mockReset();
     mockedFetchProjectFiles.mockReset();
+    mockedPushProjectFileRevision.mockReset();
     mockedFetchProjectFilePreview.mockResolvedValue(null);
     mockedFetchProjectFileText.mockResolvedValue(null);
     mockedFetchProjectFiles.mockResolvedValue([]);
+    mockedPushProjectFileRevision.mockImplementation(async (_projectId, name) => ({
+      ok: true,
+      file: {
+        name,
+        path: name,
+        kind: 'html',
+        mime: 'text/html',
+        size: 1,
+        mtime: 1,
+      },
+      revision: {
+        id: 'rev-1',
+        projectId: project.id,
+        fileName: name,
+        sequence: 1,
+        parentRevisionId: null,
+        source: 'agent',
+        label: null,
+        createdAt: 1,
+      },
+    } as never));
     mockedWriteProjectTextFile.mockResolvedValue({
       name: 'landing-page.html',
       path: 'landing-page.html',
@@ -578,7 +614,7 @@ describe('ProjectView API empty response handling', () => {
     await waitFor(() => {
       expect(hasSavedAssistantMessage((message) => message.runStatus === 'succeeded')).toBe(true);
     });
-    await waitFor(() => expect(mockedWriteProjectTextFileDetailed).toHaveBeenCalled());
+    await waitFor(() => expect(mockedPushProjectFileRevision).toHaveBeenCalled());
     expect(screen.queryByText(/provider ended the request/i)).toBeNull();
     expect(screen.queryByText('empty_response:deepseek-chat')).toBeNull();
   });

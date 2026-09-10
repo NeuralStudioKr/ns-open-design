@@ -12045,20 +12045,42 @@ export function ProjectView({
             !liveHtml.trim();
           if (emptyApiResponse) {
             const endedAt = Date.now();
-            const diagnostic = t('assistant.emptyResponseMessage');
-            updateAssistant(
-              (prev) => ({
-                ...prev,
-                endedAt,
-                runStatus: 'failed',
-                events: [
-                  ...(prev.events ?? []),
-                  { kind: 'status', label: 'empty_response', detail: config.model },
-                  { kind: 'text', text: diagnostic },
-                ],
-              }),
-            );
-            void saveMessage(project.id, runConversationId, latestAssistantMsg, {
+            const softImprovementTurn =
+              isSoftImprovementAutomationEntryFrom(meta?.entryFrom)
+              && (latestAssistantMsg.producedFiles?.length ?? 0) === 0;
+            let finalizedAssistant = latestAssistantMsg;
+            if (softImprovementTurn) {
+              updateAssistant((prev) => {
+                finalizedAssistant = {
+                  ...appendWarningStatusEvent(
+                    prev,
+                    formatSoftImprovementTurnFailureNotice(),
+                    SOFT_IMPROVEMENT_TURN_STATUS_CODE,
+                  ),
+                  endedAt: prev.endedAt ?? endedAt,
+                  runStatus: 'canceled',
+                };
+                return finalizedAssistant;
+              });
+            } else {
+              const diagnostic = t('assistant.emptyResponseMessage');
+              updateAssistant(
+                (prev) => {
+                  finalizedAssistant = {
+                    ...prev,
+                    endedAt,
+                    runStatus: 'failed',
+                    events: [
+                      ...(prev.events ?? []),
+                      { kind: 'status', label: 'empty_response', detail: config.model },
+                      { kind: 'text', text: diagnostic },
+                    ],
+                  };
+                  return finalizedAssistant;
+                },
+              );
+            }
+            void saveMessage(project.id, runConversationId, finalizedAssistant, {
               telemetryFinalized: true,
             });
             if (runCommentAttachments.length > 0) {
@@ -12069,7 +12091,12 @@ export function ProjectView({
               controller,
               cancelController,
             );
-            if (ownsCurrentRun) updateConversationLatestRun('failed', endedAt);
+            if (ownsCurrentRun) {
+              updateConversationLatestRun(
+                softImprovementTurn ? 'canceled' : 'failed',
+                endedAt,
+              );
+            }
             runPersistTargetFileRef.current = null;
             runSkipDiscoveryBriefRef.current = false;
             runSelectedDeckTemplateIdRef.current = null;
