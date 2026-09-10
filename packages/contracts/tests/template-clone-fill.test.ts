@@ -46,6 +46,7 @@ import {
   officialLookIsCobaltGrid,
   officialLookIsSakuraChroma,
   officialLookIsLongTable,
+  officialLookIsEditorialTriTone,
   officialLookIsStudio,
   officialLookIsCreativeMode,
   rewriteRawUrlSiteCoverTitles,
@@ -2464,6 +2465,51 @@ ${capsuleLook}
     expect(css).toMatch(/data-od-official-poster-layout/);
     expect(css).toMatch(/\.s-cover \.title/);
     expect(css).toMatch(/\.s-closing \.h\{font-size:clamp/);
+  });
+
+  it('루프493 peels Editorial Tri-Tone cover vertical and dedupes s-closer .big', () => {
+    const look = [
+      '<style data-od-official-look-css="">',
+      ':root{--ink:#7A1F35;--pink:#F3B8C5;--cream:#F6F0E6}',
+      '.s-cover .wordmark{} .s-cover .pill-cluster{} .s-closer .big{} .s-grid{}',
+      '</style>',
+    ].join('');
+    const html = [
+      '<section class="s-cover">',
+      '<div class="meta">Vol. 04</div>',
+      '<div class="pill-cluster"><span class="pill">focus</span></div>',
+      '<div class="wordmark" style="writing-mode:vertical-rl"><span>Studio</span><span class="amp">&</span><span>Salon</span></div>',
+      '<div style="writing-mode:vertical-rl;position:absolute;left:40%">발명된 세로</div>',
+      '</section>',
+      '<section class="s-grid"><div class="card">카드</div></section>',
+      '<section class="s-closer">',
+      '<div class="top"><div class="kicker">§ 08 — Colophon</div></div>',
+      '<div class="big">Fin.</div>',
+      '<div class="big">Fin.</div>',
+      '<div class="corner-pills"><span class="pill">issue 04</span></div>',
+      '<div class="grid"><div class="col"><h6>Type</h6><p>Bricolage</p></div></div>',
+      '</section>',
+      look,
+    ].join('');
+    expect(officialLookIsEditorialTriTone(html)).toBe(true);
+    expect(officialLookIsLongTable(html)).toBe(false);
+    expect(officialLookIsCobaltGrid(html)).toBe(false);
+    const stripped = stripBiennaleInventedVerticalWriting(html);
+    expect(stripped).not.toMatch(/writing-mode\s*:\s*vertical/i);
+    expect(stripped).toContain('Studio');
+    const peeled = restyleBiennaleSparseCoverBodies(html);
+    expect(peeled).toContain('wordmark');
+    expect(peeled).toContain('pill-cluster');
+    expect(peeled).toContain('Studio');
+    expect(peeled).not.toContain('발명된 세로');
+    const deduped = restyleBiennaleSparseColophonBodies(html);
+    expect((deduped.match(/class="big"/g) ?? []).length).toBe(1);
+    expect(deduped).toContain('corner-pills');
+    expect(deduped).toContain('Bricolage');
+    const css = injectBiennaleSparseFillCss(peeled);
+    expect(css).toMatch(/data-od-official-poster-layout/);
+    expect(css).toMatch(/\.s-cover \.wordmark/);
+    expect(css).toMatch(/\.s-closer \.big\{font-size:clamp/);
   });
 
   it('reparents MiniMax auto-auto-1fr cards and 64px step lists', () => {

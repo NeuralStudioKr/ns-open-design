@@ -2205,7 +2205,8 @@ export function officialLookIsCobaltGrid(html: string): boolean {
     && /\bpixel-glitch\b/i.test(source)
     && !/\bsunglow\b/i.test(source)
     && !officialLookIsSakuraChroma(source)
-    && !officialLookIsLongTable(source);
+    && !officialLookIsLongTable(source)
+    && !officialLookIsEditorialTriTone(source);
 }
 
 /**
@@ -2231,15 +2232,34 @@ export function officialLookIsSakuraChroma(html: string): boolean {
 /**
  * 루프469 — Long Table look fingerprint (rust ink + supper-club shells).
  * Deny Cobalt: that kit also uses s-cover / s-index / s-manifesto.
+ * Deny Editorial: that kit uses s-closer (not s-closing) + burgundy ink.
  */
 export function officialLookIsLongTable(html: string): boolean {
   const source = String(html ?? '');
   if (/\bpixel-glitch\b/i.test(source) || /\bs-catalogue\b/i.test(source)) return false;
+  if (/\bs-closer\b/i.test(source)) return false;
   const css = lookCssWithoutNeutralize(source);
   if (css.trim() && /--ink\s*:\s*#B53D2A/i.test(css)) {
     return /\bs-(?:featured|menu|closing)\b/i.test(source);
   }
   return /\bs-featured\b/i.test(source) && /\bs-menu\b/i.test(source);
+}
+
+/**
+ * 루프493 — Editorial Tri-Tone fingerprint (burgundy ink + wordmark / s-closer).
+ * Deny Long Table (`s-closing` / rust) and Cobalt (`pixel-glitch`).
+ */
+export function officialLookIsEditorialTriTone(html: string): boolean {
+  const source = String(html ?? '');
+  if (/\bpixel-glitch\b/i.test(source)) return false;
+  if (/\bs-(?:featured|menu|closing)\b/i.test(source)) return false;
+  if (/\bsunglow\b/i.test(source)) return false;
+  const css = lookCssWithoutNeutralize(source);
+  if (css.trim() && /--ink\s*:\s*#7A1F35/i.test(css)) {
+    return /\bs-closer\b|\bwordmark\b|\bpill-cluster\b|\bs-grid\b/i.test(source);
+  }
+  return /\bs-closer\b/i.test(source)
+    && (/\bwordmark\b/i.test(source) || /\bpill-cluster\b/i.test(source));
 }
 
 /**
@@ -4532,6 +4552,12 @@ const LONG_TABLE_POSTER_LAYOUT_CSS = [
   '.s-closing .h{font-size:clamp(48px,min(6.4vw,10vh),120px);max-width:90%;line-height:0.95}',
 ].join('');
 
+/** 루프493 — Editorial Tri-Tone: no kit vertical writing; wordmark / closer .big stay horizontal. */
+const EDITORIAL_POSTER_LAYOUT_CSS = [
+  '.s-cover .wordmark,.s-cover .pill-cluster,.s-cover .meta,.s-closer .big,.s-closer .kicker,.s-closer .top{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}',
+  '.s-closer .big{font-size:clamp(72px,min(12vw,22vh),220px);max-width:95%;line-height:0.9}',
+].join('');
+
 const VERTICAL_WRITING_MODE_DECL_RE =
   /(?:^|;)\s*(?:-webkit-|-ms-|-epub-)?writing-mode\s*:\s*vertical(?:-r[lr])?\s*(?:;|$)/gi;
 
@@ -4540,6 +4566,7 @@ type OfficialPosterKit =
   | 'sakura'
   | 'cobalt'
   | 'longtable'
+  | 'editorial'
   | 'capsule'
   | 'creative'
   | 'studio'
@@ -4628,11 +4655,17 @@ const LONG_TABLE_COVER_KIT_SLOT_RE =
 const LONG_TABLE_CLOSING_KIT_SLOT_RE =
   /\b(?:frame|ed-row|ed-label|h|desc-it|actions|footer-line|colf|ftag|ftxt|pill|nav-hint|pagenum|data-od-official-motif-html)\b/i;
 
+const EDITORIAL_COVER_KIT_SLOT_RE =
+  /\b(?:meta|pill-cluster|wordmark|pill|amp|label|footer|nav-hint|pagenum|data-od-official-motif-html)\b/i;
+
+const EDITORIAL_CLOSING_KIT_SLOT_RE =
+  /\b(?:top|kicker|big|corner-pills|grid|col|pill|mono|serif|nav-hint|pagenum|data-od-official-motif-html)\b/i;
+
 function resolveOfficialPosterKit(html: string): OfficialPosterKitPlan | null {
   const dest = String(html ?? '');
   if (!dest.trim()) return null;
-  // Order: Cobalt (vstack) → Long Table → Creative → Broadside before Studio →
-  // EightBit → BlockFrame before Capsule → Sakura → Daisy → Biennale.
+  // Order: Cobalt (vstack) → Long Table → Editorial → Creative → Broadside before
+  // Studio → EightBit → BlockFrame before Capsule → Sakura → Daisy → Biennale.
   if (officialLookIsCobaltGrid(dest)) {
     return {
       kind: 'cobalt',
@@ -4656,6 +4689,19 @@ function resolveOfficialPosterKit(html: string): OfficialPosterKitPlan | null {
       coverPrimarySlotRe: /\b(?:title|ttl|left)\b/i,
       preserveVerticalSlotRe: null,
       layoutCss: LONG_TABLE_POSTER_LAYOUT_CSS,
+      layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
+    };
+  }
+  if (officialLookIsEditorialTriTone(dest)) {
+    return {
+      kind: 'editorial',
+      coverHostRe: /\bs-cover\b/i,
+      closingHostRe: /\bs-closer\b/i,
+      coverSlotRe: EDITORIAL_COVER_KIT_SLOT_RE,
+      colophonSlotRe: EDITORIAL_CLOSING_KIT_SLOT_RE,
+      coverPrimarySlotRe: /\b(?:wordmark|pill-cluster)\b/i,
+      preserveVerticalSlotRe: null,
+      layoutCss: EDITORIAL_POSTER_LAYOUT_CSS,
       layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
     };
   }
@@ -4899,15 +4945,19 @@ export function restyleBiennaleSparseColophonBodies(html: string): string {
       let candidate = block;
       if (isKitSlotOpen(open, block.slice(0, 120), kit.colophonSlotRe)) {
         // Inside title/closing copy hosts, collapse duplicated children first.
-        if (/\b(?:titlewrap|col-footer|colofo|closing-content|cover-footer|stamp|close-frame|cta-content|cover-body|frame)\b/i.test(open)) {
+        if (/\b(?:titlewrap|col-footer|colofo|closing-content|cover-footer|stamp|close-frame|cta-content|cover-body|frame|top)\b/i.test(open)) {
           const deduped = dedupeAdjacentSameVisibleChildren(block);
           if (deduped !== block) changed = true;
           candidate = deduped;
         }
       }
       // Adjacent twin hosts (e.g. Broadside twin `.display` h1s) still collapse.
+      // Display title slots may be short ("Fin.") — use a lower key floor than chrome.
       const key = normalizeVisibleCopyKey(candidate);
-      if (key.length >= 8) {
+      const minKeyLen = /\b(?:big|h|display|ttl|closing-line|close-title|main-title)\b/i.test(open)
+        ? 2
+        : 8;
+      if (key.length >= minKeyLen) {
         const prev = kept[kept.length - 1];
         if (prev && normalizeVisibleCopyKey(prev) === key) {
           changed = true;
