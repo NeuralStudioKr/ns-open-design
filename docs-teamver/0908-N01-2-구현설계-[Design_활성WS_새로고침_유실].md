@@ -459,10 +459,51 @@ durable 이 목록에 있고 appEnabled 이고 active 와 다르면 → durable 
 
 - `/auth/session`에 BFF 세션의 현재 WS 를 실어 드리프트를 **관측**하게 하는 것 (남은 위험 1, BE 변경).
 - 세션 중간의 durable 복구 — 부트로 제한한다(G4).
-- P2 알림 dispatch 시점 (남은 위험 4).
+
+---
+
+# 슬라이스 H — 검토 후속 (남은 위험 4 · F 구멍)
+
+E·F·G 코드 리뷰에서 확정한 두 가지를 고친다. BE 변경·라벨↔헤더 드리프트(위험 6)는 비범위.
+
+## H1. P2 알림 last-event latch (남은 위험 4)
+
+`dispatchTeamverWorkspaceAutoSwitched`는 fire-and-forget `CustomEvent`다.
+구독은 `useTeamverEmbed`의 `useEffect`에서만 설치된다. 부트/`syncTeamverWorkspaceFromSession`이
+구독보다 먼저 이벤트를 내면 배너가 영원히 안 뜬다 — P2 위반.
+
+**수정:** 모듈 스코프에 마지막 자동 전환 detail을 보관한다.
+
+- `dispatch` 시 latch에 기록한 뒤 이벤트를 보낸다.
+- `subscribe` 시 **최근 latch**(TTL 60s)가 있으면 microtask로 즉시 replay.
+- `clearTeamverWorkspaceAutoSwitchedLatch()` — 사용자가 배너를 닫거나 명시적 전환 시 호출.
+  재구독(리마운트)이 이미 닫은 배너를 다시 띄우지 않게 한다.
+
+TTL 이유: 탭을 오래 방치한 뒤 리마운트해도 수 시간 전 전환을 다시 보여주면 안 된다.
+
+## H2. `loadMoreProjects` WS 미검사 (F 구멍)
+
+홈 recent·projects 페이지 첫 로드·refresh·전환 실패는 전부 `dropProjectsPaintedByOtherWorkspace` /
+`isStaleProjectListWorkspace`를 타지만, **페이지네이션 `loadMoreProjects`만**
+`beginProjectListRequest` 없이 `mergeProjectsByRecency`로 합친다.
+
+전환 직후·전환 중 더보기가 돌면 이전 WS 페이지가 현재 목록에 합쳐질 수 있다.
+
+**수정:** 더보기에도 request를 찍고, 응답 적용 전 stale이면 drop. painted가 다른 WS면
+merge 전에 현재 목록을 비운 뒤(또는 drop 후) 새 페이지만 넣는다. 실패 시에도 drop.
+
+## 테스트
+
+| 파일 | 고정 |
+|---|---|
+| 신규 `tests/teamver/workspace-auto-switched-latch.test.ts` | dispatch→구독 전 유실 없이 replay · clear 후 replay 없음 · TTL 만료 시 무재생 |
+| `App` 관련은 가능하면 순수 헬퍼로 빼지 않고, 기존 태그 모듈 테스트 + loadMore 경로의
+  stale 호출을 소스/단위로 고정. 복잡하면 `isStale`/`mismatch` 사용 여부만 단정하지 말고
+  loadMore 콜백이 request generation을 쓰도록 리팩터 후 작은 추출 함수 테스트 |
 
 ## 변경 이력
 
+| 2026-09-10 | 루프483 슬라이스 H 설계 — P2 latch · loadMore WS 가드 |
 | 2026-09-09 11:55 | 루프482 슬라이스 G 설계 — 읽기 순수화·single-flight·durable 선호 보존·부트 WS 캡처 |
 | 2026-09-08 18:40 | 루프481 슬라이스 E·F 설계 — 부트 BFF 재정렬 누락 · 홈 레일 WS 태그 |
 | 2026-09-08 | 루프477 구현설계 (슬라이스 A: P1·P3 / 슬라이스 B: P2 알림) |
