@@ -27,11 +27,28 @@ finalizedAssistant = {
 
 Prefer: `attachPersistedChatError` first, then append `{kind:'status', label:'empty_response', detail: model}` if AssistantMessage still keys off that label — check before dropping.
 
+## 루프491
+
+### A. Stall code
+
+- `apps/daemon/src/server.ts` watchdog `createSseErrorPayload('AGENT_EXECUTION_STALLED', …)`
+- `stalledRunPartialDeckText`: `AGENT_EXECUTION_STALLED` **또는** (`AGENT_EXECUTION_FAILED` ∧ `/Agent stalled without emitting/i`)
+
+### B. `surfaceChatVisibleError`
+
+이미 marker가 있으면 그대로; 없으면 `encodePersistedRunErrorDetail(detail, { kind: 'surface-chat-error', reason: detail slice, code })`.
+
+### C. Terminal deliverableError
+
+각 formatter 결과에 `encodePersistedRunErrorDetail` + `terminalPersistResult`의 status/code/message/reason.
+
 ## 검증
 
-- 단위: encode 결과에서 `extractPersistedRunErrorDiagnostic` + `buildRunErrorDiagnosticText`에 empty_response 포함
-- soft improvement empty 경로는 canceled + warning만 (회귀)
+- stalledRunDeckSalvage: STALLED + FAILED+stall phrase eligible; plain FAILED null
+- project-error-messages: encode tails
+- ChatPane: reason=unavailable fallback (있으면)
 
 ## 변경 이력
 
 | 2026-09-10 16:00 | 루프490 구현설계 |
+| 2026-09-10 16:10 | 루프491 A/B/C |

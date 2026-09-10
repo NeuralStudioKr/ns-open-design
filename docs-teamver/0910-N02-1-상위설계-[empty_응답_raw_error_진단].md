@@ -29,6 +29,13 @@ ChatPane 진단은 `label:'error'` + HTML comment diag marker를 읽는다.
 - soft improvement 경로는 Retry/failed로 승격되지 않음
 - 단위 테스트로 고정 (MiniMax live 불필요)
 
+### 루프491 — 잔여 raw_error / salvage 갭 ([Audit](1f0c728a-9a57-4b3f-a4ee-e3cabf16626b) 후속)
+
+1. **스톨 코드:** daemon watchdog가 `AGENT_EXECUTION_FAILED`를 내지만 salvage는 `AGENT_EXECUTION_STALLED`만 허용 → daemon을 STALLED로 맞추고, FE는 FAILED+stall 문구 heuristic도 허용(구 daemon 호환).
+2. **`surfaceChatVisibleError`:** user copy만 persist → `encodePersistedRunErrorDetail`로 hidden tail.
+3. **terminal deliverableError:** save-failed/regression/scope/rejected도 encode (status/code/message/reason).
+
 ## 변경 이력
 
 | 2026-09-10 16:00 | 루프490 상위설계 |
+| 2026-09-10 16:10 | 루프491 — 스톨 코드·surface/deliverable persist 갭 |
