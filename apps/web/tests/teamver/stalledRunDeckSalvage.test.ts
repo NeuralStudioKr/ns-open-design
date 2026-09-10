@@ -30,6 +30,17 @@ describe('루프477 stalled deck salvage eligibility', () => {
     ).toBeNull();
   });
 
+  it('루프491 salvages daemon FAILED stalls that still carry the stall phrase', () => {
+    expect(
+      stalledRunPartialDeckText({
+        errorCode: 'AGENT_EXECUTION_FAILED',
+        errorDetail: 'Agent stalled without emitting any new output for 120s.',
+        slideOnlyMvp: true,
+        streamedText: partialDeck,
+      }),
+    ).toBe(partialDeck);
+  });
+
   it('only applies to slide-only runs', () => {
     expect(
       stalledRunPartialDeckText({

@@ -12687,6 +12687,8 @@ export async function startServer({
       skillId,
       skillIds,
       designSystemId,
+      selectedDeckTemplateId,
+      selectedDeckTemplateTitle,
       sessionMode,
       attachments = [],
       commentAttachments = [],
@@ -14234,7 +14236,7 @@ export async function startServer({
           `Phase details: spawned agent ${userFacingAgentLabel(agentId, resolvedBin)}; stdout arrived: ${childStdoutSeen ? 'yes' : 'no'}; ` +
           `last agent event: ${lastAgentEventPhase}; largest tool result observed: ${lastToolResultChars} chars. ` +
           'Retry the turn, pick a different model, or start a new conversation if the prior context is very large.';
-        stallPayload = createSseErrorPayload('AGENT_EXECUTION_FAILED', message, { retryable: true });
+        stallPayload = createSseErrorPayload('AGENT_EXECUTION_STALLED', message, { retryable: true });
       }
       send('error', stallPayload);
       // A silent first-token hang is one of the safe transient failure shapes

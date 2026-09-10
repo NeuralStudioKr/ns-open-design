@@ -320,6 +320,15 @@ describe("project conversation error messages", () => {
     expect(extractPersistedRunErrorDiagnostic(emptyApi.detail)).toContain("minimax-m2");
     expect(extractPersistedRunErrorDiagnostic(emptyApi.detail)).toContain("code=EMPTY_RESPONSE");
     expect(extractProjectRunErrorCodeFromDetail(emptyApi.detail)).toBe("EMPTY_RESPONSE");
+    // 루프491 — surface / deliverable encode tails for copy-diagnostics.
+    const surface = encodePersistedRunErrorDetail("아티팩트를 저장하지 못했습니다.", {
+      kind: "surface-chat-error",
+      reason: "save failed status=500 code=EIO",
+      code: "incomplete_output",
+    });
+    expect(userFacingRunErrorDetail(surface)).toContain("저장하지 못했습니다");
+    expect(extractPersistedRunErrorDiagnostic(surface)).toContain("surface-chat-error");
+    expect(extractPersistedRunErrorDiagnostic(surface)).toContain("status=500");
     expect(formatProjectRunErrorForUser(new Error("daemon exploded"))).toContain(
       "슬라이드 실행",
     );

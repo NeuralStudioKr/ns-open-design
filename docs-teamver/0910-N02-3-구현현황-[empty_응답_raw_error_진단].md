@@ -1,8 +1,8 @@
-# 0910-N02-3 구현현황 — empty 응답 raw_error 진단 (루프490)
+# 0910-N02-3 구현현황 — empty 응답 raw_error 진단 (루프490·491)
 
 상위: [0910-N02-1](./0910-N02-1-상위설계-[empty_응답_raw_error_진단].md) · 설계: [0910-N02-2](./0910-N02-2-구현설계-[empty_응답_raw_error_진단].md)
 
-## 진행
+## 진행 — 루프490
 
 | 항목 | 상태 |
 |------|------|
@@ -12,9 +12,22 @@
 | 단위 테스트 | ☑ |
 | ChatPane streaming 회귀 | ☑ |
 
+## 진행 — 루프491 (audit 갭 A/B/C)
+
+| 항목 | 상태 |
+|------|------|
+| A. daemon stall SSE → `AGENT_EXECUTION_STALLED` | ☑ |
+| A. FE salvage: STALLED **또는** FAILED+stall phrase | ☑ |
+| A'. `startChatRun`에 `selectedDeckTemplateId`/`Title` 구조분해 누락 수정 (스톨 전 ReferenceError) | ☑ |
+| B. `surfaceChatVisibleError` → `encodePersistedRunErrorDetail` | ☑ |
+| C. terminal deliverableError 분기에 ops tail encode | ☑ |
+| stalledRunDeckSalvage + project-error-messages Vitest | ☑ |
+| daemon chat-route stalled 2건 | ☑ |
+
 ## 검증
 
-- `teamver-project-error-messages` + `ChatPane.streaming` 36/36 ☑
+- web: `stalledRunDeckSalvage` + `teamver-project-error-messages` 14/14 ☑
+- daemon: `chat-route` `-t stalled` 2/2 ☑
 
 ## 남은 일
 
@@ -24,3 +37,4 @@
 ## 변경 이력
 
 | 2026-09-10 16:05 | 루프490 구현·검증 |
+| 2026-09-10 16:15 | 루프491 A/B/C + templateId TDZ 수정 |

@@ -497,6 +497,8 @@ import {
   formatProjectArtifactCommentScopeRejectedError,
   formatProjectRunDeliverableMissingError,
   encodePersistedRunErrorDetail,
+  extractPersistedRunErrorDiagnostic,
+  userFacingRunErrorDetail,
   formatAutoContinueIncompleteOutputNotice,
   formatCloneLookSeedFallbackNotice,
   formatEmergencyDeckFallbackNotice,
@@ -5316,9 +5318,18 @@ export function ProjectView({
   const surfaceChatVisibleError = useCallback(
     (detail: string, code?: string) => {
       if (!detail?.trim()) return;
-      setError(detail);
+      setError(userFacingRunErrorDetail(detail));
       const conversationId = activeConversationId;
       if (!conversationId) return;
+      // 루프491 — Persist a hidden ops tail so copy-diagnostics is not stuck on
+      // reason=unavailable when only the user-facing sentence was attached.
+      const persistedDetail = extractPersistedRunErrorDiagnostic(detail)
+        ? detail
+        : encodePersistedRunErrorDetail(detail, {
+            kind: 'surface-chat-error',
+            reason: detail,
+            code: code ?? 'AGENT_EXECUTION_FAILED',
+          });
       setMessages((curr) => {
         let targetId: string | null = null;
         for (let i = curr.length - 1; i >= 0; i -= 1) {
@@ -5330,11 +5341,11 @@ export function ProjectView({
         if (!targetId) return curr;
         const live = liveAssistantMutatorRef.current;
         if (live?.assistantId === targetId) {
-          live.apply((prev) => attachPersistedChatError(prev, detail, code));
+          live.apply((prev) => attachPersistedChatError(prev, persistedDetail, code));
         }
         return curr.map((m) => {
           if (m.id !== targetId) return m;
-          const updated = attachPersistedChatError(m, detail, code);
+          const updated = attachPersistedChatError(m, persistedDetail, code);
           if (!isPhantomDaemonRunMessage(updated)) {
             void saveMessage(project.id, conversationId, updated);
           }
@@ -11139,28 +11150,77 @@ export function ProjectView({
 
             const endedAt = Date.now();
             if (terminalArtifactPersistFailed) {
+              // 루프491 — Always encode ops tails (status/code/message/reason) so
+              // copy-diagnostics is not stuck on reason=unavailable.
+              const encodeDeliverable = (
+                userMessage: string,
+                diagnostic: {
+                  kind?: string | null;
+                  reason?: string | null;
+                  code?: string | null;
+                },
+              ) => (
+                extractPersistedRunErrorDiagnostic(userMessage)
+                  ? userMessage
+                  : encodePersistedRunErrorDetail(userMessage, diagnostic)
+              );
               const deliverableError =
                 terminalPersistResult?.kind === 'save-failed'
-                  ? formatProjectArtifactSaveFailedError(terminalPersistResult.fileName, {
-                      status: terminalPersistResult.status,
-                      code: terminalPersistResult.code,
-                      message: terminalPersistResult.message,
-                    })
+                  ? encodeDeliverable(
+                      formatProjectArtifactSaveFailedError(terminalPersistResult.fileName, {
+                        status: terminalPersistResult.status,
+                        code: terminalPersistResult.code,
+                        message: terminalPersistResult.message,
+                      }),
+                      {
+                        kind: 'save-failed',
+                        reason: [
+                          terminalPersistResult.status,
+                          terminalPersistResult.code,
+                          terminalPersistResult.message,
+                        ].filter(Boolean).join(' '),
+                        code: terminalPersistResult.code || 'incomplete_output',
+                      },
+                    )
                   : terminalPersistResult?.kind === 'artifact-regression'
-                    ? formatProjectArtifactRegressionRejectedError(
-                        terminalPersistResult.fileName,
-                        terminalPersistResult.bannerKind,
+                    ? encodeDeliverable(
+                        formatProjectArtifactRegressionRejectedError(
+                          terminalPersistResult.fileName,
+                          terminalPersistResult.bannerKind,
+                        ),
+                        {
+                          kind: 'artifact-regression',
+                          reason: terminalPersistResult.bannerKind ?? 'artifact_regression',
+                          code: 'artifact_regression',
+                        },
                       )
                   : terminalPersistResult?.kind === 'scope-rejected'
-                    ? formatProjectArtifactCommentScopeRejectedError(
-                        [terminalPersistResult.code, terminalPersistResult.reason]
-                          .filter(Boolean)
-                          .join(' — '),
+                    ? encodeDeliverable(
+                        formatProjectArtifactCommentScopeRejectedError(
+                          [terminalPersistResult.code, terminalPersistResult.reason]
+                            .filter(Boolean)
+                            .join(' — '),
+                        ),
+                        {
+                          kind: 'scope-rejected',
+                          reason: [
+                            terminalPersistResult.code,
+                            terminalPersistResult.reason,
+                          ].filter(Boolean).join(' — '),
+                          code: terminalPersistResult.code || 'scope_rejected',
+                        },
                       )
                   : terminalPersistResult?.kind === 'rejected' && terminalPersistResult.reason
-                    ? formatProjectArtifactRejectedError(
-                        terminalPersistResult.fileName || '슬라이드',
-                        terminalPersistResult.reason,
+                    ? encodeDeliverable(
+                        formatProjectArtifactRejectedError(
+                          terminalPersistResult.fileName || '슬라이드',
+                          terminalPersistResult.reason,
+                        ),
+                        {
+                          kind: 'rejected',
+                          reason: terminalPersistResult.reason,
+                          code: 'incomplete_output',
+                        },
                       )
                   : encodePersistedRunErrorDetail(
                       formatProjectRunDeliverableMissingError({
@@ -12173,7 +12233,10 @@ export function ProjectView({
           // clearing them early would erase the persist target.
           const stalledPartialDeck = runMayFinalize
             ? stalledRunPartialDeckText({
-                errorCode: persisted.code,
+                errorCode:
+                  (err as Error & { code?: string }).code
+                  ?? persisted.code,
+                errorDetail: err.message,
                 slideOnlyMvp,
                 streamedText: latestAssistantMsg.content,
               })

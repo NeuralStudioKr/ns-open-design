@@ -2277,6 +2277,7 @@ setInterval(() => {}, 1000);
           const statusBody = await waitForRunStatus(baseUrl, runId);
 
           expect(eventsBody).toContain('event: error');
+          expect(eventsBody).toContain('AGENT_EXECUTION_STALLED');
           expect(eventsBody).toContain('Agent stalled without emitting any new output');
           expect(eventsBody).toContain('Phase details: spawned agent opencode;');
           expect(eventsBody).not.toContain('spawned agent binary');
@@ -2447,6 +2448,7 @@ setInterval(() => {}, 1000);
           eventsController.abort();
           const statusBody = await waitForRunStatus(baseUrl, runId);
 
+          expect(eventsBody).toContain('AGENT_EXECUTION_STALLED');
           expect(eventsBody).toContain('Agent stalled without emitting any new output');
           expect(statusBody.status).toBe('failed');
         },
