@@ -437,7 +437,7 @@ G5가 그 판정을 `embedProjectListWorkspaceTag`로 옮기면서 깨졌다 —
 
 | # | 내용 | 대응 |
 |---|---|---|
-| 1 | ~~클라이언트가 BFF 세션의 현재 WS를 관측할 수 없다~~ | **슬라이스 I로 해소 예정** — `active_workspace_id` + focus 드리프트 수리 (아래 §슬라이스 I) |
+| 1 | ~~클라이언트가 BFF 세션의 현재 WS를 관측할 수 없다~~ | **해소 — 슬라이스 I** (`active_workspace_id` + focus 드리프트 수리) |
 | 2 | ~~`resolveActiveTeamverWorkspaceId`가 읽기 함수인데 비보존 reconcile 로 저장값을 덮어쓴다~~ | **해소 — 슬라이스 G1·G2·G3.** 읽기 경로 쓰기 0회 · 버스트당 판정 1회 · 재조정이 durable 선호를 승격하지 않음 |
 | 3 | ~~`beginProjectListRequest()`가 부트 시점에 `workspaceId: null`을 캡처해 `isStaleProjectListWorkspace`가 항상 false~~ | **해소 — 슬라이스 G5.** 동기 스냅샷으로 부트 요청도 실제 WS 캡처 |
 | 4 | ~~자동 전환 알림(P2)이 **부트 중 dispatch**되므로 구독 설치 시점에 따라 유실 가능~~ | **해소 — 슬라이스 H1.** last-event latch(TTL 60s) + dismiss/명시 전환 시 clear |
@@ -459,10 +459,35 @@ G5가 그 판정을 `embedProjectListWorkspaceTag`로 옮기면서 깨졌다 —
 
 | 단계 | commit | 상태 |
 |---|---|---|
-| 슬라이스 I 구현설계·현황 append | (본 커밋) | ☐ |
-| BE — `active_workspace_id` on `/auth/session` | | ☐ |
-| FE — 정규화 + `bffWorkspaceDrift` + focus 배선 | | ☐ |
-| 테스트 · push staging | | ☐ |
+| 슬라이스 I 구현설계·현황 append | `7dad7f5bc0` | ☑ |
+| BE — `active_workspace_id` on `/auth/session` | `14754565f1` | ☑ |
+| FE — 정규화 + `bffWorkspaceDrift` + focus 배선 | `14754565f1` | ☑ |
+| 테스트 · push staging | `14754565f1` | ☑ |
+
+## 구현 (완료)
+
+| 파일 | 변경 |
+|---|---|
+| `deploy/teamver/be/app/routers/auth.py` | `_empty_session` · `_session_from_bootstrap_payload` · public-view 폴백에 `active_workspace_id` (쿠키 WS trim, empty→null) |
+| `deploy/teamver/be/tests/test_auth_session.py` | authenticated 필드 단정 · empty null · public-view 폴백 · SSO mock으로 선행 SessionMiddleware 실패 해소 |
+| `designBffClient.ts` | `DesignAuthSession.activeWorkspaceId` · `normalizeDesignAuthSession`이 snake/camel/`workspace_id` 폴백 정규화 |
+| 신규 `bffWorkspaceDrift.ts` | `planBffWorkspaceDriftRepair` (순수) · `applyBffWorkspaceDriftRepair` (P1 realign / seed) |
+| `useTeamverEmbed.ts` | focus/session refresh에서 sync **직전** drift 수리 |
+
+### 검증
+
+| 항목 | 결과 |
+|---|---|
+| BE `tests/test_auth_session.py` | **11 passed** |
+| FE `bff-workspace-drift` + `teamver-use-embed` | **29 passed** (7+22) |
+
+## 남은 위험 (갱신)
+
+| # | 내용 | 대응 |
+|---|---|---|
+| 1 | ~~클라이언트가 BFF 세션의 현재 WS를 관측할 수 없다~~ | **해소 — 슬라이스 I** |
+| 5 | `ns-open-design`은 ns_cicd 미등록 — **수동 배포** 필요 | 사용자 조치 (`deploy/teamver/deploy.sh --staging`) |
+| 6 | 라벨↔헤더 일시 드리프트 | focus refresh가 이제 BFF도 수렴시킴. 유한 |
 
 ---
 
@@ -495,6 +520,8 @@ G5가 그 판정을 `embedProjectListWorkspaceTag`로 옮기면서 깨졌다 —
 
 ## 변경 이력
 
+| 2026-09-10 11:10 | 루프484 슬라이스 I 완료 — session `active_workspace_id` · focus 드리프트 수리 · 위험 1 해소 |
+| 2026-09-10 11:01 | 루프484 슬라이스 I 착수 — 위험 1 대상, 설계 선행 |
 | 2026-09-10 | 루프483 H6 — F 결정표 순수화 · retention 테스트 (검토 gap) |
 | 2026-09-10 | 루프483 H3~H5 — painted 소급 · sync revision · 부트 drop (검토 후속) |
 | 2026-09-10 | 루프483 슬라이스 H — P2 latch · loadMore WS 가드 · 위험 4·9 해소 |
