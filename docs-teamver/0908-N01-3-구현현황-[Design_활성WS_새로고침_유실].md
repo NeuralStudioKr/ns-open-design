@@ -437,17 +437,32 @@ G5가 그 판정을 `embedProjectListWorkspaceTag`로 옮기면서 깨졌다 —
 
 | # | 내용 | 대응 |
 |---|---|---|
-| 1 | **클라이언트가 BFF 세션의 현재 WS를 관측할 수 없다.** `DesignAuthSession`에 해당 필드가 없어(`designBffClient.ts:57-67`) 드리프트를 **탐지**하지 못하고 매 부트 재정렬로 **예방**만 한다. 부트 이후 서버 쪽에서 WS가 바뀌면 다음 부트까지 어긋난 채로 있다 | 후속: `/auth/session`에 `active_workspace_id` 추가 (BE 변경 — design-api 소스가 이 모노레포에 없음) |
+| 1 | ~~클라이언트가 BFF 세션의 현재 WS를 관측할 수 없다~~ | **슬라이스 I로 해소 예정** — `active_workspace_id` + focus 드리프트 수리 (아래 §슬라이스 I) |
 | 2 | ~~`resolveActiveTeamverWorkspaceId`가 읽기 함수인데 비보존 reconcile 로 저장값을 덮어쓴다~~ | **해소 — 슬라이스 G1·G2·G3.** 읽기 경로 쓰기 0회 · 버스트당 판정 1회 · 재조정이 durable 선호를 승격하지 않음 |
 | 3 | ~~`beginProjectListRequest()`가 부트 시점에 `workspaceId: null`을 캡처해 `isStaleProjectListWorkspace`가 항상 false~~ | **해소 — 슬라이스 G5.** 동기 스냅샷으로 부트 요청도 실제 WS 캡처 |
 | 4 | ~~자동 전환 알림(P2)이 **부트 중 dispatch**되므로 구독 설치 시점에 따라 유실 가능~~ | **해소 — 슬라이스 H1.** last-event latch(TTL 60s) + dismiss/명시 전환 시 clear |
 | 5 | `ns-open-design`은 ns_cicd 미등록 — 이번 수정도 **수동 배포**가 필요하다 (`deploy/teamver/deploy.sh --staging`) | 사용자 조치 |
-| 6 | 읽기가 저장하지 않으므로 저장값이 무효인 채 남는 구간이 생긴다. 그 구간에 **라벨(저장값 기반)과 요청 헤더(계산값)가 어긋날 수 있다.** 지속 시간은 "다음 부트 / 포커스 refresh 까지"로 유한하다 | 의도된 트레이드오프. 관측을 원하면 남은 위험 1 |
+| 6 | 읽기가 저장하지 않으므로 저장값이 무효인 채 남는 구간이 생긴다. 그 구간에 **라벨(저장값 기반)과 요청 헤더(계산값)가 어긋날 수 있다.** 지속 시간은 "다음 부트 / 포커스 refresh 까지"로 유한하다 | 의도된 트레이드오프. 슬라이스 I가 focus에서 수렴을 당긴다 |
 | 7 | G4 durable 복구는 **부트 한정**이므로, 사용자가 A 에서 오래 작업한 뒤 원래 pick B 가 재활성되면 다음 부트에서 B 로 끌려갈 수 있다 | 완화 있음 — A 를 명시적으로 고르면 durable 도 A. 신고 시 "복구 1회만" |
 | 8 | single-flight 가 모듈 스코프이므로 세션 probe 가 걸리면 버스트 전체가 함께 대기한다 | 실질 차이 작음 |
 | 9 | ~~`loadMoreProjects`가 WS stale/painted 검사를 건너뜀~~ | **해소 — H2** |
 | 10 | ~~painted=null 이면 wipe/교체 영구 스킵 (딥링크 prefetch)~~ | **해소 — H3** (`hasPaintedRows` + prefetch/hydrate mark) |
 | 11 | ~~sync `store.set`이 revision을 bump하지 않아 flight가 옛 WS를 반환~~ | **해소 — H4** |
+
+---
+
+# 슬라이스 I — BFF WS 관측 + focus 드리프트 수리 (루프484)
+
+설계: 구현설계 §슬라이스 I. 대상은 **남은 위험 1**.
+
+## 진행
+
+| 단계 | commit | 상태 |
+|---|---|---|
+| 슬라이스 I 구현설계·현황 append | (본 커밋) | ☐ |
+| BE — `active_workspace_id` on `/auth/session` | | ☐ |
+| FE — 정규화 + `bffWorkspaceDrift` + focus 배선 | | ☐ |
+| 테스트 · push staging | | ☐ |
 
 ---
 

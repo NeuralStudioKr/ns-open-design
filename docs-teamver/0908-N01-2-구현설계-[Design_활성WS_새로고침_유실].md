@@ -514,8 +514,68 @@ merge 전에 현재 목록을 비운 뒤(또는 drop 후) 새 페이지만 넣�
 ### H5. 부트 첫 recent 실패 drop
 boot catalog 실패 분기에 `dropProjectsPaintedByOtherWorkspace` 대칭.
 
+---
+
+# 슬라이스 I — BFF 세션 WS 관측 + focus 드리프트 수리 (남은 위험 1)
+
+슬라이스 E는 부트에서 BFF를 **예방적으로** 재정렬한다. 그래도 부트 이후 서버 쪽 WS가
+바뀌면 클라이언트가 드리프트를 **탐지**할 수단이 없다 — `GET /auth/session` JSON에
+BFF 쿠키의 `workspace_id`가 실리지 않기 때문이다 (`bff_session_public_view`·session-probe
+헤더에는 이미 있다). Main BE 변경 없음. design-api 소스는 `deploy/teamver/be/`.
+
+## I1. BE — session 응답에 `active_workspace_id`
+
+| 경로 | 값 |
+|---|---|
+| `_empty_session` | `null` |
+| `_session_from_bootstrap_payload` | `session.workspace_id` trim, empty→`null` (세션 없으면 `null`) |
+| `bff_session_public_view` 폴백 반환 | 동일 값으로 `active_workspace_id` 보강 (기존 `workspace_id`와 별도 키) |
+
+JSON 키는 **snake** `active_workspace_id`. FE는 camel `activeWorkspaceId`.
+
+## I2. FE — 정규화
+
+`DesignAuthSession.activeWorkspaceId?: string | null`.
+`normalizeDesignAuthSession`이 `activeWorkspaceId` / `active_workspace_id` /
+`workspaceId` / `workspace_id` 폴백을 명시적으로 뽑아 정규화한다 (현재 raw cast만 함).
+
+## I3. 드리프트 탐지·수리 (focus / session refresh)
+
+신규 순수 모듈 `teamver/bffWorkspaceDrift.ts`:
+
+```ts
+planBffWorkspaceDriftRepair({ bffActiveWorkspaceId, localWorkspaceId })
+// → { action: "noop" | "realignBff" | "seedLocal", … }
+```
+
+| BFF | 로컬 | 동작 |
+|---|---|---|
+| A | B | **P1**: `setActiveTeamverWorkspace(B)` — 로컬이 이기고 BFF 재정렬. 로컬을 BFF에 맞추지 않음 |
+| A | null | seed A (`store.set` — BFF POST 불필요) |
+| A | A | no-op |
+| null | B | no-op (로컬 유지; 다음 부트/명시 sync가 담당) |
+
+적용은 `applyBffWorkspaceDriftRepair` — focus/session refresh 경로에서
+`syncTeamverWorkspaceFromSession` **직전**에 1회. durable 승격은 G3
+(`mayPromote…`) 유지. 읽기 경로(`resolveActiveTeamverWorkspaceId`)는 쓰기 0회 —
+드리프트 수리는 boot / focus refresh / explicit sync 만.
+
+## 테스트
+
+| 파일 | 고정 |
+|---|---|
+| `deploy/teamver/be/tests/test_auth_session.py` | authenticated session에 `active_workspace_id` 존재 · empty는 null · public-view 폴백에도 키 존재 |
+| 신규 `tests/teamver/bff-workspace-drift.test.ts` | BFF A / local B → setActive(B) · BFF A / local null → seed A · 일치 no-op |
+
+## 비범위
+
+- Main BE / Main FE
+- 읽기 경로에서의 드리프트 수리
+- 라벨↔헤더 드리프트(위험 6) 자체 — 관측만 열어 focus 수리가 수렴을 당긴다
+
 ## 변경 이력
 
+| 2026-09-10 11:01 | 루프484 슬라이스 I 설계 — session `active_workspace_id` · focus 드리프트 수리 (위험 1) |
 | 2026-09-10 | 루프483 슬라이스 H 설계 — P2 latch · loadMore WS 가드 |
 | 2026-09-10 | 루프483 슬라이스 H2 검토 후속 — painted=null 소급 · sync revision bump · 부트 실패 drop |
 | 2026-09-09 11:55 | 루프482 슬라이스 G 설계 — 읽기 순수화·single-flight·durable 선호 보존·부트 WS 캡처 |
