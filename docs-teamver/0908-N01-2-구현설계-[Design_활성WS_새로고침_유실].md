@@ -581,3 +581,58 @@ planBffWorkspaceDriftRepair({ bffActiveWorkspaceId, localWorkspaceId })
 | 2026-09-09 11:55 | 루프482 슬라이스 G 설계 — 읽기 순수화·single-flight·durable 선호 보존·부트 WS 캡처 |
 | 2026-09-08 18:40 | 루프481 슬라이스 E·F 설계 — 부트 BFF 재정렬 누락 · 홈 레일 WS 태그 |
 | 2026-09-08 | 루프477 구현설계 (슬라이스 A: P1·P3 / 슬라이스 B: P2 알림) |
+
+---
+
+# 슬라이스 J — G4 durable 복구 TTL (남은 위험 7)
+
+G4는 재조정(플레이크)이 활성만 옮긴 직후 **부트에서 durable로 되돌리는** 장치다.
+문제는 재조정으로 A에 오래 머문 뒤에도 durable 이 B면 **다음 F5에서 B로 끌려가는** 것(위험 7).
+focus preserve는 이미 `setLastForUser(stored)`로 durable을 맞추므로, 갭은 **focus 없이 F5**뿐이다.
+
+## 정책
+
+| 규칙 | 내용 |
+|---|---|
+| G4 유지 | 부트에서만 durable 선호. 세션 중 durable→active 끌어오기·G4 전면 삭제 금지 |
+| TTL 창 | **비요청 reconcile**이 활성을 옮길 때 시각을 스탬프. durable≠active 복구는 **스탬프 후 5분 이내**만 |
+| 창 밖 | active가 세션에 있고 appEnabled면 **active 유지** + durable를 active로 heal (`setLastForUser`) — focus preserve와 동일 |
+| 스탬프 없음 | 구 플레이크/장기 불일치로 보고 **복구하지 않음**(heal). 신규 reconcile만 스탬프 |
+| active 없음 | 기존처럼 durable 사용 (sign-out 후 재진입) |
+| 명시 전환 | `setActiveTeamverWorkspace` 성공 시 스탬프 clear |
+
+## 구현
+
+신규 `teamver/durableRestoreWindow.ts` (localStorage, userId 스코프):
+
+- `markUnrequestedWorkspaceMove({ userId, from, to, at? })`
+- `shouldRestoreDurableOverActive({ userId, durableId, activeId, now? })` → boolean
+- `clearUnrequestedWorkspaceMove(userId?)`
+- TTL = `5 * 60_000`
+
+배선:
+
+- `syncTeamverWorkspaceFromSession` — 비요청 이동(`!override && storedRaw !== resolved`) 시 mark
+- `readStoredWorkspaceIdOnSession` — durable≠active·enabled일 때 shouldRestore… 가 true일 때만 durable 반환. false면 active 반환 + heal
+- `setActiveTeamverWorkspace` — 성공 시 clear
+
+## 테스트
+
+`embed-workspace-durable-restore.test.ts` 확장:
+
+- 스탬프 직후(TTL 안) → durable 복구
+- TTL 밖 → active 유지 + `setLastForUser(active)`
+- 스탬프 없음 → active 유지(heal)
+- active null + durable → 기존대로 durable
+- disabled durable → 기존대로 복구 안 함
+
+## 비범위
+
+- 위험 6 라벨↔헤더 (I로 창 축소, 의도된 트레이드오프)
+- 위험 8 single-flight
+- Main FE
+
+## 변경 이력
+
+| 2026-09-10 | 루프485 슬라이스 J 설계 — G4 durable 복구 5분 TTL (위험 7) |
+
