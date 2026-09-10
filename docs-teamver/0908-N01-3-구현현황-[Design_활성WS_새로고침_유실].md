@@ -550,8 +550,8 @@ G5가 그 판정을 `embedProjectListWorkspaceTag`로 옮기면서 깨졌다 —
 | 단계 | commit | 상태 |
 |---|---|---|
 | 슬라이스 J 구현설계·현황 append | `d990bb273c` | ☑ |
-| `durableRestoreWindow` + sync/setActive 배선 · 테스트 | (본 커밋) | ☑ |
-| push staging | (본 커밋 후) | ☐ |
+| `durableRestoreWindow` + sync/setActive 배선 · 테스트 | `fd4267112d` | ☑ |
+| push staging | `fd4267112d` | ☑ |
 
 ## 구현 (완료)
 
