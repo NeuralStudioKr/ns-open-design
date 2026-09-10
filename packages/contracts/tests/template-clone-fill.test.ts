@@ -2413,6 +2413,59 @@ ${capsuleLook}
     expect((deduped.match(/Let\'s Build Something Bold/g) ?? []).length).toBe(1);
   });
 
+  it('루프492 peels Long Table cover/featured vertical columns and dedupes s-closing', () => {
+    const look = [
+      '<style data-od-official-look-css="">',
+      ':root{--paper:#FAF1E2;--ink:#B53D2A}',
+      '.s-cover .title{} .s-featured .ttl{} .s-closing .h{} .s-menu{}',
+      '</style>',
+    ].join('');
+    const html = [
+      '<section class="slide s-cover">',
+      '<div class="grid"><div class="left">',
+      '<div class="ed-row"><div class="ed-label">edition</div></div>',
+      '<h1 class="title" style="writing-mode:vertical-rl">팀버</h1>',
+      '<p class="tagline">소개</p>',
+      '</div></div>',
+      '<div style="writing-mode:vertical-rl;position:absolute;left:40%">발명된 세로</div>',
+      '</section>',
+      '<section class="slide s-featured">',
+      '<div class="frame"><div class="left">',
+      '<h2 class="ttl" style="writing-mode:vertical-rl">핵심 한 줄</h2>',
+      '<p class="lede">본문</p>',
+      '</div></div>',
+      '<div style="writing-mode:vertical-rl">featured 세로</div>',
+      '</section>',
+      '<section class="slide s-menu"><div class="course"><div class="nm">코스</div></div></section>',
+      '<section class="slide s-closing">',
+      '<div class="frame"><div class="left">',
+      '<h2 class="h">같이 이야기합시다.</h2>',
+      '<h2 class="h">같이 이야기합시다.</h2>',
+      '</div></div>',
+      '<div class="footer-line"><div class="colf"><div class="ftag">SITE</div></div></div>',
+      '</section>',
+      look,
+    ].join('');
+    expect(officialLookIsLongTable(html)).toBe(true);
+    expect(officialLookIsCobaltGrid(html)).toBe(false);
+    const stripped = stripBiennaleInventedVerticalWriting(html);
+    expect(stripped).not.toMatch(/writing-mode\s*:\s*vertical/i);
+    expect(stripped).toContain('팀버');
+    const peeled = restyleBiennaleSparseCoverBodies(html);
+    expect(peeled).toContain('class="title"');
+    expect(peeled).toContain('팀버');
+    expect(peeled).toContain('핵심 한 줄');
+    expect(peeled).not.toContain('발명된 세로');
+    expect(peeled).not.toContain('featured 세로');
+    const deduped = restyleBiennaleSparseColophonBodies(html);
+    expect((deduped.match(/같이 이야기합시다/g) ?? []).length).toBe(1);
+    expect(deduped).toContain('footer-line');
+    const css = injectBiennaleSparseFillCss(peeled);
+    expect(css).toMatch(/data-od-official-poster-layout/);
+    expect(css).toMatch(/\.s-cover \.title/);
+    expect(css).toMatch(/\.s-closing \.h\{font-size:clamp/);
+  });
+
   it('reparents MiniMax auto-auto-1fr cards and 64px step lists', () => {
     const card = [
       '<div style="grid-template-rows:auto auto 1fr;background:var(--paper-warm)">',

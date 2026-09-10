@@ -4526,6 +4526,12 @@ const BROADSIDE_POSTER_LAYOUT_CSS = [
   '.slide--end .display{font-size:clamp(56px,min(8vw,14vh),140px);max-width:90%;line-height:0.95}',
 ].join('');
 
+/** 루프492 — Long Table: no kit vertical writing; cover/featured/closing title bands stay horizontal. */
+const LONG_TABLE_POSTER_LAYOUT_CSS = [
+  '.s-cover .title,.s-cover .left,.s-featured .ttl,.s-featured .left,.s-closing .h,.s-closing .footer-line{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}',
+  '.s-closing .h{font-size:clamp(48px,min(6.4vw,10vh),120px);max-width:90%;line-height:0.95}',
+].join('');
+
 const VERTICAL_WRITING_MODE_DECL_RE =
   /(?:^|;)\s*(?:-webkit-|-ms-|-epub-)?writing-mode\s*:\s*vertical(?:-r[lr])?\s*(?:;|$)/gi;
 
@@ -4533,6 +4539,7 @@ type OfficialPosterKit =
   | 'biennale'
   | 'sakura'
   | 'cobalt'
+  | 'longtable'
   | 'capsule'
   | 'creative'
   | 'studio'
@@ -4615,11 +4622,17 @@ const BROADSIDE_COVER_KIT_SLOT_RE =
 const BROADSIDE_CLOSING_KIT_SLOT_RE =
   /\b(?:broadside-top-chrome|broadside-num|corner-label|display|lead|data-od-official-motif-html)\b/i;
 
+const LONG_TABLE_COVER_KIT_SLOT_RE =
+  /\b(?:grid|ed-row|ed-badge|ed-label|title|actions|stats|bottom-block|tagline|big-edition|big-edition-lab|big-edition-meta|frame|ttl|lede|info-row|pill|nav-hint|pagenum|data-od-official-motif-html)\b/i;
+
+const LONG_TABLE_CLOSING_KIT_SLOT_RE =
+  /\b(?:frame|ed-row|ed-label|h|desc-it|actions|footer-line|colf|ftag|ftxt|pill|nav-hint|pagenum|data-od-official-motif-html)\b/i;
+
 function resolveOfficialPosterKit(html: string): OfficialPosterKitPlan | null {
   const dest = String(html ?? '');
   if (!dest.trim()) return null;
-  // Order: Cobalt (vstack) → Creative → Broadside before Studio → EightBit →
-  // BlockFrame before Capsule → Sakura → Daisy → Biennale.
+  // Order: Cobalt (vstack) → Long Table → Creative → Broadside before Studio →
+  // EightBit → BlockFrame before Capsule → Sakura → Daisy → Biennale.
   if (officialLookIsCobaltGrid(dest)) {
     return {
       kind: 'cobalt',
@@ -4630,6 +4643,19 @@ function resolveOfficialPosterKit(html: string): OfficialPosterKitPlan | null {
       coverPrimarySlotRe: /\b(?:titlewrap|vstack)\b/i,
       preserveVerticalSlotRe: COBALT_PRESERVE_VERTICAL_SLOT_RE,
       layoutCss: COBALT_POSTER_LAYOUT_CSS,
+      layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
+    };
+  }
+  if (officialLookIsLongTable(dest)) {
+    return {
+      kind: 'longtable',
+      coverHostRe: /\bs-(?:cover|featured)\b/i,
+      closingHostRe: /\bs-closing\b/i,
+      coverSlotRe: LONG_TABLE_COVER_KIT_SLOT_RE,
+      colophonSlotRe: LONG_TABLE_CLOSING_KIT_SLOT_RE,
+      coverPrimarySlotRe: /\b(?:title|ttl|left)\b/i,
+      preserveVerticalSlotRe: null,
+      layoutCss: LONG_TABLE_POSTER_LAYOUT_CSS,
       layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
     };
   }
@@ -4873,7 +4899,7 @@ export function restyleBiennaleSparseColophonBodies(html: string): string {
       let candidate = block;
       if (isKitSlotOpen(open, block.slice(0, 120), kit.colophonSlotRe)) {
         // Inside title/closing copy hosts, collapse duplicated children first.
-        if (/\b(?:titlewrap|col-footer|colofo|closing-content|cover-footer|stamp|close-frame|cta-content|cover-body)\b/i.test(open)) {
+        if (/\b(?:titlewrap|col-footer|colofo|closing-content|cover-footer|stamp|close-frame|cta-content|cover-body|frame)\b/i.test(open)) {
           const deduped = dedupeAdjacentSameVisibleChildren(block);
           if (deduped !== block) changed = true;
           candidate = deduped;
@@ -4903,6 +4929,14 @@ function dedupeAdjacentSameVisibleChildren(hostHtml: string): string {
   if (!closeMatch) return hostHtml;
   const inner = hostHtml.slice(open.length, hostHtml.length - closeMatch[0].length);
   const kids = listTopLevelBlocks(inner).filter((part) => part.trim());
+  // 루프492 — Long Table closing is `.frame > .left > twin .h`. Descend a
+  // single wrapper so nested twins still collapse.
+  if (kids.length === 1) {
+    const only = kids[0]!;
+    const nested = dedupeAdjacentSameVisibleChildren(only);
+    if (nested === only) return hostHtml;
+    return `${open}${nested}${closeMatch[0]}`;
+  }
   if (kids.length < 2) return hostHtml;
   const kept: string[] = [];
   let changed = false;
