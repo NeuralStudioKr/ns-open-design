@@ -2321,7 +2321,10 @@ function rewriteUrlTitlesInFragment(
  * IB magazine chrome must not be stamped onto these kits.
  */
 function officialLookIsNeoBrutalBlockFrame(html: string): boolean {
-  const css = lookCssWithoutNeutralize(html);
+  const source = String(html ?? '');
+  // Capsule shares slide-1/slide-10 hosts — coral/Bodoni wins there.
+  if (officialLookIsCapsule(source)) return false;
+  const css = lookCssWithoutNeutralize(source);
   if (css.trim()) {
     if (/\.slide-1\s+\.hero-frame\b/i.test(css)) return true;
     if (/--pink\s*:\s*#FE90E8/i.test(css) && /\.nb-heading-(?:xl|lg)\b/i.test(css)) {
@@ -2329,11 +2332,27 @@ function officialLookIsNeoBrutalBlockFrame(html: string): boolean {
     }
     if (/--pink\s*:\s*#FE90E8/i.test(css) && /\.feature-card\b/i.test(css)) return true;
   }
-  const deco = [...String(html ?? '').matchAll(
+  const deco = [...source.matchAll(
     /<style\b[^>]*\bdata-od-official-motif-deco-css\b[^>]*>([\s\S]*?)<\/style>/gi,
   )].map((match) => match[1] ?? '').join('\n');
   return /--pink\b|#FE90E8/i.test(deco)
     && /\.deco-pink-rect|\.card-deco|\.deco-yellow-bar/i.test(deco);
+}
+
+/**
+ * 루프488 — Broadside fingerprint (orange protest poster). Shares
+ * `slide--cover` / `--c-accent` with Studio — resolve Broadside first and
+ * deny from Studio so cover-body is not peeled as foreign chrome.
+ */
+export function officialLookIsBroadside(html: string): boolean {
+  const source = String(html ?? '');
+  if (!source.trim()) return false;
+  if (officialLookIsCreativeMode(source)) return false;
+  const chrome = /\bbroadside-(?:num|top-chrome)\b/i.test(source)
+    || /--c-bg-orange\s*:/i.test(source)
+    || /ZONE A\s*[·.]\s*TOKENS/i.test(source);
+  const shell = /\bslide--cover\b/i.test(source) && /\b(?:cover-body|broadside-num)\b/i.test(source);
+  return chrome && shell;
 }
 
 /**
@@ -4482,6 +4501,22 @@ const DAISY_POSTER_LAYOUT_CSS = [
   '.slide-title .title-box,.slide-title h1,.slide-title .subtitle{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}',
 ].join('');
 
+/** 루프488 — EightBit / Block-frame / Broadside: no kit vertical writing. */
+const EIGHTBIT_POSTER_LAYOUT_CSS = [
+  '.slide[data-slide="1"] .pixel-hero-text,.slide[data-slide="1"] .hero-subtitle,.slide[data-slide="10"] .cta-content h2{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}',
+  '.slide[data-slide="10"] .cta-content h2{font-size:clamp(40px,min(6vw,10vh),96px);max-width:90%;line-height:1.05}',
+].join('');
+
+const BLOCKFRAME_POSTER_LAYOUT_CSS = [
+  '.slide-1 .hero-title,.slide-1 .hero-subtitle,.slide-10 .close-title,.slide-10 .close-subtitle{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}',
+  '.slide-10 .close-title{font-size:clamp(48px,min(7vw,12vh),120px);max-width:90%;line-height:1.05}',
+].join('');
+
+const BROADSIDE_POSTER_LAYOUT_CSS = [
+  '.slide--cover .cover-body,.slide--cover .display,.slide--cover .lead,.slide--end .display{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}',
+  '.slide--end .display{font-size:clamp(56px,min(8vw,14vh),140px);max-width:90%;line-height:0.95}',
+].join('');
+
 const VERTICAL_WRITING_MODE_DECL_RE =
   /(?:^|;)\s*(?:-webkit-|-ms-|-epub-)?writing-mode\s*:\s*vertical(?:-r[lr])?\s*(?:;|$)/gi;
 
@@ -4492,7 +4527,10 @@ type OfficialPosterKit =
   | 'capsule'
   | 'creative'
   | 'studio'
-  | 'daisy';
+  | 'daisy'
+  | 'eightbit'
+  | 'blockframe'
+  | 'broadside';
 
 type OfficialPosterKitPlan = {
   kind: OfficialPosterKit;
@@ -4550,11 +4588,29 @@ const STUDIO_CLOSING_KIT_SLOT_RE =
 const DAISY_COVER_KIT_SLOT_RE =
   /\b(?:title-box|subtitle|deco(?:-[\w-]+)?|badge|nav-dots|slide-counter|slides-container|data-od-official-motif-html)\b/i;
 
+const EIGHTBIT_COVER_KIT_SLOT_RE =
+  /\b(?:pixel-hero-text|hero-subtitle|hero-tagline|hero-badge|hero-badges|starfield|pixel-particles|slide-content|scanlines|grain|crt-glow|data-od-official-motif-html)\b/i;
+
+const EIGHTBIT_CLOSING_KIT_SLOT_RE =
+  /\b(?:cta-content|cta-buttons|pixel-btn|starfield|pixel-particles|pixel-landscape|slide-content|scanlines|grain|crt-glow|data-od-official-motif-html)\b/i;
+
+const BLOCKFRAME_COVER_KIT_SLOT_RE =
+  /\b(?:hero-frame|hero-label|hero-title|hero-subtitle|deco-pink-rect|deco-green-circle|deco-yellow-bar|deco-dots|corner-bracket|nb-heading|nb-label|data-od-official-motif-html)\b/i;
+
+const BLOCKFRAME_CLOSING_KIT_SLOT_RE =
+  /\b(?:close-frame|close-title|close-subtitle|close-btn|deco-star|deco-dots-bottom|data-od-official-motif-html)\b/i;
+
+const BROADSIDE_COVER_KIT_SLOT_RE =
+  /\b(?:cover-body|cover-meta|broadside-num|broadside-top-chrome|corner-label|display|lead|data-od-official-motif-html)\b/i;
+
+const BROADSIDE_CLOSING_KIT_SLOT_RE =
+  /\b(?:broadside-top-chrome|broadside-num|corner-label|display|lead|data-od-official-motif-html)\b/i;
+
 function resolveOfficialPosterKit(html: string): OfficialPosterKitPlan | null {
   const dest = String(html ?? '');
   if (!dest.trim()) return null;
-  // Order: Cobalt (vstack preserve) → Creative before Studio → Capsule →
-  // Sakura → Daisy → Biennale. Stronger/more specific fingerprints first.
+  // Order: Cobalt (vstack) → Creative → Broadside before Studio → EightBit →
+  // BlockFrame before Capsule → Sakura → Daisy → Biennale.
   if (officialLookIsCobaltGrid(dest)) {
     return {
       kind: 'cobalt',
@@ -4581,6 +4637,19 @@ function resolveOfficialPosterKit(html: string): OfficialPosterKitPlan | null {
       layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
     };
   }
+  if (officialLookIsBroadside(dest)) {
+    return {
+      kind: 'broadside',
+      coverHostRe: /\bslide--cover\b/i,
+      closingHostRe: /\bslide--end\b/i,
+      coverSlotRe: BROADSIDE_COVER_KIT_SLOT_RE,
+      colophonSlotRe: BROADSIDE_CLOSING_KIT_SLOT_RE,
+      coverPrimarySlotRe: /\b(?:cover-body|display)\b/i,
+      preserveVerticalSlotRe: null,
+      layoutCss: BROADSIDE_POSTER_LAYOUT_CSS,
+      layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
+    };
+  }
   if (officialLookIsStudio(dest)) {
     return {
       kind: 'studio',
@@ -4591,6 +4660,32 @@ function resolveOfficialPosterKit(html: string): OfficialPosterKitPlan | null {
       coverPrimarySlotRe: /\b(?:cover-type|cover-meta)\b/i,
       preserveVerticalSlotRe: null,
       layoutCss: STUDIO_POSTER_LAYOUT_CSS,
+      layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
+    };
+  }
+  if (officialLookIsEightBitOrbit(dest)) {
+    return {
+      kind: 'eightbit',
+      coverHostRe: /\bdata-slide\s*=\s*["']1["']/i,
+      closingHostRe: /\bdata-slide\s*=\s*["']10["']/i,
+      coverSlotRe: EIGHTBIT_COVER_KIT_SLOT_RE,
+      colophonSlotRe: EIGHTBIT_CLOSING_KIT_SLOT_RE,
+      coverPrimarySlotRe: /\b(?:pixel-hero-text|hero-subtitle)\b/i,
+      preserveVerticalSlotRe: null,
+      layoutCss: EIGHTBIT_POSTER_LAYOUT_CSS,
+      layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
+    };
+  }
+  if (officialLookIsNeoBrutalBlockFrame(dest)) {
+    return {
+      kind: 'blockframe',
+      coverHostRe: /\bslide-1\b/i,
+      closingHostRe: /\bslide-10\b/i,
+      coverSlotRe: BLOCKFRAME_COVER_KIT_SLOT_RE,
+      colophonSlotRe: BLOCKFRAME_CLOSING_KIT_SLOT_RE,
+      coverPrimarySlotRe: /\b(?:hero-frame|hero-title)\b/i,
+      preserveVerticalSlotRe: null,
+      layoutCss: BLOCKFRAME_POSTER_LAYOUT_CSS,
       layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
     };
   }
@@ -4766,18 +4861,17 @@ export function restyleBiennaleSparseColophonBodies(html: string): string {
     let changed = false;
     for (const block of content) {
       const open = /^<[a-zA-Z][\w-]*\b[^>]*>/.exec(block)?.[0] ?? '';
+      let candidate = block;
       if (isKitSlotOpen(open, block.slice(0, 120), kit.colophonSlotRe)) {
-        // Inside title/closing copy hosts, still collapse duplicated children.
-        if (/\b(?:titlewrap|col-footer|colofo|closing-content|cover-footer|stamp)\b/i.test(open)) {
+        // Inside title/closing copy hosts, collapse duplicated children first.
+        if (/\b(?:titlewrap|col-footer|colofo|closing-content|cover-footer|stamp|close-frame|cta-content|cover-body)\b/i.test(open)) {
           const deduped = dedupeAdjacentSameVisibleChildren(block);
           if (deduped !== block) changed = true;
-          kept.push(deduped);
-        } else {
-          kept.push(block);
+          candidate = deduped;
         }
-        continue;
       }
-      const key = normalizeVisibleCopyKey(block);
+      // Adjacent twin hosts (e.g. Broadside twin `.display` h1s) still collapse.
+      const key = normalizeVisibleCopyKey(candidate);
       if (key.length >= 8) {
         const prev = kept[kept.length - 1];
         if (prev && normalizeVisibleCopyKey(prev) === key) {
@@ -4785,7 +4879,7 @@ export function restyleBiennaleSparseColophonBodies(html: string): string {
           continue;
         }
       }
-      kept.push(block);
+      kept.push(candidate);
     }
     if (!changed) continue;
     out = `${out.slice(0, span.bodyStart)}${overlays.join('')}${kept.join('')}${out.slice(span.bodyEnd)}`;
@@ -7013,6 +7107,8 @@ export function healLongTableLeftoverCatalogCopy(
 export function officialLookIsStudio(html: string): boolean {
   const source = String(html ?? '');
   if (!source.trim() || officialLookIsCreativeMode(source)) return false;
+  // Broadside shares --c-accent + slide--cover + cover-meta / slide-chrome.
+  if (officialLookIsBroadside(source)) return false;
   const hasAccent = /--c-accent\s*:/i.test(source) || /var\(\s*--c-accent/i.test(source);
   const hasShell = /\bslide--(?:cover|stats|compare|chapter|split|quote)\b/i.test(source);
   const hasMotif = /\b(?:stat-card|slide-chrome|compare-panel|cover-meta)\b/i.test(source);

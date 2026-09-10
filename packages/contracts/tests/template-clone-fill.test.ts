@@ -66,6 +66,7 @@ import {
   absorbTrailingContentIntoSlideFlow,
   officialLookIsCapsule,
   officialLookIsDaisyDays,
+  officialLookIsBroadside,
   stripNestedBoldNumberTypoPrefix,
   normalizeRotatedInlinePills,
   flattenNestedBorderPadCards,
@@ -2322,6 +2323,94 @@ ${capsuleLook}
     expect(peeled).not.toContain('바깥 세로글');
     // No closing host — colophon heal is a no-op.
     expect(restyleBiennaleSparseColophonBodies(html)).toBe(html);
+  });
+
+  it('루프488 keeps Broadside cover-body (not Studio peel) and strips invented vertical', () => {
+    const look = [
+      '<style data-od-official-look-css="">',
+      ':root{--c-accent:#e85d26;--c-bg-orange:#e85d26}',
+      '.slide--cover{} .cover-body{} .broadside-num{}',
+      '</style>',
+    ].join('');
+    const html = [
+      '<section class="slide slide--cover orange">',
+      '<div class="broadside-top-chrome"><span class="broadside-num">01</span></div>',
+      '<div class="cover-body"><h1 class="display">팀버 소개</h1><p class="lead">한눈에</p></div>',
+      '<div class="cover-meta"><span class="broadside-num">Teamver</span></div>',
+      '<div style="writing-mode:vertical-rl">발명된 세로</div>',
+      '</section>',
+      '<section class="slide slide--end orange">',
+      '<h1 class="display">같이 이야기합시다.</h1>',
+      '<h1 class="display">같이 이야기합시다.</h1>',
+      '</section>',
+      look,
+    ].join('');
+    expect(officialLookIsBroadside(html)).toBe(true);
+    expect(officialLookIsStudio(html)).toBe(false);
+    const peeled = restyleBiennaleSparseCoverBodies(html);
+    expect(peeled).toContain('cover-body');
+    expect(peeled).toContain('팀버 소개');
+    expect(peeled).not.toContain('발명된 세로');
+    const deduped = restyleBiennaleSparseColophonBodies(html);
+    expect((deduped.match(/같이 이야기합시다/g) ?? []).length).toBe(1);
+  });
+
+  it('루프488 peels EightBit Orbit data-slide cover vertical columns', () => {
+    const look = [
+      '<style data-od-official-look-css="">',
+      ':root{--neon-pink:#FF2E97;--dark-void:#0A0E27}',
+      '.pixel-hero-text{} .pixel-box{}',
+      '</style>',
+    ].join('');
+    const html = [
+      '<section class="slide bg-grid scanlines grain" data-slide="1">',
+      '<div class="starfield"></div>',
+      '<div class="slide-content">',
+      '<h1 class="pixel-hero-text">8-BIT<br>ORBIT</h1>',
+      '</div>',
+      '<div style="writing-mode:vertical-rl">발명된 세로</div>',
+      '</section>',
+      '<section class="slide bg-grid" data-slide="10">',
+      '<div class="cta-content"><h2>Ready Player One?</h2><h2>Ready Player One?</h2></div>',
+      '</section>',
+      look,
+    ].join('');
+    const peeled = restyleBiennaleSparseCoverBodies(html);
+    expect(peeled).toContain('pixel-hero-text');
+    expect(peeled).not.toContain('발명된 세로');
+    const deduped = restyleBiennaleSparseColophonBodies(html);
+    expect((deduped.match(/Ready Player One/g) ?? []).length).toBe(1);
+  });
+
+  it('루프488 peels Block Frame hero vertical columns and dedupes close-frame', () => {
+    const look = [
+      '<style data-od-official-look-css="">',
+      ':root{--pink:#FE90E8}',
+      '.slide-1 .hero-frame{} .nb-heading-xl{} .deco-pink-rect{}',
+      '</style>',
+    ].join('');
+    const html = [
+      '<section class="slide slide-1">',
+      '<div class="hero-frame">',
+      '<h1 class="nb-heading-xl hero-title">NEO</h1>',
+      '<p class="hero-subtitle">소개</p>',
+      '<div class="deco-pink-rect"></div>',
+      '</div>',
+      '<div style="writing-mode:vertical-rl">발명된 세로</div>',
+      '</section>',
+      '<section class="slide slide-10">',
+      '<div class="close-frame">',
+      '<h2 class="close-title">Let\'s Build Something Bold</h2>',
+      '<h2 class="close-title">Let\'s Build Something Bold</h2>',
+      '</div>',
+      '</section>',
+      look,
+    ].join('');
+    const peeled = restyleBiennaleSparseCoverBodies(html);
+    expect(peeled).toContain('hero-frame');
+    expect(peeled).not.toContain('발명된 세로');
+    const deduped = restyleBiennaleSparseColophonBodies(html);
+    expect((deduped.match(/Let\'s Build Something Bold/g) ?? []).length).toBe(1);
   });
 
   it('reparents MiniMax auto-auto-1fr cards and 64px step lists', () => {
