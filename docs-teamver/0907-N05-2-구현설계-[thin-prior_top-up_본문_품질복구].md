@@ -100,12 +100,24 @@ Rewrite prompt: sentinel + “replace thin LOOK shells with a complete filled de
 | gates | sentinel → failed headings / short-draft 거부 / low-substance |
 | rewrite prompt | exact N장 · NEVER copy `[od:…]` · kit class 유지(s-cover 등) |
 
+### G. 루프505 — preview/스케줄 잔여 갭
+
+| 항목 | 내용 |
+|------|------|
+| FileViewer preview | heal → sanitize (빈 표지 drop 방지) |
+| rewrite 소진 + thin | APPEND 금지 (`shouldBlockSlideCountAppendOntoThinPrior`) |
+| count vs sparse | `wantsCountTopUp`이면 sparse 스킵 |
+| rewrite prompt | `requestedMin`~max · userBrief · `.titlewrap` |
+| soft prompt | sparse만 (entryFrom과 정렬) |
+| detector | mid-body `[od:…]` NEVER-copy 오탐 제거 |
+
 ## 검증
 
 - unit: improve-thin / not-improve / recoverable reason / rewrite sentinel
 - 루프502: hostCount=1 thin + default → rewrite true · requested=1 → rewrite false
 - 루프503: produced=1 requested=8 → top-up true · top-up은 soft-improvement 아님
 - 루프504: Biennale cover sentinel heal · strip · AfterHeal · low-substance · prompt exact N
+- 루프505: preview heal-first · thin APPEND block · count>sparse · soft prompt · detector
 - ProjectView 로직은 가능하면 순수 함수로 추출해 테스트
 
 ## 변경 이력
@@ -114,3 +126,4 @@ Rewrite prompt: sentinel + “replace thin LOOK shells with a complete filled de
 | 2026-09-11 | 루프502 — 1장 thin prior rewrite floor 완화 |
 | 2026-09-11 | 루프503 — 명시 요청 1장 shortfall top-up · top-up 실패 가시화 |
 | 2026-09-11 | 루프504 — thin-rewrite 센티널 커버 누수 · rewrite prompt 장수/킷 강화 |
+| 2026-09-11 | 루프505 — preview heal · count>sparse · thin APPEND 차단 |
