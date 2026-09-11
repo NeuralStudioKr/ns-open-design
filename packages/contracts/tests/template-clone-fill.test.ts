@@ -2652,6 +2652,56 @@ ${capsuleLook}
     expect(css).toMatch(/\.slide-10 \.closing-big\{font-size:clamp/);
   });
 
+  it('루프497 peels Coral slide-1 vertical and dedupes slide-10 closing-title', () => {
+    const look = [
+      '<style data-od-official-look-css="">',
+      ':root{--coral:#E85D5D;--coral-dark:#D44A4A}',
+      ".slide-1 .main-title{font-family:'Bebas Neue',sans-serif}",
+      '.zigzag-layer{} .brand-mark{} .left-panel .closing-title{}',
+      '</style>',
+    ].join('');
+    const html = [
+      '<div class="slide slide-1">',
+      '<div class="top-section"><div class="zigzag-layer"></div>',
+      '<div class="brand-mark">VENTURE</div></div>',
+      '<div class="bottom-section">',
+      '<div class="main-title" style="writing-mode:vertical-rl">QUARTERLY</div>',
+      '<div class="title-rule"></div>',
+      '<div class="meta-row"><div class="meta-left"><div class="meta-label">Room</div></div></div>',
+      '</div>',
+      '<div style="writing-mode:vertical-rl;position:absolute;top:10%">발명된 세로</div>',
+      '</div>',
+      '<div class="slide slide-10">',
+      '<div class="left-panel">',
+      '<div class="closing-title">THANK YOU</div>',
+      '<div class="closing-title">THANK YOU</div>',
+      '<div class="closing-subtitle">Reach out.</div>',
+      '</div>',
+      '<div class="right-panel"><div class="contact-block"><div class="contact-value">HELLO@VENTURE.IO</div></div></div>',
+      '</div>',
+      look,
+    ].join('');
+    expect(officialLookIsCoral(html)).toBe(true);
+    expect(officialLookIsCapsule(html)).toBe(false);
+    expect(officialLookIsPlayful(html)).toBe(false);
+    const stripped = stripBiennaleInventedVerticalWriting(html);
+    expect(stripped).not.toMatch(/writing-mode\s*:\s*vertical/i);
+    expect(stripped).toContain('QUARTERLY');
+    const peeled = restyleBiennaleSparseCoverBodies(html);
+    expect(peeled).toContain('main-title');
+    expect(peeled).toContain('brand-mark');
+    expect(peeled).toContain('zigzag-layer');
+    expect(peeled).not.toContain('발명된 세로');
+    const deduped = restyleBiennaleSparseColophonBodies(html);
+    expect((deduped.match(/class="closing-title"/g) ?? []).length).toBe(1);
+    expect(deduped).toContain('left-panel');
+    expect(deduped).toContain('HELLO@VENTURE.IO');
+    const css = injectBiennaleSparseFillCss(peeled);
+    expect(css).toMatch(/data-od-official-poster-layout/);
+    expect(css).toMatch(/\.slide-1 \.main-title/);
+    expect(css).toMatch(/\.slide-10 \.closing-title\{font-size:clamp/);
+  });
+
   it('reparents MiniMax auto-auto-1fr cards and 64px step lists', () => {
     const card = [
       '<div style="grid-template-rows:auto auto 1fr;background:var(--paper-warm)">',

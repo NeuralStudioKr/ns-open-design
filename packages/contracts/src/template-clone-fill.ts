@@ -2414,9 +2414,10 @@ function rewriteUrlTitlesInFragment(
  */
 function officialLookIsNeoBrutalBlockFrame(html: string): boolean {
   const source = String(html ?? '');
-  // Capsule / Playful share slide-1/slide-10 hosts — their chrome wins there.
+  // Capsule / Playful / Coral share slide-1/slide-10 hosts — their chrome wins there.
   if (officialLookIsCapsule(source)) return false;
   if (officialLookIsPlayful(source)) return false;
+  if (officialLookIsCoral(source)) return false;
   const css = lookCssWithoutNeutralize(source);
   if (css.trim()) {
     if (/\.slide-1\s+\.hero-frame\b/i.test(css)) return true;
@@ -4643,6 +4644,12 @@ const PLAYFUL_POSTER_LAYOUT_CSS = [
   '.slide-10 .closing-big{font-size:clamp(48px,min(8vw,14vh),140px);max-width:95%;line-height:0.95}',
 ].join('');
 
+/** 루프497 — Coral: no kit vertical writing; main-title / closing-title stay horizontal. */
+const CORAL_POSTER_LAYOUT_CSS = [
+  '.slide-1 .main-title,.slide-1 .brand-mark,.slide-1 .meta-row,.slide-10 .closing-title,.slide-10 .closing-subtitle{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}',
+  '.slide-10 .closing-title{font-size:clamp(48px,min(8vw,14vh),120px);max-width:95%;line-height:0.95}',
+].join('');
+
 const VERTICAL_WRITING_MODE_DECL_RE =
   /(?:^|;)\s*(?:-webkit-|-ms-|-epub-)?writing-mode\s*:\s*vertical(?:-r[lr])?\s*(?:;|$)/gi;
 
@@ -4654,6 +4661,7 @@ type OfficialPosterKit =
   | 'editorial'
   | 'boldposter'
   | 'playful'
+  | 'coral'
   | 'capsule'
   | 'creative'
   | 'studio'
@@ -4760,12 +4768,18 @@ const PLAYFUL_COVER_KIT_SLOT_RE =
 const PLAYFUL_CLOSING_KIT_SLOT_RE =
   /\b(?:closing-big|closing-sub|contact-block|contact-line|doodle-circle|doodle-rect|doodle|scribble-line|nav-hint|pagenum|data-od-official-motif-html)\b/i;
 
+const CORAL_COVER_KIT_SLOT_RE =
+  /\b(?:top-section|zigzag-layer|brand-mark|bottom-section|main-title|title-rule|meta-row|meta-left|meta-right|meta-label|meta-value|meta-date|nav-hint|pagenum|data-od-official-motif-html)\b/i;
+
+const CORAL_CLOSING_KIT_SLOT_RE =
+  /\b(?:left-panel|right-panel|closing-title|closing-subtitle|zigzag-deco|contact-block|contact-label|contact-value|social-row|social-icon|nav-hint|pagenum|data-od-official-motif-html)\b/i;
+
 function resolveOfficialPosterKit(html: string): OfficialPosterKitPlan | null {
   const dest = String(html ?? '');
   if (!dest.trim()) return null;
   // Order: Cobalt (vstack) → Long Table → Editorial → Creative → Broadside before
-  // Studio → EightBit → Playful before BlockFrame → Bold Poster → Capsule → Sakura →
-  // Daisy → Biennale.
+  // Studio → EightBit → Coral before Playful before BlockFrame → Bold Poster →
+  // Capsule → Sakura → Daisy → Biennale.
   if (officialLookIsCobaltGrid(dest)) {
     return {
       kind: 'cobalt',
@@ -4854,6 +4868,19 @@ function resolveOfficialPosterKit(html: string): OfficialPosterKitPlan | null {
       coverPrimarySlotRe: /\b(?:pixel-hero-text|hero-subtitle)\b/i,
       preserveVerticalSlotRe: null,
       layoutCss: EIGHTBIT_POSTER_LAYOUT_CSS,
+      layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
+    };
+  }
+  if (officialLookIsCoral(dest)) {
+    return {
+      kind: 'coral',
+      coverHostRe: /\bslide-1\b/i,
+      closingHostRe: /\bslide-10\b/i,
+      coverSlotRe: CORAL_COVER_KIT_SLOT_RE,
+      colophonSlotRe: CORAL_CLOSING_KIT_SLOT_RE,
+      coverPrimarySlotRe: /\b(?:main-title|brand-mark)\b/i,
+      preserveVerticalSlotRe: null,
+      layoutCss: CORAL_POSTER_LAYOUT_CSS,
       layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
     };
   }
@@ -5071,7 +5098,7 @@ export function restyleBiennaleSparseColophonBodies(html: string): string {
       let candidate = block;
       if (isKitSlotOpen(open, block.slice(0, 120), kit.colophonSlotRe)) {
         // Inside title/closing copy hosts, collapse duplicated children first.
-        if (/\b(?:titlewrap|col-footer|colofo|closing-content|cover-footer|stamp|close-frame|cta-content|cover-body|frame|top|hero-title-group)\b/i.test(open)) {
+        if (/\b(?:titlewrap|col-footer|colofo|closing-content|cover-footer|stamp|close-frame|cta-content|cover-body|frame|top|hero-title-group|left-panel)\b/i.test(open)) {
           const deduped = dedupeAdjacentSameVisibleChildren(block);
           if (deduped !== block) changed = true;
           candidate = deduped;
@@ -5080,7 +5107,7 @@ export function restyleBiennaleSparseColophonBodies(html: string): string {
       // Adjacent twin hosts (e.g. Broadside twin `.display` h1s) still collapse.
       // Display title slots may be short ("Fin.") — use a lower key floor than chrome.
       const key = normalizeVisibleCopyKey(candidate);
-      const minKeyLen = /\b(?:big|h|display|ttl|closing-line|close-title|close-big|closing-big|main-title|hero-title|title-main)\b/i.test(open)
+      const minKeyLen = /\b(?:big|h|display|ttl|closing-line|close-title|close-big|closing-big|closing-title|main-title|hero-title|title-main)\b/i.test(open)
         ? 2
         : 8;
       if (key.length >= minKeyLen) {
