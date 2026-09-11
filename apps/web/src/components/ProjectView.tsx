@@ -580,6 +580,7 @@ import {
   parseSlideCountSpec,
   rollbackSlideCountTopUpCount,
   shouldQueueSlideCountTopUp,
+  shouldBlockSlideCountAppendOntoThinPrior,
   shouldQueueSparseContentTopUp,
   shouldQueueThinPriorFullRewrite,
   syncSlideCountTopUpCountFromMessages,
@@ -12853,6 +12854,8 @@ export function ProjectView({
           const rewritePrompt = buildThinPriorFullRewritePrompt({
             hostCount: produced,
             requested,
+            requestedMin: requestedSpec?.min,
+            userBrief: runVisiblePromptRef.current || '',
           });
           let busyRetries = 0;
           const fireRewrite = () => {
@@ -12894,69 +12897,12 @@ export function ProjectView({
           slideCountTopUpTimerRef.current = window.setTimeout(fireRewrite, 600);
           return;
         }
-        // 루프480 — The deck landed, but a heading had to be renumbered down or
-        // a card body never arrived. Repair the named slides once; a genuinely
-        // short deck leaves no evidence and never reaches here.
-        const sparseEvidence = findDeckSparseContentEvidence(html);
-        if (
-          shouldQueueSparseContentTopUp({
-            evidenceCount: sparseEvidence.length,
-            slideCount: produced,
-            topUpCount: countSparseContentTopUpAttemptsInConversation(conversationMessages),
-            thinPrior,
-            commentAttachmentCount: runCommentAttachmentsRef.current.length,
-          })
-        ) {
-          const scheduledProjectId = project.id;
-          const scheduledConversationId = activeConversationId;
-          pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
-          const repairPrompt = buildSparseContentTopUpPrompt(sparseEvidence);
-          let busyRetries = 0;
-          const retryRepair = () => {
-            if (busyRetries >= SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX) return false;
-            if (slideCountTopUpTimerRef.current !== null) return false;
-            busyRetries += 1;
-            pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
-            slideCountTopUpTimerRef.current = window.setTimeout(
-              fireRepair,
-              SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
-            );
-            return true;
-          };
-          function fireRepair() {
-            slideCountTopUpTimerRef.current = null;
-            pendingSlideCountTopUpConversationIdRef.current = null;
-            if (project.id !== scheduledProjectId) return;
-            if (messagesConversationIdRef.current !== scheduledConversationId) return;
-            if (autoContinueTimerRef.current !== null) return;
-            // Mirror the slide-count top-up: a phantom BYOK recovery marker
-            // would make React reject this send outright, and the repair would
-            // be dropped without a trace.
-            if (!abortRef.current) {
-              if (apiBackgroundRecoveryRef.current) {
-                apiBackgroundRecoveryRef.current = false;
-                clearApiBackgroundRecoveryBanner();
-              }
-              if (streamingConversationIdRef.current === scheduledConversationId) {
-                clearStreamingMarker(scheduledConversationId);
-              }
-            }
-            if (abortRef.current) {
-              retryRepair();
-              return;
-            }
-            const sendNow = handleSendRef.current;
-            if (!sendNow) return;
-            void Promise.resolve(
-              sendNow(repairPrompt, [], [], {
-                entryFrom: SPARSE_CONTENT_TOP_UP_ENTRY_FROM as ChatAnalyticsEntryFrom,
-              }),
-            ).then((ok) => {
-              if (ok !== false) return;
-              retryRepair();
-            });
-          }
-          slideCountTopUpTimerRef.current = window.setTimeout(fireRepair, 600);
+        // 루프505 — Rewrite already spent and deck is still thin: APPEND would
+        // hit thin-prior-no-append and leave the shortfall silent.
+        if (shouldBlockSlideCountAppendOntoThinPrior({
+          thinPrior,
+          rewriteCount: rewriteAlready,
+        })) {
           return;
         }
         const already = syncSlideCountTopUpCountFromMessages(
@@ -12964,14 +12910,81 @@ export function ProjectView({
           activeConversationId,
           conversationMessages,
         );
-        if (!shouldQueueSlideCountTopUp({
+        const wantsCountTopUp = shouldQueueSlideCountTopUp({
           produced,
           requested,
           requestedMin: requestedSpec?.min,
           defaultRequested: allowDefaultShortDeckTopUp ? 6 : undefined,
           topUpCount: already,
           commentAttachmentCount: runCommentAttachmentsRef.current.length,
-        })) {
+        });
+        // 루프505 — Explicit page shortfall beats sparse card repair so a
+        // 4-of-8–10 miss is not consumed by a deck-patch of incomplete cards.
+        if (!wantsCountTopUp) {
+          // 루프480 — The deck landed, but a heading had to be renumbered down or
+          // a card body never arrived. Repair the named slides once; a genuinely
+          // short deck leaves no evidence and never reaches here.
+          const sparseEvidence = findDeckSparseContentEvidence(html);
+          if (
+            shouldQueueSparseContentTopUp({
+              evidenceCount: sparseEvidence.length,
+              slideCount: produced,
+              topUpCount: countSparseContentTopUpAttemptsInConversation(conversationMessages),
+              thinPrior,
+              commentAttachmentCount: runCommentAttachmentsRef.current.length,
+            })
+          ) {
+            const scheduledProjectId = project.id;
+            const scheduledConversationId = activeConversationId;
+            pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
+            const repairPrompt = buildSparseContentTopUpPrompt(sparseEvidence);
+            let busyRetries = 0;
+            const retryRepair = () => {
+              if (busyRetries >= SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX) return false;
+              if (slideCountTopUpTimerRef.current !== null) return false;
+              busyRetries += 1;
+              pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
+              slideCountTopUpTimerRef.current = window.setTimeout(
+                fireRepair,
+                SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
+              );
+              return true;
+            };
+            function fireRepair() {
+              slideCountTopUpTimerRef.current = null;
+              pendingSlideCountTopUpConversationIdRef.current = null;
+              if (project.id !== scheduledProjectId) return;
+              if (messagesConversationIdRef.current !== scheduledConversationId) return;
+              if (autoContinueTimerRef.current !== null) return;
+              // Mirror the slide-count top-up: a phantom BYOK recovery marker
+              // would make React reject this send outright, and the repair would
+              // be dropped without a trace.
+              if (!abortRef.current) {
+                if (apiBackgroundRecoveryRef.current) {
+                  apiBackgroundRecoveryRef.current = false;
+                  clearApiBackgroundRecoveryBanner();
+                }
+                if (streamingConversationIdRef.current === scheduledConversationId) {
+                  clearStreamingMarker(scheduledConversationId);
+                }
+              }
+              if (abortRef.current) {
+                retryRepair();
+                return;
+              }
+              const sendNow = handleSendRef.current;
+              if (!sendNow) return;
+              void Promise.resolve(
+                sendNow(repairPrompt, [], [], {
+                  entryFrom: SPARSE_CONTENT_TOP_UP_ENTRY_FROM as ChatAnalyticsEntryFrom,
+                }),
+              ).then((ok) => {
+                if (ok !== false) return;
+                retryRepair();
+              });
+            }
+            slideCountTopUpTimerRef.current = window.setTimeout(fireRepair, 600);
+          }
           return;
         }
         conversationSlideCountTopUpCountRef.current.set(activeConversationId, already + 1);
@@ -16073,17 +16086,19 @@ function isReusableSameTurnDeckWrite(
 ): boolean {
   const trimmed = String(html ?? '').trim();
   if (!trimmed || !validateHtmlArtifact(trimmed).ok) return false;
-  // 루프179 — recover/reuse must not promote low-substance / topic+counter
-  // leftover shells that persistArtifact would skip as skipped-incomplete.
-  if (isLowSubstanceSlideDeckArtifact(trimmed, brief, deckTitle || '슬라이드')) {
-    return false;
-  }
+  // 루프505 — Healable sentinel/instruction covers with real body slides are
+  // reusable; check AfterHeal *before* raw low-substance (which flags `[od:…]`).
   if (
     isPersistableShortDeckDraft(trimmed)
     || isPersistableShortDeckDraftAfterHeal(trimmed, brief, deckTitle || '슬라이드')
     || isClosedSoftSalvageDeckHtml(trimmed)
   ) {
     return true;
+  }
+  // 루프179 — recover/reuse must not promote low-substance / topic+counter
+  // leftover shells that persistArtifact would skip as skipped-incomplete.
+  if (isLowSubstanceSlideDeckArtifact(trimmed, brief, deckTitle || '슬라이드')) {
+    return false;
   }
   return !isIncompleteHtmlDocumentShell(trimmed, brief, deckTitle);
 }

@@ -36,6 +36,7 @@ import {
   honorSlideCountCeilingFromMessages,
   applyHonorSlideCeilingToHtml,
   THIN_PRIOR_FULL_REWRITE_PROMPT_SENTINEL,
+  shouldBlockSlideCountAppendOntoThinPrior,
 } from "../../src/teamver/slideCountTopUp";
 
 function userMessage(id: string, content: string): ChatMessage {
@@ -559,6 +560,40 @@ describe("slideCountTopUp", () => {
     expect(prompt).toMatch(/REWRITE the entire deck/i);
     expect(prompt).toMatch(/emit exactly 8 slides/i);
     expect(prompt).toMatch(/NEVER copy host protocol tokens/i);
+    const ranged = buildThinPriorFullRewritePrompt({
+      hostCount: 4,
+      requested: 10,
+      requestedMin: 8,
+      userBrief: "teamver 서비스 소개 슬라이드 8~10장 만들어줘",
+    });
+    expect(ranged).toMatch(/at least 8 and at most 10/);
+    expect(ranged).toMatch(/Source brief/);
+    expect(ranged).toMatch(/titlewrap/);
+    expect(shouldBlockSlideCountAppendOntoThinPrior({
+      thinPrior: true,
+      rewriteCount: 1,
+    })).toBe(true);
+    expect(shouldBlockSlideCountAppendOntoThinPrior({
+      thinPrior: true,
+      rewriteCount: 0,
+    })).toBe(false);
+    expect(shouldBlockSlideCountAppendOntoThinPrior({
+      thinPrior: false,
+      rewriteCount: 1,
+    })).toBe(false);
+    // 루프505 — count shortfall (4 of 8–10) must win over sparse repair.
+    expect(shouldQueueSlideCountTopUp({
+      produced: 4,
+      requested: 10,
+      requestedMin: 8,
+      topUpCount: 0,
+    })).toBe(true);
+    expect(shouldQueueSparseContentTopUp({
+      evidenceCount: 2,
+      slideCount: 4,
+      topUpCount: 0,
+      thinPrior: false,
+    })).toBe(true);
   });
 
   it("queues a sparse-content repair only for a real deck with named gaps (루프480)", () => {
@@ -619,6 +654,9 @@ describe("slideCountTopUp", () => {
     ]))).toBe(true);
     expect(isSoftImprovementAutomationPrompt(
       buildThinPriorFullRewritePrompt({ hostCount: 9, requested: 8 }),
+    )).toBe(false);
+    expect(isSoftImprovementAutomationPrompt(
+      buildSlideCountTopUpPrompt({ produced: 4, requested: 10 }),
     )).toBe(false);
     expect(formatSoftImprovementTurnFailureNotice()).toMatch(/그대로 유지/);
   });

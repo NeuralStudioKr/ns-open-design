@@ -164,10 +164,11 @@ describe("FileViewer streaming slide preview", () => {
     expect(source).toContain("liveHtmlPaintsPreview");
     expect(source).toContain("hasLiveHtml");
     expect(source).toContain("acceptPreviewHtmlCandidate");
+    expect(source).toContain("healInstructionCopyCoverHeading");
     expect(source).toContain("healOfficialMagazineLayoutDensity");
     expect(source).toContain("healAiGeneratedDeckMarkup");
-    expect(source).toContain(
-      "healOfficialMagazineLayoutDensity(sanitizePersistedDeckHostLeaks(candidate), brief)",
+    expect(source).toMatch(
+      /healInstructionCopyCoverHeading\(\s*candidate[\s\S]*?sanitizePersistedDeckHostLeaks\(withHeadings\)/,
     );
     expect(source).toContain("hoistDeckHostStylesToHead");
     expect(source).toContain("HTML_PREVIEW_DISK_FETCH_DEBOUNCE_MS");
@@ -305,7 +306,7 @@ describe("FileViewer streaming slide preview", () => {
       "Intentionally leave previewSourceWallTimerRef armed across refresh churn",
     );
     expect(source).toContain(
-      "acceptPreviewHtmlCandidate(text, lastStablePreviewSourceRef, userBrief)",
+      "acceptPreviewHtmlCandidate(\n          text,\n          lastStablePreviewSourceRef,\n          userBrief,\n          projectDisplayName,\n        )",
     );
     expect(source).not.toContain("structurallyComplete");
     expect(source).toContain("previewSourceWallIdentityRef.current = null");

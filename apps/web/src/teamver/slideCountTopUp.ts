@@ -15,7 +15,7 @@ export const SLIDE_COUNT_REQUEST_MAX = 15;
 export const SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL = "[od:slide_count_top_up]";
 export const SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL_LEGACY = "<!--od:slide_count_top_up-->";
 const SLIDE_COUNT_TOP_UP_PROMPT_FINGERPRINT_RE =
-  /\[od:slide_count_top_up\]|<!--od:slide_count_top_up-->|this is an explicit slide-count expansion|append only new slides|closed\s+\d+-slide\s+deliverable|do not rewrite the saved deck|emit only the new|keep slides 1[–-]/i;
+  /this is an explicit slide-count expansion|append only new slides|closed\s+\d+-slide\s+deliverable|do not rewrite the saved deck|emit only the new|keep slides 1[–-]/i;
 
 /** Analytics `entry_from` for the append loop — not incomplete-output recovery. */
 export const SLIDE_COUNT_TOP_UP_ENTRY_FROM = "slide_count_top_up";
@@ -66,12 +66,9 @@ export function isSlideCountTopUpPrompt(content: string | null | undefined): boo
 export function isThinPriorFullRewritePrompt(content: string | null | undefined): boolean {
   const text = (content ?? "").trimStart();
   if (!text) return false;
-  return (
-    text.startsWith(THIN_PRIOR_FULL_REWRITE_PROMPT_SENTINEL)
-    || /\[od:thin_prior_full_rewrite\]|replace the thin look seed|rewrite the entire deck with real content/i.test(
-      text,
-    )
-  );
+  if (text.startsWith(THIN_PRIOR_FULL_REWRITE_PROMPT_SENTINEL)) return true;
+  // 루프505 — Avoid mid-body `[od:thin_prior_full_rewrite]` in NEVER-copy lists.
+  return /replace the thin look seed|rewrite the entire deck with real content/i.test(text);
 }
 
 export function countThinPriorFullRewriteAttemptsInConversation(
@@ -109,22 +106,47 @@ export function shouldQueueThinPriorFullRewrite(input: {
 export function buildThinPriorFullRewritePrompt(input: {
   hostCount: number;
   requested?: number | null;
+  /** Range floor (`8-10` → 8). Exact counts omit this. */
+  requestedMin?: number | null;
+  userBrief?: string | null;
 }): string {
-  const target = input.requested && input.requested > 0
+  const targetMax = input.requested && input.requested > 0
     ? input.requested
     : Math.min(Math.max(input.hostCount, 6), SLIDE_COUNT_REQUEST_MAX);
+  const targetMin = input.requestedMin && input.requestedMin > 0
+    ? Math.min(input.requestedMin, targetMax)
+    : targetMax;
+  const countLine = targetMin < targetMax
+    ? `REWRITE the entire deck with real presentation content — emit at least ${targetMin} and at most ${targetMax} slides (target ${targetMax}; fewer than ${targetMin} is a failure).`
+    : `REWRITE the entire deck with real presentation content — emit exactly ${targetMax} slides (no fewer).`;
+  const brief = String(input.userBrief ?? "").replace(/\s+/g, " ").trim().slice(0, 220);
   return [
     THIN_PRIOR_FULL_REWRITE_PROMPT_SENTINEL,
     "The saved deck is a THIN LOOK seed / title-only scaffold — empty shells, not a closed deliverable.",
     "Do NOT append-only. Do NOT emit a slide-count expansion.",
-    `REWRITE the entire deck with real presentation content — emit exactly ${target} slides (no fewer).`,
+    countLine,
+    brief ? `Source brief (cover/topic must reflect this, never paste it verbatim as a heading): ${brief}` : "",
     "Emit `<artifact type=\"deck\" identifier=\"deck\">` with a complete HTML document.",
-    "Keep the selected template kit (palette, motif, Biennale/Block Frame chrome, kit slide classes such as s-cover / s-chapter). Replace placeholder shells with filled slides — do not invent a generic Inter/#F6C82E layout that abandons the kit.",
+    "Keep the selected template kit (palette, motif, Biennale/Block Frame chrome, kit slide classes such as s-cover / s-chapter / .titlewrap / .title). Replace placeholder shells with filled slides — do not invent a generic Inter/#F6C82E layout that abandons the kit.",
     "Every content slide needs a real title plus 2–4 concrete bullets/cards/paragraphs. No empty hosts.",
-    "Cover title must be a product/topic name, not a raw URL crumb.",
+    "Cover title must be a product/topic name, not a raw URL crumb and not a host protocol token.",
     "NEVER copy host protocol tokens such as [od:thin_prior_full_rewrite], [od:slide_count_top_up], or [od:sparse_content_top_up] into titles, body copy, comments, or attributes.",
     "Finish a closed `</html></artifact>` this turn.",
-  ].join("\n");
+  ].filter(Boolean).join("\n");
+}
+
+/**
+ * 루프505 — Rewrite budget already spent and the disk deck is still a hollow
+ * LOOK seed: APPEND top-up would hit thin-prior-no-append and leave the shortfall.
+ */
+export function shouldBlockSlideCountAppendOntoThinPrior(input: {
+  thinPrior: boolean;
+  rewriteCount: number;
+}): boolean {
+  return (
+    input.thinPrior
+    && input.rewriteCount >= THIN_PRIOR_FULL_REWRITE_MAX_PER_CONVERSATION
+  );
 }
 
 /**
@@ -142,10 +164,10 @@ export const SPARSE_CONTENT_TOP_UP_MAX_SLIDES = 4;
 export function isSparseContentTopUpPrompt(content: string | null | undefined): boolean {
   const text = (content ?? "").trimStart();
   if (!text) return false;
-  return (
-    text.startsWith(SPARSE_CONTENT_TOP_UP_PROMPT_SENTINEL)
-    || /\[od:sparse_content_top_up\]|slides below are missing items or card bodies/i.test(text)
-  );
+  if (text.startsWith(SPARSE_CONTENT_TOP_UP_PROMPT_SENTINEL)) return true;
+  // 루프505 — Do not match `[od:sparse_content_top_up]` mid-body (rewrite/top-up
+  // prompts list it in a NEVER-copy line). Fingerprint the sparse instruction.
+  return /slides below are missing items or card bodies/i.test(text);
 }
 
 export function countSparseContentTopUpAttemptsInConversation(
@@ -230,8 +252,9 @@ export function isSoftImprovementAutomationEntryFrom(
 export function isSoftImprovementAutomationPrompt(
   content: string | null | undefined,
 ): boolean {
-  if (isThinPriorFullRewritePrompt(content)) return false;
-  return isSlideCountTopUpPrompt(content) || isSparseContentTopUpPrompt(content);
+  // 루프505 — Align with entryFrom: only sparse card repair is soft.
+  // Slide-count shortfall and thin rewrite failures are real news.
+  return isSparseContentTopUpPrompt(content);
 }
 
 /** User-facing notice when an improvement turn failed but the deck survived. */

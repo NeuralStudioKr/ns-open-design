@@ -33,4 +33,19 @@ describe("ProjectView automation submit guard", () => {
     expect(bypassBlock).toContain("meta?.entryFrom === CLONE_SLOT_FILL_REPAIR_ENTRY_FROM");
     expect(bypassBlock).toContain("&& !abortRef.current");
   });
+
+  it("prefers slide-count shortfall over sparse repair and blocks thin APPEND after rewrite (루프505)", () => {
+    expect(projectViewSource).toContain("shouldBlockSlideCountAppendOntoThinPrior");
+    expect(projectViewSource).toContain("wantsCountTopUp");
+    expect(projectViewSource).toContain("requestedMin: requestedSpec?.min");
+    expect(projectViewSource).toContain("userBrief: runVisiblePromptRef.current || ''");
+    // Count gate is computed before sparse evidence is consulted.
+    const countIdx = projectViewSource.indexOf("const wantsCountTopUp = shouldQueueSlideCountTopUp({");
+    const sparseIdx = projectViewSource.indexOf("findDeckSparseContentEvidence(html)");
+    expect(countIdx).toBeGreaterThan(0);
+    expect(sparseIdx).toBeGreaterThan(countIdx);
+    expect(projectViewSource).toMatch(
+      /if \(!wantsCountTopUp\) \{[\s\S]*?findDeckSparseContentEvidence\(html\)/,
+    );
+  });
 });
