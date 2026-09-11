@@ -14,6 +14,7 @@ import {
   inferTemplateCloneContentRole,
   listTemplateCloneSlideShells,
   looksLikeInstructionCopy,
+  looksLikeHostProtocolSentinelCopy,
   looksLikeTemplateCloneServiceIntroBrief,
   catalogExampleShouldBeScrubbed,
   looksLikeLeakedApiModeFilesystemProse,
@@ -1315,20 +1316,47 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(isGenericDeckArtifactTitle('기업 AI 도입 효과')).toBe(false);
   });
 
-  it('strips top-up sentinels, empty artifact tags, and leftover motif Hartfield', () => {
+  it('strips top-up/thin-rewrite sentinels, empty artifact tags, and leftover motif Hartfield', () => {
     const leaked = [
       '<section class="slide"><h1>[od:slide_count_top_up]</h1>',
+      '<p>[od:thin_prior_full_rewrite]</p>',
       '<artifact type="deck" identifier="deck"></artifact>',
       '<div class="who" data-od-official-motif-html>Hartfield &amp; Co. — Industrials</div>',
       '<p>영어 회화</p></section>',
     ].join('');
     const cleaned = sanitizePersistedDeckHostLeaks(leaked);
     expect(cleaned).not.toMatch(/od:slide_count_top_up/i);
+    expect(cleaned).not.toMatch(/od:thin_prior_full_rewrite/i);
     expect(cleaned).not.toMatch(/<artifact\b/i);
     expect(cleaned).not.toMatch(/Hartfield/i);
     expect(cleaned).toContain('영어 회화');
     expect(stripHostProtocolLeakFromDeckHtml('[od:slide_count_top_up]\n<section class="slide">x</section>'))
       .not.toMatch(/od:slide_count_top_up/i);
+    expect(stripHostProtocolLeakFromDeckHtml('[od:thin_prior_full_rewrite]\n<section class="slide">x</section>'))
+      .not.toMatch(/od:thin_prior_full_rewrite/i);
+  });
+
+  it('heals Biennale cover titles that paste the thin-rewrite sentinel (루프504)', () => {
+    const leaked = [
+      '<section class="slide s-cover"><div class="titlewrap">',
+      '<h1 class="title">[od:thin_prior_full_rewrite]</h1>',
+      '</div><div class="sunglow" aria-hidden="true"></div></section>',
+      '<section class="slide"><h2>서비스 개요</h2><p>팀버는 협업 SaaS입니다.</p></section>',
+    ].join('');
+    // Heal *before* sanitize — salvage would drop an emptied cover shell.
+    const healed = healInstructionCopyCoverHeading(
+      leaked,
+      'teamver 서비스 소개 슬라이드 8~10장 만들어줘',
+      'teamver',
+    );
+    expect(healed).not.toMatch(/od:thin_prior_full_rewrite/i);
+    expect(healed).toMatch(/s-cover/);
+    expect(healed).toMatch(/<h1[^>]*>[^<\[]{2,}<\/h1>/i);
+    const cleaned = sanitizePersistedDeckHostLeaks(healed);
+    expect(cleaned).toMatch(/s-cover/);
+    expect(cleaned).not.toMatch(/od:thin_prior_full_rewrite/i);
+    expect(looksLikeHostProtocolSentinelCopy('[od:thin_prior_full_rewrite]')).toBe(true);
+    expect(looksLikeHostProtocolSentinelCopy('teamver')).toBe(false);
   });
 
   it('strips leaked Template clone prompt-fill contract and Expo worked example from deck HTML', () => {
@@ -1899,6 +1927,15 @@ ${capsuleLook}
     expect(afterStrip).not.toMatch(/od:slide_count_top_up/);
     expect(afterStrip.match(/<section\b/gi)?.length).toBe(1);
     expect(afterStrip).toContain('커버');
+
+    const thinRewriteSentinelFirst = [
+      '<section class="slide"><p>[od:thin_prior_full_rewrite]</p></section>',
+      '<section class="slide"><h1>팀버 소개</h1><p>팀 협업의 맥락을 한 공간에 모읍니다.</p></section>',
+    ].join('');
+    const afterThinStrip = salvageMalformedMiniMaxSlideMarkup(thinRewriteSentinelFirst);
+    expect(afterThinStrip).not.toMatch(/od:thin_prior_full_rewrite/);
+    expect(afterThinStrip.match(/<section\b/gi)?.length).toBe(1);
+    expect(afterThinStrip).toContain('팀버 소개');
 
     const deco = pinNeoBrutalEmptyDecoBlocks(
       '<div style="position:relative;width:140px;height:140px;background:#FE90E8;border:4px solid #000;transform:rotate(12deg)"></div>'

@@ -1955,7 +1955,10 @@ export function stripDeckLevelDemoChrome(html: string): string {
   );
 }
 
-const HOST_TOP_UP_SENTINEL_RE = /\[od:slide_count_top_up\]|<!--\s*od:slide_count_top_up\s*-->/gi;
+/** Hidden host-turn tokens the model sometimes pastes into cover titles. */
+const HOST_PROTOCOL_SENTINEL_TOKEN_RE =
+  /\[od:(?:slide_count_top_up|thin_prior_full_rewrite|sparse_content_top_up)\]|<!--\s*od:(?:slide_count_top_up|thin_prior_full_rewrite|sparse_content_top_up)\s*-->/gi;
+const HOST_TOP_UP_SENTINEL_RE = HOST_PROTOCOL_SENTINEL_TOKEN_RE;
 const HOST_TOP_UP_INSTRUCTION_LINE_RE =
   /(?:The current deck is a CLOSED \d+-slide deliverable|This is an explicit slide-count expansion|APPEND only new slides|Do NOT rewrite the saved deck|Emit ONLY the new)[^\n<]*/gi;
 const HOST_CLONE_FILL_CONTRACT_RE =
@@ -4158,10 +4161,8 @@ function slideBodyLooksEmpty(body: string): boolean {
     .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
     .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
     .replace(/<svg\b[\s\S]*?<\/svg>/gi, ' ');
-  // 루프394 — top-up sentinel alone is not real slide copy.
-  const withoutSentinel = content
-    .replace(/\[od:slide_count_top_up\]/gi, ' ')
-    .replace(/<!--\s*od:slide_count_top_up\s*-->/gi, ' ');
+  // 루프394/504 — hidden host-protocol sentinels alone are not real slide copy.
+  const withoutSentinel = content.replace(HOST_PROTOCOL_SENTINEL_TOKEN_RE, ' ');
   const text = withoutSentinel
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
@@ -9459,8 +9460,23 @@ function visibleHeadingText(inner: string): string {
   return inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+/** 루프504 — `[od:thin_prior_full_rewrite]` pasted as an h1 is not a cover title. */
+export function looksLikeHostProtocolSentinelCopy(text: string): boolean {
+  const t = String(text ?? '').trim();
+  if (!t) return false;
+  // Do not reuse the /g replace regex here — RegExp.lastIndex would flake .test().
+  if (
+    /\[od:(?:slide_count_top_up|thin_prior_full_rewrite|sparse_content_top_up)\]/i.test(t)
+    || /<!--\s*od:(?:slide_count_top_up|thin_prior_full_rewrite|sparse_content_top_up)\s*-->/i.test(t)
+  ) {
+    return true;
+  }
+  return /^\[od:[a-z0-9_:-]+\]$/i.test(t);
+}
+
 function headingLooksLikeFailedGenerate(visible: string): boolean {
-  return looksLikeInstructionCopy(visible)
+  return looksLikeHostProtocolSentinelCopy(visible)
+    || looksLikeInstructionCopy(visible)
     || looksLikeTemplateMarketingTitle(visible)
     || isGenericDeckArtifactTitle(visible)
     || looksLikeRawUrlSiteCoverTitle(visible);

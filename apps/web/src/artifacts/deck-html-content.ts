@@ -7,10 +7,20 @@ import {
   healInstructionCopyCoverHeading,
   looksLikeInstructionCopy,
   looksLikeTemplateMarketingTitle,
+  stripHostProtocolLeakFromDeckHtml,
 } from '@open-design/contracts';
 
 /** Local copy — importing this from the contracts barrel is undefined at web-test init. */
 const FIRST_FILL_SLIDE_COUNT_THIS_TURN = 6;
+const INTERNAL_HOST_PROTOCOL_SENTINEL_RE =
+  /\[od:(?:slide_count_top_up|thin_prior_full_rewrite|sparse_content_top_up)\]|<!--\s*od:(?:slide_count_top_up|thin_prior_full_rewrite|sparse_content_top_up)\s*-->/i;
+
+function looksLikeHostProtocolSentinelCopy(text: string): boolean {
+  const trimmed = String(text ?? '').trim();
+  if (!trimmed) return false;
+  return INTERNAL_HOST_PROTOCOL_SENTINEL_RE.test(trimmed)
+    || /^\[od:[a-z0-9_:-]+\]$/i.test(trimmed);
+}
 
 const SLIDE_HOST_OPEN_RE = /<(section|div|main|article)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
 
@@ -324,12 +334,15 @@ export function stripAbandonedMotifSvgDumpFromStreamedText(text: string): string
 }
 
 export function deckSlideHeadingsLookLikeFailedGenerate(html: string): boolean {
+  if (INTERNAL_HOST_PROTOCOL_SENTINEL_RE.test(html)) return true;
   const headings = listSlideSectionInners(html)
     .map((inner) => firstSlideHeading(inner))
     .filter(Boolean);
   if (headings.length === 0) return false;
   const failed = (title: string) =>
-    looksLikeInstructionCopy(title) || looksLikeTemplateMarketingTitle(title);
+    looksLikeHostProtocolSentinelCopy(title)
+    || looksLikeInstructionCopy(title)
+    || looksLikeTemplateMarketingTitle(title);
   if (failed(headings[0]!)) return true;
   const bad = headings.filter(failed).length;
   if (bad >= Math.ceil(headings.length / 2)) return true;
@@ -820,6 +833,7 @@ export function deckLooksLikeThinTopUpHostPrior(html: string): boolean {
 export function isPersistableShortDeckDraft(html: string): boolean {
   const withoutComments = html.replace(/<!--[\s\S]*?-->/g, "");
   if (!documentContainsSlideSection(withoutComments)) return false;
+  if (INTERNAL_HOST_PROTOCOL_SENTINEL_RE.test(withoutComments)) return false;
   if (deckArtifactStartsWithMotifSvgDump(withoutComments)) return false;
   if (deckSlideHeadingsLookLikeFailedGenerate(withoutComments)) return false;
   const inners = listSlideSectionInners(withoutComments);
@@ -848,8 +862,11 @@ export function isPersistableShortDeckDraftAfterHeal(
   deckTitle?: string | null,
 ): boolean {
   if (isPersistableShortDeckDraft(html)) return true;
+  // 루프504 — Strip leaked `[od:…]` first; heal alone used to leave empty h1s
+  // when sanitize ran *after* heading heal on the persist path.
+  const stripped = stripHostProtocolLeakFromDeckHtml(html);
   const healed = healInstructionCopyCoverHeading(
-    html,
+    stripped,
     String(brief ?? ''),
     deckTitle || '슬라이드',
   );

@@ -185,6 +185,14 @@ export function isLowSubstanceSlideDeckArtifact(
   if (slideCount === 0) return false;
   // Motif-first hangs stay low-substance even if a later heal would retitle.
   if (deckArtifactStartsWithMotifSvgDump(trimmed)) return true;
+  // 루프504 — Host protocol tokens pasted into the deck are never a deliverable,
+  // even when AfterHeal could invent a cover title from the brief.
+  if (
+    /\[od:(?:slide_count_top_up|thin_prior_full_rewrite|sparse_content_top_up)\]|<!--\s*od:(?:slide_count_top_up|thin_prior_full_rewrite|sparse_content_top_up)\s*-->/i
+      .test(trimmed)
+  ) {
+    return true;
+  }
   // Multi-slide prompt parrots are failed generations, even though the first
   // instruction-copy cover alone would be healable/top-up-able.
   if (deckLooksLikeRepeatedUserBriefParrot(trimmed, brief)) return true;

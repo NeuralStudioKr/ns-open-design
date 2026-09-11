@@ -464,9 +464,14 @@ describe("slideCountTopUp", () => {
   });
 
   it("still tops up a short miss of an honored 8–10 count, and 11+ still batches", () => {
+    const spec = extractRequestedSlideCountSpecFromMessages([
+      userMessage("u1", "서비스 소개 슬라이드 8~10장으로 만들어줘"),
+    ]);
+    expect(spec).toEqual({ min: 8, max: 10 });
     expect(shouldQueueSlideCountTopUp({
       produced: 4,
-      requested: 10,
+      requested: spec?.max ?? null,
+      requestedMin: spec?.min ?? null,
       topUpCount: 0,
     })).toBe(true);
     expect(countHonoredSlideCountTopUpTurns({
@@ -552,6 +557,8 @@ describe("slideCountTopUp", () => {
     expect(isThinPriorFullRewritePrompt(prompt)).toBe(true);
     expect(isSlideCountTopUpPrompt(prompt)).toBe(false);
     expect(prompt).toMatch(/REWRITE the entire deck/i);
+    expect(prompt).toMatch(/emit exactly 8 slides/i);
+    expect(prompt).toMatch(/NEVER copy host protocol tokens/i);
   });
 
   it("queues a sparse-content repair only for a real deck with named gaps (루프480)", () => {

@@ -31,7 +31,10 @@ import {
   salvageTruncatedHtmlDocument,
 } from "../../src/artifacts/recover";
 import { healInstructionCopyCoverHeading } from "@open-design/contracts";
-import { isIncompleteHtmlDocumentShell } from "../../src/artifacts/validate";
+import {
+  isIncompleteHtmlDocumentShell,
+  isLowSubstanceSlideDeckArtifact,
+} from "../../src/artifacts/validate";
 
 describe("deck-html-content", () => {
   it("rejects status-only Korean prose without slide sections", () => {
@@ -178,6 +181,36 @@ describe("deck-html-content", () => {
         '<!doctype html><html><body><section class="slide"></section></body></html>',
       ),
     ).toBe(false);
+  });
+
+  it("rejects hidden rewrite sentinel leaks as failed deck content", () => {
+    const leaked =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>[od:thin_prior_full_rewrite]</h1></section>'
+      + '<section class="slide"><h2>서비스 개요</h2><p>Teamver는 프로젝트 맥락을 모읍니다.</p></section>'
+      + '<section class="slide"><h2>핵심 기능</h2><p>작업, 파일, 피드백을 연결합니다.</p></section>'
+      + '<section class="slide"><h2>다음 단계</h2><p>워크스페이스를 만들고 팀을 초대합니다.</p></section>'
+      + '</body></html>';
+    expect(deckSlideHeadingsLookLikeFailedGenerate(leaked)).toBe(true);
+    expect(isPersistableShortDeckDraft(leaked)).toBe(false);
+    // Heal can invent a cover title; persist then stores the cleaned HTML so
+    // the internal token never appears in the preview/export.
+    expect(isPersistableShortDeckDraftAfterHeal(
+      leaked,
+      'teamver 서비스 소개 슬라이드 8~10장',
+      'teamver',
+    )).toBe(true);
+    const healed = healInstructionCopyCoverHeading(
+      leaked,
+      'teamver 서비스 소개 슬라이드 8~10장',
+      'teamver',
+    );
+    expect(healed).not.toMatch(/od:thin_prior_full_rewrite/i);
+    expect(isLowSubstanceSlideDeckArtifact(
+      healed,
+      'teamver 서비스 소개 슬라이드 8~10장',
+      'teamver',
+    )).toBe(false);
   });
 
   it("does not treat a head SVG plus title as salvageable slide copy", () => {

@@ -5857,6 +5857,8 @@ export function ProjectView({
         // Heal instruction/marketing titles *before* the short-draft / incomplete
         // gates. A 1-slide "만들어줘" cover used to fail persistable-short and
         // skip as incomplete-html-document-shell, so top-up never ran.
+        // 루프504 — Also rewrite `[od:thin_prior_full_rewrite]` titles here
+        // (before sanitize/salvage, which would drop an emptied cover shell).
         artifactToPersist = {
           ...artifactToPersist,
           html: healInstructionCopyCoverHeading(

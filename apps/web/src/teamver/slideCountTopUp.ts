@@ -45,6 +45,14 @@ export function isSlideCountTopUpPrompt(content: string | null | undefined): boo
   const text = (content ?? "").trimStart();
   if (!text) return false;
   if (
+    text.startsWith(THIN_PRIOR_FULL_REWRITE_PROMPT_SENTINEL)
+    || /\[od:thin_prior_full_rewrite\]|replace the thin look seed|rewrite the entire deck with real content/i.test(
+      text,
+    )
+  ) {
+    return false;
+  }
+  if (
     text.startsWith(SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL)
     || text.startsWith(SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL_LEGACY)
   ) {
@@ -109,11 +117,12 @@ export function buildThinPriorFullRewritePrompt(input: {
     THIN_PRIOR_FULL_REWRITE_PROMPT_SENTINEL,
     "The saved deck is a THIN LOOK seed / title-only scaffold — empty shells, not a closed deliverable.",
     "Do NOT append-only. Do NOT emit a slide-count expansion.",
-    `REWRITE the entire deck with real presentation content (${target} slides).`,
+    `REWRITE the entire deck with real presentation content — emit exactly ${target} slides (no fewer).`,
     "Emit `<artifact type=\"deck\" identifier=\"deck\">` with a complete HTML document.",
-    "Keep the selected template kit (palette, motif, neo/Block Frame chrome). Replace placeholder shells with filled slides.",
+    "Keep the selected template kit (palette, motif, Biennale/Block Frame chrome, kit slide classes such as s-cover / s-chapter). Replace placeholder shells with filled slides — do not invent a generic Inter/#F6C82E layout that abandons the kit.",
     "Every content slide needs a real title plus 2–4 concrete bullets/cards/paragraphs. No empty hosts.",
     "Cover title must be a product/topic name, not a raw URL crumb.",
+    "NEVER copy host protocol tokens such as [od:thin_prior_full_rewrite], [od:slide_count_top_up], or [od:sparse_content_top_up] into titles, body copy, comments, or attributes.",
     "Finish a closed `</html></artifact>` this turn.",
   ].join("\n");
 }
@@ -221,6 +230,7 @@ export function isSoftImprovementAutomationEntryFrom(
 export function isSoftImprovementAutomationPrompt(
   content: string | null | undefined,
 ): boolean {
+  if (isThinPriorFullRewritePrompt(content)) return false;
   return isSlideCountTopUpPrompt(content) || isSparseContentTopUpPrompt(content);
 }
 
