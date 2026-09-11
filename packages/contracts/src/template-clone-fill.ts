@@ -2472,9 +2472,11 @@ export function officialLookIsBroadside(html: string): boolean {
   // Grove shares ZONE A · TOKENS commentary but has no cover-body / broadside-num.
   if (officialLookIsGrove(source)) return false;
   if (officialLookIsMat(source)) return false;
+  // Signal also has ZONE A · TOKENS + cover-body — never treat as Broadside.
+  if (officialLookIsSignal(source)) return false;
+  // ZONE A alone is shared with Signal/Grove/Mat — require orange or broadside chrome.
   const chrome = /\bbroadside-(?:num|top-chrome)\b/i.test(source)
-    || /--c-bg-orange\s*:/i.test(source)
-    || /ZONE A\s*[·.]\s*TOKENS/i.test(source);
+    || /--c-bg-orange\s*:/i.test(source);
   const shell = /\bslide--cover\b/i.test(source) && /\b(?:cover-body|broadside-num)\b/i.test(source);
   return chrome && shell;
 }
@@ -2527,6 +2529,34 @@ export function officialLookIsMat(html: string): boolean {
   const bg = /--c-bg\s*:\s*#232e26/i.test(hay);
   if ((wood || bricolage || accent || bg) && /\bslide--cover\b/i.test(hay)) return true;
   return /\bslide--end\b/i.test(source) && /\bend-main\b/i.test(source);
+}
+
+/**
+ * 루프501 — Signal fingerprint (navy `#1c2644` + Source Serif 4 + cover-body).
+ * Shares ZONE A · TOKENS + cover-body with Broadside soft path — Broadside
+ * chrome now requires orange/`broadside-*`, and Studio must deny Signal.
+ */
+export function officialLookIsSignal(html: string): boolean {
+  const source = String(html ?? '');
+  if (!source.trim()) return false;
+  if (officialLookIsCreativeMode(source)) return false;
+  if (officialLookIsGrove(source) || officialLookIsMat(source)) return false;
+  if (/\bbroadside-(?:num|top-chrome)\b/i.test(source)) return false;
+  if (/--c-bg-orange\s*:/i.test(source)) return false;
+  if (/\b(?:cover-headline|end-main|mat-stat|grove-(?:sidebar|num|stat))\b/i.test(source)) {
+    return false;
+  }
+  const css = lookCssWithoutNeutralize(source);
+  const hay = `${css}\n${source}`;
+  const navy = /--c-bg\s*:\s*#1c2644/i.test(hay) || /#1c2644/i.test(hay);
+  const gold = /--c-accent\s*:\s*#c8a870/i.test(hay);
+  const fonts = /Source Serif 4/i.test(hay) || /IBM Plex Mono/i.test(hay);
+  const styleMark = /SIGNAL STYLE/i.test(hay);
+  const shell = /\bslide--cover\b/i.test(hay) && /\bcover-body\b/i.test(hay);
+  if ((navy || gold || fonts || styleMark) && shell) return true;
+  return /\bslide--end\b/i.test(source)
+    && (navy || gold || fonts || styleMark)
+    && /\b(?:kicker|chapter-rule|editorial-stamp)\b/i.test(hay);
 }
 
 /**
@@ -4748,6 +4778,12 @@ const MAT_POSTER_LAYOUT_CSS = [
   '.slide--end .h1{font-size:clamp(40px,min(6vw,11vh),110px);max-width:90%;line-height:0.95}',
 ].join('');
 
+/** 루프501 — Signal: no kit vertical writing; cover .display / end .h1 stay horizontal. */
+const SIGNAL_POSTER_LAYOUT_CSS = [
+  '.slide--cover .display,.slide--cover .cover-body,.slide--cover .lead,.slide--end .h1,.slide--end .kicker,.slide--end .lead{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}',
+  '.slide--end .h1{font-size:clamp(40px,min(5.5vw,10vh),110px);max-width:90%;line-height:0.95}',
+].join('');
+
 const VERTICAL_WRITING_MODE_DECL_RE =
   /(?:^|;)\s*(?:-webkit-|-ms-|-epub-)?writing-mode\s*:\s*vertical(?:-r[lr])?\s*(?:;|$)/gi;
 
@@ -4765,6 +4801,7 @@ type OfficialPosterKit =
   | 'creative'
   | 'grove'
   | 'mat'
+  | 'signal'
   | 'studio'
   | 'daisy'
   | 'eightbit'
@@ -4876,6 +4913,12 @@ const MAT_COVER_KIT_SLOT_RE =
 const MAT_CLOSING_KIT_SLOT_RE =
   /\b(?:end-main|end-side|end-foot|kicker|h1|lead|info-card|info-card-heading|info-card-body|label|muted|slide-chrome|slide-foot|nav-hint|pagenum|data-od-official-motif-html)\b/i;
 
+const SIGNAL_COVER_KIT_SLOT_RE =
+  /\b(?:cover-body|cover-meta|label|muted|rule|display|lead|kicker|chapter-num|chapter-rule|stat-card|slide-chrome|slide-foot|nav-hint|pagenum|data-od-official-motif-html)\b/i;
+
+const SIGNAL_CLOSING_KIT_SLOT_RE =
+  /\b(?:kicker|rule|h1|lead|label|muted|slide-chrome|slide-foot|nav-hint|pagenum|data-od-official-motif-html)\b/i;
+
 const BOLD_POSTER_COVER_KIT_SLOT_RE =
   /\b(?:hero-meta|hero-title-group|hero-title|hero-tagline|tag-label|tag-body|nav-hint|pagenum|data-od-official-motif-html)\b/i;
 
@@ -4898,8 +4941,8 @@ function resolveOfficialPosterKit(html: string): OfficialPosterKitPlan | null {
   const dest = String(html ?? '');
   if (!dest.trim()) return null;
   // Order: Cobalt (vstack) → Long Table → Editorial → Peoples → Creative →
-  // Grove → Mat before Broadside before Studio → EightBit → Coral before Playful
-  // before BlockFrame → Bold Poster → Capsule → Sakura → Daisy → Biennale.
+  // Grove → Mat → Signal before Broadside before Studio → EightBit → Coral before
+  // Playful before BlockFrame → Bold Poster → Capsule → Sakura → Daisy → Biennale.
   if (officialLookIsCobaltGrid(dest)) {
     return {
       kind: 'cobalt',
@@ -4988,6 +5031,19 @@ function resolveOfficialPosterKit(html: string): OfficialPosterKitPlan | null {
       coverPrimarySlotRe: /\b(?:cover-headline|display)\b/i,
       preserveVerticalSlotRe: null,
       layoutCss: MAT_POSTER_LAYOUT_CSS,
+      layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
+    };
+  }
+  if (officialLookIsSignal(dest)) {
+    return {
+      kind: 'signal',
+      coverHostRe: /\bslide--cover\b/i,
+      closingHostRe: /\bslide--end\b/i,
+      coverSlotRe: SIGNAL_COVER_KIT_SLOT_RE,
+      colophonSlotRe: SIGNAL_CLOSING_KIT_SLOT_RE,
+      coverPrimarySlotRe: /\b(?:cover-body|display)\b/i,
+      preserveVerticalSlotRe: null,
+      layoutCss: SIGNAL_POSTER_LAYOUT_CSS,
       layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
     };
   }
@@ -7519,6 +7575,7 @@ export function officialLookIsStudio(html: string): boolean {
   // Grove shares slide--cover/end + slide-chrome/compare-panel + --c-accent.
   if (officialLookIsGrove(source)) return false;
   if (officialLookIsMat(source)) return false;
+  if (officialLookIsSignal(source)) return false;
   const hasAccent = /--c-accent\s*:/i.test(source) || /var\(\s*--c-accent/i.test(source);
   const hasShell = /\bslide--(?:cover|stats|compare|chapter|split|quote)\b/i.test(source);
   const hasMotif = /\b(?:stat-card|slide-chrome|compare-panel|cover-meta)\b/i.test(source);

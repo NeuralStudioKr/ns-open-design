@@ -51,6 +51,7 @@ import {
   officialLookIsPeoplesPlatform,
   officialLookIsGrove,
   officialLookIsMat,
+  officialLookIsSignal,
   officialLookIsStudio,
   officialLookIsCreativeMode,
   rewriteRawUrlSiteCoverTitles,
@@ -2861,6 +2862,59 @@ ${capsuleLook}
     expect((endBody.match(/class="h1"/g) ?? []).length).toBe(1);
     expect(deduped).toContain('hello@mat.studio');
     expect(deduped).toContain('end-main');
+    const css = injectBiennaleSparseFillCss(peeled);
+    expect(css).toMatch(/data-od-official-poster-layout/);
+    expect(css).toMatch(/\.slide--cover \.display/);
+    expect(css).toMatch(/\.slide--end \.h1\{font-size:clamp/);
+  });
+
+  it('루프501 peels Signal cover-body vertical and dedupes slide--end .h1 (not Broadside)', () => {
+    const look = [
+      '<style data-od-official-look-css="">',
+      '/* ZONE A · TOKENS  —  SIGNAL STYLE */',
+      ':root{--c-bg:#1c2644;--c-accent:#c8a870;--c-bg-light:#f0ece3}',
+      '--f-display:"Source Serif 4",Georgia,serif;--f-mono:"IBM Plex Mono",monospace',
+      '.cover-body{} .cover-meta{} .slide--cover .display{} .slide--end .h1{} .stat-card{}',
+      '</style>',
+    ].join('');
+    const html = [
+      '<section class="slide dark slide--cover">',
+      '<div class="cover-body">',
+      '<div class="label muted">Q2 · Internal</div>',
+      '<div class="rule"></div>',
+      '<h1 class="display" style="writing-mode:vertical-rl">Signal <em>Brief</em></h1>',
+      '<p class="lead">A short description.</p>',
+      '<div class="cover-meta"><span class="label muted">Author</span></div>',
+      '</div>',
+      '<div style="writing-mode:vertical-rl;position:absolute;left:40%">발명된 세로</div>',
+      '</section>',
+      '<section class="slide dark slide--stats"><div class="stat-card">42</div></section>',
+      '<section class="slide dark slide--end">',
+      '<div class="kicker">Organization</div>',
+      '<div class="rule"></div>',
+      '<h1 class="h1">Thank You</h1>',
+      '<h1 class="h1">Thank You</h1>',
+      '<p class="lead muted">hello@signal.studio</p>',
+      '</section>',
+      look,
+    ].join('');
+    expect(officialLookIsSignal(html)).toBe(true);
+    expect(officialLookIsBroadside(html)).toBe(false);
+    expect(officialLookIsStudio(html)).toBe(false);
+    expect(officialLookIsMat(html)).toBe(false);
+    expect(officialLookIsGrove(html)).toBe(false);
+    const stripped = stripBiennaleInventedVerticalWriting(html);
+    expect(stripped).not.toMatch(/writing-mode\s*:\s*vertical/i);
+    expect(stripped).toContain('Signal');
+    const peeled = restyleBiennaleSparseCoverBodies(html);
+    expect(peeled).toContain('cover-body');
+    expect(peeled).toContain('cover-meta');
+    expect(peeled).toContain('Signal');
+    expect(peeled).not.toContain('발명된 세로');
+    const deduped = restyleBiennaleSparseColophonBodies(html);
+    const endBody = deduped.match(/class="[^"]*\bslide--end\b[^"]*"[\s\S]*?<\/section>/i)?.[0] ?? '';
+    expect((endBody.match(/class="h1"/g) ?? []).length).toBe(1);
+    expect(deduped).toContain('hello@signal.studio');
     const css = injectBiennaleSparseFillCss(peeled);
     expect(css).toMatch(/data-od-official-poster-layout/);
     expect(css).toMatch(/\.slide--cover \.display/);
