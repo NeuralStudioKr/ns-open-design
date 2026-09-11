@@ -48,6 +48,7 @@ import {
   officialLookIsLongTable,
   officialLookIsEditorialTriTone,
   officialLookIsBoldPoster,
+  officialLookIsPeoplesPlatform,
   officialLookIsStudio,
   officialLookIsCreativeMode,
   rewriteRawUrlSiteCoverTitles,
@@ -2700,6 +2701,60 @@ ${capsuleLook}
     expect(css).toMatch(/data-od-official-poster-layout/);
     expect(css).toMatch(/\.slide-1 \.main-title/);
     expect(css).toMatch(/\.slide-10 \.closing-title\{font-size:clamp/);
+  });
+
+  it('루프498 peels Peoples Platform cover vertical and dedupes s-close h1', () => {
+    const look = [
+      '<style data-od-official-look-css="">',
+      ':root{--blue:#2C2CDC;--cream:#F6F0E6;--orange:#F15A29}',
+      ".s-cover .title{font-family:'Alfa Slab One',serif}",
+      '.s-pillars{} .stamp-orange{} .s-close .center h1{}',
+      '</style>',
+    ].join('');
+    const html = [
+      '<section class="s-cover grain">',
+      '<div class="frame"></div>',
+      '<div class="meta-top"><div class="pill">Q2</div></div>',
+      '<div class="center">',
+      '<div class="title" style="writing-mode:vertical-rl">QUARTERLY</div>',
+      '<div class="row2"><div class="for">a</div><div class="sub">REVIEW</div></div>',
+      '</div>',
+      '<div style="writing-mode:vertical-rl;position:absolute;left:40%">발명된 세로</div>',
+      '</section>',
+      '<section class="s-pillars grain"><div class="head"><h2>PILLARS</h2></div></section>',
+      '<section class="s-close grain">',
+      '<div class="frame"></div>',
+      '<div class="top"><div>— END —</div></div>',
+      '<div class="center">',
+      '<div class="pre">over to you —</div>',
+      '<h1>QUESTIONS?</h1>',
+      '<h1>QUESTIONS?</h1>',
+      '<div class="row"><div class="cta">LET\'S TALK</div><div class="url">team@company.com</div></div>',
+      '</div>',
+      '<div class="footrow"><div class="signoff">PREPARED BY <span class="b">THE TEAM</span></div>',
+      '<div class="stamp stamp-orange"><div class="big">END</div></div></div>',
+      '</section>',
+      look,
+    ].join('');
+    expect(officialLookIsPeoplesPlatform(html)).toBe(true);
+    expect(officialLookIsEditorialTriTone(html)).toBe(false);
+    expect(officialLookIsLongTable(html)).toBe(false);
+    expect(officialLookIsCobaltGrid(html)).toBe(false);
+    const stripped = stripBiennaleInventedVerticalWriting(html);
+    expect(stripped).not.toMatch(/writing-mode\s*:\s*vertical/i);
+    expect(stripped).toContain('QUARTERLY');
+    const peeled = restyleBiennaleSparseCoverBodies(html);
+    expect(peeled).toContain('meta-top');
+    expect(peeled).toContain('QUARTERLY');
+    expect(peeled).not.toContain('발명된 세로');
+    const deduped = restyleBiennaleSparseColophonBodies(html);
+    expect((deduped.match(/<h1\b[^>]*>QUESTIONS\?/gi) ?? []).length).toBe(1);
+    expect(deduped).toContain('signoff');
+    expect(deduped).toContain('team@company.com');
+    const css = injectBiennaleSparseFillCss(peeled);
+    expect(css).toMatch(/data-od-official-poster-layout/);
+    expect(css).toMatch(/\.s-cover \.title/);
+    expect(css).toMatch(/\.s-close \.center h1\{font-size:clamp/);
   });
 
   it('reparents MiniMax auto-auto-1fr cards and 64px step lists', () => {
