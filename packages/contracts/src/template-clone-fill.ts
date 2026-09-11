@@ -2471,6 +2471,7 @@ export function officialLookIsBroadside(html: string): boolean {
   if (officialLookIsCreativeMode(source)) return false;
   // Grove shares ZONE A · TOKENS commentary but has no cover-body / broadside-num.
   if (officialLookIsGrove(source)) return false;
+  if (officialLookIsMat(source)) return false;
   const chrome = /\bbroadside-(?:num|top-chrome)\b/i.test(source)
     || /--c-bg-orange\s*:/i.test(source)
     || /ZONE A\s*[·.]\s*TOKENS/i.test(source);
@@ -2489,6 +2490,10 @@ export function officialLookIsGrove(html: string): boolean {
   if (officialLookIsCreativeMode(source)) return false;
   if (/\bbroadside-(?:num|top-chrome)\b/i.test(source)) return false;
   if (/\bcover-body\b/i.test(source) && /\bbroadside-num\b/i.test(source)) return false;
+  // Mat uses cover-headline / end-main / mat-stat — not grove-*.
+  if (/\b(?:cover-headline|end-main|mat-stat)\b/i.test(source) && !/\bgrove-(?:sidebar|num|stat)\b/i.test(source)) {
+    return false;
+  }
   const css = lookCssWithoutNeutralize(source);
   const hay = `${css}\n${source}`;
   const groveChrome = /\bgrove-(?:sidebar|num|stat)\b/i.test(hay);
@@ -2498,6 +2503,30 @@ export function officialLookIsGrove(html: string): boolean {
   const terracotta = /--c-accent\s*:\s*#c8524a/i.test(hay);
   if ((fonts || forest || terracotta) && /\bslide--cover\b/i.test(hay)) return true;
   return /\bslide--end\b/i.test(source) && /\bgrove-num\b/i.test(source);
+}
+
+/**
+ * 루프500 — Mat fingerprint (`--c-wood` + Bricolage + cover-headline/end-main).
+ * Shares `slide--cover`/`slide--end` + `slide-chrome` with Studio — resolve
+ * Mat after Grove and deny from Studio/Broadside.
+ */
+export function officialLookIsMat(html: string): boolean {
+  const source = String(html ?? '');
+  if (!source.trim()) return false;
+  if (officialLookIsCreativeMode(source)) return false;
+  if (officialLookIsGrove(source)) return false;
+  if (/\bbroadside-(?:num|top-chrome)\b/i.test(source)) return false;
+  if (/\bcover-body\b/i.test(source) && /\bbroadside-num\b/i.test(source)) return false;
+  const css = lookCssWithoutNeutralize(source);
+  const hay = `${css}\n${source}`;
+  const matChrome = /\b(?:cover-headline|end-main|mat-stat)\b/i.test(hay);
+  if (!matChrome) return false;
+  const wood = /--c-wood\s*:/i.test(hay) || /#7a4e24/i.test(hay);
+  const bricolage = /Bricolage Grotesque/i.test(hay);
+  const accent = /--c-accent\s*:\s*#c07030/i.test(hay);
+  const bg = /--c-bg\s*:\s*#232e26/i.test(hay);
+  if ((wood || bricolage || accent || bg) && /\bslide--cover\b/i.test(hay)) return true;
+  return /\bslide--end\b/i.test(source) && /\bend-main\b/i.test(source);
 }
 
 /**
@@ -4713,6 +4742,12 @@ const GROVE_POSTER_LAYOUT_CSS = [
   '.slide--end .h1{font-size:clamp(48px,min(6.4vw,12vh),120px);max-width:90%;line-height:0.95}',
 ].join('');
 
+/** 루프500 — Mat: no kit vertical writing; cover .display / end .h1 stay horizontal. */
+const MAT_POSTER_LAYOUT_CSS = [
+  '.slide--cover .display,.slide--cover .cover-headline,.slide--cover .lead,.slide--end .h1,.slide--end .end-main,.slide--end .lead{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}',
+  '.slide--end .h1{font-size:clamp(40px,min(6vw,11vh),110px);max-width:90%;line-height:0.95}',
+].join('');
+
 const VERTICAL_WRITING_MODE_DECL_RE =
   /(?:^|;)\s*(?:-webkit-|-ms-|-epub-)?writing-mode\s*:\s*vertical(?:-r[lr])?\s*(?:;|$)/gi;
 
@@ -4729,6 +4764,7 @@ type OfficialPosterKit =
   | 'capsule'
   | 'creative'
   | 'grove'
+  | 'mat'
   | 'studio'
   | 'daisy'
   | 'eightbit'
@@ -4834,6 +4870,12 @@ const GROVE_COVER_KIT_SLOT_RE =
 const GROVE_CLOSING_KIT_SLOT_RE =
   /\b(?:grove-num|kicker|rule|h1|lead|label|muted|slide-chrome|slide-foot|nav-hint|pagenum|data-od-official-motif-html)\b/i;
 
+const MAT_COVER_KIT_SLOT_RE =
+  /\b(?:cover-headline|cover-copy|cover-bottom|kicker|display|lead|caption|info-card|info-card-heading|info-card-body|label|muted|slide-chrome|slide-foot|nav-hint|pagenum|data-od-official-motif-html)\b/i;
+
+const MAT_CLOSING_KIT_SLOT_RE =
+  /\b(?:end-main|end-side|end-foot|kicker|h1|lead|info-card|info-card-heading|info-card-body|label|muted|slide-chrome|slide-foot|nav-hint|pagenum|data-od-official-motif-html)\b/i;
+
 const BOLD_POSTER_COVER_KIT_SLOT_RE =
   /\b(?:hero-meta|hero-title-group|hero-title|hero-tagline|tag-label|tag-body|nav-hint|pagenum|data-od-official-motif-html)\b/i;
 
@@ -4856,8 +4898,8 @@ function resolveOfficialPosterKit(html: string): OfficialPosterKitPlan | null {
   const dest = String(html ?? '');
   if (!dest.trim()) return null;
   // Order: Cobalt (vstack) → Long Table → Editorial → Peoples → Creative →
-  // Grove before Broadside before Studio → EightBit → Coral before Playful before
-  // BlockFrame → Bold Poster → Capsule → Sakura → Daisy → Biennale.
+  // Grove → Mat before Broadside before Studio → EightBit → Coral before Playful
+  // before BlockFrame → Bold Poster → Capsule → Sakura → Daisy → Biennale.
   if (officialLookIsCobaltGrid(dest)) {
     return {
       kind: 'cobalt',
@@ -4933,6 +4975,19 @@ function resolveOfficialPosterKit(html: string): OfficialPosterKitPlan | null {
       coverPrimarySlotRe: /\b(?:h1|kicker)\b/i,
       preserveVerticalSlotRe: null,
       layoutCss: GROVE_POSTER_LAYOUT_CSS,
+      layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
+    };
+  }
+  if (officialLookIsMat(dest)) {
+    return {
+      kind: 'mat',
+      coverHostRe: /\bslide--cover\b/i,
+      closingHostRe: /\bslide--end\b/i,
+      coverSlotRe: MAT_COVER_KIT_SLOT_RE,
+      colophonSlotRe: MAT_CLOSING_KIT_SLOT_RE,
+      coverPrimarySlotRe: /\b(?:cover-headline|display)\b/i,
+      preserveVerticalSlotRe: null,
+      layoutCss: MAT_POSTER_LAYOUT_CSS,
       layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
     };
   }
@@ -5202,7 +5257,7 @@ export function restyleBiennaleSparseColophonBodies(html: string): string {
       let candidate = block;
       if (isKitSlotOpen(open, block.slice(0, 120), kit.colophonSlotRe)) {
         // Inside title/closing copy hosts, collapse duplicated children first.
-        if (/\b(?:titlewrap|col-footer|colofo|closing-content|cover-footer|stamp|close-frame|cta-content|cover-body|frame|top|center|hero-title-group|left-panel)\b/i.test(open)) {
+        if (/\b(?:titlewrap|col-footer|colofo|closing-content|cover-footer|stamp|close-frame|cta-content|cover-body|frame|top|center|hero-title-group|left-panel|end-main|cover-headline)\b/i.test(open)) {
           const deduped = dedupeAdjacentSameVisibleChildren(block);
           if (deduped !== block) changed = true;
           candidate = deduped;
@@ -5213,6 +5268,7 @@ export function restyleBiennaleSparseColophonBodies(html: string): string {
       const key = normalizeVisibleCopyKey(candidate);
       const minKeyLen = /\b(?:big|h|display|ttl|closing-line|close-title|close-big|closing-big|closing-title|main-title|hero-title|title-main|title)\b/i.test(open)
         || /^<h1\b/i.test(open)
+        || /\bh1\b/i.test(open)
         ? 2
         : 8;
       if (key.length >= minKeyLen) {
@@ -7462,6 +7518,7 @@ export function officialLookIsStudio(html: string): boolean {
   if (officialLookIsBroadside(source)) return false;
   // Grove shares slide--cover/end + slide-chrome/compare-panel + --c-accent.
   if (officialLookIsGrove(source)) return false;
+  if (officialLookIsMat(source)) return false;
   const hasAccent = /--c-accent\s*:/i.test(source) || /var\(\s*--c-accent/i.test(source);
   const hasShell = /\bslide--(?:cover|stats|compare|chapter|split|quote)\b/i.test(source);
   const hasMotif = /\b(?:stat-card|slide-chrome|compare-panel|cover-meta)\b/i.test(source);

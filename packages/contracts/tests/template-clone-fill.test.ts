@@ -50,6 +50,7 @@ import {
   officialLookIsBoldPoster,
   officialLookIsPeoplesPlatform,
   officialLookIsGrove,
+  officialLookIsMat,
   officialLookIsStudio,
   officialLookIsCreativeMode,
   rewriteRawUrlSiteCoverTitles,
@@ -2808,6 +2809,61 @@ ${capsuleLook}
     const css = injectBiennaleSparseFillCss(peeled);
     expect(css).toMatch(/data-od-official-poster-layout/);
     expect(css).toMatch(/\.slide--cover \.h1/);
+    expect(css).toMatch(/\.slide--end \.h1\{font-size:clamp/);
+  });
+
+  it('루프500 peels Mat slide--cover vertical and dedupes slide--end .h1', () => {
+    const look = [
+      '<style data-od-official-look-css="">',
+      ':root{--c-bg:#232e26;--c-accent:#c07030;--c-wood:#7a4e24}',
+      '--f-display:"Bricolage Grotesque",sans-serif',
+      '.cover-headline{} .end-main{} .mat-stat{} .slide--cover .display{} .slide--end .h1{}',
+      '</style>',
+    ].join('');
+    const html = [
+      '<section class="slide dark slide--cover">',
+      '<div class="cover-headline">',
+      '<span class="kicker">Studio · 2026</span>',
+      '<h1 class="display" style="writing-mode:vertical-rl">Craft Matters</h1>',
+      '</div>',
+      '<div class="cover-copy"><p class="lead">Designed for builders.</p></div>',
+      '<div class="cover-bottom"><div class="info-card"><div class="info-card-heading">Lab</div></div></div>',
+      '<div style="writing-mode:vertical-rl;position:absolute;left:40%">발명된 세로</div>',
+      '</section>',
+      '<section class="slide dark slide--stats"><header class="slide-chrome">02</header>',
+      '<div class="mat-stat"><div class="mat-stat-val">4.7</div></div></section>',
+      '<section class="slide dark slide--end">',
+      '<div class="end-main">',
+      '<span class="kicker">Ready</span>',
+      '<h2 class="h1">Start here.</h2>',
+      '<h2 class="h1">Start here.</h2>',
+      '<p class="lead muted">hello@mat.studio</p>',
+      '</div>',
+      '<div class="end-side"><div class="info-card"><div class="info-card-heading">Get in touch.</div></div></div>',
+      '<div class="end-foot"><span class="label muted">Mat · 2026</span></div>',
+      '</section>',
+      look,
+    ].join('');
+    expect(officialLookIsMat(html)).toBe(true);
+    expect(officialLookIsGrove(html)).toBe(false);
+    expect(officialLookIsStudio(html)).toBe(false);
+    expect(officialLookIsBroadside(html)).toBe(false);
+    const stripped = stripBiennaleInventedVerticalWriting(html);
+    expect(stripped).not.toMatch(/writing-mode\s*:\s*vertical/i);
+    expect(stripped).toContain('Craft Matters');
+    const peeled = restyleBiennaleSparseCoverBodies(html);
+    expect(peeled).toContain('cover-headline');
+    expect(peeled).toContain('info-card');
+    expect(peeled).toContain('Craft Matters');
+    expect(peeled).not.toContain('발명된 세로');
+    const deduped = restyleBiennaleSparseColophonBodies(html);
+    const endBody = deduped.match(/class="[^"]*\bslide--end\b[^"]*"[\s\S]*?<\/section>/i)?.[0] ?? '';
+    expect((endBody.match(/class="h1"/g) ?? []).length).toBe(1);
+    expect(deduped).toContain('hello@mat.studio');
+    expect(deduped).toContain('end-main');
+    const css = injectBiennaleSparseFillCss(peeled);
+    expect(css).toMatch(/data-od-official-poster-layout/);
+    expect(css).toMatch(/\.slide--cover \.display/);
     expect(css).toMatch(/\.slide--end \.h1\{font-size:clamp/);
   });
 
