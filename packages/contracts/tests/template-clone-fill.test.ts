@@ -49,6 +49,7 @@ import {
   officialLookIsEditorialTriTone,
   officialLookIsBoldPoster,
   officialLookIsPeoplesPlatform,
+  officialLookIsGrove,
   officialLookIsStudio,
   officialLookIsCreativeMode,
   rewriteRawUrlSiteCoverTitles,
@@ -2755,6 +2756,59 @@ ${capsuleLook}
     expect(css).toMatch(/data-od-official-poster-layout/);
     expect(css).toMatch(/\.s-cover \.title/);
     expect(css).toMatch(/\.s-close \.center h1\{font-size:clamp/);
+  });
+
+  it('루프499 peels Grove slide--cover vertical and dedupes slide--end .h1', () => {
+    const look = [
+      '<style data-od-official-look-css="">',
+      ':root{--c-bg:#192b1b;--c-accent:#c8524a;--c-bg-light:#e8e4d6}',
+      '--f-display:"Playfair Display",Georgia,serif;--f-body:"Jost",sans-serif',
+      '.grove-sidebar{} .grove-num{} .slide--cover .h1{} .slide--end .h1{}',
+      '</style>',
+    ].join('');
+    const html = [
+      '<section class="slide dark slide--cover">',
+      '<div class="grove-sidebar">Strategy</div>',
+      '<div class="grove-num">01</div>',
+      '<div class="kicker">Studio · 2026</div>',
+      '<div class="rule"></div>',
+      '<h1 class="h1" style="writing-mode:vertical-rl">Grove Title</h1>',
+      '<p class="lead muted">A strategy deck.</p>',
+      '<div style="writing-mode:vertical-rl;position:absolute;left:40%">발명된 세로</div>',
+      '</section>',
+      '<section class="slide dark slide--chapter"><div class="slide-chrome">02</div></section>',
+      '<section class="slide dark slide--end">',
+      '<div class="grove-num">12</div>',
+      '<div class="kicker">Organization</div>',
+      '<div class="rule"></div>',
+      '<h1 class="h1">Thank You</h1>',
+      '<h1 class="h1">Thank You</h1>',
+      '<p class="lead muted">hello@grove.studio</p>',
+      '<p class="label muted">Confidential</p>',
+      '</section>',
+      look,
+    ].join('');
+    expect(officialLookIsGrove(html)).toBe(true);
+    expect(officialLookIsStudio(html)).toBe(false);
+    expect(officialLookIsBroadside(html)).toBe(false);
+    const stripped = stripBiennaleInventedVerticalWriting(html);
+    expect(stripped).not.toMatch(/writing-mode\s*:\s*vertical/i);
+    expect(stripped).toContain('Grove Title');
+    expect(stripped).toContain('grove-sidebar');
+    const peeled = restyleBiennaleSparseCoverBodies(html);
+    expect(peeled).toContain('grove-sidebar');
+    expect(peeled).toContain('grove-num');
+    expect(peeled).toContain('Grove Title');
+    expect(peeled).not.toContain('발명된 세로');
+    const deduped = restyleBiennaleSparseColophonBodies(html);
+    const endBody = deduped.match(/class="[^"]*\bslide--end\b[^"]*"[\s\S]*?<\/section>/i)?.[0] ?? '';
+    expect((endBody.match(/class="h1"/g) ?? []).length).toBe(1);
+    expect(deduped).toContain('hello@grove.studio');
+    expect(deduped).toContain('grove-num');
+    const css = injectBiennaleSparseFillCss(peeled);
+    expect(css).toMatch(/data-od-official-poster-layout/);
+    expect(css).toMatch(/\.slide--cover \.h1/);
+    expect(css).toMatch(/\.slide--end \.h1\{font-size:clamp/);
   });
 
   it('reparents MiniMax auto-auto-1fr cards and 64px step lists', () => {
