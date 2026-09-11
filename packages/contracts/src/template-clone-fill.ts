@@ -2159,6 +2159,28 @@ export function officialLookIsCoral(html: string): boolean {
 }
 
 /**
+ * 루프496 — Playful fingerprint (Syne + peach `--bg` + title-main / doodle-blob).
+ * Shares slide-1/slide-10 with Capsule/BlockFrame/Coral — deny those families.
+ */
+export function officialLookIsPlayful(html: string): boolean {
+  const source = String(html ?? '');
+  if (!source.trim()) return false;
+  if (officialLookIsCoral(source)) return false;
+  if (/\btitle-pill\b/i.test(source) && /Bodoni/i.test(source)) return false;
+  if (/\bdeco-pills(?:-closing)?\b/i.test(source) && /Bodoni/i.test(source)) return false;
+  if (/\bhero-frame\b/i.test(source) || /--pink\s*:\s*#FE90E8/i.test(source)) return false;
+  if (/\bzigzag-layer\b/i.test(source) || /\bbrand-mark\b/i.test(source)) return false;
+
+  const css = lookCssWithoutNeutralize(source);
+  const hay = `${css}\n${source}`;
+  const peach = /--bg\s*:\s*#F0C8A0/i.test(hay) || /#F0C8A0/i.test(hay);
+  const syne = /Syne/i.test(hay);
+  const chrome = /\b(?:title-main|doodle-blob|closing-big|vertical-text)\b/i.test(hay);
+  if ((peach || syne) && chrome && /\bslide-1\b/i.test(hay)) return true;
+  return /\btitle-main\b/i.test(source) && /\bdoodle-blob/i.test(source);
+}
+
+/**
  * 루프395 — Capsule (Bodoni + coral pills) look fingerprint.
  * 루프396 — used for IB cover restyle + neo cream fallback skip.
  * 루프495 — deny Coral (same `--coral` + `main-title` soft path).
@@ -2166,6 +2188,7 @@ export function officialLookIsCoral(html: string): boolean {
 export function officialLookIsCapsule(html: string): boolean {
   const source = String(html ?? '');
   if (officialLookIsCoral(source)) return false;
+  if (officialLookIsPlayful(source)) return false;
   const css = lookCssWithoutNeutralize(source);
   if (css.trim()) {
     // Soft coral kit token — accept truncated sheets / near-hex / rgb.
@@ -2391,8 +2414,9 @@ function rewriteUrlTitlesInFragment(
  */
 function officialLookIsNeoBrutalBlockFrame(html: string): boolean {
   const source = String(html ?? '');
-  // Capsule shares slide-1/slide-10 hosts — coral/Bodoni wins there.
+  // Capsule / Playful share slide-1/slide-10 hosts — their chrome wins there.
   if (officialLookIsCapsule(source)) return false;
+  if (officialLookIsPlayful(source)) return false;
   const css = lookCssWithoutNeutralize(source);
   if (css.trim()) {
     if (/\.slide-1\s+\.hero-frame\b/i.test(css)) return true;
@@ -4613,6 +4637,12 @@ const BOLD_POSTER_POSTER_LAYOUT_CSS = [
   '.slide-close .close-big{font-size:clamp(56px,min(10vw,18vh),180px);max-width:95%;line-height:0.9}',
 ].join('');
 
+/** 루프496 — Playful: no kit writing-mode (vertical-text uses rotate); title-main / closing-big stay horizontal. */
+const PLAYFUL_POSTER_LAYOUT_CSS = [
+  '.slide-1 .title-main,.slide-1 .date-large,.slide-1 .subtitle,.slide-10 .closing-big,.slide-10 .closing-sub{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}',
+  '.slide-10 .closing-big{font-size:clamp(48px,min(8vw,14vh),140px);max-width:95%;line-height:0.95}',
+].join('');
+
 const VERTICAL_WRITING_MODE_DECL_RE =
   /(?:^|;)\s*(?:-webkit-|-ms-|-epub-)?writing-mode\s*:\s*vertical(?:-r[lr])?\s*(?:;|$)/gi;
 
@@ -4623,6 +4653,7 @@ type OfficialPosterKit =
   | 'longtable'
   | 'editorial'
   | 'boldposter'
+  | 'playful'
   | 'capsule'
   | 'creative'
   | 'studio'
@@ -4723,11 +4754,18 @@ const BOLD_POSTER_COVER_KIT_SLOT_RE =
 const BOLD_POSTER_CLOSING_KIT_SLOT_RE =
   /\b(?:close-big|close-sub|close-links|nav-hint|pagenum|data-od-official-motif-html)\b/i;
 
+const PLAYFUL_COVER_KIT_SLOT_RE =
+  /\b(?:date-large|title-main|subtitle|doodle-blob(?:-\d+)?|doodle|vertical-text|scribble-line|nav-hint|pagenum|data-od-official-motif-html)\b/i;
+
+const PLAYFUL_CLOSING_KIT_SLOT_RE =
+  /\b(?:closing-big|closing-sub|contact-block|contact-line|doodle-circle|doodle-rect|doodle|scribble-line|nav-hint|pagenum|data-od-official-motif-html)\b/i;
+
 function resolveOfficialPosterKit(html: string): OfficialPosterKitPlan | null {
   const dest = String(html ?? '');
   if (!dest.trim()) return null;
   // Order: Cobalt (vstack) → Long Table → Editorial → Creative → Broadside before
-  // Studio → EightBit → BlockFrame → Bold Poster → Capsule → Sakura → Daisy → Biennale.
+  // Studio → EightBit → Playful before BlockFrame → Bold Poster → Capsule → Sakura →
+  // Daisy → Biennale.
   if (officialLookIsCobaltGrid(dest)) {
     return {
       kind: 'cobalt',
@@ -4816,6 +4854,19 @@ function resolveOfficialPosterKit(html: string): OfficialPosterKitPlan | null {
       coverPrimarySlotRe: /\b(?:pixel-hero-text|hero-subtitle)\b/i,
       preserveVerticalSlotRe: null,
       layoutCss: EIGHTBIT_POSTER_LAYOUT_CSS,
+      layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
+    };
+  }
+  if (officialLookIsPlayful(dest)) {
+    return {
+      kind: 'playful',
+      coverHostRe: /\bslide-1\b/i,
+      closingHostRe: /\bslide-10\b/i,
+      coverSlotRe: PLAYFUL_COVER_KIT_SLOT_RE,
+      colophonSlotRe: PLAYFUL_CLOSING_KIT_SLOT_RE,
+      coverPrimarySlotRe: /\b(?:title-main|date-large)\b/i,
+      preserveVerticalSlotRe: null,
+      layoutCss: PLAYFUL_POSTER_LAYOUT_CSS,
       layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
     };
   }
@@ -5029,7 +5080,7 @@ export function restyleBiennaleSparseColophonBodies(html: string): string {
       // Adjacent twin hosts (e.g. Broadside twin `.display` h1s) still collapse.
       // Display title slots may be short ("Fin.") — use a lower key floor than chrome.
       const key = normalizeVisibleCopyKey(candidate);
-      const minKeyLen = /\b(?:big|h|display|ttl|closing-line|close-title|close-big|main-title|hero-title)\b/i.test(open)
+      const minKeyLen = /\b(?:big|h|display|ttl|closing-line|close-title|close-big|closing-big|main-title|hero-title|title-main)\b/i.test(open)
         ? 2
         : 8;
       if (key.length >= minKeyLen) {

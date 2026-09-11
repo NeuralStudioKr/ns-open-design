@@ -68,6 +68,7 @@ import {
   absorbTrailingContentIntoSlideFlow,
   officialLookIsCapsule,
   officialLookIsCoral,
+  officialLookIsPlayful,
   officialLookIsDaisyDays,
   officialLookIsBroadside,
   stripNestedBoldNumberTypoPrefix,
@@ -2602,6 +2603,53 @@ ${capsuleLook}
     ].join('');
     expect(officialLookIsCoral(playful)).toBe(false);
     expect(officialLookIsCapsule(playful)).toBe(false);
+  });
+
+  it('루프496 peels Playful slide-1 vertical and dedupes slide-10 closing-big', () => {
+    const look = [
+      '<style data-od-official-look-css="">',
+      ':root{--bg:#F0C8A0;--bg-alt:#E8B88E}',
+      ".slide-1 .title-main{font-family:'Syne',sans-serif}",
+      '.doodle-blob-1{} .slide-10 .closing-big{}',
+      '</style>',
+    ].join('');
+    const html = [
+      '<div class="slide slide-1">',
+      '<div class="date-large">02.05.26</div>',
+      '<div class="title-main" style="writing-mode:vertical-rl">팀버 소개</div>',
+      '<div class="subtitle">한눈에</div>',
+      '<div class="doodle-blob-1 doodle"></div>',
+      '<div class="vertical-text">SCROLL</div>',
+      '<div style="writing-mode:vertical-rl;position:absolute;top:10%">발명된 세로</div>',
+      '</div>',
+      '<div class="slide slide-10">',
+      '<div class="closing-big">Thank You</div>',
+      '<div class="closing-big">Thank You</div>',
+      '<div class="closing-sub">Questions welcome.</div>',
+      '<div class="contact-block"><div class="contact-line">hello@example.studio</div></div>',
+      '</div>',
+      look,
+    ].join('');
+    expect(officialLookIsPlayful(html)).toBe(true);
+    expect(officialLookIsCapsule(html)).toBe(false);
+    expect(officialLookIsCoral(html)).toBe(false);
+    const stripped = stripBiennaleInventedVerticalWriting(html);
+    expect(stripped).not.toMatch(/writing-mode\s*:\s*vertical/i);
+    expect(stripped).toContain('팀버 소개');
+    expect(stripped).toContain('vertical-text');
+    const peeled = restyleBiennaleSparseCoverBodies(html);
+    expect(peeled).toContain('title-main');
+    expect(peeled).toContain('doodle-blob-1');
+    expect(peeled).toContain('vertical-text');
+    expect(peeled).toContain('SCROLL');
+    expect(peeled).not.toContain('발명된 세로');
+    const deduped = restyleBiennaleSparseColophonBodies(html);
+    expect((deduped.match(/class="closing-big"/g) ?? []).length).toBe(1);
+    expect(deduped).toContain('contact-block');
+    const css = injectBiennaleSparseFillCss(peeled);
+    expect(css).toMatch(/data-od-official-poster-layout/);
+    expect(css).toMatch(/\.slide-1 \.title-main/);
+    expect(css).toMatch(/\.slide-10 \.closing-big\{font-size:clamp/);
   });
 
   it('reparents MiniMax auto-auto-1fr cards and 64px step lists', () => {
