@@ -787,6 +787,7 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).toContain("deckArtifactStartsWithMotifSvgDump");
     expect(projectView).toContain("shouldAbortStreamForMotifSvgDump");
     expect(projectView).toContain("shouldAbortStreamForHeadOnlyKitDump");
+    expect(projectView).toContain("templateCloneContentFill: isCloneHostFillTurn");
     expect(projectView).toContain("FILL_MOTIF_SVG_DUMP_STOP_REASON");
     expect(projectView).toContain("FILL_HEAD_KIT_DUMP_STOP_REASON");
     expect(projectView).toContain("stripAbandonedMotifSvgDumpFromStreamedText");

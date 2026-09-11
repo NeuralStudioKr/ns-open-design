@@ -12030,7 +12030,7 @@ export function ProjectView({
             && !headKitDumpAbortArmed
             && shouldAbortStreamForMotifSvgDump({
               streamedText,
-              templateCloneContentFill: isCloneContentFillTurn,
+              templateCloneContentFill: isCloneHostFillTurn,
               slideCountTopUp: isSlideCountTopUpSend,
             })
           ) {
@@ -12041,7 +12041,7 @@ export function ProjectView({
             && !headKitDumpAbortArmed
             && shouldAbortStreamForHeadOnlyKitDump({
               streamedText,
-              templateCloneContentFill: isCloneContentFillTurn,
+              templateCloneContentFill: isCloneHostFillTurn,
               slideCountTopUp: isSlideCountTopUpSend,
               slideOnlyDeck: slideOnlyMvp,
             })
