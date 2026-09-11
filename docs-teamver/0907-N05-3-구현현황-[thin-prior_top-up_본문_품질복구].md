@@ -9,19 +9,19 @@
 ☑ thin LOOK → full rewrite 큐 (루프502: 1장 title-only 포함 · append 대신)  
 ☑ 회귀 테스트 (contracts outline · deck-html-content · slideCountTopUp)  
 ☑ 루프502 — 1장 title-only thin prior도 rewrite (`hostCount >= 1`, 명시 1장 honor 제외)  
-☐ 루프503 — 명시 요청 1장 shortfall top-up · slide_count_top_up 실패 가시화  
+☑ 루프503 — 명시 요청 1장 shortfall top-up · slide_count_top_up 실패 가시화  
 ☐ Design staging 재배포 후 QA
 
 ## 검증
 
 - `packages/contracts` `template-clone-outline` 51/51  
-- `apps/web` `deck-html-content` + `slideCountTopUp` 64/64  
-- 루프502 unit: 1장 thin rewrite / requested=1 no-rewrite
+- `apps/web` `deck-html-content` + `slideCountTopUp`  
+- 루프502 unit: 1장 thin rewrite / requested=1 no-rewrite  
+- 루프503: produced=1 requested=8 → top-up · top-up 실패는 soft 아님
 
 ## 다음
 
-- 루프503 구현
-- staging 재배포 후 Block Frame 1장 표지 → rewrite→6장 QA  
+- staging 재배포 후 Block Frame 1장 표지 → rewrite/top-up QA  
 - (별도 P2) 사이트 분석 → outline 주입
 
 ## 변경 이력
@@ -29,3 +29,4 @@
 | 2026-09-07 | N05 구현현황 |
 | 2026-09-11 | 루프502 — 1장 thin rewrite 게이트 완화 |
 | 2026-09-11 | 루프503 — 명시 요청 shortfall 설계 |
+| 2026-09-11 | 루프503 — 명시 요청 shortfall 구현·검증 |

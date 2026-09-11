@@ -293,7 +293,7 @@ describe("slideCountTopUp", () => {
       produced: 2,
       requested: 15,
       topUpCount: 0,
-    })).toBe(false);
+    })).toBe(true);
     expect(shouldQueueSlideCountTopUp({
       produced: 1,
       requested: null,
@@ -536,7 +536,7 @@ describe("slideCountTopUp", () => {
       hostCount: 2,
       thinPrior: true,
       rewriteCount: 0,
-    })).toBe(false);
+    })).toBe(true);
     expect(shouldQueueThinPriorFullRewrite({
       hostCount: 9,
       thinPrior: false,
@@ -599,8 +599,8 @@ describe("slideCountTopUp", () => {
     expect(countSparseContentTopUpAttemptsInConversation(messages)).toBe(1);
   });
 
-  it("treats top-up turns as soft improvements, not the rewrite/continue turns (루프481)", () => {
-    expect(isSoftImprovementAutomationEntryFrom(SLIDE_COUNT_TOP_UP_ENTRY_FROM)).toBe(true);
+  it("treats sparse repair as soft-improvement; slide-count top-up failure is real (루프503)", () => {
+    expect(isSoftImprovementAutomationEntryFrom(SLIDE_COUNT_TOP_UP_ENTRY_FROM)).toBe(false);
     expect(isSoftImprovementAutomationEntryFrom(SPARSE_CONTENT_TOP_UP_ENTRY_FROM)).toBe(true);
     // The saved deck is incomplete on these — their failure is real news.
     expect(isSoftImprovementAutomationEntryFrom(THIN_PRIOR_FULL_REWRITE_ENTRY_FROM)).toBe(false);

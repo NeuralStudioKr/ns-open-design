@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { deckLooksLikeThinTopUpHostPrior } from '../src/artifacts/deck-html-content';
 import {
+  SLIDE_COUNT_TOP_UP_ENTRY_FROM,
+  SPARSE_CONTENT_TOP_UP_ENTRY_FROM,
+  isSoftImprovementAutomationEntryFrom,
   shouldQueueSlideCountTopUp,
   shouldQueueThinPriorFullRewrite,
 } from '../src/teamver/slideCountTopUp';
@@ -64,5 +67,28 @@ describe('루프502 thin prior 1-slide rewrite', () => {
         topUpCount: 0,
       }),
     ).toBe(true);
+  });
+
+  it('루프503 queues top-up for 1-slide persist when user requested 8–10 (no defaultRequested)', () => {
+    expect(
+      shouldQueueSlideCountTopUp({
+        produced: 1,
+        requested: 10,
+        requestedMin: 8,
+        topUpCount: 0,
+      }),
+    ).toBe(true);
+    expect(
+      shouldQueueSlideCountTopUp({
+        produced: 2,
+        requested: 15,
+        topUpCount: 0,
+      }),
+    ).toBe(true);
+  });
+
+  it('루프503 does not silence slide-count top-up failures as soft-improvement', () => {
+    expect(isSoftImprovementAutomationEntryFrom(SLIDE_COUNT_TOP_UP_ENTRY_FROM)).toBe(false);
+    expect(isSoftImprovementAutomationEntryFrom(SPARSE_CONTENT_TOP_UP_ENTRY_FROM)).toBe(true);
   });
 });

@@ -204,6 +204,10 @@ export function buildSparseContentTopUpPrompt(
  * `AGENT_EXECUTION_FAILED` report looked like from the outside. Auto-continue
  * and the thin-prior rewrite are deliberately NOT in this set: there the saved
  * deck is incomplete or a hollow scaffold, so the failure is real news.
+ *
+ * 루프503 — Slide-count top-up is also out: a 1-slide persist that failed to
+ * expand to the requested 6–10 is not "already complete enough". Sparse card
+ * repair of a real multi-slide deck stays quiet.
  */
 export const SOFT_IMPROVEMENT_TURN_STATUS_CODE = "soft_improvement_turn_failed";
 
@@ -211,8 +215,7 @@ export function isSoftImprovementAutomationEntryFrom(
   entryFrom: string | null | undefined,
 ): boolean {
   const value = String(entryFrom ?? "").trim();
-  return value === SLIDE_COUNT_TOP_UP_ENTRY_FROM
-    || value === SPARSE_CONTENT_TOP_UP_ENTRY_FROM;
+  return value === SPARSE_CONTENT_TOP_UP_ENTRY_FROM;
 }
 
 export function isSoftImprovementAutomationPrompt(
@@ -457,7 +460,10 @@ export function shouldQueueSlideCountTopUp(input: {
   const targetMax = input.requested ?? input.defaultRequested ?? null;
   const targetMin = input.requestedMin ?? input.requested ?? input.defaultRequested ?? null;
   if (targetMax == null || targetMin == null) return false;
-  const minProduced = input.defaultRequested != null ? 1 : 3;
+  // 루프503 — Explicit 8–10 (or default-6) must expand a 1-slide persist.
+  // Previously minProduced was 3 unless defaultRequested was set, so clone-ref
+  // off + requested=8 + produced=1 never queued top-up.
+  const minProduced = 1;
   if (!Number.isFinite(input.produced) || input.produced < minProduced) return false;
   if (input.topUpCount >= SLIDE_COUNT_TOP_UP_MAX_PER_CONVERSATION) return false;
   // Implicit default 6 is only for short first fills. A closed 5-page deck
