@@ -80,11 +80,32 @@ Rewrite prompt: sentinel + “replace thin LOOK shells with a complete filled de
 | `shouldQueueSlideCountTopUp` minProduced | default 있을 때만 1, 아니면 3 | **명시 requested 또는 default면 1** |
 | `isSoftImprovementAutomationEntryFrom` | slide_count_top_up + sparse | **sparse만** (장수 확장은 실패가 실제 뉴스) |
 
+### F. 루프504 — thin-rewrite 센티널 커버 누수 + rewrite under-delivery
+
+**체감:** 요청 8~10장 → 산출 4장. 커버 `<h1>[od:thin_prior_full_rewrite]</h1>`. Biennale look CSS는 살아 있는데 본문 슬라이드는 kit 이탈(Inter/#F6C82E).
+
+**원인:**
+
+1. `stripHostProtocolLeakFromDeckHtml` / empty-slide 판정이 `[od:slide_count_top_up]`만 제거 → thin rewrite 센티널이 제목으로 잔류
+2. `healInstructionCopyCoverHeading`이 센티널을 failed-generate로 못 봄 → sanitize가 나중에 비워도(또는 안 해도) 표지 깨짐. sanitize→heal 순이면 salvage가 빈 표지 셸을 **드롭**
+3. rewrite prompt가 “N slides”만 약하게 요구하고 센티널 금지·킷 유지를 명시하지 않음
+4. 4장 shortfall은 루프503 top-up 대상이나, 센티널 누수 덱이 성공처럼 보이면 운영 진단이 흐려짐
+
+**변경:**
+
+| 항목 | 내용 |
+|------|------|
+| strip / empty | `thin_prior_full_rewrite` · `sparse_content_top_up` 포함 |
+| heal | `looksLikeHostProtocolSentinelCopy` → heading 교체 (**sanitize 전**) |
+| gates | sentinel → failed headings / short-draft 거부 / low-substance |
+| rewrite prompt | exact N장 · NEVER copy `[od:…]` · kit class 유지(s-cover 등) |
+
 ## 검증
 
 - unit: improve-thin / not-improve / recoverable reason / rewrite sentinel
 - 루프502: hostCount=1 thin + default → rewrite true · requested=1 → rewrite false
 - 루프503: produced=1 requested=8 → top-up true · top-up은 soft-improvement 아님
+- 루프504: Biennale cover sentinel heal · strip · AfterHeal · low-substance · prompt exact N
 - ProjectView 로직은 가능하면 순수 함수로 추출해 테스트
 
 ## 변경 이력
@@ -92,3 +113,4 @@ Rewrite prompt: sentinel + “replace thin LOOK shells with a complete filled de
 | 2026-09-07 | N05 구현설계 |
 | 2026-09-11 | 루프502 — 1장 thin prior rewrite floor 완화 |
 | 2026-09-11 | 루프503 — 명시 요청 1장 shortfall top-up · top-up 실패 가시화 |
+| 2026-09-11 | 루프504 — thin-rewrite 센티널 커버 누수 · rewrite prompt 장수/킷 강화 |
