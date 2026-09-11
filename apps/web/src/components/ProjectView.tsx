@@ -12836,6 +12836,7 @@ export function ProjectView({
             thinPrior,
             rewriteCount: rewriteAlready,
             commentAttachmentCount: runCommentAttachmentsRef.current.length,
+            requested,
           })
           && (
             runTemplateCloneContentFillRef.current

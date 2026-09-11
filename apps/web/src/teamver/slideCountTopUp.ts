@@ -76,18 +76,25 @@ export function countThinPriorFullRewriteAttemptsInConversation(
 
 /**
  * Hollow LOOK seed / title+empty scaffold: replace, do not APPEND top-up.
- * Host count ≥3 empty shells (or thin prior with ≥3 hosts).
+ * 루프502 — Also 1–2 title-only hosts (Block Frame cover-only). Previously
+ * required ≥3 hosts, so a solo thin cover fell through to APPEND and often
+ * soft-failed, leaving one page forever.
  */
 export function shouldQueueThinPriorFullRewrite(input: {
   hostCount: number;
   thinPrior: boolean;
   rewriteCount: number;
   commentAttachmentCount?: number;
+  /** Exact/range max from the user brief. Honor 1장 → do not expand. */
+  requested?: number | null;
 }): boolean {
   if ((input.commentAttachmentCount ?? 0) > 0) return false;
   if (!input.thinPrior) return false;
-  if (!Number.isFinite(input.hostCount) || input.hostCount < 3) return false;
+  if (!Number.isFinite(input.hostCount) || input.hostCount < 1) return false;
   if (input.rewriteCount >= THIN_PRIOR_FULL_REWRITE_MAX_PER_CONVERSATION) return false;
+  const requested = input.requested ?? null;
+  // User asked for exactly this many (or fewer) pages — do not force a 6-up.
+  if (requested != null && requested <= input.hostCount) return false;
   return true;
 }
 

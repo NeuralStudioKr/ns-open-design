@@ -6,7 +6,7 @@
 ☑ `incomingImprovesThinTopUpPrior` + top-up persist 교체  
 ☑ LookSeed recoverable에 `thin-prior-top-up-no-append`  
 ☑ top-up 턴 Clone lineage LOOK 복구 게이트  
-☑ thin LOOK(≥3 hosts) → full rewrite 큐 (append 대신)  
+☑ thin LOOK → full rewrite 큐 (루프502: 1장 title-only 포함 · append 대신)  
 ☑ 회귀 테스트 (contracts outline · deck-html-content · slideCountTopUp)  
 ☑ 루프502 — 1장 title-only thin prior도 rewrite (`hostCount >= 1`, 명시 1장 honor 제외)  
 ☐ Design staging 재배포 후 QA
