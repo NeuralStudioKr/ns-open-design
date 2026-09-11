@@ -67,6 +67,7 @@ import {
   extractBlocksFromChromePills,
   absorbTrailingContentIntoSlideFlow,
   officialLookIsCapsule,
+  officialLookIsCoral,
   officialLookIsDaisyDays,
   officialLookIsBroadside,
   stripNestedBoldNumberTypoPrefix,
@@ -2556,6 +2557,51 @@ ${capsuleLook}
     expect(css).toMatch(/data-od-official-poster-layout/);
     expect(css).toMatch(/\.slide-hero \.hero-title/);
     expect(css).toMatch(/\.slide-close \.close-big\{font-size:clamp/);
+  });
+
+  it('루프495 — Coral catalog is not Capsule; Capsule Bodoni pills are not Coral', async () => {
+    const coral = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-coral/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(officialLookIsCoral(coral)).toBe(true);
+    expect(officialLookIsCapsule(coral)).toBe(false);
+
+    const capsule = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-capsule/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(officialLookIsCapsule(capsule)).toBe(true);
+    expect(officialLookIsCoral(capsule)).toBe(false);
+
+    const partial = [
+      '<style data-od-official-look-css="">',
+      ':root{--coral:#E85D5D}',
+      ".slide-1 .main-title{font-family:'Bebas Neue',sans-serif}",
+      '.zigzag-layer{} .brand-mark{}',
+      '</style>',
+      '<div class="slide slide-1"><div class="zigzag-layer"></div>',
+      '<div class="brand-mark">CORAL</div><h1 class="main-title">팀버</h1></div>',
+    ].join('');
+    expect(officialLookIsCoral(partial)).toBe(true);
+    expect(officialLookIsCapsule(partial)).toBe(false);
+
+    const playful = [
+      '<style data-od-official-look-css="">',
+      ':root{--bg:#F0C8A0}',
+      '.slide-1 .title-main{} .doodle-blob-1{}',
+      '</style>',
+      '<div class="slide slide-1"><h1 class="title-main">Play</h1>',
+      '<div class="doodle-blob-1"></div></div>',
+    ].join('');
+    expect(officialLookIsCoral(playful)).toBe(false);
+    expect(officialLookIsCapsule(playful)).toBe(false);
   });
 
   it('reparents MiniMax auto-auto-1fr cards and 64px step lists', () => {

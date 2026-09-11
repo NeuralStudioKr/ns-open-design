@@ -2132,11 +2132,40 @@ export function stripNeoBrutalVarFallbackOnEightBit(html: string): string {
 }
 
 /**
+ * 루프495 — Coral kit fingerprint (Bebas + zigzag / brand-mark).
+ * Shares `--coral` + `main-title` with Capsule's soft match — Capsule must deny this.
+ */
+export function officialLookIsCoral(html: string): boolean {
+  const source = String(html ?? '');
+  if (!source.trim()) return false;
+  // Capsule Bodoni pills win when both chrome families are present.
+  if (/\btitle-pill\b/i.test(source) && /Bodoni/i.test(source)) return false;
+  if (/\bdeco-pills(?:-closing)?\b/i.test(source) && /Bodoni/i.test(source)) return false;
+
+  const css = lookCssWithoutNeutralize(source);
+  const hay = `${css}\n${source}`;
+  const coralToken =
+    /--coral\s*:/i.test(hay)
+    || /#E85D5D|#E85D4E|var\(\s*--coral\b/i.test(hay);
+  const bebas = /Bebas Neue/i.test(hay);
+  const zigzagChrome =
+    /\b(?:zigzag-layer|zigzag-deco|brand-mark|top-section|title-rule)\b/i.test(hay);
+  const closingChrome =
+    /\b(?:left-panel|right-panel|closing-title|closing-subtitle)\b/i.test(hay);
+
+  if (coralToken && (bebas || zigzagChrome) && /\bmain-title\b/i.test(hay)) return true;
+  if (coralToken && zigzagChrome && closingChrome) return true;
+  return false;
+}
+
+/**
  * 루프395 — Capsule (Bodoni + coral pills) look fingerprint.
  * 루프396 — used for IB cover restyle + neo cream fallback skip.
+ * 루프495 — deny Coral (same `--coral` + `main-title` soft path).
  */
 export function officialLookIsCapsule(html: string): boolean {
   const source = String(html ?? '');
+  if (officialLookIsCoral(source)) return false;
   const css = lookCssWithoutNeutralize(source);
   if (css.trim()) {
     // Soft coral kit token — accept truncated sheets / near-hex / rgb.
