@@ -50,14 +50,34 @@ ProjectView recovery 게이트:
 `requestSlideCountTopUp`:
 
 ```
-if deckLooksLikeThinTopUpHostPrior(html) && hostCount >= 3:
+if deckLooksLikeThinTopUpHostPrior(html) && shouldQueueThinPriorFullRewrite(...):
   queueThinPriorFullRewrite once (prompt-fill marker + rewrite instructions)
   return  // do not append top-up
 ```
 
 Rewrite prompt: sentinel + “replace thin LOOK shells with a complete filled deck; do not append-only”.
 
+### D. 루프502 — 1장 title-only thin prior도 rewrite
+
+**체감:** Block Frame look CSS(`.slide-1`…`.slide-10`)인데 본문은 `팀버 소개` 표지 1장만. thin prior인데 `hostCount >= 3`이라 rewrite가 안 돌고 APPEND top-up에만 의존 → soft-fail/스톨 시 1장으로 고착.
+
+**변경:**
+
+| 항목 | 전 | 후 |
+|------|----|----|
+| `shouldQueueThinPriorFullRewrite` host floor | `hostCount >= 3` | `hostCount >= 1` |
+| 명시 1장 honor | (없음) | `requested != null && requested <= hostCount` → rewrite 금지 |
+| ProjectView | `requested` 미전달 | `requested` 전달 |
+
+1–2장 title-only / hollow thin은 **full rewrite**가 우선. APPEND top-up은 rewrite가 스킵된 뒤에만.
+
 ## 검증
 
 - unit: improve-thin / not-improve / recoverable reason / rewrite sentinel
+- 루프502: hostCount=1 thin + default → rewrite true · requested=1 → rewrite false
 - ProjectView 로직은 가능하면 순수 함수로 추출해 테스트
+
+## 변경 이력
+
+| 2026-09-07 | N05 구현설계 |
+| 2026-09-11 | 루프502 — 1장 thin prior rewrite floor 완화 |
