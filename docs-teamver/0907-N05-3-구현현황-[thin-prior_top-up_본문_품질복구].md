@@ -10,7 +10,7 @@
 ☑ 회귀 테스트 (contracts outline · deck-html-content · slideCountTopUp)  
 ☑ 루프502 — 1장 title-only thin prior도 rewrite (`hostCount >= 1`, 명시 1장 honor 제외)  
 ☑ 루프503 — 명시 요청 1장 shortfall top-up · slide_count_top_up 실패 가시화  
-☑ 루프504 — thin-rewrite 센티널 커버 heal/strip/gate · rewrite prompt exact N/킷  
+☑ 루프504 — thin-rewrite 센티널 커버 heal/strip/gate · rewrite prompt exact N/킷
 ☐ Design staging 재배포 후 QA
 
 ## 검증
@@ -23,7 +23,7 @@
 
 ## 다음
 
-- staging 재배포 후 8~10장 요청 → 커버에 `[od:…]` 없음 · 장수 top-up(503) bake  
+- staging 재배포 후 8~10장 요청 → 커버에 `[od:…]` 없음 · 장수 top-up(503) bake
 - (별도 P2) 사이트 분석 → outline 주입
 
 ## 변경 이력

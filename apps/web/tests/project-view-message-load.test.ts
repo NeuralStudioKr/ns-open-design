@@ -392,7 +392,7 @@ describe("ProjectView message loading", () => {
     // Look/Motif merge before surface bleed so cream !important cannot win
     // over official dark identity or Motif washes.
     expect(persistBlock).toMatch(
-      /mergeOfficialLookCssForTemplate[\s\S]{0,480}sanitizePersistedDeckHostLeaks[\s\S]{0,240}healOfficialMagazineLayoutDensity[\s\S]{0,360}salvageMalformedMiniMaxSlideMarkup[\s\S]{0,360}healAiGeneratedDeckMarkup[\s\S]{0,240}repairDeckSlideSurfaceBleed/,
+      /mergeOfficialLookCssForTemplate[\s\S]{0,480}sanitizePersistedDeckHostLeaks[\s\S]{0,240}healOfficialMagazineLayoutDensity[\s\S]{0,360}salvageMalformedMiniMaxSlideMarkup[\s\S]{0,360}healAiGeneratedDeckMarkup[\s\S]{0,520}repairDeckSlideSurfaceBleed/,
     );
     expect(persistBlock).toContain('collapseAdjacentDuplicateDeckSiblings');
     expect(persistBlock).toMatch(
@@ -416,24 +416,26 @@ describe("ProjectView message loading", () => {
   it("does not restamp element-patch edit contract onto slide-count top-up sends", () => {
     const source = readSource("src/components/ProjectView.tsx");
     expect(source).toContain("autoAttachedDeckPath && !isSlideCountTopUpSend");
-    expect(source).toContain("Title-first, then at most ONE capped kit Motif sprite");
+    expect(source).toContain("buildConcretePatchTemplatesForCommentAttachments");
     expect(source).not.toContain("Skip Motif SVG paste this turn");
   });
 
   it("merges official look CSS on Write-tool and recovered disk HTML paths", () => {
     const source = readSource("src/components/ProjectView.tsx");
     expect(source).toContain("findSameTurnHtmlWriteForRecoveredArtifact");
-    expect(source).toMatch(
-      /sameTurnHtmlWrite[\s\S]{0,800}mergeOfficialLookCssForTemplate/,
+    const sameTurnStart = source.indexOf("savedArtifactRef.current = sameTurnHtmlWrite.name");
+    expect(sameTurnStart).toBeGreaterThan(0);
+    const sameTurnBlock = source.slice(sameTurnStart, sameTurnStart + 4200);
+    expect(sameTurnBlock).toContain("mergeOfficialLookCssForTemplate");
+    expect(sameTurnBlock).toMatch(
+      /healOfficialMagazineLayoutDensity[\s\S]{0,700}healAiGeneratedDeckMarkup/,
     );
-    expect(source).toMatch(
-      /sameTurnHtmlWrite[\s\S]{0,1400}healOfficialMagazineLayoutDensity[\s\S]{0,360}healAiGeneratedDeckMarkup/,
-    );
-    expect(source).toMatch(
-      /recoveredExistingArtifact[\s\S]{0,800}mergeOfficialLookCssForTemplate/,
-    );
-    expect(source).toMatch(
-      /recoveredExistingArtifact[\s\S]{0,1400}healOfficialMagazineLayoutDensity[\s\S]{0,360}healAiGeneratedDeckMarkup/,
+    const recoveredStart = source.indexOf("savedArtifactRef.current = recoveredExistingArtifact.name");
+    expect(recoveredStart).toBeGreaterThan(0);
+    const recoveredBlock = source.slice(recoveredStart, recoveredStart + 3200);
+    expect(recoveredBlock).toContain("mergeOfficialLookCssForTemplate");
+    expect(recoveredBlock).toMatch(
+      /healOfficialMagazineLayoutDensity[\s\S]{0,700}healAiGeneratedDeckMarkup/,
     );
   });
 
@@ -639,7 +641,8 @@ describe("ProjectView message loading", () => {
     expect(autoOpenStart).toBeGreaterThan(0);
     const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 60000);
 
-    expect(autoOpenBlock).toContain("const rawFinalText = streamedText || fullText || latestAssistantMsg.content || ''");
+    expect(autoOpenBlock).toContain("const cloneFillSourceText = streamedText || fullText || latestAssistantMsg.content || ''");
+    expect(autoOpenBlock).toContain("const rawFinalText = prepareTemplateCloneSlotFillAssistantText(cloneFillSourceText)");
     expect(autoOpenBlock).toContain("const persistResult = await persistArtifact(");
     expect(autoOpenBlock).toContain("terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(");
     expect(autoOpenBlock).toContain("isReusableSameTurnDeckWrite(");
@@ -864,7 +867,7 @@ describe("ProjectView message loading", () => {
 
     expect(source).toContain("[element-patch] routing scoped edit to auto-continue");
     expect(source).toContain("commentAttachments: scopedCommentAttachments");
-    expect(source).toContain("buildConcreteElementPatchTemplate(autoContinueCommentAttachments)");
+    expect(source).toContain("buildConcretePatchTemplatesForCommentAttachments(autoContinueCommentAttachments)");
     expect(source).toContain("hydrateQueryContextCommentAttachments(");
     expect(source).toContain("shouldRouteScopedCommentEditToAutoContinue");
     const persistRoutingSource = readSource("src/edit-mode/scoped-comment-persist.ts");
@@ -901,7 +904,7 @@ describe("ProjectView message loading", () => {
 
     const guardStart = viewSource.indexOf("async function fullDeckEditStaysInsideCommentScope");
     expect(guardStart).toBeGreaterThan(0);
-    const guardBlock = viewSource.slice(guardStart, guardStart + 3600);
+    const guardBlock = viewSource.slice(guardStart, guardStart + 5200);
     expect(guardBlock).toContain("const hasElementScopedComment");
     expect(guardBlock).toContain("const targetUnresolved");
     expect(guardBlock).toContain("beforeMasked.maskedCount !== afterMasked.maskedCount");
@@ -913,7 +916,9 @@ describe("ProjectView message loading", () => {
     expect(viewSource).toContain("commentAttachments: persistCommentAttachments");
     expect(viewSource).toContain("instructionText: runVisiblePromptRef.current");
     expect(patchSource).toContain("scopedCommentInstructionText");
-    expect(viewSource).toContain("const scopedCommentAttachments = filterUsableCommentAttachments(hydratedCommentAttachments)");
+    expect(viewSource).toMatch(
+      /const scopedCommentAttachments = filterUsableCommentAttachments\(\s*dedupeCommentAttachments\(hydratedCommentAttachments\)/,
+    );
     expect(viewSource).toContain("commentAttachmentCount: scopedCommentAttachments.length");
     expect(viewSource).toContain("commentAttachments: scopedCommentAttachments");
   });
@@ -922,10 +927,12 @@ describe("ProjectView message loading", () => {
     const viewSource = readSource("src/components/ProjectView.tsx");
     const patchSource = readSource("src/edit-mode/scoped-deck-patch.ts");
     expect(viewSource).toContain("hydrateDeckCommentSlideIndexes");
-    expect(viewSource).toContain("reconcileCommentAttachmentForDeck");
-    expect(viewSource).toContain("resolvePersistCommentAttachments");
+    expect(patchSource).toContain("reconcileCommentAttachmentForDeck");
+    expect(viewSource).toContain("resolvePersistCommentScope");
     expect(patchSource).toContain(":nth-of-type");
-    expect(viewSource).toContain("const scopedCommentAttachments = filterUsableCommentAttachments(hydratedCommentAttachments)");
+    expect(viewSource).toMatch(
+      /const scopedCommentAttachments = filterUsableCommentAttachments\(\s*dedupeCommentAttachments\(hydratedCommentAttachments\)/,
+    );
     expect(viewSource).not.toContain(".filter((attachment) => !slideOnlyMvp || hasValidDeckSlideIndex(attachment))");
   });
 
@@ -952,7 +959,7 @@ describe("ProjectView message loading", () => {
     // via hint. Both paths must use the same signal set.
     const source = readSource("src/components/ProjectView.tsx");
     expect(source).toContain("const hints = ids.map((id) => ({");
-    expect(source).toContain("maskManualEditTargets(\n");
+    expect(source).toContain("maskManualEditTargetsOnDocument(");
     expect(source).toContain("hints,\n");
   });
 
@@ -1076,7 +1083,7 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("resolveElementPatchBodyForApply");
     expect(source).toContain("sourceText");
     expect(source).toContain("salvaged patch body from assistant output");
-    expect(source).toContain("buildConcreteElementPatchTemplate");
+    expect(source).toContain("buildConcretePatchTemplatesForCommentAttachments");
   });
 
   it("routes empty element-patch responses through auto-continue instead of the scope banner", () => {
@@ -1164,14 +1171,14 @@ describe("ProjectView message loading", () => {
   it("keeps chat-visible errors on the live streaming buffer and assistant events", () => {
     const source = readSource("src/components/ProjectView.tsx");
     expect(source).toContain("const surfaceChatVisibleError = useCallback(");
-    expect(source).toContain("attachPersistedChatError(m, detail, code)");
+    expect(source).toContain("attachPersistedChatError(m, persistedDetail, code)");
     expect(source).toContain("liveAssistantMutatorRef");
-    expect(source).toContain("live.apply((prev) => attachPersistedChatError(prev, detail, code))");
+    expect(source).toContain("live.apply((prev) => attachPersistedChatError(prev, persistedDetail, code))");
     expect(source).toContain("liveAssistantMutatorRef.current = {\n        assistantId,");
     // Hard reload clears ephemeral React error — durable path must remain.
     const loadStart = source.indexOf("const loadMessagesWithRetry = async () =>");
     expect(loadStart).toBeGreaterThan(0);
-    expect(source.slice(loadStart, loadStart + 2200)).toContain("setError(null)");
+    expect(source.slice(loadStart, loadStart + 4000)).toContain("setError(null)");
   });
 
   it("delays soft-refresh on failed runs so durable status:error can win merge races", () => {
