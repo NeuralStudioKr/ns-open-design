@@ -1527,18 +1527,37 @@ export function inferTemplateCloneContentRole(
   if (index === 0) return 'cover';
   const title = slide.title.trim();
   const body = slide.body?.trim() ?? '';
+  const items = Array.isArray(slide.items) ? slide.items : [];
   const blob = `${title}\n${body}`;
   const lines = body.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  if (index === total - 1 && total >= 3 && /다음|정리|요약|thanks|closing|wrap.?up|결론/i.test(title)) {
+  if (index === total - 1 && total >= 3 && /다음|정리|요약|thanks|closing|wrap.?up|결론|conclusion|summary/i.test(title)) {
     return 'closing';
   }
-  // Body shape wins over title keywords — a "KPI" slide with bullet lines
-  // still needs a list shell so content-swap can land the bullets.
+  // Structured items[] beat body-shape heuristics: title+body pairs are card
+  // peers, not a bullet list — the prior "list wins" branch pushed every
+  // items[]-carrying slide into a single list shell and left team/stat/cards
+  // shells unused (docs-teamver/60 § "layout monotony"). Hangul characters
+  // are non-word so `\b` boundaries only apply to Latin keywords.
+  const teamRe = /(?:팀|멤버|조직|담당|founders?|\bpeople\b|\bteam\b|\bcrew\b|\bmembers?\b)/i;
+  const processRe = /(?:프로세스|절차|단계|과정|\bworkflow\b|\bprocess\b|\bsteps?\b)/i;
+  const timelineRe = /(?:타임라인|로드맵|일정|마일스톤|\bmilestone\b|\btimeline\b|\broadmap\b|\bQ[1-4]\b|\bphase\s*\d)/i;
+  if (items.length >= 2) {
+    const hasKpiSignal =
+      /\bKPI\b|성과\s*지표|핵심\s*지표|성장|증가|감소|\bCAGR\b|\bMRR\b|\bARR\b|\bCTR\b|\bMAU\b|\bDAU\b|\bCAC\b|\bLTV\b|\bNPS\b|\bROI\b|\bCVR\b/i
+        .test(blob)
+      || items.some((item) => /\d+\s*(?:%|배|건|회|명|만|억|천|\bK\b|\bM\b|\bB\b)/i.test(`${item.title ?? ''} ${item.body ?? ''}`));
+    if (hasKpiSignal) return 'stat';
+    if (timelineRe.test(blob)) return 'timeline';
+    if (teamRe.test(title)) return 'team';
+    if (processRe.test(title)) return 'process';
+    return 'cards';
+  }
+  // Bulleted single body without items[] still routes through list.
   if (lines.length >= 2 || /^[-*•·]/.test(body) || /^\d+[.)]/.test(body)) return 'list';
-  if (/\bKPI\b|\d+\s*%|통계|지표|차트|수치/i.test(blob)) return 'stat';
-  if (/타임라인|로드맵|일정|milestone|timeline|roadmap/i.test(blob)) return 'timeline';
-  if (/팀|멤버|조직|people|team\b/i.test(title)) return 'team';
-  if (/프로세스|절차|단계|process|steps?/i.test(title)) return 'process';
+  if (/\bKPI\b|\d+\s*(?:%|배|건|회|명)|통계|지표|차트|수치|\bmetric\b|\bstat\b/i.test(blob)) return 'stat';
+  if (timelineRe.test(blob)) return 'timeline';
+  if (teamRe.test(title)) return 'team';
+  if (processRe.test(title)) return 'process';
   if (body.length >= 100 && lines.length <= 1) return 'quote';
   if (lines.length === 1 && body.length < 100) return 'cards';
   return 'body';
@@ -1788,6 +1807,24 @@ function pickShellByRole(
   return leastUsedShell(bodyPool, usage) ?? cover;
 }
 
+/**
+ * Preference-ordered list of shell roles that can plausibly host a generic
+ * body/list/cards outline slide when the strict `shellSupportsContentRole`
+ * pool is exhausted. Ordered by "least surprising when the outline is
+ * uniform": prose-friendly shells first, structured/data shells last. Cover
+ * / closing are omitted — hero + thanks layouts look worst when repurposed.
+ */
+const VARIETY_SAFE_ROLE_PREFERENCE: readonly TemplateCloneShellRole[] = [
+  'body',
+  'list',
+  'cards',
+  'quote',
+  'timeline',
+  'process',
+  'team',
+  'stat',
+];
+
 /** Pick layout shells by content role — never mirror template page order/count. */
 export function pickTemplateShellsForContent(
   shells: SlideShell[],
@@ -1805,6 +1842,15 @@ export function pickTemplateShellsForContent(
   }
   const cover = byRole.get('cover')?.[0] ?? shells[0]!;
   const bodyPool = shells.filter((shell) => shell !== cover);
+  const bodyRoleTypeCount = new Set(
+    bodyPool.map((shell) => classifyTemplateCloneShellRole(shell)),
+  ).size;
+  // Uniform-role editorial kits (Biennale / Creative Mode / Cobalt Grid) already
+  // ride the `templateShellsAreUniqueRole` diversity branch below. The extra
+  // recovery fallback is only useful for templates that expose ≥ 5 distinct
+  // body-role types — Daisy Days ships 8+ role buckets and used to collapse
+  // into 1–2 shells (docs-teamver/60 § "layout monotony").
+  const hasVariedBodyPool = bodyRoleTypeCount >= 5;
   const usage = new Map<SlideShell, number>();
   const picked: SlideShell[] = [];
 
@@ -1833,6 +1879,29 @@ export function pickTemplateShellsForContent(
     if ((usage.get(shell) ?? 0) > 0 && templateShellsAreUniqueRole(shells)) {
       const unused = bodyPool.find((candidate) => (usage.get(candidate) ?? 0) === 0);
       if (unused) shell = unused;
+    }
+    // Layout-variety recovery — when the current shell is already stamped ≥ 2
+    // times AND the template has many distinct body-role shells lying idle,
+    // borrow the next-preferred idle body-safe shell instead of stamping the
+    // same layout a third time. The strict `shellSupportsContentRole` gate
+    // above is deliberately narrow (a bullet slide never lands on a stat
+    // shell), so this fallback only fires after that gate exhausts and only
+    // when the preferred shell is already in heavy rotation. Prose-friendly
+    // roles (body/list/cards/quote) win over structured ones (stat/team) to
+    // keep 루프480 Block Frame's KPI slide on a list-capable shell.
+    if (
+      (usage.get(shell) ?? 0) >= 2
+      && hasVariedBodyPool
+    ) {
+      let varietyPick: SlideShell | null = null;
+      for (const preferredRole of VARIETY_SAFE_ROLE_PREFERENCE) {
+        const pool = byRole.get(preferredRole) ?? [];
+        varietyPick = pool.find(
+          (candidate) => candidate !== cover && (usage.get(candidate) ?? 0) === 0,
+        ) ?? null;
+        if (varietyPick) break;
+      }
+      if (varietyPick) shell = varietyPick;
     }
     picked.push(shell);
     usage.set(shell, (usage.get(shell) ?? 0) + 1);

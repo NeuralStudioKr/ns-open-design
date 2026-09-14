@@ -178,6 +178,118 @@ describe('buildTemplateClonedDeckHtml', () => {
     expect(inferTemplateCloneContentRole(slides[1]!, 1, 3)).toBe('list');
   });
 
+  it('distributes layout across ≥ 4 distinct shell roles when the template exposes many (docs-teamver/60)', async () => {
+    // Bug: an 8-slide outline with only body/list content used to collapse
+    // into 1–2 Daisy shells (welcome/cards) leaving team/timeline/stat idle.
+    // Fix: `hasVariedBodyPool` recovery in pickTemplateShellsForContent.
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-daisy-days/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const shells = listTemplateCloneSlideShells(html);
+    const slides = [
+      { title: '표지', roleHint: 'cover' as const },
+      { title: '개요', body: 'A ' + 'B'.repeat(30) },
+      { title: '핵심 포인트', body: '메시지 하나\n메시지 둘\n메시지 셋' },
+      { title: '근거와 사례', body: '데이터 하나\n데이터 둘' },
+      { title: '실행 방안', body: '실행 하나\n실행 둘\n실행 셋' },
+      { title: '고객 경험', body: '경험 하나\n경험 둘' },
+      { title: '운영과 보안', body: '운영 하나\n운영 둘\n운영 셋' },
+      { title: '요약', body: '요약 문장 하나 정도의 마무리 카피' },
+    ];
+    const picked = pickTemplateShellsForContent(shells, slides);
+    const usedRoles = new Set(picked.map((shell) => classifyTemplateCloneShellRole(shell)));
+    // Must actually pull in shell types beyond the 2–3 fallback set.
+    expect(usedRoles.size).toBeGreaterThanOrEqual(4);
+    // Nothing should still be stamped 5+ times when 8 slots exist.
+    const usageCount = new Map<string, number>();
+    for (const shell of picked) {
+      const key = `${shell.attrs}|${shell.body.slice(0, 40)}`;
+      usageCount.set(key, (usageCount.get(key) ?? 0) + 1);
+    }
+    const maxRepeat = Math.max(...usageCount.values());
+    expect(maxRepeat).toBeLessThanOrEqual(3);
+  });
+
+  it('honors explicit roleHint on every slide even for uniform body content (docs-teamver/60)', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-daisy-days/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const shells = listTemplateCloneSlideShells(html);
+    const slides = [
+      { title: '표지', roleHint: 'cover' as const },
+      { title: 'A', body: '하나', roleHint: 'cards' as const, items: [{ title: 'A1', body: 'x' }, { title: 'A2', body: 'y' }, { title: 'A3', body: 'z' }] },
+      { title: 'B', body: '둘', roleHint: 'stat' as const },
+      { title: 'C', body: '셋', roleHint: 'timeline' as const },
+      { title: 'D', body: '넷', roleHint: 'team' as const },
+      { title: 'E', body: '다섯', roleHint: 'process' as const },
+      { title: 'F', body: '여섯', roleHint: 'quote' as const },
+      { title: '마무리', roleHint: 'closing' as const },
+    ];
+    const picked = pickTemplateShellsForContent(shells, slides);
+    const roles = picked.map((shell) => classifyTemplateCloneShellRole(shell));
+    // Every explicit roleHint should land on a shell of that role when the
+    // template exposes it.
+    expect(roles[0]).toBe('cover');
+    expect(roles[1]).toBe('cards');
+    expect(roles[2]).toBe('stat');
+    expect(roles[3]).toBe('timeline');
+    expect(roles[4]).toBe('team');
+    expect(roles[5]).toBe('process');
+    expect(new Set(roles).size).toBeGreaterThanOrEqual(6);
+  });
+
+  it('items[]-carrying cards outline never collapses to a single list shell (docs-teamver/60)', () => {
+    // Regression: previous inferTemplateCloneContentRole classified any slide
+    // with 2+ bulleted lines as `list`, which pushed items[]-heavy outlines
+    // into a single welcome/list shell across the deck.
+    const slide = {
+      title: '핵심 지표',
+      items: [
+        { title: '매출', body: '15% 성장' },
+        { title: '리텐션', body: '30% 유지' },
+        { title: '활성 사용자', body: '60% 참여' },
+      ],
+    };
+    // 4 slides total: an items[] slide with numeric bodies must classify to
+    // stat (KPI signal), not list.
+    expect(inferTemplateCloneContentRole(slide, 2, 4)).toBe('stat');
+    const teamSlide = {
+      title: '팀 소개',
+      items: [
+        { title: '홍길동', body: 'CEO' },
+        { title: '김철수', body: 'CTO' },
+        { title: '이영희', body: 'CPO' },
+      ],
+    };
+    expect(inferTemplateCloneContentRole(teamSlide, 3, 5)).toBe('team');
+    const timelineSlide = {
+      title: '분기 로드맵',
+      items: [
+        { title: 'Q1', body: '킥오프' },
+        { title: 'Q2', body: '베타' },
+        { title: 'Q3', body: 'GA' },
+      ],
+    };
+    expect(inferTemplateCloneContentRole(timelineSlide, 4, 6)).toBe('timeline');
+    const genericCards = {
+      title: '전략 요약',
+      items: [
+        { title: '전략 A', body: '설명' },
+        { title: '전략 B', body: '설명' },
+        { title: '전략 C', body: '설명' },
+      ],
+    };
+    expect(inferTemplateCloneContentRole(genericCards, 1, 5)).toBe('cards');
+  });
+
   it('fills Biennale Yellow official slots without leaving Aurora demo copy', async () => {
     const html = await readFile(
       new URL(
