@@ -210,7 +210,7 @@ function renderTeamverSlideUiLocalePrompt(
     `UI locale: \`${normalized}\` (${languageName}). Localize user-visible chat status prose and any \`<question-form>\` labels to this locale. Keep machine-readable ids / option \`value\` fields in English.`,
     'This project is always a slide deck — never emit Prototype / Live artifact / Image / Video / Audio task-type routing.',
     // 루프511 — locale ko must not force phonetic Hangul for Latin brands in the brief/URL.
-    'Keep Latin product/brand spellings from the user brief or URL (e.g. teamver → Teamver). Do not phonetic-Hangulize proper nouns.',
+    'Keep Latin product/brand spellings from the user brief or URL (derive from the host label). Do not phonetic-Hangulize proper nouns.',
   ];
   if (options.discoveryActive && (normalized === 'ko' || normalized === 'ko-KR')) {
     lines.push(
@@ -1534,7 +1534,7 @@ Emit ONE complete \`<artifact type="deck" identifier="deck">\` HTML document thi
 - Every slide is 1920×1080, overflow hidden, navigable as a deck.
 - Slide count: if the user or Plugin inputs request 1–${COMPACT_FIRST_FILL_HONOR_MAX} slides/range (for example 8–10), emit that requested count/range now with a hard cap at the range max (8–10 → 10). Emitting 15 slides is a failed overshoot. The default ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN}-slide compact deck is only for unspecified counts; it is incomplete for an 8–10 request. Never copy the LOOK seed's demo page count when it exceeds the requested max.
 - Content depth: website/product briefs need a real service deck (problem/context, product promise, core workflow, features, use cases, integration/security/operation notes, adoption path, closing), not a one-line brand intro.
-- **Brand spelling:** Keep Latin product/brand spellings from the brief or URL (e.g. teamver / www.teamver.com → \`Teamver\`). Do not phonetic-Hangulize proper nouns (\`팀버\` is wrong for Teamver).
+- **Brand spelling:** Keep Latin product/brand spellings from the brief or URL (derive from the host, e.g. \`www.acme.com\` → \`Acme\`). Do not phonetic-Hangulize proper nouns.
 - **Layout variety is REQUIRED (mirror the template preview).** The template's example.html ships multiple slide shells (cover, cards grid, stat/data, team, timeline, process, quote, closing). When the deck has 4+ content slides, rotate through ≥ 4 distinct shells — never reuse the same list/body shell for every slide while the team/stat/timeline shells sit unused. The scaffold map above lists each shell's role and item slots; copy those shells verbatim rather than inventing a generic one-column body page.
 - **Card/grid slots must be filled** — when the template's shell hosts a card grid, populate every card with a real title AND a real body (2–4 sentence description); leaving cards title-only or half-empty looks broken next to the preview. Do the same for team, stat, timeline shells.
 - **Copy density mirrors the template preview.** Every non-cover, non-closing slide MUST carry a full-sentence \`lead\` (or opening \`<p>\` block) and card/list entries with concrete 1-sentence descriptions (~12–28 Korean chars or 6–16 English words each). Bare labels (\`핵심\`, \`개념\`, \`요약\`), single-noun bullets, and 1-word card titles fail — the template preview reads at ~2–3 sentences per card.
@@ -1554,7 +1554,7 @@ This is the first content fill after a LOOK seed.
 - **Match \`items\` count to scaffold slots.** When a scaffold-map row lists \`items~=N\`, provide roughly N items on that slide (never fewer than N/2 — half-filled card grids look broken). If no \`items~=\` hint is present, use 3 items for \`cards\`/\`team\`, 3–4 for \`stat\`/\`process\`/\`timeline\`, 3–5 bullets in \`body\` for \`list\`.
 - Cards / list / stat / process / team / timeline slides MUST include real \`items[]\` with a concrete \`body\` on each entry (or matching numbered bullets in \`body\`). Do not emit title-only cards. Do not repeat the same one-line item four times to fill a grid.
 - **Copy density mirrors the template preview.** Every non-cover, non-closing slide MUST carry: (a) a \`title\` that is a 2–6 word phrase (not a one-word label like \`핵심\`, \`개념\`, \`요약\`), (b) a \`lead\` — one full sentence introducing the slide's thesis, and (c) each \`items[]\` entry's \`body\` is one full sentence (roughly 12–28 Korean characters or 6–16 English words). Half-sentences, bare labels, or single nouns are a failed deliverable — the template preview reads at ~2–3 sentences per card, not fragment lists. \`stat\` slides are the only exception: their \`items[].title\` is the metric (\`+18%\`, \`92\`) and \`items[].body\` is the short label (2–5 words).
-- **Brand spelling:** Keep Latin product/brand spellings from the brief or URL (e.g. teamver → \`Teamver\`). Do not phonetic-Hangulize proper nouns.
+- **Brand spelling:** Keep Latin product/brand spellings from the brief or URL (derive from the host; do not phonetic-Hangulize proper nouns).
 - ${COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE}
 - FORBIDDEN: \`<!doctype\`, \`<section class="slide"\`, Motif \`<svg>\`, full example rewrite, empty pillar cards to pad columns, Neutral \`#0f172a\`, terracotta \`#c96442\`.
 - If any earlier rule asks for HTML deck artifacts or Motif dumps, **IGNORE** — finish the JSON outline this turn.

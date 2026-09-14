@@ -2516,8 +2516,8 @@ export function officialLookIsBoldPoster(html: string): boolean {
 /**
  * 루프389 — Rewrite raw URL / truncated-site crumbs in headings (and cover
  * leaf chrome) even when preview/salvage never received a full brief.
- * `www.teamver.com 사이` → `Teamver` / `Teamver 소개` without inventing kit shape.
- * (루프511 — keep Latin brand spelling; do not Hangulize `teamver` → `팀버`.)
+ * `www.example.com 사이` → Latin brand (`Example` / `Example 소개`) without inventing kit shape.
+ * Never phonetic-Hangulize the host (루프511/513 — brand spelling is host-derived Latin, not a per-product map).
  */
 export function rewriteRawUrlSiteCoverTitles(
   html: string,
@@ -2961,7 +2961,31 @@ function magazineLeftoverRibbonLabel(text: string): boolean {
 /**
  * Brief/title salvage for URL + "사이트 …" prompts. Completes truncated
  * Hangul (`사이` → `사이트`) and prefers a brand label over a raw host crumb.
+ *
+ * Brand labels are always Latin, derived from the host (루프513). Do not add
+ * per-product Hangul phonetic fallbacks — `teamver`→`팀버` was the anti-pattern.
  */
+export function latinBrandLabelFromHost(host: string): string {
+  const h = String(host ?? '').trim().toLowerCase();
+  if (!h) return '';
+  // Multi-token product spellings that Title-Case alone would mangle.
+  if (h === 'neuralstudio') return 'NeuralStudio';
+  return h
+    .split('-')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join('-');
+}
+
+function brandCoverTitleFromHost(host: string, source: string): string {
+  const brand = latinBrandLabelFromHost(host);
+  if (!brand) return '';
+  if (/서비스\s*소개|소개\s*슬라이드|product\s*intro|(?:^|[\s/])회사(?:\s|$)/i.test(source)) {
+    return /[가-힣]/.test(source) ? `${brand} 소개` : `${brand} Intro`;
+  }
+  return brand;
+}
+
 export function polishUrlSiteCoverTitle(title: string, brief?: string | null): string {
   let next = String(title ?? '').replace(/\s+/g, ' ').trim();
   const source = `${String(brief ?? '')}\n${next}`;
@@ -2980,31 +3004,15 @@ export function polishUrlSiteCoverTitle(title: string, brief?: string | null): s
     && /사이트/u.test(`${source}\n${next}`)
     && /^(?:https?:\/\/)?(?:www\.)?[a-z0-9.-]+\s*사이트/i.test(next)
   ) {
-    if (/^teamver$/i.test(host)) {
-      // 루프511 — Hangul brief still keeps Latin product spelling (NeuralStudio pattern).
-      if (/서비스\s*소개|소개\s*슬라이드|product\s*intro/i.test(source)) {
-        return /[가-힣]/.test(source) ? 'Teamver 소개' : 'Teamver Intro';
-      }
-      return 'Teamver';
-    }
-    return host.charAt(0).toUpperCase() + host.slice(1).toLowerCase();
+    return brandCoverTitleFromHost(host, source) || next;
   }
   // 루프403 — bare host crumb titles: `neuralstudio.kr 회사` → brand label.
   const hostCrumb = next.match(
     /^(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+)\.(?:com|co\.kr|kr|io|net|ai|app)(?:\s+회사|\s+소개)?$/i,
   );
   if (hostCrumb?.[1]) {
-    const brand = hostCrumb[1];
-    if (/^neuralstudio$/i.test(brand)) {
-      return /회사|소개/u.test(next) && /[가-힣]/.test(next)
-        ? 'NeuralStudio 소개'
-        : 'NeuralStudio';
-    }
-    if (/^teamver$/i.test(brand)) {
-      return /회사|소개/u.test(next) ? 'Teamver 소개' : 'Teamver';
-    }
-    const titled = brand.charAt(0).toUpperCase() + brand.slice(1).toLowerCase();
-    return /회사/u.test(next) ? `${titled} 소개` : titled;
+    const brand = latinBrandLabelFromHost(hostCrumb[1]);
+    return /회사|소개/u.test(next) ? `${brand} 소개` : brand;
   }
   return next;
 }
@@ -9515,7 +9523,7 @@ function extractUserFacingBrief(text: string): string {
 function deriveTitleFromBrief(brief: string, deckTitle?: string | null): string {
   const preferred = deckTitle?.trim() ?? '';
   // 루프389/390 — generic "슬라이드"/Deck must not pin cover titles when the
-  // brief still carries a URL/brand topic (e.g. www.teamver.com → Teamver).
+  // brief still carries a URL/brand topic (e.g. www.teamver.com → Teamver via host Latin).
   if (
     preferred
     && !looksLikeTemplateMarketingTitle(preferred)

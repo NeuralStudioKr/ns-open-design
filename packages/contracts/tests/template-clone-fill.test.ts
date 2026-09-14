@@ -1770,11 +1770,18 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     )).toBe('Teamver 소개');
     expect(deriveDeckCoverTitleFromBrief('www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘'))
       .toMatch(/Teamver/i);
-    // 루프511 — Hangul brief must not force phonetic `팀버`.
+    // 루프513 — host→Latin brand is general (not a teamver-only map); never phonetic Hangul.
     expect(polishUrlSiteCoverTitle(
       'www.teamver.com 사이',
       'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘',
     )).not.toMatch(/팀버/);
+    expect(polishUrlSiteCoverTitle('www.acme.com 사이', 'www.acme.com 사이트 분석')).toBe('Acme');
+    expect(polishUrlSiteCoverTitle(
+      'www.acme.com 사이',
+      'www.acme.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘',
+    )).toBe('Acme 소개');
+    expect(polishUrlSiteCoverTitle('figma.io 사이', 'figma.io 사이트 분석해서 서비스 소개')).toBe('Figma 소개');
+    expect(polishUrlSiteCoverTitle('neuralstudio.kr 회사', null)).toBe('NeuralStudio 소개');
   });
 
   it('루프390: restyles foreign IB magazine cover onto 8-Bit Orbit hero', () => {

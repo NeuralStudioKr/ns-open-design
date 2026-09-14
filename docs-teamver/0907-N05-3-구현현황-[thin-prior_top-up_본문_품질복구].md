@@ -14,7 +14,7 @@
 ☑ 루프505 — preview heal-first · count>sparse · thin APPEND 차단 · soft/detector 정렬  
 ☑ 루프506 — 명시 5장+ Template Clone fill 1장/4장 덮어쓰기 차단
 ☑ 루프508 — Working 단계 표기 · rewrite 후 top-up 1회 · deck idle 6m · slide-count strict 오탐
-☑ 루프511 — 표지 brand Latin (`Teamver`, phonetic `팀버` 금지) — [0914-N02](./0914-N02-3-구현현황-[표지_브랜드_Latin_보존].md)
+☑ 루프511/513 — 표지 brand = 호스트→Latin 일반화 (제품별 `팀버` 하드코딩 금지) — [0914-N02](./0914-N02-3-구현현황-[표지_브랜드_Latin_보존].md)
 ☐ Design staging 재배포 후 QA
 
 ## 검증
@@ -45,3 +45,4 @@
 | 2026-09-14 | 루프506 — 1페이지 Template Clone fill 덮어쓰기 차단 |
 | 2026-09-14 | 루프508 — 생성 지연 UX · idle 6m · slide-count strict 오탐 |
 | 2026-09-14 | 루프511 — 표지 브랜드 Latin 보존 (0914-N02) |
+| 2026-09-14 | 루프513 — 호스트→Latin 일반화 (teamver 하드코딩 철회) |

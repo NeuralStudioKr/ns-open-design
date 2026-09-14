@@ -625,7 +625,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toMatch(/Copy density/i);
       expect(prompt).toMatch(/full[- ]sentence\s+`?lead`?/i);
       // 루프511 — Latin brand spelling must survive ko locale / Hangul briefs.
-      expect(prompt).toMatch(/Brand spelling|phonetic-Hangulize|teamver\s*→\s*`?Teamver/i);
+      expect(prompt).toMatch(/Brand spelling|phonetic-Hangulize|host-derived|derive from the host/i);
     });
 
     it('omits comment-edit / existing-deck contracts on greenfield turns', () => {
