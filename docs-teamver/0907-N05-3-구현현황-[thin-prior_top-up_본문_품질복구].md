@@ -12,6 +12,7 @@
 ☑ 루프503 — 명시 요청 1장 shortfall top-up · slide_count_top_up 실패 가시화  
 ☑ 루프504 — thin-rewrite 센티널 커버 heal/strip/gate · rewrite prompt exact N/킷  
 ☑ 루프505 — preview heal-first · count>sparse · thin APPEND 차단 · soft/detector 정렬  
+☑ 루프506 — 명시 5장+ Template Clone fill 1장/4장 덮어쓰기 차단
 ☐ Design staging 재배포 후 QA
 
 ## 검증
@@ -22,6 +23,7 @@
 - 루프503: produced=1 requested=8 → top-up · top-up 실패는 soft 아님
 - 루프504: sentinel → failed/low-substance · heal 후 표지 유지 · prompt `emit exactly N`
 - 루프505: 4-of-8–10 wantsCountTopUp · thin+rewriteCount≥1 APPEND 차단 · soft=sparse만
+- 루프506: explicit 8–10 요청에서 produced=1/4는 저장 전 incomplete · produced=6은 저장 후 top-up 가능
 
 ## 다음
 
@@ -36,3 +38,4 @@
 | 2026-09-11 | 루프503 — 명시 요청 shortfall 구현·검증 |
 | 2026-09-11 | 루프504 — thin-rewrite 센티널 누수 차단 |
 | 2026-09-11 | 루프505 — preview/스케줄 잔여 갭 |
+| 2026-09-14 | 루프506 — 1페이지 Template Clone fill 덮어쓰기 차단 |

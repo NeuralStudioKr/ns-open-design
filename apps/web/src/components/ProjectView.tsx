@@ -3122,14 +3122,14 @@ export function findClientSlideCountRegression(input: {
 }
 
 /**
- * Slide-count shortfalls for Clone fill are **not** hard-incomplete.
+ * Slide-count shortfalls for Clone fill are only saveable after a solid first-fill floor.
  *
- * Loop402 re-armed a persist block when `produced < requestedMin` (min≥4).
- * That wrote nothing to disk, so `shouldQueueSlideCountTopUp` never ran, and
- * prompt-fill has no LOOK-seed fallback → durable `incomplete_output`
- * (`produced 1, min 8` user report). Loop404: allow the partial deck through;
- * first-fill honor still pushes same-turn close, and top-up salvages misses.
- * {@link findTemplateCloneFillStructureIncomplete} remains the hard gate.
+ * Loop404 allowed every short explicit request through so hidden top-up could append,
+ * but that also let a one-slide cover overwrite `deck.html` for an 8-10 request.
+ * Keep small explicit/unspecified decks allowed, but for explicit 5+ requests require
+ * at least min(requestedMin, FIRST_FILL_SLIDE_COUNT_THIS_TURN) closed slides before
+ * saving over the current deck. A 6-of-8-10 first fill can still persist and top-up;
+ * 1-4/5 slide truncations are treated as incomplete and preserve the prior file.
  */
 export function findTemplateCloneFillSlideCountIncomplete(input: {
   fileName: string;
@@ -3137,8 +3137,32 @@ export function findTemplateCloneFillSlideCountIncomplete(input: {
   requestedSlideCount: number | null;
   requestedSlideCountMin?: number | null;
 }): { fileName: string; producedCount: number; expectedCount: number; reason: string } | null {
-  void input;
-  return null;
+  const fileName = input.fileName.trim();
+  if (!fileName.toLowerCase().endsWith('.html')) return null;
+  const requestedMin =
+    typeof input.requestedSlideCountMin === 'number' && Number.isFinite(input.requestedSlideCountMin)
+      ? Math.floor(input.requestedSlideCountMin)
+      : typeof input.requestedSlideCount === 'number' && Number.isFinite(input.requestedSlideCount)
+        ? Math.floor(input.requestedSlideCount)
+        : null;
+  if (requestedMin == null || requestedMin <= 4) return null;
+  const producedCount = countDeckSlideSections(input.htmlBody);
+  if (producedCount <= 0) return {
+    fileName,
+    producedCount,
+    expectedCount: requestedMin,
+    reason: `template clone fill produced no slides for an explicit ${requestedMin}-slide request`,
+  };
+  const firstFillFloor = Math.min(requestedMin, FIRST_FILL_SLIDE_COUNT_THIS_TURN);
+  if (producedCount >= firstFillFloor) return null;
+  return {
+    fileName,
+    producedCount,
+    expectedCount: firstFillFloor,
+    reason:
+      `template clone fill produced only ${producedCount} slides for an explicit ${requestedMin}-slide request; ` +
+      `at least ${firstFillFloor} slides are required before saving over deck.html`,
+  };
 }
 
 export function findTemplateCloneFillStructureIncomplete(input: {

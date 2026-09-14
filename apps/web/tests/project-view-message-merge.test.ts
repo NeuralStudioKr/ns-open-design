@@ -503,7 +503,7 @@ describe("findTemplateCloneFillSlideCountIncomplete", () => {
     ).toBeNull();
   });
 
-  it("allows a mid-range shortfall so slide-count top-up can append (loop404)", () => {
+  it("allows a six-slide first fill shortfall so slide-count top-up can append", () => {
     const sixSlides = Array.from(
       { length: 6 },
       (_, index) => `<section class="slide"><h2>Slide ${index + 1}</h2><p>body</p></section>`,
@@ -518,7 +518,7 @@ describe("findTemplateCloneFillSlideCountIncomplete", () => {
     ).toBeNull();
   });
 
-  it("allows a one-slide truncation against an 8–10 floor so top-up can run (loop404)", () => {
+  it("blocks one-slide truncation against an 8–10 floor before it overwrites deck.html", () => {
     expect(
       findTemplateCloneFillSlideCountIncomplete({
         fileName: "deck.html",
@@ -526,7 +526,48 @@ describe("findTemplateCloneFillSlideCountIncomplete", () => {
         requestedSlideCount: 10,
         requestedSlideCountMin: 8,
       }),
-    ).toBeNull();
+    ).toMatchObject({
+      fileName: "deck.html",
+      producedCount: 1,
+      expectedCount: 6,
+    });
+  });
+
+  it("blocks four-slide truncation against an 8–10 floor before it overwrites deck.html", () => {
+    const fourSlides = Array.from(
+      { length: 4 },
+      (_, index) => `<section class="slide"><h2>Slide ${index + 1}</h2><p>body</p></section>`,
+    ).join("");
+    expect(
+      findTemplateCloneFillSlideCountIncomplete({
+        fileName: "deck.html",
+        htmlBody: fourSlides,
+        requestedSlideCount: 10,
+        requestedSlideCountMin: 8,
+      }),
+    ).toMatchObject({
+      fileName: "deck.html",
+      producedCount: 4,
+      expectedCount: 6,
+    });
+  });
+
+  it("requires five slides before saving a 5–6 requested first fill", () => {
+    const fourSlides = Array.from(
+      { length: 4 },
+      (_, index) => `<section class="slide"><h2>Slide ${index + 1}</h2><p>body</p></section>`,
+    ).join("");
+    expect(
+      findTemplateCloneFillSlideCountIncomplete({
+        fileName: "deck.html",
+        htmlBody: fourSlides,
+        requestedSlideCount: 6,
+        requestedSlideCountMin: 5,
+      }),
+    ).toMatchObject({
+      producedCount: 4,
+      expectedCount: 5,
+    });
   });
 });
 
