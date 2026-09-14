@@ -881,7 +881,7 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(healed).not.toMatch(/We started the bulletin/);
     expect(healed).not.toMatch(/Reader response, by quarter/);
     expect(healed).toMatch(/82%/);
-    expect(healed).toContain('팀버');
+    expect(healed).toMatch(/Teamver/i);
     expect(healed).toMatch(/[가-힣]{2,}/);
 
     const official = await readFile(
@@ -971,7 +971,7 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(healed).not.toMatch(/Tape Garden|SUPERCATALOG|CATALOGUE NO\. 7/i);
     expect(healed).not.toMatch(/We make small analog|SUPER TAPE|MIX CHAIR|T-26/i);
     expect(healed).toMatch(/26/);
-    expect(healed).toContain('팀버');
+    expect(healed).toMatch(/Teamver/i);
     expect(healed).toMatch(/[가-힣]{2,}/);
 
     const official = await readFile(
@@ -1072,7 +1072,7 @@ describe('루프419 Capsule deterministic quality gate', () => {
       'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
     );
     expect(healed).not.toMatch(/We started Long Table|Roasted chestnut soup|22 seats only/i);
-    expect(healed).toContain('팀버');
+    expect(healed).toMatch(/Teamver/i);
 
     const official = await readFile(
       new URL(
@@ -1176,7 +1176,7 @@ describe('루프419 Capsule deterministic quality gate', () => {
     );
     expect(healed).not.toMatch(/WHO WE ARE|Our studio pairs|Years of practice|\[Studio Name\]/i);
     expect(healed).toMatch(/12/);
-    expect(healed).toContain('팀버');
+    expect(healed).toMatch(/Teamver/i);
     expect(healed).toMatch(/[가-힣]{2,}/);
 
     const official = await readFile(
@@ -1222,7 +1222,7 @@ describe('루프419 Capsule deterministic quality gate', () => {
     );
     expect(healed).not.toMatch(/eight pages|Lift In Engagement|Layer alpha|Placeholder caption/i);
     expect(healed).toMatch(/42%/);
-    expect(healed).toContain('팀버');
+    expect(healed).toMatch(/Teamver/i);
 
     const official = await readFile(
       new URL(
@@ -1763,13 +1763,18 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(restyled).not.toMatch(/학습 노트|class="mast"|class="ribbon"|h1 class="display"/i);
     expect(restyled).toMatch(/background:var\(--cream\)/);
 
-    expect(polishUrlSiteCoverTitle('www.teamver.com 사이', 'www.teamver.com 사이트 분석')).toBe('팀버');
+    expect(polishUrlSiteCoverTitle('www.teamver.com 사이', 'www.teamver.com 사이트 분석')).toBe('Teamver');
     expect(polishUrlSiteCoverTitle(
       'www.teamver.com 사이',
       'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘',
-    )).toBe('팀버 소개');
+    )).toBe('Teamver 소개');
     expect(deriveDeckCoverTitleFromBrief('www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘'))
-      .toMatch(/팀버/);
+      .toMatch(/Teamver/i);
+    // 루프511 — Hangul brief must not force phonetic `팀버`.
+    expect(polishUrlSiteCoverTitle(
+      'www.teamver.com 사이',
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘',
+    )).not.toMatch(/팀버/);
   });
 
   it('루프390: restyles foreign IB magazine cover onto 8-Bit Orbit hero', () => {
@@ -2227,13 +2232,13 @@ ${capsuleLook}
 </body></html>`;
     expect(looksLikeRawUrlSiteCoverTitle('www.teamver.com 사이')).toBe(true);
     const healed = healInstructionCopyCoverHeading(html, brief);
-    expect(healed).toMatch(/팀버/);
+    expect(healed).toMatch(/Teamver/i);
     expect(healed).not.toMatch(/www\.teamver\.com 사이/);
     expect(healed).toMatch(/class="subkicker"/);
     expect(healed).toMatch(/제품 소개|Product introduction/);
 
     const enriched = enrichSparseCobaltCover(html, brief);
-    expect(enriched).toMatch(/팀버/);
+    expect(enriched).toMatch(/Teamver/i);
     expect(enriched).toMatch(/subkicker/);
   });
 
@@ -2246,10 +2251,10 @@ ${capsuleLook}
       '</section>',
     ].join('');
     const salvaged = salvageMalformedMiniMaxSlideMarkup(html);
-    expect(salvaged).toMatch(/팀버/);
+    expect(salvaged).toMatch(/Teamver/i);
     expect(salvaged).not.toMatch(/www\.teamver\.com 사이/);
     expect(salvaged).toMatch(/subkicker/);
-    expect(rewriteRawUrlSiteCoverTitles(html)).toMatch(/팀버/);
+    expect(rewriteRawUrlSiteCoverTitles(html)).toMatch(/Teamver/i);
   });
 
   it('루프451: reparents Cobalt orphan s-data stats and drops Field Office leftover', async () => {

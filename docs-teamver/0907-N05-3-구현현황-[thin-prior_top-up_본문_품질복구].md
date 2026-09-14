@@ -14,6 +14,7 @@
 ☑ 루프505 — preview heal-first · count>sparse · thin APPEND 차단 · soft/detector 정렬  
 ☑ 루프506 — 명시 5장+ Template Clone fill 1장/4장 덮어쓰기 차단
 ☑ 루프508 — Working 단계 표기 · rewrite 후 top-up 1회 · deck idle 6m · slide-count strict 오탐
+☑ 루프511 — 표지 brand Latin (`Teamver`, phonetic `팀버` 금지) — [0914-N02](./0914-N02-3-구현현황-[표지_브랜드_Latin_보존].md)
 ☐ Design staging 재배포 후 QA
 
 ## 검증
@@ -26,6 +27,7 @@
 - 루프505: 4-of-8–10 wantsCountTopUp · thin+rewriteCount≥1 APPEND 차단 · soft=sparse만
 - 루프506: explicit 8–10 요청에서 produced=1/4는 저장 전 incomplete · produced=6은 저장 후 top-up 가능
 - 루프508: top-up budget after rewrite · deck idle 6m · Working phase labels · strict≠persistTarget
+- 루프511: polishUrlSiteCoverTitle → Teamver (not 팀버) · Brand spelling prompt
 
 ## 다음
 
@@ -42,3 +44,4 @@
 | 2026-09-11 | 루프505 — preview/스케줄 잔여 갭 |
 | 2026-09-14 | 루프506 — 1페이지 Template Clone fill 덮어쓰기 차단 |
 | 2026-09-14 | 루프508 — 생성 지연 UX · idle 6m · slide-count strict 오탐 |
+| 2026-09-14 | 루프511 — 표지 브랜드 Latin 보존 (0914-N02) |

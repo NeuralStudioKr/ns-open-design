@@ -624,6 +624,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       // told to write full-sentence lead/body copy per card, not bare labels.
       expect(prompt).toMatch(/Copy density/i);
       expect(prompt).toMatch(/full[- ]sentence\s+`?lead`?/i);
+      // 루프511 — Latin brand spelling must survive ko locale / Hangul briefs.
+      expect(prompt).toMatch(/Brand spelling|phonetic-Hangulize|teamver\s*→\s*`?Teamver/i);
     });
 
     it('omits comment-edit / existing-deck contracts on greenfield turns', () => {

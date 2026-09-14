@@ -2516,7 +2516,8 @@ export function officialLookIsBoldPoster(html: string): boolean {
 /**
  * 루프389 — Rewrite raw URL / truncated-site crumbs in headings (and cover
  * leaf chrome) even when preview/salvage never received a full brief.
- * `www.teamver.com 사이` → `팀버` / `팀버 소개` without inventing kit shape.
+ * `www.teamver.com 사이` → `Teamver` / `Teamver 소개` without inventing kit shape.
+ * (루프511 — keep Latin brand spelling; do not Hangulize `teamver` → `팀버`.)
  */
 export function rewriteRawUrlSiteCoverTitles(
   html: string,
@@ -2980,10 +2981,11 @@ export function polishUrlSiteCoverTitle(title: string, brief?: string | null): s
     && /^(?:https?:\/\/)?(?:www\.)?[a-z0-9.-]+\s*사이트/i.test(next)
   ) {
     if (/^teamver$/i.test(host)) {
+      // 루프511 — Hangul brief still keeps Latin product spelling (NeuralStudio pattern).
       if (/서비스\s*소개|소개\s*슬라이드|product\s*intro/i.test(source)) {
-        return /[가-힣]/.test(source) ? '팀버 소개' : 'Teamver Intro';
+        return /[가-힣]/.test(source) ? 'Teamver 소개' : 'Teamver Intro';
       }
-      return /[가-힣]/.test(source) ? '팀버' : 'Teamver';
+      return 'Teamver';
     }
     return host.charAt(0).toUpperCase() + host.slice(1).toLowerCase();
   }
@@ -2997,6 +2999,9 @@ export function polishUrlSiteCoverTitle(title: string, brief?: string | null): s
       return /회사|소개/u.test(next) && /[가-힣]/.test(next)
         ? 'NeuralStudio 소개'
         : 'NeuralStudio';
+    }
+    if (/^teamver$/i.test(brand)) {
+      return /회사|소개/u.test(next) ? 'Teamver 소개' : 'Teamver';
     }
     const titled = brand.charAt(0).toUpperCase() + brand.slice(1).toLowerCase();
     return /회사/u.test(next) ? `${titled} 소개` : titled;
@@ -9510,7 +9515,7 @@ function extractUserFacingBrief(text: string): string {
 function deriveTitleFromBrief(brief: string, deckTitle?: string | null): string {
   const preferred = deckTitle?.trim() ?? '';
   // 루프389/390 — generic "슬라이드"/Deck must not pin cover titles when the
-  // brief still carries a URL/brand topic (e.g. www.teamver.com → 팀버).
+  // brief still carries a URL/brand topic (e.g. www.teamver.com → Teamver).
   if (
     preferred
     && !looksLikeTemplateMarketingTitle(preferred)

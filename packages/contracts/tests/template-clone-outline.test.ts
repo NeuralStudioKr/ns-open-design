@@ -483,32 +483,32 @@ describe('루프419 resolveTemplateCloneSlidesForDeterministicFill', () => {
       slideCount: 10,
     });
     expect(slides).toHaveLength(10);
-    expect(slides[0]?.title).toMatch(/팀버|Teamver|teamver/i);
+    expect(slides[0]?.title).toMatch(/Teamver|teamver/i);
     expect(slides[0]?.kicker).toBe('OVERVIEW');
     expect(slides.slice(1).every((slide) => (slide.items?.length ?? 0) >= 2)).toBe(true);
     expect(slides.some((slide) => slide.body === '…')).toBe(false);
     const joined = JSON.stringify(slides);
-    expect(joined).not.toMatch(/팀버이|팀버은/);
-    expect(joined).toContain('팀버가 풀어야 하는 문제');
+    expect(joined).not.toMatch(/팀버이|팀버은|Teamver이|Teamver은/);
+    expect(joined).toContain('Teamver가 풀어야 하는 문제');
     expect(joined).toContain('서비스 가치 제안');
     expect(joined).not.toContain('한눈에');
     expect(slides[0]?.lead).toBe(
-      synthesizeTemplateCloneCoverLead('팀버', 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장'),
+      synthesizeTemplateCloneCoverLead('Teamver', 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장'),
     );
   });
 
   it('루프473 — service-intro cover lead is a promise sentence, not 한눈에', () => {
     const brief = 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장';
-    const lead = synthesizeTemplateCloneCoverLead('팀버 소개', brief);
-    expect(lead).toContain('팀버');
-    expect(lead).not.toMatch(/한눈에|팀버은|팀버이/);
-    expect(synthesizeTemplateCloneCoverLead('팀버 소개')).not.toContain('한눈에');
+    const lead = synthesizeTemplateCloneCoverLead('Teamver 소개', brief);
+    expect(lead).toMatch(/Teamver/i);
+    expect(lead).not.toMatch(/한눈에|팀버은|팀버이|Teamver은|Teamver이/);
+    expect(synthesizeTemplateCloneCoverLead('Teamver 소개')).not.toContain('한눈에');
   });
 
   it('루프474 — service-intro lead does not invent a Teamver workflow claim', () => {
     const brief = 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장';
-    const lead = synthesizeTemplateCloneCoverLead('팀버 소개', brief);
-    expect(lead).toContain('팀버');
+    const lead = synthesizeTemplateCloneCoverLead('Teamver 소개', brief);
+    expect(lead).toMatch(/Teamver/i);
     expect(lead).toMatch(/문제|가치|사이트/);
     expect(lead).not.toContain('파일·대화·템플릿');
     expect(lead).not.toMatch(/한눈에|\d+%/);
@@ -520,7 +520,7 @@ describe('루프419 resolveTemplateCloneSlidesForDeterministicFill', () => {
 
   it('루프474 — source preview wins over the service-intro fallback lead', () => {
     expect(synthesizeTemplateCloneCoverLead(
-      '팀버 소개',
+      'Teamver 소개',
       [
         'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
         'Source preview: AI가 만드는 슬라이드',
@@ -537,7 +537,7 @@ describe('루프419 resolveTemplateCloneSlidesForDeterministicFill', () => {
       'Teamver — Smarter & Faster',
       'AI workspace for teams',
     ].join('\n');
-    const lead = synthesizeTemplateCloneCoverLead('팀버', brief);
+    const lead = synthesizeTemplateCloneCoverLead('Teamver', brief);
     expect(lead).toMatch(/Smarter|Faster|Teamver/i);
     expect(lead).not.toMatch(/한눈에|표지|파일·대화·템플릿/);
   });
