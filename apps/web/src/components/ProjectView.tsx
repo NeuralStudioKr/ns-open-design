@@ -572,6 +572,7 @@ import {
   formatSlideAutomationBusyDropNotice,
   formatThinPriorRewriteExhaustedNotice,
   isSoftImprovementAutomationEntryFrom,
+  shouldSoftCancelEmptyDeckPatchPersist,
   applyHonorSlideCeilingToHtml,
   countSparseContentTopUpAttemptsInConversation,
   countThinPriorFullRewriteAttemptsInConversation,
@@ -11244,7 +11245,31 @@ export function ProjectView({
             if (!isLatestTerminalAutoOpen()) return;
 
             const endedAt = Date.now();
-            if (terminalArtifactPersistFailed) {
+            if (
+              terminalArtifactPersistFailed
+              && shouldSoftCancelEmptyDeckPatchPersist({
+                persistKind: terminalPersistResult?.kind,
+                persistReason:
+                  terminalPersistResult && 'reason' in terminalPersistResult
+                    ? terminalPersistResult.reason ?? null
+                    : null,
+                entryFrom: meta?.entryFrom,
+                userContent: userMsg.content,
+              })
+            ) {
+              // 루프521 — Sparse-repair empty deck-patch: saved deck is untouched.
+              // No 저장 거부 banner, Retry dock, auto-continue, or LOOK seed.
+              updateAssistant((prev) => ({
+                ...appendWarningStatusEvent(
+                  prev,
+                  formatSoftImprovementTurnFailureNotice(),
+                  SOFT_IMPROVEMENT_TURN_STATUS_CODE,
+                ),
+                endedAt: prev.endedAt ?? endedAt,
+                runStatus: 'canceled',
+              }));
+              updateConversationLatestRun('canceled', endedAt);
+            } else if (terminalArtifactPersistFailed) {
               // 루프491 — Always encode ops tails (status/code/message/reason) so
               // copy-diagnostics is not stuck on reason=unavailable.
               const encodeDeliverable = (

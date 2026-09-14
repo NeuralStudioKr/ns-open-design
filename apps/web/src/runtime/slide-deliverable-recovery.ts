@@ -27,6 +27,9 @@ import {
 import {
   SLIDE_COUNT_REQUEST_MAX,
   extractRequestedSlideCountSpecFromMessages,
+  isSlideCountTopUpPrompt,
+  isSparseContentTopUpPrompt,
+  isThinPriorFullRewritePrompt,
 } from '../teamver/slideCountTopUp';
 import { findPrecedingUserMessage } from './auto-continue-comment-scope';
 import {
@@ -617,6 +620,15 @@ export function isCloneContentFillReloadRecoveryCandidate(
   incompleteAssistant: ChatMessage,
 ): boolean {
   const precedingUser = findPrecedingUserMessage(messages, incompleteAssistant.id);
+  const precedingContent = precedingUser?.content;
+  // 루프521 — Hidden automation after a Clone fill must not promote LOOK seed.
+  if (
+    isSparseContentTopUpPrompt(precedingContent)
+    || isSlideCountTopUpPrompt(precedingContent)
+    || isThinPriorFullRewritePrompt(precedingContent)
+  ) {
+    return false;
+  }
   return templateCloneFillModeFromUserMessage(precedingUser) === 'json'
     || historyHasTemplateCloneContentFill(messages);
 }

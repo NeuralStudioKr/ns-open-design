@@ -9,6 +9,11 @@ import {
   tryRecoverCloneContentFillLookSeed,
 } from '../src/runtime/slide-deliverable-recovery';
 import { TEMPLATE_CLONE_CONTENT_FILL_MARKER } from '../src/teamver/templateCloneContentFill';
+import {
+  SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL,
+  SPARSE_CONTENT_TOP_UP_PROMPT_SENTINEL,
+  THIN_PRIOR_FULL_REWRITE_PROMPT_SENTINEL,
+} from '../src/teamver/slideCountTopUp';
 import { formatCloneSlotFillRepairInProgressNotice } from '../src/teamver/projectErrorMessages';
 import type { ChatMessage } from '../src/types';
 
@@ -116,6 +121,47 @@ describe('attemptCloneContentFillLookSeedReloadRecovery (루프367)', () => {
       [{ ...userBriefOnly, runContext: { templateCloneFill: 'prompt' } }, incompleteAssistant],
       incompleteAssistant,
     )).toBe(false);
+  });
+
+  it('does not promote LOOK seed after hidden automation (루프521)', () => {
+    const cloneFillHistory: ChatMessage[] = [
+      userFill,
+      { id: 'asst-fill', role: 'assistant', content: 'filled', createdAt: 1 },
+    ];
+    const sparseUser: ChatMessage = {
+      id: 'user-sparse',
+      role: 'user',
+      content: `${SPARSE_CONTENT_TOP_UP_PROMPT_SENTINEL}\npatch sparse cards`,
+      createdAt: 2,
+    };
+    const topUpUser: ChatMessage = {
+      id: 'user-topup',
+      role: 'user',
+      content: `${SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL}\nappend remaining slides`,
+      createdAt: 2,
+    };
+    const rewriteUser: ChatMessage = {
+      id: 'user-rewrite',
+      role: 'user',
+      content: `${THIN_PRIOR_FULL_REWRITE_PROMPT_SENTINEL}\nrewrite the thin look seed`,
+      createdAt: 2,
+    };
+    expect(isCloneContentFillReloadRecoveryCandidate(
+      [...cloneFillHistory, sparseUser, incompleteAssistant],
+      incompleteAssistant,
+    )).toBe(false);
+    expect(isCloneContentFillReloadRecoveryCandidate(
+      [...cloneFillHistory, topUpUser, incompleteAssistant],
+      incompleteAssistant,
+    )).toBe(false);
+    expect(isCloneContentFillReloadRecoveryCandidate(
+      [...cloneFillHistory, rewriteUser, incompleteAssistant],
+      incompleteAssistant,
+    )).toBe(false);
+    expect(isCloneContentFillReloadRecoveryCandidate(
+      [userFill, incompleteAssistant],
+      incompleteAssistant,
+    )).toBe(true);
   });
 });
 
