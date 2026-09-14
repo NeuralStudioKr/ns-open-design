@@ -781,6 +781,7 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).toContain("slimTemplateVisualKitForFill(");
     expect(projectView).toContain("templateCloneContentFill: isCloneContentFillTurn");
     expect(projectView).toContain("applyTemplateClonePromptFillLookMerge(");
+    expect(projectView).toContain("resolveTemplateCloneLookSeedHtml(");
     expect(projectView).toContain("runTemplateClonePromptFillRef.current && artifactToPersist?.html");
     expect(projectView).toContain("appendIncomingSlidesOntoExistingDeck(");
     expect(projectView).toContain("incomingBeforeSalvage");

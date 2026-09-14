@@ -612,7 +612,7 @@ function leftoverUnparsedSentenceChars(
 function extractSlideTitleFromHtmlBody(body: string): string {
   const heading = /<(h[1-3])\b[^>]*>([\s\S]*?)<\/\1>/i.exec(body);
   const rawHeading = heading ? stripTagsToText(heading[2] ?? '') : '';
-  const classTitle = /<(?:div|p|span)\b[^>]*\b(?:title-main|hero-title|headline|font-display|display|ttl)\b[^>]*>([\s\S]*?)<\//i
+  const classTitle = /<(?:div|p|span)\b[^>]*\b(?:title-main|hero-title|headline|font-display|display|disp|ttl|title)\b[^>]*>([\s\S]*?)<\//i
     .exec(body);
   const rawClass = classTitle ? stripTagsToText(classTitle[1] ?? '') : '';
   const raw = (rawHeading || rawClass).trim();
@@ -621,7 +621,7 @@ function extractSlideTitleFromHtmlBody(body: string): string {
 }
 
 function extractSlideLeadFromHtmlBody(body: string, title: string): string {
-  const preferred = /<(p|div|span)\b[^>]*\b(?:subtitle|lead|lede|dek|deck)\b[^>]*>([\s\S]*?)<\/\1>/i
+  const preferred = /<(p|div|span)\b[^>]*\b(?:subtitle|lead|lede|dek|deck|stmt|qbody|quote|ed|subkicker)\b[^>]*>([\s\S]*?)<\/\1>/i
     .exec(body);
   const preferredText = preferred ? stripTagsToText(preferred[2] ?? '').trim() : '';
   if (preferredText && preferredText !== title && preferredText.length >= 8) {
@@ -634,33 +634,85 @@ function extractSlideLeadFromHtmlBody(body: string, title: string): string {
   return (paragraphs[0] ?? '').slice(0, 240);
 }
 
+function itemFromExtractedInner(inner: string): TemplateCloneSlideItem | null {
+  const heading = /<(h[1-6]|strong|b)\b[^>]*>([\s\S]*?)<\/\1>/i.exec(inner);
+  const paragraph = /<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(inner);
+  const title = stripTagsToText(heading?.[2] ?? '').trim()
+    || stripTagsToText(inner).trim().slice(0, 40);
+  const itemBody = stripTagsToText(paragraph?.[1] ?? '').trim();
+  if (!title) return null;
+  if (title === itemBody) {
+    const visible = stripTagsToText(inner).trim();
+    if (!visible) return null;
+    const split = visible.split(/[.—–:]\s+/).map((part) => part.trim()).filter(Boolean);
+    return {
+      title: (split[0] ?? visible).slice(0, 40),
+      ...(split[1] ? { body: split.slice(1).join(' ').slice(0, 160) } : {}),
+    };
+  }
+  return {
+    title: title.slice(0, 40),
+    ...(itemBody && itemBody !== title ? { body: itemBody.slice(0, 160) } : {}),
+  };
+}
+
+function extractSlideItemsFromStructuredHosts(body: string): TemplateCloneSlideItem[] {
+  const items: TemplateCloneSlideItem[] = [];
+  const openRe = /<(div|li|article)\b([^>]*)>/gi;
+  let openMatch: RegExpExecArray | null;
+  while ((openMatch = openRe.exec(body)) !== null && items.length < 8) {
+    const attrs = openMatch[2] ?? '';
+    if (/\bheadrow\b/i.test(attrs)) continue;
+    if (!/\bclass\s*=\s*["'][^"']*\b(?:row|stmt)\b/i.test(attrs)) continue;
+    const tag = (openMatch[1] ?? 'div').toLowerCase();
+    const openEnd = openMatch.index + openMatch[0].length;
+    const closeEnd = findMatchingClose(body, openEnd, tag);
+    if (closeEnd < 0) continue;
+    const closeTag = new RegExp(`</${tag}\\s*>$`, 'i').exec(body.slice(0, closeEnd))?.[0]
+      ?? `</${tag}>`;
+    const inner = body.slice(openEnd, closeEnd - closeTag.length);
+    const item = itemFromExtractedInner(inner);
+    if (!item) continue;
+    items.push(item);
+  }
+  return items.length >= 2 ? items : [];
+}
+
+function extractSlideItemsFromGenericCopy(body: string): TemplateCloneSlideItem[] {
+  const items: TemplateCloneSlideItem[] = [];
+  const copyRe = /<(div|p|span)\b[^>]*\b(?:copy|body-tx|desc|caption)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = copyRe.exec(body)) !== null && items.length < 8) {
+    const visible = stripTagsToText(match[2] ?? '').trim();
+    if (visible.length < 8) continue;
+    const split = visible.split(/[.—–:]\s+/).map((part) => part.trim()).filter(Boolean);
+    if (split.length >= 2) {
+      items.push({
+        title: split[0]!.slice(0, 40),
+        body: split.slice(1).join(' ').slice(0, 160),
+      });
+      continue;
+    }
+    items.push({
+      title: visible.slice(0, 40),
+      body: visible.slice(0, 160),
+    });
+  }
+  return items.length >= 2 ? items : [];
+}
+
 function extractSlideItemsFromHtmlBody(body: string): TemplateCloneSlideItem[] {
   const cards: TemplateCloneSlideItem[] = [];
   const cardRe = promptFillCardPeerRe();
   let cardMatch: RegExpExecArray | null;
   while ((cardMatch = cardRe.exec(body)) !== null && cards.length < 6) {
-    const inner = cardMatch[3] ?? '';
-    const heading = /<(h[1-6]|strong|b)\b[^>]*>([\s\S]*?)<\/\1>/i.exec(inner);
-    const paragraph = /<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(inner);
-    const title = stripTagsToText(heading?.[2] ?? '').trim()
-      || stripTagsToText(inner).trim().slice(0, 40);
-    const itemBody = stripTagsToText(paragraph?.[1] ?? '').trim();
-    if (!title || title === itemBody) {
-      const visible = stripTagsToText(inner).trim();
-      if (!visible) continue;
-      const split = visible.split(/[.—–:]\s+/).map((part) => part.trim()).filter(Boolean);
-      cards.push({
-        title: (split[0] ?? visible).slice(0, 40),
-        ...(split[1] ? { body: split.slice(1).join(' ').slice(0, 160) } : {}),
-      });
-      continue;
-    }
-    cards.push({
-      title: title.slice(0, 40),
-      ...(itemBody && itemBody !== title ? { body: itemBody.slice(0, 160) } : {}),
-    });
+    const item = itemFromExtractedInner(cardMatch[3] ?? '');
+    if (item) cards.push(item);
   }
   if (cards.length >= 2) return cards;
+
+  const fromRows = extractSlideItemsFromStructuredHosts(body);
+  if (fromRows.length >= 2) return fromRows;
 
   const items: TemplateCloneSlideItem[] = [];
   const listRe = /<li\b[^>]*>([\s\S]*?)<\/li>/gi;
@@ -684,7 +736,8 @@ function extractSlideItemsFromHtmlBody(body: string): TemplateCloneSlideItem[] {
     }
     items.push({ title: visible.slice(0, 40), ...(visible.length > 40 ? { body: visible.slice(0, 160) } : {}) });
   }
-  return items.length >= 2 ? items : [];
+  if (items.length >= 2) return items;
+  return extractSlideItemsFromGenericCopy(body);
 }
 
 function extractSlideBodyFromHtmlBody(
@@ -695,12 +748,20 @@ function extractSlideBodyFromHtmlBody(
 ): string | undefined {
   if (items.length >= 2) return undefined;
   const withoutCards = body.replace(promptFillCardPeerRe(), ' ');
-  const lines = [...withoutCards.matchAll(/<(?:p|li)\b[^>]*>([\s\S]*?)<\/(?:p|li)>/gi)]
+  const classCopy = [...withoutCards.matchAll(
+    /<(?:p|div|span|blockquote)\b[^>]*\b(?:stmt|qbody|quote|copy|body-tx|desc)\b[^>]*>([\s\S]*?)<\//gi,
+  )]
     .map((match) => stripTagsToText(match[1] ?? '').trim())
-    .filter((text) => {
-      if (!text || text === title || text === lead) return false;
-      return text.length >= 8;
-    });
+    .filter((text) => text && text !== title && text !== lead && text.length >= 8);
+  const lines = [
+    ...classCopy,
+    ...[...withoutCards.matchAll(/<(?:p|li)\b[^>]*>([\s\S]*?)<\/(?:p|li)>/gi)]
+      .map((match) => stripTagsToText(match[1] ?? '').trim())
+      .filter((text) => {
+        if (!text || text === title || text === lead) return false;
+        return text.length >= 8;
+      }),
+  ].filter((text, index, all) => all.indexOf(text) === index);
   if (lines.length === 0) return undefined;
   return lines.slice(0, 6).join('\n');
 }
@@ -777,6 +838,22 @@ export function applyTemplateClonePromptFillLookMerge(
   });
   if (!html?.trim()) return null;
   return { html, title };
+}
+
+/**
+ * Persist must not treat MiniMax-overwritten `deck.html` as the LOOK host.
+ * Prefer the official plugin preview (example.html) whenever it still has
+ * slide shells; fall back to disk only when the plugin look is unavailable.
+ */
+export function pickPromptFillLookSeedHtml(input: {
+  pluginPreviewHtml?: string | null;
+  diskDeckHtml?: string | null;
+}): string {
+  const plugin = String(input.pluginPreviewHtml ?? '').trim();
+  if (plugin && listTemplateCloneSlideShells(plugin).length > 0) return plugin;
+  const disk = String(input.diskDeckHtml ?? '').trim();
+  if (disk && listTemplateCloneSlideShells(disk).length > 0) return disk;
+  return plugin || disk || '';
 }
 
 export type TemplateCloneSlotFillTerminalDecision =
@@ -1207,6 +1284,26 @@ export function synthesizeTemplateCloneCoverLead(
     return `${topic}가 다루는 문제와 제공 가치`;
   }
   return `${topic} — 핵심 맥락과 다음 단계를 정리합니다`;
+}
+
+function bindTemplateCloneSynthItemBody(input: {
+  itemTitle: string;
+  slideTitle: string;
+  topic: string;
+  fallback?: string | null | undefined;
+}): string {
+  const item = String(input.itemTitle ?? '').trim();
+  const slide = String(input.slideTitle ?? '').trim();
+  const topic = topicKeywordForSynthBody(input.topic || slide || item);
+  const fallback = String(input.fallback ?? '').trim();
+  if (item && slide && item !== slide) {
+    return `${item}: ${slide} 관점에서 이 항목이 왜 중요한지와 어떻게 판단할지 정리한다.`;
+  }
+  if (item) {
+    return `${item} — ${topic}에서 의미와 적용 기준을 한 문장으로 정리한다.`;
+  }
+  if (fallback.length >= PROMPT_FILL_ITEM_BODY_MIN) return fallback;
+  return `${topic}의 핵심을 한 문장으로 정리한다.`;
 }
 
 function synthesizeTemplateCloneSlideBody(
@@ -8816,9 +8913,9 @@ function countPeerSlotsInShellBody(
  *   - The slide already carries items[] or a multi-line bulleted body —
  *     the model expressed intent; preserve it.
  *   - The picked shell has no card peers (< 2). Bullet-list shells
- *     intentionally drop title-only demo lists (루프376). Stat shells
- *     want number-shaped copy, not prose bodies; synth prose there would
- *     look worse than a clean empty slot.
+ *     intentionally drop title-only demo lists (루프376).
+ *   - Stat shells get labels only — never invented KPI digits (루프518).
+ *   - Quote shells get title-bound copy, never a fake attributed quote.
  */
 function enrichSparseSlideForShell(
   slide: TemplateCloneSlideContent,
@@ -8849,15 +8946,18 @@ function enrichSparseSlideForShell(
 
   // Loop517 — Prompt-fill often extracts title-only cards. Keep those titles
   // and fill missing 1-sentence bodies so card grids are not empty labels.
+  // Loop518 — Bind the sentence to item + slide titles, not a generic preset.
   if (items.length >= 2 && thinItems.length > 0 && shellRole !== 'stat') {
-    const synthItems = Array.isArray(synth.items) ? synth.items : [];
-    const filledItems = items.map((item, itemIndex) => {
+    const filledItems = items.map((item) => {
       if (templateCloneItemBodyLooksDense(item.body)) return item;
-      const synthBody = synthItems[itemIndex]?.body?.trim()
-        || synthItems[itemIndex % Math.max(1, synthItems.length)]?.body?.trim()
-        || '';
-      if (!templateCloneItemBodyLooksDense(synthBody)) return item;
-      return { ...item, body: synthBody };
+      const body = bindTemplateCloneSynthItemBody({
+        itemTitle: item.title,
+        slideTitle: slide.title,
+        topic: deckTitle || brief || slide.title,
+        fallback: item.body,
+      });
+      if (!templateCloneItemBodyLooksDense(body)) return item;
+      return { ...item, body };
     });
     const enriched: TemplateCloneSlideContent = { ...slide, items: filledItems };
     if (!enriched.lead && synth.lead) enriched.lead = synth.lead;
@@ -8877,7 +8977,12 @@ function enrichSparseSlideForShell(
     const itemLines = (synth.items ?? [])
       .map((item) => {
         const title = String(item.title ?? '').trim();
-        const body = String(item.body ?? '').trim();
+        const body = bindTemplateCloneSynthItemBody({
+          itemTitle: title,
+          slideTitle: slide.title,
+          topic: deckTitle || brief || slide.title,
+          fallback: item.body,
+        });
         if (title && body) return `${title} — ${body}`;
         return title || body;
       })
@@ -8893,14 +8998,57 @@ function enrichSparseSlideForShell(
     return enriched;
   }
 
-  if (shellRole === 'cover' || shellRole === 'closing' || shellRole === 'quote' || shellRole === 'stat') {
+  if (shellRole === 'cover' || shellRole === 'closing') {
     return slide;
   }
+
+  // Loop518 — Quote: title/lead only. Do not invent an attributed quotation.
+  if (shellRole === 'quote') {
+    const existing = String(slide.body ?? slide.lead ?? '').trim();
+    if (existing.length >= 8) return slide;
+    const quote = `${slide.title}의 핵심 메시지를 한 문장으로 정리합니다.`;
+    const enriched: TemplateCloneSlideContent = { ...slide, body: quote };
+    if (!enriched.lead) enriched.lead = quote;
+    return enriched;
+  }
+
+  // Loop518 — Stat: labels only. Never invent KPI digits / percentages.
+  if (shellRole === 'stat') {
+    const source = items.length >= 2
+      ? items
+      : (Array.isArray(synth.items) ? synth.items : []);
+    const targetCount = Math.max(2, Math.min(peers || source.length, 4));
+    if (source.length < 2 && peers < 2) return slide;
+    const safeItems = source.slice(0, Math.max(2, targetCount)).map((item) => {
+      const title = String(item.title ?? '').trim();
+      const body = String(item.body ?? '').trim();
+      if (titleLooksLikeMetric(title)) {
+        return body && !titleLooksLikeMetric(body)
+          ? { title, body }
+          : { title };
+      }
+      if (titleLooksLikeMetric(body)) return { title: body, body: title };
+      return { title: title || slide.title };
+    }).filter((item) => item.title);
+    if (safeItems.length < 2) return slide;
+    const enriched: TemplateCloneSlideContent = { ...slide, items: safeItems };
+    if (!enriched.lead && synth.lead) enriched.lead = synth.lead;
+    return enriched;
+  }
+
   if (peers < 2) return slide;
   const targetCount = Math.max(2, Math.min(peers, 4));
   const synthItems = Array.isArray(synth.items) ? synth.items : [];
   if (synthItems.length === 0) return slide;
-  const trimmed = synthItems.slice(0, targetCount);
+  const trimmed = synthItems.slice(0, targetCount).map((item) => ({
+    ...item,
+    body: bindTemplateCloneSynthItemBody({
+      itemTitle: item.title,
+      slideTitle: slide.title,
+      topic: deckTitle || brief || slide.title,
+      fallback: item.body,
+    }),
+  }));
   const enriched: TemplateCloneSlideContent = { ...slide, items: trimmed };
   if (!enriched.lead && synth.lead) enriched.lead = synth.lead;
   return enriched;

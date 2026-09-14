@@ -275,6 +275,8 @@ describe('templateCloneContentFill', () => {
       'utf8',
     );
     expect(recoverSource).toContain('templateCloneContentFilled === true');
+    expect(recoverSource).toContain('resolveTemplateCloneLookSeedHtml');
+    expect(recoverSource).toContain('pickPromptFillLookSeedHtml');
     expect(recoverSource).toContain('contentFilled: true');
     expect(recoverSource).not.toMatch(
       /if \(json\?\.metadata\?\.templateCloneContentFilled === true\) return null/,

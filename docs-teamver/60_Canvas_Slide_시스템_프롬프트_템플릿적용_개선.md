@@ -51,6 +51,19 @@ JSON을 staging 기본으로 올리지 않는 이유: MiniMax JSON-only 턴이 `
 - [x] `SLIDE_DECK_LAYOUT_VARIETY_INSTRUCTION` / `SLIDE_DECK_COPY_DENSITY_INSTRUCTION` — prompt-fill seed · Canvas/Home internal instruction · kit hard-requirements에 공유.
 - [x] JSON 기본값 전환 **하지 않음**.
 
+### 1.36 2026-09-14 — LOOK seed 보존 · extract 확대 · title-bound synth · stat/quote 안전 보강 (loop518)
+
+§1.34–1.35 merge는 persist에서 `readProjectHtml('deck.html')`을 host로 썼다. MiniMax가 같은 턴에 `deck.html`을 덮어쓰면 seed가 모델 HTML이 되어 variety/enrich가 같은 monotone shell을 다시 채운다.
+
+- [x] persist LOOK host = 플러그인 `example.html` (`fetchPluginPreviewLookSource`) 우선. disk `deck.html`은 preview를 못 읽을 때만.
+- [x] extract — Cobalt `.row`/`.stmt`, Biennale `.qbody`/`.quote`, generic `.copy`/`.body-tx`.
+- [x] title-only card/list body는 item+slide 제목에 묶인 한 문장. 루프516이 지운 주제 preset을 되돌리지 않음.
+- [x] quote = 제목/lead 한 문장. stat = 라벨만. KPI 숫자 발명 금지.
+- [ ] 기본 템플릿(explicit 아님) LOOK seed — 제품 결정 후속
+- [ ] staging 실기 bake (Daisy / Block Frame / Capsule)
+- [ ] persist 텔레메트리 (distinct shell · title-only card rate)
+- [x] JSON을 staging 기본으로 올리지 **않음**.
+
 ### 1.35 2026-09-14 — prompt-fill merge 품질 (title-only cards · role lock · chrome skip) (loop517)
 
 §1.34 merge는 올렸지만 persist 후에도 미리보기보다 성긴 덱이 남을 수 있다.

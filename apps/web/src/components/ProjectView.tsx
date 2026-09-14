@@ -600,6 +600,7 @@ import {
   shouldNotifyTemplateVisualKitMiss,
   skillBodyHasTemplateVisualKit,
 } from '../teamver/fetchPluginLocalSkill';
+import { resolveTemplateCloneLookSeedHtml } from '../teamver/seedTemplateClonedDeck';
 import { throwIfProjectCommentUploadIncomplete } from '../teamver/projectUploadErrors';
 import { stripLeakedPseudoToolXml } from '../utils/stripLeakedPseudoToolXml';
 import {
@@ -10884,7 +10885,14 @@ export function ProjectView({
             // 0901-N02 B4/B5/D — JSON → LOOK seed slot-fill; else seed-fallback (no model HTML).
             if (runTemplateCloneContentFillRef.current) {
               try {
-                const seedHtml = await readProjectHtml('deck.html');
+                const seedHtml = await resolveTemplateCloneLookSeedHtml({
+                  templateId: firstOfficialDeckTemplateId(
+                    runSelectedDeckTemplateIdRef.current,
+                    selectedDeckTemplateMetadata(project.metadata)?.id,
+                    project.metadata?.selectedDeckTemplateId,
+                  ),
+                  readProjectHtml,
+                });
                 const requestedSlideCountSpec =
                   extractRequestedSlideCountSpecFromMessages(messagesRef.current);
                 const honorCeiling = honorSlideCountCeiling(requestedSlideCountSpec);
@@ -10955,7 +10963,14 @@ export function ProjectView({
               // merge model HTML back through the same host slot-fill so variety
               // + sparse enrichment are not JSON-only.
               try {
-                const seedHtml = await readProjectHtml('deck.html');
+                const seedHtml = await resolveTemplateCloneLookSeedHtml({
+                  templateId: firstOfficialDeckTemplateId(
+                    runSelectedDeckTemplateIdRef.current,
+                    selectedDeckTemplateMetadata(project.metadata)?.id,
+                    project.metadata?.selectedDeckTemplateId,
+                  ),
+                  readProjectHtml,
+                });
                 const requestedSlideCountSpec =
                   extractRequestedSlideCountSpecFromMessages(messagesRef.current);
                 const honorCeiling = honorSlideCountCeiling(requestedSlideCountSpec);
@@ -10964,7 +10979,12 @@ export function ProjectView({
                   artifactToPersist.html,
                   {
                     templateId:
-                      (project.metadata as { selectedDeckTemplateId?: string } | undefined)
+                      firstOfficialDeckTemplateId(
+                        runSelectedDeckTemplateIdRef.current,
+                        selectedDeckTemplateMetadata(project.metadata)?.id,
+                        project.metadata?.selectedDeckTemplateId,
+                      )
+                      ?? (project.metadata as { selectedDeckTemplateId?: string } | undefined)
                         ?.selectedDeckTemplateId
                       ?? null,
                     brief: runVisiblePromptRef.current || '',

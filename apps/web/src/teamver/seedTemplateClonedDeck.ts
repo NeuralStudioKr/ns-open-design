@@ -7,9 +7,12 @@
  * triggers the endpoint — BYOK Messages API has no Clone tool for the model.
  */
 
+import { pickPromptFillLookSeedHtml } from '@open-design/contracts';
+
 import { deckLooksLikeUnfilledCatalogExample } from '../artifacts/deck-html-content';
 import { fetchProjectFileText } from '../providers/registry';
 import { getProject } from '../state/projects';
+import { fetchPluginPreviewLookSource } from './fetchPluginLocalSkill';
 import { fetchTeamverDaemon } from './teamverDaemonHeaders';
 
 export type SeedTemplateClonedDeckResult =
@@ -149,6 +152,36 @@ export async function recoverExistingTemplateClonedDeck(
   }
 
   return null;
+}
+
+/**
+ * Persist LOOK host for Clone fill. MiniMax may have overwritten `deck.html`
+ * with monotone model HTML — prefer the official plugin preview so host
+ * variety / sparse enrich still run against the template shells.
+ */
+export async function resolveTemplateCloneLookSeedHtml(input: {
+  templateId?: string | null;
+  readProjectHtml: (name: string) => Promise<string | null>;
+}): Promise<string> {
+  const templateId = String(input.templateId ?? '').trim();
+  let pluginPreviewHtml: string | null = null;
+  if (templateId) {
+    try {
+      pluginPreviewHtml = await fetchPluginPreviewLookSource(templateId);
+    } catch {
+      pluginPreviewHtml = null;
+    }
+  }
+  let diskDeckHtml: string | null = null;
+  try {
+    diskDeckHtml = await input.readProjectHtml('deck.html');
+  } catch {
+    diskDeckHtml = null;
+  }
+  return pickPromptFillLookSeedHtml({
+    pluginPreviewHtml,
+    diskDeckHtml,
+  });
 }
 
 /** True when a clone/fill result already occupies deck.html — do not MiniMax. */

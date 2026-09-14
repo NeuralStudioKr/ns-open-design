@@ -9,6 +9,7 @@ import {
 
 import {
   applyTemplateClonePromptFillLookMerge,
+  pickPromptFillLookSeedHtml,
   applyTemplateCloneSlotFill,
   buildTemplateClonedDeckHtml,
   extractTemplateCloneOutlineFromDeckHtml,
@@ -5342,15 +5343,131 @@ describe('루프515 prompt-fill LOOK seed merge (Canvas/Home same host path)', (
     expect(merged!.html).not.toMatch(/Demo A body that is a real sentence/);
   });
 
+  it('prefers plugin preview over MiniMax-overwritten disk deck.html', () => {
+    const model = [
+      '<!doctype html><html><body>',
+      '<section class="slide"><h1>분기 전략</h1></section>',
+      '<section class="slide"><h2>핵심 개념</h2></section>',
+      '</body></html>',
+    ].join('');
+    expect(pickPromptFillLookSeedHtml({
+      pluginPreviewHtml: diverseSeed,
+      diskDeckHtml: model,
+    })).toBe(diverseSeed);
+    const merged = applyTemplateClonePromptFillLookMerge(
+      pickPromptFillLookSeedHtml({
+        pluginPreviewHtml: diverseSeed,
+        diskDeckHtml: model,
+      }),
+      model,
+      { brief: '분기 전략 리뷰', deckTitle: '분기 전략' },
+    );
+    expect(merged).not.toBeNull();
+    expect(merged!.html).toMatch(/info-card|content-list|stats-grid/);
+  });
+
+  it('extracts Cobalt-style .row / .stmt and Biennale quote copy', () => {
+    const model = [
+      '<!doctype html><html><body>',
+      '<section class="slide s-manifesto"><h2>선언</h2>',
+      '<p class="stmt">도구는 조용해야 하며 기본값이 켜져 있어야 한다.</p></section>',
+      '<section class="slide s-index"><h2>여섯 항목</h2><div class="list">',
+      '<div class="row"><div class="num-tag">01.</div><div><h3>느린 소프트웨어</h3><p>긴급함 대신 기본 켜짐을 약속한다.</p></div></div>',
+      '<div class="row"><div class="num-tag">02.</div><div><h3>가정용 인터페이스</h3><p>거실에 두어도 거슬리지 않는 화면.</p></div></div>',
+      '</div></section>',
+      '<section class="slide s-quote"><h2>한 줄</h2>',
+      '<p class="qbody">가장 큰 소리는 다시 읽히지 않는 문장을 삼킨다.</p></section>',
+      '</body></html>',
+    ].join('');
+    const outline = extractTemplateCloneOutlineFromDeckHtml(model);
+    expect(outline).not.toBeNull();
+    expect(outline!.slides[0]?.lead || outline!.slides[0]?.body).toMatch(/도구는 조용해야/);
+    expect(outline!.slides[1]?.items?.map((item) => item.title)).toEqual([
+      '느린 소프트웨어',
+      '가정용 인터페이스',
+    ]);
+    expect(outline!.slides[1]?.items?.[0]?.body).toContain('기본 켜짐');
+    expect(outline!.slides[2]?.lead || outline!.slides[2]?.body).toMatch(/가장 큰 소리/);
+  });
+
+  it('binds sparse card bodies to item + slide titles (no generic 문제/사용자)', () => {
+    const model = [
+      '<!doctype html><html><body>',
+      '<section class="slide"><h1>분기 전략</h1></section>',
+      '<section class="slide slide-cards"><h2>핵심 개념</h2><div class="cards-grid">',
+      '<article class="info-card"><h3>속도</h3></article>',
+      '<article class="info-card"><h3>품질</h3></article>',
+      '<article class="info-card"><h3>관측</h3></article>',
+      '</div></section>',
+      '</body></html>',
+    ].join('');
+    const merged = applyTemplateClonePromptFillLookMerge(diverseSeed, model, {
+      brief: '분기 전략 리뷰',
+      deckTitle: '분기 전략',
+    });
+    expect(merged).not.toBeNull();
+    expect(merged!.html).toContain('속도');
+    expect(merged!.html).toMatch(/속도[\s\S]{0,80}핵심 개념/);
+    expect(merged!.html).not.toMatch(/사용자가 반복해서 겪는 핵심 불편/);
+  });
+
+  it('fills empty quote/stat shells without inventing KPI digits', () => {
+    const seed = [
+      '<!doctype html><html><body>',
+      '<section class="slide slide-title cover"><h1>Demo Cover</h1></section>',
+      '<section class="slide slide-quote"><h2>Demo Quote</h2><p class="quote-text">Template quote</p></section>',
+      '<section class="slide slide-chart"><h2>Demo Stat</h2><div class="stats-grid">',
+      '<div class="stat-card"><h3>99%</h3><p class="stat-label">Demo metric</p></div>',
+      '<div class="stat-card"><h3>12</h3><p class="stat-label">Demo count</p></div>',
+      '</div></section>',
+      '</body></html>',
+    ].join('');
+    const model = [
+      '<!doctype html><html><body>',
+      '<section class="slide"><h1>분기 전략</h1></section>',
+      '<section class="slide"><h2>한 줄 메시지</h2>',
+      '<p class="qbody">이 분기의 선택은 속도가 아니라 판단 기준을 고정하는 일이다.</p></section>',
+      '<section class="slide"><h2>핵심 지표</h2></section>',
+      '</body></html>',
+    ].join('');
+    const merged = applyTemplateClonePromptFillLookMerge(seed, model, {
+      brief: '분기 전략 리뷰',
+      deckTitle: '분기 전략',
+    });
+    expect(merged).not.toBeNull();
+    expect(merged!.html).toMatch(/한 줄 메시지/);
+    expect(merged!.html).not.toMatch(/99%/);
+    expect(merged!.html).not.toMatch(/\b42%\b/);
+    expect(merged!.html).not.toMatch(/Template quote/);
+  });
+
   it('keeps model HTML when there is no LOOK seed', () => {
     const model = '<!doctype html><html><body><section class="slide"><h1>A</h1></section><section class="slide"><h2>B</h2></section></body></html>';
     expect(applyTemplateClonePromptFillLookMerge('', model)).toBeNull();
     expect(applyTemplateClonePromptFillLookMerge('<html><body><p>no slides</p></body></html>', model)).toBeNull();
   });
 
-  it('does not drop a dense model deck when extraction would lose most copy', () => {
+  it('keeps dense .copy sentences instead of aborting merge (loop518 extract)', () => {
     const denseParas = Array.from({ length: 8 }, (_, i) => (
       `<span class="copy">이 문장은 모델이 쓴 실제 본문 ${i + 1}번이며 추출기가 놓치면 안 되는 구체적인 설명입니다.</span>`
+    )).join('');
+    const model = [
+      '<!doctype html><html><body>',
+      `<section class="slide mystery-layout"><h2>핵심 개념</h2><div class="unknown">${denseParas}</div></section>`,
+      `<section class="slide mystery-layout"><h2>실행 원칙</h2><div class="unknown">${denseParas}</div></section>`,
+      '</body></html>',
+    ].join('');
+    const merged = applyTemplateClonePromptFillLookMerge(diverseSeed, model, {
+      deckTitle: '핵심 개념',
+    });
+    expect(merged).not.toBeNull();
+    expect(merged!.html).toContain('이 문장은 모델이 쓴 실제 본문 1번이며');
+    expect(merged!.html).toContain('실행 원칙');
+  });
+
+  it('keeps model HTML when leftover prose is not in extractable slots', () => {
+    const denseParas = Array.from({ length: 8 }, (_, i) => (
+      `<em class="mystery">이 문장은 모델이 쓴 실제 본문 ${i + 1}번이며 추출기가 놓치면 안 되는 구체적인 설명입니다.</em>`
     )).join('');
     const model = [
       '<!doctype html><html><body>',
