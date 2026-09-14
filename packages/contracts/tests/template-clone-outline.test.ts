@@ -743,6 +743,23 @@ describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
     }
   });
 
+  it('synthesizes from the brief even when the model output is empty', () => {
+    const decision = decideTemplateCloneSlotFillTerminal({
+      rawFinalText: '',
+      seedHtml: seed,
+      repairAlreadyAttempted: true,
+      userBrief: 'NeuralStudio 회사 사이트를 분석해서 서비스 소개 슬라이드 만들어줘. 6장',
+      deckTitle: '슬라이드',
+      slideCount: 6,
+    });
+    expect(decision.kind).toBe('seed-fallback');
+    if (decision.kind === 'seed-fallback') {
+      expect(decision.html).not.toBe(seed);
+      expect(decision.html).not.toContain('Demo');
+      expect(decision.html).toMatch(/NeuralStudio|서비스 가치 제안|핵심 포인트/);
+    }
+  });
+
   it('루프373: unusable model output + no brief → raw seed (no synth)', () => {
     const decision = decideTemplateCloneSlotFillTerminal({
       rawFinalText: '???',

@@ -11370,10 +11370,36 @@ export function ProjectView({
               )
               && terminalPersistResult?.kind === 'skipped-incomplete'
             ) {
-              if (await recoverCloneLookSeedFallback({ prepareArtifact: false })) {
+              const skippedResult = terminalPersistResult;
+              artifactToPersist = null;
+              if (await recoverCloneLookSeedFallback() && artifactToPersist?.html) {
+                const retryPersistResult = await persistArtifact(
+                  artifactToPersist,
+                  nextFiles,
+                  '',
+                  startedAt,
+                );
+                terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(
+                  retryPersistResult,
+                  { scopedCommentEdit: false },
+                );
+                terminalPersistResultKind = retryPersistResult?.kind ?? null;
+                terminalPersistResult = retryPersistResult;
+                nextFiles = await refreshProjectFiles();
+              }
+              if (
+                !cloneLookSeedFallbackRecovered
+                && (terminalPersistResult?.kind === 'skipped-incomplete' || terminalPersistResult == null)
+              ) {
+                terminalPersistResult = skippedResult;
+                terminalPersistResultKind = skippedResult.kind;
+                if (await recoverCloneLookSeedFallback({ prepareArtifact: false })) {
+                  runTemplateCloneSlotFillFallbackRef.current = true;
+                } else {
+                  devLog.warn('[teamver] clone fill LOOK seed recovery failed; seed missing');
+                }
+              } else if (cloneLookSeedFallbackRecovered) {
                 runTemplateCloneSlotFillFallbackRef.current = true;
-              } else {
-                devLog.warn('[teamver] clone fill LOOK seed recovery failed; seed missing');
               }
             }
 

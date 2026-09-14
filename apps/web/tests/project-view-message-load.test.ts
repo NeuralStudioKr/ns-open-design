@@ -1195,4 +1195,17 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("formatPersistedProjectRunError(err)");
     expect(source).toContain("attachPersistedChatError(prev, persisted.detail, persisted.code)");
   });
+
+  it("retries deterministic Clone fill persist before falling back to the raw LOOK seed", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const recoveryStart = source.indexOf("// 루프362/364/365 — Clone first-fill LOOK seed recovery.");
+    expect(recoveryStart).toBeGreaterThan(0);
+    const recoveryBlock = source.slice(recoveryStart, recoveryStart + 2600);
+    expect(recoveryBlock).toContain("terminalPersistResult?.kind === 'skipped-incomplete'");
+    expect(recoveryBlock).toContain("artifactToPersist = null");
+    expect(recoveryBlock).toContain("await recoverCloneLookSeedFallback()");
+    expect(recoveryBlock).toContain("artifactToPersist?.html");
+    expect(recoveryBlock).toContain("const retryPersistResult = await persistArtifact");
+    expect(recoveryBlock).toContain("await recoverCloneLookSeedFallback({ prepareArtifact: false })");
+  });
 });
