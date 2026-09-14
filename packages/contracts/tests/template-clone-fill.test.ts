@@ -496,7 +496,7 @@ describe('resolveTemplateCloneSlidesFromBrief', () => {
     expect(slides.length).toBeGreaterThanOrEqual(4);
   });
 
-  it('루프479/515 — free-form topics stay dense without domain essay presets', () => {
+  it('루프479/516 — free-form topics stay dense without domain essay presets', () => {
     const slides = resolveTemplateCloneSlidesForDeterministicFill({
       userInstruction: '삼각함수 설명 피피티 만들어줘. 고등학생 대상.',
       deckTitle: '삼각함수',
@@ -516,7 +516,7 @@ describe('resolveTemplateCloneSlidesFromBrief', () => {
     expect(text).not.toMatch(/파일·대화·템플릿|팀 워크스페이스|핵심 기능과 사용자가 얻는 직접적인 가치/);
   });
 
-  it('루프479/515 — senior engineering briefs use generic topic skeleton, not monorepo essay', () => {
+  it('루프479/516 — senior engineering briefs use generic topic skeleton, not monorepo essay', () => {
     const slides = resolveTemplateCloneSlidesForDeterministicFill({
       userInstruction: 'monorepo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨. 8장',
       deckTitle: 'Monorepo',

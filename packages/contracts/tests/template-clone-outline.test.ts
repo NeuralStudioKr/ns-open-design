@@ -565,7 +565,7 @@ describe('루프419 resolveTemplateCloneSlidesForDeterministicFill', () => {
     expect(outline?.slides[1]?.items?.every((item) => item.title && item.body)).toBe(true);
   });
 
-  it('루프425/479/515 — generic free-form stays dense without Expo essay preset', () => {
+  it('루프425/479/516 — generic free-form stays dense without Expo essay preset', () => {
     const outline = synthesizeTemplateCloneOutlineFromBrief({
       userBrief: 'Expo 개발 도구에 대해 시니어 개발자용 발표 자료를 만들어 주세요',
       deckTitle: '슬라이드',

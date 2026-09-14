@@ -904,7 +904,7 @@ type SynthTemplateBodyTemplate = {
  * Classify only structural brief shapes (URL service-intro vs free-form).
  * Never branch on domain topics (삼각함수 / monorepo / expo / …) — those used
  * to inject canned essays that looked like QA fixtures leaked into production
- * (루프515).
+ * (루프516).
  */
 function classifySynthTemplateTopicProfile(
   cover: string,

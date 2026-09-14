@@ -13,7 +13,7 @@
 
 `미적분`은 preset 없음 — `heal-heading-item-count` 주석 예시만.
 
-## 조치 (루프515)
+## 조치 (루프516)
 
 - 주제 preset **전부 삭제**
 - 남김: `service-intro`(URL 서비스 소개 구조) + `generic`(`${topic}`만 끼운 골격)
