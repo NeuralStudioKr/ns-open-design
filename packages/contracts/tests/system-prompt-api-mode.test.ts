@@ -915,6 +915,12 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('hard cap at the range max');
       expect(prompt).toContain('Emitting 15 slides is a failed overshoot');
       expect(prompt).toContain('website/product briefs need a real service deck');
+      // Layout variety must be mirrored on the HTML fill contract too — the
+      // deck should rotate through ≥ 4 distinct template shells (docs-teamver
+      // /60 § 1.31), not stamp the same list/body shell on every slide.
+      expect(prompt).toMatch(/Layout variety is REQUIRED/i);
+      expect(prompt).toMatch(/rotate through ≥ 4 distinct shells/i);
+      expect(prompt).toMatch(/Card\/grid slots must be filled/i);
       expect(prompt).toContain('Never nest the whole slide grid inside');
       expect(prompt).not.toContain('Emit JSON outline only');
       expect(prompt).not.toContain('# Final authority (READ LAST)');
