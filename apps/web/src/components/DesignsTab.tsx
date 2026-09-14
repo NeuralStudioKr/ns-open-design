@@ -149,6 +149,10 @@ export function DesignsTab({
 		Record<string, LiveArtifactSummary[]>
 	>({});
 	const [coverOverrides, setCoverOverrides] = useState<Record<string, ProjectCoverFile | null>>({});
+	/** Embed: gate HTML thumbs until viewport preview/html batch warm (0914-N01). */
+	const [viewportHtmlCoversReady, setViewportHtmlCoversReady] = useState(
+		() => !isTeamverEmbedMode(),
+	);
 	const projectEntryFileSnapshotRef = useRef<Map<string, string | undefined>>(new Map());
 
 	useEffect(() => {
@@ -341,11 +345,21 @@ export function DesignsTab({
 	);
 
 	useEffect(() => {
-		if (!teamverEmbed || viewportPrefetchKey.length === 0) return;
+		if (!teamverEmbed || viewportPrefetchKey.length === 0) {
+			setViewportHtmlCoversReady(true);
+			return;
+		}
 		const batch = filteredProjects
 			.slice(0, PROJECT_LIST_VIEWPORT_BATCH)
 			.map((item) => item.project);
-		void prefetchDesignsTabViewport(batch);
+		let cancelled = false;
+		setViewportHtmlCoversReady(false);
+		void prefetchDesignsTabViewport(batch).finally(() => {
+			if (!cancelled) setViewportHtmlCoversReady(true);
+		});
+		return () => {
+			cancelled = true;
+		};
 	}, [teamverEmbed, viewportPrefetchKey, filteredProjects]);
 
 	const skillName = (id: string | null) =>
@@ -784,6 +798,7 @@ export function DesignsTab({
 									liveCount={liveCount}
 									liveCountLabel={liveCount > 0 ? t("designs.liveCount", { n: liveCount }) : undefined}
 									onCoverOverride={(cover) => handleCoverOverride(p.id, cover)}
+									htmlCoverWarmReady={viewportHtmlCoversReady}
 								/>
 								<div className="design-card-meta-block">
 									<div className="design-card-tag-row">
