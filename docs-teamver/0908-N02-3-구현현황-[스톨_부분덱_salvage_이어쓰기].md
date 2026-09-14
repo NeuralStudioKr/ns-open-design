@@ -14,6 +14,7 @@
 | staging 배포 후 실제 스톨 재현 확인 | ☐ |
 | 부분 덱 없는 스톨 soft-retry 스트림 고정 (루프478) | ☑ |
 | 스톨 abort · 1회 재시도 · thinking-only (루프512) | ☑ |
+| SSE 스톨 abort · 재시도 thinking 미도색 (루프519) | ☑ |
 
 ## 결정
 
@@ -22,12 +23,13 @@
 - **자격 하한(400자 + `<!doctype html`/`<html`).** `<artifact>` 태그만 온 스톨(사용자 리포트의 `<head>` 직후 keepalive 구간)은 건질 HTML이 없어 기존 실패 카드를 유지한다.
 - **`retryable`은 그대로.** 본문 토큰이 그려진 뒤 soft-retry는 UI 중복이므로 계속 `false`. 대신 `resumable: true`로 수동 이어쓰기를 연다.
 - **루프512 — 스톨은 2시도 + abort.** 네트워크 502 3시도와 분리. thinking-only STALLED는 재시도. 첫 스트림은 `POST /api/proxy/abort`.
+- **루프519 — SSE 스톨도 동일 abort/`resumable`.** 2회차 thinking은 카드에 안 붙인다. fill 불변.
 
 ## 검증
 
 - `apps/web/tests/teamver/stalledRunDeckSalvage.test.ts` — 자격/비자격 5케이스 + notice 코드 ☑
 - `apps/web/tests/providers/api-proxy.test.ts` — 스톨 `resumable === true` (delta 후에도) ☑ (루프477)
-- `apps/web/tests/providers/api-proxy.test.ts` — 루프478/512 무토큰 hang → abort + 2회차 성공 · thinking-only 재시도 · 스톨 2회 소진 ☑ (파일 전체 49 passed)
+- `apps/web/tests/providers/api-proxy.test.ts` — 루프519 SSE STALLED abort+재시도 · 2회차 thinking 미도색 · 본문 후 비재시도+`resumable` ☑ (파일 전체 52 passed)
 - `tsc --noEmit` — 수정 라인에 신규 오류 없음 ☑ (`src/_archive`·일부 테스트 파일의 기존 오류만 잔존)
 - ProjectView 렌더 스위트(`ProjectView.*`, `App.*`)는 로컬 데몬(127.0.0.1:3000) 의존으로 이 환경에서 baseline부터 실패 — 이번 변경 전후 동일, 판정 불가 ☐
 
@@ -42,3 +44,4 @@
 | 2026-09-08 13:55 | 루프477 구현·테스트 완료, 문서 N02로 재번호(동일 날짜 N01은 Design 활성WS 에픽) |
 | 2026-09-08 | 루프478 — 무토큰 스톨 soft-retry를 스트림 루프 테스트로 고정 ([0908-N02-4](./0908-N02-4-구현설계-[스톨_무부분덱_soft-retry].md)) |
 | 2026-09-14 | 루프512 — 스톨 abort · 2시도 · thinking-only 재시도 ([0908-N02-5](./0908-N02-5-구현설계-[스톨_재시도_abort_1회_thinking].md)) |
+| 2026-09-14 | 루프519 — SSE 스톨 abort · 재시도 thinking 미도색 · SSE `resumable` ([0908-N02-6](./0908-N02-6-구현설계-[스톨_SSE_abort_재시도thinking].md)) |

@@ -192,6 +192,7 @@ export async function streamProxyEndpoint(
   // Stall idle uses a tighter budget (2 attempts) so 6m deck silence cannot
   // stack to ~18 minutes (루프512).
   const maxAttempts = PROXY_STREAM_SOFT_RETRY_MAX_ATTEMPTS;
+  let lastError: (Error & { code?: string; retryable?: boolean }) | null = null;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     if (signal.aborted) return;
     // Warm X-Teamver-S3-Prefix before BYOK materialization so daemon sync-down
@@ -201,16 +202,23 @@ export async function streamProxyEndpoint(
         quick: attempt > 0,
       }).catch(() => null);
     }
+    // 루프519 — retry thinking would append to the first card. Deck tokens
+    // still go through onDelta/onDone unchanged.
+    const attemptHandlers: StreamHandlers =
+      attempt === 0
+        ? handlers
+        : { ...handlers, onThinkingDelta: undefined };
     const outcome = await streamProxyEndpointOnce(
       endpoint,
       cfg,
       system,
       history,
       signal,
-      handlers,
+      attemptHandlers,
       context,
     );
     if (outcome === 'ok' || outcome === 'aborted') return;
+    lastError = outcome.error;
     const canRetry =
       attempt < maxProxySoftRetryAttempts(outcome.error) - 1
       && !signal.aborted
@@ -225,6 +233,7 @@ export async function streamProxyEndpoint(
       return;
     }
   }
+  if (lastError) handlers.onError(lastError);
 }
 
 /** @internal vitest — delay between pre-token stall soft-retries */
@@ -313,9 +322,31 @@ function applyStreamedOutputRetryableGate(
     return;
   }
   if (!receivedThinkingDelta) return;
-  const code = (error.code || '').trim().toUpperCase();
-  if (code !== 'AGENT_EXECUTION_STALLED') {
+  if (!isProxyStallErrorCode(error.code)) {
     error.retryable = false;
+  }
+}
+
+function isProxyStallErrorCode(code?: string): boolean {
+  return (code || '').trim().toUpperCase() === 'AGENT_EXECUTION_STALLED';
+}
+
+function finishProxyStreamError(
+  error: Error & { code?: string; retryable?: boolean; resumable?: boolean },
+  receivedSubstantiveDelta: boolean,
+  receivedThinkingDelta: boolean,
+  releaseStalledUpstream: () => void,
+): void {
+  applyStreamedOutputRetryableGate(
+    error,
+    receivedSubstantiveDelta,
+    receivedThinkingDelta,
+  );
+  if (isProxyStallErrorCode(error.code)) {
+    // Idle errors already set this; daemon SSE stalls must match so the
+    // continue dock appears after a partial turn (루프519).
+    error.resumable = true;
+    releaseStalledUpstream();
   }
 }
 
@@ -507,10 +538,11 @@ async function streamProxyEndpointOnce(
           if (typeof retryableCandidate === 'boolean') {
             err.retryable = retryableCandidate;
           }
-          applyStreamedOutputRetryableGate(
+          finishProxyStreamError(
             err,
             receivedSubstantiveDelta,
             receivedThinkingDelta,
+            releaseStalledUpstream,
           );
           return { error: err };
         }
@@ -595,10 +627,11 @@ async function streamProxyEndpointOnce(
           if (typeof retryableCandidate === 'boolean') {
             err.retryable = retryableCandidate;
           }
-          applyStreamedOutputRetryableGate(
+          finishProxyStreamError(
             err,
             receivedSubstantiveDelta,
             receivedThinkingDelta,
+            releaseStalledUpstream,
           );
           return { error: err };
         } else if (parsed.event === 'usage') {
@@ -660,13 +693,11 @@ async function streamProxyEndpointOnce(
       error.code = 'UPSTREAM_UNAVAILABLE';
       error.retryable = true;
     }
-    if ((error.code || '').trim().toUpperCase() === 'AGENT_EXECUTION_STALLED') {
-      releaseStalledUpstream();
-    }
-    applyStreamedOutputRetryableGate(
+    finishProxyStreamError(
       error,
       receivedSubstantiveDelta,
       receivedThinkingDelta,
+      releaseStalledUpstream,
     );
     return { error };
   }

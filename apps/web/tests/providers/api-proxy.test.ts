@@ -1548,6 +1548,181 @@ describe('streamProxyEndpoint idle-timeout stall (AGENT_EXECUTION_STALLED)', () 
     expect(err.resumable).toBe(true);
   });
 
+  function daemonSseStallBody(prefixFrames = '') {
+    return {
+      getReader() {
+        let step = 0;
+        return {
+          read() {
+            step += 1;
+            if (step === 1) {
+              return Promise.resolve({
+                done: false,
+                value: new TextEncoder().encode(
+                  `${prefixFrames}event: error\ndata: ${JSON.stringify({
+                    message: 'stalled',
+                    error: { code: 'AGENT_EXECUTION_STALLED', retryable: true },
+                  })}\n\n`,
+                ),
+              });
+            }
+            return Promise.resolve({ done: true, value: undefined });
+          },
+          cancel() {
+            return Promise.resolve();
+          },
+          releaseLock() {},
+        };
+      },
+    };
+  }
+
+  function completedWithThinkingBody(delta: string) {
+    return {
+      getReader() {
+        let step = 0;
+        return {
+          read() {
+            step += 1;
+            if (step === 1) {
+              return Promise.resolve({
+                done: false,
+                value: new TextEncoder().encode(
+                  'event: thinking_delta\ndata: {"delta":"retry-plan"}\n\n',
+                ),
+              });
+            }
+            if (step === 2) {
+              return Promise.resolve({
+                done: false,
+                value: new TextEncoder().encode(
+                  `event: delta\ndata: ${JSON.stringify({ delta })}\n\n`,
+                ),
+              });
+            }
+            if (step === 3) {
+              return Promise.resolve({
+                done: false,
+                value: new TextEncoder().encode('event: end\ndata: {}\n\n'),
+              });
+            }
+            return Promise.resolve({ done: true, value: undefined });
+          },
+          cancel() {
+            return Promise.resolve();
+          },
+          releaseLock() {},
+        };
+      },
+    };
+  }
+
+  it('루프519: daemon SSE STALLED aborts the first stream and completes the retry', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      stubProxyStreamFetch((streamCall) => ({
+        ok: true,
+        headers: stallStreamHeaders(`stream-sse-${streamCall}`),
+        body: streamCall === 1 ? daemonSseStallBody() : completedProxyStreamBody('Hello'),
+      })),
+    );
+
+    const onDelta = vi.fn();
+    const onError = vi.fn();
+    const onDone = vi.fn();
+    const runPromise = streamProxyEndpoint(
+      '/api/proxy/minimax/stream',
+      stallSoftRetryCfg as any,
+      'System',
+      [{ id: 'm1', role: 'user', content: 'hi', createdAt: 1 }],
+      new AbortController().signal,
+      { onDelta, onDone, onError },
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(PROXY_SOFT_RETRY_DELAY_MS + 50);
+    await runPromise;
+
+    expect(onError).not.toHaveBeenCalled();
+    expect(onDone).toHaveBeenCalledWith('Hello');
+    expect(countProxyFetchKinds()).toEqual({ stream: 2, abort: 1 });
+  });
+
+  it('루프519: retry attempt does not paint thinking_delta onto the first card', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      stubProxyStreamFetch((streamCall) => ({
+        ok: true,
+        headers: stallStreamHeaders(`stream-think-sse-${streamCall}`),
+        body:
+          streamCall === 1
+            ? daemonSseStallBody('event: thinking_delta\ndata: {"delta":"planning"}\n\n')
+            : completedWithThinkingBody('Deck'),
+      })),
+    );
+
+    const onDelta = vi.fn();
+    const onThinkingDelta = vi.fn();
+    const onError = vi.fn();
+    const onDone = vi.fn();
+    const runPromise = streamProxyEndpoint(
+      '/api/proxy/minimax/stream',
+      stallSoftRetryCfg as any,
+      'System',
+      [{ id: 'm1', role: 'user', content: 'hi', createdAt: 1 }],
+      new AbortController().signal,
+      { onDelta, onDone, onError, onThinkingDelta },
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(PROXY_SOFT_RETRY_DELAY_MS + 50);
+    await runPromise;
+
+    expect(onThinkingDelta).toHaveBeenCalledTimes(1);
+    expect(onThinkingDelta).toHaveBeenCalledWith('planning');
+    expect(onThinkingDelta).not.toHaveBeenCalledWith('retry-plan');
+    expect(onDelta).toHaveBeenCalledWith('Deck');
+    expect(onDone).toHaveBeenCalledWith('Deck');
+    expect(onError).not.toHaveBeenCalled();
+    expect(countProxyFetchKinds()).toEqual({ stream: 2, abort: 1 });
+  });
+
+  it('루프519: SSE STALLED after a content delta aborts without retrying', async () => {
+    vi.stubGlobal(
+      'fetch',
+      stubProxyStreamFetch(() => ({
+        ok: true,
+        headers: stallStreamHeaders('stream-sse-delta'),
+        body: daemonSseStallBody('event: delta\ndata: {"delta":"Answer"}\n\n'),
+      })),
+    );
+
+    const onDelta = vi.fn();
+    const onError = vi.fn();
+    const onDone = vi.fn();
+    await streamProxyEndpoint(
+      '/api/proxy/minimax/stream',
+      stallSoftRetryCfg as any,
+      'System',
+      [{ id: 'm1', role: 'user', content: 'hi', createdAt: 1 }],
+      new AbortController().signal,
+      { onDelta, onDone, onError },
+    );
+
+    expect(onDelta).toHaveBeenCalledWith('Answer');
+    expect(onDone).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(countProxyFetchKinds()).toEqual({ stream: 1, abort: 1 });
+    const err = onError.mock.calls[0]?.[0] as Error & {
+      retryable?: boolean;
+      resumable?: boolean;
+    };
+    expect(err.retryable).toBe(false);
+    expect(err.resumable).toBe(true);
+  });
+
   it('loop423 — daemon : keepalive comments do not reset the content idle clock', async () => {
     const { parseSseFrame } = await import('../../src/providers/sse');
     const { isProxySseContentActivityFrame } = await import(

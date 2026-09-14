@@ -48,6 +48,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts 254 passed · daemon template-clone 37 passed · web templateCloneContentFill 38 passed · contracts build passed.
 
+### 루프519 / 0908-N02-6 — SSE 스톨 abort · 재시도 thinking 미도색
+
+체감: 데몬 watchdog SSE 스톨은 첫 스트림이 남은 채 재시도되고, 재시도 thinking이 카드에 붙었다.
+
+수정: SSE·idle 동일 abort/`resumable` · 2회차 thinking 미도색 · fill 비범위. [0908-N02-6](./0908-N02-6-구현설계-[스톨_SSE_abort_재시도thinking].md).
+
 ### 루프512 / 0908-N02-5 — 스톨 abort · 1회 재시도 · thinking-only
 
 체감: 478 soft-retry가 첫 MiniMax를 남긴 채 두 번째 fetch를 열고, idle 3회가 ~18분 Working이 되며, thinking-only 스톨은 빈 실패 카드로 끝났다.
