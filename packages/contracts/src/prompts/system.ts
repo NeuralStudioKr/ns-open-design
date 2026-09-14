@@ -839,6 +839,7 @@ Before the artifact, optional: one tiny user-visible UI-locale status sentence t
 When the user message includes \`[Existing deck edit]\` and/or \`[Attached image embed]\` (or attaches the current \`deck.html\`):
 
 - The preferred final answer is a non-empty \`<artifact type="deck-patch">\` or \`<artifact type="element-patch">\` that changes only the requested slide/element.
+- If you emit \`<artifact type="deck-patch">\`, at least one \`<section class="slide">\` block is REQUIRED.
 - Emitting a full \`<artifact type="deck">\` that drops slides from the attached on-disk deck (e.g. rewriting an 8-slide deck as 2 slides) is a **critical failure**.
 - Do NOT treat the compact 2-slide wireframe example as a literal template for edit turns — preserve the attached deck's slide count and content.
 `;
@@ -1449,6 +1450,8 @@ If the turn carries \`<attached-preview-comments>\`, prefer a structured element
 - Text replacement ("'새 문구'로 수정", "멘트를 …로", "change copy to …"): use \`kind="set-text"\` with the new text only.
 
 **Non-empty element-patch is required.** If you open \`<artifact type="element-patch">\`, you MUST emit at least one \`<patch target-id="…" slide-index="…" kind="…">…body…</patch>\` block before closing \`</artifact>\`. An empty artifact wrapper is a critical failure — the client cannot recover it, and the user loses the requested edit. If you cannot express the requested change as any of the allowed \`kind\`s, switch to \`<artifact type="deck-patch">\` with a full \`<section class="slide" data-slide-index="{N}">\` replacement in this same turn.
+
+**Non-empty deck-patch is required.** If you open \`<artifact type="deck-patch">\`, you MUST emit at least one \`<section class="slide" data-slide-index="{N}">…</section>\` block before closing \`</artifact>\`. An empty wrapper is a critical failure — on an unscoped run the client rejects it with \`incomplete_output\` and there is no auto-continue path that can recover it. If you cannot produce any slide section, emit prose (or a \`<question-form>\`) instead — never a bare \`<artifact type="deck-patch"></artifact>\`.
 
 Fallback for multi-element / slide-structure changes:
 

@@ -12,8 +12,10 @@ import {
   SPARSE_CONTENT_TOP_UP_PROMPT_SENTINEL,
   THIN_PRIOR_FULL_REWRITE_ENTRY_FROM,
   formatSoftImprovementTurnFailureNotice,
+  isEmptyDeckPatchPersistRejection,
   isSoftImprovementAutomationEntryFrom,
   isSoftImprovementAutomationPrompt,
+  shouldSoftCancelEmptyDeckPatchPersist,
   formatSlideAutomationBusyDropNotice,
   formatThinPriorRewriteExhaustedNotice,
   formatSlideAutomationWorkingLabel,
@@ -565,6 +567,7 @@ describe("slideCountTopUp", () => {
     expect(prompt).toMatch(/REWRITE the entire deck/i);
     expect(prompt).toMatch(/emit exactly 8 slides/i);
     expect(prompt).toMatch(/NEVER copy host protocol tokens/i);
+    expect(prompt).toMatch(/Never emit `<artifact type="deck-patch">` on this rewrite turn/);
     const ranged = buildThinPriorFullRewritePrompt({
       hostCount: 4,
       requested: 10,
@@ -636,6 +639,7 @@ describe("slideCountTopUp", () => {
     // 루프481 — patch only the named slides; a full deck re-emit is what stalled.
     expect(prompt).toMatch(/type="deck-patch"/);
     expect(prompt).toMatch(/Do NOT emit `<artifact type="deck">`/);
+    expect(prompt).toMatch(/empty `<artifact type="deck-patch"><\/artifact>` will be rejected/);
     expect(prompt).not.toMatch(/Re-emit the FULL deck/i);
     expect(prompt).toMatch(/N = 2, 6/);
 
@@ -667,6 +671,52 @@ describe("slideCountTopUp", () => {
     expect(formatSlideAutomationBusyDropNotice("rewrite")).toMatch(/후속 생성/);
     expect(formatSlideAutomationBusyDropNotice("top_up")).toMatch(/장수/);
     expect(formatThinPriorRewriteExhaustedNotice()).toMatch(/본문이 비어/);
+  });
+
+  it("soft-cancels only sparse-repair empty deck-patch persist (루프521)", () => {
+    const emptyPatchReason =
+      "The model emitted an empty deck-patch artifact on a run without a scoped comment target. Retry with a clearer request or use full deck generation.";
+    expect(isEmptyDeckPatchPersistRejection(emptyPatchReason)).toBe(true);
+    expect(isEmptyDeckPatchPersistRejection("incomplete html document")).toBe(false);
+    expect(isEmptyDeckPatchPersistRejection("")).toBe(false);
+
+    const sparsePrompt = buildSparseContentTopUpPrompt([
+      { slideIndex: 1, reason: "title_only_card", detail: "Pro" },
+    ]);
+    expect(shouldSoftCancelEmptyDeckPatchPersist({
+      persistKind: "rejected",
+      persistReason: emptyPatchReason,
+      entryFrom: SPARSE_CONTENT_TOP_UP_ENTRY_FROM,
+      userContent: sparsePrompt,
+    })).toBe(true);
+    expect(shouldSoftCancelEmptyDeckPatchPersist({
+      persistKind: "rejected",
+      persistReason: emptyPatchReason,
+      userContent: sparsePrompt,
+    })).toBe(true);
+    expect(shouldSoftCancelEmptyDeckPatchPersist({
+      persistKind: "rejected",
+      persistReason: emptyPatchReason,
+      entryFrom: "chat_composer",
+      userContent: "표지 제목만 바꿔줘",
+    })).toBe(false);
+    expect(shouldSoftCancelEmptyDeckPatchPersist({
+      persistKind: "rejected",
+      persistReason: emptyPatchReason,
+      entryFrom: SLIDE_COUNT_TOP_UP_ENTRY_FROM,
+      userContent: buildSlideCountTopUpPrompt({ produced: 4, requested: 10 }),
+    })).toBe(false);
+    expect(shouldSoftCancelEmptyDeckPatchPersist({
+      persistKind: "rejected",
+      persistReason: emptyPatchReason,
+      entryFrom: THIN_PRIOR_FULL_REWRITE_ENTRY_FROM,
+      userContent: buildThinPriorFullRewritePrompt({ hostCount: 9, requested: 8 }),
+    })).toBe(false);
+    expect(shouldSoftCancelEmptyDeckPatchPersist({
+      persistKind: "skipped-incomplete",
+      persistReason: emptyPatchReason,
+      entryFrom: SPARSE_CONTENT_TOP_UP_ENTRY_FROM,
+    })).toBe(false);
   });
 
   it("caps slide-count top-up after a thin rewrite (루프508)", () => {

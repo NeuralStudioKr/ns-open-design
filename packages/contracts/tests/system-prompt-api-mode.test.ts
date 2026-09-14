@@ -352,9 +352,9 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('# OD core directives');
       expect(prompt).not.toContain('Artifact handoff');
       expect(prompt).not.toContain('Read `assets/template.html`');
-      // Budget guard for the lean slide-only API composer. Measured ~28k after
-      // body-first chrome restore + Motif CSS cue rules; keep headroom for copy tweaks.
-      expect(prompt.length).toBeLessThan(29_000);
+      // Budget guard for the lean slide-only API composer. Measured ~29k after
+      // the existing-deck non-empty deck-patch line (루프520); keep headroom.
+      expect(prompt.length).toBeLessThan(29_500);
       expect(prompt.length).toBeGreaterThan(18_000);
     });
 
@@ -662,6 +662,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         expect(prompt).toContain('slide-index');
         expect(prompt).toContain('<artifact type="deck-patch"');
         expect(prompt).toContain('<artifact type="deck">');
+        expect(prompt).toContain('Non-empty deck-patch is required');
+        expect(prompt).toContain('at least one `<section class="slide">` block is REQUIRED');
       }
     });
 

@@ -127,6 +127,7 @@ export function buildThinPriorFullRewritePrompt(input: {
     countLine,
     brief ? `Source brief (cover/topic must reflect this, never paste it verbatim as a heading): ${brief}` : "",
     "Emit `<artifact type=\"deck\" identifier=\"deck\">` with a complete HTML document.",
+    "Never emit `<artifact type=\"deck-patch\">` on this rewrite turn — emit ONE full `<artifact type=\"deck\">` only.",
     "Keep the selected template kit (palette, motif, Biennale/Block Frame chrome, kit slide classes such as s-cover / s-chapter / .titlewrap / .title). Replace placeholder shells with filled slides — do not invent a generic Inter/#F6C82E layout that abandons the kit.",
     "Every content slide needs a real title plus 2–4 concrete bullets/cards/paragraphs. No empty hosts.",
     "Cover title must be a product/topic name, not a raw URL crumb and not a host protocol token.",
@@ -223,6 +224,7 @@ export function buildSparseContentTopUpPrompt(
     "`<artifact type=\"deck-patch\" identifier=\"deck\">`",
     `Inside it, one \`<section class="slide" data-slide-index="{N}">\` per listed slide (N = ${indexes}). Copy that slide's FULL outer HTML from the deck you just wrote — same classes, same inline styles, same kit palette — and fill only the missing item(s) or card body.`,
     "Close with `</artifact>` this turn. Do NOT emit `<artifact type=\"deck\">`, do NOT touch other slides, do NOT restyle or reword what is already fine.",
+    "If you cannot patch any listed slide, respond in prose only — an empty `<artifact type=\"deck-patch\"></artifact>` will be rejected and the deck will not update.",
   ].join("\n");
 }
 
@@ -260,6 +262,33 @@ export function isSoftImprovementAutomationPrompt(
 /** User-facing notice when an improvement turn failed but the deck survived. */
 export function formatSoftImprovementTurnFailureNotice(): string {
   return "슬라이드 보완을 마치지 못했지만, 저장된 슬라이드는 그대로 유지됩니다. 더 채우고 싶으면 다시 요청해 주세요.";
+}
+
+/** Persist `rejected` reason for an unscoped empty `<artifact type="deck-patch">`. */
+const EMPTY_DECK_PATCH_PERSIST_REJECTION_RE = /empty deck-patch artifact/i;
+
+export function isEmptyDeckPatchPersistRejection(
+  reason: string | null | undefined,
+): boolean {
+  return EMPTY_DECK_PATCH_PERSIST_REJECTION_RE.test(String(reason ?? ""));
+}
+
+/**
+ * 루프521 — Sparse-repair empty deck-patch must not paint 저장 거부 / Retry.
+ * Slide-count top-up and thin rewrite stay hard failures.
+ */
+export function shouldSoftCancelEmptyDeckPatchPersist(input: {
+  persistKind?: string | null;
+  persistReason?: string | null;
+  entryFrom?: string | null;
+  userContent?: string | null;
+}): boolean {
+  if (String(input.persistKind ?? "").trim() !== "rejected") return false;
+  if (!isEmptyDeckPatchPersistRejection(input.persistReason)) return false;
+  return (
+    isSoftImprovementAutomationEntryFrom(input.entryFrom)
+    || isSoftImprovementAutomationPrompt(input.userContent)
+  );
 }
 
 /**

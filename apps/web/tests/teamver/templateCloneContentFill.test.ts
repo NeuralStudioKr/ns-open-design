@@ -8,6 +8,7 @@ import {
   TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER,
   buildTemplateCloneContentFillSeed,
   buildTemplateClonePromptFillSeed,
+  templateCloneContentFillHardRules,
   buildTemplateCloneSlotFillRepairPrompt,
   buildWebsiteServiceIntroOutlineInstruction,
   cloneFillJsonRepairAlreadyAttempted,
@@ -336,6 +337,10 @@ describe('templateCloneContentFill', () => {
     expect(seed).toMatch(/headline, takeaway/i);
     expect(seed).toMatch(/JSON slot-fill|JSON outline only/i);
     expect(seed).toMatch(/do NOT regenerate deck HTML|Forbidden output/i);
+    expect(seed).toContain('Never emit `<artifact type="deck-patch">` — this is a JSON slot-fill turn (no artifact).');
+    expect(templateCloneContentFillHardRules().some((line) => (
+      line.includes('Never emit `<artifact type="deck-patch">`')
+    ))).toBe(true);
     expect(seed).toMatch(/roleHint/i);
     expect(seed).toMatch(/Layout variety is mandatory/i);
     expect(seed).toMatch(/at least 3 distinct body `roleHint` values/i);
@@ -374,6 +379,7 @@ describe('templateCloneContentFill', () => {
     expect(isTemplateClonePromptFillPrompt(seed)).toBe(true);
     expect(seed).toMatch(/complete final deck artifact/i);
     expect(seed).toMatch(/Do not emit JSON outline/i);
+    expect(seed).toContain('Never emit `<artifact type="deck-patch">` on this create turn');
     expect(seed).toMatch(/Layout variety is REQUIRED/i);
     expect(seed).toMatch(/Copy density mirrors the template preview/i);
     expect(seed).toMatch(/1920x1080/);
