@@ -8,6 +8,7 @@ import {
   isCloneContentFillReloadRecoveryCandidate,
   tryRecoverCloneContentFillLookSeed,
 } from '../src/runtime/slide-deliverable-recovery';
+import { retryableAssistantMessage } from '../src/components/ChatPane';
 import { TEMPLATE_CLONE_CONTENT_FILL_MARKER } from '../src/teamver/templateCloneContentFill';
 import {
   SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL,
@@ -68,7 +69,7 @@ describe('attemptCloneContentFillLookSeedReloadRecovery (루프367)', () => {
     createdAt: 0,
   };
 
-  it('promotes incomplete Clone fill to succeeded when deck.html exists', async () => {
+  it('promotes incomplete Clone fill to failed+resumable=false with LOOK seed banner (루프525)', async () => {
     const result = await attemptCloneContentFillLookSeedReloadRecovery({
       incompleteAssistant,
       messages: [userFill, incompleteAssistant],
@@ -77,11 +78,39 @@ describe('attemptCloneContentFillLookSeedReloadRecovery (루프367)', () => {
     });
     expect(result.recovered).toBe(true);
     expect(result.htmlToOpen).toBe('deck.html');
-    expect(result.updatedAssistant?.runStatus).toBe('succeeded');
-    expect(result.updatedAssistant?.events?.some(
-      (event) => event.kind === 'status' && event.code === 'clone_look_seed_fallback',
+    // 루프525 — LOOK seed is a persisted failure so ChatPane's Retry dock
+    // (requires runStatus === 'failed') matches the banner copy.
+    expect(result.updatedAssistant?.runStatus).toBe('failed');
+    expect(result.updatedAssistant?.resumable).toBe(false);
+    // Warning event drives the banner render; error event lets
+    // ChatPane's failedRunErrorEvent lookup pick up the code and
+    // renders the Retry dock via resolveRunFailureUi().
+    const events = result.updatedAssistant?.events ?? [];
+    expect(events.some(
+      (event) => event.kind === 'status'
+        && event.label === 'warning'
+        && event.code === 'clone_look_seed_fallback',
+    )).toBe(true);
+    expect(events.some(
+      (event) => event.kind === 'status'
+        && event.label === 'error'
+        && event.code === 'clone_look_seed_fallback',
     )).toBe(true);
     expect(result.updatedAssistant?.producedFiles?.some((file) => file.name === 'deck.html')).toBe(true);
+  });
+
+  it('recovered assistant is picked up by retryableAssistantMessage so Retry dock renders (루프525)', async () => {
+    const result = await attemptCloneContentFillLookSeedReloadRecovery({
+      incompleteAssistant,
+      messages: [userFill, incompleteAssistant],
+      readProjectHtml: async () => '<section class="slide"><h1>Seed</h1></section>',
+      producedFiles: [],
+    });
+    const recovered = result.updatedAssistant!;
+    const messages: ChatMessage[] = [userFill, recovered];
+    // Not streaming, last id matches → retryableAssistantMessage returns
+    // the row so ChatPane's Retry dock finally matches the banner copy.
+    expect(retryableAssistantMessage(messages, recovered.id, false)).toBe(recovered);
   });
 
   it('skips non-Clone fill turns', async () => {
@@ -102,7 +131,11 @@ describe('attemptCloneContentFillLookSeedReloadRecovery (루프367)', () => {
       [userFill, incompleteAssistant],
       incompleteAssistant,
     )).toBe(true);
-    expect(buildCloneLookSeedReloadRecoveredAssistant(incompleteAssistant, []).runStatus).toBe('succeeded');
+    // 루프525 — LOOK seed reload recovery marks the row as failed so
+    // ChatPane's Retry dock lines up with the banner copy.
+    const built = buildCloneLookSeedReloadRecoveredAssistant(incompleteAssistant, []);
+    expect(built.runStatus).toBe('failed');
+    expect(built.resumable).toBe(false);
   });
 
   it('isCloneContentFillReloadRecoveryCandidate detects runContext json fill after brief-only persist', () => {
@@ -193,11 +226,24 @@ describe('attemptCloneSlotFillStuckRepairNoticeRecovery (루프372)', () => {
     });
     expect(result.recovered).toBe(true);
     expect(result.htmlToOpen).toBe('deck.html');
-    expect(result.updatedAssistant?.events?.some(
-      (event) => event.kind === 'status' && event.code === 'clone_look_seed_fallback',
+    const events = result.updatedAssistant?.events ?? [];
+    // 루프525 — Both warning (banner) and error (Retry dock lookup)
+    // events are attached with the LOOK seed status code.
+    expect(events.some(
+      (event) => event.kind === 'status'
+        && event.label === 'warning'
+        && event.code === 'clone_look_seed_fallback',
     )).toBe(true);
-    expect(result.updatedAssistant?.events?.some(
+    expect(events.some(
+      (event) => event.kind === 'status'
+        && event.label === 'error'
+        && event.code === 'clone_look_seed_fallback',
+    )).toBe(true);
+    expect(events.some(
       (event) => event.kind === 'status' && event.detail === repairNotice,
     )).toBe(false);
+    // 루프525 — Transformed row lands as failed + resumable=false.
+    expect(result.updatedAssistant?.runStatus).toBe('failed');
+    expect(result.updatedAssistant?.resumable).toBe(false);
   });
 });

@@ -37,6 +37,7 @@ import {
   templateCloneFillModeFromUserMessage,
 } from '../teamver/templateCloneContentFill';
 import {
+  appendErrorStatusEvent,
   appendWarningStatusEvent,
   clearDurableDeliverableErrorsAfterRecovery,
 } from './chat-events';
@@ -666,15 +667,38 @@ function buildCloneLookSeedRecoveredAssistant(
         && isCloneSlotFillRepairInProgressNotice(event.detail)),
     ),
   };
+  const withWarning = appendWarningStatusEvent(
+    clearDurableDeliverableErrorsAfterRecovery(withoutRepairNotice),
+    lookSeedNotice,
+    CLONE_LOOK_SEED_FALLBACK_STATUS_CODE,
+  );
+  // 루프525 — Emit a matching `status:error` event so ChatPane's
+  // `failedRunErrorEvent` picks up the LOOK seed code and renders the
+  // Retry dock via `resolveRunFailureUi(CLONE_LOOK_SEED_FALLBACK_STATUS_CODE, ...)`
+  // (falls through to the non-AMR / non-Antigravity branch → primaryAction 'retry').
+  // Prior to 525 the row was `succeeded + resumable: true` under the mistaken
+  // assumption that `resumable` alone enabled Retry — but ChatPane's Retry dock
+  // requires `retryAssistant.runStatus === 'failed'`, so the banner copy
+  // ("우측 '다시 시도' 버튼") was pointing at a button that never rendered.
+  // `hasPersistedRunErrorEvent` already excludes this code, so reload does not
+  // flip legacy succeeded rows to failed; new rows are already failed.
+  const withError = appendErrorStatusEvent(
+    withWarning,
+    lookSeedNotice,
+    CLONE_LOOK_SEED_FALLBACK_STATUS_CODE,
+  );
   return {
-    ...appendWarningStatusEvent(
-      clearDurableDeliverableErrorsAfterRecovery(withoutRepairNotice),
-      lookSeedNotice,
-      CLONE_LOOK_SEED_FALLBACK_STATUS_CODE,
-    ),
+    ...withError,
     producedFiles: produced,
-    runStatus: 'succeeded',
-    resumable: true,
+    // 루프525 — LOOK seed is a persisted failure (fill did not complete),
+    // not a salvage completion. Mark failed so ChatPane's Retry dock matches
+    // the banner copy. `resumable: false` because MiniMax BYOK has no daemon
+    // session to resume — Retry re-plays the original brief through
+    // `resolveRetryTarget` (requires failed) → `runTemplateCloneContentFillRef`
+    // becomes true → loop524 A1 `allowReplaceSeedOrLeftover` gate keeps the
+    // subsequent compact fill from tripping the byte / slide-count guards.
+    runStatus: 'failed',
+    resumable: false,
     endedAt: assistant.endedAt ?? Date.now(),
   };
 }

@@ -11953,24 +11953,44 @@ export function ProjectView({
               }
             } else if (cloneLookSeedFallbackRecovered) {
               // 루프362 — Clone content-fill low-substance recovery. The LOOK
-              // seed lives on disk, so we mark succeeded with a warning notice
-              // that mirrors the emergency / outline fallback pattern (Retry
-              // stays available via `resumable`). Persisting the succeeded
-              // state below prevents hard reload from resurfacing the durable
-              // deliverable-missing error.
+              // seed lives on disk with the CLONE_LOOK_SEED_FALLBACK notice.
+              //
+              // 루프525 — Persist as `failed + resumable: false` + attach
+              // BOTH warning and error events keyed by
+              // CLONE_LOOK_SEED_FALLBACK_STATUS_CODE. ChatPane's
+              // `retryableAssistantMessage` requires `runStatus === 'failed'`,
+              // and `resolveRunFailureUi(CLONE_LOOK_SEED_FALLBACK_STATUS_CODE, ...)`
+              // falls through to `primaryAction: 'retry'`, so the Retry dock
+              // finally matches the banner copy. `resumable: false` because
+              // MiniMax BYOK has no daemon session to resume — Retry re-plays
+              // the original brief; `retryTarget.userMsg` still carries the
+              // Clone fill mode marker, so the retry send flips
+              // `runTemplateCloneContentFillRef.current` back to true and
+              // loop524's `allowReplaceSeedOrLeftover` composite lets the
+              // compact fresh fill land without tripping regression guards.
+              // `hasPersistedRunErrorEvent` already excludes this code (line
+              // 161 of chat-events.ts), so reload reconciliation is safe.
               const lookSeedNotice = formatCloneLookSeedFallbackNotice();
-              updateAssistant((prev) => ({
-                ...appendWarningStatusEvent(
+              updateAssistant((prev) => {
+                const withWarning = appendWarningStatusEvent(
                   clearDurableDeliverableErrorsAfterRecovery(prev),
                   lookSeedNotice,
                   CLONE_LOOK_SEED_FALLBACK_STATUS_CODE,
-                ),
-                producedFiles: produced,
-                runStatus: resolveSucceededRunStatus(prev.runStatus),
-                resumable: true,
-                endedAt: prev.endedAt ?? endedAt,
-              }));
-              updateConversationLatestRun('succeeded', endedAt);
+                );
+                const withError = appendErrorStatusEvent(
+                  withWarning,
+                  lookSeedNotice,
+                  CLONE_LOOK_SEED_FALLBACK_STATUS_CODE,
+                );
+                return {
+                  ...withError,
+                  producedFiles: produced,
+                  runStatus: 'failed',
+                  resumable: false,
+                  endedAt: prev.endedAt ?? endedAt,
+                };
+              });
+              updateConversationLatestRun('failed', endedAt);
               if (runIsVisible()) {
                 requestOpenFile('deck.html');
               }
