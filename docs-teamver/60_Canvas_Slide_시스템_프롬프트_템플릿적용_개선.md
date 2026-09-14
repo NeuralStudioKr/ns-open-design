@@ -32,6 +32,26 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **명시 5장+ 요청에서는 저장하지 않는다.** 8–10장 요청의 1장/4장 Template Clone fill은 `deck.html` 덮어쓰기 전에 incomplete로 막고 기존 덱을 보존한다. 6장 이상 첫 fill만 저장 후 top-up 가능하다. 사용자가 1장을 명시하거나 요청 장수가 작을 때만 1장 저장을 허용한다 |
 
+### 1.32 2026-09-14 — 결과물 완성도 2단계 (sparse outline 안전망 · Copy density prompt)
+
+§1.31이 prompt/picker/scaffold 3면에서 레이아웃 다양성을 강제하도록 만들었지만, 사용자는 여전히 “미리보기보다 결과물 완성도가 훨씬 떨어진다”고 재보고했다. 실제로 §1.31 이후 남은 완성도 갭은 **레이아웃이 아닌 콘텐츠 밀도** 쪽이었다.
+
+원인:
+
+1. **model이 sparse outline을 emit해도 host가 방어를 못 함.** 프롬프트가 아무리 강해도 실제 모델 출력이 `{ title: '핵심 개념' }` 같은 title-only 슬라이드면 picker가 그걸 카드 그리드 shell로 라우팅할 때 `fillAndTrimCardPeers`가 카드 피어를 전부 잘라내 grid가 빈 상태로 렌더된다. 미리보기는 3–4장의 dense card grid인데 결과물은 heading + 빈 여백이 되어 완성도 차이가 눈에 띈다.
+2. **prompt가 “카피 밀도”를 명시적으로 요구 안 함.** §1.31이 “items[] 를 채워라”까지는 요구했지만 각 item의 `body`가 한 단어여도 통과했다. 실제 preview는 카드마다 12–28자짜리 한 문장씩 있어 인상 자체가 다르다.
+
+구현 현황:
+
+- [x] `buildTemplateClonedDeckHtml` — picker 이후 `enrichSparseSlideForShell`를 통과시켜, title-only 슬라이드가 카드 그리드 shell (≥2 카드 피어)에 착지하면 `synthesizeTemplateCloneSlideBody`가 만든 items[]로 채운다. 커버(index 0) / closing / quote / stat shell에는 안 씀 — stat은 숫자, quote는 인용문이라 프로스로 채우면 오히려 이상하고, cover는 hero라서 카드 padding이 어색하다. 기존 items[] / 다중라인 body는 절대 덮어쓰지 않아 모델 의도 보존.
+- [x] `countPeerSlotsInShellBody` — `fillAndTrimCardPeers`가 사용하는 host/peer 발견 heuristic을 그대로 재사용해서 shell body 안에서 도달 가능한 최대 카드 피어 수를 센다. 이렇게 해야 enrichment의 items[] 목표 수가 fill 단계의 피어 수와 일치한다.
+- [x] `TEAMVER_SELECTED_TEMPLATE_VISUAL_FILL_AUTHORITY` (JSON slot-fill) · `TEAMVER_TEMPLATE_CLONE_PROMPT_FILL_CONTRACT` (HTML fill) · Selected template hard-requirements — 모두 “**Copy density** — 모든 non-cover/non-closing 슬라이드는 full-sentence `lead` + 각 item에 1문장 body (~12–28 Korean chars or 6–16 English words) 필요, `핵심`/`개념`/`요약` 같은 1단어 라벨이나 단어형 카드 title은 실패한 산출물” 문장 추가. stat 슬라이드는 예외 (`items[].title`이 지표값, `body`가 짧은 라벨).
+- [x] 회귀:
+  - `template-clone-fill.test.ts` — `루프509 sparse title-only outlines are enriched when landing on card-grid shells` describe 4개 케이스: (a) title-only cards shell이 실제 items로 채워짐 · (b) list shell의 title-only는 여전히 empty `<li>` drop (`루프376` invariant 보존) · (c) 모델이 emit한 items[]는 절대 덮어쓰지 않음 · (d) cover(index 0)는 enrichment 대상 아님
+  - `system-prompt-api-mode.test.ts` — JSON slot-fill / HTML fill / hard-requirements 세 경로 모두 `Copy density` 문구 노출 assert 추가
+- [ ] `synthesizeTemplateCloneSlideBody`의 “generic” preset이 여전히 다소 templatey — 브리프별 topic profile을 더 세분화하는 것은 후속 (품질 vs 안전성 트레이드오프).
+- [ ] outline generator 텔레메트리 관찰은 §1.31 후속 그대로 유지.
+
 ### 1.31 2026-09-14 — 템플릿 레이아웃 다양성 · 결과물 완성도 (`roleHint` 벡터)
 
 여러 유형의 페이지 레이아웃이 있는 템플릿에서 “한두 개 레이아웃만 반복 사용”되고 미리보기보다 완성도가 낮았다. 원인은 세 가지가 겹쳐 있었다.
