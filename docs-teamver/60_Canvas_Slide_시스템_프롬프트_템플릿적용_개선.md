@@ -106,7 +106,7 @@ JSON을 staging 기본으로 올리지 않는 이유: MiniMax JSON-only 턴이 `
 - [x] `countPeerSlotsInShellBody` — `fillAndTrimCardPeers` host/peer heuristic 재사용.
 - [x] JSON slot-fill authority · HTML fill contract · Selected template hard-requirements — “**Copy density**” 규칙 추가.
 - [x] 회귀: `template-clone-fill.test.ts` loop509 describe · `system-prompt-api-mode.test.ts` Copy density assert
-- [ ] outline generator 텔레메트리 · generic synth preset 세분화 — 후속
+- [x] outline generator 텔레메트리 — 루프526 observe-only. generic synth preset 세분화는 품질 리스크로 보류.
 
 ### 1.31 2026-09-14 — 템플릿 레이아웃 다양성 · 결과물 완성도 (`roleHint` 벡터)
 

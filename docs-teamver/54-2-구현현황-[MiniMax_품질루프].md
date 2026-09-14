@@ -48,6 +48,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts 254 passed · daemon template-clone 37 passed · web templateCloneContentFill 38 passed · contracts build passed.
 
+### 루프526 / 0914-N07 — outline generator 텔레메트리 (observe-only)
+
+체감: 첫 JSON outline이 title-only여도 persist 후에야 숫자가 남았다.
+
+수정: 모델 outline의 roleHint 다양성·title-only rate만 관측. synth preset/HTML 비범위. [0914-N07-3](./0914-N07-3-구현현황-[outline_generator_텔레메트리].md).
+
+검증: contracts `루프523 persist` + `루프526` 7 passed · web outline/persist/launch 36 passed.
+
 ### 루프523 / 0914-N06 — persist 품질 텔레메트리 (observe-only)
 
 체감: merge 후 레이아웃 다양성·title-only 카드 비율을 staging에서 남길 숫자가 없었다.

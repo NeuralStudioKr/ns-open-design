@@ -604,6 +604,7 @@ import {
 } from '../teamver/fetchPluginLocalSkill';
 import { resolveTemplateCloneLookSeedHtml } from '../teamver/seedTemplateClonedDeck';
 import { observeTemplateClonePersistQuality } from '../teamver/templateClonePersistQuality';
+import { observeTemplateCloneOutlineQuality } from '../teamver/templateCloneOutlineQuality';
 import { throwIfProjectCommentUploadIncomplete } from '../teamver/projectUploadErrors';
 import { stripLeakedPseudoToolXml } from '../utils/stripLeakedPseudoToolXml';
 import {
@@ -11066,6 +11067,19 @@ export function ProjectView({
                   ...(honorCeiling != null ? { maxSlides: honorCeiling } : {}),
                 });
                 if (decision.kind === 'slot-fill' || decision.kind === 'seed-fallback') {
+                  observeTemplateCloneOutlineQuality({
+                    rawFinalText,
+                    kind: decision.kind,
+                    templateId:
+                      firstOfficialDeckTemplateId(
+                        runSelectedDeckTemplateIdRef.current,
+                        selectedDeckTemplateMetadata(project.metadata)?.id,
+                        project.metadata?.selectedDeckTemplateId,
+                      )
+                      ?? (project.metadata as { selectedDeckTemplateId?: string } | undefined)
+                        ?.selectedDeckTemplateId
+                      ?? null,
+                  });
                   observeTemplateClonePersistQuality({
                     phase: 'json-slot-fill',
                     html: decision.html,

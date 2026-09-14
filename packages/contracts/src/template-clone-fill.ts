@@ -944,6 +944,90 @@ export function buildTemplateClonePersistQualityObserve(input: {
   };
 }
 
+/** Observe-only JSON outline quality. Never used to reject or rewrite HTML. */
+export type TemplateCloneOutlineQualitySnapshot = {
+  slideCount: number;
+  roleHintedSlideCount: number;
+  distinctRoleHints: TemplateCloneShellRole[];
+  distinctRoleHintCount: number;
+  titleOnlySlideCount: number;
+  titleOnlySlideRate: number;
+  cardItemCount: number;
+  titleOnlyCardCount: number;
+  titleOnlyCardRate: number;
+};
+
+export type TemplateCloneOutlineQualitySource = 'model' | 'partial' | 'none';
+
+export type TemplateCloneOutlineQualityObserve = {
+  source: TemplateCloneOutlineQualitySource;
+  kind: string | null;
+  templateId: string | null;
+  outline: TemplateCloneOutlineQualitySnapshot | null;
+};
+
+function slideOutlineLooksTitleOnly(slide: TemplateCloneSlideContent): boolean {
+  if (templateCloneItemBodyLooksDense(slide.body)) return false;
+  if (templateCloneItemBodyLooksDense(slide.lead)) return false;
+  const items = Array.isArray(slide.items) ? slide.items : [];
+  return !items.some((item) => templateCloneItemBodyLooksDense(item.body));
+}
+
+export function summarizeTemplateCloneOutlineQuality(
+  outline: TemplateCloneDeckOutline | null | undefined,
+): TemplateCloneOutlineQualitySnapshot | null {
+  const slides = outline?.slides ?? [];
+  if (slides.length === 0) return null;
+  const hinted = slides
+    .map((slide) => slide.roleHint)
+    .filter((role): role is TemplateCloneShellRole => isTemplateCloneShellRole(role));
+  const roles = sortTemplateCloneShellRoles(hinted);
+  let cardItemCount = 0;
+  let titleOnlyCardCount = 0;
+  let titleOnlySlideCount = 0;
+  for (const slide of slides) {
+    if (slideOutlineLooksTitleOnly(slide)) titleOnlySlideCount += 1;
+    const items = Array.isArray(slide.items) ? slide.items : [];
+    if (items.length < 2) continue;
+    for (const item of items) {
+      cardItemCount += 1;
+      if (!templateCloneItemBodyLooksDense(item.body)) titleOnlyCardCount += 1;
+    }
+  }
+  return {
+    slideCount: slides.length,
+    roleHintedSlideCount: hinted.length,
+    distinctRoleHints: roles,
+    distinctRoleHintCount: roles.length,
+    titleOnlySlideCount,
+    titleOnlySlideRate: Number((titleOnlySlideCount / slides.length).toFixed(4)),
+    cardItemCount,
+    titleOnlyCardCount,
+    titleOnlyCardRate: cardItemCount === 0
+      ? 0
+      : Number((titleOnlyCardCount / cardItemCount).toFixed(4)),
+  };
+}
+
+export function buildTemplateCloneOutlineQualityObserve(input: {
+  rawFinalText?: string | null;
+  outline?: TemplateCloneDeckOutline | null;
+  kind?: string | null;
+  templateId?: string | null;
+}): TemplateCloneOutlineQualityObserve {
+  const parsed = input.outline ?? parseTemplateCloneDeckOutline(input.rawFinalText);
+  const partial = parsed
+    ? null
+    : recoverPartialTemplateCloneOutline(String(input.rawFinalText ?? ''));
+  const outline = parsed ?? partial;
+  return {
+    source: parsed ? 'model' : partial ? 'partial' : 'none',
+    kind: String(input.kind ?? '').trim() || null,
+    templateId: String(input.templateId ?? '').trim() || null,
+    outline: summarizeTemplateCloneOutlineQuality(outline),
+  };
+}
+
 export type TemplateCloneSlotFillTerminalDecision =
   | { kind: 'slot-fill'; html: string; title: string }
   | { kind: 'queue-repair' }

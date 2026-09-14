@@ -782,6 +782,7 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).toContain("templateCloneContentFill: isCloneContentFillTurn");
     expect(projectView).toContain("applyTemplateClonePromptFillLookMerge(");
     expect(projectView).toContain("observeTemplateClonePersistQuality(");
+    expect(projectView).toContain("observeTemplateCloneOutlineQuality(");
     expect(projectView).toContain("resolveTemplateCloneLookSeedHtml(");
     expect(projectView).toContain("runTemplateClonePromptFillRef.current && artifactToPersist?.html");
     expect(projectView).toContain("appendIncomingSlidesOntoExistingDeck(");

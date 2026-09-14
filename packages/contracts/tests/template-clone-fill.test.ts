@@ -11,6 +11,8 @@ import {
   applyTemplateClonePromptFillLookMerge,
   summarizeTemplateClonePersistQuality,
   buildTemplateClonePersistQualityObserve,
+  summarizeTemplateCloneOutlineQuality,
+  buildTemplateCloneOutlineQualityObserve,
   pickPromptFillLookSeedHtml,
   applyTemplateCloneSlotFill,
   buildTemplateClonedDeckHtml,
@@ -5545,5 +5547,86 @@ describe('루프523 persist quality observe-only', () => {
       expect(snap!.slideCount, id).toBeGreaterThanOrEqual(4);
       expect(snap!.distinctShellCount, id).toBeGreaterThanOrEqual(2);
     }
+  });
+});
+
+describe('루프526 outline quality observe-only', () => {
+  it('flags title-only model outlines without changing slot-fill HTML', () => {
+    const raw = JSON.stringify({
+      title: '분기 전략',
+      slides: [
+        { title: '분기 전략' },
+        { title: '핵심 개념', roleHint: 'cards' },
+        { title: '실행 원칙', roleHint: 'cards' },
+        { title: '다음 단계', roleHint: 'cards' },
+      ],
+    });
+    const snap = summarizeTemplateCloneOutlineQuality({
+      title: '분기 전략',
+      slides: [
+        { title: '분기 전략' },
+        { title: '핵심 개념', roleHint: 'cards' },
+        { title: '실행 원칙', roleHint: 'cards' },
+        { title: '다음 단계', roleHint: 'cards' },
+      ],
+    });
+    expect(snap?.titleOnlySlideRate).toBe(1);
+    expect(snap?.distinctRoleHintCount).toBe(1);
+    const observe = buildTemplateCloneOutlineQualityObserve({
+      rawFinalText: raw,
+      kind: 'slot-fill',
+      templateId: 'html-ppt-zhangzara-daisy-days',
+    });
+    expect(observe.source).toBe('model');
+    expect(observe.outline?.titleOnlySlideRate).toBe(1);
+    const seed = [
+      '<section class="slide slide-title cover"><h1>Demo</h1></section>',
+      '<section class="slide slide-cards"><h2>Cards</h2></section>',
+    ].join('');
+    const first = applyTemplateCloneSlotFill(seed, raw, { brief: '분기 전략' });
+    const second = applyTemplateCloneSlotFill(seed, raw, { brief: '분기 전략' });
+    expect(first?.html).toBe(second?.html);
+  });
+
+  it('records dense roleHint variety and low title-only rates', () => {
+    const observe = buildTemplateCloneOutlineQualityObserve({
+      rawFinalText: JSON.stringify({
+        title: '분기 전략',
+        slides: [
+          { title: '분기 전략', lead: '한 분기를 한 문장으로 정리합니다.', roleHint: 'cover' },
+          {
+            title: '핵심 개념',
+            roleHint: 'cards',
+            items: [
+              { title: '속도', body: '속도에 묶인 한 문장 본문입니다.' },
+              { title: '품질', body: '품질에 묶인 한 문장 본문입니다.' },
+            ],
+          },
+          { title: '일정', roleHint: 'timeline', body: '이번 분기 마일스톤을 순서대로 적습니다.' },
+          { title: '지표', roleHint: 'stat', items: [{ title: '12', body: '활성 사용자를 나타내는 지표 라벨' }, { title: '4', body: '함께 일하는 팀 규모 라벨' }] },
+        ],
+      }),
+      kind: 'slot-fill',
+    });
+    expect(observe.source).toBe('model');
+    expect(observe.outline?.distinctRoleHintCount).toBeGreaterThanOrEqual(4);
+    expect(observe.outline?.titleOnlySlideRate).toBe(0);
+    expect(observe.outline?.titleOnlyCardRate).toBe(0);
+  });
+
+  it('records partial recovery when JSON is truncated', () => {
+    const observe = buildTemplateCloneOutlineQualityObserve({
+      rawFinalText: '{ "title": "분기 전략", "slides": [ { "title": "핵심 개념" ',
+      kind: 'seed-fallback',
+    });
+    expect(observe.source).toBe('partial');
+    expect(observe.outline?.slideCount).toBeGreaterThanOrEqual(2);
+    expect(observe.outline?.titleOnlySlideRate).toBe(1);
+  });
+
+  it('returns none when the model emitted no outline', () => {
+    expect(buildTemplateCloneOutlineQualityObserve({
+      rawFinalText: 'thinking only',
+    }).source).toBe('none');
   });
 });
