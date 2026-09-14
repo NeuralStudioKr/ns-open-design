@@ -620,6 +620,10 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toMatch(/failed deliverable|failed render/i);
       expect(prompt).toMatch(/scaffold map|Template scaffold map/i);
       expect(prompt).toMatch(/items~=|items\[\] entries|Item count fidelity/i);
+      // docs-teamver/60 § "결과물 완성도" — the outline generator must also be
+      // told to write full-sentence lead/body copy per card, not bare labels.
+      expect(prompt).toMatch(/Copy density/i);
+      expect(prompt).toMatch(/full[- ]sentence\s+`?lead`?/i);
     });
 
     it('omits comment-edit / existing-deck contracts on greenfield turns', () => {
@@ -922,6 +926,9 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toMatch(/rotate through ≥ 4 distinct shells/i);
       expect(prompt).toMatch(/Card\/grid slots must be filled/i);
       expect(prompt).toContain('Never nest the whole slide grid inside');
+      // docs-teamver/60 § "결과물 완성도" — HTML fill contract must also
+      // demand full-sentence density (not bare 1-word card titles).
+      expect(prompt).toMatch(/Copy density/i);
       expect(prompt).not.toContain('Emit JSON outline only');
       expect(prompt).not.toContain('# Final authority (READ LAST)');
       expect(prompt).not.toMatch(/Expo for Senior Engineers|EAS Build|expo-modules-core/i);
