@@ -15,7 +15,7 @@
 
 import { attrsLookLikeDeckOrTemplateSlideHost } from './html/deck-slide-class.js';
 import { stripCssAtImportsBalanced } from './html/repairArtifactStyleSheets.js';
-import { extractTemplateVisualKitFromHtml } from './template-visual-kit.js';
+import { extractMotifSpritesFromHtml } from './template-visual-kit.js';
 
 export const TEMPLATE_SCAFFOLD_MARKER = '## Template scaffold (CONTENT-SWAP BASE)';
 
@@ -92,18 +92,15 @@ function pickScaffoldSlides(slides: string[], maxSlides: number): string[] {
 }
 
 function extractMotifSpritePool(html: string): string[] {
-  // Reuse the hardened kit classifier via a temporary kit extract so daisy
-  // (not cloud) wins — then pull complete SVG fences from that kit.
-  // Need enough budget for Motif sprites fences: Font-import guidance + Layout
-  // packing at ~11KB drops the ```html <svg>``` blocks (header only survives).
-  const kit = extractTemplateVisualKitFromHtml(html, { maxChars: 16_000, title: 'scaffold' });
-  if (!kit) return [];
-  const sprites: string[] = [];
-  for (const match of kit.matchAll(/```html\s*([\s\S]*?)```/gi)) {
-    const svg = (match[1] ?? '').trim();
-    if (/^<svg\b/i.test(svg) && /<\/svg>/i.test(svg)) sprites.push(svg);
-  }
-  return sprites.slice(0, 3);
+  // Pull complete classified sprites directly (daisy > cloud on Daisy Days).
+  // Previously this proxied through the full visual-kit output and scraped
+  // ```html``` fences, which coupled the sprite pool to the kit's other
+  // packed sections — a bigger scaffold-map budget could evict smaller
+  // sprites and leave `.deco` slots collapsing to a single daisy. Talking
+  // to `extractMotifSpritesFromHtml` directly keeps the sprite pool stable
+  // regardless of kit packing changes.
+  const sprites = extractMotifSpritesFromHtml(html, 4_200);
+  return sprites.slice(0, 3).map((sprite) => sprite.svg);
 }
 
 function replaceSvgsWithSpritePool(sectionHtml: string, sprites: string[]): string {

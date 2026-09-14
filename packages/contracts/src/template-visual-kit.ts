@@ -1380,6 +1380,16 @@ type MotifSprite = {
  * Named Daisy vocabulary wins when present; otherwise ship the smallest
  * complete in-range SVGs so non-floral templates still get pasteable motifs.
  */
+/**
+ * Extract classified Motif SVG sprites (daisy/star/rainbow/sun/cloud + generic
+ * fallbacks) from raw template HTML. Exported so `template-scaffold.ts` can
+ * seed its `.deco svg` slot pool WITHOUT paying the kit's whole packing budget
+ * — the scaffold does not need the kit's Motif/decoration/layout markdown.
+ */
+export function extractMotifSpritesFromHtml(html: string, budget = 4_200): MotifSprite[] {
+  return extractMotifSprites(html, budget);
+}
+
 function extractMotifSprites(html: string, budget: number): MotifSprite[] {
   const rawSvgs = [...html.matchAll(/<svg\b[\s\S]*?<\/svg>/gi)].map((match) => match[0] ?? '');
   // Prefer a compact <defs>/<symbol> sprite sheet (pin-and-paper) even when
@@ -1591,6 +1601,75 @@ function stripHtmlText(html: string): string {
     .trim();
 }
 
+/**
+ * Canonical roleHint values understood by the outline slot-fill enum
+ * (`TemplateCloneShellRole` in template-clone-fill.ts). Kept in sync with
+ * that enum — a local copy avoids a circular import while still letting the
+ * scaffold-map render show the model exactly which enum value to emit for
+ * each layout row.
+ */
+type CanonicalRoleHint =
+  | 'cover'
+  | 'list'
+  | 'cards'
+  | 'timeline'
+  | 'stat'
+  | 'quote'
+  | 'team'
+  | 'process'
+  | 'closing'
+  | 'body';
+
+function inferScaffoldRowRoleHint(shell: SlideShell): CanonicalRoleHint {
+  // Mirror of classifyTemplateCloneShellRole (template-clone-fill.ts). Kept
+  // as a local helper so template-visual-kit.ts stays free of cross-module
+  // imports — the two enums are validated in matching tests.
+  const hay = `${shell.attrs}\n${shell.body.slice(0, 800)}`;
+  if (/\bslide-title\b|\bcover\b|\bhero\b|\btitle-box\b|\bs-cover\b/i.test(hay)) return 'cover';
+  if (/\bslide-quote\b|\bquote-text\b|\bquote-mark\b|\bs-quote\b/i.test(hay)) return 'quote';
+  if (/\bslide-timeline\b|\btimeline\b/i.test(hay)) return 'timeline';
+  if (
+    /\bslide-donut\b|\bslide-chart|\bdonut\b|\bchart-bar\b|\bchart-frame\b|\bdata-column\b|\bdata-box\b|\bstats-grid\b|\bkpi\b|\bs-data\b|\bs-stat\b/i
+      .test(hay)
+  ) {
+    return 'stat';
+  }
+  if (/\bslide-team\b|\bteam-member\b|\bteam-avatar\b|\bteam-card\b|\bmember-card\b/i.test(hay)) return 'team';
+  if (/\bslide-process\b|\bprocess-|\bstep-circle\b/i.test(hay)) return 'process';
+  if (/\bslide-cards\b|\bslide-weekly\b|\bcards-grid\b|\binfo-card\b|\bweekly-grid\b/i.test(hay)) {
+    return 'cards';
+  }
+  if (/\b(?:feature|col|compare)-postit\b|\b(?:three|two)-col-layout\b|\bcompare-layout\b/i.test(hay)) {
+    return 'cards';
+  }
+  if (
+    /\b(?:feature|stat|metric|price|pricing|pillar|xp|hc|oc|kb|kpi|intro)-card\b/i.test(hay)
+  ) {
+    return 'cards';
+  }
+  if (/\bslide-welcome\b|\bwelcome-list\b|<[uo]l\b/i.test(hay)) return 'list';
+  if (/\bslide-closing\b|\bthanks\b|\bend\b|\bclosing\b|\bs-closing\b|\bs-colophon\b/i.test(hay)) return 'closing';
+  return 'body';
+}
+
+/**
+ * Count concrete item-shaped peer classes inside a shell body so the scaffold
+ * map can hint the outline generator with a target items[] count. Undercount
+ * (0) is fine — the model still gets `roleHint` and prose slot guidance.
+ */
+const SCAFFOLD_ITEM_PEER_CLASS_RE =
+  /\bclass\s*=\s*["'][^"']*\b(?:info-card|day-card|team-card|team-member|member-card|feature-card|feature-postit|col-postit|compare-postit|stat-card|data-box|metric-card|price-card|pricing-card|pillar-card|intro-card|xp-card|hc-card|oc-card|kb-card|kpi-card|timeline-card|timeline-row|timeline-step|step-circle|process-step|donut-slice|chart-bar|bar-group|kpi|list-item)\b/gi;
+const SCAFFOLD_LIST_ITEM_RE = /<li\b/gi;
+
+function countScaffoldRowItemSlots(shell: SlideShell): number {
+  const body = shell.body ?? '';
+  const peers = [...body.matchAll(SCAFFOLD_ITEM_PEER_CLASS_RE)].length;
+  if (peers > 0) return Math.min(peers, 12);
+  const lis = [...body.matchAll(SCAFFOLD_LIST_ITEM_RE)].length;
+  if (lis >= 2) return Math.min(lis, 12);
+  return 0;
+}
+
 function extractTemplateScaffoldMap(
   html: string,
   budget: number,
@@ -1600,9 +1679,11 @@ function extractTemplateScaffoldMap(
   if (shells.length === 0) return null;
   const lines: string[] = [];
   let used = 0;
+  const roleHintUniverse = new Set<CanonicalRoleHint>();
   for (let i = 0; i < Math.min(shells.length, 12); i += 1) {
-    const attrs = shells[i]?.attrs ?? '';
-    const body = shells[i]?.body ?? '';
+    const shell = shells[i]!;
+    const attrs = shell.attrs;
+    const body = shell.body;
     const className =
       /class\s*=\s*"([^"]+)"/i.exec(attrs)?.[1]
       ?? /class\s*=\s*'([^']+)'/i.exec(attrs)?.[1]
@@ -1631,10 +1712,22 @@ function extractTemplateScaffoldMap(
       )
       ?.replace(/^slide-/, '')
       || 'body';
+    const roleHint: CanonicalRoleHint = i === 0
+      ? 'cover'
+      : inferScaffoldRowRoleHint(shell);
+    roleHintUniverse.add(roleHint);
+    const itemSlots = countScaffoldRowItemSlots(shell);
     const parts = [
       `- ${i + 1}. classes="${className}"`,
       id ? `id="${id}"` : null,
       `role=${layoutRole}`,
+      // roleHint hint: the exact string the outline generator must emit in
+      // `slides[].roleHint` to reach this layout. Without it the model has
+      // to guess how a template-specific role name (welcome/weekly/chart-bar)
+      // translates back to the canonical enum, and typically defaults every
+      // slide to `body` — see docs-teamver/60 § "layout monotony".
+      `roleHint=${roleHint}`,
+      itemSlots > 0 ? `items~=${itemSlots}` : null,
       cleanHeading ? `sample="${cleanHeading}"` : null,
       decoClasses.length > 0 ? `deco=${decoClasses.join(' | ')}` : null,
     ].filter(Boolean);
@@ -1644,8 +1737,13 @@ function extractTemplateScaffoldMap(
     used += line.length + 1;
   }
   if (lines.length === 0) return null;
+  const hintList = [...roleHintUniverse].filter((role) => role !== 'cover');
+  const varietyGuidance = hintList.length > 0
+    ? `Available roleHint values for THIS template (beyond \`cover\`): ${hintList.join(', ')}. When the deck has more than 4 content slides, spread \`slides[].roleHint\` across at least ${Math.min(4, hintList.length)} of these values — repeating the same layout every slide is a failed deliverable. Use each row's \`roleHint=\` (and \`items~=\` count) as the shopping list for your outline.`
+    : 'Use each row\'s `roleHint=` value in `slides[].roleHint` to hit the matching layout.';
   return [
     'Token-safe layout contract from example.html (classes/roles only — not a full HTML dump). Replace visible content only; decorate with kit Motif CSS/`.deco` first — Motif sprites are capped and only AFTER title/lead.',
+    varietyGuidance,
     ...lines,
   ].join('\n');
 }
@@ -1780,7 +1878,10 @@ export function extractTemplateVisualKitFromHtml(
   // Decorations + Layout cannot be starved by large Motif sprite dumps.
   const sprites = extractMotifSprites(source, 4_200);
   const spriteKinds = new Set(sprites.map((sprite) => sprite.kind));
-  const scaffold = extractTemplateScaffoldMap(source, 1_000, spriteKinds);
+  // Budget bumped from 1_000 → 1_500 to fit the docs-teamver/60 layout-variety
+  // banner + per-row `roleHint=` / `items~=` hints without truncating rows.
+  // Deco/layout/sprite budgets below are untouched.
+  const scaffold = extractTemplateScaffoldMap(source, 1_500, spriteKinds);
   const deco = extractDecorationCss(source, 1_800, identity);
   const motifSnippets = extractMotifHtmlSnippets(source, 420);
   // Reserve Layout room even when Decorations are heavy (composition > chrome).
