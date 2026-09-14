@@ -562,31 +562,51 @@ export function applyTemplateCloneSlotFill(
 }
 
 const PROMPT_FILL_LOOK_MERGE_MIN_SLIDES = 2;
-/** Skip merge when extraction dropped most of the model's real copy. */
-const PROMPT_FILL_LOOK_MERGE_MIN_MODEL_SUBSTANCE = 280;
-const PROMPT_FILL_LOOK_MERGE_KEEP_RATIO = 0.4;
+/** Skip merge only when leftover unparsed sentences look like real copy. */
+const PROMPT_FILL_LOOK_MERGE_MIN_UNPARSED = 280;
+const PROMPT_FILL_ITEM_BODY_MIN = 12;
 
 const PROMPT_FILL_CARD_PEER_RE_SOURCE =
-  '<(article|div|li)\\b([^>]*\\b(?:info-card|nb-card|feature-card|intro-card|team-card|stat-card|price-card|pillar-card|timeline-card|step-card|member-card|hc-card|oc-card|kb-card|xp-card|card)\\b[^>]*)>([\\s\\S]*?)<\\/\\1>';
+  '<(article|div|li)\\b([^>]*\\b(?:info-card|nb-card|feature-card|intro-card|team-card|stat-card|price-card|pricing-card|pillar-card|timeline-card|step-card|member-card|metric-card|hc-card|oc-card|kb-card|xp-card|kpi-card|day-card|weekly-card|feature-postit|col-postit|compare-postit)\\b[^>]*)>([\\s\\S]*?)<\\/\\1>';
 
 function promptFillCardPeerRe(): RegExp {
   return new RegExp(PROMPT_FILL_CARD_PEER_RE_SOURCE, 'gi');
 }
 
-function outlineSlideSubstanceChars(slide: TemplateCloneSlideContent): number {
-  const items = Array.isArray(slide.items) ? slide.items : [];
-  return (
-    (slide.lead?.trim().length ?? 0)
-    + (slide.body?.trim().length ?? 0)
-    + items.reduce(
-      (sum, item) => sum + (item.title?.trim().length ?? 0) + (item.body?.trim().length ?? 0),
-      0,
-    )
-  );
+function templateCloneItemBodyLooksDense(body: string | null | undefined): boolean {
+  return String(body ?? '').trim().length >= PROMPT_FILL_ITEM_BODY_MIN;
 }
 
-function modelHtmlSubstanceChars(html: string): number {
-  return visibleDeckCopy(html).length;
+function leftoverUnparsedSentenceChars(
+  modelHtml: string,
+  outline: TemplateCloneDeckOutline,
+): number {
+  let visible = visibleDeckCopy(modelHtml);
+  for (const slide of outline.slides) {
+    for (const piece of [
+      slide.title,
+      slide.lead,
+      slide.body,
+      ...(slide.items ?? []).flatMap((item) => [item.title, item.body]),
+    ]) {
+      const token = String(piece ?? '').trim();
+      if (token.length < 2) continue;
+      visible = visible.split(token).join(' ');
+    }
+  }
+  return visible
+    .split(/[\n.。!?！？]+/)
+    .map((chunk) => chunk.replace(/\s+/g, ' ').trim())
+    .filter((chunk) => {
+      if (chunk.length < 16) return false;
+      const withoutChrome = chunk
+        .replace(/\d+\s*\/\s*\d+/g, ' ')
+        .replace(/\b(?:next|prev|previous|slide|page|nav)\b/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      return withoutChrome.length >= 16;
+    })
+    .join(' ').length;
 }
 
 function extractSlideTitleFromHtmlBody(body: string): string {
@@ -705,8 +725,9 @@ export function extractTemplateCloneOutlineFromDeckHtml(
     if (lead) next.lead = lead;
     if (body) next.body = body;
     if (items.length >= 2) next.items = items;
-    const role = classifyTemplateCloneShellRole(shell);
-    if (role) next.roleHint = role;
+    // Do not copy the model's own shell role. Prompt-fill often stamps the
+    // same layout on every page; host variety + content inference pick LOOK
+    // seed shells instead.
     slides.push(next);
   }
   if (slides.length === 0) return null;
@@ -717,13 +738,7 @@ function promptFillOutlineKeepsModelSubstance(
   outline: TemplateCloneDeckOutline,
   modelHtml: string,
 ): boolean {
-  const modelSubstance = modelHtmlSubstanceChars(modelHtml);
-  if (modelSubstance < PROMPT_FILL_LOOK_MERGE_MIN_MODEL_SUBSTANCE) return true;
-  const outlineSubstance = outline.slides.reduce(
-    (sum, slide) => sum + outlineSlideSubstanceChars(slide),
-    0,
-  );
-  return outlineSubstance >= modelSubstance * PROMPT_FILL_LOOK_MERGE_KEEP_RATIO;
+  return leftoverUnparsedSentenceChars(modelHtml, outline) < PROMPT_FILL_LOOK_MERGE_MIN_UNPARSED;
 }
 
 /**
@@ -8818,8 +8833,10 @@ function enrichSparseSlideForShell(
   const items = Array.isArray(slide.items) ? slide.items : [];
   const bodyText = slide.body?.trim() ?? '';
   const bodyLines = bodyText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  if (items.length >= 2) return slide;
-  if (bodyLines.length >= 2) return slide;
+  const thinItems = items.filter((item) => !templateCloneItemBodyLooksDense(item.body));
+  const denseItems = items.length >= 2 && thinItems.length === 0;
+  if (denseItems) return slide;
+  if (items.length < 2 && bodyLines.length >= 2) return slide;
 
   const shellRole = classifyTemplateCloneShellRole(shell);
   const peers = countPeerSlotsInShellBody(shell.body, slotMap);
@@ -8829,6 +8846,23 @@ function enrichSparseSlideForShell(
     Math.max(1, index),
     brief,
   );
+
+  // Loop517 — Prompt-fill often extracts title-only cards. Keep those titles
+  // and fill missing 1-sentence bodies so card grids are not empty labels.
+  if (items.length >= 2 && thinItems.length > 0 && shellRole !== 'stat') {
+    const synthItems = Array.isArray(synth.items) ? synth.items : [];
+    const filledItems = items.map((item, itemIndex) => {
+      if (templateCloneItemBodyLooksDense(item.body)) return item;
+      const synthBody = synthItems[itemIndex]?.body?.trim()
+        || synthItems[itemIndex % Math.max(1, synthItems.length)]?.body?.trim()
+        || '';
+      if (!templateCloneItemBodyLooksDense(synthBody)) return item;
+      return { ...item, body: synthBody };
+    });
+    const enriched: TemplateCloneSlideContent = { ...slide, items: filledItems };
+    if (!enriched.lead && synth.lead) enriched.lead = synth.lead;
+    return enriched;
+  }
 
   // Loop510 — List / bullet shells: title-only outlines used to hit fillSlideShell's
   // placeholder wipe and ship an empty <ul> (loop376). Inject synth bullet lines

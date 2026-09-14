@@ -5275,6 +5275,49 @@ describe('루프515 prompt-fill LOOK seed merge (Canvas/Home same host path)', (
     expect(outline!.slides[1]?.items?.length).toBeGreaterThanOrEqual(3);
     expect(outline!.slides[1]?.items?.[0]?.title).toBe('속도');
     expect(outline!.slides[1]?.items?.[0]?.body).toContain('배포 주기');
+    // Model shell roles must not lock host variety (loop517).
+    expect(outline!.slides[1]?.roleHint).toBeUndefined();
+  });
+
+  it('fills title-only extracted cards so LOOK merge is not a label grid (loop517)', () => {
+    const model = [
+      '<!doctype html><html><body>',
+      '<section class="slide"><h1>분기 전략</h1><p>한 분기를 한 문장으로 정리합니다.</p></section>',
+      '<section class="slide slide-cards"><h2>핵심 개념</h2><div class="cards-grid">',
+      '<article class="info-card"><h3>속도</h3></article>',
+      '<article class="info-card"><h3>품질</h3></article>',
+      '<article class="info-card"><h3>관측</h3></article>',
+      '</div></section>',
+      '<section class="slide"><h2>실행 원칙</h2></section>',
+      '<section class="slide"><h2>다음 단계</h2></section>',
+      '</body></html>',
+    ].join('');
+    const merged = applyTemplateClonePromptFillLookMerge(diverseSeed, model, {
+      brief: '분기 전략 리뷰',
+      deckTitle: '분기 전략',
+    });
+    expect(merged).not.toBeNull();
+    expect(merged!.html).toContain('속도');
+    const cardBodies = [...merged!.html.matchAll(/<article\b[^>]*\binfo-card\b[^>]*>[\s\S]*?<p>([\s\S]*?)<\/p>/gi)]
+      .map((match) => String(match[1] ?? '').replace(/<[^>]+>/g, '').trim());
+    expect(cardBodies.length).toBeGreaterThanOrEqual(2);
+    expect(cardBodies.every((body) => body.length >= 12)).toBe(true);
+  });
+
+  it('still merges chrome-heavy prompt-fill HTML (nav/counters are not real copy)', () => {
+    const model = [
+      '<!doctype html><html><body>',
+      '<section class="slide"><h1>분기 전략</h1><p>한 분기를 한 문장으로 정리합니다.</p>',
+      '<div class="nav">01 / 08 NEXT PREV</div></section>',
+      '<section class="slide"><h2>핵심 개념</h2><div class="counter">02 / 08</div></section>',
+      '<section class="slide"><h2>실행 원칙</h2></section>',
+      '<section class="slide"><h2>다음 단계</h2></section>',
+      '</body></html>',
+    ].join('');
+    expect(applyTemplateClonePromptFillLookMerge(diverseSeed, model, {
+      brief: '분기 전략 리뷰',
+      deckTitle: '분기 전략',
+    })).not.toBeNull();
   });
 
   it('merges monotone model HTML through diverse LOOK seed shells + sparse enrich', () => {

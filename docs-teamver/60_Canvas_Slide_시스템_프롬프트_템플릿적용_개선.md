@@ -51,6 +51,15 @@ JSON을 staging 기본으로 올리지 않는 이유: MiniMax JSON-only 턴이 `
 - [x] `SLIDE_DECK_LAYOUT_VARIETY_INSTRUCTION` / `SLIDE_DECK_COPY_DENSITY_INSTRUCTION` — prompt-fill seed · Canvas/Home internal instruction · kit hard-requirements에 공유.
 - [x] JSON 기본값 전환 **하지 않음**.
 
+### 1.35 2026-09-14 — prompt-fill merge 품질 (title-only cards · role lock · chrome skip) (loop517)
+
+§1.34 merge는 올렸지만 persist 후에도 미리보기보다 성긴 덱이 남을 수 있다.
+
+- [x] 모델 HTML `roleHint`를 복사하지 않음 — 같은 `.slide`/`.slide-cards` 반복이 host variety를 잠그지 않게.
+- [x] `enrichSparseSlideForShell` — items[]가 있어도 body가 12자 미만이면 제목 유지 + synth 문장 보강.
+- [x] merge 포기 조건을 “visible 전체 대비 40%”에서 **추출되지 않은 문장 leftover**로 바꿈. nav/장수 chrome 때문에 merge를 건너뛰지 않음. span에만 있는 본문은 여전히 model HTML 유지.
+- [x] card peer 추출에 Daisy/postit/day-card 등 템플릿 클래스 추가.
+
 ### 1.33 2026-09-14 — list shell sparse 보강 · FE hard rules Copy density (loop510)
 
 루프509 검토: cards grid title-only는 채워지지만 list/`<ul>` shell title-only는 placeholder wipe 후 빈 목록. FE `templateCloneContentFillHardRules`에 Copy density 누락(contracts `system.ts`만 강제).
