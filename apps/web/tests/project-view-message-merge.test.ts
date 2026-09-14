@@ -9,6 +9,7 @@ import {
   findClientSlideCountRegression,
   findTemplateCloneFillStructureIncomplete,
   findTemplateCloneFillSlideCountIncomplete,
+  templateCloneSeedFallbackShouldWarn,
   promptWithExistingDeckEditInstruction,
   resolveCanonicalDeckFileForEdit,
   promptWithSlideAttachmentDeliverableInstruction,
@@ -608,6 +609,30 @@ describe("findTemplateCloneFillStructureIncomplete", () => {
         htmlBody: valid,
       }),
     ).toBeNull();
+  });
+});
+
+describe("templateCloneSeedFallbackShouldWarn", () => {
+  it("warns only when the raw LOOK seed is kept unchanged", () => {
+    const seed = '<section class="slide"><h1>Demo</h1></section>';
+    expect(
+      templateCloneSeedFallbackShouldWarn({
+        seedHtml: seed,
+        decisionHtml: seed,
+      }),
+    ).toBe(true);
+    expect(
+      templateCloneSeedFallbackShouldWarn({
+        seedHtml: seed,
+        decisionHtml: '<section class="slide"><h1>Expo</h1></section>',
+      }),
+    ).toBe(false);
+    expect(
+      templateCloneSeedFallbackShouldWarn({
+        seedHtml: seed,
+        decisionHtml: '',
+      }),
+    ).toBe(true);
   });
 });
 

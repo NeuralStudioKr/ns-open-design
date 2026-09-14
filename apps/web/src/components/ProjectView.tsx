@@ -3193,6 +3193,15 @@ export function findTemplateCloneFillStructureIncomplete(input: {
   return null;
 }
 
+export function templateCloneSeedFallbackShouldWarn(input: {
+  seedHtml: string | null | undefined;
+  decisionHtml: string | null | undefined;
+}): boolean {
+  const seed = String(input.seedHtml ?? '').trim();
+  const decision = String(input.decisionHtml ?? '').trim();
+  return decision.length === 0 || decision === seed;
+}
+
 export { tryRecoverCloneContentFillLookSeed } from '../runtime/slide-deliverable-recovery';
 
 export function ProjectView({
@@ -10939,30 +10948,36 @@ export function ProjectView({
                     html: decision.html,
                   };
                 } else if (decision.kind === 'seed-fallback') {
-                  runTemplateCloneSlotFillFallbackRef.current = true;
                   // Loop373 — when the terminal decision applied a partial
                   // recovery or brief-synth outline to the seed (decision.html
                   // differs from the raw LOOK seed on disk), persist that
-                  // topical version. Otherwise point at the untouched disk
-                  // seed to keep the earlier recovery behavior.
+                  // topical version as a completed host fill. Otherwise point
+                  // at the untouched disk seed to keep the earlier recovery
+                  // behavior and show the LOOK seed fallback notice.
                   const rawSeed = String(seedHtml ?? '').trim();
                   const decisionHtml = String(decision.html ?? '').trim();
-                  const decisionIsTopical =
-                    decisionHtml.length > 0 && decisionHtml !== rawSeed;
-                  if (decisionIsTopical) {
+                  const shouldWarnSeedFallback = templateCloneSeedFallbackShouldWarn({
+                    seedHtml: rawSeed,
+                    decisionHtml,
+                  });
+                  if (!shouldWarnSeedFallback) {
+                    runTemplateCloneSlotFillFallbackRef.current = false;
                     artifactToPersist = {
                       identifier: 'deck',
                       artifactType: 'deck',
                       title: decision.title,
                       html: decision.html,
                     };
-                  } else if (!(await recoverCloneLookSeedFallback())) {
-                    artifactToPersist = {
-                      identifier: 'deck',
-                      artifactType: 'deck',
-                      title: decision.title,
-                      html: decision.html,
-                    };
+                  } else {
+                    runTemplateCloneSlotFillFallbackRef.current = true;
+                    if (!(await recoverCloneLookSeedFallback())) {
+                      artifactToPersist = {
+                        identifier: 'deck',
+                        artifactType: 'deck',
+                        title: decision.title,
+                        html: decision.html,
+                      };
+                    }
                   }
                 } else {
                   artifactToPersist = null;
