@@ -8709,6 +8709,96 @@ function replaceSlideBlocks(html: string, shells: SlideShell[], filledSlides: st
  * Clone a template `example.html` and content-swap Source slide titles/bodies
  * into the real CSS/SVG/layout shells. Returns null when no slide shells exist.
  */
+/**
+ * Loop509 — Count the highest card-peer count reachable inside any host
+ * container in a shell body. Mirrors `fillAndTrimCardPeers`'s host+peer
+ * discovery so the enrichment step below sees the same peer geometry the
+ * fill step will operate on.
+ */
+function countPeerSlotsInShellBody(
+  body: string,
+  slotMap: TemplateCloneSlotMap | null | undefined,
+): number {
+  const source = String(body ?? '');
+  if (!source) return 0;
+  let best = 0;
+  const hostOpenRe = /<(div|ul|ol|section)\b([^>]*)>/gi;
+  let hostMatch: RegExpExecArray | null;
+  while ((hostMatch = hostOpenRe.exec(source)) !== null) {
+    const tag = (hostMatch[1] ?? 'div').toLowerCase();
+    const attrs = hostMatch[2] ?? '';
+    if (!attrsLookLikeCardHost(attrs, slotMap)) continue;
+    const openEnd = hostMatch.index + hostMatch[0].length;
+    const closeEnd = findMatchingClose(source, openEnd, tag);
+    if (closeEnd < 0) continue;
+    const closeTagMatch = new RegExp(`</${tag}\\s*>$`, 'i').exec(
+      source.slice(0, closeEnd),
+    );
+    const closeTagLen = closeTagMatch?.[0]?.length ?? `</${tag}>`.length;
+    const innerEnd = closeEnd - closeTagLen;
+    const children = listDirectChildRanges(source, openEnd, innerEnd);
+    const peers = collectPeersAmongChildren(source, children, slotMap);
+    if (peers.length > best) best = peers.length;
+  }
+  return best;
+}
+
+/**
+ * Loop509 — Enrich a title-only outline slide that lands on a card-grid
+ * shell so the deliverable does not ship half-empty grids (docs-teamver/60
+ * § "결과물 완성도").
+ *
+ * When the picker lands a sparse slide on a shell whose primary layout is
+ * a card grid (≥ 2 card peers) and the model emitted no items[] AND no
+ * multi-line body, synthesize items[] from the deck brief + slide title
+ * using the same topic-aware presets as `synthesizeTemplateCloneSlideBody`.
+ *
+ * Guardrails — do NOT enrich when:
+ *   - The slide is the cover (index 0) or an explicit `closing` shell —
+ *     hero/thanks layouts look worse with padded cards.
+ *   - The slide already carries items[] or a multi-line bulleted body —
+ *     the model expressed intent; preserve it.
+ *   - The picked shell has no card peers (< 2). Bullet-list shells
+ *     intentionally drop title-only demo lists (루프376). Stat shells
+ *     want number-shaped copy, not prose bodies; synth prose there would
+ *     look worse than a clean empty slot.
+ */
+function enrichSparseSlideForShell(
+  slide: TemplateCloneSlideContent,
+  shell: SlideShell,
+  index: number,
+  deckTitle: string,
+  brief: string | null | undefined,
+  slotMap: TemplateCloneSlotMap | null | undefined,
+): TemplateCloneSlideContent {
+  if (index === 0) return slide;
+  if (slide.roleHint === 'cover' || slide.roleHint === 'closing') return slide;
+  const items = Array.isArray(slide.items) ? slide.items : [];
+  const bodyText = slide.body?.trim() ?? '';
+  const bodyLines = bodyText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (items.length >= 2) return slide;
+  if (bodyLines.length >= 2) return slide;
+  const shellRole = classifyTemplateCloneShellRole(shell);
+  if (shellRole === 'cover' || shellRole === 'closing' || shellRole === 'quote' || shellRole === 'stat') {
+    return slide;
+  }
+  const peers = countPeerSlotsInShellBody(shell.body, slotMap);
+  if (peers < 2) return slide;
+  const targetCount = Math.max(2, Math.min(peers, 4));
+  const synth = synthesizeTemplateCloneSlideBody(
+    deckTitle || slide.title,
+    slide.title,
+    Math.max(1, index),
+    brief,
+  );
+  const synthItems = Array.isArray(synth.items) ? synth.items : [];
+  if (synthItems.length === 0) return slide;
+  const trimmed = synthItems.slice(0, targetCount);
+  const enriched: TemplateCloneSlideContent = { ...slide, items: trimmed };
+  if (!enriched.lead && synth.lead) enriched.lead = synth.lead;
+  return enriched;
+}
+
 export function buildTemplateClonedDeckHtml(
   exampleHtml: string,
   slides: TemplateCloneSlideContent[],
@@ -8814,8 +8904,16 @@ export function buildTemplateClonedDeckHtml(
   }
 
   const picked = pickTemplateShellsForContent(shells, workingSlides);
+  const enrichedSlides = workingSlides.map((slide, index) => enrichSparseSlideForShell(
+    slide,
+    picked[index] ?? shells[0]!,
+    index,
+    deckTitle,
+    options.brief ?? null,
+    slotMap,
+  ));
   const filled = picked.map((shell, index) => {
-    const content = workingSlides[index] ?? {
+    const content = enrichedSlides[index] ?? {
       title: index === 0 ? deckTitle : `${deckTitle} · ${index + 1}`,
     };
     return fillSlideShell(shell, content, index, slotMap);
