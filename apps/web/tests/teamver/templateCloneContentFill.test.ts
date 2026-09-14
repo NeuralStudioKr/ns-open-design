@@ -337,6 +337,8 @@ describe('templateCloneContentFill', () => {
     expect(seed).toMatch(/roleHint/i);
     expect(seed).toMatch(/Layout variety is mandatory/i);
     expect(seed).toMatch(/at least 3 distinct body `roleHint` values/i);
+    expect(seed).toMatch(/Copy density mirrors the template preview/i);
+    expect(seed).toMatch(/full-sentence `lead`/i);
     expect(seed).toMatch(/items\[\] with 2–4 \{title, body\}/);
     expect(seed).toMatch(/Slide count THIS TURN/i);
     expect(seed).toMatch(/default 6-slide outline/i);

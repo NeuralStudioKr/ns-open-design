@@ -8863,19 +8863,50 @@ function enrichSparseSlideForShell(
   const bodyLines = bodyText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   if (items.length >= 2) return slide;
   if (bodyLines.length >= 2) return slide;
+
   const shellRole = classifyTemplateCloneShellRole(shell);
-  if (shellRole === 'cover' || shellRole === 'closing' || shellRole === 'quote' || shellRole === 'stat') {
-    return slide;
-  }
   const peers = countPeerSlotsInShellBody(shell.body, slotMap);
-  if (peers < 2) return slide;
-  const targetCount = Math.max(2, Math.min(peers, 4));
   const synth = synthesizeTemplateCloneSlideBody(
     deckTitle || slide.title,
     slide.title,
     Math.max(1, index),
     brief,
   );
+
+  // Loop510 — List / bullet shells: title-only outlines used to hit fillSlideShell's
+  // placeholder wipe and ship an empty <ul> (loop376). Inject synth bullet lines
+  // before fill so list-capable shells get real copy without touching card grids.
+  // Preserve a non-empty single-line body the model already emitted.
+  const placeholderBody = !bodyText || isPlaceholderCloneBody(bodyText);
+  if (
+    placeholderBody
+    && (shellRole === 'list' || /<[uo]l\b/i.test(shell.body))
+    && peers < 2
+  ) {
+    const itemLines = (synth.items ?? [])
+      .map((item) => {
+        const title = String(item.title ?? '').trim();
+        const body = String(item.body ?? '').trim();
+        if (title && body) return `${title} — ${body}`;
+        return title || body;
+      })
+      .filter(Boolean);
+    const synthBodyLines = String(synth.body ?? '')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const lines = itemLines.length >= 2 ? itemLines : synthBodyLines;
+    if (lines.length < 2) return slide;
+    const enriched: TemplateCloneSlideContent = { ...slide, body: lines.join('\n') };
+    if (!enriched.lead && synth.lead) enriched.lead = synth.lead;
+    return enriched;
+  }
+
+  if (shellRole === 'cover' || shellRole === 'closing' || shellRole === 'quote' || shellRole === 'stat') {
+    return slide;
+  }
+  if (peers < 2) return slide;
+  const targetCount = Math.max(2, Math.min(peers, 4));
   const synthItems = Array.isArray(synth.items) ? synth.items : [];
   if (synthItems.length === 0) return slide;
   const trimmed = synthItems.slice(0, targetCount);

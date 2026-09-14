@@ -32,6 +32,14 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **명시 5장+ 요청에서는 저장하지 않는다.** 8–10장 요청의 1장/4장 Template Clone fill은 `deck.html` 덮어쓰기 전에 incomplete로 막고 기존 덱을 보존한다. 6장 이상 첫 fill만 저장 후 top-up 가능하다. 사용자가 1장을 명시하거나 요청 장수가 작을 때만 1장 저장을 허용한다 |
 
+### 1.33 2026-09-14 — list shell sparse 보강 · FE hard rules Copy density (loop510)
+
+루프509 검토: cards grid title-only는 채워지지만 list/`<ul>` shell title-only는 placeholder wipe 후 빈 목록. FE `templateCloneContentFillHardRules`에 Copy density 누락(contracts `system.ts`만 강제).
+
+- [x] `enrichSparseSlideForShell` — list/`<ul>` + placeholder-only body → synth bullet `body`. non-empty single-line body는 보존.
+- [x] `templateCloneContentFillHardRules` — Copy density 추가.
+- [x] 회귀: loop510 list test · web seed assert.
+
 ### 1.32 2026-09-14 — 결과물 완성도 2단계 (sparse outline 안전망 · Copy density prompt)
 
 §1.31이 prompt/picker/scaffold 3면에서 레이아웃 다양성을 강제하도록 만들었지만, 사용자는 여전히 “미리보기보다 결과물 완성도가 훨씬 떨어진다”고 재보고했다. 실제로 §1.31 이후 남은 완성도 갭은 **레이아웃이 아닌 콘텐츠 밀도** 쪽이었다.

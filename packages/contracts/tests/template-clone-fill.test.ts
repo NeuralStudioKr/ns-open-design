@@ -5035,7 +5035,7 @@ describe('루프509 sparse title-only outlines are enriched when landing on card
     expect(filled!.html).toContain('핵심 개념');
   });
 
-  it('does NOT enrich title-only slides on list shells (preserves 루프376 empty-list drop)', () => {
+  it('enriches title-only slides on list shells with synth bullet lines (loop510)', () => {
     const seed = [
       '<!doctype html><html><head><style>.motif{color:#FCDF6C}</style></head><body>',
       '<section class="slide slide-title cover"><h1>Demo Cover</h1></section>',
@@ -5050,9 +5050,12 @@ describe('루프509 sparse title-only outlines are enriched when landing on card
       ],
     });
     expect(filled).not.toBeNull();
-    // 루프376 invariant — list shells still drop empty <li>/<ul> for title-only.
+    // Loop510 — sparse title-only on a list shell now gets synth bullets instead
+    // of an empty wiped list (loop376 placeholder path).
     expect(filled!.html).not.toMatch(/<li>\s*<\/li>/);
     expect(filled!.html).not.toMatch(/<ul[^>]*>\s*<\/ul>/);
+    expect(filled!.html).toMatch(/<li>[^<]{8,}<\/li>/);
+    expect(filled!.html).not.toMatch(/Demo A|Demo B/);
     expect(filled!.html).toContain('Smarter &amp; Faster');
   });
 
