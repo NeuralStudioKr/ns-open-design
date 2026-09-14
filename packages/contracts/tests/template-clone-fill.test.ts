@@ -8,8 +8,10 @@ import {
 } from './helpers/deterministic-template-quality-gate.js';
 
 import {
+  applyTemplateClonePromptFillLookMerge,
   applyTemplateCloneSlotFill,
   buildTemplateClonedDeckHtml,
+  extractTemplateCloneOutlineFromDeckHtml,
   classifyTemplateCloneShellRole,
   inferTemplateCloneContentRole,
   listTemplateCloneSlideShells,
@@ -5223,5 +5225,85 @@ describe('루프381 absorbFollowingPillHeadingIntoEmptyChromeShell', () => {
       '<h3>Heading</h3>',
     ].join('');
     expect(absorbFollowingPillHeadingIntoEmptyChromeShell(html)).toBe(html);
+  });
+});
+
+describe('루프512 prompt-fill LOOK seed merge (Canvas/Home same host path)', () => {
+  const diverseSeed = [
+    '<!doctype html><html><head><style>.motif{color:#FCDF6C}</style></head><body>',
+    '<section class="slide slide-title cover"><h1>Demo Cover</h1><p class="subtitle">Demo lead</p></section>',
+    '<section class="slide slide-cards">',
+    '<h2>Demo Cards</h2>',
+    '<div class="cards-grid">',
+    '<article class="info-card"><h3>Demo A</h3><p>Demo A body that is a real sentence.</p></article>',
+    '<article class="info-card"><h3>Demo B</h3><p>Demo B body that is a real sentence.</p></article>',
+    '<article class="info-card"><h3>Demo C</h3><p>Demo C body that is a real sentence.</p></article>',
+    '</div>',
+    '</section>',
+    '<section class="slide slide-6"><div class="split-content"><h2>Demo List</h2><ul class="content-list"><li>Demo A</li><li>Demo B</li><li>Demo C</li></ul></div></section>',
+    '<section class="slide slide-chart"><h2>Demo Stat</h2><div class="stats-grid"><div class="stat-card"><h3>12</h3><p>Demo metric</p></div></div></section>',
+    '</body></html>',
+  ].join('');
+
+  it('extracts titles, leads, and card items from model HTML', () => {
+    const model = [
+      '<!doctype html><html><body>',
+      '<section class="slide slide-title cover"><h1>분기 전략</h1><p class="subtitle">한 분기를 한 문장으로 정리합니다.</p></section>',
+      '<section class="slide slide-cards"><h2>핵심 개념</h2><div class="cards-grid">',
+      '<article class="info-card"><h3>속도</h3><p>배포 주기를 일주일 단위로 줄입니다.</p></article>',
+      '<article class="info-card"><h3>품질</h3><p>리뷰 게이트로 회귀를 막습니다.</p></article>',
+      '<article class="info-card"><h3>관측</h3><p>실패 신호를 같은 날 확인합니다.</p></article>',
+      '</div></section>',
+      '</body></html>',
+    ].join('');
+    const outline = extractTemplateCloneOutlineFromDeckHtml(model);
+    expect(outline).not.toBeNull();
+    expect(outline!.slides).toHaveLength(2);
+    expect(outline!.slides[0]?.title).toBe('분기 전략');
+    expect(outline!.slides[0]?.lead).toContain('한 분기');
+    expect(outline!.slides[1]?.items?.length).toBeGreaterThanOrEqual(3);
+    expect(outline!.slides[1]?.items?.[0]?.title).toBe('속도');
+    expect(outline!.slides[1]?.items?.[0]?.body).toContain('배포 주기');
+  });
+
+  it('merges monotone model HTML through diverse LOOK seed shells + sparse enrich', () => {
+    const model = [
+      '<!doctype html><html><body>',
+      '<section class="slide"><h1>분기 전략</h1><p>한 분기를 한 문장으로 정리합니다.</p></section>',
+      '<section class="slide"><h2>핵심 개념</h2></section>',
+      '<section class="slide"><h2>실행 원칙</h2></section>',
+      '<section class="slide"><h2>다음 단계</h2></section>',
+      '</body></html>',
+    ].join('');
+    const merged = applyTemplateClonePromptFillLookMerge(diverseSeed, model, {
+      brief: '분기 전략 리뷰',
+      deckTitle: '분기 전략',
+    });
+    expect(merged).not.toBeNull();
+    expect(merged!.html).toContain('분기 전략');
+    expect(merged!.html).toContain('핵심 개념');
+    // Host picker + enrich must keep a card grid instead of 4 identical empty bodies.
+    expect(merged!.html).toMatch(/info-card|content-list|stats-grid/);
+    expect(merged!.html).not.toMatch(/<div class="cards-grid">\s*<\/div>/);
+    expect(merged!.html).not.toMatch(/Demo A body that is a real sentence/);
+  });
+
+  it('keeps model HTML when there is no LOOK seed', () => {
+    const model = '<!doctype html><html><body><section class="slide"><h1>A</h1></section><section class="slide"><h2>B</h2></section></body></html>';
+    expect(applyTemplateClonePromptFillLookMerge('', model)).toBeNull();
+    expect(applyTemplateClonePromptFillLookMerge('<html><body><p>no slides</p></body></html>', model)).toBeNull();
+  });
+
+  it('does not drop a dense model deck when extraction would lose most copy', () => {
+    const denseParas = Array.from({ length: 8 }, (_, i) => (
+      `<span class="copy">이 문장은 모델이 쓴 실제 본문 ${i + 1}번이며 추출기가 놓치면 안 되는 구체적인 설명입니다.</span>`
+    )).join('');
+    const model = [
+      '<!doctype html><html><body>',
+      `<section class="slide mystery-layout"><h2>핵심 개념</h2><div class="unknown">${denseParas}</div></section>`,
+      `<section class="slide mystery-layout"><h2>실행 원칙</h2><div class="unknown">${denseParas}</div></section>`,
+      '</body></html>',
+    ].join('');
+    expect(applyTemplateClonePromptFillLookMerge(diverseSeed, model)).toBeNull();
   });
 });

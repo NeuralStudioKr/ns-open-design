@@ -12,6 +12,8 @@ import type { ChatAttachment } from '../types';
 import {
   looksLikeTemplateCloneServiceIntroBrief,
   SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION,
+  SLIDE_DECK_COPY_DENSITY_INSTRUCTION,
+  SLIDE_DECK_LAYOUT_VARIETY_INSTRUCTION,
 } from '@open-design/contracts';
 import {
   briefLooksLikeAttachedSource,
@@ -940,6 +942,8 @@ export function buildTemplateClonePromptFillSeed(options: {
     'The visible request above is THIS turn\'s brief/topic. Do NOT paste the user instruction, this host contract, or any system-prompt worked example onto the cover or body slides.',
     topic ? `Cover topic (use as the title, not the instruction): ${topic}.` : '',
     SLIDE_DECK_QUALITY_BAR_INSTRUCTION,
+    SLIDE_DECK_LAYOUT_VARIETY_INSTRUCTION,
+    SLIDE_DECK_COPY_DENSITY_INSTRUCTION,
     requestedLine,
     templateClonePromptFillSlideCountInstruction({ slideCountHint, slideCountHintSource }),
     websiteOutline

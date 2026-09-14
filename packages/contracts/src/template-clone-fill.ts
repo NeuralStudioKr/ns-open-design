@@ -561,6 +561,209 @@ export function applyTemplateCloneSlotFill(
   return { html, title: outline.title };
 }
 
+const PROMPT_FILL_LOOK_MERGE_MIN_SLIDES = 2;
+/** Skip merge when extraction dropped most of the model's real copy. */
+const PROMPT_FILL_LOOK_MERGE_MIN_MODEL_SUBSTANCE = 280;
+const PROMPT_FILL_LOOK_MERGE_KEEP_RATIO = 0.4;
+
+const PROMPT_FILL_CARD_PEER_RE_SOURCE =
+  '<(article|div|li)\\b([^>]*\\b(?:info-card|nb-card|feature-card|intro-card|team-card|stat-card|price-card|pillar-card|timeline-card|step-card|member-card|hc-card|oc-card|kb-card|xp-card|card)\\b[^>]*)>([\\s\\S]*?)<\\/\\1>';
+
+function promptFillCardPeerRe(): RegExp {
+  return new RegExp(PROMPT_FILL_CARD_PEER_RE_SOURCE, 'gi');
+}
+
+function outlineSlideSubstanceChars(slide: TemplateCloneSlideContent): number {
+  const items = Array.isArray(slide.items) ? slide.items : [];
+  return (
+    (slide.lead?.trim().length ?? 0)
+    + (slide.body?.trim().length ?? 0)
+    + items.reduce(
+      (sum, item) => sum + (item.title?.trim().length ?? 0) + (item.body?.trim().length ?? 0),
+      0,
+    )
+  );
+}
+
+function modelHtmlSubstanceChars(html: string): number {
+  return visibleDeckCopy(html).length;
+}
+
+function extractSlideTitleFromHtmlBody(body: string): string {
+  const heading = /<(h[1-3])\b[^>]*>([\s\S]*?)<\/\1>/i.exec(body);
+  const rawHeading = heading ? stripTagsToText(heading[2] ?? '') : '';
+  const classTitle = /<(?:div|p|span)\b[^>]*\b(?:title-main|hero-title|headline|font-display|display|ttl)\b[^>]*>([\s\S]*?)<\//i
+    .exec(body);
+  const rawClass = classTitle ? stripTagsToText(classTitle[1] ?? '') : '';
+  const raw = (rawHeading || rawClass).trim();
+  if (!raw) return '';
+  return sanitizeTemplateCloneDeckTitle(raw) ?? raw.slice(0, 80);
+}
+
+function extractSlideLeadFromHtmlBody(body: string, title: string): string {
+  const preferred = /<(p|div|span)\b[^>]*\b(?:subtitle|lead|lede|dek|deck)\b[^>]*>([\s\S]*?)<\/\1>/i
+    .exec(body);
+  const preferredText = preferred ? stripTagsToText(preferred[2] ?? '').trim() : '';
+  if (preferredText && preferredText !== title && preferredText.length >= 8) {
+    return preferredText.slice(0, 240);
+  }
+  const withoutCards = body.replace(promptFillCardPeerRe(), ' ');
+  const paragraphs = [...withoutCards.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)]
+    .map((match) => stripTagsToText(match[1] ?? '').trim())
+    .filter((text) => text && text !== title && text.length >= 8);
+  return (paragraphs[0] ?? '').slice(0, 240);
+}
+
+function extractSlideItemsFromHtmlBody(body: string): TemplateCloneSlideItem[] {
+  const cards: TemplateCloneSlideItem[] = [];
+  const cardRe = promptFillCardPeerRe();
+  let cardMatch: RegExpExecArray | null;
+  while ((cardMatch = cardRe.exec(body)) !== null && cards.length < 6) {
+    const inner = cardMatch[3] ?? '';
+    const heading = /<(h[1-6]|strong|b)\b[^>]*>([\s\S]*?)<\/\1>/i.exec(inner);
+    const paragraph = /<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(inner);
+    const title = stripTagsToText(heading?.[2] ?? '').trim()
+      || stripTagsToText(inner).trim().slice(0, 40);
+    const itemBody = stripTagsToText(paragraph?.[1] ?? '').trim();
+    if (!title || title === itemBody) {
+      const visible = stripTagsToText(inner).trim();
+      if (!visible) continue;
+      const split = visible.split(/[.—–:]\s+/).map((part) => part.trim()).filter(Boolean);
+      cards.push({
+        title: (split[0] ?? visible).slice(0, 40),
+        ...(split[1] ? { body: split.slice(1).join(' ').slice(0, 160) } : {}),
+      });
+      continue;
+    }
+    cards.push({
+      title: title.slice(0, 40),
+      ...(itemBody && itemBody !== title ? { body: itemBody.slice(0, 160) } : {}),
+    });
+  }
+  if (cards.length >= 2) return cards;
+
+  const items: TemplateCloneSlideItem[] = [];
+  const listRe = /<li\b[^>]*>([\s\S]*?)<\/li>/gi;
+  let listMatch: RegExpExecArray | null;
+  while ((listMatch = listRe.exec(body)) !== null && items.length < 8) {
+    const inner = listMatch[1] ?? '';
+    const heading = /<(h[1-6]|strong|b)\b[^>]*>([\s\S]*?)<\/\1>/i.exec(inner);
+    const paragraph = /<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(inner);
+    const title = stripTagsToText(heading?.[2] ?? '').trim();
+    const itemBody = stripTagsToText(paragraph?.[1] ?? '').trim();
+    const visible = stripTagsToText(inner).trim();
+    if (!visible) continue;
+    if (title && itemBody && itemBody !== title) {
+      items.push({ title: title.slice(0, 40), body: itemBody.slice(0, 160) });
+      continue;
+    }
+    const split = visible.split(/\s+[—–-]\s+/).map((part) => part.trim()).filter(Boolean);
+    if (split.length >= 2) {
+      items.push({ title: split[0]!.slice(0, 40), body: split.slice(1).join(' — ').slice(0, 160) });
+      continue;
+    }
+    items.push({ title: visible.slice(0, 40), ...(visible.length > 40 ? { body: visible.slice(0, 160) } : {}) });
+  }
+  return items.length >= 2 ? items : [];
+}
+
+function extractSlideBodyFromHtmlBody(
+  body: string,
+  title: string,
+  lead: string,
+  items: TemplateCloneSlideItem[],
+): string | undefined {
+  if (items.length >= 2) return undefined;
+  const withoutCards = body.replace(promptFillCardPeerRe(), ' ');
+  const lines = [...withoutCards.matchAll(/<(?:p|li)\b[^>]*>([\s\S]*?)<\/(?:p|li)>/gi)]
+    .map((match) => stripTagsToText(match[1] ?? '').trim())
+    .filter((text) => {
+      if (!text || text === title || text === lead) return false;
+      return text.length >= 8;
+    });
+  if (lines.length === 0) return undefined;
+  return lines.slice(0, 6).join('\n');
+}
+
+/**
+ * Recover a JSON-shaped outline from model-written deck HTML so prompt-fill
+ * can reuse the same LOOK-seed host merge as JSON slot-fill.
+ */
+export function extractTemplateCloneOutlineFromDeckHtml(
+  html: string,
+): TemplateCloneDeckOutline | null {
+  const shells = listTemplateCloneSlideShells(String(html ?? ''));
+  if (shells.length === 0) return null;
+  const slides: TemplateCloneSlideContent[] = [];
+  for (const shell of shells) {
+    const title = extractSlideTitleFromHtmlBody(shell.body);
+    if (!title) continue;
+    const lead = extractSlideLeadFromHtmlBody(shell.body, title);
+    const items = extractSlideItemsFromHtmlBody(shell.body);
+    const body = extractSlideBodyFromHtmlBody(shell.body, title, lead, items);
+    const next: TemplateCloneSlideContent = { title };
+    if (lead) next.lead = lead;
+    if (body) next.body = body;
+    if (items.length >= 2) next.items = items;
+    const role = classifyTemplateCloneShellRole(shell);
+    if (role) next.roleHint = role;
+    slides.push(next);
+  }
+  if (slides.length === 0) return null;
+  return { title: slides[0]!.title, slides };
+}
+
+function promptFillOutlineKeepsModelSubstance(
+  outline: TemplateCloneDeckOutline,
+  modelHtml: string,
+): boolean {
+  const modelSubstance = modelHtmlSubstanceChars(modelHtml);
+  if (modelSubstance < PROMPT_FILL_LOOK_MERGE_MIN_MODEL_SUBSTANCE) return true;
+  const outlineSubstance = outline.slides.reduce(
+    (sum, slide) => sum + outlineSlideSubstanceChars(slide),
+    0,
+  );
+  return outlineSubstance >= modelSubstance * PROMPT_FILL_LOOK_MERGE_KEEP_RATIO;
+}
+
+/**
+ * Canvas / Home / Drive prompt-fill persist: treat model HTML as content,
+ * then slot-fill the LOOK seed so layout variety + sparse enrichment run
+ * on the same host path as JSON fill.
+ *
+ * Returns null when the seed has no shells, the outline is too thin, or
+ * extraction would drop most of the model's real copy — caller keeps model HTML.
+ */
+export function applyTemplateClonePromptFillLookMerge(
+  seedHtml: string,
+  modelHtml: string,
+  options: {
+    templateId?: string | null;
+    brief?: string | null;
+    maxSlides?: number;
+    deckTitle?: string | null;
+  } = {},
+): { html: string; title: string } | null {
+  const seed = String(seedHtml ?? '').trim();
+  const model = String(modelHtml ?? '').trim();
+  if (!seed || !model) return null;
+  if (listTemplateCloneSlideShells(seed).length === 0) return null;
+  const outline = extractTemplateCloneOutlineFromDeckHtml(model);
+  if (!outline || outline.slides.length < PROMPT_FILL_LOOK_MERGE_MIN_SLIDES) return null;
+  if (!promptFillOutlineKeepsModelSubstance(outline, model)) return null;
+  const title =
+    sanitizeTemplateCloneDeckTitle(options.deckTitle)
+    || outline.title;
+  const html = buildTemplateClonedDeckHtml(seed, outline.slides, {
+    title,
+    ...(options.templateId != null ? { templateId: options.templateId } : {}),
+    ...(options.brief != null ? { brief: options.brief } : {}),
+    ...(options.maxSlides != null ? { maxSlides: options.maxSlides } : {}),
+  });
+  if (!html?.trim()) return null;
+  return { html, title };
+}
+
 export type TemplateCloneSlotFillTerminalDecision =
   | { kind: 'slot-fill'; html: string; title: string }
   | { kind: 'queue-repair' }

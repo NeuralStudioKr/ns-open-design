@@ -372,6 +372,8 @@ describe('templateCloneContentFill', () => {
     expect(isTemplateClonePromptFillPrompt(seed)).toBe(true);
     expect(seed).toMatch(/complete final deck artifact/i);
     expect(seed).toMatch(/Do not emit JSON outline/i);
+    expect(seed).toMatch(/Layout variety is REQUIRED/i);
+    expect(seed).toMatch(/Copy density mirrors the template preview/i);
     expect(seed).toMatch(/1920x1080/);
     expect(seed).toContain('Selected template: Html Ppt Zhangzara Daisy Days');
     expect(seed).toContain('Cover topic (use as the title, not the instruction): expo');

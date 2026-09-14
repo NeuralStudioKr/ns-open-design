@@ -3,6 +3,8 @@ import {
   DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID,
   SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE,
   SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION,
+  SLIDE_DECK_COPY_DENSITY_INSTRUCTION,
+  SLIDE_DECK_LAYOUT_VARIETY_INSTRUCTION,
   type InstalledPluginRecord,
 } from "@open-design/contracts";
 import { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from "../runtime/deckGuidance";
@@ -99,7 +101,12 @@ export const SLIDE_DECK_QUALITY_BAR_INSTRUCTION =
   "Reject title-only slides, raw user-prompt copy, template demo captions, and generic placeholders. " +
   "Vary slide roles/layouts and use the 1920×1080 canvas intentionally; keep content dense enough without bloating the HTML.";
 
-export { SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE, SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION };
+export {
+  SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE,
+  SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION,
+  SLIDE_DECK_COPY_DENSITY_INSTRUCTION,
+  SLIDE_DECK_LAYOUT_VARIETY_INSTRUCTION,
+};
 
 /** Canvas→Slide session pin. Home wizard close/create clears this so 「새 슬라이드」 stays on L1. */
 const LAST_EXPLICIT_DECK_TEMPLATE_KEY = "od:last-explicit-deck-template-id";
@@ -157,6 +164,8 @@ export const CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION =
   "If the source uses one palette and the selected template uses another, the template kit WINS. " +
   "Prefer clear slide sectioning over literal page layout. " +
   SLIDE_DECK_QUALITY_BAR_INSTRUCTION + " " +
+  SLIDE_DECK_LAYOUT_VARIETY_INSTRUCTION + " " +
+  SLIDE_DECK_COPY_DENSITY_INSTRUCTION + " " +
   SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION + " " +
   SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE + " " +
   "When source material is attached, expand its headings into presentation-ready copy — do not paste the user instruction or a heading list as the only body text. " +
@@ -186,6 +195,8 @@ export const HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION =
   "**Token-safe template apply:** use the Selected deck template visual kit + scaffold map in the system prompt (palette/fonts/compact motif cues/slide roles). " +
   "Content-swap the topic into that look — do NOT paste or regenerate a full example.html dump (input/output token risk). " +
   SLIDE_DECK_QUALITY_BAR_INSTRUCTION + " " +
+  SLIDE_DECK_LAYOUT_VARIETY_INSTRUCTION + " " +
+  SLIDE_DECK_COPY_DENSITY_INSTRUCTION + " " +
   SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION + " " +
   SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE + " " +
   "Emit ONE complete deck in this same response: " +

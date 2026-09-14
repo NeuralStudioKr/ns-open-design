@@ -183,6 +183,7 @@ import {
   looksLikeScrubbedCatalogExampleShell,
   sanitizePersistedDeckHostLeaks,
   decideTemplateCloneSlotFillTerminal,
+  applyTemplateClonePromptFillLookMerge,
   prepareTemplateCloneSlotFillAssistantText,
   type AudioVoiceOption,
   type MemorySystemPromptResponse,
@@ -10947,6 +10948,43 @@ export function ProjectView({
                 if (!(await recoverCloneLookSeedFallback())) {
                   artifactToPersist = null;
                 }
+              }
+            } else if (runTemplateClonePromptFillRef.current && artifactToPersist?.html) {
+              // Staging default is prompt-fill (MiniMax JSON turns historically
+              // AGENT_EXECUTION_FAILED). Canvas/Home/Drive still LOOK-seed first;
+              // merge model HTML back through the same host slot-fill so variety
+              // + sparse enrichment are not JSON-only.
+              try {
+                const seedHtml = await readProjectHtml('deck.html');
+                const requestedSlideCountSpec =
+                  extractRequestedSlideCountSpecFromMessages(messagesRef.current);
+                const honorCeiling = honorSlideCountCeiling(requestedSlideCountSpec);
+                const merged = applyTemplateClonePromptFillLookMerge(
+                  seedHtml,
+                  artifactToPersist.html,
+                  {
+                    templateId:
+                      (project.metadata as { selectedDeckTemplateId?: string } | undefined)
+                        ?.selectedDeckTemplateId
+                      ?? null,
+                    brief: runVisiblePromptRef.current || '',
+                    deckTitle: project.name || '슬라이드',
+                    ...(honorCeiling != null ? { maxSlides: honorCeiling } : {}),
+                  },
+                );
+                if (merged?.html) {
+                  artifactToPersist = {
+                    identifier: 'deck',
+                    artifactType: 'deck',
+                    title: merged.title || artifactToPersist.title,
+                    html: merged.html,
+                  };
+                }
+              } catch (error) {
+                devLog.warn(
+                  '[teamver] template clone prompt-fill look merge failed; keeping model HTML',
+                  error,
+                );
               }
             }
             if (artifactToPersist?.html) {
