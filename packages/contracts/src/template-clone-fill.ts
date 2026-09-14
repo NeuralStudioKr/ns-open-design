@@ -885,10 +885,6 @@ function topicKeywordForSynthBody(title: string): string {
 }
 
 type SynthTemplateTopicPreset =
-  | 'trigonometry'
-  | 'cloud-native'
-  | 'monorepo'
-  | 'expo'
   | 'service-intro'
   | 'generic';
 
@@ -904,24 +900,17 @@ type SynthTemplateBodyTemplate = {
   lines: string[];
 };
 
+/**
+ * Classify only structural brief shapes (URL service-intro vs free-form).
+ * Never branch on domain topics (삼각함수 / monorepo / expo / …) — those used
+ * to inject canned essays that looked like QA fixtures leaked into production
+ * (루프515).
+ */
 function classifySynthTemplateTopicProfile(
   cover: string,
   brief?: string | null,
 ): SynthTemplateTopicProfile {
   const topic = topicKeywordForSynthBody(cover);
-  const context = [cover, brief].filter(Boolean).join('\n').toLowerCase();
-  if (/삼각함수|trigonometry|\bsin\b|\bcos\b|\btan\b|sine|cosine|단위원|라디안/u.test(context)) {
-    return { topic, preset: 'trigonometry' };
-  }
-  if (/cloud\s*native|클라우드\s*네이티브|kubernetes|쿠버네티스|컨테이너|마이크로서비스|msa\b|서비스\s*메시/u.test(context)) {
-    return { topic, preset: 'cloud-native' };
-  }
-  if (/monorepo|모노레포|터보레포|turborepo|pnpm\s*workspace|nx\b|changesets|workspace\s*graph/u.test(context)) {
-    return { topic, preset: 'monorepo' };
-  }
-  if (/\bexpo\b|react\s*native|eas\s*build|eas\s*update|expo\s*router|ota|native\s*modules|config\s*plugins/u.test(context)) {
-    return { topic, preset: 'expo' };
-  }
   if (looksLikeServiceIntroCoverLeadContext(cover, brief)) {
     return { topic, preset: 'service-intro' };
   }
@@ -946,260 +935,6 @@ function templatesForSynthTemplateTopic(
   profile: SynthTemplateTopicProfile,
 ): SynthTemplateBodyTemplate[] {
   const topic = profile.topic;
-  if (profile.preset === 'trigonometry') {
-    return [
-      {
-        roleHint: 'list',
-        lead: '각을 길이의 비율로 읽는 출발점',
-        itemTitles: ['직각삼각형', '단위원', '실전 의미'],
-        lines: [
-          'sin·cos·tan은 한 각이 만드는 세 변의 비율을 이름 붙인 개념',
-          '단위원으로 확장하면 0도부터 360도 이후까지 같은 규칙으로 설명 가능',
-          '높이, 거리, 파동, 회전 운동을 계산하는 공통 언어로 쓰임',
-        ],
-      },
-      {
-        roleHint: 'cards',
-        lead: '세 함수가 맡는 역할을 분리하기',
-        itemTitles: ['sin', 'cos', 'tan'],
-        lines: [
-          'sin θ: y좌표와 높이 변화, 주기 현상에서 진폭을 읽는 기준',
-          'cos θ: x좌표와 수평 변화, 위상 차이를 비교할 때의 기준',
-          'tan θ: 기울기와 방향 변화, 직선의 경사 해석으로 연결',
-        ],
-      },
-      {
-        roleHint: 'process',
-        lead: '단위원에서 그래프로 이어지는 흐름',
-        itemTitles: ['각도', '좌표', '그래프'],
-        lines: [
-          '각도와 라디안을 같은 회전량으로 대응시킨다',
-          '회전한 점의 x·y좌표를 cos·sin 값으로 읽는다',
-          '좌표 변화를 시간축에 펼치면 사인·코사인 그래프가 된다',
-        ],
-      },
-      {
-        roleHint: 'cards',
-        lead: '그래프를 볼 때 놓치기 쉬운 네 가지',
-        itemTitles: ['주기', '진폭', '평행이동'],
-        lines: [
-          '주기: 같은 모양이 반복되는 간격, 기본 sin·cos는 2π',
-          '진폭: 중심선에서 위아래로 흔들리는 최대 거리',
-          '평행이동과 위상: 그래프가 좌우·상하로 이동해도 구조는 유지',
-        ],
-      },
-      {
-        roleHint: 'list',
-        lead: '공식 암기보다 관계를 먼저 잡기',
-        itemTitles: ['피타고라스', '덧셈정리', '변환'],
-        lines: [
-          'sin²θ + cos²θ = 1은 단위원의 반지름에서 바로 나온다',
-          '덧셈정리는 두 회전을 합칠 때 좌표가 어떻게 변하는지 설명한다',
-          '그래프 변환은 y=a sin b(x-c)+d의 각 파라미터 역할로 정리한다',
-        ],
-      },
-      {
-        roleHint: 'closing',
-        lead: '문제 풀이 순서',
-        itemTitles: ['정의', '그림', '검산'],
-        lines: [
-          '먼저 각이 어느 사분면에 있는지 보고 부호를 결정한다',
-          '단위원이나 그래프를 그려 값의 범위를 검산한다',
-          '공식은 마지막에 적용해 계산량을 줄인다',
-        ],
-      },
-    ];
-  }
-  if (profile.preset === 'cloud-native') {
-    return [
-      {
-        roleHint: 'list',
-        lead: '애플리케이션을 인프라 변화에 맞게 설계하는 방식',
-        itemTitles: ['컨테이너', '오케스트레이션', '자동화'],
-        lines: [
-          '컨테이너는 실행 환경을 이미지로 고정해 배포 차이를 줄인다',
-          'Kubernetes는 배치, 복구, 확장, 서비스 발견을 운영 단위로 묶는다',
-          'CI/CD와 선언형 인프라는 변경을 작게 자주 배포하게 만든다',
-        ],
-      },
-      {
-        roleHint: 'cards',
-        lead: '클라우드 네이티브를 구성하는 핵심 축',
-        itemTitles: ['서비스', '데이터', '관측'],
-        lines: [
-          '마이크로서비스: 팀 경계와 배포 경계를 맞춰 독립성을 높인다',
-          '상태 관리: DB, 캐시, 메시지 큐의 장애 범위를 분리한다',
-          'Observability: 로그·메트릭·트레이스로 장애 원인을 빠르게 좁힌다',
-        ],
-      },
-      {
-        roleHint: 'process',
-        lead: '개발에서 운영까지 이어지는 배포 흐름',
-        itemTitles: ['빌드', '릴리스', '운영'],
-        lines: [
-          '소스 변경이 컨테이너 이미지와 SBOM으로 만들어진다',
-          'Argo CD나 Flux가 Git 상태를 클러스터에 동기화한다',
-          '롤아웃, 롤백, 오토스케일링이 운영 정책으로 자동화된다',
-        ],
-      },
-      {
-        roleHint: 'cards',
-        lead: '시니어 엔지니어가 봐야 할 트레이드오프',
-        itemTitles: ['복잡도', '비용', '신뢰성'],
-        lines: [
-          '서비스 분리는 조직 속도를 높이지만 네트워크 장애면을 넓힌다',
-          '오토스케일링은 피크 대응에 강하지만 관측 없는 비용 증가를 만든다',
-          '플랫폼 추상화는 생산성을 높이지만 표준과 예외 관리가 필요하다',
-        ],
-      },
-      {
-        roleHint: 'list',
-        lead: '도입 판단 체크리스트',
-        itemTitles: ['조직', '시스템', '운영'],
-        lines: [
-          '팀이 독립 배포와 장애 소유권을 감당할 수 있는지 확인',
-          '모놀리스 분리보다 먼저 배포 자동화와 관측 체계를 갖춘다',
-          '보안, 네트워크, 비용 정책을 플랫폼 기본값으로 만든다',
-        ],
-      },
-      {
-        roleHint: 'closing',
-        lead: '성공 기준',
-        itemTitles: ['속도', '안정', '학습'],
-        lines: [
-          '배포 빈도와 변경 실패율을 함께 낮추는 것이 목표',
-          '장애를 숨기는 자동화가 아니라 빠르게 복구하는 체계를 만든다',
-          '플랫폼 팀은 도구 제공보다 제품 팀의 반복 실행을 돕는 역할에 집중한다',
-        ],
-      },
-    ];
-  }
-  if (profile.preset === 'monorepo') {
-    return [
-      {
-        roleHint: 'list',
-        lead: '하나의 저장소에서 여러 제품과 패키지를 함께 운영하는 전략',
-        itemTitles: ['경계', '그래프', '정책'],
-        lines: [
-          '앱과 패키지의 의존 관계를 workspace graph로 명시한다',
-          '공유 코드는 소유권, API 안정성, 변경 승인 기준을 함께 둔다',
-          '저장소 통합보다 빌드·테스트 범위 축소가 성패를 좌우한다',
-        ],
-      },
-      {
-        roleHint: 'cards',
-        lead: '시니어가 먼저 설계해야 할 운영 단위',
-        itemTitles: ['패키지', '태스크', '릴리스'],
-        lines: [
-          '패키지 경계: 재사용성과 결합도를 동시에 관리한다',
-          '태스크 캐시: 변경된 부분만 빌드·테스트해 CI 시간을 줄인다',
-          '버전 전략: Changesets나 release train으로 배포 책임을 분리한다',
-        ],
-      },
-      {
-        roleHint: 'process',
-        lead: '도입 순서',
-        itemTitles: ['통합', '최적화', '거버넌스'],
-        lines: [
-          '먼저 pnpm workspace, Nx, Turborepo 중 조직에 맞는 기본 구조를 정한다',
-          'affected test와 remote cache로 반복 빌드 비용을 낮춘다',
-          'CODEOWNERS, lint boundary, package policy로 무분별한 결합을 막는다',
-        ],
-      },
-      {
-        roleHint: 'cards',
-        lead: '흔한 실패 모드',
-        itemTitles: ['숨은 결합', '느린 CI', '릴리스 혼선'],
-        lines: [
-          '공유 유틸이 모든 앱을 끌어당기면 변경 영향 범위가 폭발한다',
-          '캐시 키와 affected graph가 부정확하면 전체 테스트로 되돌아간다',
-          '독립 버전과 고정 버전을 섞으면 배포 책임이 불명확해진다',
-        ],
-      },
-      {
-        roleHint: 'list',
-        lead: '운영 지표',
-        itemTitles: ['변경 범위', '시간', '품질'],
-        lines: [
-          'PR당 affected package 수와 cross-team 변경 비율',
-          'cold build, cached build, CI critical path 소요 시간',
-          '공유 패키지 회귀율과 릴리스 롤백 빈도',
-        ],
-      },
-      {
-        roleHint: 'closing',
-        lead: '결론',
-        itemTitles: ['원칙', '다음 단계'],
-        lines: [
-          '모노레포의 목표는 코드를 한곳에 넣는 것이 아니라 변경의 영향을 계산 가능하게 만드는 것',
-          '작게 시작해 graph, cache, ownership을 먼저 안정화한 뒤 릴리스 자동화를 확장한다',
-        ],
-      },
-    ];
-  }
-  if (profile.preset === 'expo') {
-    return [
-      {
-        roleHint: 'list',
-        lead: 'React Native 제품을 빠르게 만들고 안전하게 배포하는 플랫폼',
-        itemTitles: ['Managed Workflow', 'EAS', 'OTA'],
-        lines: [
-          'Managed Workflow는 네이티브 설정을 Expo config로 표준화한다',
-          'EAS Build와 Submit은 앱스토어 배포 파이프라인을 서비스화한다',
-          'EAS Update는 JS 번들을 OTA로 배포해 긴급 수정 시간을 줄인다',
-        ],
-      },
-      {
-        roleHint: 'cards',
-        lead: '시니어 관점의 핵심 판단',
-        itemTitles: ['생산성', '네이티브 확장', '릴리스'],
-        lines: [
-          '프로토타입 속도와 장기 운영 표준화를 동시에 얻을 수 있는지 본다',
-          'Native Modules와 config plugin으로 필요한 플랫폼 기능을 확장한다',
-          '채널, 런타임 버전, 롤백 정책으로 OTA 사고 범위를 통제한다',
-        ],
-      },
-      {
-        roleHint: 'process',
-        lead: '실무 배포 흐름',
-        itemTitles: ['개발', '검증', '배포'],
-        lines: [
-          'Expo Router로 화면 구조와 deep link를 파일 시스템에 맞춘다',
-          'development build에서 네이티브 의존성을 실제 환경으로 검증한다',
-          'preview channel과 production channel을 나눠 점진적으로 릴리스한다',
-        ],
-      },
-      {
-        roleHint: 'cards',
-        lead: 'Eject가 필요한 순간',
-        itemTitles: ['제약', '비용', '대안'],
-        lines: [
-          '지원되지 않는 네이티브 SDK나 빌드 단계 제어가 필수인 경우',
-          '플랫폼별 디버깅과 CI 비용이 Managed 이점보다 커지는 경우',
-          'config plugin, custom dev client로 해결 가능한지 먼저 검토',
-        ],
-      },
-      {
-        roleHint: 'list',
-        lead: '운영 체크리스트',
-        itemTitles: ['버전', '보안', '관측'],
-        lines: [
-          'runtimeVersion 정책을 정해 호환되지 않는 OTA 배포를 막는다',
-          '환경 변수와 secret은 EAS credential 경계에서 관리한다',
-          'Crashlytics, Sentry, analytics로 릴리스 품질을 추적한다',
-        ],
-      },
-      {
-        roleHint: 'closing',
-        lead: '결론',
-        itemTitles: ['적합', '다음 단계'],
-        lines: [
-          'Expo는 빠른 시작 도구가 아니라 모바일 제품 운영 플랫폼에 가깝다',
-          '팀의 네이티브 요구, 릴리스 빈도, OTA 위험 관리 수준으로 도입 여부를 판단한다',
-        ],
-      },
-    ];
-  }
   if (profile.preset === 'service-intro') {
     return [
       {
@@ -1283,6 +1018,7 @@ function templatesForSynthTemplateTopic(
       },
     ];
   }
+  // Free-form topics: topic-parameterized skeleton only — no domain essays.
   return [
     {
       roleHint: 'list',

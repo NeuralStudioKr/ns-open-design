@@ -496,32 +496,36 @@ describe('resolveTemplateCloneSlidesFromBrief', () => {
     expect(slides.length).toBeGreaterThanOrEqual(4);
   });
 
-  it('루프479 — restores v1.3-like topical density for non-service prompts', () => {
+  it('루프479/515 — free-form topics stay dense without domain essay presets', () => {
     const slides = resolveTemplateCloneSlidesForDeterministicFill({
       userInstruction: '삼각함수 설명 피피티 만들어줘. 고등학생 대상.',
       deckTitle: '삼각함수',
       slideCount: 6,
     });
     expect(slides).toHaveLength(6);
-    expect(slides[0]?.lead).toMatch(/삼각함수|핵심|단계/);
+    expect(slides[0]?.lead).toMatch(/삼각함수|핵심|단계|문제|가치/);
     for (const slide of slides.slice(1)) {
-      expect(slide.lead?.length ?? 0).toBeGreaterThan(8);
-      expect(slide.body?.length ?? 0).toBeGreaterThan(50);
+      expect(slide.lead?.length ?? 0).toBeGreaterThan(6);
+      expect(slide.body?.length ?? 0).toBeGreaterThan(40);
       expect(slide.items?.length ?? 0).toBeGreaterThanOrEqual(2);
     }
     const text = JSON.stringify(slides);
-    expect(text).toMatch(/sin|cos|tan|단위원|그래프|주기/);
+    expect(text).toMatch(/삼각함수/);
+    expect(text).toMatch(/배경|핵심 개념|실행 체크리스트|정리와 다음/);
+    expect(text).not.toMatch(/단위원|sin·cos|피타고라스|라디안을 같은 회전/);
     expect(text).not.toMatch(/파일·대화·템플릿|팀 워크스페이스|핵심 기능과 사용자가 얻는 직접적인 가치/);
   });
 
-  it('루프479 — keeps template clone content dense for senior engineering topics', () => {
+  it('루프479/515 — senior engineering briefs use generic topic skeleton, not monorepo essay', () => {
     const slides = resolveTemplateCloneSlidesForDeterministicFill({
       userInstruction: 'monorepo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨. 8장',
       deckTitle: 'Monorepo',
     });
     expect(slides).toHaveLength(8);
     const text = JSON.stringify(slides);
-    expect(text).toMatch(/workspace graph|태스크 캐시|Changesets|CI|CODEOWNERS/);
+    expect(text).toMatch(/monorepo/i);
+    expect(text).toMatch(/배경|핵심 개념|실행 체크리스트/);
+    expect(text).not.toMatch(/workspace graph|Changesets|CODEOWNERS|Turborepo/);
     expect(text).not.toMatch(/파일·대화·템플릿|팀 워크스페이스|초안 생성 후 템플릿 레이아웃/);
     expect(slides.slice(1).every((slide) => (slide.items?.length ?? 0) >= 2)).toBe(true);
   });

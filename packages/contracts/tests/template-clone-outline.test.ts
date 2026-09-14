@@ -565,14 +565,17 @@ describe('루프419 resolveTemplateCloneSlidesForDeterministicFill', () => {
     expect(outline?.slides[1]?.items?.every((item) => item.title && item.body)).toBe(true);
   });
 
-  it('루프425/479 — generic free-form stays dense, never ellipsis cards', () => {
+  it('루프425/479/515 — generic free-form stays dense without Expo essay preset', () => {
     const outline = synthesizeTemplateCloneOutlineFromBrief({
       userBrief: 'Expo 개발 도구에 대해 시니어 개발자용 발표 자료를 만들어 주세요',
       deckTitle: '슬라이드',
     });
     expect(outline?.slides).toHaveLength(6);
     expect(outline?.slides.some((slide) => slide.body === '…')).toBe(false);
-    expect(JSON.stringify(outline?.slides)).toMatch(/EAS|OTA|Expo Router|Native Modules/);
+    const text = JSON.stringify(outline?.slides);
+    expect(text).toMatch(/Expo/);
+    expect(text).toMatch(/배경|핵심 개념|실행 체크리스트/);
+    expect(text).not.toMatch(/EAS Build|Expo Router|Native Modules|Managed Workflow/);
   });
 });
 
