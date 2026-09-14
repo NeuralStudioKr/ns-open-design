@@ -439,12 +439,19 @@ export function formatOutlineDeckFallbackNotice(): string {
 /**
  * 루프362/364 — Clone 첫 채우기 턴에서 slot-fill이 실패(저품질 HTML · soft-invalid JSON 등)해
  * 이미 디스크에 있는 LOOK seed를 열고 run을 succeeded로 마감했다는 안내.
- * `incomplete_output` 대신 이 배너를 노출하고 우측 "다시 시도"로 완성본 재생성을 유도한다.
+ *
+ * 루프524 — succeeded+resumable 로 마감하기 때문에 ChatPane 의 Retry dock
+ * (retryableAssistantMessage 는 failed 만 인식) 이 뜨지 않는다. copy 가
+ * "우측 다시 시도 버튼" 을 안내하면 유저는 없는 버튼을 찾다가 컴포저에
+ * 브리프를 다시 입력하고, disk 의 LOOK seed 대비 짧은 재생성이
+ * findClientSlideCountRegression 에 걸려 `artifact_regression` 을 밟는다.
+ * 실제 UX 인 "채팅에 다시 요청" 을 안내하도록 copy 를 정정한다.
+ * (fresh 재요청 경로의 오진 자체는 A1/A2 에서 방어된다.)
  */
 export function formatCloneLookSeedFallbackNotice(): string {
   return isTeamverEmbedMode()
-    ? "슬라이드 채우기에 실패해 템플릿 초안(LOOK seed)을 유지했습니다. 우측의 '다시 시도' 버튼으로 완성본을 다시 생성해 주세요."
-    : "Slide fill did not complete — kept the template draft (LOOK seed). Use the retry button to regenerate the full deck.";
+    ? '슬라이드 채우기에 실패해 템플릿 초안(LOOK seed)을 임시로 유지했습니다. 채팅에 원하는 내용을 다시 요청해 완성본을 생성해 주세요.'
+    : 'Slide fill did not complete — kept the template draft (LOOK seed). Re-ask in chat to regenerate the full deck.';
 }
 
 /** 루프368 — JSON repair auto-send 진행 중 (LOOK seed 경고 전). @deprecated 루프371에서 FE repair loop 제거. */

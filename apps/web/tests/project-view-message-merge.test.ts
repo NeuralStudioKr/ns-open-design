@@ -482,6 +482,67 @@ describe("findClientSlideCountRegression", () => {
     ).toBeNull();
   });
 
+  // 루프524 — A fresh brief re-send after the LOOK seed banner has no
+  // `runTemplateCloneContentFillRef` / `runTemplateClonePromptFillRef`
+  // lineage, so `allowSlideCountReduction` is false. The disk carries
+  // an 8–10 slide Clone LOOK seed (metadata: templateClonedDeckSeeded);
+  // a legitimate 2–3 slide fresh fill must not be rejected as
+  // `artifact_regression` (reason=slide-count). The dedicated
+  // `priorProjectFile` bypass keeps the same guarantee that
+  // `findClientArtifactRegression` already gives via its `projectFiles`
+  // lookup, so the two sibling guards stay symmetric.
+  it("allows a compact fresh fill when the on-disk prior is a Clone LOOK seed", () => {
+    const priorSeed = Array.from(
+      { length: 8 },
+      (_, i) =>
+        `<section class="slide" data-slide-index="${i}"><h2>Slide ${i + 1}</h2></section>`,
+    ).join("\n");
+    const freshFill = [
+      '<section class="slide"><h1>Fresh cover</h1></section>',
+      '<section class="slide"><h2>Overview</h2><p>Body copy 1.</p></section>',
+      '<section class="slide"><h2>Details</h2><p>Body copy 2.</p></section>',
+    ].join("\n");
+    // Without the bypass: prior 8 vs new 3 → regression fires (control).
+    expect(
+      findClientSlideCountRegression({
+        fileName: "deck.html",
+        htmlBody: freshFill,
+        priorHtml: priorSeed,
+      }),
+    ).toMatchObject({ priorCount: 8, newCount: 3 });
+    // With `priorProjectFile` carrying the LOOK seed marker → bypass.
+    expect(
+      findClientSlideCountRegression({
+        fileName: "deck.html",
+        htmlBody: freshFill,
+        priorHtml: priorSeed,
+        priorProjectFile: {
+          artifactManifest: {
+            metadata: { templateClonedDeckSeeded: true },
+          },
+        },
+      }),
+    ).toBeNull();
+    // A filled stamp cancels the seed bypass — a real deliverable on
+    // disk must still enforce slide-count regression when the model
+    // regresses.
+    expect(
+      findClientSlideCountRegression({
+        fileName: "deck.html",
+        htmlBody: freshFill,
+        priorHtml: priorSeed,
+        priorProjectFile: {
+          artifactManifest: {
+            metadata: {
+              templateClonedDeckSeeded: true,
+              templateCloneContentFilled: true,
+            },
+          },
+        },
+      }),
+    ).toMatchObject({ priorCount: 8, newCount: 3 });
+  });
+
   it("counts slides even when open-tags contain quoted '>' in style attrs", () => {
     const priorHtml = Array.from({ length: 8 }, (_, i) =>
       i === 0
