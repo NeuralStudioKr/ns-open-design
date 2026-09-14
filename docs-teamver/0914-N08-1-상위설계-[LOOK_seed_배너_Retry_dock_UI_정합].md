@@ -1,4 +1,6 @@
-# 0914-N07-1 상위설계 — LOOK seed 배너 Retry dock UI 정합 (loop525)
+# 0914-N08-1 상위설계 — LOOK seed 배너 Retry dock UI 정합 (loop525)
+
+> 재넘버링: 병렬 세션이 0914-N07 을 outline generator 텔레메트리에 사용해 loop525 는 N08 로 이동. 내용 변경 없음.
 
 상위 배경: `0914-N06-1`.
 
