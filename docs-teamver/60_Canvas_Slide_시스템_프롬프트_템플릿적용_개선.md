@@ -46,6 +46,7 @@
 
 - [x] `extractTemplateScaffoldMap` — 각 row에 `roleHint=<enum>` · `items~=N` 힌트 삽입, 다양성 배너 (roleHint universe + “4장+ 덱은 최소 4개 이상 spread” 요구) 추가, 예산 1_000→1_500 상향
 - [x] `composeTeamverSlideApiPrompt` — JSON slot-fill hard requirement에 “every slide REQUIRES `roleHint`”, “4개 이상의 서로 다른 `roleHint` 값으로 spread”, “items 수 scaffold row `items~=` 매칭” 추가
+- [x] `TEAMVER_TEMPLATE_CLONE_PROMPT_FILL_CONTRACT` (HTML fill path) — “Layout variety is REQUIRED (mirror the template preview)” + “Card/grid slots must be filled (real title + 2–4 sentence body per card)” 추가. JSON slot-fill 경로만 강화하면 HTML fill 경로가 monotone 덱을 그대로 통과시켜 미리보기 대비 완성도 격차가 계속 유지되기 때문.
 - [x] `inferTemplateCloneContentRole` — items[] 2+ 신호 우선순위 강화 (stat/team/timeline/process 우선), 한국어 키워드 regex `\b` 제거
 - [x] `pickTemplateShellsForContent` — `VARIETY_SAFE_ROLE_PREFERENCE` 도입, shell이 2회 이상 스탬프될 때만 (그리고 template body pool ≥5일 때만) 재우선순위로 미사용 shell을 rotate — 콘텐츠와 무관한 shell로 튀지 않게 conservative
 - [x] `template-visual-kit` — `extractMotifSpritesFromHtml` 명시적 export, `template-scaffold`는 이제 kit 출력을 스크레이프하지 않고 sprite 목록을 직접 얻어옴 (scaffold map 예산 변동과 무관하게 sprite pool 안정)
