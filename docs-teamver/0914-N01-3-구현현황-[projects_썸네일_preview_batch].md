@@ -7,8 +7,8 @@
 | 단계 | commit | 상태 |
 |---|---|---|
 | 상위·구현설계 | `c60722c981` | ☑ |
-| FE warm + ready gate | (본 커밋) | ☑ |
-| 테스트 · push staging | (본 커밋 후) | ☐ |
+| FE warm + ready gate |  | ☑ |
+| 테스트 · push staging |  | ☑ |
 
 ## 구현 (완료)
 
