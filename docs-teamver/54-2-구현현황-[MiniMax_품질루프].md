@@ -48,6 +48,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts 254 passed · daemon template-clone 37 passed · web templateCloneContentFill 38 passed · contracts build passed.
 
+### 루프520–521 / 0914-N05 — deck-patch 비어있음 거부
+
+체감: 빈 `deck-patch` wrapper가 unscoped `rejected`로 떨어지고, 이미 저장된 덱이 LOOK seed 배너·저장 거부로 보였다.
+
+수정: 프롬프트 fail-fast(루프520) · sparse-repair persist만 soft-cancel · 자동화 턴 LOOK seed reload 제외(루프521). fill/heal/LOOK merge 비범위. [0914-N05-3](./0914-N05-3-구현현황-[deck-patch_비어있음_거부_근본해결].md).
+
 ### 루프519 / 0908-N02-6 — SSE 스톨 abort · 재시도 thinking 미도색
 
 체감: 데몬 watchdog SSE 스톨은 첫 스트림이 남은 채 재시도되고, 재시도 thinking이 카드에 붙었다.
