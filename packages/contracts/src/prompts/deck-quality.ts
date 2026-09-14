@@ -26,3 +26,22 @@ export const SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE =
   "Expand into domain slides for the stated topic and audience — definition, named parts, evidence, trade-offs, next steps. " +
   "A deck that only restates the instruction or the topic word (\"소개\", \"특징\") is a failed deliverable. " +
   "Do not copy this example's wording, or any other host-contract example, onto slides.";
+
+/**
+ * Shared with JSON slot-fill, prompt-fill, and Canvas/Home/Drive HTML create.
+ * Product entry (Canvas vs Home) must not weaken this contract.
+ */
+export const SLIDE_DECK_LAYOUT_VARIETY_INSTRUCTION =
+  "Layout variety is REQUIRED (mirror the template preview): " +
+  "the template ships multiple slide shells (cover, cards grid, stat/data, team, timeline, process, quote, closing). " +
+  "When the deck has 4+ content slides, rotate through ≥ 4 distinct shells from the Template scaffold map — " +
+  "never stamp the same list/body layout on every page while other shells sit unused.";
+
+/**
+ * Shared copy-density bar. Title-only cards / bare labels fail next to the
+ * template preview (~2–3 sentences per card).
+ */
+export const SLIDE_DECK_COPY_DENSITY_INSTRUCTION =
+  "Copy density mirrors the template preview: every non-cover, non-closing slide needs a full-sentence lead " +
+  "(or opening <p>) and card/list entries with a concrete 1-sentence body (~12–28 Korean chars or 6–16 English words). " +
+  "Bare labels (`핵심`, `개념`, `요약`), single-noun bullets, and title-only cards fail.";

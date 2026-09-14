@@ -745,6 +745,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       });
       expect(prompt).toContain('## Selected deck template — Html Ppt Zhangzara Daisy Days — MUST MATCH THIS VISUAL SPEC');
       expect(prompt).toContain('## Template visual kit (from example.html)');
+      expect(prompt).toMatch(/Layout variety/i);
+      expect(prompt).toMatch(/Copy density/i);
       expect(prompt).toContain('#F5F0E6');
       expect(prompt).toContain('Bodoni Moda');
       expect(prompt).toContain('Selected deck template visual — READ LAST');

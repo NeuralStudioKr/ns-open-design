@@ -1783,6 +1783,8 @@ export function composeTeamverSlideApiPrompt({
           + '- Do NOT dump/rewrite full example.html. Ignore SKILL.md "Clone example.html" in API mode.\n'
           + '- Bind kit Slide surface on html/body AND every `.slide`; use kit font names exactly.\n'
           + '- Follow scaffold map/Layout CSS roles. Keep compact motif/deco density via CSS shapes first. If SVG exists, use at most one short snippet AFTER title/body copy starts; never open Motif `<svg>` before cover copy; skip huge SVG/style payloads. No emoji ornaments.\n'
+          + '- **Layout variety** — 4+ content slides must rotate through ≥ 4 distinct scaffold-map shells. Do not stamp the same list/body layout on every page.\n'
+          + '- **Copy density** — every non-cover, non-closing slide needs a full-sentence lead and 1-sentence card/list bodies (~12–28 Korean chars or 6–16 English words). Bare labels and title-only cards fail.\n'
           + '- Do not paste a long `<head>` before slide 1; first produce visible slide sections and finish the deck.\n'
           + '- Active design system is secondary brand context only; template look wins.\n\n'
         )
