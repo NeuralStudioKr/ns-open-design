@@ -112,6 +112,29 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     expect(state.count).toBe(3);
   });
 
+  it('0914-N03: merges nested deck slides when structured direct-child selectors undercount', async () => {
+    // Nine `.deck > .slide` plus one wrapped `.deck > div > .slide` — the
+    // filmstrip HTML scanner counts 10, but pre-fix structured-only
+    // `slides()` returned 9 and locked the host pager at 9/9.
+    const direct = Array.from({ length: 9 }, (_, i) =>
+      `<section class="slide"><h2>Slide ${i + 1}</h2></section>`,
+    ).join('');
+    const nested = `<div class="extra-wrap"><section class="slide"><h2>성과 지표</h2></section></div>`;
+    const { win, parentPostMessage } = setupDeckBridge(
+      `<div class="deck">${direct}${nested}</div>`,
+    );
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
+    const state = lastSlideState(parentPostMessage);
+    expect(state).toBeDefined();
+    expect(state.count).toBe(10);
+
+    win.dispatchEvent(new win.window.MessageEvent('message', {
+      data: { type: 'od:slide', action: 'go', index: 9 },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
+    expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 9, count: 10 });
+  });
+
   it('advances transform-track decks that do not expose active classes or scroll state', async () => {
     const { win, parentPostMessage } = setupDeckBridge(`
       <style>

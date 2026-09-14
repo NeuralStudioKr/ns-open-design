@@ -7992,7 +7992,19 @@ function HtmlViewer({
           | null;
         if (!data || data.type !== 'od:slide-state') return;
         if (typeof data.active !== 'number' || typeof data.count !== 'number') return;
-        const next = { active: data.active, count: data.count };
+        // Prefer host HTML section count when the bridge undercounts (0914-N03)
+        // so the toolbar pager cannot stay at N/N while the filmstrip shows N+1.
+        let count = data.count;
+        const htmlForCount =
+          (typeof sourceRef.current === 'string' && sourceRef.current.trim() && sourceRef.current)
+          || (typeof source === 'string' && source.trim() && source)
+          || '';
+        if (htmlForCount) {
+          const htmlSlideCount = extractTopLevelSlideSections(htmlForCount).length;
+          if (htmlSlideCount > count) count = htmlSlideCount;
+        }
+        const active = Math.max(0, Math.min(data.active, Math.max(0, count - 1)));
+        const next = { active, count };
         setSlideStateCached(previewStateKey, next);
         setSlideState(next);
       });
@@ -8000,6 +8012,29 @@ function HtmlViewer({
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, [effectiveDeck, isActivePreviewIframeSource, isOurPreviewIframeSource, previewStateKey]);
+
+  // When disk/live HTML gains slides (heal/append) before the iframe recounts,
+  // lift slideState.count to the filmstrip section count so `< >` is not stuck
+  // one page behind the strip (0914-N03).
+  useEffect(() => {
+    if (!effectiveDeck) return;
+    const html =
+      (typeof source === 'string' && source.trim() && source)
+      || (typeof livePreviewSource === 'string' && livePreviewSource.trim() && livePreviewSource)
+      || (typeof liveHtml === 'string' && liveHtml.trim() && liveHtml)
+      || '';
+    if (!html) return;
+    const htmlCount = extractTopLevelSlideSections(html).length;
+    if (htmlCount <= 0) return;
+    setSlideState((prev) => {
+      if (prev && prev.count >= htmlCount) return prev;
+      const active = Math.min(prev?.active ?? 0, htmlCount - 1);
+      const next = { active, count: htmlCount };
+      setSlideStateCached(previewStateKey, next);
+      return next;
+    });
+    requestSlideStateFromIframe();
+  }, [effectiveDeck, liveHtml, livePreviewSource, previewStateKey, source]);
 
   useEffect(() => {
     if (!deckHostViewportFitActive || mode !== 'preview') return;
