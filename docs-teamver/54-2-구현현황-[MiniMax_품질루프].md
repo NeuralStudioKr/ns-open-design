@@ -48,6 +48,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts 254 passed · daemon template-clone 37 passed · web templateCloneContentFill 38 passed · contracts build passed.
 
+### 루프512 / 0908-N02-5 — 스톨 abort · 1회 재시도 · thinking-only
+
+체감: 478 soft-retry가 첫 MiniMax를 남긴 채 두 번째 fetch를 열고, idle 3회가 ~18분 Working이 되며, thinking-only 스톨은 빈 실패 카드로 끝났다.
+
+수정: 스톨 시 업스트림 abort · 스톨만 2시도 · thinking-only STALLED는 1회 재시도. [0908-N02-5](./0908-N02-5-구현설계-[스톨_재시도_abort_1회_thinking].md).
+
 ### 루프478 / 0908-N02-4 — 부분 덱 없는 스톨 soft-retry
 
 체감: 토큰이 하나도 안 온 채 스톨하면 10분 대기 후 실패 카드만 남고, 자동 재시도가 도는지 스펙이 비어 있었다.

@@ -189,7 +189,9 @@ export async function streamProxyEndpoint(
 
   // Soft-retry transient LLM/network/access failures before substantive
   // tokens stream (mirrors export soft-retry). Avoids intermittent hard failures.
-  const maxAttempts = 3;
+  // Stall idle uses a tighter budget (2 attempts) so 6m deck silence cannot
+  // stack to ~18 minutes (루프512).
+  const maxAttempts = PROXY_STREAM_SOFT_RETRY_MAX_ATTEMPTS;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     if (signal.aborted) return;
     // Warm X-Teamver-S3-Prefix before BYOK materialization so daemon sync-down
@@ -210,7 +212,7 @@ export async function streamProxyEndpoint(
     );
     if (outcome === 'ok' || outcome === 'aborted') return;
     const canRetry =
-      attempt < maxAttempts - 1
+      attempt < maxProxySoftRetryAttempts(outcome.error) - 1
       && !signal.aborted
       && shouldSoftRetryProxyFailure(outcome.error);
     if (!canRetry) {
@@ -227,6 +229,19 @@ export async function streamProxyEndpoint(
 
 /** @internal vitest — delay between pre-token stall soft-retries */
 export const PROXY_SOFT_RETRY_DELAY_MS = 600;
+/** Network / 502 budget. Stall idle uses {@link PROXY_STREAM_STALL_MAX_ATTEMPTS}. */
+export const PROXY_STREAM_SOFT_RETRY_MAX_ATTEMPTS = 3;
+/** 루프512 — one retry after a silent stall (2 attempts total). */
+export const PROXY_STREAM_STALL_MAX_ATTEMPTS = 2;
+
+/** @internal vitest */
+export function maxProxySoftRetryAttempts(
+  err: Error & { code?: string },
+): number {
+  const code = (err.code || '').trim().toUpperCase();
+  if (code === 'AGENT_EXECUTION_STALLED') return PROXY_STREAM_STALL_MAX_ATTEMPTS;
+  return PROXY_STREAM_SOFT_RETRY_MAX_ATTEMPTS;
+}
 
 function delayMs(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -283,6 +298,27 @@ export function shouldSoftRetryProxyFailure(
   return false;
 }
 
+/**
+ * Soft-retry after painted *content* would duplicate the assistant card.
+ * Thinking-only silence on AGENT_EXECUTION_STALLED still retries once (루프512) —
+ * MiniMax often thinks before any HTML, and that used to skip both retry and salvage.
+ */
+function applyStreamedOutputRetryableGate(
+  error: Error & { code?: string; retryable?: boolean },
+  receivedSubstantiveDelta: boolean,
+  receivedThinkingDelta: boolean,
+): void {
+  if (receivedSubstantiveDelta) {
+    error.retryable = false;
+    return;
+  }
+  if (!receivedThinkingDelta) return;
+  const code = (error.code || '').trim().toUpperCase();
+  if (code !== 'AGENT_EXECUTION_STALLED') {
+    error.retryable = false;
+  }
+}
+
 async function streamProxyEndpointOnce(
   endpoint: string,
   cfg: AppConfig,
@@ -295,9 +331,26 @@ async function streamProxyEndpointOnce(
   const managed = shouldUseManagedProxyApiKey(cfg);
   let acc = '';
   let receivedSubstantiveDelta = false;
-  /** Thinking frames already painted — soft-retry would duplicate the thinking UI. */
+  /** Thinking frames already painted — non-stall errors stay non-retryable. */
   let receivedThinkingDelta = false;
   let sawEndEvent = false;
+  let proxyStreamId = '';
+  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+
+  const releaseStalledUpstream = () => {
+    // Stall is an explicit FE kill, not a page-exit drain. Abort so a
+    // soft-retry does not stack a second MiniMax job on the first connection.
+    if (proxyStreamId) {
+      requestProxyAbort(proxyStreamId, {
+        conversationId: context?.conversationId ?? null,
+      });
+    }
+    try {
+      void reader?.cancel()?.catch(() => undefined);
+    } catch {
+      // leaked reader must not throw out of the stall path
+    }
+  };
 
   try {
     const messages = await buildProxyMessages(endpoint, history, context);
@@ -362,7 +415,7 @@ async function streamProxyEndpointOnce(
     // `resp.headers` is missing on some test mocks (Response shape is
     // partially stubbed). Treat that as "no streamId" so the abort hook
     // is a no-op and the body-streaming code path is unaffected.
-    const proxyStreamId =
+    proxyStreamId =
       (typeof resp.headers?.get === 'function'
         && (resp.headers.get('x-stream-id') || resp.headers.get('X-Stream-Id')))
       || '';
@@ -382,7 +435,8 @@ async function streamProxyEndpointOnce(
       }
     }
 
-    const reader = resp.body.getReader();
+    const activeReader = resp.body.getReader();
+    reader = activeReader;
     const decoder = new TextDecoder();
     let buf = '';
     // 루프423 — Stall on content silence. Daemon `: keepalive` every 25s must
@@ -396,7 +450,7 @@ async function streamProxyEndpointOnce(
         throw createProxyStreamIdleError();
       }
       const { value, done } = await readProxyStreamChunk(
-        reader,
+        activeReader,
         remainingMs,
         signal,
       );
@@ -453,9 +507,11 @@ async function streamProxyEndpointOnce(
           if (typeof retryableCandidate === 'boolean') {
             err.retryable = retryableCandidate;
           }
-          // Do not soft-retry after substantive tokens or thinking were streamed
-          // (would duplicate UI).
-          if (receivedSubstantiveDelta || receivedThinkingDelta) err.retryable = false;
+          applyStreamedOutputRetryableGate(
+            err,
+            receivedSubstantiveDelta,
+            receivedThinkingDelta,
+          );
           return { error: err };
         }
 
@@ -539,7 +595,11 @@ async function streamProxyEndpointOnce(
           if (typeof retryableCandidate === 'boolean') {
             err.retryable = retryableCandidate;
           }
-          if (receivedSubstantiveDelta || receivedThinkingDelta) err.retryable = false;
+          applyStreamedOutputRetryableGate(
+            err,
+            receivedSubstantiveDelta,
+            receivedThinkingDelta,
+          );
           return { error: err };
         } else if (parsed.event === 'usage') {
           const inputTokens = Number(parsed.data.input_tokens ?? parsed.data.inputTokens ?? 0);
@@ -600,11 +660,14 @@ async function streamProxyEndpointOnce(
       error.code = 'UPSTREAM_UNAVAILABLE';
       error.retryable = true;
     }
-    // Same gate as SSE error frames — soft-retry after painted tokens/thinking
-    // would duplicate UI content across attempts.
-    if (receivedSubstantiveDelta || receivedThinkingDelta) {
-      error.retryable = false;
+    if ((error.code || '').trim().toUpperCase() === 'AGENT_EXECUTION_STALLED') {
+      releaseStalledUpstream();
     }
+    applyStreamedOutputRetryableGate(
+      error,
+      receivedSubstantiveDelta,
+      receivedThinkingDelta,
+    );
     return { error };
   }
 }
