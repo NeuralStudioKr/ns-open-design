@@ -194,6 +194,8 @@ describe("ProjectView message loading", () => {
   it("injects selected deck template skillIds into daemon runs from project metadata", () => {
     const source = readSource("src/components/ProjectView.tsx");
     expect(source).toContain("enrichChatSendMetaWithProjectDeckTemplate(meta, project.metadata)");
+    expect(source).toContain("mergeRetryDeckTemplateIntoSendMeta(meta, retryTarget.userMsg)");
+    expect(source).toContain("findLatestExplicitDeckTemplateFromMessages(messages)");
     expect(source).toContain("resolveDeckTemplateSkillId(project.metadata, meta)");
   });
 

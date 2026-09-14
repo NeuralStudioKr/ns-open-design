@@ -53,6 +53,82 @@ export function looksLikeDeckTemplateSkillId(id: string | null | undefined): boo
   );
 }
 
+const DEFAULT_SCENARIO_DECK_TEMPLATE_IDS = new Set([
+  'example-simple-deck',
+]);
+
+/**
+ * Visual template the user picked (Zhangzara / html-ppt), not the default
+ * simple-deck scenario that Retry must not re-promote.
+ */
+export function looksLikeExplicitVisualDeckTemplateId(id: string | null | undefined): boolean {
+  const trimmed = id?.trim() ?? '';
+  if (!trimmed || DEFAULT_SCENARIO_DECK_TEMPLATE_IDS.has(trimmed)) return false;
+  return looksLikeDeckTemplateSkillId(trimmed);
+}
+
+export type DeckTemplateRunContext = {
+  selectedDeckTemplateId?: string;
+  selectedDeckTemplateTitle?: string;
+  skillIds?: string[];
+  contextSkillIds?: string[];
+};
+
+/** Recover the first-turn visual pin from a persisted user message. */
+export function selectedDeckTemplateMetadataFromRunContext(
+  runContext?: DeckTemplateRunContext | null,
+): SelectedDeckTemplateMetadata | null {
+  const fromId = runContext?.selectedDeckTemplateId?.trim();
+  if (fromId && looksLikeExplicitVisualDeckTemplateId(fromId)) {
+    const title = runContext?.selectedDeckTemplateTitle?.trim() || undefined;
+    return title ? { id: fromId, title } : { id: fromId };
+  }
+  for (const raw of [
+    ...(runContext?.skillIds ?? []),
+    ...(runContext?.contextSkillIds ?? []),
+  ]) {
+    const id = raw?.trim();
+    if (id && looksLikeExplicitVisualDeckTemplateId(id)) {
+      return { id };
+    }
+  }
+  return null;
+}
+
+/**
+ * Retry / auto-continue only sends `{ retryOfAssistantId }`. If project
+ * metadata is stale or empty, copy the original turn's visual pin so compose
+ * and LOOK-seed resolution do not fall back to simple-deck.
+ */
+export function mergeRetryDeckTemplateIntoSendMeta<T extends DeckTemplateSendMeta>(
+  meta: T | undefined,
+  retryUser?: { runContext?: DeckTemplateRunContext | null } | null,
+): T | undefined {
+  const existing = meta?.selectedDeckTemplateId?.trim();
+  if (existing && looksLikeExplicitVisualDeckTemplateId(existing)) return meta;
+  const fromRetry = selectedDeckTemplateMetadataFromRunContext(retryUser?.runContext);
+  if (!fromRetry) return meta;
+  return {
+    ...(meta ?? ({} as T)),
+    selectedDeckTemplateId: fromRetry.id,
+    ...(fromRetry.title
+      ? { selectedDeckTemplateTitle: fromRetry.title }
+      : {}),
+  };
+}
+
+export function findLatestExplicitDeckTemplateFromMessages(
+  messages: ReadonlyArray<{ role?: string; runContext?: DeckTemplateRunContext | null }>,
+): SelectedDeckTemplateMetadata | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role !== 'user') continue;
+    const found = selectedDeckTemplateMetadataFromRunContext(message.runContext);
+    if (found) return found;
+  }
+  return null;
+}
+
 /** Chat chip label — prefer title, then a readable id fallback (never hide the chip). */
 export function formatSelectedDeckTemplateChipLabel(
   selected: SelectedDeckTemplateMetadata | null | undefined,

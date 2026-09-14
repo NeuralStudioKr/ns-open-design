@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   enrichChatSendMetaWithProjectDeckTemplate,
+  findLatestExplicitDeckTemplateFromMessages,
   formatSelectedDeckTemplateChipLabel,
   looksLikeDeckTemplateSkillId,
+  looksLikeExplicitVisualDeckTemplateId,
+  mergeRetryDeckTemplateIntoSendMeta,
   resolveDeckTemplateSkillId,
   resolveSelectedDeckTemplateChipLabel,
   resolveScenarioPluginIdForLocalSkill,
+  selectedDeckTemplateMetadataFromRunContext,
   wrapSelectedDeckTemplateSkillBody,
 } from '../../src/runtime/selected-deck-template';
 
@@ -210,5 +214,84 @@ describe('selected-deck-template runtime helpers', () => {
     expect(looksLikeDeckTemplateSkillId('example-html-ppt-hermes')).toBe(true);
     expect(looksLikeDeckTemplateSkillId('html-ppt-hermes')).toBe(true);
     expect(looksLikeDeckTemplateSkillId('web-search')).toBe(false);
+  });
+
+  it('does not treat the default simple-deck scenario as an explicit visual pin (루프527)', () => {
+    expect(looksLikeExplicitVisualDeckTemplateId('example-html-ppt-zhangzara-studio')).toBe(true);
+    expect(looksLikeExplicitVisualDeckTemplateId('html-ppt-zhangzara-capsule')).toBe(true);
+    expect(looksLikeExplicitVisualDeckTemplateId('example-simple-deck')).toBe(false);
+    expect(looksLikeExplicitVisualDeckTemplateId('web-search')).toBe(false);
+  });
+
+  it('recovers the first-turn visual pin from a retry user runContext', () => {
+    expect(selectedDeckTemplateMetadataFromRunContext({
+      selectedDeckTemplateId: 'example-html-ppt-zhangzara-studio',
+      selectedDeckTemplateTitle: 'Studio',
+      skillIds: ['example-simple-deck'],
+    })).toEqual({
+      id: 'example-html-ppt-zhangzara-studio',
+      title: 'Studio',
+    });
+    expect(selectedDeckTemplateMetadataFromRunContext({
+      skillIds: ['example-html-ppt-zhangzara-capsule', 'example-simple-deck'],
+    })).toEqual({ id: 'example-html-ppt-zhangzara-capsule' });
+    expect(selectedDeckTemplateMetadataFromRunContext({
+      selectedDeckTemplateId: 'example-simple-deck',
+      skillIds: ['example-simple-deck'],
+    })).toBeNull();
+  });
+
+  it('copies the retry origin template when turn meta and project metadata are empty', () => {
+    const merged = mergeRetryDeckTemplateIntoSendMeta(
+      { retryOfAssistantId: 'asst-1' } as { retryOfAssistantId: string },
+      {
+        runContext: {
+          selectedDeckTemplateId: 'example-html-ppt-zhangzara-studio',
+          selectedDeckTemplateTitle: 'Studio',
+          skillIds: ['example-html-ppt-zhangzara-studio'],
+        },
+      },
+    );
+    expect(merged?.selectedDeckTemplateId).toBe('example-html-ppt-zhangzara-studio');
+    expect(merged?.selectedDeckTemplateTitle).toBe('Studio');
+    const enriched = enrichChatSendMetaWithProjectDeckTemplate(merged, { kind: 'deck' });
+    expect(enriched?.skillIds).toEqual(['example-html-ppt-zhangzara-studio']);
+    expect(enriched?.selectedDeckTemplateId).toBe('example-html-ppt-zhangzara-studio');
+  });
+
+  it('keeps an already-pinned turn template instead of the retry origin', () => {
+    const merged = mergeRetryDeckTemplateIntoSendMeta(
+      {
+        selectedDeckTemplateId: 'html-ppt-zhangzara-capsule',
+        selectedDeckTemplateTitle: 'Capsule',
+      },
+      {
+        runContext: {
+          selectedDeckTemplateId: 'example-html-ppt-zhangzara-studio',
+          selectedDeckTemplateTitle: 'Studio',
+        },
+      },
+    );
+    expect(merged?.selectedDeckTemplateId).toBe('html-ppt-zhangzara-capsule');
+  });
+
+  it('finds the latest explicit visual pin in conversation history', () => {
+    expect(findLatestExplicitDeckTemplateFromMessages([
+      {
+        role: 'user',
+        runContext: {
+          selectedDeckTemplateId: 'example-html-ppt-zhangzara-studio',
+          selectedDeckTemplateTitle: 'Studio',
+        },
+      },
+      { role: 'assistant', runContext: null },
+      { role: 'user', runContext: { skillIds: ['example-simple-deck'] } },
+    ])).toEqual({
+      id: 'example-html-ppt-zhangzara-studio',
+      title: 'Studio',
+    });
+    expect(findLatestExplicitDeckTemplateFromMessages([
+      { role: 'user', runContext: { skillIds: ['example-simple-deck'] } },
+    ])).toBeNull();
   });
 });

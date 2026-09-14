@@ -32,6 +32,17 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **명시 5장+ 요청에서는 저장하지 않는다.** 8–10장 요청의 1장/4장 Template Clone fill은 `deck.html` 덮어쓰기 전에 incomplete로 막고 기존 덱을 보존한다. 6장 이상 첫 fill만 저장 후 top-up 가능하다. 사용자가 1장을 명시하거나 요청 장수가 작을 때만 1장 저장을 허용한다 |
 
+### 1.38 2026-09-14 — Retry에서 선택 템플릿이 기본값으로 바뀌는 문제
+
+증상: 1차 Clone fill 실패 후 「다시 시도」를 누르면 고른 Zhangzara 등 시각 템플릿이 사라지고 기본 슬라이드 템플릿이 적용된다.
+
+원인: `handleRetry`는 `{ retryOfAssistantId }`만 보낸다. 첫 턴은 confirm turn meta로 핀을 붙이지만 Retry에는 turn meta가 없고, `project.metadata`가 비어 있으면 compose/LOOK seed가 simple-deck으로 떨어진다.
+
+- [x] `mergeRetryDeckTemplateIntoSendMeta` — 원본 user `runContext`에서 explicit 시각 핀 복구 (루프527)
+- [x] 대화 history fallback — 컴포저 재입력에서도 마지막 explicit 핀 유지
+- [x] `example-simple-deck`은 시각 핀으로 승격하지 않음
+- fill/heal/LOOK merge HTML은 변경하지 않음
+
 ### 1.37 2026-09-14 — LOOK seed fallback 안내 오탐 차단
 
 증상: “슬라이드 채우기에 실패해 템플릿 초안(LOOK seed)을 유지했습니다” 안내가 생성 완료처럼 보이는 결과 뒤에도 노출됐다. raw LOOK seed만 열린 경우와, broken JSON을 brief 기반 synthesized outline으로 slot-fill해 topical deck을 만든 경우를 같은 `seed-fallback` 분기로 처리했기 때문이다.

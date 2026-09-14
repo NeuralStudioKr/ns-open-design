@@ -48,6 +48,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts 254 passed · daemon template-clone 37 passed · web templateCloneContentFill 38 passed · contracts build passed.
 
+### 루프527 / 0914-N10 — Retry 선택 템플릿 핀 복구
+
+체감: 1차 생성 실패 후 다시 시도하면 고른 템플릿이 사라지고 기본 템플릿이 적용됐다.
+
+수정: Retry/후속 전송에서 원본 user `runContext`의 시각 핀만 복구. fill/heal/LOOK merge 비범위. [0914-N10-3](./0914-N10-3-구현현황-[Retry_템플릿_핀_소실].md).
+
+검증: web selected-deck-template + project-view-message-load + embed-slide-only + canvas-slide-launch 128 passed.
+
 ### 루프526 / 0914-N07 — outline generator 텔레메트리 (observe-only)
 
 체감: 첫 JSON outline이 title-only여도 persist 후에야 숫자가 남았다.

@@ -207,7 +207,9 @@ import {
 } from '../runtime/revision-analytics';
 import {
   enrichChatSendMetaWithProjectDeckTemplate,
+  findLatestExplicitDeckTemplateFromMessages,
   formatSelectedDeckTemplateChipLabel,
+  mergeRetryDeckTemplateIntoSendMeta,
   resolveDeckTemplateSkillId,
   resolveScenarioPluginIdForLocalSkill,
   selectedDeckTemplateMetadata,
@@ -10064,6 +10066,30 @@ export function ProjectView({
         ? resolveRetryTarget(messages, meta.retryOfAssistantId)
         : null;
       if (meta?.retryOfAssistantId && !retryTarget) return false;
+      // 루프527 — Retry/follow-up must keep the first-turn visual template.
+      // handleRetry only sends `{ retryOfAssistantId }`. When project.metadata
+      // is stale or empty, compose/LOOK-seed would otherwise fall back to
+      // simple-deck ("기본 템플릿").
+      if (retryTarget) {
+        meta = enrichChatSendMetaWithProjectDeckTemplate(
+          mergeRetryDeckTemplateIntoSendMeta(meta, retryTarget.userMsg),
+          project.metadata,
+        );
+      } else if (!selectedDeckTemplateMetadata(project.metadata, meta)) {
+        const fromHistory = findLatestExplicitDeckTemplateFromMessages(messages);
+        if (fromHistory) {
+          meta = enrichChatSendMetaWithProjectDeckTemplate(
+            {
+              ...(meta ?? {}),
+              selectedDeckTemplateId: fromHistory.id,
+              ...(fromHistory.title
+                ? { selectedDeckTemplateTitle: fromHistory.title }
+                : {}),
+            },
+            project.metadata,
+          );
+        }
+      }
       if (retryTarget && config.mode === 'api') {
         try {
           const deleted = await cleanupByokRetryArtifacts(
