@@ -612,6 +612,14 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt.indexOf('# Final authority (READ LAST)')).toBeGreaterThan(
         prompt.indexOf('Slide deck — API compact contract'),
       );
+      // docs-teamver/60 — outline generator must be told to spread roleHint
+      // across the template's available shell roles (previous prompt allowed
+      // "optional roleHint" and got 8 slides all with roleHint=body).
+      expect(prompt).toMatch(/roleHint`?\s*is\s*REQUIRED/i);
+      expect(prompt).toMatch(/Layout variety|distinct roleHint|distinct \\`roleHint\\`|4\+ slide deck|4 \+ content slides/i);
+      expect(prompt).toMatch(/failed deliverable|failed render/i);
+      expect(prompt).toMatch(/scaffold map|Template scaffold map/i);
+      expect(prompt).toMatch(/items~=|items\[\] entries|Item count fidelity/i);
     });
 
     it('omits comment-edit / existing-deck contracts on greenfield turns', () => {

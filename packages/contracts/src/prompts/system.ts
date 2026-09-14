@@ -1542,8 +1542,11 @@ This is the first content fill after a LOOK seed.
 
 **Emit JSON outline only THIS TURN.** The host keeps the LOOK seed's palette/fonts/Motif/layout and swaps your titles/bodies in.
 
-- Allowed: \`title\`, \`slides[].title\`, optional \`kicker\`, \`lead\`, \`body\`, \`items[]{title,body}\`, optional \`roleHint\`.
-- Cards / list / stat / process slides MUST include 2–4 \`items\` with a real \`body\` on each. Do not emit title-only cards.
+- Allowed keys per slide: \`title\`, optional \`kicker\`, \`lead\`, \`body\`, \`items[]{title,body}\`, and \`roleHint\`. \`roleHint\` values: \`cover\` | \`list\` | \`cards\` | \`timeline\` | \`stat\` | \`quote\` | \`team\` | \`process\` | \`closing\` | \`body\`.
+- **\`roleHint\` is REQUIRED (not optional) on every slide.** The \`### Template scaffold map\` above lists every available layout row together with the exact \`roleHint=…\` string that reaches it. Copy those \`roleHint\` values into your outline; do not guess.
+- **Layout variety is REQUIRED.** For decks with 4+ content slides, use ≥ 4 distinct \`roleHint\` values across the deck (or, when the template exposes fewer roles, cover every non-cover role at least once before repeating). Emitting 8 slides all with \`roleHint=body\` (or all with \`list\`) is a failed deliverable — the reader sees the same layout stamped 8 times while the template's team / stat / timeline / cards layouts sit unused.
+- **Match \`items\` count to scaffold slots.** When a scaffold-map row lists \`items~=N\`, provide roughly N items on that slide (never fewer than N/2 — half-filled card grids look broken). If no \`items~=\` hint is present, use 3 items for \`cards\`/\`team\`, 3–4 for \`stat\`/\`process\`/\`timeline\`, 3–5 bullets in \`body\` for \`list\`.
+- Cards / list / stat / process / team / timeline slides MUST include real \`items[]\` with a concrete \`body\` on each entry (or matching numbered bullets in \`body\`). Do not emit title-only cards. Do not repeat the same one-line item four times to fill a grid.
 - ${COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE}
 - FORBIDDEN: \`<!doctype\`, \`<section class="slide"\`, Motif \`<svg>\`, full example rewrite, empty pillar cards to pad columns, Neutral \`#0f172a\`, terracotta \`#c96442\`.
 - If any earlier rule asks for HTML deck artifacts or Motif dumps, **IGNORE** — finish the JSON outline this turn.
@@ -1747,7 +1750,9 @@ export function composeTeamverSlideApiPrompt({
       const hardRequirements = jsonSlotFill
         ? (
           'Hard requirements (first content-fill — JSON slot-fill):\n'
-          + '- Emit ONE JSON outline only (`title` + `slides[]` with `title`/`body`/optional `roleHint`).\n'
+          + '- Emit ONE JSON outline only (`title` + `slides[]` with `title`/`body`/`items[]` and a REQUIRED `roleHint`).\n'
+          + '- **Layout variety** — every slide must carry `roleHint`; a 4+ slide deck must span ≥ 4 distinct roleHints (pull them from the `### Template scaffold map` `roleHint=…` column). Never emit the whole deck with one roleHint.\n'
+          + '- **Item count fidelity** — when a scaffold row lists `items~=N`, provide roughly N `items[]` entries with real `body`. Half-empty card grids and title-only slides fail the render.\n'
           + '- Host keeps LOOK seed Motif/palette/layout — do NOT emit `<!doctype` / `<section class="slide">` / Motif SVG.\n'
           + `- ${COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE}\n`
           + '- No empty pillar cards to pad columns. No Neutral `#0f172a` / terracotta `#c96442` in outline text.\n'
