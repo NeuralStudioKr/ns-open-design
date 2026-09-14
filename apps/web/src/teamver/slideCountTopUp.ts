@@ -262,6 +262,24 @@ export function formatSoftImprovementTurnFailureNotice(): string {
   return "슬라이드 보완을 마치지 못했지만, 저장된 슬라이드는 그대로 유지됩니다. 더 채우고 싶으면 다시 요청해 주세요.";
 }
 
+/**
+ * 루프507 — Rewrite / slide-count top-up could not start because the chat was
+ * still busy after busy-retries. Previously returned with no UI, so a thin or
+ * short deck looked like an endless hang.
+ */
+export function formatSlideAutomationBusyDropNotice(kind: "rewrite" | "top_up"): string {
+  return kind === "rewrite"
+    ? "표지 초안을 본문으로 바꾸는 후속 생성을 시작하지 못했습니다. 잠시 후 다시 요청해 주세요."
+    : "요청하신 장수만큼 이어서 채우는 후속 생성을 시작하지 못했습니다. 잠시 후 다시 요청해 주세요.";
+}
+
+/**
+ * 루프507 — Rewrite budget already spent and the disk deck is still thin.
+ */
+export function formatThinPriorRewriteExhaustedNotice(): string {
+  return "표지 초안을 채우는 생성이 한 번 끝났지만 본문이 비어 있습니다. 같은 요청을 다시 보내 주세요.";
+}
+
 /** User follow-up that wants more pages — not a title/color surgical edit. */
 export function looksLikeSlideCountExpansionRequest(
   text: string | null | undefined,

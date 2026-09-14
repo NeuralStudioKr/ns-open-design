@@ -568,6 +568,8 @@ import {
   buildSparseContentTopUpPrompt,
   buildThinPriorFullRewritePrompt,
   formatSoftImprovementTurnFailureNotice,
+  formatSlideAutomationBusyDropNotice,
+  formatThinPriorRewriteExhaustedNotice,
   isSoftImprovementAutomationEntryFrom,
   applyHonorSlideCeilingToHtml,
   countSparseContentTopUpAttemptsInConversation,
@@ -12907,6 +12909,11 @@ export function ProjectView({
                 );
                 return;
               }
+              // 루프507 — Do not leave the user on a thin seed with no notice.
+              surfaceChatVisibleError(
+                formatSlideAutomationBusyDropNotice("rewrite"),
+                "slide_automation_busy_drop",
+              );
               return;
             }
             const sendNow = handleSendRef.current;
@@ -12927,6 +12934,10 @@ export function ProjectView({
           thinPrior,
           rewriteCount: rewriteAlready,
         })) {
+          surfaceChatVisibleError(
+            formatThinPriorRewriteExhaustedNotice(),
+            "thin_prior_rewrite_exhausted",
+          );
           return;
         }
         const already = syncSlideCountTopUpCountFromMessages(
@@ -13079,6 +13090,10 @@ export function ProjectView({
               conversationSlideCountTopUpCountRef.current,
               scheduledConversationId,
             );
+            surfaceChatVisibleError(
+              formatSlideAutomationBusyDropNotice("top_up"),
+              "slide_automation_busy_drop",
+            );
             return;
           }
           const sendNow = handleSendRef.current;
@@ -13086,6 +13101,10 @@ export function ProjectView({
             rollbackSlideCountTopUpCount(
               conversationSlideCountTopUpCountRef.current,
               scheduledConversationId,
+            );
+            surfaceChatVisibleError(
+              formatSlideAutomationBusyDropNotice("top_up"),
+              "slide_automation_busy_drop",
             );
             return;
           }
@@ -13113,12 +13132,25 @@ export function ProjectView({
               conversationSlideCountTopUpCountRef.current,
               scheduledConversationId,
             );
+            surfaceChatVisibleError(
+              formatSlideAutomationBusyDropNotice("top_up"),
+              "slide_automation_busy_drop",
+            );
           });
         };
         slideCountTopUpTimerRef.current = window.setTimeout(fireTopUp, 700);
       })();
     };
-  }, [handleSend, activeConversationId, project.id, readProjectHtml, slideOnlyMvp, clearApiBackgroundRecoveryBanner, clearStreamingMarker]);
+  }, [
+    handleSend,
+    activeConversationId,
+    project.id,
+    readProjectHtml,
+    slideOnlyMvp,
+    clearApiBackgroundRecoveryBanner,
+    clearStreamingMarker,
+    surfaceChatVisibleError,
+  ]);
 
   // Cancel every in-flight run for the current conversation (the user's own
   // streaming turn plus any reattached runs), mark their assistant messages

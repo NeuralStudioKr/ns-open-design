@@ -14,6 +14,8 @@ import {
   formatSoftImprovementTurnFailureNotice,
   isSoftImprovementAutomationEntryFrom,
   isSoftImprovementAutomationPrompt,
+  formatSlideAutomationBusyDropNotice,
+  formatThinPriorRewriteExhaustedNotice,
   buildSlideCountTopUpPrompt,
   buildSparseContentTopUpPrompt,
   buildThinPriorFullRewritePrompt,
@@ -659,5 +661,8 @@ describe("slideCountTopUp", () => {
       buildSlideCountTopUpPrompt({ produced: 4, requested: 10 }),
     )).toBe(false);
     expect(formatSoftImprovementTurnFailureNotice()).toMatch(/그대로 유지/);
+    expect(formatSlideAutomationBusyDropNotice("rewrite")).toMatch(/후속 생성/);
+    expect(formatSlideAutomationBusyDropNotice("top_up")).toMatch(/장수/);
+    expect(formatThinPriorRewriteExhaustedNotice()).toMatch(/본문이 비어/);
   });
 });
