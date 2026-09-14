@@ -9,6 +9,7 @@ import {
   findClientSlideCountRegression,
   findTemplateCloneFillStructureIncomplete,
   findTemplateCloneFillSlideCountIncomplete,
+  resolveTemplateCloneRunBrief,
   templateCloneSeedFallbackShouldWarn,
   promptWithExistingDeckEditInstruction,
   resolveCanonicalDeckFileForEdit,
@@ -194,6 +195,46 @@ describe("promptWithSlideAttachmentDeliverableInstruction", () => {
     expect(prompt).toMatch(/NEW slide deck|This is CREATE/i);
     expect(prompt).not.toContain("NEVER reduce the number of `<section class=\"slide\">` blocks");
     expect(prompt).not.toContain("surgical insert into the EXISTING deck");
+  });
+});
+
+describe("resolveTemplateCloneRunBrief", () => {
+  it("keeps the original user topic on Clone retry / auto-continue turns", () => {
+    const brief = resolveTemplateCloneRunBrief({
+      prompt: [
+        '<!--od:auto_continue_incomplete_output-->',
+        '[FINAL RETRY]',
+        '직전 응답은 `deck.html`을 완성하지 못했습니다.',
+      ].join('\n'),
+      persistedUserContent: '슬라이드 채우기에 실패해 템플릿 초안(LOOK seed)을 유지했습니다.',
+      retryUserContent: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장',
+      pendingPrompt: [
+        'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장',
+        '',
+        '[Template clone prompt fill]',
+        'Host-only contract.',
+      ].join('\n'),
+      projectName: '슬라이드',
+    });
+
+    expect(brief).toBe('www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장');
+  });
+
+  it("uses the selected pending prompt topic instead of a generic project title", () => {
+    const brief = resolveTemplateCloneRunBrief({
+      prompt: '',
+      persistedUserContent: '',
+      retryUserContent: '',
+      pendingPrompt: [
+        'Expo 개발 도구에 대해 시니어 개발자용 발표 자료를 만들어 주세요',
+        '',
+        '[Template clone content fill]',
+        'JSON outline only.',
+      ].join('\n'),
+      projectName: '슬라이드',
+    });
+
+    expect(brief).toBe('Expo 개발 도구에 대해 시니어 개발자용 발표 자료를 만들어 주세요');
   });
 });
 

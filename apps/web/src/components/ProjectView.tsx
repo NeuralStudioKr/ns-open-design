@@ -231,6 +231,7 @@ import {
   isTemplateCloneContentFillPrompt,
   isTemplateCloneHostFillPrompt,
   isTemplateClonePromptFillPrompt,
+  extractTemplateCloneUserFacingRequest,
   templateCloneFillModeFromUserMessage,
   templateCloneAutoContinueFlags,
   isTemplateCloneContentFillQueued,
@@ -3090,11 +3091,23 @@ export function findClientSlideCountRegression(input: {
   strict?: boolean;
   /** Clone fill replaces a multi-slide LOOK seed with a capped content deck. */
   allowSlideCountReduction?: boolean;
+  /**
+   * 루프524 — Direct bypass when the on-disk deck is a Clone LOOK seed
+   * (identified via artifactManifest.metadata.templateClonedDeckSeeded).
+   * Sibling `findClientArtifactRegression` already respects this via its
+   * `projectFiles` lookup. Passing the resolved file here removes the
+   * asymmetry so a fresh brief re-send after the LOOK seed banner is not
+   * rejected as an `artifact_regression` (reason=slide-count).
+   */
+  priorProjectFile?:
+    | { artifactManifest?: { metadata?: Record<string, unknown> | null } | null }
+    | null;
   /** Same brief leftover-catalog detection uses on persist. */
   healBrief?: string | null;
   healTitle?: string | null;
 }): { fileName: string; priorCount: number; newCount: number; reason: string } | null {
   if (input.allowSlideCountReduction) return null;
+  if (isTemplateCloneLookSeedFile(input.priorProjectFile)) return null;
   if (priorDeckAllowsCompactReplacement(input.priorHtml, input.healBrief)) return null;
   const fileName = input.fileName.trim();
   if (!fileName.toLowerCase().endsWith('.html')) return null;
@@ -3200,6 +3213,54 @@ export function templateCloneSeedFallbackShouldWarn(input: {
   const seed = String(input.seedHtml ?? '').trim();
   const decision = String(input.decisionHtml ?? '').trim();
   return decision.length === 0 || decision === seed;
+}
+
+function templateCloneBriefLooksUsable(text: string | null | undefined): text is string {
+  const value = String(text ?? '').trim();
+  if (!value) return false;
+  if (/^(?:슬라이드|프레젠테이션|발표자료|deck|presentation)$/i.test(value)) return false;
+  if (/^슬라이드\s*(?:초안|덱)?\s*(?:작성|생성|만들기|채우기)?$/i.test(value)) return false;
+  if (/^(?:create|make|build|generate)\s+(?:a\s+)?(?:slide\s*)?(?:deck|presentation)$/i.test(value)) {
+    return false;
+  }
+  if (/^슬라이드 채우기에 실패해/i.test(value)) return false;
+  if (/^\[?FINAL RETRY\]?/i.test(value)) return false;
+  if (/^<!--od:auto_continue_incomplete_output-->/i.test(value)) return false;
+  return true;
+}
+
+export function resolveTemplateCloneRunBrief(input: {
+  prompt: string | null | undefined;
+  persistedUserContent?: string | null;
+  retryUserContent?: string | null;
+  pendingPrompt?: string | null;
+  projectName?: string | null;
+}): string {
+  const prompt = String(input.prompt ?? '');
+  const persistedUserContent = String(input.persistedUserContent ?? '');
+  const retryUserContent = String(input.retryUserContent ?? '');
+  const pendingPrompt = String(input.pendingPrompt ?? '');
+  const projectName = String(input.projectName ?? '').trim();
+  const candidates = [
+    stripUserVisibleUserMessageText(retryUserContent).trim(),
+    stripUserVisibleUserMessageText(persistedUserContent).trim(),
+    extractTemplateCloneUserFacingRequest({
+      userInstruction: retryUserContent || persistedUserContent || prompt,
+      sourceBrief: pendingPrompt,
+      pendingPrompt: prompt,
+    }).trim(),
+    stripUserVisibleUserMessageText(prompt).trim(),
+    extractTemplateCloneUserFacingRequest({
+      userInstruction: pendingPrompt,
+      sourceBrief: prompt,
+      pendingPrompt,
+    }).trim(),
+    projectName,
+  ];
+  for (const candidate of candidates) {
+    if (templateCloneBriefLooksUsable(candidate)) return candidate;
+  }
+  return stripUserVisibleUserMessageText(prompt).trim();
 }
 
 export { tryRecoverCloneContentFillLookSeed } from '../runtime/slide-deliverable-recovery';
@@ -6268,9 +6329,27 @@ export function ProjectView({
               },
             });
       const priorDiskHtml = ext === '.html' ? await readDiskHtml(fileName) : null;
+      // 루프524 — Find the on-disk project entry that matches the persist
+      // target so the LOOK seed manifest guard (below) can bypass
+      // regression checks that would otherwise reject a legitimate short
+      // fill against a multi-shell Clone LOOK seed prior. `findClientArtifactRegression`
+      // already recognizes LOOK seed via its own `projectFiles` lookup,
+      // but `findClientSlideCountRegression` and the daemon stub-guard
+      // depend on the composite `allowReplaceSeedOrLeftover` flag below.
+      const priorProjectFile = ext === '.html'
+        ? currentProjectFiles.find((file) => {
+          const name = (file.path ?? file.name).trim();
+          return name === fileName || file.name.trim() === fileName;
+        }) ?? null
+        : null;
+      const priorIsCloneLookSeedFile = isTemplateCloneLookSeedFile(priorProjectFile);
       const allowReplaceSeedOrLeftover =
         runTemplateCloneContentFillRef.current
         || runTemplateClonePromptFillRef.current
+        // 루프524 — LOOK seed on disk is not a user deliverable. Any
+        // compact fresh fill (fresh brief re-send after seed banner)
+        // must be allowed to replace it regardless of slide-count drop.
+        || priorIsCloneLookSeedFile
         || priorDeckAllowsCompactReplacement(
           priorDiskHtml,
           runVisiblePromptRef.current || '',
@@ -6331,6 +6410,11 @@ export function ProjectView({
             priorHtml,
             strict: strictSlideCount,
             allowSlideCountReduction: allowReplaceSeedOrLeftover,
+            // 루프524 — Double protection: even if a future caller forgets
+            // to fold LOOK seed metadata into `allowReplaceSeedOrLeftover`,
+            // the function's own bypass will still spare a legitimate short
+            // fresh fill from being rejected against a Clone LOOK seed prior.
+            priorProjectFile,
             healBrief: runVisiblePromptRef.current || '',
             healTitle: project.name || '슬라이드',
           });
@@ -10445,7 +10529,15 @@ export function ProjectView({
           };
       const runCommentAttachments = scopedCommentAttachments;
       runCommentAttachmentsRef.current = runCommentAttachments;
-      runVisiblePromptRef.current = stripUserVisibleUserMessageText(prompt).trim();
+      runVisiblePromptRef.current = isCloneHostFillTurn
+        ? resolveTemplateCloneRunBrief({
+            prompt,
+            persistedUserContent,
+            retryUserContent: retryTarget?.userMsg.content ?? null,
+            pendingPrompt: project.pendingPrompt ?? null,
+            projectName: project.name,
+          })
+        : stripUserVisibleUserMessageText(prompt).trim();
       const runAttachmentsRaw = mergeChatAttachments(
         userMsg.attachments ?? [],
         ...runCommentAttachments.map((attachment) =>
@@ -10883,7 +10975,57 @@ export function ProjectView({
                 deckTitle: project.name || '슬라이드',
               },
             );
-            const recoverCloneLookSeedFallback = async (): Promise<boolean> => {
+            const recoverCloneLookSeedFallback = async (
+              options: { prepareArtifact?: boolean } = {},
+            ): Promise<boolean> => {
+              if (options.prepareArtifact !== false) {
+                try {
+                  const templateId = firstOfficialDeckTemplateId(
+                    runSelectedDeckTemplateIdRef.current,
+                    selectedDeckTemplateMetadata(project.metadata)?.id,
+                    project.metadata?.selectedDeckTemplateId,
+                  );
+                  const seedHtml = await resolveTemplateCloneLookSeedHtml({
+                    templateId,
+                    readProjectHtml,
+                  });
+                  const requestedSlideCountSpec =
+                    extractRequestedSlideCountSpecFromMessages(messagesRef.current);
+                  const honorCeiling = honorSlideCountCeiling(requestedSlideCountSpec);
+                  const decision = decideTemplateCloneSlotFillTerminal({
+                    rawFinalText: '',
+                    seedHtml,
+                    repairAlreadyAttempted: true,
+                    templateId:
+                      templateId
+                      ?? (project.metadata as { selectedDeckTemplateId?: string } | undefined)
+                        ?.selectedDeckTemplateId
+                      ?? null,
+                    userBrief: runVisiblePromptRef.current || '',
+                    deckTitle: project.name || '슬라이드',
+                    slideCount: requestedSlideCountSpec?.max ?? null,
+                    ...(honorCeiling != null ? { maxSlides: honorCeiling } : {}),
+                  });
+                  if (
+                    decision.kind === 'seed-fallback'
+                    && !templateCloneSeedFallbackShouldWarn({
+                      seedHtml,
+                      decisionHtml: decision.html,
+                    })
+                  ) {
+                    runTemplateCloneSlotFillFallbackRef.current = false;
+                    artifactToPersist = {
+                      identifier: 'deck',
+                      artifactType: 'deck',
+                      title: decision.title,
+                      html: decision.html,
+                    };
+                    return true;
+                  }
+                } catch (error) {
+                  devLog.warn('[teamver] template clone deterministic LOOK recovery failed', error);
+                }
+              }
               const recovered = await tryRecoverCloneContentFillLookSeed({ readProjectHtml });
               if (!recovered) return false;
               cloneLookSeedFallbackRecovered = true;
@@ -11214,7 +11356,7 @@ export function ProjectView({
               )
               && terminalPersistResult?.kind === 'skipped-incomplete'
             ) {
-              if (await recoverCloneLookSeedFallback()) {
+              if (await recoverCloneLookSeedFallback({ prepareArtifact: false })) {
                 runTemplateCloneSlotFillFallbackRef.current = true;
               } else {
                 devLog.warn('[teamver] clone fill LOOK seed recovery failed; seed missing');
