@@ -899,6 +899,12 @@ describe('templateCloneContentFill', () => {
     expect(isTemplateCloneContentFillPrompt(repair)).toBe(true);
     expect(repair).toMatch(/Emit ONE JSON outline only/i);
     expect(repair).toMatch(/FORBIDDEN:.*section class="slide"/i);
+    // 루프522 — JSON slot-fill repair turns must not open an artifact wrapper.
+    // MiniMax sometimes tries to \"patch\" the LOOK seed with an empty
+    // deck-patch instead of returning the JSON outline → `incomplete_output`.
+    expect(repair).toMatch(
+      /Never emit `<artifact type="deck-patch">` or `<artifact type="element-patch">`/,
+    );
     expect(historyHasTemplateCloneSlotFillRepair([
       { role: 'user', content: 'hello' },
       { role: 'assistant', content: '<section class="slide">' },

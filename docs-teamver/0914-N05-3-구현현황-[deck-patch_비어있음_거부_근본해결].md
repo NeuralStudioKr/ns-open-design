@@ -37,6 +37,14 @@
 - `packages/contracts` `system-prompt-api-mode.test.ts` 47 passed
 - `apps/web` `slideCountTopUp` + `templateCloneContentFill` + `clone-look-seed-recovery` 77 passed
 
+## 루프522 — 자동화 프롬프트 잔여 갭 보강
+
+루프520에서 명시적으로 빠졌던 자동화 프롬프트 두 곳에 동일한 `deck-patch` 금지 문구를 확장한다.
+
+- `buildSlideCountTopUpPrompt` — 슬라이드-수 top-up 은 raw new `<section class="slide">` 만 스트리밍한다. `<artifact type="deck-patch">` 을 열면 unscoped run 에서 빈 wrapper 로 rejected 될 위험이 있으므로 명시적으로 금지 문구 추가.
+- `buildTemplateCloneSlotFillRepairPrompt` — JSON slot-fill repair 턴은 `templateCloneContentFillHardRules` 를 참조하지 않고 자체 조립하므로, 동일한 `deck-patch` / `element-patch` 금지 문구를 별도로 추가.
+- 관련 assert: `apps/web/tests/teamver/slideCountTopUp.test.ts` (top-up 프롬프트) · `apps/web/tests/teamver/templateCloneContentFill.test.ts` (JSON repair 프롬프트).
+
 ## 변경 이력
 
-| 2026-09-14 | 루프520 프롬프트 · 루프521 FE 가드 |
+| 2026-09-14 | 루프520 프롬프트 · 루프521 FE 가드 · 루프522 top-up + JSON repair 프롬프트 보강 |

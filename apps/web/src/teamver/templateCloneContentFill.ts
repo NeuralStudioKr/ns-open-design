@@ -328,6 +328,11 @@ export function buildTemplateCloneSlotFillRepairPrompt(options?: {
     'Emit ONE JSON outline only this turn — plain or ```json fenced.',
     'Shape: {"title":"...","slides":[{"title":"...","body":"line\\nline","roleHint":"cover|list|cards|timeline|stat|quote|team|process|closing|body"}]}',
     'FORBIDDEN: <!doctype, <html, <head, <style, <section class="slide">, Motif <svg>.',
+    // 루프522 — Mirror templateCloneContentFillHardRules: JSON slot-fill turns
+    // have no artifact wrapper. Some MiniMax retries here try to "patch" the
+    // LOOK seed with `<artifact type="deck-patch"></artifact>` (empty) instead
+    // of returning the JSON outline, which is rejected as `incomplete_output`.
+    'Never emit `<artifact type="deck-patch">` or `<artifact type="element-patch">` — this is a JSON slot-fill turn (no artifact wrapper).',
     'Host slot-fills the LOOK seed. Do not regenerate deck HTML.',
   ];
   const brief = String(options?.userBrief ?? '').trim();

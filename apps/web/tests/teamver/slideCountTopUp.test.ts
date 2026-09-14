@@ -418,6 +418,11 @@ describe("slideCountTopUp", () => {
     expect(buildSlideCountTopUpPrompt({ produced: 3, requested: 6 })).not.toContain(
       "Stopping after 3 new slides is a failure",
     );
+    // 루프522 — top-up must not open a deck-patch wrapper (empty wrappers on
+    // unscoped runs are rejected as `incomplete_output`).
+    expect(buildSlideCountTopUpPrompt({ produced: 1, requested: 6 })).toContain(
+      'Do NOT open `<artifact type="deck-patch">` on this top-up',
+    );
   });
 
   it("finishes a 5-6 short miss in one honored top-up and does not add a 6th page at 5", () => {

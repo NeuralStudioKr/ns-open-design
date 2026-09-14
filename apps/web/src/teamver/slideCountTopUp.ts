@@ -639,6 +639,10 @@ export function buildSlideCountTopUpPrompt(input: {
       : `Emit all ${remaining} remaining slides this turn.`,
     "This is an explicit slide-count expansion — not a redesign and not an incomplete-output retry.",
     "Do NOT rewrite the saved deck. Do NOT emit `<head>`, Motif `<svg>`, or copy existing slides.",
+    // 루프522 — Top-up must not open a deck-patch wrapper. Empty wrappers on
+    // unscoped runs are rejected outright as `incomplete_output`; the saved
+    // deck is complete and only the raw new sections should stream.
+    "Do NOT open `<artifact type=\"deck-patch\">` on this top-up — persist appends the raw new sections directly.",
     "Emit ONLY the new `<section class=\"slide\">` blocks (body-first). Persist appends them after the saved slides.",
     "Each new slide MUST be a complete closed `<section class=\"slide\" …>…</section>` with real title + body. Unclosed fragments are discarded.",
     "Each new slide: fixed 1920×1080 canvas, box-sizing:border-box, overflow:visible, Motif-safe padding (~56px 72px).",
