@@ -32,6 +32,26 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **명시 5장+ 요청에서는 저장하지 않는다.** 8–10장 요청의 1장/4장 Template Clone fill은 `deck.html` 덮어쓰기 전에 incomplete로 막고 기존 덱을 보존한다. 6장 이상 첫 fill만 저장 후 top-up 가능하다. 사용자가 1장을 명시하거나 요청 장수가 작을 때만 1장 저장을 허용한다 |
 
+### 1.31 2026-09-14 — 템플릿 레이아웃 다양성 · 결과물 완성도 (`roleHint` 벡터)
+
+여러 유형의 페이지 레이아웃이 있는 템플릿에서 “한두 개 레이아웃만 반복 사용”되고 미리보기보다 완성도가 낮았다. 원인은 세 가지가 겹쳐 있었다.
+
+1. **scaffold map이 어휘를 안 알려줌.** kit의 `### Template scaffold map`이 `role=welcome/weekly/chart-bar` 같은 템플릿 고유 이름만 나열해, outline 생성기는 이걸 `TemplateCloneShellRole` 캐노니컬 enum (`list/cards/stat/…`)으로 되돌리기 어려워 사실상 모두 `body`로 폴백했다.
+2. **prompt가 다양성을 요구 안 함.** JSON slot-fill authority가 `roleHint`를 optional로 취급하고 “같은 shell을 반복해도 된다”는 여지를 남겼다.
+3. **picker 다양성 부족.** `pickTemplateShellsForContent`가 role 매칭에 성공한 첫 shell을 계속 재사용해, 4장 넘는 덱에서 카드/스탯/타임라인이 있어도 같은 body shell만 스탬프됐다.
+4. **role 추론이 items[] 신호를 놓침.** `inferTemplateCloneContentRole`이 items 2+ 카드 슬라이드를 `list`로 접어버려 카드/스탯 shell이 후보에서 사라졌다. 한국어 키워드 (`팀`/`통계`)는 `\b` 워드 바운더리가 유니코드에 안 맞아 아예 매칭 실패.
+5. **template-scaffold 의존 커플링.** scaffold map 예산을 늘리자 sprite pool을 kit 출력에서 스크레이프하던 `template-scaffold.ts`가 sprite를 잃고 (kit이 sprite 하나만 담을 정도로 꽉 차서) full-scaffold의 CSS가 잘려 `#F5F0E6` 크림·`.slide{overflow:visible}` override가 빠졌다.
+
+구현 현황:
+
+- [x] `extractTemplateScaffoldMap` — 각 row에 `roleHint=<enum>` · `items~=N` 힌트 삽입, 다양성 배너 (roleHint universe + “4장+ 덱은 최소 4개 이상 spread” 요구) 추가, 예산 1_000→1_500 상향
+- [x] `composeTeamverSlideApiPrompt` — JSON slot-fill hard requirement에 “every slide REQUIRES `roleHint`”, “4개 이상의 서로 다른 `roleHint` 값으로 spread”, “items 수 scaffold row `items~=` 매칭” 추가
+- [x] `inferTemplateCloneContentRole` — items[] 2+ 신호 우선순위 강화 (stat/team/timeline/process 우선), 한국어 키워드 regex `\b` 제거
+- [x] `pickTemplateShellsForContent` — `VARIETY_SAFE_ROLE_PREFERENCE` 도입, shell이 2회 이상 스탬프될 때만 (그리고 template body pool ≥5일 때만) 재우선순위로 미사용 shell을 rotate — 콘텐츠와 무관한 shell로 튀지 않게 conservative
+- [x] `template-visual-kit` — `extractMotifSpritesFromHtml` 명시적 export, `template-scaffold`는 이제 kit 출력을 스크레이프하지 않고 sprite 목록을 직접 얻어옴 (scaffold map 예산 변동과 무관하게 sprite pool 안정)
+- [x] 회귀: `template-visual-kit.test.ts` (scaffold row에 `roleHint=` / `items~=` / 다양성 배너 노출), `template-clone-fill.test.ts` (items[] 슬라이드가 `stat`/`team`/`cards`로 라벨링됨, 8장 덱이 4+ distinct role로 spread됨), `system-prompt-api-mode.test.ts` (JSON slot-fill 프롬프트에 spread 요건 등장), `template-scaffold.test.ts` (Daisy `#F5F0E6` + `.slides-container{overflow:visible}` override 유지)
+- [ ] outline generator가 실제 브리프에서 4+ distinct `roleHint`를 emit하는지 통계 텔레메트리로 관찰 — 후속
+
 ### 1.30 2026-08-24 — Clone fill Final authority 단일 READ LAST
 
 Daisy Clone fill 끝이 streaming · FOR_FILL · NO_SVG 세 개의 “READ LAST”로 갈라져 Motif/body-first가 삼중 중복됐다 (§8.2 / §12 P2).
