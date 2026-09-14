@@ -1181,9 +1181,9 @@ describe('streamProxyEndpoint idle-timeout stall (AGENT_EXECUTION_STALLED)', () 
     vi.unstubAllGlobals();
   });
 
-  it('uses a longer idle window for deck minOutputTokens runs (loop411)', () => {
+  it('uses a longer idle window for deck minOutputTokens runs (loop411/508)', () => {
     expect(PROXY_STREAM_IDLE_TIMEOUT_MS).toBe(5 * 60 * 1000);
-    expect(PROXY_STREAM_IDLE_TIMEOUT_DECK_MS).toBe(10 * 60 * 1000);
+    expect(PROXY_STREAM_IDLE_TIMEOUT_DECK_MS).toBe(6 * 60 * 1000);
     expect(resolveProxyStreamIdleTimeoutMs()).toBe(PROXY_STREAM_IDLE_TIMEOUT_MS);
     expect(resolveProxyStreamIdleTimeoutMs({ minOutputTokens: 16_000 })).toBe(
       PROXY_STREAM_IDLE_TIMEOUT_DECK_MS,
@@ -1497,7 +1497,7 @@ describe('streamProxyEndpoint idle-timeout stall (AGENT_EXECUTION_STALLED)', () 
     await Promise.resolve();
     // Drain the immediate keepalive reads, then advance past deck content idle.
     for (let i = 0; i < 12; i += 1) await Promise.resolve();
-    await vi.advanceTimersByTimeAsync(10 * 60 * 1000 + 2000);
+    await vi.advanceTimersByTimeAsync(6 * 60 * 1000 + 2000);
     await runPromise;
 
     expect(onDelta).toHaveBeenCalledWith('<head>');

@@ -280,6 +280,39 @@ export function formatThinPriorRewriteExhaustedNotice(): string {
   return "표지 초안을 채우는 생성이 한 번 끝났지만 본문이 비어 있습니다. 같은 요청을 다시 보내 주세요.";
 }
 
+/** 루프508 — Hidden automation phase for Working / pending status copy. */
+export type SlideAutomationPhase = "rewrite" | "top_up" | "sparse_repair";
+
+export function resolveSlideAutomationPhaseFromUserPrompt(
+  content: string | null | undefined,
+): SlideAutomationPhase | null {
+  if (isThinPriorFullRewritePrompt(content)) return "rewrite";
+  if (isSlideCountTopUpPrompt(content)) return "top_up";
+  if (isSparseContentTopUpPrompt(content)) return "sparse_repair";
+  return null;
+}
+
+/** Footer / waiting copy while a hidden rewrite or top-up turn runs. */
+export function formatSlideAutomationWorkingLabel(phase: SlideAutomationPhase): string {
+  switch (phase) {
+    case "rewrite":
+      return "표지 초안을 본문으로 다시 쓰는 중";
+    case "top_up":
+      return "요청 장수만큼 이어서 채우는 중";
+    case "sparse_repair":
+      return "빈약한 슬라이드를 보완하는 중";
+  }
+}
+
+/**
+ * 루프508 — After a thin-prior rewrite, allow at most one slide-count top-up
+ * so rewrite→top-up→top-up cannot stack three MiniMax turns.
+ */
+export function slideCountTopUpMaxForConversation(rewriteCount: number): number {
+  if (Number.isFinite(rewriteCount) && rewriteCount >= 1) return 1;
+  return SLIDE_COUNT_TOP_UP_MAX_PER_CONVERSATION;
+}
+
 /** User follow-up that wants more pages — not a title/color surgical edit. */
 export function looksLikeSlideCountExpansionRequest(
   text: string | null | undefined,
@@ -505,6 +538,8 @@ export function shouldQueueSlideCountTopUp(input: {
   hasIncompleteAssistant?: boolean;
   /** First fill / short draft: allow 1–2 slides and default to 6. */
   defaultRequested?: number;
+  /** 루프508 — Thin rewrite already spent → cap top-up budget at 1. */
+  rewriteCount?: number;
 }): boolean {
   if (input.hasIncompleteAssistant) return false;
   if ((input.commentAttachmentCount ?? 0) > 0) return false;
@@ -516,7 +551,8 @@ export function shouldQueueSlideCountTopUp(input: {
   // off + requested=8 + produced=1 never queued top-up.
   const minProduced = 1;
   if (!Number.isFinite(input.produced) || input.produced < minProduced) return false;
-  if (input.topUpCount >= SLIDE_COUNT_TOP_UP_MAX_PER_CONVERSATION) return false;
+  const topUpMax = slideCountTopUpMaxForConversation(input.rewriteCount ?? 0);
+  if (input.topUpCount >= topUpMax) return false;
   // Implicit default 6 is only for short first fills. A closed 5-page deck
   // already matches "short" / typed 5 — do not start a hidden follow-up.
   if (input.requested == null && input.produced >= 5) return false;

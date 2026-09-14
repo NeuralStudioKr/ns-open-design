@@ -13,6 +13,7 @@
 ☑ 루프504 — thin-rewrite 센티널 커버 heal/strip/gate · rewrite prompt exact N/킷  
 ☑ 루프505 — preview heal-first · count>sparse · thin APPEND 차단 · soft/detector 정렬  
 ☑ 루프506 — 명시 5장+ Template Clone fill 1장/4장 덮어쓰기 차단
+☑ 루프508 — Working 단계 표기 · rewrite 후 top-up 1회 · deck idle 6m · slide-count strict 오탐
 ☐ Design staging 재배포 후 QA
 
 ## 검증
@@ -24,10 +25,11 @@
 - 루프504: sentinel → failed/low-substance · heal 후 표지 유지 · prompt `emit exactly N`
 - 루프505: 4-of-8–10 wantsCountTopUp · thin+rewriteCount≥1 APPEND 차단 · soft=sparse만
 - 루프506: explicit 8–10 요청에서 produced=1/4는 저장 전 incomplete · produced=6은 저장 후 top-up 가능
+- 루프508: top-up budget after rewrite · deck idle 6m · Working phase labels · strict≠persistTarget
 
 ## 다음
 
-- staging 재배포 후 8~10장 요청 → 커버에 `[od:…]` 없음 · 장수 top-up bake · preview 표지 유지  
+- staging 재배포 후 8~10장 요청 → 커버에 `[od:…]` 없음 · 장수 top-up bake · preview 표지 유지 · Working에 단계 문구
 - (별도 P2) 사이트 분석 → outline 주입
 
 ## 변경 이력
@@ -39,3 +41,4 @@
 | 2026-09-11 | 루프504 — thin-rewrite 센티널 누수 차단 |
 | 2026-09-11 | 루프505 — preview/스케줄 잔여 갭 |
 | 2026-09-14 | 루프506 — 1페이지 Template Clone fill 덮어쓰기 차단 |
+| 2026-09-14 | 루프508 — 생성 지연 UX · idle 6m · slide-count strict 오탐 |

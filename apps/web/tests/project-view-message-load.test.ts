@@ -1127,6 +1127,10 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("shouldSkipDaemonArtifactStubGuard");
     expect(source).toContain("bannerKind: 'slide-count'");
     expect(source).toContain("const FIRST_FILL_SLIDE_COUNT_THIS_TURN = 6");
+    // 루프508 — existing deck.html persist target must not force strict slide-count.
+    expect(source).not.toMatch(
+      /strictSlideCount\s*=\s*[\s\S]{0,200}Boolean\(runPersistTargetFileRef\.current\)/,
+    );
     expect(source).toContain("deckTitle: project.name || '슬라이드'");
     expect(source).toContain("priorHtml");
     expect(source).toContain("blocked placeholder artifact regression before save");

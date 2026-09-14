@@ -16,6 +16,9 @@ import {
   isSoftImprovementAutomationPrompt,
   formatSlideAutomationBusyDropNotice,
   formatThinPriorRewriteExhaustedNotice,
+  formatSlideAutomationWorkingLabel,
+  resolveSlideAutomationPhaseFromUserPrompt,
+  slideCountTopUpMaxForConversation,
   buildSlideCountTopUpPrompt,
   buildSparseContentTopUpPrompt,
   buildThinPriorFullRewritePrompt,
@@ -23,6 +26,7 @@ import {
   countSparseContentTopUpAttemptsInConversation,
   isSparseContentTopUpPrompt,
   shouldQueueSparseContentTopUp,
+  shouldQueueSlideCountTopUp,
   slideCountTopUpAppendUntil,
   isSlideCountTopUpPrompt,
   isThinPriorFullRewritePrompt,
@@ -32,7 +36,6 @@ import {
   looksLikeSlideCountExpansionRequest,
   parseSlideCountSpec,
   parseSlideCountTarget,
-  shouldQueueSlideCountTopUp,
   shouldQueueThinPriorFullRewrite,
   honorSlideCountCeiling,
   honorSlideCountCeilingFromMessages,
@@ -664,5 +667,52 @@ describe("slideCountTopUp", () => {
     expect(formatSlideAutomationBusyDropNotice("rewrite")).toMatch(/후속 생성/);
     expect(formatSlideAutomationBusyDropNotice("top_up")).toMatch(/장수/);
     expect(formatThinPriorRewriteExhaustedNotice()).toMatch(/본문이 비어/);
+  });
+
+  it("caps slide-count top-up after a thin rewrite (루프508)", () => {
+    expect(slideCountTopUpMaxForConversation(0)).toBe(2);
+    expect(slideCountTopUpMaxForConversation(1)).toBe(1);
+    expect(
+      shouldQueueSlideCountTopUp({
+        produced: 4,
+        requested: 10,
+        requestedMin: 8,
+        topUpCount: 0,
+        rewriteCount: 1,
+      }),
+    ).toBe(true);
+    expect(
+      shouldQueueSlideCountTopUp({
+        produced: 6,
+        requested: 10,
+        requestedMin: 8,
+        topUpCount: 1,
+        rewriteCount: 1,
+      }),
+    ).toBe(false);
+    expect(
+      shouldQueueSlideCountTopUp({
+        produced: 4,
+        requested: 10,
+        requestedMin: 8,
+        topUpCount: 1,
+        rewriteCount: 0,
+      }),
+    ).toBe(true);
+  });
+
+  it("resolves Working phase labels for hidden automation (루프508)", () => {
+    expect(resolveSlideAutomationPhaseFromUserPrompt(
+      buildThinPriorFullRewritePrompt({ hostCount: 9, requested: 8 }),
+    )).toBe("rewrite");
+    expect(resolveSlideAutomationPhaseFromUserPrompt(
+      buildSlideCountTopUpPrompt({ produced: 4, requested: 10 }),
+    )).toBe("top_up");
+    expect(resolveSlideAutomationPhaseFromUserPrompt(
+      buildSparseContentTopUpPrompt([{ slideIndex: 1, reason: "title_only_card", detail: "Pro" }]),
+    )).toBe("sparse_repair");
+    expect(formatSlideAutomationWorkingLabel("rewrite")).toMatch(/본문/);
+    expect(formatSlideAutomationWorkingLabel("top_up")).toMatch(/장수/);
+    expect(formatSlideAutomationWorkingLabel("sparse_repair")).toMatch(/보완/);
   });
 });

@@ -40,10 +40,11 @@ import { loadAuthenticatedProjectFileBlob } from '../hooks/useAuthenticatedProje
 export const PROXY_STREAM_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 /**
  * Slide/deck BYOK (minOutputTokens floor): MiniMax often pauses mid-artifact
- * while planning the next section. 5 minutes cut live decks as AGENT_EXECUTION_STALLED.
+ * while planning the next section. 5 minutes cut live decks as AGENT_EXECUTION_STALLED;
+ * 10 minutes left quiet hangs feeling endless (루프508). Midpoint: 6 minutes.
  * Idle is measured from the last real event (delta/thinking/…), not TCP keepalives.
  */
-export const PROXY_STREAM_IDLE_TIMEOUT_DECK_MS = 10 * 60 * 1000;
+export const PROXY_STREAM_IDLE_TIMEOUT_DECK_MS = 6 * 60 * 1000;
 
 /** @internal vitest + ProjectView deck runs */
 export function resolveProxyStreamIdleTimeoutMs(context?: ProxyContext): number {

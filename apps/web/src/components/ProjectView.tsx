@@ -586,6 +586,7 @@ import {
   shouldQueueSparseContentTopUp,
   shouldQueueThinPriorFullRewrite,
   syncSlideCountTopUpCountFromMessages,
+  type SlideAutomationPhase,
 } from '../teamver/slideCountTopUp';
 import {
   looksLikeDeckDeliverablePromiseProse,
@@ -3078,9 +3079,9 @@ export function findClientSlideCountRegression(input: {
   htmlBody: string;
   priorHtml: string | null | undefined;
   /**
-   * Existing-deck / image-embed / comment-scoped turns: reject ANY slide drop
-   * (8→6 still destroys content). Greenfield generates keep the hard-collapse
-   * threshold so intentional shorter drafts are not over-blocked.
+   * Existing-deck regenerates stay non-strict so substance-rich shrink
+   * (루프279) can replace an 8-slide prior. Image-embed / comment-scoped
+   * turns: reject ANY slide drop (8→6 still destroys content).
    */
   strict?: boolean;
   /** Clone fill replaces a multi-slide LOOK seed with a capped content deck. */
@@ -3659,6 +3660,9 @@ export function ProjectView({
   const conversationSlideCountTopUpCountRef = useRef<Map<string, number>>(new Map());
   const slideCountTopUpTimerRef = useRef<number | null>(null);
   const pendingSlideCountTopUpConversationIdRef = useRef<string | null>(null);
+  /** 루프508 — Armed rewrite/top-up/sparse timer → ChatPane Working 단계 문구. */
+  const [pendingSlideAutomationKind, setPendingSlideAutomationKind] =
+    useState<SlideAutomationPhase | null>(null);
   const requestSlideCountTopUpRef = useRef<(htmlPath: string | null) => void>(() => {});
   /**
    * Live streaming buffer mutator for the in-flight assistant row. `surfaceChatVisibleError`
@@ -3674,12 +3678,14 @@ export function ProjectView({
   const clearPendingSlideCountTopUpTimer = useCallback((options?: { rollback?: boolean }) => {
     if (slideCountTopUpTimerRef.current === null) {
       pendingSlideCountTopUpConversationIdRef.current = null;
+      setPendingSlideAutomationKind(null);
       return;
     }
     window.clearTimeout(slideCountTopUpTimerRef.current);
     slideCountTopUpTimerRef.current = null;
     const scheduledId = pendingSlideCountTopUpConversationIdRef.current;
     pendingSlideCountTopUpConversationIdRef.current = null;
+    setPendingSlideAutomationKind(null);
     if (options?.rollback && scheduledId) {
       rollbackSlideCountTopUpCount(conversationSlideCountTopUpCountRef.current, scheduledId);
     }
@@ -6296,16 +6302,16 @@ export function ProjectView({
       // Dense 2-slide rewrites can pass the byte-size check while destroying
       // an 8-slide deck after an image-insert turn. Block slide-count collapse
       // even on comment-scoped persists (image+pin turns previously skipped
-      // this guard and still collapsed 8→2). Existing-deck / image-embed turns
-      // use strict mode so soft shrink (8→6) is also rejected.
+      // this guard and still collapsed 8→2). Comment / image-embed turns stay
+      // strict; a normal regenerate onto existing deck.html must NOT — otherwise
+      // 루프279 substance-rich 8→5 never applies (루프508).
       if (ext === '.html') {
         try {
           const priorHtml = priorDiskHtml ?? await readDiskHtml(fileName);
           const runImagePaths = imageAttachmentPathsForSlideEmbed(runAttachmentsRef.current);
           const strictSlideCount =
             persistCommentAttachments.length > 0
-            || runImagePaths.length > 0
-            || Boolean(runPersistTargetFileRef.current);
+            || runImagePaths.length > 0;
           const slideRegression = findClientSlideCountRegression({
             fileName,
             htmlBody,
@@ -12887,6 +12893,7 @@ export function ProjectView({
           const fireRewrite = () => {
             slideCountTopUpTimerRef.current = null;
             pendingSlideCountTopUpConversationIdRef.current = null;
+            setPendingSlideAutomationKind(null);
             if (project.id !== scheduledProjectId) return;
             if (messagesConversationIdRef.current !== scheduledConversationId) return;
             if (autoContinueTimerRef.current !== null) return;
@@ -12903,6 +12910,7 @@ export function ProjectView({
               if (busyRetries < SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX) {
                 busyRetries += 1;
                 pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
+                setPendingSlideAutomationKind("rewrite");
                 slideCountTopUpTimerRef.current = window.setTimeout(
                   fireRewrite,
                   SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
@@ -12925,6 +12933,7 @@ export function ProjectView({
               }),
             );
           };
+          setPendingSlideAutomationKind("rewrite");
           slideCountTopUpTimerRef.current = window.setTimeout(fireRewrite, 600);
           return;
         }
@@ -12952,6 +12961,7 @@ export function ProjectView({
           defaultRequested: allowDefaultShortDeckTopUp ? 6 : undefined,
           topUpCount: already,
           commentAttachmentCount: runCommentAttachmentsRef.current.length,
+          rewriteCount: rewriteAlready,
         });
         // 루프505 — Explicit page shortfall beats sparse card repair so a
         // 4-of-8–10 miss is not consumed by a deck-patch of incomplete cards.
@@ -12979,6 +12989,7 @@ export function ProjectView({
               if (slideCountTopUpTimerRef.current !== null) return false;
               busyRetries += 1;
               pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
+              setPendingSlideAutomationKind("sparse_repair");
               slideCountTopUpTimerRef.current = window.setTimeout(
                 fireRepair,
                 SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
@@ -12988,6 +12999,7 @@ export function ProjectView({
             function fireRepair() {
               slideCountTopUpTimerRef.current = null;
               pendingSlideCountTopUpConversationIdRef.current = null;
+              setPendingSlideAutomationKind(null);
               if (project.id !== scheduledProjectId) return;
               if (messagesConversationIdRef.current !== scheduledConversationId) return;
               if (autoContinueTimerRef.current !== null) return;
@@ -13018,6 +13030,7 @@ export function ProjectView({
                 retryRepair();
               });
             }
+            setPendingSlideAutomationKind("sparse_repair");
             slideCountTopUpTimerRef.current = window.setTimeout(fireRepair, 600);
           }
           return;
@@ -13043,6 +13056,7 @@ export function ProjectView({
         const fireTopUp = () => {
           slideCountTopUpTimerRef.current = null;
           pendingSlideCountTopUpConversationIdRef.current = null;
+          setPendingSlideAutomationKind(null);
           if (project.id !== scheduledProjectId) {
             rollbackSlideCountTopUpCount(
               conversationSlideCountTopUpCountRef.current,
@@ -13080,6 +13094,7 @@ export function ProjectView({
             if (busyRetries < SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX) {
               busyRetries += 1;
               pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
+              setPendingSlideAutomationKind("top_up");
               slideCountTopUpTimerRef.current = window.setTimeout(
                 fireTopUp,
                 SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
@@ -13122,6 +13137,7 @@ export function ProjectView({
             ) {
               busyRetries += 1;
               pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
+              setPendingSlideAutomationKind("top_up");
               slideCountTopUpTimerRef.current = window.setTimeout(
                 fireTopUp,
                 SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
@@ -13138,6 +13154,7 @@ export function ProjectView({
             );
           });
         };
+        setPendingSlideAutomationKind("top_up");
         slideCountTopUpTimerRef.current = window.setTimeout(fireTopUp, 700);
       })();
     };
@@ -15304,6 +15321,7 @@ export function ProjectView({
               onRetry={handleRetry}
               onResumeRun={handleResumeRun}
               autoContinuePending={autoContinuePending}
+              pendingSlideAutomationKind={pendingSlideAutomationKind}
               onStop={handleStop}
               onRemoveQueuedSend={removeQueuedChatSend}
               onUpdateQueuedSend={updateQueuedChatSend}

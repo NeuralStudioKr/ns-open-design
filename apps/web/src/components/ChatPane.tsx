@@ -81,6 +81,11 @@ import {
   extractPersistedRunErrorDiagnostic,
   extractProjectRunErrorCodeFromDetail,
 } from '../teamver/projectErrorMessages';
+import {
+  formatSlideAutomationWorkingLabel,
+  resolveSlideAutomationPhaseFromUserPrompt,
+  type SlideAutomationPhase,
+} from '../teamver/slideCountTopUp';
 import { AUTO_CONTINUE_STATUS_CODE, RESUME_CONTINUE_PROMPT } from '../runtime/resume';
 import {
   looksLikeDeckTemplateSkillId,
@@ -535,6 +540,11 @@ interface Props {
    * durable `incomplete_output` underneath.
    */
   autoContinuePending?: boolean;
+  /**
+   * 루프508 — ProjectView armed a hidden rewrite/top-up/sparse timer.
+   * Show a phase label so "Working" is not an unexplained multi-minute wait.
+   */
+  pendingSlideAutomationKind?: SlideAutomationPhase | null;
   onStop: () => void;
   // Skills available for @-mention assembly. ProjectView filters out the
   // user's disabled set before passing them in here.
@@ -750,6 +760,7 @@ export function ChatPane({
   onRetry,
   onResumeRun,
   autoContinuePending = false,
+  pendingSlideAutomationKind = null,
   onStop,
   onRemoveQueuedSend,
   onUpdateQueuedSend,
@@ -2235,7 +2246,17 @@ export function ChatPane({
                 t={t}
                 onOpenQuestions={onOpenQuestions}
                 scrollContainerRef={logRef}
+                pendingSlideAutomationKind={pendingSlideAutomationKind}
               />
+              {pendingSlideAutomationKind && !streaming ? (
+                <div
+                  className="assistant-waiting-output shimmer-text shimmer-prepare"
+                  role="status"
+                  data-testid="slide-automation-pending"
+                >
+                  {formatSlideAutomationWorkingLabel(pendingSlideAutomationKind)}
+                </div>
+              ) : null}
               {displayError ? (
                 <div className="msg error">
                   <span className="chat-error-text">{displayError}</span>
@@ -2562,6 +2583,7 @@ function ChatRows({
   t,
   onOpenQuestions,
   scrollContainerRef,
+  pendingSlideAutomationKind = null,
 }: {
   messages: ChatMessage[];
   streaming: boolean;
@@ -2606,6 +2628,7 @@ function ChatRows({
   t: TranslateFn;
   onOpenQuestions?: (request?: QuestionFormOpenRequest) => void;
   scrollContainerRef: MutableRefObject<HTMLDivElement | null>;
+  pendingSlideAutomationKind?: SlideAutomationPhase | null;
 }) {
   const conversationTodoInput = useMemo(
     () => latestTodoWriteInputForPinnedCard(messages),
@@ -2615,6 +2638,30 @@ function ChatRows({
     () => firstTodoWriteAssistantMessageId(messages),
     [messages],
   );
+  const slideAutomationPhaseByAssistantId = useMemo(() => {
+    const map = new Map<string, SlideAutomationPhase>();
+    let lastUserContent: string | null = null;
+    for (const message of messages) {
+      if (message.role === "user") {
+        lastUserContent = message.content ?? null;
+        continue;
+      }
+      if (message.role !== "assistant") continue;
+      const fromPrompt = resolveSlideAutomationPhaseFromUserPrompt(lastUserContent);
+      if (fromPrompt) {
+        map.set(message.id, fromPrompt);
+        continue;
+      }
+      if (
+        pendingSlideAutomationKind
+        && message.id === lastAssistantId
+        && !streaming
+      ) {
+        map.set(message.id, pendingSlideAutomationKind);
+      }
+    }
+    return map;
+  }, [messages, pendingSlideAutomationKind, lastAssistantId, streaming]);
   const { hideAssistantThinkingDetails } = useTeamverBranding();
   const renderCtx = useMemo<ChatMessageRenderContext>(
     () => ({
@@ -2795,11 +2842,16 @@ function ChatRows({
       );
     }
     const pastRunErrorCard = pastRunErrorCards.get(m.id);
+    const automationPhase = slideAutomationPhaseByAssistantId.get(m.id) ?? null;
+    const slideAutomationPhaseLabel = automationPhase
+      ? formatSlideAutomationWorkingLabel(automationPhase)
+      : null;
     return (
       <>
       <AssistantMessage
         message={m}
         streaming={messageStreaming}
+        slideAutomationPhaseLabel={slideAutomationPhaseLabel}
         // Only the streaming row consumes live tool input. Non-streaming rows
         // get a stable `undefined`, so adding `liveToolInput` to the memo
         // comparator re-renders just this row per `tool_input_delta`, not all N.
