@@ -705,7 +705,7 @@ describe('루프450/459/469/470/472 Zhangzara template quality gates', () => {
       slideCount: 9,
     });
     expect(slides).toHaveLength(9);
-    expect(slides[0]?.title).toBe('NeuralStudio');
+    expect(slides[0]?.title).toBe('Neuralstudio');
     expect(JSON.stringify(slides)).not.toMatch(/BlockFrame\s*템플릿|채워\s*담아줘|비주얼로\s*구성/);
     expect(JSON.stringify(slides)).toMatch(/서비스\s*가치|도입\s*로드맵|대상\s*고객|신뢰/);
 
@@ -1781,7 +1781,7 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
       'www.acme.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘',
     )).toBe('Acme 소개');
     expect(polishUrlSiteCoverTitle('figma.io 사이', 'figma.io 사이트 분석해서 서비스 소개')).toBe('Figma 소개');
-    expect(polishUrlSiteCoverTitle('neuralstudio.kr 회사', null)).toBe('NeuralStudio 소개');
+    expect(polishUrlSiteCoverTitle('neuralstudio.kr 회사', null)).toBe('Neuralstudio 소개');
   });
 
   it('루프390: restyles foreign IB magazine cover onto 8-Bit Orbit hero', () => {

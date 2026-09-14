@@ -375,6 +375,8 @@ describe('templateCloneContentFill', () => {
     expect(seed).toMatch(/1920x1080/);
     expect(seed).toContain('Selected template: Html Ppt Zhangzara Daisy Days');
     expect(seed).toContain('Cover topic (use as the title, not the instruction): expo');
+    expect(seed).toMatch(/www\.example\.com 사이/);
+    expect(seed).not.toMatch(/팀버 소개|www\.teamver\.com 사이/);
     expect(seed).not.toMatch(/Quality bar:\s*Quality bar:/);
     expect(seed).not.toMatch(/Worked example — brief/i);
     expect(seed).not.toMatch(/Expo for Senior Engineers/);

@@ -7,7 +7,7 @@
  *      demo phrase / number denylist
  *   3) Canvas — fixed 1920×1080 style is present (width:1920px + min-height 1080)
  *   4) Slide count — `listTemplateCloneSlideShells(cloned).length === expected`
- *      + brief-derived topic (`팀버` / `Teamver`)
+ *      + brief-derived topic (host→Latin brand from the gate brief URL)
  *   5) Layout (루프472) — class-like motif tokens appear as live tags, and the
  *      first shell still has a heading. Pixel screenshots stay out of this gate.
  *
@@ -22,6 +22,7 @@ import { expect } from 'vitest';
 
 import {
   buildTemplateClonedDeckHtml,
+  latinBrandLabelFromHost,
   listTemplateCloneSlideShells,
   looksLikeLeftoverTemplateDemoDeck,
   resolveTemplateCloneSlidesForDeterministicFill,
@@ -124,7 +125,7 @@ export async function runDeterministicTemplateQualityGate(
     slideCount: requested,
   });
   const cloned = buildTemplateClonedDeckHtml(html, slides, {
-    title: slides[0]?.title || '팀버',
+    title: slides[0]?.title || '슬라이드',
     templateId: spec.templateId,
     maxSlides: requested,
     brief,
@@ -199,10 +200,19 @@ export function assertDeterministicTemplateQualityGate(
   expect(cloned, `${tag} (min-)height:1080px missing`)
     .toMatch(/(?:min-)?height:\s*1080px/i);
 
-  // Axis 4 — slide count + topic.
+  // Axis 4 — slide count + host-derived Latin brand from the gate brief URL.
   const shells = listTemplateCloneSlideShells(cloned);
   expect(shells.length, `${tag} slide count`).toBe(spec.expectedSlideCount);
-  expect(cloned, `${tag} 팀버/Teamver topic`).toMatch(/팀버|Teamver/i);
+  const briefForTopic = spec.brief ?? TEAMVER_SERVICE_INTRO_BRIEF;
+  const host = briefForTopic.match(
+    /(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+)\.(?:com|co\.kr|kr|io|net|ai|app)\b/i,
+  )?.[1];
+  const expectedBrand = host ? latinBrandLabelFromHost(host) : '';
+  if (expectedBrand) {
+    expect(cloned, `${tag} host brand ${expectedBrand}`).toMatch(
+      new RegExp(escapeRegExp(expectedBrand), 'i'),
+    );
+  }
 
   // Axis 5 — 루프472 layout: live motif tags + a title host.
   const layoutTag = `[루프472:${spec.name}]`;

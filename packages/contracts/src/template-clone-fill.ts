@@ -2968,8 +2968,8 @@ function magazineLeftoverRibbonLabel(text: string): boolean {
 export function latinBrandLabelFromHost(host: string): string {
   const h = String(host ?? '').trim().toLowerCase();
   if (!h) return '';
-  // Multi-token product spellings that Title-Case alone would mangle.
-  if (h === 'neuralstudio') return 'NeuralStudio';
+  // Title-Case each hyphen segment. No per-product CamelCase / Hangul maps —
+  // unknown brands in production must follow the same rule.
   return h
     .split('-')
     .filter(Boolean)
@@ -8183,9 +8183,14 @@ function fillBlockFrameNeoSlots(
   }
   const lines = biennaleFillLines(input, 4);
   const chromeLabel = blockFrameNeoChromeLabel(input);
+  const decoBrand =
+    topicKeywordForSynthBody(input.title).slice(0, 24)
+    || chromeLabel
+    || 'Brand';
   let next = body;
   next = replaceFirstExactClassText(next, 'hero-label', chromeLabel);
-  next = replaceFirstExactClassText(next, 'deco-yellow-bar', 'Teamver');
+  // Never stamp a fixed product name — deco chrome follows this deck's title/topic.
+  next = replaceFirstExactClassText(next, 'deco-yellow-bar', decoBrand);
   next = replaceFirstExactClassText(next, 'visual-label', chromeLabel || input.title);
   next = replaceFirstExactClassText(next, 'nb-btn', '자세히 보기');
   next = replaceFirstExactClassText(next, 'close-btn', '다음 단계');
