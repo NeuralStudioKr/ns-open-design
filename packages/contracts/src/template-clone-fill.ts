@@ -1524,6 +1524,14 @@ export function inferTemplateCloneContentRole(
   if (slide.roleHint && isTemplateCloneShellRole(slide.roleHint)) {
     return slide.roleHint;
   }
+  return inferTemplateCloneContentRoleFromText(slide, index, total);
+}
+
+function inferTemplateCloneContentRoleFromText(
+  slide: TemplateCloneSlideContent,
+  index: number,
+  total: number,
+): TemplateCloneShellRole {
   if (index === 0) return 'cover';
   const title = slide.title.trim();
   const body = slide.body?.trim() ?? '';
@@ -1542,6 +1550,77 @@ export function inferTemplateCloneContentRole(
   if (body.length >= 100 && lines.length <= 1) return 'quote';
   if (lines.length === 1 && body.length < 100) return 'cards';
   return 'body';
+}
+
+const TEMPLATE_CLONE_DIVERSE_ROLE_SEQUENCE: readonly TemplateCloneShellRole[] = [
+  'list',
+  'cards',
+  'stat',
+  'timeline',
+  'quote',
+  'process',
+  'body',
+  'closing',
+];
+
+function templateCloneShellRoleSet(shells: SlideShell[]): Set<TemplateCloneShellRole> {
+  const out = new Set<TemplateCloneShellRole>();
+  for (const shell of shells) out.add(classifyTemplateCloneShellRole(shell));
+  return out;
+}
+
+function mostFrequentTemplateCloneRole(roles: TemplateCloneShellRole[]): TemplateCloneShellRole | null {
+  const counts = new Map<TemplateCloneShellRole, number>();
+  for (const role of roles) counts.set(role, (counts.get(role) ?? 0) + 1);
+  let best: TemplateCloneShellRole | null = null;
+  let bestCount = 0;
+  for (const [role, count] of counts) {
+    if (count > bestCount) {
+      best = role;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+function resolveTemplateCloneContentRolesForShellVariety(
+  shells: SlideShell[],
+  slides: TemplateCloneSlideContent[],
+): TemplateCloneShellRole[] {
+  const roles = slides.map((slide, index) => inferTemplateCloneContentRole(slide, index, slides.length));
+  if (slides.length < 5 || roles.length < 5) return roles;
+
+  const available = templateCloneShellRoleSet(shells);
+  const availableBodyRoles = TEMPLATE_CLONE_DIVERSE_ROLE_SEQUENCE.filter((role) => available.has(role));
+  if (availableBodyRoles.length < 3) return roles;
+
+  const bodyIndexes = roles
+    .map((role, index) => ({ role, index }))
+    .filter(({ role, index }) => index > 0 && role !== 'cover')
+    .map(({ index }) => index);
+  if (bodyIndexes.length < 4) return roles;
+
+  const bodyRoles = bodyIndexes.map((index) => roles[index]!);
+  const targetDistinct = Math.min(4, availableBodyRoles.length, bodyIndexes.length);
+  const currentDistinct = new Set(bodyRoles).size;
+  if (currentDistinct >= Math.min(3, targetDistinct)) return roles;
+
+  const dominant = mostFrequentTemplateCloneRole(bodyRoles);
+  const used = new Set(bodyRoles);
+  const nextRoles = [...roles];
+  for (const index of bodyIndexes) {
+    if (used.size >= targetDistinct) break;
+    const current = nextRoles[index]!;
+    const textInferred = inferTemplateCloneContentRoleFromText(slides[index]!, index, slides.length);
+    const isClearlyClosing = current === 'closing' || textInferred === 'closing';
+    if (isClearlyClosing && index === slides.length - 1) continue;
+    if (current !== dominant && current !== 'body') continue;
+    const desired = availableBodyRoles.find((candidate) => !used.has(candidate));
+    if (!desired || desired === current) continue;
+    nextRoles[index] = desired;
+    used.add(desired);
+  }
+  return nextRoles;
 }
 
 function leastUsedShell(pool: SlideShell[], usage: Map<SlideShell, number>): SlideShell | null {
@@ -1807,10 +1886,11 @@ export function pickTemplateShellsForContent(
   const bodyPool = shells.filter((shell) => shell !== cover);
   const usage = new Map<SlideShell, number>();
   const picked: SlideShell[] = [];
+  const plannedRoles = resolveTemplateCloneContentRolesForShellVariety(shells, slides);
 
   for (let i = 0; i < slides.length; i += 1) {
     const slide = slides[i]!;
-    const role = inferTemplateCloneContentRole(slide, i, slides.length);
+    const role = plannedRoles[i] ?? inferTemplateCloneContentRole(slide, i, slides.length);
     const lineCount = String(slide.body ?? '')
       .split(/\r?\n/)
       .map((line) => line.trim())
@@ -3915,14 +3995,19 @@ export function absorbOrphanFlexStepDescriptions(html: string): string {
     const nextKids: string[] = [];
     for (let k = 0; k < kids.length; k += 1) {
       const kid = kids[k]!.trim();
-      const kidOpen = /^<div\b[^>]*>/i.exec(kid)?.[0] ?? '';
+      const kidOpen = /^<(div|p)\b[^>]*>/i.exec(kid)?.[0] ?? '';
       const isFlexCard = /flex\s*:\s*1\b/i.test(kidOpen);
       if (!isFlexCard && nextKids.length > 0) {
         const prev = nextKids[nextKids.length - 1]!;
         const prevOpen = /^<div\b[^>]*>/i.exec(prev)?.[0] ?? '';
         if (/flex\s*:\s*1\b/i.test(prevOpen) && !/flex\s*:\s*1\b/i.test(kidOpen)) {
           const text = stripTagsToText(kid);
-          if (text.length >= 12 && !/flex\s*:\s*1\b/i.test(kid)) {
+          // 루프506 — also reparent bare `<p>` orphans after early card close.
+          if (
+            text.length >= 12
+            && !/flex\s*:\s*1\b/i.test(kid)
+            && !/^(?:다음\s*단계|next\s*steps?)\b/i.test(text)
+          ) {
             const prevClose = /<\/div\s*>$/i.exec(prev)?.[0] ?? '</div>';
             const prevInner = prev.slice(prevOpen.length, prev.length - prevClose.length);
             nextKids[nextKids.length - 1] = `${prevOpen}${prevInner}${kid}${prevClose}`;

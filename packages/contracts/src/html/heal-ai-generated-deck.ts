@@ -3026,6 +3026,15 @@ function looksLikeSpilledCardBody(child: DirectChildSpan): boolean {
     const text = visibleText(child.inner);
     return text.length >= SPILLED_BODY_MIN && text.length <= SPILLED_BODY_MAX;
   }
+  // 루프506 — Daisy/Playful early-close often leaves the body as a bare `<p>`
+  // sibling between chrome cards (마케팅 팀 카드 옆 플로팅 카피).
+  if (child.tag === 'p') {
+    const text = visibleText(child.inner);
+    if (text.length < SPILLED_BODY_MIN || text.length > SPILLED_BODY_MAX) return false;
+    // CTA chips that leaked as paragraphs must not be sucked into a pricing card.
+    if (/^(?:다음\s*단계|next\s*steps?)\b/i.test(text)) return false;
+    return true;
+  }
   if (child.tag !== 'div') return false;
   // 루프464 — `.nb-card` / `intro-card` peers are hosts, not spilled body.
   if (classValueLooksCardish(classAttrValue(child.attrs))) return false;
@@ -3035,7 +3044,9 @@ function looksLikeSpilledCardBody(child: DirectChildSpan): boolean {
   if (/(?:^|;)\s*position\s*:\s*absolute\b/i.test(child.style)) return false;
   if (/(?:^|;)\s*width\s*:\s*100%/i.test(child.style)) return false;
   const text = visibleText(child.inner);
-  return text.length >= SPILLED_BODY_MIN && text.length <= SPILLED_BODY_MAX;
+  if (text.length < SPILLED_BODY_MIN || text.length > SPILLED_BODY_MAX) return false;
+  if (/^(?:다음\s*단계|next\s*steps?)\b/i.test(text)) return false;
+  return true;
 }
 
 function childLooksLikeAbsorbHostCard(child: DirectChildSpan): boolean {
@@ -3200,6 +3211,88 @@ export function absorbSpilledChromeCardSiblings(
       start: openEnd,
       end: close.closeStart,
       replacement: pieces.join(''),
+    });
+  }
+  if (patches.length === 0) return out;
+  patches.sort((a, b) => b.start - a.start);
+  for (const patch of patches) {
+    out = `${out.slice(0, patch.start)}${patch.replacement}${out.slice(patch.end)}`;
+  }
+  return out;
+}
+
+/**
+ * 루프506 — Daisy pricing footers dump 2–4 「다음 단계」 chips in a flex row
+ * without width:100% / flex:1, so they cluster under Free while Plus/Enterprise
+ * leave a blank well on the right. Stretch to an equal-column full-bleed row.
+ * Never invents copy.
+ */
+export function stretchEqualTrackActionChipRow(
+  html: string,
+  brief?: string | null,
+): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
+  const openRe =
+    /<(div|section|article|aside)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  const patches: Array<{ start: number; end: number; replacement: string }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) {
+    const attrs = match[2] ?? '';
+    const style = extractInlineStyle(attrs);
+    const isRow =
+      /(?:^|;)\s*display\s*:\s*(?:inline-)?(?:flex|grid)\b/i.test(style)
+      || isFlexRowContainerStyle(style);
+    if (!isRow) continue;
+    if (/(?:^|;)\s*flex-direction\s*:\s*column\b/i.test(style)) continue;
+    const tag = (match[1] ?? '').toLowerCase();
+    const openEnd = match.index + match[0].length;
+    const close = findSameTagClose(out, tag, openEnd);
+    if (!close) continue;
+    const children = listDirectBlockChildSpans(out, openEnd, close.closeStart);
+    if (children.length < 2 || children.length > 4) continue;
+    let actionish = 0;
+    for (const child of children) {
+      const text = visibleText(child.inner);
+      if (!text || text.length > 160) {
+        actionish = -1;
+        break;
+      }
+      if (
+        /다음\s*단계|next\s*steps?/i.test(text)
+        || /^\s*\d+\s*[.)]\s*/.test(text)
+      ) {
+        actionish += 1;
+      }
+    }
+    if (actionish < 2) continue;
+    // Already a full-bleed equal grid — leave alone.
+    const colsRaw = /grid-template-columns\s*:\s*([^;]+)/i.exec(style)?.[1]?.trim() ?? '';
+    const decl = colsRaw ? parseDeclaredEqualColumns(colsRaw) : null;
+    const hasFullWidth = /(?:^|;)\s*width\s*:\s*100%\b/i.test(style);
+    if (
+      decl
+      && decl.count === children.length
+      && hasFullWidth
+      && /minmax\(\s*0\s*,\s*1fr\s*\)/i.test(decl.unit)
+    ) {
+      continue;
+    }
+    const openTag = match[0] ?? '';
+    let nextOpen = replaceStyleDecl(openTag, 'display', 'grid');
+    nextOpen = replaceStyleDecl(
+      nextOpen,
+      'grid-template-columns',
+      `repeat(${children.length},minmax(0,1fr))`,
+    );
+    nextOpen = replaceStyleDecl(nextOpen, 'width', '100%');
+    nextOpen = replaceStyleDecl(nextOpen, 'box-sizing', 'border-box');
+    if (nextOpen === openTag) continue;
+    patches.push({
+      start: match.index,
+      end: openEnd,
+      replacement: nextOpen,
     });
   }
   if (patches.length === 0) return out;
@@ -5096,6 +5189,8 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // 루프293 — class 없는 크롬 카드의 조기 close가 제목·본문을 그리드
   // 형제로 남기면 shrink가 열을 늘린다. shrink 전에 카드 안으로 되돌린다.
   out = absorbSpilledChromeCardSiblings(out, brief);
+  // 루프506 — 「다음 단계」 chip rows that shrink to the left under pricing.
+  out = stretchEqualTrackActionChipRow(out, brief);
   // 루프464 — checklist dumped as an extra grid track → eject after the grid.
   out = ejectTrailingListFromOverfilledGrid(out, brief);
   // 루프345 — flex column win-body가 heading 뒤에서 조기 종료되고 main grid가

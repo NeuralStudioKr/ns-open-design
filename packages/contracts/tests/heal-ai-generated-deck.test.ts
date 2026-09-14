@@ -27,7 +27,10 @@ import {
   wrapLoosePillHeadingTriplesInsideMixedGrid,
   wrapLooseStatMetricPairsIntoCards,
   ensureNeoBrutalCssVariableFallback,
+  absorbSpilledChromeCardSiblings,
+  stretchEqualTrackActionChipRow,
 } from '../src/html/heal-ai-generated-deck.js';
+import { findDeckSparseContentEvidence } from '../src/html/heal-heading-item-count.js';
 
 describe('heal-ai-generated-deck (0826-N01 F7)', () => {
   describe('루프254 listAiSlideSpans depth match', () => {
@@ -5453,6 +5456,67 @@ describe('heal-ai-generated-deck (0826-N01 F7)', () => {
       expect(out).toContain('stats-grid');
       expect(out).toContain('data-od-neobrutal-var-fallback');
       expect(out.match(/class="stat-card"/g)?.length).toBe(2);
+    });
+  });
+
+  describe('루프506 Daisy orphan <p> + action chip row', () => {
+    const cardChrome =
+      'background:#fff;border-radius:28px;box-shadow:8px 8px 0 #1a1a1a;padding:28px';
+
+    it('reparents a bare <p> body into the preceding title-only chrome card', () => {
+      const html = [
+        '<section class="slide" data-od-slide-flow>',
+        '<h2>팀의 일상이 Teamver 위에서 굴러갑니다.</h2>',
+        '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px">',
+        `<div style="${cardChrome}"><h4 style="color:#2A9D8F">마케팅 팀</h4></div>`,
+        '<p>캠페인 채널에서 피드백을 모으고, Drive의 기획서와 성과를 한곳에서 이어갑니다.</p>',
+        `<div style="${cardChrome}"><h4 style="color:#E76F51">프로덕트 팀</h4>`,
+        '<p>사용자 인터뷰 메모와 채널 토론을 AI Chat에 물어 우선순위를 추립니다.</p></div>',
+        `<div style="${cardChrome}"><h4 style="color:#E9C46A">수업 · 스터디</h4>`,
+        '<p>수업 채널에서 과제를 나누고, 공유 자료를 AI가 요약합니다.</p></div>',
+        '</div></section>',
+      ].join('');
+      const healed = absorbSpilledChromeCardSiblings(html, 'teamver 소개');
+      expect(healed).toMatch(/마케팅 팀[\s\S]*캠페인 채널에서 피드백/);
+      expect(healed).not.toMatch(
+        /<\/h4><\/div><p>캠페인 채널에서 피드백/,
+      );
+      const viaPipeline = healAiGeneratedDeckMarkup(html, 'teamver 소개');
+      expect(viaPipeline).toMatch(/마케팅 팀[\s\S]*캠페인 채널/);
+    });
+
+    it('stretches a left-clustered 다음 단계 chip row to full equal columns', () => {
+      const html = [
+        '<section class="slide" data-od-slide-flow>',
+        '<h2>작은 팀은 무료로, 조직은 Enterprise로.</h2>',
+        '<div style="display:flex;gap:16px">',
+        `<div style="${cardChrome};background:#2A9D8F;color:#fff"><p>다음 단계</p>`,
+        '<p>1. 무료로 시작 — 3명까지 즉시 사용 가능</p></div>',
+        `<div style="${cardChrome};background:#E9C46A"><p>다음 단계</p>`,
+        '<p>2. AI Apps 출시 알림 신청</p></div>',
+        `<div style="${cardChrome};background:#E76F51;color:#fff"><p>다음 단계</p>`,
+        '<p>3. Enterprise 데모 요청</p></div>',
+        '</div></section>',
+      ].join('');
+      const stretched = stretchEqualTrackActionChipRow(html, '요금제');
+      expect(stretched).toMatch(
+        /grid-template-columns\s*:\s*repeat\(\s*3\s*,\s*minmax\(\s*0\s*,\s*1fr\s*\)\)/i,
+      );
+      expect(stretched).toMatch(/width\s*:\s*100%/i);
+      expect(findDeckSparseContentEvidence([
+        '<section class="slide">',
+        '<div style="display:grid;grid-template-columns:repeat(3,1fr)">',
+        `<div style="${cardChrome}"><div style="color:#2A9D8F">Free</div></div>`,
+        `<div style="${cardChrome}"><div style="color:#E76F51">Plus</div>`,
+        '<p>팀 규모 확장 · 추가 저장공간</p></div>',
+        `<div style="${cardChrome}"><div style="color:#E9C46A">Enterprise</div>`,
+        '<p>부서 · 조직 단위 운영</p></div>',
+        '</div></section>',
+      ].join(''))).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ reason: 'title_only_card', detail: 'Free' }),
+        ]),
+      );
     });
   });
 });

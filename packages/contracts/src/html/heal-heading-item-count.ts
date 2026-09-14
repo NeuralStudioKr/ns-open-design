@@ -279,8 +279,31 @@ export function findDeckSparseContentEvidence(
       const text = visibleText(child);
       if (!text) continue;
       const heading = /<(h[1-6]|p|strong|b)\b[^>]*>([\s\S]*?)<\/\1>/i.exec(innerOf(child));
-      const titleText = visibleText(heading?.[2] ?? '');
-      if (!titleText) continue;
+      let titleText = visibleText(heading?.[2] ?? '');
+      // 루프506 — Daisy/Playful plan names often live in a colored <div>, not h*.
+      if (!titleText) {
+        const label = /<(?:div|span)\b[^>]*>([\s\S]*?)<\/(?:div|span)>/i.exec(innerOf(child));
+        const labelText = visibleText(label?.[1] ?? '');
+        if (labelText && labelText.length <= 28 && text.startsWith(labelText)) {
+          titleText = labelText;
+        }
+      }
+      if (!titleText) {
+        // Title-only chrome whose whole visible text is a short plan/team label.
+        if (
+          text.length <= 28
+          && !/<p\b/i.test(innerOf(child))
+          && !/<ul\b|<ol\b/i.test(innerOf(child))
+        ) {
+          evidence.push({
+            reason: 'title_only_card',
+            detail: text.slice(0, 40),
+            slideIndex: index,
+          });
+          break;
+        }
+        continue;
+      }
       const bodyText = text.slice(titleText.length).trim();
       if (bodyText.length >= MIN_CARD_BODY_CHARS) continue;
       evidence.push({
