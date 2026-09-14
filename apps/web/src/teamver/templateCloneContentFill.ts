@@ -658,6 +658,8 @@ export function templateCloneContentFillHardRules(): string[] {
     `- ${SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION}`,
     '- Expand THIS turn\'s brief only. Do not copy host-contract examples or the user instruction onto slides.',
     '- JSON shape: {"title":"...","slides":[{"title":"...","kicker":"...","lead":"...","roleHint":"cover|list|cards|timeline|stat|quote|team|process|closing|body","items":[{"title":"...","body":"..."}]}]}',
+    '- Layout variety is mandatory: for 5+ slides use at least 3 distinct body `roleHint` values, and for 8–10 slides use at least 4 when the scaffold map offers them. Do not repeat the same cards/body layout for every page.',
+    '- Pick `roleHint` from the Template scaffold map roles: cover once, then mix list/cards/stat/timeline/quote/process/body/closing according to the brief. Preserve semantic fit, but avoid one-layout decks.',
     '- Cards / list / stat / process slides MUST use items[] with 2–4 {title, body} slots. lead = section subtitle, not a card. Do not emit title-only cards.',
     `- ${FIRST_FILL_SLIDE_COUNT_GUIDANCE} Outline length = requested count this turn (8-10 → 8–10, hard cap 10, never 15/20). Hidden top-up only when the user asked for ${FIRST_FILL_TOP_UP_FROM}+.`,
     '- Treat the daemon Clone seed as the visual baseline the host will keep. You only supply titles/bodies/roleHint.',

@@ -32,6 +32,22 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **명시 5장+ 요청에서는 저장하지 않는다.** 8–10장 요청의 1장/4장 Template Clone fill은 `deck.html` 덮어쓰기 전에 incomplete로 막고 기존 덱을 보존한다. 6장 이상 첫 fill만 저장 후 top-up 가능하다. 사용자가 1장을 명시하거나 요청 장수가 작을 때만 1장 저장을 허용한다 |
 
+### 1.31 2026-09-14 — scaffold layout 다양성 강제
+
+증상: 템플릿 preview/example에는 여러 페이지 유형이 있는데 결과물은 cover/cards/body 한두 패턴만 반복됐다. 특히 JSON slot-fill 모델이 모든 본문 slide에 같은 `roleHint`를 주면, host slot-fill이 LOOK seed를 유지하더라도 같은 shell 위주로 선택해 “템플릿 미리보기보다 완성도가 낮은” 덱이 됐다.
+
+수정:
+
+- `templateCloneContentFillHardRules`에 5장+ 최소 3종, 8–10장 최소 4종의 body `roleHint` 다양성 요구를 추가.
+- Template visual kit / scaffold map 설명도 동일 기준으로 갱신.
+- `pickTemplateShellsForContent`에서 5장+ 덱의 role이 과도하게 한 종류로 쏠리면, 템플릿이 실제 보유한 shell role 안에서 list/cards/stat/timeline/quote/process/body/closing을 재분배한다.
+- 첫 장 cover와 명확한 closing은 보존하고, 사용 가능한 shell role이 3종 미만인 템플릿은 보정하지 않는다.
+
+검증:
+
+- 반복 `cards` roleHint 5장 본문이 cover/list/cards/stat/timeline 등 4종 이상 shell로 분산되는 unit 추가.
+- JSON slot-fill seed가 layout variety 계약을 포함하는지 web 테스트 추가.
+
 ### 1.30 2026-08-24 — Clone fill Final authority 단일 READ LAST
 
 Daisy Clone fill 끝이 streaming · FOR_FILL · NO_SVG 세 개의 “READ LAST”로 갈라져 Motif/body-first가 삼중 중복됐다 (§8.2 / §12 P2).

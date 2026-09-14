@@ -1217,7 +1217,7 @@ function renderMustMatchLookBlock(options: {
   }
   lines.push(
     options.hasScaffoldMap
-      ? '3. **Layout/placement:** the Template scaffold map + Layout CSS below is your *layout vocabulary*. Pick the roles (cover, body, timeline, three-column, quote, chart, closing, …) that fit the user brief\'s actual content and skip the ones that don\'t. Reuse the same role across multiple slides when appropriate. Do NOT force every scaffold-map role into the deck, and do NOT flatten every slide into the same cover composition.'
+      ? '3. **Layout/placement:** the Template scaffold map + Layout CSS below is your *layout vocabulary*. Pick the roles (cover, body, timeline, three-column, quote, chart, closing, …) that fit the user brief\'s actual content and skip the ones that don\'t. For 5+ slides use at least 3 distinct body layout roles when available; for 8–10 slides use at least 4. Reuse a role only after exhausting better-fitting alternatives. Do NOT force every scaffold-map role into the deck, and do NOT flatten every slide into the same cover composition.'
       : '3. **Layout/placement:** reuse the template\'s multi-region compositions (grids/flex/cards) as a vocabulary. Pick and reorder freely to match the user brief; do not flatten every slide into the same cover composition.',
   );
   lines.push(
@@ -1653,7 +1653,7 @@ function extractTemplateScaffoldMap(
 const HARD_RULES = [
   'Hard rules (non-negotiable):',
   '- **LOOK LIKE THE TEMPLATE — but restructure for the brief.** Background/surface, fonts, borders/shadows, and motif sprites MUST match this kit. Slide count, slide order, and per-slide composition MUST match the **user brief**, not the template\'s natural shell sequence. The template is a **visual and layout vocabulary** to draw from, not a slide skeleton to clone verbatim. A Neutral / "similar vibe" reinterpretation IS a failure — but so is a rigid shell-for-shell copy that keeps the template\'s Weekly Grid or Timeline when the brief has nothing to do with days-of-week or a schedule.',
-  '- **LAYOUT VOCABULARY, NOT SHELL COPY:** treat `### Template scaffold map` (below) as a *catalog of available layouts* (cover / welcome / weekly-grid / timeline / chart / quote / three-column / closing / …). Pick the layout roles that fit the user brief\'s actual content. Reuse the same role across multiple content slides when appropriate; skip roles whose semantic doesn\'t fit (e.g. don\'t force `weekly-grid` on a sales pitch, don\'t force `timeline` on a static explainer). Slide count is driven by the user brief / Plugin `slideCount` / an auto default of 6–8, NOT by the template\'s shell count.',
+  '- **LAYOUT VOCABULARY, NOT SHELL COPY:** treat `### Template scaffold map` (below) as a *catalog of available layouts* (cover / welcome / weekly-grid / timeline / chart / quote / three-column / closing / …). Pick the layout roles that fit the user brief\'s actual content. For 5+ slides use at least 3 distinct body layout roles when available; for 8–10 slides use at least 4. Reuse a role only after exhausting better-fitting alternatives; skip roles whose semantic doesn\'t fit (e.g. don\'t force `weekly-grid` on a sales pitch, don\'t force `timeline` on a static explainer). Slide count is driven by the user brief / Plugin `slideCount` / an auto default of 6–8, NOT by the template\'s shell count.',
   '- **BODY-FIRST:** emit `<body>` / filled `<section class="slide">` (or the template\'s slide wrapper) BEFORE a large `<head>`/`<style>` dump. Put compact CSS/deco tokens (and optional Motif sprites only AFTER title/lead) in one short body `<style>` after slide 1 — never Motif SVG before cover copy. A CSS-only truncation is a failed deliverable.',
   '- **Background:** bind `### Slide surface` on BOTH `html`/`body` AND every `.slide` edge-to-edge (full 1920×1080). Dark-on-dark, light-on-light, paper-slides-on-wrong-shell, or white outer + inner cream panel (white top/bottom bands) are failed deliverables. Ink/border tokens are stroke/text, not backgrounds.',
   '- **Fonts:** use kit Font import + font-family names exactly; do not substitute Inter/Noto/system-ui alone when the kit lists display/body faces.',
@@ -1825,7 +1825,7 @@ export function extractTemplateVisualKitFromHtml(
     optionalBlocks.push([
       '### Template scaffold map (layout vocabulary — pick appropriate roles for the user brief)',
       '',
-      'Catalog of available layout roles, not a fixed slide order. Pick roles that fit the user brief; do not force timeline/chart/weekly layouts when irrelevant. Slide count follows user brief / Plugin `slideCount` / auto 6–8, not template shell count.',
+      'Catalog of available layout roles, not a fixed slide order. Pick roles that fit the user brief; do not force timeline/chart/weekly layouts when irrelevant. For 5+ slides use at least 3 distinct body layout roles when available; for 8–10 use at least 4. Slide count follows user brief / Plugin `slideCount` / auto 6–8, not template shell count.',
       '',
       '```text',
       scaffold,

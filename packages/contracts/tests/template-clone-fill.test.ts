@@ -178,6 +178,59 @@ describe('buildTemplateClonedDeckHtml', () => {
     expect(inferTemplateCloneContentRole(slides[1]!, 1, 3)).toBe('list');
   });
 
+  it('spreads repetitive model roleHints across compatible template layout shells', () => {
+    const shells = [
+      {
+        tag: 'section' as const,
+        attrs: ' class="slide slide-title"',
+        body: '<h1>Demo</h1>',
+        full: '<section class="slide slide-title"><h1>Demo</h1></section>',
+      },
+      {
+        tag: 'section' as const,
+        attrs: ' class="slide slide-welcome"',
+        body: '<ul><li>One</li><li>Two</li></ul>',
+        full: '<section class="slide slide-welcome"><ul><li>One</li><li>Two</li></ul></section>',
+      },
+      {
+        tag: 'section' as const,
+        attrs: ' class="slide slide-cards"',
+        body: '<div class="cards-grid"><div class="info-card">A</div><div class="info-card">B</div></div>',
+        full: '<section class="slide slide-cards"><div class="cards-grid"><div class="info-card">A</div><div class="info-card">B</div></div></section>',
+      },
+      {
+        tag: 'section' as const,
+        attrs: ' class="slide slide-data"',
+        body: '<div class="stats-grid"><div class="stat-card">42%</div></div>',
+        full: '<section class="slide slide-data"><div class="stats-grid"><div class="stat-card">42%</div></div></section>',
+      },
+      {
+        tag: 'section' as const,
+        attrs: ' class="slide slide-timeline"',
+        body: '<div class="timeline"><div class="timeline-card">Step</div></div>',
+        full: '<section class="slide slide-timeline"><div class="timeline"><div class="timeline-card">Step</div></div></section>',
+      },
+      {
+        tag: 'section' as const,
+        attrs: ' class="slide slide-quote"',
+        body: '<blockquote class="quote-text">Quote</blockquote>',
+        full: '<section class="slide slide-quote"><blockquote class="quote-text">Quote</blockquote></section>',
+      },
+    ];
+    const picked = pickTemplateShellsForContent(shells, [
+      { title: '표지', roleHint: 'cover' },
+      { title: '섹션 1', body: '하나: 설명\n둘: 설명', roleHint: 'cards' },
+      { title: '섹션 2', body: '하나: 설명\n둘: 설명', roleHint: 'cards' },
+      { title: '섹션 3', body: '하나: 설명\n둘: 설명', roleHint: 'cards' },
+      { title: '섹션 4', body: '하나: 설명\n둘: 설명', roleHint: 'cards' },
+      { title: '섹션 5', body: '하나: 설명\n둘: 설명', roleHint: 'cards' },
+    ]);
+    const roles = picked.map((shell) => classifyTemplateCloneShellRole(shell));
+    expect(roles[0]).toBe('cover');
+    expect(new Set(roles.slice(1)).size).toBeGreaterThanOrEqual(4);
+    expect(roles.slice(1)).toEqual(expect.arrayContaining(['list', 'cards', 'stat', 'timeline']));
+  });
+
   it('fills Biennale Yellow official slots without leaving Aurora demo copy', async () => {
     const html = await readFile(
       new URL(
