@@ -856,6 +856,94 @@ export function pickPromptFillLookSeedHtml(input: {
   return plugin || disk || '';
 }
 
+/** Observe-only persist quality. Never used to reject or rewrite HTML. */
+export type TemplateClonePersistQualitySnapshot = {
+  slideCount: number;
+  distinctShellRoles: TemplateCloneShellRole[];
+  distinctShellCount: number;
+  cardItemCount: number;
+  titleOnlyCardCount: number;
+  titleOnlyCardRate: number;
+};
+
+export type TemplateClonePersistQualityPhase =
+  | 'prompt-fill-look-merge'
+  | 'json-slot-fill';
+
+export type TemplateClonePersistQualityObserve = {
+  phase: TemplateClonePersistQualityPhase;
+  applied: boolean;
+  templateId: string | null;
+  before: TemplateClonePersistQualitySnapshot | null;
+  after: TemplateClonePersistQualitySnapshot | null;
+  distinctShellDelta: number | null;
+  titleOnlyRateDelta: number | null;
+};
+
+function sortTemplateCloneShellRoles(
+  roles: Iterable<TemplateCloneShellRole>,
+): TemplateCloneShellRole[] {
+  return [...new Set(roles)].sort(
+    (left, right) => (
+      TEMPLATE_CLONE_SHELL_ROLES.indexOf(left) - TEMPLATE_CLONE_SHELL_ROLES.indexOf(right)
+    ),
+  );
+}
+
+export function summarizeTemplateClonePersistQuality(
+  html: string | null | undefined,
+): TemplateClonePersistQualitySnapshot | null {
+  const shells = listTemplateCloneSlideShells(String(html ?? ''));
+  if (shells.length === 0) return null;
+  const roles = sortTemplateCloneShellRoles(
+    shells.map((shell) => classifyTemplateCloneShellRole(shell)),
+  );
+  let cardItemCount = 0;
+  let titleOnlyCardCount = 0;
+  for (const shell of shells) {
+    const items = extractSlideItemsFromHtmlBody(shell.body);
+    if (items.length < 2) continue;
+    for (const item of items) {
+      cardItemCount += 1;
+      if (!templateCloneItemBodyLooksDense(item.body)) titleOnlyCardCount += 1;
+    }
+  }
+  return {
+    slideCount: shells.length,
+    distinctShellRoles: roles,
+    distinctShellCount: roles.length,
+    cardItemCount,
+    titleOnlyCardCount,
+    titleOnlyCardRate: cardItemCount === 0
+      ? 0
+      : Number((titleOnlyCardCount / cardItemCount).toFixed(4)),
+  };
+}
+
+export function buildTemplateClonePersistQualityObserve(input: {
+  phase: TemplateClonePersistQualityPhase;
+  html?: string | null;
+  beforeHtml?: string | null;
+  applied?: boolean;
+  templateId?: string | null;
+}): TemplateClonePersistQualityObserve {
+  const before = summarizeTemplateClonePersistQuality(input.beforeHtml);
+  const after = summarizeTemplateClonePersistQuality(input.html);
+  return {
+    phase: input.phase,
+    applied: input.applied === true,
+    templateId: String(input.templateId ?? '').trim() || null,
+    before,
+    after,
+    distinctShellDelta:
+      before && after ? after.distinctShellCount - before.distinctShellCount : null,
+    titleOnlyRateDelta:
+      before && after
+        ? Number((after.titleOnlyCardRate - before.titleOnlyCardRate).toFixed(4))
+        : null,
+  };
+}
+
 export type TemplateCloneSlotFillTerminalDecision =
   | { kind: 'slot-fill'; html: string; title: string }
   | { kind: 'queue-repair' }

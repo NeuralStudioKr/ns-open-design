@@ -61,7 +61,7 @@ JSON을 staging 기본으로 올리지 않는 이유: MiniMax JSON-only 턴이 `
 - [x] quote = 제목/lead 한 문장. stat = 라벨만. KPI 숫자 발명 금지.
 - [ ] 기본 템플릿(explicit 아님) LOOK seed — 제품 결정 후속
 - [ ] staging 실기 bake (Daisy / Block Frame / Capsule)
-- [ ] persist 텔레메트리 (distinct shell · title-only card rate)
+- [x] persist 텔레메트리 (distinct shell · title-only card rate) — 루프523 observe-only. staging MiniMax live bake는 후속.
 - [x] JSON을 staging 기본으로 올리지 **않음**.
 
 ### 1.35 2026-09-14 — prompt-fill merge 품질 (title-only cards · role lock · chrome skip) (loop517)

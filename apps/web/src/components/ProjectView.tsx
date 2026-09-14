@@ -602,6 +602,7 @@ import {
   skillBodyHasTemplateVisualKit,
 } from '../teamver/fetchPluginLocalSkill';
 import { resolveTemplateCloneLookSeedHtml } from '../teamver/seedTemplateClonedDeck';
+import { observeTemplateClonePersistQuality } from '../teamver/templateClonePersistQuality';
 import { throwIfProjectCommentUploadIncomplete } from '../teamver/projectUploadErrors';
 import { stripLeakedPseudoToolXml } from '../utils/stripLeakedPseudoToolXml';
 import {
@@ -10913,6 +10914,22 @@ export function ProjectView({
                   slideCount: requestedSlideCountSpec?.max ?? null,
                   ...(honorCeiling != null ? { maxSlides: honorCeiling } : {}),
                 });
+                if (decision.kind === 'slot-fill' || decision.kind === 'seed-fallback') {
+                  observeTemplateClonePersistQuality({
+                    phase: 'json-slot-fill',
+                    html: decision.html,
+                    applied: decision.kind === 'slot-fill',
+                    templateId:
+                      firstOfficialDeckTemplateId(
+                        runSelectedDeckTemplateIdRef.current,
+                        selectedDeckTemplateMetadata(project.metadata)?.id,
+                        project.metadata?.selectedDeckTemplateId,
+                      )
+                      ?? (project.metadata as { selectedDeckTemplateId?: string } | undefined)
+                        ?.selectedDeckTemplateId
+                      ?? null,
+                  });
+                }
                 if (decision.kind === 'slot-fill') {
                   runTemplateCloneSlotFillFallbackRef.current = false;
                   artifactToPersist = {
@@ -10993,6 +11010,21 @@ export function ProjectView({
                     ...(honorCeiling != null ? { maxSlides: honorCeiling } : {}),
                   },
                 );
+                observeTemplateClonePersistQuality({
+                  phase: 'prompt-fill-look-merge',
+                  beforeHtml: artifactToPersist.html,
+                  html: merged?.html ?? artifactToPersist.html,
+                  applied: Boolean(merged?.html),
+                  templateId:
+                    firstOfficialDeckTemplateId(
+                      runSelectedDeckTemplateIdRef.current,
+                      selectedDeckTemplateMetadata(project.metadata)?.id,
+                      project.metadata?.selectedDeckTemplateId,
+                    )
+                    ?? (project.metadata as { selectedDeckTemplateId?: string } | undefined)
+                      ?.selectedDeckTemplateId
+                    ?? null,
+                });
                 if (merged?.html) {
                   artifactToPersist = {
                     identifier: 'deck',

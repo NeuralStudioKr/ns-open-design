@@ -48,6 +48,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts 254 passed · daemon template-clone 37 passed · web templateCloneContentFill 38 passed · contracts build passed.
 
+### 루프523 / 0914-N06 — persist 품질 텔레메트리 (observe-only)
+
+체감: merge 후 레이아웃 다양성·title-only 카드 비율을 staging에서 남길 숫자가 없었다.
+
+수정: persist HTML은 그대로 두고 distinct shell / title-only rate만 관측. [0914-N06-3](./0914-N06-3-구현현황-[persist_품질_텔레메트리].md).
+
 ### 루프520–521 / 0914-N05 — deck-patch 비어있음 거부
 
 체감: 빈 `deck-patch` wrapper가 unscoped `rejected`로 떨어지고, 이미 저장된 덱이 LOOK seed 배너·저장 거부로 보였다.

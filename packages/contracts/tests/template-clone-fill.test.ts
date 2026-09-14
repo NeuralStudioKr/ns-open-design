@@ -9,6 +9,8 @@ import {
 
 import {
   applyTemplateClonePromptFillLookMerge,
+  summarizeTemplateClonePersistQuality,
+  buildTemplateClonePersistQualityObserve,
   pickPromptFillLookSeedHtml,
   applyTemplateCloneSlotFill,
   buildTemplateClonedDeckHtml,
@@ -5303,6 +5305,15 @@ describe('루프515 prompt-fill LOOK seed merge (Canvas/Home same host path)', (
       .map((match) => String(match[1] ?? '').replace(/<[^>]+>/g, '').trim());
     expect(cardBodies.length).toBeGreaterThanOrEqual(2);
     expect(cardBodies.every((body) => body.length >= 12)).toBe(true);
+    const before = summarizeTemplateClonePersistQuality(model);
+    const after = summarizeTemplateClonePersistQuality(merged!.html);
+    expect(before?.titleOnlyCardCount).toBeGreaterThan(0);
+    expect(after?.titleOnlyCardRate ?? 1).toBeLessThan(before!.titleOnlyCardRate);
+    const again = applyTemplateClonePromptFillLookMerge(diverseSeed, model, {
+      brief: '분기 전략 리뷰',
+      deckTitle: '분기 전략',
+    });
+    expect(again?.html).toBe(merged!.html);
   });
 
   it('still merges chrome-heavy prompt-fill HTML (nav/counters are not real copy)', () => {
@@ -5476,5 +5487,63 @@ describe('루프515 prompt-fill LOOK seed merge (Canvas/Home same host path)', (
       '</body></html>',
     ].join('');
     expect(applyTemplateClonePromptFillLookMerge(diverseSeed, model)).toBeNull();
+  });
+});
+
+describe('루프523 persist quality observe-only', () => {
+  it('returns null for empty or slide-less HTML', () => {
+    expect(summarizeTemplateClonePersistQuality('')).toBeNull();
+    expect(summarizeTemplateClonePersistQuality('<html><body><p>no slides</p></body></html>')).toBeNull();
+  });
+
+  it('builds observe payload deltas without mutating HTML', () => {
+    const beforeHtml = [
+      '<section class="slide slide-cards"><h2>핵심</h2><div class="cards-grid">',
+      '<article class="info-card"><h3>속도</h3></article>',
+      '<article class="info-card"><h3>품질</h3></article>',
+      '</div></section>',
+    ].join('');
+    const afterHtml = [
+      '<section class="slide slide-title cover"><h1>표지</h1></section>',
+      '<section class="slide slide-cards"><h2>핵심</h2><div class="cards-grid">',
+      '<article class="info-card"><h3>속도</h3><p>속도에 묶인 한 문장 본문입니다.</p></article>',
+      '<article class="info-card"><h3>품질</h3><p>품질에 묶인 한 문장 본문입니다.</p></article>',
+      '</div></section>',
+    ].join('');
+    const frozenBefore = beforeHtml;
+    const frozenAfter = afterHtml;
+    const observe = buildTemplateClonePersistQualityObserve({
+      phase: 'prompt-fill-look-merge',
+      beforeHtml,
+      html: afterHtml,
+      applied: true,
+      templateId: 'html-ppt-zhangzara-daisy-days',
+    });
+    expect(beforeHtml).toBe(frozenBefore);
+    expect(afterHtml).toBe(frozenAfter);
+    expect(observe.applied).toBe(true);
+    expect(observe.templateId).toBe('html-ppt-zhangzara-daisy-days');
+    expect(observe.before?.titleOnlyCardRate).toBe(1);
+    expect(observe.after?.titleOnlyCardRate).toBe(0);
+    expect(observe.titleOnlyRateDelta).toBe(-1);
+    expect(observe.distinctShellDelta).toBeGreaterThanOrEqual(0);
+  });
+
+  it('records catalog baselines for Daisy / Block Frame / Capsule', async () => {
+    const catalogs = [
+      'html-ppt-zhangzara-daisy-days',
+      'html-ppt-zhangzara-block-frame',
+      'html-ppt-zhangzara-capsule',
+    ];
+    for (const id of catalogs) {
+      const html = await readFile(
+        new URL(`../../../plugins/_official/examples/${id}/example.html`, import.meta.url),
+        'utf8',
+      );
+      const snap = summarizeTemplateClonePersistQuality(html);
+      expect(snap, id).not.toBeNull();
+      expect(snap!.slideCount, id).toBeGreaterThanOrEqual(4);
+      expect(snap!.distinctShellCount, id).toBeGreaterThanOrEqual(2);
+    }
   });
 });
