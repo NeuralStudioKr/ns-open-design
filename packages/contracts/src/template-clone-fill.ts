@@ -1535,18 +1535,37 @@ function inferTemplateCloneContentRoleFromText(
   if (index === 0) return 'cover';
   const title = slide.title.trim();
   const body = slide.body?.trim() ?? '';
+  const items = Array.isArray(slide.items) ? slide.items : [];
   const blob = `${title}\n${body}`;
   const lines = body.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  if (index === total - 1 && total >= 3 && /다음|정리|요약|thanks|closing|wrap.?up|결론/i.test(title)) {
+  if (index === total - 1 && total >= 3 && /다음|정리|요약|thanks|closing|wrap.?up|결론|conclusion|summary/i.test(title)) {
     return 'closing';
   }
-  // Body shape wins over title keywords — a "KPI" slide with bullet lines
-  // still needs a list shell so content-swap can land the bullets.
+  // Structured items[] beat body-shape heuristics: title+body pairs are card
+  // peers, not a bullet list — the prior "list wins" branch pushed every
+  // items[]-carrying slide into a single list shell and left team/stat/cards
+  // shells unused (docs-teamver/60 § "layout monotony"). Hangul characters
+  // are non-word so `\b` boundaries only apply to Latin keywords.
+  const teamRe = /(?:팀|멤버|조직|담당|founders?|\bpeople\b|\bteam\b|\bcrew\b|\bmembers?\b)/i;
+  const processRe = /(?:프로세스|절차|단계|과정|\bworkflow\b|\bprocess\b|\bsteps?\b)/i;
+  const timelineRe = /(?:타임라인|로드맵|일정|마일스톤|\bmilestone\b|\btimeline\b|\broadmap\b|\bQ[1-4]\b|\bphase\s*\d)/i;
+  if (items.length >= 2) {
+    const hasKpiSignal =
+      /\bKPI\b|성과\s*지표|핵심\s*지표|성장|증가|감소|\bCAGR\b|\bMRR\b|\bARR\b|\bCTR\b|\bMAU\b|\bDAU\b|\bCAC\b|\bLTV\b|\bNPS\b|\bROI\b|\bCVR\b/i
+        .test(blob)
+      || items.some((item) => /\d+\s*(?:%|배|건|회|명|만|억|천|\bK\b|\bM\b|\bB\b)/i.test(`${item.title ?? ''} ${item.body ?? ''}`));
+    if (hasKpiSignal) return 'stat';
+    if (timelineRe.test(blob)) return 'timeline';
+    if (teamRe.test(title)) return 'team';
+    if (processRe.test(title)) return 'process';
+    return 'cards';
+  }
+  // Bulleted single body without items[] still routes through list.
   if (lines.length >= 2 || /^[-*•·]/.test(body) || /^\d+[.)]/.test(body)) return 'list';
-  if (/\bKPI\b|\d+\s*%|통계|지표|차트|수치/i.test(blob)) return 'stat';
-  if (/타임라인|로드맵|일정|milestone|timeline|roadmap/i.test(blob)) return 'timeline';
-  if (/팀|멤버|조직|people|team\b/i.test(title)) return 'team';
-  if (/프로세스|절차|단계|process|steps?/i.test(title)) return 'process';
+  if (/\bKPI\b|\d+\s*(?:%|배|건|회|명)|통계|지표|차트|수치|\bmetric\b|\bstat\b/i.test(blob)) return 'stat';
+  if (timelineRe.test(blob)) return 'timeline';
+  if (teamRe.test(title)) return 'team';
+  if (processRe.test(title)) return 'process';
   if (body.length >= 100 && lines.length <= 1) return 'quote';
   if (lines.length === 1 && body.length < 100) return 'cards';
   return 'body';
@@ -1867,6 +1886,24 @@ function pickShellByRole(
   return leastUsedShell(bodyPool, usage) ?? cover;
 }
 
+/**
+ * Preference-ordered list of shell roles that can plausibly host a generic
+ * body/list/cards outline slide when the strict `shellSupportsContentRole`
+ * pool is exhausted. Ordered by "least surprising when the outline is
+ * uniform": prose-friendly shells first, structured/data shells last. Cover
+ * / closing are omitted — hero + thanks layouts look worst when repurposed.
+ */
+const VARIETY_SAFE_ROLE_PREFERENCE: readonly TemplateCloneShellRole[] = [
+  'body',
+  'list',
+  'cards',
+  'quote',
+  'timeline',
+  'process',
+  'team',
+  'stat',
+];
+
 /** Pick layout shells by content role — never mirror template page order/count. */
 export function pickTemplateShellsForContent(
   shells: SlideShell[],
@@ -1884,6 +1921,15 @@ export function pickTemplateShellsForContent(
   }
   const cover = byRole.get('cover')?.[0] ?? shells[0]!;
   const bodyPool = shells.filter((shell) => shell !== cover);
+  const bodyRoleTypeCount = new Set(
+    bodyPool.map((shell) => classifyTemplateCloneShellRole(shell)),
+  ).size;
+  // Uniform-role editorial kits (Biennale / Creative Mode / Cobalt Grid) already
+  // ride the `templateShellsAreUniqueRole` diversity branch below. The extra
+  // recovery fallback is only useful for templates that expose ≥ 5 distinct
+  // body-role types — Daisy Days ships 8+ role buckets and used to collapse
+  // into 1–2 shells (docs-teamver/60 § "layout monotony").
+  const hasVariedBodyPool = bodyRoleTypeCount >= 5;
   const usage = new Map<SlideShell, number>();
   const picked: SlideShell[] = [];
   const plannedRoles = resolveTemplateCloneContentRolesForShellVariety(shells, slides);
@@ -1913,6 +1959,29 @@ export function pickTemplateShellsForContent(
     if ((usage.get(shell) ?? 0) > 0 && templateShellsAreUniqueRole(shells)) {
       const unused = bodyPool.find((candidate) => (usage.get(candidate) ?? 0) === 0);
       if (unused) shell = unused;
+    }
+    // Layout-variety recovery — when the current shell is already stamped ≥ 2
+    // times AND the template has many distinct body-role shells lying idle,
+    // borrow the next-preferred idle body-safe shell instead of stamping the
+    // same layout a third time. The strict `shellSupportsContentRole` gate
+    // above is deliberately narrow (a bullet slide never lands on a stat
+    // shell), so this fallback only fires after that gate exhausts and only
+    // when the preferred shell is already in heavy rotation. Prose-friendly
+    // roles (body/list/cards/quote) win over structured ones (stat/team) to
+    // keep 루프480 Block Frame's KPI slide on a list-capable shell.
+    if (
+      (usage.get(shell) ?? 0) >= 2
+      && hasVariedBodyPool
+    ) {
+      let varietyPick: SlideShell | null = null;
+      for (const preferredRole of VARIETY_SAFE_ROLE_PREFERENCE) {
+        const pool = byRole.get(preferredRole) ?? [];
+        varietyPick = pool.find(
+          (candidate) => candidate !== cover && (usage.get(candidate) ?? 0) === 0,
+        ) ?? null;
+        if (varietyPick) break;
+      }
+      if (varietyPick) shell = varietyPick;
     }
     picked.push(shell);
     usage.set(shell, (usage.get(shell) ?? 0) + 1);
@@ -8725,6 +8794,96 @@ function replaceSlideBlocks(html: string, shells: SlideShell[], filledSlides: st
  * Clone a template `example.html` and content-swap Source slide titles/bodies
  * into the real CSS/SVG/layout shells. Returns null when no slide shells exist.
  */
+/**
+ * Loop509 — Count the highest card-peer count reachable inside any host
+ * container in a shell body. Mirrors `fillAndTrimCardPeers`'s host+peer
+ * discovery so the enrichment step below sees the same peer geometry the
+ * fill step will operate on.
+ */
+function countPeerSlotsInShellBody(
+  body: string,
+  slotMap: TemplateCloneSlotMap | null | undefined,
+): number {
+  const source = String(body ?? '');
+  if (!source) return 0;
+  let best = 0;
+  const hostOpenRe = /<(div|ul|ol|section)\b([^>]*)>/gi;
+  let hostMatch: RegExpExecArray | null;
+  while ((hostMatch = hostOpenRe.exec(source)) !== null) {
+    const tag = (hostMatch[1] ?? 'div').toLowerCase();
+    const attrs = hostMatch[2] ?? '';
+    if (!attrsLookLikeCardHost(attrs, slotMap)) continue;
+    const openEnd = hostMatch.index + hostMatch[0].length;
+    const closeEnd = findMatchingClose(source, openEnd, tag);
+    if (closeEnd < 0) continue;
+    const closeTagMatch = new RegExp(`</${tag}\\s*>$`, 'i').exec(
+      source.slice(0, closeEnd),
+    );
+    const closeTagLen = closeTagMatch?.[0]?.length ?? `</${tag}>`.length;
+    const innerEnd = closeEnd - closeTagLen;
+    const children = listDirectChildRanges(source, openEnd, innerEnd);
+    const peers = collectPeersAmongChildren(source, children, slotMap);
+    if (peers.length > best) best = peers.length;
+  }
+  return best;
+}
+
+/**
+ * Loop509 — Enrich a title-only outline slide that lands on a card-grid
+ * shell so the deliverable does not ship half-empty grids (docs-teamver/60
+ * § "결과물 완성도").
+ *
+ * When the picker lands a sparse slide on a shell whose primary layout is
+ * a card grid (≥ 2 card peers) and the model emitted no items[] AND no
+ * multi-line body, synthesize items[] from the deck brief + slide title
+ * using the same topic-aware presets as `synthesizeTemplateCloneSlideBody`.
+ *
+ * Guardrails — do NOT enrich when:
+ *   - The slide is the cover (index 0) or an explicit `closing` shell —
+ *     hero/thanks layouts look worse with padded cards.
+ *   - The slide already carries items[] or a multi-line bulleted body —
+ *     the model expressed intent; preserve it.
+ *   - The picked shell has no card peers (< 2). Bullet-list shells
+ *     intentionally drop title-only demo lists (루프376). Stat shells
+ *     want number-shaped copy, not prose bodies; synth prose there would
+ *     look worse than a clean empty slot.
+ */
+function enrichSparseSlideForShell(
+  slide: TemplateCloneSlideContent,
+  shell: SlideShell,
+  index: number,
+  deckTitle: string,
+  brief: string | null | undefined,
+  slotMap: TemplateCloneSlotMap | null | undefined,
+): TemplateCloneSlideContent {
+  if (index === 0) return slide;
+  if (slide.roleHint === 'cover' || slide.roleHint === 'closing') return slide;
+  const items = Array.isArray(slide.items) ? slide.items : [];
+  const bodyText = slide.body?.trim() ?? '';
+  const bodyLines = bodyText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (items.length >= 2) return slide;
+  if (bodyLines.length >= 2) return slide;
+  const shellRole = classifyTemplateCloneShellRole(shell);
+  if (shellRole === 'cover' || shellRole === 'closing' || shellRole === 'quote' || shellRole === 'stat') {
+    return slide;
+  }
+  const peers = countPeerSlotsInShellBody(shell.body, slotMap);
+  if (peers < 2) return slide;
+  const targetCount = Math.max(2, Math.min(peers, 4));
+  const synth = synthesizeTemplateCloneSlideBody(
+    deckTitle || slide.title,
+    slide.title,
+    Math.max(1, index),
+    brief,
+  );
+  const synthItems = Array.isArray(synth.items) ? synth.items : [];
+  if (synthItems.length === 0) return slide;
+  const trimmed = synthItems.slice(0, targetCount);
+  const enriched: TemplateCloneSlideContent = { ...slide, items: trimmed };
+  if (!enriched.lead && synth.lead) enriched.lead = synth.lead;
+  return enriched;
+}
+
 export function buildTemplateClonedDeckHtml(
   exampleHtml: string,
   slides: TemplateCloneSlideContent[],
@@ -8830,8 +8989,16 @@ export function buildTemplateClonedDeckHtml(
   }
 
   const picked = pickTemplateShellsForContent(shells, workingSlides);
+  const enrichedSlides = workingSlides.map((slide, index) => enrichSparseSlideForShell(
+    slide,
+    picked[index] ?? shells[0]!,
+    index,
+    deckTitle,
+    options.brief ?? null,
+    slotMap,
+  ));
   const filled = picked.map((shell, index) => {
-    const content = workingSlides[index] ?? {
+    const content = enrichedSlides[index] ?? {
       title: index === 0 ? deckTitle : `${deckTitle} · ${index + 1}`,
     };
     return fillSlideShell(shell, content, index, slotMap);

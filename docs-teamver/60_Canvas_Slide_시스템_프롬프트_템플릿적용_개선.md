@@ -32,21 +32,43 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **명시 5장+ 요청에서는 저장하지 않는다.** 8–10장 요청의 1장/4장 Template Clone fill은 `deck.html` 덮어쓰기 전에 incomplete로 막고 기존 덱을 보존한다. 6장 이상 첫 fill만 저장 후 top-up 가능하다. 사용자가 1장을 명시하거나 요청 장수가 작을 때만 1장 저장을 허용한다 |
 
-### 1.31 2026-09-14 — scaffold layout 다양성 강제
+### 1.32 2026-09-14 — 결과물 완성도 2단계 (sparse outline 안전망 · Copy density prompt)
 
-증상: 템플릿 preview/example에는 여러 페이지 유형이 있는데 결과물은 cover/cards/body 한두 패턴만 반복됐다. 특히 JSON slot-fill 모델이 모든 본문 slide에 같은 `roleHint`를 주면, host slot-fill이 LOOK seed를 유지하더라도 같은 shell 위주로 선택해 “템플릿 미리보기보다 완성도가 낮은” 덱이 됐다.
+§1.31이 prompt/picker/scaffold 3면에서 레이아웃 다양성을 강제하도록 만들었지만, 사용자는 여전히 “미리보기보다 결과물 완성도가 훨씬 떨어진다”고 재보고했다. 실제로 §1.31 이후 남은 완성도 갭은 **레이아웃이 아닌 콘텐츠 밀도** 쪽이었다.
 
-수정:
+원인:
 
-- `templateCloneContentFillHardRules`에 5장+ 최소 3종, 8–10장 최소 4종의 body `roleHint` 다양성 요구를 추가.
-- Template visual kit / scaffold map 설명도 동일 기준으로 갱신.
-- `pickTemplateShellsForContent`에서 5장+ 덱의 role이 과도하게 한 종류로 쏠리면, 템플릿이 실제 보유한 shell role 안에서 list/cards/stat/timeline/quote/process/body/closing을 재분배한다.
-- 첫 장 cover와 명확한 closing은 보존하고, 사용 가능한 shell role이 3종 미만인 템플릿은 보정하지 않는다.
+1. **model이 sparse outline을 emit해도 host가 방어를 못 함.** 프롬프트가 아무리 강해도 실제 모델 출력이 `{ title: '핵심 개념' }` 같은 title-only 슬라이드면 picker가 그걸 카드 그리드 shell로 라우팅할 때 `fillAndTrimCardPeers`가 카드 피어를 전부 잘라내 grid가 빈 상태로 렌더된다. 미리보기는 3–4장의 dense card grid인데 결과물은 heading + 빈 여백이 되어 완성도 차이가 눈에 띈다.
+2. **prompt가 “카피 밀도”를 명시적으로 요구 안 함.** §1.31이 “items[] 를 채워라”까지는 요구했지만 각 item의 `body`가 한 단어여도 통과했다. 실제 preview는 카드마다 12–28자짜리 한 문장씩 있어 인상 자체가 다르다.
 
-검증:
+구현 현황:
 
-- 반복 `cards` roleHint 5장 본문이 cover/list/cards/stat/timeline 등 4종 이상 shell로 분산되는 unit 추가.
-- JSON slot-fill seed가 layout variety 계약을 포함하는지 web 테스트 추가.
+- [x] `buildTemplateClonedDeckHtml` — picker 이후 `enrichSparseSlideForShell`를 통과시켜, title-only 슬라이드가 카드 그리드 shell (≥2 카드 피어)에 착지하면 `synthesizeTemplateCloneSlideBody`가 만든 items[]로 채운다. 커버(index 0) / closing / quote / stat shell에는 안 씀. 기존 items[] / 다중라인 body는 절대 덮어쓰지 않음.
+- [x] `countPeerSlotsInShellBody` — `fillAndTrimCardPeers` host/peer heuristic 재사용.
+- [x] JSON slot-fill authority · HTML fill contract · Selected template hard-requirements — “**Copy density**” 규칙 추가.
+- [x] 회귀: `template-clone-fill.test.ts` loop509 describe · `system-prompt-api-mode.test.ts` Copy density assert
+- [ ] outline generator 텔레메트리 · generic synth preset 세분화 — 후속
+
+### 1.31 2026-09-14 — 템플릿 레이아웃 다양성 · 결과물 완성도 (`roleHint` 벡터)
+
+증상: 템플릿 preview/example에는 여러 페이지 유형이 있는데 결과물은 cover/cards/body 한두 패턴만 반복됐다. JSON slot-fill 모델이 모든 본문 slide에 같은 `roleHint`를 주면, host slot-fill이 LOOK seed를 유지하더라도 같은 shell 위주로 선택해 “템플릿 미리보기보다 완성도가 낮은” 덱이 됐다.
+
+원인 (겹침):
+
+1. **scaffold map 어휘 부재** — `role=welcome/weekly` 등 템플릿 고유 이름만 노출 → outline 생성기가 캐노니컬 `roleHint` enum으로 되돌리기 어려움.
+2. **prompt 다양성 미요구** — JSON slot-fill authority가 `roleHint` optional · FE `templateCloneContentFillHardRules`만으로는 picker까지 연결 안 됨.
+3. **picker shell 재사용** — `pickTemplateShellsForContent`가 첫 매칭 shell만 반복.
+4. **items[]→list 접힘** — `inferTemplateCloneContentRole` + 한국어 `\b` 워드바운더리 실패.
+5. **sprite pool 커플링** — scaffold map 예산 상향 시 kit sprite eviction.
+
+수정 (FE + contracts + prompt):
+
+- [x] `templateCloneContentFillHardRules` — 5장+ 최소 3종, 8–10장 최소 4종 body `roleHint` 다양성 요구.
+- [x] `resolveTemplateCloneContentRolesForShellVariety` — 5장+ 덱 role monotony 시 템플릿 보유 shell role 안에서 list/cards/stat/timeline/quote/process/body/closing 재분배 (cover/closing 보존, 3종 미만 템플릿은 skip).
+- [x] `extractTemplateScaffoldMap` — `roleHint=<enum>` · `items~=N` · 다양성 배너 · 예산 1_500 · `extractMotifSpritesFromHtml` export.
+- [x] `composeTeamverSlideApiPrompt` — JSON/HTML fill contract에 roleHint 필수 · 4+ distinct spread · card/grid slot fill · Copy density.
+- [x] `inferTemplateCloneContentRole` · `VARIETY_SAFE_ROLE_PREFERENCE` · `template-scaffold` sprite decoupling.
+- [x] 회귀: repetitive roleHint spread unit · Daisy 8-slide 4+ role · items[] classification · scaffold map · system-prompt tests.
 
 ### 1.30 2026-08-24 — Clone fill Final authority 단일 READ LAST
 

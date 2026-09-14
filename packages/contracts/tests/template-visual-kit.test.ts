@@ -233,6 +233,61 @@ html,body{background:var(--ink);color:#fff}
     expect(kit).toContain('role=cover');
   });
 
+  it('scaffold map exposes canonical roleHint + items~= hints per row (Daisy Days)', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-daisy-days/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const kit = extractTemplateVisualKitFromHtml(html, { title: 'Html Ppt Zhangzara Daisy Days' });
+    expect(kit).toBeTruthy();
+    // The scaffold-map heading appears in prose (as backticked ref) BEFORE the
+    // actual `### Template scaffold map` heading. Grab the actual fenced block
+    // by looking for the second occurrence — the one that opens with a full-line
+    // `### Template scaffold map`.
+    const heading = '\n### Template scaffold map';
+    const mapBlockStart = kit!.indexOf(heading);
+    expect(mapBlockStart).toBeGreaterThan(0);
+    const nextHeading = kit!.indexOf('\n### ', mapBlockStart + heading.length);
+    const map = kit!.slice(mapBlockStart, nextHeading > 0 ? nextHeading : undefined);
+    // Row 1 (cover title) exposes roleHint=cover; welcome/weekly/timeline/cards
+    // rows expose their canonical roleHint so the outline generator can copy
+    // them into `slides[].roleHint`.
+    expect(map).toMatch(/classes="slide slide-title"[^\n]*roleHint=cover/i);
+    expect(map).toMatch(/classes="slide slide-welcome"[^\n]*roleHint=list/i);
+    expect(map).toMatch(/classes="slide slide-weekly"[^\n]*roleHint=cards/i);
+    expect(map).toMatch(/classes="slide slide-timeline"[^\n]*roleHint=timeline/i);
+    expect(map).toMatch(/classes="slide slide-chart-bar"[^\n]*roleHint=stat/i);
+    // Rows with concrete peer cards ship `items~=` so the outline knows to
+    // provide a matching items[] count.
+    expect(map).toMatch(/items~=\d/);
+    // A layout-variety banner appears before the row table, listing the
+    // available roleHint values (minus cover) and telling the model to spread
+    // its outline across them.
+    expect(map).toMatch(/Available roleHint values for THIS template/i);
+    expect(map).toMatch(/spread\s+`slides\[\]\.roleHint`/i);
+  });
+
+  it('scaffold map still labels roleHint even when template exposes only cover + body', () => {
+    const html = `
+<style>:root{--bg:#fff;--ink:#111}</style>
+<section class="slide slide-cover"><h1>Cover</h1></section>
+<section class="slide"><h2>Body</h2></section>
+`.trim();
+    const kit = extractTemplateVisualKitFromHtml(html, { title: 'Minimal Template' });
+    const heading = '\n### Template scaffold map';
+    const mapBlockStart = kit!.indexOf(heading);
+    const nextHeading = kit!.indexOf('\n### ', mapBlockStart + heading.length);
+    const map = kit!.slice(mapBlockStart, nextHeading > 0 ? nextHeading : undefined);
+    expect(map).toMatch(/roleHint=cover/i);
+    expect(map).toMatch(/roleHint=body/i);
+    // Variety banner still names the available roleHint set so the model
+    // does not silently repeat cover on every content slide.
+    expect(map).toMatch(/Available roleHint values for THIS template/i);
+  });
+
   it('skips slide-counter / slide-chrome when mapping template shells', () => {
     const html = `
 <style>:root{--bg:#fff8f0;--ink:#1c1c1c}</style>

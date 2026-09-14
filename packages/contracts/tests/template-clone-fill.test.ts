@@ -231,6 +231,118 @@ describe('buildTemplateClonedDeckHtml', () => {
     expect(roles.slice(1)).toEqual(expect.arrayContaining(['list', 'cards', 'stat', 'timeline']));
   });
 
+  it('distributes layout across ≥ 4 distinct shell roles when the template exposes many (docs-teamver/60)', async () => {
+    // Bug: an 8-slide outline with only body/list content used to collapse
+    // into 1–2 Daisy shells (welcome/cards) leaving team/timeline/stat idle.
+    // Fix: `hasVariedBodyPool` recovery in pickTemplateShellsForContent.
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-daisy-days/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const shells = listTemplateCloneSlideShells(html);
+    const slides = [
+      { title: '표지', roleHint: 'cover' as const },
+      { title: '개요', body: 'A ' + 'B'.repeat(30) },
+      { title: '핵심 포인트', body: '메시지 하나\n메시지 둘\n메시지 셋' },
+      { title: '근거와 사례', body: '데이터 하나\n데이터 둘' },
+      { title: '실행 방안', body: '실행 하나\n실행 둘\n실행 셋' },
+      { title: '고객 경험', body: '경험 하나\n경험 둘' },
+      { title: '운영과 보안', body: '운영 하나\n운영 둘\n운영 셋' },
+      { title: '요약', body: '요약 문장 하나 정도의 마무리 카피' },
+    ];
+    const picked = pickTemplateShellsForContent(shells, slides);
+    const usedRoles = new Set(picked.map((shell) => classifyTemplateCloneShellRole(shell)));
+    // Must actually pull in shell types beyond the 2–3 fallback set.
+    expect(usedRoles.size).toBeGreaterThanOrEqual(4);
+    // Nothing should still be stamped 5+ times when 8 slots exist.
+    const usageCount = new Map<string, number>();
+    for (const shell of picked) {
+      const key = `${shell.attrs}|${shell.body.slice(0, 40)}`;
+      usageCount.set(key, (usageCount.get(key) ?? 0) + 1);
+    }
+    const maxRepeat = Math.max(...usageCount.values());
+    expect(maxRepeat).toBeLessThanOrEqual(3);
+  });
+
+  it('honors explicit roleHint on every slide even for uniform body content (docs-teamver/60)', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-daisy-days/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const shells = listTemplateCloneSlideShells(html);
+    const slides = [
+      { title: '표지', roleHint: 'cover' as const },
+      { title: 'A', body: '하나', roleHint: 'cards' as const, items: [{ title: 'A1', body: 'x' }, { title: 'A2', body: 'y' }, { title: 'A3', body: 'z' }] },
+      { title: 'B', body: '둘', roleHint: 'stat' as const },
+      { title: 'C', body: '셋', roleHint: 'timeline' as const },
+      { title: 'D', body: '넷', roleHint: 'team' as const },
+      { title: 'E', body: '다섯', roleHint: 'process' as const },
+      { title: 'F', body: '여섯', roleHint: 'quote' as const },
+      { title: '마무리', roleHint: 'closing' as const },
+    ];
+    const picked = pickTemplateShellsForContent(shells, slides);
+    const roles = picked.map((shell) => classifyTemplateCloneShellRole(shell));
+    // Every explicit roleHint should land on a shell of that role when the
+    // template exposes it.
+    expect(roles[0]).toBe('cover');
+    expect(roles[1]).toBe('cards');
+    expect(roles[2]).toBe('stat');
+    expect(roles[3]).toBe('timeline');
+    expect(roles[4]).toBe('team');
+    expect(roles[5]).toBe('process');
+    expect(new Set(roles).size).toBeGreaterThanOrEqual(6);
+  });
+
+  it('items[]-carrying cards outline never collapses to a single list shell (docs-teamver/60)', () => {
+    // Regression: previous inferTemplateCloneContentRole classified any slide
+    // with 2+ bulleted lines as `list`, which pushed items[]-heavy outlines
+    // into a single welcome/list shell across the deck.
+    const slide = {
+      title: '핵심 지표',
+      items: [
+        { title: '매출', body: '15% 성장' },
+        { title: '리텐션', body: '30% 유지' },
+        { title: '활성 사용자', body: '60% 참여' },
+      ],
+    };
+    // 4 slides total: an items[] slide with numeric bodies must classify to
+    // stat (KPI signal), not list.
+    expect(inferTemplateCloneContentRole(slide, 2, 4)).toBe('stat');
+    const teamSlide = {
+      title: '팀 소개',
+      items: [
+        { title: '홍길동', body: 'CEO' },
+        { title: '김철수', body: 'CTO' },
+        { title: '이영희', body: 'CPO' },
+      ],
+    };
+    expect(inferTemplateCloneContentRole(teamSlide, 3, 5)).toBe('team');
+    const timelineSlide = {
+      title: '분기 로드맵',
+      items: [
+        { title: 'Q1', body: '킥오프' },
+        { title: 'Q2', body: '베타' },
+        { title: 'Q3', body: 'GA' },
+      ],
+    };
+    expect(inferTemplateCloneContentRole(timelineSlide, 4, 6)).toBe('timeline');
+    const genericCards = {
+      title: '전략 요약',
+      items: [
+        { title: '전략 A', body: '설명' },
+        { title: '전략 B', body: '설명' },
+        { title: '전략 C', body: '설명' },
+      ],
+    };
+    expect(inferTemplateCloneContentRole(genericCards, 1, 5)).toBe('cards');
+  });
+
   it('fills Biennale Yellow official slots without leaving Aurora demo copy', async () => {
     const html = await readFile(
       new URL(
@@ -4883,6 +4995,127 @@ describe('루프376 fillSlideShell drops title-only empty content-list shells en
     expect(filled!.html).toContain('Smarter &amp; Faster');
     // Motif still visible.
     expect(filled!.html).toContain('.motif{color:#FCDF6C}');
+  });
+});
+
+describe('루프509 sparse title-only outlines are enriched when landing on card-grid shells', () => {
+  it('title-only slide on a real cards shell fills card peers with synth items (docs-teamver/60)', () => {
+    const seed = [
+      '<!doctype html><html><head><style>.motif{color:#FCDF6C}</style></head><body>',
+      '<section class="slide slide-title cover"><h1>Demo Cover</h1></section>',
+      '<section class="slide slide-cards">',
+      '<h2>Demo Cards</h2>',
+      '<div class="cards-grid">',
+      '<article class="info-card"><h3>Demo A</h3><p>Demo A body.</p></article>',
+      '<article class="info-card"><h3>Demo B</h3><p>Demo B body.</p></article>',
+      '<article class="info-card"><h3>Demo C</h3><p>Demo C body.</p></article>',
+      '</div>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    // Model emits a title-only slide; picker lands it on the info-card grid.
+    // Prior behavior: all card peers were trimmed → empty grid.
+    // Loop509: synth items get filled so the peers stay populated.
+    const filled = applyTemplateCloneSlotFill(seed, {
+      title: '분기 전략',
+      slides: [
+        { title: '표지', roleHint: 'cover' },
+        { title: '핵심 개념', roleHint: 'cards' },
+      ],
+    });
+    expect(filled).not.toBeNull();
+    // At least two info-card peers must survive with real body copy.
+    const infoCardMatches = filled!.html.match(/<article\b[^>]*\binfo-card\b/gi) ?? [];
+    expect(infoCardMatches.length).toBeGreaterThanOrEqual(2);
+    // The card grid must NOT be empty (`<div class="cards-grid"></div>`).
+    expect(filled!.html).not.toMatch(/<div class="cards-grid">\s*<\/div>/);
+    // Demo copy must NOT survive (still cleared).
+    expect(filled!.html).not.toMatch(/Demo A body\./);
+    // Slide heading swap survived.
+    expect(filled!.html).toContain('핵심 개념');
+  });
+
+  it('does NOT enrich title-only slides on list shells (preserves 루프376 empty-list drop)', () => {
+    const seed = [
+      '<!doctype html><html><head><style>.motif{color:#FCDF6C}</style></head><body>',
+      '<section class="slide slide-title cover"><h1>Demo Cover</h1></section>',
+      '<section class="slide slide-6"><div class="split-content"><h2>Demo Title</h2><ul class="content-list"><li>Demo A</li><li>Demo B</li><li>Demo C</li><li>Demo D</li></ul></div></section>',
+      '</body></html>',
+    ].join('');
+    const filled = applyTemplateCloneSlotFill(seed, {
+      title: '분기 전략',
+      slides: [
+        { title: '표지', roleHint: 'cover' },
+        { title: 'Smarter & Faster', roleHint: 'body' },
+      ],
+    });
+    expect(filled).not.toBeNull();
+    // 루프376 invariant — list shells still drop empty <li>/<ul> for title-only.
+    expect(filled!.html).not.toMatch(/<li>\s*<\/li>/);
+    expect(filled!.html).not.toMatch(/<ul[^>]*>\s*<\/ul>/);
+    expect(filled!.html).toContain('Smarter &amp; Faster');
+  });
+
+  it('does NOT overwrite explicit items[] the model emitted', () => {
+    const seed = [
+      '<!doctype html><html><head><style>.motif{color:#FCDF6C}</style></head><body>',
+      '<section class="slide slide-title cover"><h1>Demo Cover</h1></section>',
+      '<section class="slide slide-cards">',
+      '<h2>Demo Cards</h2>',
+      '<div class="cards-grid">',
+      '<article class="info-card"><h3>Demo A</h3><p>Demo A body.</p></article>',
+      '<article class="info-card"><h3>Demo B</h3><p>Demo B body.</p></article>',
+      '<article class="info-card"><h3>Demo C</h3><p>Demo C body.</p></article>',
+      '</div>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const filled = applyTemplateCloneSlotFill(seed, {
+      title: '분기 전략',
+      slides: [
+        { title: '표지', roleHint: 'cover' },
+        {
+          title: '핵심 개념',
+          roleHint: 'cards',
+          items: [
+            { title: '고유 A', body: '사용자가 실제로 얻는 첫번째 가치.' },
+            { title: '고유 B', body: '두번째 가치와 사용 장면.' },
+          ],
+        },
+      ],
+    });
+    expect(filled).not.toBeNull();
+    // Model-authored titles must survive verbatim.
+    expect(filled!.html).toContain('고유 A');
+    expect(filled!.html).toContain('고유 B');
+    expect(filled!.html).toContain('사용자가 실제로 얻는 첫번째 가치.');
+    // Synth generic labels must NOT have overwritten model intent.
+    expect(filled!.html).not.toMatch(/포인트\s*1|포인트\s*2/);
+  });
+
+  it('does NOT enrich the cover slide (index 0)', () => {
+    const seed = [
+      '<!doctype html><html><head><style>.motif{color:#FCDF6C}</style></head><body>',
+      '<section class="slide slide-cards">',
+      '<h1>Cover Only</h1>',
+      '<div class="cards-grid">',
+      '<article class="info-card"><h3>Demo A</h3><p>Demo A body.</p></article>',
+      '<article class="info-card"><h3>Demo B</h3><p>Demo B body.</p></article>',
+      '<article class="info-card"><h3>Demo C</h3><p>Demo C body.</p></article>',
+      '</div>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const filled = applyTemplateCloneSlotFill(seed, {
+      title: '분기 전략',
+      slides: [
+        { title: '표지', roleHint: 'cover' },
+      ],
+    });
+    expect(filled).not.toBeNull();
+    // Cover slide stays title-only — no synth items injected.
+    expect(filled!.html).not.toMatch(/포인트\s*1|배경|핵심\s*질문/);
+    expect(filled!.html).toContain('표지');
   });
 });
 
