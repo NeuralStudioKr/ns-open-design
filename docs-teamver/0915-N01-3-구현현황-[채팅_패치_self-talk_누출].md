@@ -6,9 +6,10 @@
 
 | 단계 | commit | 상태 |
 |---|---|---|
-| 상위·구현설계 | `197dcc6ab8` | ☑ |
-| sanitize · prompt · probe 922 | `98e702f477` | ☑ |
-| push staging | `98e702f477` | ☑ |
+| 상위·구현설계 | `8c63cb4dd4` | ☑ |
+| sanitize · prompt · probe 922 | `7269a1b977` | ☑ |
+| 현황 기록 | `ac4ab36b69` | ☑ |
+| push staging | `ac4ab36b69` | ☑ |
 
 ## 구현 (완료)
 
@@ -19,6 +20,11 @@
 | `prompts/official-system.ts` | 패치 계획 나레이션 금지 |
 | `chat-leak-probe-round922.test.ts` | 사용자 보고 전문 제거 · 한글 결과 보존 |
 
+### 정책
+
+- **숨김**: 내부 패치/HTML/index 독백은 번역하지 않고 채팅에서 제거
+- 사용자용 짧은 결과 문장(한글)은 유지
+
 ### 검증
 
 | 항목 | 결과 |
@@ -27,5 +33,5 @@
 
 ## 변경 이력
 
-| 2026-09-15 | 루프508 완료 — 패치 self-talk 숨김 + locale 프롬프트 |
+| 2026-09-15 | 루프508 완료 — 패치 self-talk 숨김 + locale 프롬프트 · staging push |
 | 2026-09-15 | 루프508 착수 — 채팅 패치 self-talk / 영어 내부 서술 |
