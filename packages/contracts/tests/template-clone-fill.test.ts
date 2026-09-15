@@ -4753,6 +4753,57 @@ describe('0901-N02-C13 peer-fit catalog + sticky chrome deny', () => {
     expect(bodyOnly).toContain('전환');
   });
 
+  it('루프531: block-frame feature cards split dense sentences into title and body slots', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-block-frame/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      [
+        { title: '킥오프', roleHint: 'cover' },
+        {
+          title: '고객 경험',
+          roleHint: 'cards',
+          items: [
+            {
+              title: '화면, 워크플로우, 결과물 예시로 제품 실체를 보여준다',
+              body: '데모 화면과 사용자 흐름을 연결해 구매 전 이해를 돕습니다.',
+            },
+            {
+              title: '고객 유형별 문제 해결 사례와 정량·정성 효과를 정리한다',
+              body: '도입 전 우려와 기대 효과를 한 화면에서 비교합니다.',
+            },
+            {
+              title: '지원, 보안, 개인정보 보호 프로세스를 투명하게 제시한다',
+              body: '운영 단계의 책임 범위와 응답 절차를 명확히 안내합니다.',
+            },
+          ],
+        },
+      ],
+      {
+        title: '고객 경험',
+        templateId: 'example-html-ppt-zhangzara-block-frame',
+      },
+    );
+    expect(cloned).toBeTruthy();
+    const bodyOnly = (cloned ?? '').replace(/<style[\s\S]*?<\/style>/gi, '');
+    const headings = [...bodyOnly.matchAll(/<h3\b[^>]*>([\s\S]*?)<\/h3>/gi)]
+      .map((match) => match[1]!.replace(/<[^>]*>/g, '').trim())
+      .filter(Boolean);
+    expect(headings).toContain('화면·워크플로우');
+    expect(headings).toContain('고객 유형별 문제 해결');
+    expect(headings).toContain('지원·보안');
+    expect(headings.some((heading) => heading.includes('결과물 예시로 제품 실체를 보여준다'))).toBe(false);
+    expect(bodyOnly).toContain('화면, 워크플로우, 결과물 예시로 제품 실체를 보여준다');
+    expect(bodyOnly).toContain('데모 화면과 사용자 흐름을 연결해 구매 전 이해를 돕습니다.');
+    expect(bodyOnly).toContain('data-od-card-fit="compact"');
+    expect(bodyOnly).toMatch(/font-size:36px;line-height:1\.08/);
+  });
+
   it('루프454: blue-professional 3-line cards prefer metric-card×3', async () => {
     const html = await readFile(
       new URL(

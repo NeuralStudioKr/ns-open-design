@@ -2127,6 +2127,14 @@ const VARIETY_SAFE_ROLE_PREFERENCE: readonly TemplateCloneShellRole[] = [
   'stat',
 ];
 
+function templateCloneContentFillLineCount(slide: TemplateCloneSlideContent): number {
+  if (slide.items && slide.items.length > 0) return slide.items.length;
+  return String(slide.body ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean).length;
+}
+
 /** Pick layout shells by content role — never mirror template page order/count. */
 export function pickTemplateShellsForContent(
   shells: SlideShell[],
@@ -2160,10 +2168,7 @@ export function pickTemplateShellsForContent(
   for (let i = 0; i < slides.length; i += 1) {
     const slide = slides[i]!;
     const role = plannedRoles[i] ?? inferTemplateCloneContentRole(slide, i, slides.length);
-    const lineCount = String(slide.body ?? '')
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean).length;
+    const lineCount = templateCloneContentFillLineCount(slide);
     let shell = pickShellByRole(role, byRole, cover, bodyPool, usage, lineCount);
     // 루프480 — Prefer unused shells only when they can actually host this
     // content role. The older unconditional "any unused shell" rule pushed
@@ -8457,8 +8462,114 @@ function fillBlockFrameNeoSlots(
   return next;
 }
 
+type ResolvedTemplateCloneCardFill = {
+  title: string;
+  body: string;
+  compacted: boolean;
+};
+
+const DENSE_CARD_TITLE_MAX_CHARS = 18;
+const DENSE_CARD_TITLE_TRIGGER_CHARS = 24;
+const DENSE_CARD_BODY_LEAD_TOKEN_RE =
+  /^(?:사례와?|효과와?|프로세스(?:를)?|방안(?:을)?|전략(?:을)?|구조(?:를)?|흐름(?:을)?|내용(?:을)?|정리한다|제시한다|보여준다|설명한다)$/;
+
+function normalizeTemplateCloneInlineText(value: string): string {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function textLengthForDenseCardTitle(value: string): number {
+  return Array.from(normalizeTemplateCloneInlineText(value)).length;
+}
+
+function shortenDenseCardTitle(title: string): string {
+  const raw = normalizeTemplateCloneInlineText(title);
+  if (!raw) return '';
+  const delimiterParts = raw
+    .split(/\s*(?:[,，、;；:：|/]|[—–-])\s*/g)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (delimiterParts.length >= 2) {
+    const joined = delimiterParts.slice(0, 2).join('·');
+    if (textLengthForDenseCardTitle(joined) <= DENSE_CARD_TITLE_MAX_CHARS) return joined;
+    if (textLengthForDenseCardTitle(delimiterParts[0] ?? '') >= 3) return delimiterParts[0]!;
+  }
+
+  const tokens = raw.split(/\s+/g).filter(Boolean);
+  if (tokens.length >= 2) {
+    const picked: string[] = [];
+    for (const token of tokens) {
+      if (picked.length > 0 && DENSE_CARD_BODY_LEAD_TOKEN_RE.test(token)) break;
+      const candidate = [...picked, token].join(' ');
+      if (textLengthForDenseCardTitle(candidate) > DENSE_CARD_TITLE_MAX_CHARS) break;
+      picked.push(token);
+    }
+    if (picked.length > 0) return picked.join(' ');
+  }
+
+  return Array.from(raw).slice(0, DENSE_CARD_TITLE_MAX_CHARS).join('').trim();
+}
+
+function resolveCardFillForTemplatePeer(
+  cardHtml: string,
+  line: TemplateCloneCardFillLine,
+): ResolvedTemplateCloneCardFill {
+  const resolved = resolveTemplateCloneCardFill(line);
+  const title = normalizeTemplateCloneInlineText(resolved.title);
+  const body = normalizeTemplateCloneInlineText(resolved.body);
+  const denseTemplateCard = /\b(?:feature-card|intro-card|nb-card)\b/i.test(cardHtml);
+  const titleIsDenseSentence =
+    textLengthForDenseCardTitle(title) > DENSE_CARD_TITLE_TRIGGER_CHARS
+    || (
+      textLengthForDenseCardTitle(title) > DENSE_CARD_TITLE_MAX_CHARS
+      && /[,，、;；:：—–-]|\s/.test(title)
+    );
+  if (!denseTemplateCard || !titleIsDenseSentence) {
+    return { title, body, compacted: false };
+  }
+  const shortTitle = shortenDenseCardTitle(title);
+  if (!shortTitle || shortTitle === title) {
+    return { title, body, compacted: false };
+  }
+  return {
+    title: shortTitle,
+    body: [title, body].filter(Boolean).join(' '),
+    compacted: true,
+  };
+}
+
+function appendInlineStyle(attrs: string, style: string): string {
+  const styleMatch = /\sstyle\s*=\s*(["'])([\s\S]*?)\1/i.exec(attrs);
+  if (!styleMatch) return `${attrs} style="${style}"`;
+  const quote = styleMatch[1] ?? '"';
+  const current = String(styleMatch[2] ?? '').trim().replace(/;+$/g, '');
+  return attrs.replace(styleMatch[0], ` style=${quote}${current ? `${current};` : ''}${style}${quote}`);
+}
+
+function markDenseCardPeerAsCompacted(html: string, compacted: boolean): string {
+  if (!compacted) return html;
+  return html.replace(/^<([a-zA-Z][\w:-]*)\b([^>]*)>/i, (full, tag: string, attrs: string) => {
+    let nextAttrs = attrs;
+    if (!/\sdata-od-card-fit\s*=/i.test(nextAttrs)) {
+      nextAttrs += ' data-od-card-fit="compact"';
+    }
+    return `<${tag}${nextAttrs}>`;
+  });
+}
+
+function fitDenseCardPeerText(html: string, compacted: boolean): string {
+  if (!compacted) return html;
+  let next = markDenseCardPeerAsCompacted(html, true);
+  next = next.replace(/<h([3-5])\b([^>]*)>/i, (_m, level: string, attrs: string) => (
+    `<h${level}${appendInlineStyle(attrs, 'font-size:36px;line-height:1.08;word-break:keep-all;overflow-wrap:break-word')}>`
+  ));
+  next = next.replace(/<p\b([^>]*)>/i, (_m, attrs: string) => (
+    `<p${appendInlineStyle(attrs, 'font-size:20px;line-height:1.35;word-break:keep-all;overflow-wrap:break-word')}>`
+  ));
+  return next;
+}
+
 function fillOneCardPeer(cardHtml: string, line: TemplateCloneCardFillLine): string {
-  const { title, body } = resolveTemplateCloneCardFill(line);
+  const { title, body, compacted } = resolveCardFillForTemplatePeer(cardHtml, line);
   const text = title;
   let next = cardHtml;
   // Daisy weekly: `.day-header` is the title slot (0901-N02-C2).
@@ -8707,7 +8818,7 @@ function fillOneCardPeer(cardHtml: string, line: TemplateCloneCardFillLine): str
       replaced = true;
       return `${open}${body ? escapeHtml(body) : ''}${close}`;
     });
-    return next;
+    return fitDenseCardPeerText(next, compacted);
   }
   if (/<p\b/i.test(next)) {
     let replaced = false;
