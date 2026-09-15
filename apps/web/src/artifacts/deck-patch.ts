@@ -752,6 +752,9 @@ function resolveMissingDeckPatchSlideIndex(
   const fromIdentity = resolveSlideIndexBySectionIdentity(openTag, options.currentHtml);
   if (fromIdentity != null) return fromIdentity;
 
+  const fromClass = resolveSlideIndexBySectionClass(openTag, options.currentHtml);
+  if (fromClass != null) return fromClass;
+
   const fallbacks = [...new Set(
     (options.fallbackSlideIndexes ?? [])
       .filter((index) => Number.isInteger(index) && index >= 0)
@@ -791,6 +794,63 @@ function resolveSlideIndexBySectionIdentity(
 
   return matchBy('data-screen-label', screenLabel) ?? matchBy('data-od-id', odId);
 }
+
+/**
+ * Some BYOK models preserve template slide classes (`slide-2`,
+ * `slide-agenda`, etc.) but drop `data-slide-index` from a deck-patch
+ * replacement section. When that class signature maps to exactly one
+ * current slide, recover the target index instead of rejecting the scoped
+ * edit. Ambiguous or generic class-only patches still fail closed.
+ */
+function resolveSlideIndexBySectionClass(
+  openTag: string,
+  currentHtml: string | undefined,
+): number | null {
+  const patchClassTokens = significantSectionClassTokens(openTag);
+  if (patchClassTokens.length === 0) return null;
+
+  const html = String(currentHtml ?? '');
+  if (!html.trim()) return null;
+  const bodyRange = findBodyContentRange(html);
+  const scope = bodyRange ? html.slice(bodyRange.start, bodyRange.end) : html;
+  const slides = extractTopLevelSlideSections(scope);
+  if (slides.length === 0) return null;
+
+  const matches = slides.flatMap((slide, ordinal) => {
+    const slideTokens = new Set(classTokensFromOpenTag(slide.openTag));
+    const matched = patchClassTokens.every((token) => slideTokens.has(token));
+    if (!matched) return [];
+    const explicitIndex = readSlideIndex(slide.openTag);
+    return [explicitIndex ?? ordinal];
+  });
+  return matches.length === 1 ? matches[0]! : null;
+}
+
+function significantSectionClassTokens(openTag: string): string[] {
+  const tokens = classTokensFromOpenTag(openTag)
+    .filter((token) => !GENERIC_SECTION_CLASS_TOKENS.has(token.toLowerCase()));
+  if (tokens.length === 0) return [];
+  const slideNumberTokens = tokens.filter((token) => /^slide[-_]\d+$/i.test(token));
+  return slideNumberTokens.length > 0 ? slideNumberTokens : tokens;
+}
+
+function classTokensFromOpenTag(openTag: string): string[] {
+  const raw = readHtmlAttr(openTag, 'class');
+  if (!raw) return [];
+  return raw
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+const GENERIC_SECTION_CLASS_TOKENS = new Set([
+  'slide',
+  'active',
+  'is-active',
+  'current',
+  'visible',
+  'present',
+]);
 
 /** Stamp `data-slide-index` onto a replacement section when the model omitted it. */
 function ensureDataSlideIndexAttr(outerHtml: string, slideIndex: number): string {

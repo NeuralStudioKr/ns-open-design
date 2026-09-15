@@ -149,6 +149,30 @@ describe('parseDeckPatch', () => {
     expect(applied.html).toContain('data-screen-label="03 역사"');
   });
 
+  it('recovers missing data-slide-index via a unique template slide class on the current deck', () => {
+    const current = [
+      '<!doctype html><html><body>',
+      '<section class="slide slide-1" data-slide-index="0"><h1>Intro</h1></section>',
+      '<section class="slide slide-2" data-slide-index="1"><h2>Before</h2></section>',
+      '<section class="slide slide-3" data-slide-index="2"><h2>After</h2></section>',
+      '</body></html>',
+    ].join('');
+    const result = parseDeckPatch(
+      '<section class="slide slide-2" style="width:1920px;height:1080px"><h2>Updated</h2></section>',
+      { currentHtml: current },
+    );
+    expect(result.ok, result.ok ? '' : result.reason).toBe(true);
+    if (!result.ok) return;
+    expect(result.patch.ops[0]?.slideIndex).toBe(1);
+    expect(result.patch.ops[0]?.html).toContain('data-slide-index="1"');
+    const applied = applyDeckPatch({ currentHtml: current, patch: result.patch, allowedSlideIndexes: [1] });
+    expect(applied.ok, JSON.stringify(applied)).toBe(true);
+    if (!applied.ok) return;
+    expect(applied.html).toContain('Updated');
+    expect(applied.html).toContain('slide-1');
+    expect(applied.html).toContain('slide-3');
+  });
+
   it('keeps data-slide-index that appears after a quoted attr containing ">"', () => {
     const result = parseDeckPatch(
       '<section class="slide" style="width:calc(100% > 50%)" data-slide-index="1"><h2>Ok</h2></section>',

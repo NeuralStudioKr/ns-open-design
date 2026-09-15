@@ -234,6 +234,7 @@ import {
   isTemplateCloneHostFillPrompt,
   isTemplateClonePromptFillPrompt,
   extractTemplateCloneUserFacingRequest,
+  isGenericTemplateCloneTopicBrief,
   templateCloneFillModeFromUserMessage,
   templateCloneAutoContinueFlags,
   isTemplateCloneContentFillQueued,
@@ -2145,8 +2146,11 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
       reason: 'current deck file unreadable',
     };
   }
+  const allowedSlideIndexes = input.allowedSlideIndexes?.length
+    ? input.allowedSlideIndexes
+    : scopedCommentSlideIndexesFromAttachments(input.commentAttachments ?? []);
   const parsed = parseDeckPatchWithSalvage(input.patchBody, {
-    fallbackSlideIndexes: input.allowedSlideIndexes,
+    fallbackSlideIndexes: allowedSlideIndexes,
     currentHtml,
   });
   if (!parsed.ok) {
@@ -2168,14 +2172,14 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
       : null;
     if (visualTemplate) {
       const salvaged = parseDeckPatchWithSalvage(visualTemplate, {
-        fallbackSlideIndexes: input.allowedSlideIndexes,
+        fallbackSlideIndexes: allowedSlideIndexes,
         currentHtml,
       });
       if (salvaged.ok) {
         const salvagedResult = applyScopedDeckPatchToHtml({
           currentHtml,
           patch: salvaged.patch,
-          allowedSlideIndexes: input.allowedSlideIndexes,
+          allowedSlideIndexes,
           commentAttachments: input.commentAttachments,
           instructionText: input.instructionText,
           currentSlides: input.currentSlides,
@@ -2205,7 +2209,7 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
         projectId: input.projectId,
         fileName: input.fileName,
         patchBody: input.patchBody,
-        allowedSlideIndexes: input.allowedSlideIndexes,
+        allowedSlideIndexes,
         commentAttachments: input.commentAttachments,
         instructionText: input.instructionText,
         currentHtml,
@@ -2218,7 +2222,7 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
   const result = applyScopedDeckPatchToHtml({
     currentHtml,
     patch: parsed.patch,
-    allowedSlideIndexes: input.allowedSlideIndexes,
+    allowedSlideIndexes,
     commentAttachments: input.commentAttachments,
     instructionText: input.instructionText,
     currentSlides: input.currentSlides,
@@ -2228,7 +2232,7 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
       fileName: input.fileName,
       code: result.code,
       reason: result.reason,
-      allowedSlideIndexes: input.allowedSlideIndexes,
+      allowedSlideIndexes,
     });
   }
   return result;
