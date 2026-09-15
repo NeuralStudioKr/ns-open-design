@@ -78,6 +78,29 @@ describe('hasElementScopedCommentAttachments', () => {
     expect(result.html).toContain('data-slide-index="1"');
   });
 
+  // 루프530 — Disk deck lost slide-N classes; infer index from patch class alone.
+  it('recovers omitted data-slide-index from slide-N class when current deck classes were stripped', () => {
+    const currentHtml = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>인트로</h1></section>
+<section class="slide" data-slide-index="1">
+  <p data-od-id="path-1-2">뉴럴스튜디오㈜는 Agentic AI OS 기반의 AI-native 회사입니다.</p>
+</section>
+<section class="slide" data-slide-index="2"><h2>마무리</h2></section>
+</body></html>`;
+    const result = applyScopedDeckPatchToHtml({
+      currentHtml,
+      patchBody: `<section class="slide slide-2" style="width:1920px;height:1080px;box-sizing:border-box">
+  <p data-od-id="path-1-2"><strong>뉴럴스튜디오㈜는 Agentic AI OS 기반의 AI-native 회사입니다.</strong></p>
+</section>`,
+      commentAttachments: [attachment(1)],
+      instructionText: '회사 이름 눈에 잘 띄게 수정',
+    });
+    expect(result.ok, result.ok ? '' : result.reason).toBe(true);
+    if (!result.ok) return;
+    expect(result.html).toContain('<strong>뉴럴스튜디오㈜는 Agentic AI OS 기반의 AI-native 회사입니다.</strong>');
+    expect(result.html).toContain('<h1>인트로</h1>');
+  });
+
   it('returns false for visual-only attachments so slide-level edits are not blocked', () => {
     expect(hasElementScopedCommentAttachments([{
       ...attachment(1),

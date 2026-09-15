@@ -5738,6 +5738,15 @@ export function ProjectView({
                 'The model emitted an empty deck-patch artifact on a run without a scoped comment target. Retry with a clearer request or use full deck generation.',
             };
           }
+          // 루프530 — Unscoped parse failures are not comment-scope violations.
+          // Returning scope-rejected paints the misleading "선택 대상 밖" banner.
+          if (!runIsScoped && merged.code === 'deck_patch_parse_failed') {
+            return {
+              kind: 'rejected',
+              fileName: targetFileName,
+              reason: merged.reason,
+            };
+          }
           return routeScopedCommentPersistFailure({
             fileName: targetFileName,
             code: merged.code,

@@ -94,7 +94,9 @@ export interface ParseDeckPatchOptions {
  *
  * When `data-slide-index` is missing, tries (in order):
  *   1. identity attrs (`data-screen-label` / `data-od-id`) against `currentHtml`
- *   2. a single `fallbackSlideIndexes` entry from the attached comment scope
+ *   2. unique template class signature (`slide-2`, …) against `currentHtml`
+ *   3. numbered `slide-N` / `slide_N` class → index (1-based → N-1 by default)
+ *   4. a single `fallbackSlideIndexes` entry from the attached comment scope
  */
 const DECK_PATCH_MISSING_SLIDE_SECTIONS =
   'no <section class="slide"> blocks in deck-patch body';
@@ -755,6 +757,9 @@ function resolveMissingDeckPatchSlideIndex(
   const fromClass = resolveSlideIndexBySectionClass(openTag, options.currentHtml);
   if (fromClass != null) return fromClass;
 
+  const fromNumberedClass = resolveSlideIndexFromNumberedSlideClass(openTag, options);
+  if (fromNumberedClass != null) return fromNumberedClass;
+
   const fallbacks = [...new Set(
     (options.fallbackSlideIndexes ?? [])
       .filter((index) => Number.isInteger(index) && index >= 0)
@@ -824,6 +829,46 @@ function resolveSlideIndexBySectionClass(
     return [explicitIndex ?? ordinal];
   });
   return matches.length === 1 ? matches[0]! : null;
+}
+
+/**
+ * 루프530 — When the current deck no longer carries `slide-N` classes (or
+ * class matching is ambiguous) but the patch open tag still has a unique
+ * `slide-2` / `slide_2` token, infer the 0-based `data-slide-index`.
+ * Templates are almost always 1-based (`slide-1` → index 0). If the live
+ * deck has a `slide-0` token, treat numbering as 0-based instead.
+ * When comment scope supplies allowed indexes, only accept an inference
+ * that lands inside that set (multi-slide scopes included).
+ */
+function resolveSlideIndexFromNumberedSlideClass(
+  openTag: string,
+  options: ParseDeckPatchOptions,
+): number | null {
+  const numbered = significantSectionClassTokens(openTag)
+    .filter((token) => /^slide[-_]\d+$/i.test(token));
+  if (numbered.length !== 1) return null;
+  const raw = Number(/(\d+)/.exec(numbered[0]!)?.[1]);
+  if (!Number.isInteger(raw) || raw < 0) return null;
+
+  let inferred = raw === 0 ? 0 : raw - 1;
+  const html = String(options.currentHtml ?? '');
+  if (html.trim()) {
+    const bodyRange = findBodyContentRange(html);
+    const scope = bodyRange ? html.slice(bodyRange.start, bodyRange.end) : html;
+    const slides = extractTopLevelSlideSections(scope);
+    const hasSlide0 = slides.some((slide) =>
+      classTokensFromOpenTag(slide.openTag).some((token) => /^slide[-_]0$/i.test(token)),
+    );
+    if (hasSlide0) inferred = raw;
+  }
+
+  const fallbacks = [...new Set(
+    (options.fallbackSlideIndexes ?? [])
+      .filter((index) => Number.isInteger(index) && index >= 0)
+      .map((index) => Math.floor(index)),
+  )];
+  if (fallbacks.length > 0 && !fallbacks.includes(inferred)) return null;
+  return inferred;
 }
 
 function significantSectionClassTokens(openTag: string): string[] {
