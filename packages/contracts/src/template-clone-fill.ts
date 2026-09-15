@@ -8369,7 +8369,7 @@ function fillBiennaleCalendarSlots(
 }
 
 const BLOCK_FRAME_ENGLISH_CHROME_LABEL_RE =
-  /^(?:Overview|Methodology|By The Numbers|The Team|Roadmap|Features|Insights)$/i;
+  /^(?:Overview|Methodology|By The Numbers|The Team|Roadmap|Features|Insights|Performance Data|Core Features)$/i;
 
 const BLOCK_FRAME_ENGLISH_CHROME_LABEL_KO: Record<string, string> = {
   overview: '개요',
@@ -8379,6 +8379,8 @@ const BLOCK_FRAME_ENGLISH_CHROME_LABEL_KO: Record<string, string> = {
   roadmap: '로드맵',
   features: '기능',
   insights: '인사이트',
+  'performance data': '성과 데이터',
+  'core features': '핵심 기능',
 };
 
 /**
@@ -8435,23 +8437,32 @@ function fillBlockFrameNeoSlots(
   }
 
   // If a chart slide has ordinary prose rather than true metrics, keep the
-  // neobrutal frame but remove demo bars/legend/values that imply fake data.
+  // neobrutal frame but remove demo legend/values that imply fake data.
+  // 루프534 — NEVER delete `.chart-svg`. `.data-column` / `.data-box` use
+  // `flex: 1; min-height: 0` and collapse into an overlapping pile when the
+  // chart sibling is missing (user report: 운영과 보안 slide). Keep the SVG
+  // shell (viewBox + class) as a flex spacer; clear demo metric glyphs inside.
   const metricLines = lines.filter((line) => (
     titleLooksLikeMetric(line.title) || titleLooksLikeMetric(line.body)
   ));
   if (/\bchart-frame\b/i.test(next) && metricLines.length === 0) {
     next = stripClassBlocks(next, 'chart-legend');
-    next = next.replace(/<svg\b[^>]*\bclass\s*=\s*["'][^"']*\bchart-svg\b[^"']*["'][^>]*>[\s\S]*?<\/svg>/gi, '');
+    next = neutralizeBlockFrameChartSvgDemoMetrics(next);
   }
 
   // 루프461 — English chrome labels on nb-label / legend that survive when
   // the structural fill above did not rewrite them (Overview / Methodology /
   // By The Numbers / The Team / Roadmap / Revenue|Users|Retention).
   // 루프462 — do not rewrite back to English `kicker: 'OVERVIEW'`.
+  // 루프534 — also rewrite "Performance Data" / "Core Features" before the
+  // catalog demo-copy strip empties those labels into floating chips.
   next = next.replace(
     /(<(?:div|span)\b[^>]*\bnb-label\b[^>]*>)([\s\S]*?)(<\/(?:div|span)>)/gi,
     (full, open: string, inner: string, close: string) => {
       const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!plain) {
+        return `${open}${escapeHtml(chromeLabel)}${close}`;
+      }
       if (!BLOCK_FRAME_ENGLISH_CHROME_LABEL_RE.test(plain)) {
         return full;
       }
@@ -8460,6 +8471,35 @@ function fillBlockFrameNeoSlots(
   );
 
   return next;
+}
+
+/** Keep chart-svg flex sibling; blank demo number / month glyphs inside. */
+function neutralizeBlockFrameChartSvgDemoMetrics(html: string): string {
+  return String(html ?? '').replace(
+    /(<svg\b[^>]*\bclass\s*=\s*["'][^"']*\bchart-svg\b[^"']*["'][^>]*>)([\s\S]*?)(<\/svg>)/gi,
+    (_m, open: string, inner: string, close: string) => {
+      const cleaned = String(inner)
+        .replace(/>(\s*\+?\d+(?:\.\d+)?%?\s*)</g, '><')
+        .replace(/>(\s*\d+(?:\.\d+)?[MBK]\s*)</gi, '><')
+        .replace(
+          />(\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s*)</gi,
+          '><',
+        );
+      return `${open}${cleaned}${close}`;
+    },
+  );
+}
+
+/**
+ * 루프534 — Catalog demo-copy strip can empty `nb-label` text (e.g.
+ * "Performance Data") leaving a floating colored chip. Refill from title.
+ */
+function refillEmptyBlockFrameNeoLabels(html: string, chromeLabel: string): string {
+  const label = String(chromeLabel ?? '').trim() || '개요';
+  return String(html ?? '').replace(
+    /(<(?:div|span)\b[^>]*\bnb-label\b[^>]*>)\s*(<\/(?:div|span)>)/gi,
+    (_m, open: string, close: string) => `${open}${escapeHtml(label)}${close}`,
+  );
 }
 
 type ResolvedTemplateCloneCardFill = {
@@ -9074,6 +9114,8 @@ function fillSlideShell(
   body = fillBlockFrameNeoSlots(body, { title, lead, bodyText, kicker, fillLines });
   body = stripCapsuleCatalogDemoCopy(body);
   body = stripBlockFrameNeoCatalogDemoCopy(body);
+  // 루프534 — Demo-copy strip may empty nb-label chips; refill from title.
+  body = refillEmptyBlockFrameNeoLabels(body, title || kicker || '개요');
   body = stripBlueProfessionalCatalogDemoCopy(body);
   body = stripStudioCreativeCatalogDemoCopy(body);
   body = stripLeftoverCatalogDemoPhrases(body);

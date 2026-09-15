@@ -544,6 +544,21 @@
       gap: 6px;
     }
 
+    /* 루프534 — If chart-svg is missing, data-column alone must not collapse
+       (flex:1 + min-height:0 children overlap into an unreadable pile). */
+    .slide-4 .chart-body:not(:has(.chart-svg)) {
+      min-height: 420px;
+    }
+    .slide-4 .chart-body:not(:has(.chart-svg)) .data-column {
+      flex: 1 1 auto;
+      width: auto;
+      max-width: 100%;
+    }
+    .slide-4 .chart-body:not(:has(.chart-svg)) .data-box {
+      flex: 0 0 auto;
+      min-height: 96px;
+    }
+
     .slide-4 .data-box .data-num {
       font-family: 'Inter', sans-serif;
       font-weight: 900;

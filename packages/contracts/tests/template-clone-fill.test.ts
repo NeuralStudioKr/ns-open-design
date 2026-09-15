@@ -1314,6 +1314,48 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(cloned).toContain('전략');
   });
 
+  // 루프534 — Non-metric deterministic fill must keep chart-svg (flex sibling)
+  // and must not leave empty nb-label chips after demo-copy strip.
+  it('루프534: Block-frame chart slide keeps chart-svg and refills empty nb-labels', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-block-frame/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    // 10 outline rows → 1:1 with template shells; index 3 is `.slide-4` chart-frame.
+    const slides = Array.from({ length: 10 }, (_, i) => ({
+      title: i === 3 ? '운영과 보안' : `슬라이드 ${i + 1}`,
+      body:
+        i === 3
+          ? '전환 — 방문에서 문의\n활성 — 핵심 기능 반복\n품질 — 결과물 완성도'
+          : '포인트 A\n포인트 B\n포인트 C',
+      roleHint: i === 3 ? 'chart' : 'cards',
+      kicker: 'OVERVIEW',
+      lead: 'lead',
+    }));
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      slides,
+      {
+        title: 'Teamver 소개',
+        templateId: 'example-html-ppt-zhangzara-block-frame',
+        brief: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드',
+      },
+    );
+    expect(cloned).toBeTruthy();
+    const slide4 = /<section\b[^>]*\bslide-4\b[\s\S]*?<\/section>/i.exec(cloned ?? '');
+    expect(slide4?.[0], 'expected .slide-4 section').toBeTruthy();
+    // Primary regression: chart-svg must survive non-metric deterministic fill.
+    expect(slide4![0]).toContain('chart-svg');
+    expect(slide4![0]).toContain('chart-frame');
+    expect(slide4![0]).toContain('data-column');
+    expect(slide4![0]).not.toMatch(/<div class="nb-label[^"]*">\s*<\/div>/);
+    expect(cloned).not.toContain('Performance Data');
+    expect(cloned).not.toContain('Quarterly Growth Metrics');
+  });
+
   it('loop425 — does not IB-restyle a real Capsule deck that lost title-pill', () => {
     const html = `<!doctype html><html><body>
 <section class="slide slide-1">
