@@ -58,12 +58,14 @@ export const CLONE_SLOT_FILL_REPAIR_ENTRY_FROM = 'clone_slot_fill_json_repair';
 /**
  * Fill mode for explicit-template deck creates.
  *
- *   `deterministic` (**env-empty / staging default since loop532**): daemon
- *     seeds LOOK and fills shells on the server. No MiniMax second turn, so a
- *     provider failure cannot leave users on LOOK seed fallback.
+ *   `prompt` (**env-empty / staging default since loop535**): LOOK seed, then
+ *     MiniMax HTML content fill. Template chrome stays; copy is model-written.
+ *     Loop532 briefly defaulted to `deterministic` (no MiniMax) — that made
+ *     Home create finish immediately with thin synth copy. Restored here.
  *
- *   `prompt`: LOOK seed, then MiniMax HTML content fill. Kept as a rollback
- *     mode when QA wants the pre-deterministic behavior.
+ *   `deterministic`: daemon seeds LOOK and fills shells on the server.
+ *     Home skips MiniMax — fast, but outline/slot copy is thin (loop421).
+ *     Explicit opt-in only.
  *
  *   `json`: LOOK seed + AI dense JSON outline (opt-in only — MiniMax
  *     JSON-only turns often fail AGENT_EXECUTION_FAILED).
@@ -75,11 +77,12 @@ export const CLONE_SLOT_FILL_REPAIR_ENTRY_FROM = 'clone_slot_fill_json_repair';
 export type TemplateCloneFillMode = 'json' | 'prompt' | 'deterministic' | 'pure-prompt';
 
 /**
- * 루프532 — Default back to deterministic. MiniMax prompt-fill regressions
- * surfaced clone_look_seed_fallback / AGENT_EXECUTION_FAILED before any
- * usable deck was produced. Prompt remains available as an explicit rollback.
+ * 루프535 — Content must go through MiniMax after LOOK seed.
+ * Deterministic slot-fill alone finishes in ~1s with synth copy and no
+ * stream — users report "started then immediately ended".
+ * Roll back to `deterministic` only via explicit env / localStorage.
  */
-export const TEMPLATE_CLONE_FILL_DEFAULT_MODE: TemplateCloneFillMode = 'deterministic';
+export const TEMPLATE_CLONE_FILL_DEFAULT_MODE: TemplateCloneFillMode = 'prompt';
 
 export function normalizeTemplateCloneFillMode(value: unknown): TemplateCloneFillMode {
   const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
