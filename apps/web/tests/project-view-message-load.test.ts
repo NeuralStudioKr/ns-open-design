@@ -849,6 +849,10 @@ describe("ProjectView message loading", () => {
     expect(persistBlock).toContain(
       "The model emitted an empty deck-patch artifact on a run without a scoped comment target.",
     );
+    // 루프530 — Unscoped missing data-slide-index must not become scope-rejected.
+    expect(persistBlock).toContain(
+      "!runIsScoped && merged.code === 'deck_patch_parse_failed'",
+    );
   });
 
   it("routes scoped empty element-patch failures to auto-continue without client-side fast-path salvage", () => {
