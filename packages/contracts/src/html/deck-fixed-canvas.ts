@@ -139,6 +139,20 @@ article[data-screen-label] {
   left: auto !important;
   margin-top: auto !important;
 }
+/* 루프536 — Broadside / Studio / Signal / Grove kits author
+ * .slide grid rows make the
+ * .slide-body middle row grow to 1fr. Compact fills wrap contents in an
+ * absolute flow wrapper (flex column) and the grid rule no longer applies —
+ * .slide-body collapses to intrinsic height, leaving diagram/stats/pie/
+ * fadelist copy pinned to the top-left of a 1920×1080 canvas (user report
+ * 2026-09-15: "실행 방안" slide with a huge empty bottom half). Restore the
+ * stretch so diagram/body centering rules etc.
+ * can vertically center content across the middle band. */
+.slide > [data-od-slide-flow] > .slide-body,
+.slide > [data-od-slide-flow] > .slide-chrome + .slide-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
 /* Compact/stacked 16:9 only — keep catalog presenter paper untouched. */
 html:has(body > .slide) .slide > [data-od-slide-flow]:has(.slide-inner),
 html:has(#od-stacked-deck-stage) .slide > [data-od-slide-flow]:has(.slide-inner) {

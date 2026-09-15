@@ -5895,6 +5895,7 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = healSakuraLeftoverCatalogCopy(next, brief);
   next = healLongTableLeftoverCatalogCopy(next, brief);
   next = healStudioLeftoverCatalogCopy(next, brief);
+  next = healBroadsideLeftoverCatalogCopy(next, brief);
   next = healCreativeLeftoverCatalogCopy(next, brief);
   next = healCobaltOrphanDataStats(next);
   next = enrichSparseCobaltCover(next, brief);
@@ -6501,7 +6502,7 @@ function stripBlueProfessionalCatalogDemoCopy(html: string): string {
 }
 
 const LEFTOVER_CATALOG_PHRASE_RE =
-/Hartfield(?:\s*&(?:amp;)?\s*Co\.?)?|NorthPeak Industries|WACC\s*\(\s*base\s*\)|Revenue CAGR|Filebase|Northwind Studios|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Maya Chen|pnpm vitest auth|MMXXVI|Team Structure(?:\s*(?:&|&amp;)?\s*(?:Resource Allocation|Leadership))?|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|Composed in kami|52\.5200°\s*N|\[?\[Author Name\]\]?|\[Year\]|this is the broadside style|Aurora Institute|Aurora Programme|Aurora Charter|Public Form|Public attendance|Open programme|Field Notes|Quiet Editions|Open Conversations|The Long Yellow|Pavilion of Quiet Form|Reading Garden|A field study of light,\s*matter and atmosphere|Six months of exhibitions[\s\S]{0,160}?palette of yellow\.?|A room is a slow argument with the sun[\s\S]{0,160}?answers\.?|Curator-at-large[\s\S]{0,120}?January 2026|Visitors\s*·\s*Year four|Returning audience|Three quarters of last year[\s\S]{0,120}?twice\.?|A 2\.4× rise[\s\S]{0,120}?audience\.?|Strands\s*·\s*2026|Slow Atmospheres|Selected dates|Sector context(?:\s*&(?:amp;)?\s*market dynamics)?|Trading comparables analysis|Precedent transactions|Industrial automation cycle, capital flows, trading multiples|12 selected listed peers, EV\/EBITDA(?:\s*&(?:amp;)?\s*EV\/Revenue 2026E)?|M&amp;A transactions \$0\.5–5\.0B, 2022–2025|Selection criteria|Fictional illustrative sample|38\s*[×x]|Apache-2\.0|\bBYOK\b|Your agent reads a folder of\s*<code>SKILL\.md<\/code> files\.?|Open Design is the\s*(?:<strong>)?\s*(?:<\/strong>)?\s*\.?|Neobrutalist Presentation Template|Quarterly Growth Metrics|Field Office Quarterly|Field Office Editorial|field-office\.co|Lin Ito(?:\s*&(?:amp;)?\s*Anya Mehrotra)?|Anya Mehrotra|the field-office collective|In Newsreader, Hanken Grotesk\s*(?:&(?:amp;)?)?\s*DM Mono|quiet, paid, and read slowly|The next issue ships October 20\d{2}[\s\S]{0,120}?Monday morning\.?|A trend is a quiet question that several rooms started asking(?:\s+(?:<[^>]+>)?[^<]{0,80}?(?:<\/[^>]+>)?)?|at roughly the same time\.?|From the editor's note|Index 20\d{2}\s*·\s*opening pages|Colophon\s*·\s*Index 20\d{2}|The index, in six entries\.?|Trend ledger, in long\.?|Spring 20\d{2}(?:\s*·\s*selected trends)?|Newsletter opens\s*·\s*20\d{2}\s*Q\d\s*—\s*20\d{2}\s*Q\d|Chapter one\s*—\s*the case for slow software|Software is a room, and rooms are designed to be lived in slowly\.?|In its first chapter the Index[\s\S]{0,240}?read first\.?|Slow software|Domestic interfaces|Hand-set print(?:\s+again)?|Quietly weird type|Receipts (?:and|&(?:amp;)?)\s*ledgers|Public weather|Long-form receipts|Pre-loved objects|Tools that opt out of[\s\S]{0,160}?on by default\.?|Screens designed to live in living rooms[\s\S]{0,200}?willingness to be ignored\.?|A return to letterpress[\s\S]{0,160}?digital-feeling clients\.?|Display type with one slightly off detail[\s\S]{0,160}?looking twice\.?|Information designed to be filed, not consumed\.[\s\S]{0,160}?the favour\.?|Brand and product writing that includes[\s\S]{0,200}?unfinished thought\.?|Tools that opt out of urgency by default\.?|Screens designed to live in living rooms\.?|Letterpress and risograph paired with digital briefs\.?|Display faces with one slightly off detail\.?|Brand voice that admits the day's actual mood\.?|Newsletters that read like printed pamphlets\.?|Resale and repair as the front of the brand\.?|Information designed to be filed, not consumed\.?|A field report on the state of things\.?|Look for the cobalt envelope on a Monday morning\.?|issue\.0\d|spring\s+20\d{2}|autumn\s+20\d{2}|All ten\s*·\s*with our reading on each|A 2\.1× lift on the inaugural issue[\s\S]{0,160}?Sunday mornings\.?|Quiet, mostly-not-on-social[\s\S]{0,140}?referral programme\.?|We started the bulletin[\s\S]{0,220}?rereading\.?"?|To subscribers[\s\S]{0,80}?twice a year|Reader response, by quarter\.?|A note from the studio|Open rate\s*·\s*Q1 20\d{2}|Active subscribers|Tape Garden|tape garden|SUPERCATALOG|CATALOGUE NO\.\s*[78]|Catalogue No\.\s*[78]|We make small\s+(?:<em>)?analog(?:<\/em>)?\s+things[\s\S]{0,160}?desks\.?|SUPER(?:\s|&nbsp;)+TAPE|MIX(?:\s|&nbsp;)+CHAIR|Bloom Pedal|BLOOM(?:\s|&nbsp;)+PEDAL|CHROMA(?:\s|&nbsp;)+DECK|Chroma Deck|Ren Kobayashi|Mei Tanaka|See you in\s+(?:<em>)?volume eight|made in matsumoto|Matsumoto workshop|A short letter from the studio|A note pinned above the workbench|A reader writes|The 2026\s+(?:<em>)?Catalogue|Four products\s*·\s*spring|Output, by year|Units shipped|Repeat customers|Release schedule|Colophon\s*·\s*Catalogue|It feels less like a\s+(?:<em>)?gadget|Build the\s+(?:<em>)?thing[\s\S]{0,80}?spec sheet\.?|A tape-saturation pedal|A studio cassette deck|A box of seven C-60|A listening chair|\bT-26\b|\bSC-0[1-4]b?\b|Key Metrics|Visuals first|We started Long Table|long-table\.co|Iris\s*(?:&|&amp;)\s*Theo|Hana Brennan|A Plate(?:<br\s*\/?>|\s)+of Quiet|A Soup(?:<br\s*\/?>|\s)+of Letters|Roasted chestnut soup|Not a meal, an evening|22 seats only|Bairro Alto|See you(?:<br\s*\/?>|\s)+at the table|An evening I keep|December edition|a letter from the table|come and sit with us|More than dinner|Twice a month, by application|Placeholder lede|The Editorial Desk|Studio\s*(?:&|&amp;)\s*Salon|Editorial Brief|Eight principles|Twelve weeks of after-hours behavior\.?|Three rules we'?re keeping\.?|User Research Synthesis(?:\s*\/\s*\[[^\]]+\])?|WHO WE ARE|GREAT WORK DOESN'T HAPPEN BY ACCIDENT|WE BUILD WHAT OTHERS PLAN|Our studio pairs strategic thinking|Years of practice|Projects delivered|Continents active|GENERIC IDENTITY|A DISTINCTIVE VOICE PEOPLE RECOGNIZE|BOLD IDEAS DESERVE BOLD EXECUTION|\[Studio Name\]|\[Client Name\]|\[Presentation Title\]|WHAT WE OFFER|Ownable visual and verbal territory|Campaigns that created lasting recall|Lift In Engagement|Throughput Multiplier|Active Placeholders|Total Sample Value|Placeholder caption describing the metric|Layer alpha|Layer beta|VALUES ARE PLACEHOLDER|PLACEHOLDER METRIC|eight pages, eight layouts|Replace freely|Generic placeholder|Filler text|Filler descriptor|FY PLACEHOLDER|CHAPTER OPENER|A PRESENTATION TEMPLATE|A FOUR-STEP PROCESS|PRESS\s*(?:&nbsp;)?\s*PLAY/gi;
+/\[Studio\s*X\]\s*Guidelines|TOTAL\s+MARKET\s*:\s*\$?\[X\]B|Hartfield(?:\s*&(?:amp;)?\s*Co\.?)?|NorthPeak Industries|WACC\s*\(\s*base\s*\)|Revenue CAGR|Filebase|Northwind Studios|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Maya Chen|pnpm vitest auth|MMXXVI|Team Structure(?:\s*(?:&|&amp;)?\s*(?:Resource Allocation|Leadership))?|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|Composed in kami|52\.5200°\s*N|\[?\[Author Name\]\]?|\[Year\]|this is the broadside style|Aurora Institute|Aurora Programme|Aurora Charter|Public Form|Public attendance|Open programme|Field Notes|Quiet Editions|Open Conversations|The Long Yellow|Pavilion of Quiet Form|Reading Garden|A field study of light,\s*matter and atmosphere|Six months of exhibitions[\s\S]{0,160}?palette of yellow\.?|A room is a slow argument with the sun[\s\S]{0,160}?answers\.?|Curator-at-large[\s\S]{0,120}?January 2026|Visitors\s*·\s*Year four|Returning audience|Three quarters of last year[\s\S]{0,120}?twice\.?|A 2\.4× rise[\s\S]{0,120}?audience\.?|Strands\s*·\s*2026|Slow Atmospheres|Selected dates|Sector context(?:\s*&(?:amp;)?\s*market dynamics)?|Trading comparables analysis|Precedent transactions|Industrial automation cycle, capital flows, trading multiples|12 selected listed peers, EV\/EBITDA(?:\s*&(?:amp;)?\s*EV\/Revenue 2026E)?|M&amp;A transactions \$0\.5–5\.0B, 2022–2025|Selection criteria|Fictional illustrative sample|38\s*[×x]|Apache-2\.0|\bBYOK\b|Your agent reads a folder of\s*<code>SKILL\.md<\/code> files\.?|Open Design is the\s*(?:<strong>)?\s*(?:<\/strong>)?\s*\.?|Neobrutalist Presentation Template|Quarterly Growth Metrics|Field Office Quarterly|Field Office Editorial|field-office\.co|Lin Ito(?:\s*&(?:amp;)?\s*Anya Mehrotra)?|Anya Mehrotra|the field-office collective|In Newsreader, Hanken Grotesk\s*(?:&(?:amp;)?)?\s*DM Mono|quiet, paid, and read slowly|The next issue ships October 20\d{2}[\s\S]{0,120}?Monday morning\.?|A trend is a quiet question that several rooms started asking(?:\s+(?:<[^>]+>)?[^<]{0,80}?(?:<\/[^>]+>)?)?|at roughly the same time\.?|From the editor's note|Index 20\d{2}\s*·\s*opening pages|Colophon\s*·\s*Index 20\d{2}|The index, in six entries\.?|Trend ledger, in long\.?|Spring 20\d{2}(?:\s*·\s*selected trends)?|Newsletter opens\s*·\s*20\d{2}\s*Q\d\s*—\s*20\d{2}\s*Q\d|Chapter one\s*—\s*the case for slow software|Software is a room, and rooms are designed to be lived in slowly\.?|In its first chapter the Index[\s\S]{0,240}?read first\.?|Slow software|Domestic interfaces|Hand-set print(?:\s+again)?|Quietly weird type|Receipts (?:and|&(?:amp;)?)\s*ledgers|Public weather|Long-form receipts|Pre-loved objects|Tools that opt out of[\s\S]{0,160}?on by default\.?|Screens designed to live in living rooms[\s\S]{0,200}?willingness to be ignored\.?|A return to letterpress[\s\S]{0,160}?digital-feeling clients\.?|Display type with one slightly off detail[\s\S]{0,160}?looking twice\.?|Information designed to be filed, not consumed\.[\s\S]{0,160}?the favour\.?|Brand and product writing that includes[\s\S]{0,200}?unfinished thought\.?|Tools that opt out of urgency by default\.?|Screens designed to live in living rooms\.?|Letterpress and risograph paired with digital briefs\.?|Display faces with one slightly off detail\.?|Brand voice that admits the day's actual mood\.?|Newsletters that read like printed pamphlets\.?|Resale and repair as the front of the brand\.?|Information designed to be filed, not consumed\.?|A field report on the state of things\.?|Look for the cobalt envelope on a Monday morning\.?|issue\.0\d|spring\s+20\d{2}|autumn\s+20\d{2}|All ten\s*·\s*with our reading on each|A 2\.1× lift on the inaugural issue[\s\S]{0,160}?Sunday mornings\.?|Quiet, mostly-not-on-social[\s\S]{0,140}?referral programme\.?|We started the bulletin[\s\S]{0,220}?rereading\.?"?|To subscribers[\s\S]{0,80}?twice a year|Reader response, by quarter\.?|A note from the studio|Open rate\s*·\s*Q1 20\d{2}|Active subscribers|Tape Garden|tape garden|SUPERCATALOG|CATALOGUE NO\.\s*[78]|Catalogue No\.\s*[78]|We make small\s+(?:<em>)?analog(?:<\/em>)?\s+things[\s\S]{0,160}?desks\.?|SUPER(?:\s|&nbsp;)+TAPE|MIX(?:\s|&nbsp;)+CHAIR|Bloom Pedal|BLOOM(?:\s|&nbsp;)+PEDAL|CHROMA(?:\s|&nbsp;)+DECK|Chroma Deck|Ren Kobayashi|Mei Tanaka|See you in\s+(?:<em>)?volume eight|made in matsumoto|Matsumoto workshop|A short letter from the studio|A note pinned above the workbench|A reader writes|The 2026\s+(?:<em>)?Catalogue|Four products\s*·\s*spring|Output, by year|Units shipped|Repeat customers|Release schedule|Colophon\s*·\s*Catalogue|It feels less like a\s+(?:<em>)?gadget|Build the\s+(?:<em>)?thing[\s\S]{0,80}?spec sheet\.?|A tape-saturation pedal|A studio cassette deck|A box of seven C-60|A listening chair|\bT-26\b|\bSC-0[1-4]b?\b|Key Metrics|Visuals first|We started Long Table|long-table\.co|Iris\s*(?:&|&amp;)\s*Theo|Hana Brennan|A Plate(?:<br\s*\/?>|\s)+of Quiet|A Soup(?:<br\s*\/?>|\s)+of Letters|Roasted chestnut soup|Not a meal, an evening|22 seats only|Bairro Alto|See you(?:<br\s*\/?>|\s)+at the table|An evening I keep|December edition|a letter from the table|come and sit with us|More than dinner|Twice a month, by application|Placeholder lede|The Editorial Desk|Studio\s*(?:&|&amp;)\s*Salon|Editorial Brief|Eight principles|Twelve weeks of after-hours behavior\.?|Three rules we'?re keeping\.?|User Research Synthesis(?:\s*\/\s*\[[^\]]+\])?|WHO WE ARE|GREAT WORK DOESN'T HAPPEN BY ACCIDENT|WE BUILD WHAT OTHERS PLAN|Our studio pairs strategic thinking|Years of practice|Projects delivered|Continents active|GENERIC IDENTITY|A DISTINCTIVE VOICE PEOPLE RECOGNIZE|BOLD IDEAS DESERVE BOLD EXECUTION|\[Studio Name\]|\[Client Name\]|\[Presentation Title\]|WHAT WE OFFER|Ownable visual and verbal territory|Campaigns that created lasting recall|Lift In Engagement|Throughput Multiplier|Active Placeholders|Total Sample Value|Placeholder caption describing the metric|Layer alpha|Layer beta|VALUES ARE PLACEHOLDER|PLACEHOLDER METRIC|eight pages, eight layouts|Replace freely|Generic placeholder|Filler text|Filler descriptor|FY PLACEHOLDER|CHAPTER OPENER|A PRESENTATION TEMPLATE|A FOUR-STEP PROCESS|PRESS\s*(?:&nbsp;)?\s*PLAY/gi;
 
 function stripLeftoverCatalogDemoPhrases(html: string): string {
   return String(html ?? '')
@@ -8026,6 +8027,21 @@ const STUDIO_LEFTOVER_BODY_RE =
 const CREATIVE_LEFTOVER_BODY_RE =
   /FLIP THE|eight pages|Replace freely|Lift In Engagement|Throughput Multiplier|Active Placeholders|Total Sample Value|Placeholder caption|Layer alpha|VALUES ARE PLACEHOLDER|PLACEHOLDER METRIC|Generic placeholder|Filler (?:text|descriptor)|FY PLACEHOLDER|CHAPTER OPENER|A PRESENTATION TEMPLATE|PRESS\s*(?:&nbsp;)?\s*PLAY|FOUR FIGURES|A FOUR-STEP PROCESS/i;
 
+/**
+ * 루프536 — Broadside example.html seeds `.stat-value` with these fake KPIs.
+ * Match the LITERAL demo strings so real numeric seeds (12, 340%, etc.) stay.
+ */
+const BROADSIDE_STAT_VALUE_DEMO_RE =
+  /^(?:\$[\d.,]+\s*[BMK]|\$?\[X\]\s*B?|#\d+|3\s*[×xX]|\dx|3x)$/i;
+
+/**
+ * 루프536 — Broadside carries SPACE10-style catalog demo copy. When a fill
+ * completes and body slots still contain fadelist chrome / pie legend defaults /
+ * mock KPI digits, treat the slide as demo-leftover and force a heal pass.
+ */
+const BROADSIDE_LEFTOVER_BODY_RE =
+  /Broadside|\[Studio X\]\s*Guidelines|Before[\s\S]{0,240}?During[\s\S]{0,240}?After|the\s*<br\s*\/?>\s*session|TOTAL\s+MARKET\s*:\s*\$?\[X\]B|\bLeader\b\s*[\s\S]{0,60}?\bChallenger\b|Followers[\s\S]{0,80}?Other|A brand built by committee|Studio Presentation|\$3\.5B|\bStudio X\b/i;
+
 type StudioCreativeFillInput = {
   title: string;
   lead: string;
@@ -8069,7 +8085,7 @@ function fillStudioKitSlide(
     }
   }
   if (/\bslide--stats\b/i.test(attrs) && /\bstat-card\b/i.test(next)) {
-    next = replaceExactClassBlocksBySequence(next, 'stat-card', lines, (block, line) => {
+    next = replaceExactClassBlocksBySequence(next, 'stat-card', lines, (block, line, index) => {
       const resolved = resolveTemplateCloneCardFill(line);
       let filled = replaceFirstExactClassText(block, 'stat-label', resolved.title);
       filled = replaceFirstExactClassText(
@@ -8077,8 +8093,110 @@ function fillStudioKitSlide(
         'stat-note',
         resolved.body || resolved.title,
       );
+      // 루프536 — Broadside example.html seeds `.stat-value` with fake KPIs
+      // (`$3.5B` / `3×` / `#1` / `[X]B`). If the fill line does not carry
+      // metric-looking title/body, replace those Broadside demo digits with
+      // the card ordinal so the giant number slot degrades into a numbered
+      // marker instead of a fake statistic. Real seeds like `12` on Studio
+      // catalog remain untouched.
+      const metricSource = titleLooksLikeMetric(resolved.title)
+        ? resolved.title
+        : titleLooksLikeMetric(resolved.body)
+          ? resolved.body
+          : '';
+      if (metricSource) {
+        filled = replaceFirstExactClassText(filled, 'stat-value', metricSource);
+      } else {
+        const statValueInner =
+          /<[^>]*\bstat-value\b[^>]*>([\s\S]*?)<\//i.exec(filled)?.[1] ?? '';
+        const statValueText = statValueInner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (BROADSIDE_STAT_VALUE_DEMO_RE.test(statValueText)) {
+          const ordinal = String(index + 1).padStart(2, '0');
+          filled = replaceFirstExactClassText(filled, 'stat-value', ordinal);
+        }
+      }
       return filled;
     });
+  }
+  // 루프536 — Broadside `.slide--diagram` renders three `.flow-step`s with
+  // `.flow-num`+`.flow-title`+`.flow-desc`. Studio kit does not have this
+  // shell but the fill runs Broadside through the same routine.
+  if (/\bslide--diagram\b/i.test(attrs) && /\bflow-step\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'flow-step', lines, (block, line, index) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = replaceFirstExactClassText(
+        block,
+        'flow-num',
+        String(index + 1).padStart(2, '0'),
+      );
+      filled = replaceFirstExactClassText(filled, 'flow-title', resolved.title);
+      filled = replaceFirstExactClassText(
+        filled,
+        'flow-desc',
+        resolved.body || resolved.title,
+      );
+      return filled;
+    });
+  }
+  // 루프536 — Broadside `.slide--pie` renders a conic-gradient donut with
+  // `.pie-item` legend rows (Leader/Challenger/Followers/Other + demo %).
+  // Without real market share data, replace the labels with fill lines and
+  // wipe the fabricated percentages + `TOTAL MARKET: $[X]B` chrome so the
+  // legend degrades into a category list.
+  if (/\bslide--pie\b/i.test(attrs) && /\bpie-item\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'pie-item', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = replaceFirstExactClassText(block, 'pie-item-label', resolved.title);
+      const metricSource = titleLooksLikeMetric(resolved.title)
+        ? resolved.title
+        : titleLooksLikeMetric(resolved.body)
+          ? resolved.body
+          : '';
+      // Blank the demo percentage; keep the swatch/label pair readable.
+      filled = replaceFirstExactClassText(filled, 'pie-item-val', metricSource);
+      return filled;
+    });
+    // Wipe `TOTAL MARKET: $[X]B` chrome (no bracketed placeholder should ship).
+    next = next.replace(
+      /(<[^>]*\bpie-total\b[^>]*>)([\s\S]*?)(<\/[^>]+>)/i,
+      (full, open: string, inner: string, close: string) => {
+        const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (/\[X\]|TOTAL\s+MARKET|placeholder/i.test(plain)) {
+          return `${open}${close}`;
+        }
+        return full;
+      },
+    );
+  }
+  // 루프536 — Broadside `.slide--fadelist` renders three `.fadelist-item`
+  // spans ("Before / During / After") + a two-line `.fadelist-title`
+  // ("the / session") + right-corner `[Studio X] Guidelines` and `06 / 10`
+  // chrome. Substitute real content and blank the SPACE10 chrome.
+  if (/\bslide--fadelist\b/i.test(attrs) && /\bfadelist-item\b/i.test(next)) {
+    const fadelistTitles = lines
+      .slice(0, 3)
+      .map((line) => resolveTemplateCloneCardFill(line).title || resolveTemplateCloneCardFill(line).body)
+      .filter(Boolean);
+    if (fadelistTitles.length > 0) {
+      next = replaceClassTextBySequence(next, 'fadelist-item', fadelistTitles);
+    }
+    next = next.replace(
+      /(<[^>]*\bfadelist-title\b[^>]*>)([\s\S]*?)(<\/[^>]+>)/i,
+      `$1${escapeHtml(input.title)}$3`,
+    );
+    // Blank fadelist chrome tokens ("[Studio X] Guidelines", "06 / 10", "01" corner).
+    next = next.replace(
+      /(<span\b[^>]*\bbroadside-num\b[^>]*>)([\s\S]*?)(<\/span\s*>)/gi,
+      (full, open: string, inner: string, close: string) => {
+        const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (
+          /Studio\s*X|\[Studio\s*[A-Z0-9]?\]\s*Guidelines|Guidelines|^\d+\s*\/\s*\d+$/i.test(plain)
+        ) {
+          return `${open}${close}`;
+        }
+        return full;
+      },
+    );
   }
   if (/\bslide--compare\b/i.test(attrs)) {
     next = replaceExactClassBlocksBySequence(
@@ -8120,10 +8238,23 @@ function fillStudioKitSlide(
       (full, open: string, inner: string, close: string) => {
         const plain = visibleDeckCopy(inner);
         if (
-          /^(?:Our Work|APPROACH|Services|Before\s*\/\s*After|THE STUDIO|By the Numbers|\d+\s*\/\s*\d+)$/i
+          // 루프536 — Broadside footer runs `<span class="label muted">Broadside</span>`
+          // on every dark/orange slide as a running header. Also blank when the
+          // fill left the raw kit brand name as a chrome tag.
+          /^(?:Our Work|APPROACH|Services|Before\s*\/\s*After|THE STUDIO|By the Numbers|\d+\s*\/\s*\d+|Broadside)$/i
             .test(plain)
-          || /\[Studio Name\]|\[Date\]|\[Caption/i.test(plain)
+          || /\[Studio Name\]|\[Date\]|\[Caption|\[Studio\s*[A-Z0-9]?\]/i.test(plain)
         ) {
+          return `${open}${close}`;
+        }
+        return full;
+      },
+    );
+    next = next.replace(
+      /(<span\b[^>]*\bbroadside-num\b[^>]*>)([\s\S]*?)(<\/span\s*>)/gi,
+      (full, open: string, inner: string, close: string) => {
+        const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (/Broadside|Studio\s*X|Guidelines|^\d+\s*\/\s*\d+$/i.test(plain)) {
           return `${open}${close}`;
         }
         return full;
@@ -8301,6 +8432,60 @@ export function healStudioLeftoverCatalogCopy(
       !looksLikeLeftoverTemplateDemoDeck(body)
       && !STUDIO_LEFTOVER_BODY_RE.test(body)
     ) {
+      continue;
+    }
+    const slide = outline[i] ?? outline[Math.min(i, outline.length - 1)];
+    const title = slide?.title || harvested[i] || harvested[0] || '슬라이드';
+    const nextBody = fillStudioKitSlide(body, span.attrs, {
+      title,
+      lead: slide?.lead ?? '',
+      bodyText: slide?.body ?? '',
+      kicker: slide?.kicker ?? '',
+      fillLines: templateCloneSlideFillLines(slide ?? { title }),
+    });
+    if (nextBody === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
+  }
+  return stripStudioCreativeCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out));
+}
+
+/**
+ * 루프536 — Broadside persist leftover: SPACE10-inspired orange kit ships
+ * fadelist chrome ("Before / During / After / the session / [Studio X]
+ * Guidelines / 06 / 10"), pie legend ("Leader / Challenger / Followers /
+ * Other / TOTAL MARKET: $[X]B"), stat KPIs ("$3.5B / 3× / #1"), and a
+ * "Broadside" footer label on every dark slide. Home create leaves those
+ * tokens intact when MiniMax skips a slot or the deterministic fill routes
+ * synth text into the `.stat-label` / `.stat-note` only. Fill the specialized
+ * slots first, then wipe residual chrome. Non-Broadside HTML is a no-op.
+ */
+export function healBroadsideLeftoverCatalogCopy(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsBroadside(dest)) return dest;
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) {
+    return stripStudioCreativeCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(dest));
+  }
+  const harvested = [...dest.matchAll(/<(?:h[1-3]|div)\b[^>]*>([\s\S]*?)<\/(?:h[1-3]|div)>/gi)]
+    .map((match) => visibleDeckCopy(match[1] ?? ''))
+    .filter((text) => text.length >= 2 && text.length <= 40 && !BROADSIDE_LEFTOVER_BODY_RE.test(text));
+  const outline = resolveTemplateCloneSlidesForDeterministicFill({
+    userInstruction: brief || harvested.join('\n') || '',
+    deckTitle: harvested[0] ?? null,
+    slideCount: spans.length,
+  });
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    // Broadside layout classes we know how to fill via fillStudioKitSlide.
+    if (!/\bslide--(?:cover|chapter|split|stats|list|quote|compare|statement|chart|end|diagram|pie|fadelist)\b/i.test(span.attrs)) {
+      continue;
+    }
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    if (!looksLikeLeftoverTemplateDemoDeck(body) && !BROADSIDE_LEFTOVER_BODY_RE.test(body)) {
       continue;
     }
     const slide = outline[i] ?? outline[Math.min(i, outline.length - 1)];

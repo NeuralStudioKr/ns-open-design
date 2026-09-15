@@ -49,6 +49,7 @@ import {
   healSakuraLeftoverCatalogCopy,
   healLongTableLeftoverCatalogCopy,
   healStudioLeftoverCatalogCopy,
+  healBroadsideLeftoverCatalogCopy,
   healCreativeLeftoverCatalogCopy,
   healCobaltOrphanDataStats,
   injectCobaltAbsoluteSlotCss,
@@ -1244,6 +1245,38 @@ describe('루프419 Capsule deterministic quality gate', () => {
       'utf8',
     );
     expect(healCreativeLeftoverCatalogCopy(official)).toBe(official);
+  });
+
+  it('루프536 — Broadside orange kit demo chrome (stat KPI / pie legend / fadelist / Broadside footer) is scrubbed', async () => {
+    const html = await readFile(
+      new URL(
+        './fixtures/loop536-broadside-teamver-empty-bottom.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(officialLookIsBroadside(html)).toBe(true);
+    const healed = healBroadsideLeftoverCatalogCopy(
+      html,
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+    );
+    // Stat KPI demo digits neutralized (no invented $3.5B / 3× / #1).
+    expect(healed).not.toMatch(/\$3\.5B/);
+    expect(healed).not.toMatch(/>3×</);
+    expect(healed).not.toMatch(/>#1</);
+    // Pie legend Leader/Challenger/Followers/Other + TOTAL MARKET wiped.
+    expect(healed).not.toMatch(/>Leader</);
+    expect(healed).not.toMatch(/>Challenger</);
+    expect(healed).not.toMatch(/>Followers</);
+    expect(healed).not.toMatch(/TOTAL\s+MARKET\s*:\s*\$?\[X\]B/i);
+    expect(healed).not.toMatch(/>40%</);
+    // Fadelist chrome (Before/During/After / the session / [Studio X] Guidelines).
+    expect(healed).not.toMatch(/>Before</);
+    expect(healed).not.toMatch(/>During</);
+    expect(healed).not.toMatch(/>After</);
+    expect(healed).not.toMatch(/\[Studio\s*X\]\s*Guidelines/i);
+    // Broadside footer label wiped.
+    expect(healed).not.toMatch(/>Broadside</);
   });
 
   it('loop421 — empty-brief padding synthesizes card bodies instead of empty shells', () => {

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en"><head>
+  <meta charset="utf-8" />
+  <title>Teamver 소개</title>
+  <style>
+    :root { --c-bg: #111111; --c-bg-orange: #e85d26; --c-fg: #f0ece5; --c-accent: #e85d26; --c-border: #282826; }
+    .slide { padding: 59.4px 105.6px; display: grid; grid-template-rows: auto 1fr auto; }
+    .slide.orange { background: var(--c-bg-orange); color: #111111; }
+    .slide--diagram .slide-body { display: flex; flex-direction: column; justify-content: center; gap: 37.8px; min-height: 0; }
+    .slide--stats .slide-body { display: flex; flex-direction: column; justify-content: center; gap: 37.8px; }
+    .stat-value { font-size: 105.6px; font-weight: 900; color: var(--c-accent); }
+    .fadelist-item { font-size: 144px; font-weight: 900; }
+    .fadelist-title { font-size: 201.6px; font-weight: 900; }
+    .pie-item-label { font-weight: 700; }
+    .pie-item-val { font-family: monospace; }
+    .pie-total { border-top: 1px solid var(--c-border); }
+  </style>
+</head>
+<body>
+  <section class="slide slide--cover orange slide-title">
+    <div data-od-slide-flow>
+      <div class="cover-body">
+        <h1 class="display">Teamver 소개</h1>
+        <p class="lead">Teamver가 다루는 문제와 제공 가치</p>
+      </div>
+    </div>
+  </section>
+  <section class="slide slide--stats orange">
+    <div data-od-slide-flow>
+      <div class="slide-body">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-value">$3.5B</div>
+            <div class="stat-label body">핵심 가치</div>
+            <div class="stat-note">사용자가 즉시 얻는 시간 절감, 품질 개선, 의사결정 지원</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">3×</div>
+            <div class="stat-label body">사용 장면</div>
+            <div class="stat-note">도입 전 탐색, 팀 협업, 결과물 생산, 운영 관리</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">#1</div>
+            <div class="stat-label body">차별점</div>
+            <div class="stat-note">기존 대안 대비 더 적은 단계로 같은 결과를 만드는 흐름</div>
+          </div>
+        </div>
+      </div>
+      <footer class="slide-foot">
+        <span class="broadside-num">Broadside</span>
+      </footer>
+    </div>
+  </section>
+  <section class="slide slide--diagram orange">
+    <div data-od-slide-flow>
+      <div class="slide-body">
+        <h2 class="h2">실행 방안</h2>
+        <div class="flow">
+          <div class="flow-step">
+            <div class="flow-num">01</div>
+            <div class="flow-title">실무자</div>
+            <div class="flow-desc">반복 작업을 줄이고 결과물 완성도를 높이는 방식</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">
+            <div class="flow-num">02</div>
+            <div class="flow-title">리더</div>
+            <div class="flow-desc">팀 속도, 품질, 비용을 함께 관리할 수 있는 기준</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">
+            <div class="flow-num">03</div>
+            <div class="flow-title">운영자</div>
+            <div class="flow-desc">권한, 저장, 감사, 보안 요구를 만족시키는 운영 체계</div>
+          </div>
+        </div>
+      </div>
+      <footer class="slide-foot">
+        <span class="broadside-num">Broadside</span>
+      </footer>
+    </div>
+  </section>
+  <section class="slide slide--pie dark">
+    <div data-od-slide-flow>
+      <div class="slide-body">
+        <h2 class="h2">도입 로드맵</h2>
+        <div class="pie-row">
+          <div class="pie-donut"></div>
+          <div class="pie-legend">
+            <div class="pie-item"><div class="pie-swatch"></div><span class="pie-item-label">Leader</span><span class="pie-item-val">40%</span></div>
+            <div class="pie-item"><div class="pie-swatch"></div><span class="pie-item-label">Challenger</span><span class="pie-item-val">28%</span></div>
+            <div class="pie-item"><div class="pie-swatch"></div><span class="pie-item-label">Followers</span><span class="pie-item-val">20%</span></div>
+            <div class="pie-item"><div class="pie-swatch"></div><span class="pie-item-label">Other</span><span class="pie-item-val">12%</span></div>
+            <div class="pie-total">TOTAL MARKET: $[X]B</div>
+          </div>
+        </div>
+      </div>
+      <footer class="slide-foot">
+        <span class="label muted">Broadside</span>
+      </footer>
+    </div>
+  </section>
+  <section class="slide slide--fadelist orange">
+    <div data-od-slide-flow>
+      <div class="fadelist-top">
+        <span class="broadside-num">01</span>
+        <div class="fadelist-items">
+          <span class="fadelist-item">Before</span>
+          <span class="fadelist-item">During</span>
+          <span class="fadelist-item">After</span>
+        </div>
+      </div>
+      <div class="fadelist-title">the<br>session</div>
+      <div style="display: flex; justify-content: space-between;">
+        <span class="broadside-num">[Studio X] Guidelines</span>
+        <span class="broadside-num">06 / 10</span>
+      </div>
+    </div>
+  </section>
+</body></html>
