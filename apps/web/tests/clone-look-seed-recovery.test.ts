@@ -103,6 +103,7 @@ describe('attemptCloneContentFillLookSeedReloadRecovery (루프367)', () => {
         && event.code === 'clone_look_seed_fallback',
     );
     expect(errorEvent?.detail).toMatch(/kind=clone-look-seed-fallback|code=clone_look_seed_fallback/);
+    expect(errorEvent?.detail).toMatch(/source=reload/);
     expect(result.updatedAssistant?.producedFiles?.some((file) => file.name === 'deck.html')).toBe(true);
   });
 

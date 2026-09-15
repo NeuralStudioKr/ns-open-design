@@ -38,6 +38,7 @@ import {
   shouldExplainGenericBriefOnLookSeedFallback,
   templateCloneFillModeFromUserMessage,
 } from '../teamver/templateCloneContentFill';
+import { observeTemplateCloneLookSeedFallback } from '../teamver/templateCloneLookSeedFallbackQuality';
 import {
   appendErrorStatusEvent,
   appendWarningStatusEvent,
@@ -666,9 +667,21 @@ function buildCloneLookSeedRecoveredAssistant(
   options?: { reason?: string | null; messages?: readonly ChatMessage[] },
 ): ChatMessage {
   const genericBrief = lookSeedFallbackGenericBriefFromMessages(options?.messages, assistant);
+  const precedingUser = options?.messages
+    ? findPrecedingUserMessage(options.messages, assistant.id)
+    : null;
+  const fillMode = templateCloneFillModeFromUserMessage(precedingUser);
+  observeTemplateCloneLookSeedFallback({
+    source: 'reload',
+    reason: options?.reason,
+    genericBrief,
+    fillMode,
+  });
   const lookSeedNotice = formatCloneLookSeedFallbackNotice({ genericBrief });
   const lookSeedErrorDetail = formatCloneLookSeedFallbackErrorDetail(options?.reason, {
     genericBrief,
+    source: 'reload',
+    fillMode,
   });
   let produced = [...producedFiles];
   if (!produced.some((file) => file.name === 'deck.html')) {

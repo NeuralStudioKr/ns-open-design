@@ -238,6 +238,8 @@ describe('templateCloneContentFill', () => {
     expect(app).toContain('deterministicCloneFilledMetadataFields');
     expect(composer).toContain('deterministicCloneFilledMetadataFields');
     expect(projectView).toContain('shouldExplainGenericBriefOnLookSeedFallback');
+    expect(projectView).toContain('observeTemplateCloneLookSeedFallback');
+    expect(projectView).toContain("source: 'persist'");
     expect(projectView).toContain('shouldRunDeterministicSparseCheck');
     expect(projectView).toContain('mode: "sparse-only"');
     expect(projectView).toContain('phase: "deterministic-fill"');

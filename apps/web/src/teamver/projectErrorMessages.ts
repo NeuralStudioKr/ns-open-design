@@ -295,6 +295,7 @@ export function encodePersistedRunErrorDetail(
     kind?: string | null;
     reason?: string | null;
     code?: string | null;
+    extras?: Record<string, string | number | boolean | null | undefined>;
   },
 ): string {
   const parts: string[] = [];
@@ -303,6 +304,17 @@ export function encodePersistedRunErrorDetail(
   const code = sanitizeRunErrorDiagFragment(String(diagnostic?.code ?? ""));
   if (code && !parts.some((part) => part.includes(`code=${code}`))) {
     parts.push(`code=${code.slice(0, 80)}`);
+  }
+  const extras = diagnostic?.extras;
+  if (extras) {
+    for (const [key, value] of Object.entries(extras)) {
+      const token = sanitizeRunErrorDiagFragment(key).replace(/[^a-zA-Z0-9_]/g, "").slice(0, 40);
+      if (!token || !/^[a-zA-Z][a-zA-Z0-9_]*$/.test(token)) continue;
+      if (value == null || value === "") continue;
+      const rendered = sanitizeRunErrorDiagFragment(String(value)).slice(0, 80);
+      if (!rendered) continue;
+      parts.push(`${token}=${rendered}`);
+    }
   }
   if (parts.length === 0) return userMessage;
   return `${userMessage}${RUN_ERROR_DIAG_MARKER_START}${parts.join(" ")}${RUN_ERROR_DIAG_MARKER_END}`;
@@ -475,14 +487,24 @@ export function formatCloneLookSeedFallbackNotice(options?: {
  */
 export function formatCloneLookSeedFallbackErrorDetail(
   reason?: string | null,
-  options?: { genericBrief?: boolean },
+  options?: {
+    genericBrief?: boolean;
+    source?: 'persist' | 'reload';
+    fillMode?: string | null;
+  },
 ): string {
   const notice = formatCloneLookSeedFallbackNotice(options);
   const trimmed = String(reason ?? '').trim().slice(0, 240);
+  const fillMode = String(options?.fillMode ?? '').trim();
   return encodePersistedRunErrorDetail(notice, {
     kind: 'clone-look-seed-fallback',
     reason: trimmed || 'look_seed_fallback',
     code: 'clone_look_seed_fallback',
+    extras: {
+      genericBrief: options?.genericBrief === true ? 1 : 0,
+      source: options?.source === 'reload' ? 'reload' : 'persist',
+      ...(fillMode ? { fillMode } : {}),
+    },
   });
 }
 

@@ -13,6 +13,7 @@ import {
   buildTemplateClonePersistQualityObserve,
   summarizeTemplateCloneOutlineQuality,
   buildTemplateCloneOutlineQualityObserve,
+  buildTemplateCloneLookSeedFallbackObserve,
   pickPromptFillLookSeedHtml,
   applyTemplateCloneSlotFill,
   buildTemplateClonedDeckHtml,
@@ -5767,5 +5768,32 @@ describe('루프526 outline quality observe-only', () => {
     expect(buildTemplateCloneOutlineQualityObserve({
       rawFinalText: 'thinking only',
     }).source).toBe('none');
+  });
+});
+
+describe('루프537 look-seed-fallback observe-only', () => {
+  it('records persist vs reload without inventing a template id', () => {
+    expect(buildTemplateCloneLookSeedFallbackObserve({
+      source: 'persist',
+      reason: 'seed_fallback_untouched_look',
+      genericBrief: true,
+      fillMode: 'prompt',
+      templateId: 'html-ppt-zhangzara-daisy-days',
+    })).toEqual({
+      source: 'persist',
+      reason: 'seed_fallback_untouched_look',
+      genericBrief: true,
+      fillMode: 'prompt',
+      templateId: 'html-ppt-zhangzara-daisy-days',
+    });
+    expect(buildTemplateCloneLookSeedFallbackObserve({
+      source: 'reload',
+    })).toEqual({
+      source: 'reload',
+      reason: null,
+      genericBrief: false,
+      fillMode: null,
+      templateId: null,
+    });
   });
 });

@@ -141,6 +141,20 @@ describe("project conversation error messages", () => {
         formatCloneLookSeedFallbackErrorDetail("seed_fallback_untouched_look"),
       ),
     ).toMatch(/seed_fallback_untouched_look/);
+    expect(
+      extractPersistedRunErrorDiagnostic(
+        formatCloneLookSeedFallbackErrorDetail("seed_fallback_untouched_look", {
+          genericBrief: true,
+          source: "reload",
+          fillMode: "prompt",
+        }),
+      ),
+    ).toMatch(/genericBrief=1[\s\S]*source=reload[\s\S]*fillMode=prompt|source=reload/);
+    expect(userFacingRunErrorDetail(
+      formatCloneLookSeedFallbackErrorDetail("seed_fallback_untouched_look", {
+        genericBrief: true,
+      }),
+    )).not.toContain("genericBrief=");
     expect(formatOutlineDeckFallbackNotice()).toContain("다시 시도");
     expect(formatOutlineDeckFallbackNotice()).toContain("우측");
     expect(formatGenericBriefDeferFillNotice()).toContain("주제를 구체적으로");

@@ -248,6 +248,7 @@ import {
   shouldSkipCreateAutoSendForDeterministicClone,
   shouldUseDeterministicTemplateCloneFill,
   shouldUseJsonTemplateCloneFill,
+  getTemplateCloneFillMode,
   templateCloneContentFillHardRules,
   templateCloneFillSlideCountOverrideNotice,
   withTemplateCloneFillPluginInputs,
@@ -615,6 +616,7 @@ import {
 import { resolveTemplateCloneLookSeedHtml } from '../teamver/seedTemplateClonedDeck';
 import { observeTemplateClonePersistQuality } from '../teamver/templateClonePersistQuality';
 import { observeTemplateCloneOutlineQuality } from '../teamver/templateCloneOutlineQuality';
+import { observeTemplateCloneLookSeedFallback } from '../teamver/templateCloneLookSeedFallbackQuality';
 import { throwIfProjectCommentUploadIncomplete } from '../teamver/projectUploadErrors';
 import { stripLeakedPseudoToolXml } from '../utils/stripLeakedPseudoToolXml';
 import {
@@ -12128,9 +12130,30 @@ export function ProjectView({
               const lookSeedNotice = formatCloneLookSeedFallbackNotice({
                 genericBrief: lookSeedGenericBrief,
               });
+              const lookSeedFillMode =
+                templateCloneFillModeFromUserMessage(userMsg)
+                || getTemplateCloneFillMode();
+              const lookSeedTemplateId = firstOfficialDeckTemplateId(
+                resolveDurableDeckTemplatePin({
+                  project: project.metadata,
+                  runRef: runSelectedDeckTemplateIdRef.current,
+                  messages: messagesRef.current,
+                })?.id,
+              );
+              observeTemplateCloneLookSeedFallback({
+                source: 'persist',
+                reason: cloneLookSeedFallbackReason,
+                genericBrief: lookSeedGenericBrief,
+                fillMode: lookSeedFillMode,
+                templateId: lookSeedTemplateId,
+              });
               const lookSeedErrorDetail = formatCloneLookSeedFallbackErrorDetail(
                 cloneLookSeedFallbackReason,
-                { genericBrief: lookSeedGenericBrief },
+                {
+                  genericBrief: lookSeedGenericBrief,
+                  source: 'persist',
+                  fillMode: lookSeedFillMode,
+                },
               );
               updateAssistant((prev) => {
                 const withWarning = appendWarningStatusEvent(

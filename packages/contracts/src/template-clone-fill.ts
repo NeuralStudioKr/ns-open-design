@@ -1010,6 +1010,33 @@ export function summarizeTemplateCloneOutlineQuality(
   };
 }
 
+/** Observe-only LOOK seed banner. Never used to reject persist or rewrite HTML. */
+export type TemplateCloneLookSeedFallbackSource = 'persist' | 'reload';
+
+export type TemplateCloneLookSeedFallbackObserve = {
+  source: TemplateCloneLookSeedFallbackSource;
+  reason: string | null;
+  genericBrief: boolean;
+  fillMode: string | null;
+  templateId: string | null;
+};
+
+export function buildTemplateCloneLookSeedFallbackObserve(input: {
+  source?: string | null;
+  reason?: string | null;
+  genericBrief?: boolean;
+  fillMode?: string | null;
+  templateId?: string | null;
+}): TemplateCloneLookSeedFallbackObserve {
+  return {
+    source: input.source === 'reload' ? 'reload' : 'persist',
+    reason: String(input.reason ?? '').trim().slice(0, 240) || null,
+    genericBrief: input.genericBrief === true,
+    fillMode: String(input.fillMode ?? '').trim() || null,
+    templateId: String(input.templateId ?? '').trim() || null,
+  };
+}
+
 export function buildTemplateCloneOutlineQualityObserve(input: {
   rawFinalText?: string | null;
   outline?: TemplateCloneDeckOutline | null;
