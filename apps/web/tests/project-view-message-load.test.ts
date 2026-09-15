@@ -1211,10 +1211,12 @@ describe("ProjectView message loading", () => {
     const recoveryBlock = source.slice(recoveryStart, recoveryStart + 2600);
     expect(recoveryBlock).toContain("terminalPersistResult?.kind === 'skipped-incomplete'");
     expect(recoveryBlock).toContain("artifactToPersist = null");
-    expect(recoveryBlock).toContain("await recoverCloneLookSeedFallback()");
+    expect(recoveryBlock).toContain("await recoverCloneLookSeedFallback({");
+    expect(recoveryBlock).toContain("reason: `skipped_incomplete:");
     expect(recoveryBlock).toContain("artifactToPersist?.html");
     expect(recoveryBlock).toContain("const retryPersistResult = await persistArtifact");
-    expect(recoveryBlock).toContain("await recoverCloneLookSeedFallback({ prepareArtifact: false })");
+    expect(recoveryBlock).toContain("prepareArtifact: false");
+    expect(recoveryBlock).toContain("reason: `skipped_incomplete_retry:");
   });
 
   // 루프528 — Outline fallback must mark failed + error event so Retry dock

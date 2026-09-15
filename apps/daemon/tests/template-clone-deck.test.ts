@@ -564,7 +564,9 @@ describe('seedTemplateClonedDeckOnServer', () => {
     expect(deck).toContain('--coral');
     expect(deck).toContain('--lime');
     expect(deck).toMatch(/팀버|Teamver/i);
-    expect(deck).toContain('직접적인 가치');
+    expect(deck).toContain('핵심 포인트');
+    expect(deck).toContain('사용자가 즉시 얻는 시간 절감');
+    expect(deck).not.toMatch(/<div\b[^>]*\bstat-number\b[^>]*>[^<]*(?:방문에서 문의|핵심 기능 반복|결과물 완성도|반복 작업을 줄이고)[^<]*<\/div>/);
     expect(deck).not.toMatch(/Hartfield|Daisy Days|Clarity of Purpose/i);
     expect(deck).not.toContain('The Journey Continues');
     expect(deck).not.toContain('340%');
@@ -639,7 +641,9 @@ describe('seedTemplateClonedDeckOnServer', () => {
     expect(deck).toContain('--coral');
     expect(deck).toContain('--lime');
     expect(deck).toMatch(/팀버|Teamver/i);
-    expect(deck).toContain('직접적인 가치');
+    expect(deck).toContain('핵심 포인트');
+    expect(deck).toContain('사용자가 즉시 얻는 시간 절감');
+    expect(deck).not.toMatch(/<div\b[^>]*\bstat-number\b[^>]*>[^<]*(?:방문에서 문의|핵심 기능 반복|결과물 완성도|반복 작업을 줄이고)[^<]*<\/div>/);
     expect(deck).not.toContain('The Journey Continues');
     expect(deck).not.toContain('340%');
     expect(deck).not.toContain('…');

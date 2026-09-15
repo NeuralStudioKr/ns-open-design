@@ -6818,7 +6818,7 @@ function rebuildHostWithPeers(
     if (!keepPeerStarts.has(child.start)) continue;
     const peerIndex = peers.findIndex((peer) => peer.start === child.start);
     const line = lines[peerIndex] ?? '';
-    rebuilt.push(fillOneCardPeer(source.slice(child.start, child.end), line));
+    rebuilt.push(fillOneCardPeer(source.slice(child.start, child.end), line, peerIndex));
   }
   const nextHost = `${openTag}${rebuilt.join('')}${closeTag}`;
   return source.slice(0, openStart) + nextHost + source.slice(closeEnd);
@@ -6991,7 +6991,7 @@ function fillAndTrimCardPeersOnce(
       }
       if (!keepPeerStarts.has(child.start)) continue;
       const peerIndex = topPeers.findIndex((peer) => peer.start === child.start);
-      rebuilt.push(fillOneCardPeer(source.slice(child.start, child.end), lines[peerIndex] ?? ''));
+      rebuilt.push(fillOneCardPeer(source.slice(child.start, child.end), lines[peerIndex] ?? '', peerIndex));
     }
     const next = rebuilt.join('');
     if (next !== source) return next;
@@ -8568,7 +8568,11 @@ function fitDenseCardPeerText(html: string, compacted: boolean): string {
   return next;
 }
 
-function fillOneCardPeer(cardHtml: string, line: TemplateCloneCardFillLine): string {
+function fillOneCardPeer(
+  cardHtml: string,
+  line: TemplateCloneCardFillLine,
+  peerIndex = 0,
+): string {
   const { title, body, compacted } = resolveCardFillForTemplatePeer(cardHtml, line);
   const text = title;
   let next = cardHtml;
@@ -8713,15 +8717,22 @@ function fillOneCardPeer(cardHtml: string, line: TemplateCloneCardFillLine): str
   // Capsule / metric pills: `.stat-number` + `.stat-label` (루프421).
   if (/\bstat-number\b/i.test(next) || /\bstat-pill\b/i.test(next)) {
     const slots = assignStatSlots(text, body);
+    const hasMetric = titleLooksLikeMetric(slots.value) || titleLooksLikeMetric(slots.label);
+    const value = hasMetric
+      ? (titleLooksLikeMetric(slots.value) ? slots.value : slots.label)
+      : String(Math.max(1, peerIndex + 1)).padStart(2, '0');
+    const label = hasMetric
+      ? (titleLooksLikeMetric(slots.value) ? slots.label : slots.value)
+      : [text, body].filter(Boolean).join(' — ');
     next = fillClassInner(
       next,
       /(<[^>]*\bstat-number\b[^>]*>)([\s\S]*?)(<\/)/i,
-      slots.value,
+      value,
     );
     next = fillClassInner(
       next,
       /(<[^>]*\bstat-label\b[^>]*>)([\s\S]*?)(<\/)/i,
-      slots.label,
+      label,
     );
     return next;
   }

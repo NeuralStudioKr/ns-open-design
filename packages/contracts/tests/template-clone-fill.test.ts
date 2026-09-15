@@ -4804,6 +4804,43 @@ describe('0901-N02-C13 peer-fit catalog + sticky chrome deny', () => {
     expect(bodyOnly).toMatch(/font-size:36px;line-height:1\.08/);
   });
 
+  it('루프532: Capsule stat pills never place prose in the stat-number slot', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-capsule/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      [
+        { title: '킥오프', roleHint: 'cover' },
+        {
+          title: '실행 방안',
+          roleHint: 'stat',
+          items: [
+            { title: '전환', body: '방문에서 문의와 가입까지 이어지는 흐름을 측정한다' },
+            { title: '활성', body: '핵심 기능 반복 사용과 팀 초대 흐름을 확인한다' },
+            { title: '품질', body: '결과물 완성도와 수정 횟수를 함께 본다' },
+          ],
+        },
+      ],
+      {
+        title: '실행 방안',
+        templateId: 'example-html-ppt-zhangzara-capsule',
+      },
+    );
+    expect(cloned).toBeTruthy();
+    const bodyOnly = (cloned ?? '').replace(/<style[\s\S]*?<\/style>/gi, '');
+    const statNumbers = [...bodyOnly.matchAll(/<div\b[^>]*\bstat-number\b[^>]*>([\s\S]*?)<\/div>/gi)]
+      .map((match) => match[1]!.replace(/<[^>]*>/g, '').trim())
+      .filter(Boolean);
+    expect(statNumbers).toEqual(expect.arrayContaining(['01', '02', '03']));
+    expect(statNumbers.some((value) => /방문에서 문의|핵심 기능 반복|결과물 완성도/.test(value))).toBe(false);
+    expect(bodyOnly).toContain('전환 — 방문에서 문의와 가입까지 이어지는 흐름을 측정한다');
+  });
+
   it('루프454: blue-professional 3-line cards prefer metric-card×3', async () => {
     const html = await readFile(
       new URL(
