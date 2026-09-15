@@ -1227,4 +1227,17 @@ describe("ProjectView message loading", () => {
     expect(block).toContain("updateConversationLatestRun('failed'");
     expect(block).not.toContain("resolveSucceededRunStatus");
   });
+
+  // 루프529 — Emergency salvage is review-only: succeeded, no Retry dock.
+  it("keeps emergency deck salvage as succeeded without Retry-dock error event", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const start = source.indexOf("if (emergencyRecovered) {");
+    expect(start).toBeGreaterThan(0);
+    const block = source.slice(start, start + 900);
+    expect(block).toContain("EMERGENCY_DECK_FALLBACK_STATUS_CODE");
+    expect(block).toContain("resolveSucceededRunStatus");
+    expect(block).toContain("updateConversationLatestRun('succeeded'");
+    expect(block).not.toContain("appendErrorStatusEvent");
+    expect(block).not.toContain("runStatus: 'failed'");
+  });
 });

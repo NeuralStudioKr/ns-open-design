@@ -18,6 +18,7 @@ import {
   ensureTemplateCloneContentFillContinuePrompt,
   extractTemplateCloneUserFacingRequest,
   getTemplateCloneFillMode,
+  isGenericTemplateCloneTopicBrief,
   historyHasTemplateCloneContentFill,
   historyHasTemplateCloneSlotFillRepair,
   isTemplateCloneContentFillPrompt,
@@ -598,6 +599,26 @@ describe('templateCloneContentFill', () => {
     expect(seed).toMatch(/user prompt may be empty/i);
     expect(seed).not.toMatch(/any attached source materials/);
     expect(seed.startsWith('슬라이드 내용을 채워줘.')).toBe(true);
+  });
+
+  // 루프529 — soft defer MiniMax when Home brief has no usable topic.
+  it('isGenericTemplateCloneTopicBrief detects empty / boilerplate / title-only briefs', () => {
+    expect(isGenericTemplateCloneTopicBrief('')).toBe(true);
+    expect(isGenericTemplateCloneTopicBrief('슬라이드')).toBe(true);
+    expect(isGenericTemplateCloneTopicBrief('만들어줘')).toBe(true);
+    expect(isGenericTemplateCloneTopicBrief('첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.')).toBe(true);
+    expect(
+      isGenericTemplateCloneTopicBrief(
+        'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+      ),
+    ).toBe(false);
+    expect(
+      isGenericTemplateCloneTopicBrief('expo에 대해서 설명하는 피피티 만들어줘.'),
+    ).toBe(false);
+    // Canvas/Drive with source material never defer.
+    expect(
+      isGenericTemplateCloneTopicBrief('', { hasSourceMaterial: true }),
+    ).toBe(false);
   });
 
   it('extracts topic from full run prompt with [User instruction] block', () => {

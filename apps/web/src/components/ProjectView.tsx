@@ -508,6 +508,7 @@ import {
   formatAutoContinueIncompleteOutputNotice,
   formatCloneLookSeedFallbackNotice,
   formatEmergencyDeckFallbackNotice,
+  formatGenericBriefDeferFillNotice,
   formatOutlineDeckFallbackNotice,
   formatPersistedProjectRunError,
   formatPersistedEmptyApiResponseError,
@@ -15448,6 +15449,23 @@ export function ProjectView({
       autoSentRef.current = true;
       clearAutoSendSession(project.id);
       clearTemplateCloneContentFillQueue(project.id);
+      return;
+    }
+    // 루프529 — Safety net: if a fill was queued with no usable topic, skip
+    // MiniMax (LOOK seed already on disk) and surface the defer notice.
+    if (
+      fillQueued
+      && isGenericTemplateCloneTopicBrief(
+        extractTemplateCloneUserFacingRequest({
+          pendingPrompt: project.pendingPrompt,
+          userInstruction: seed,
+        }),
+      )
+    ) {
+      autoSentRef.current = true;
+      clearAutoSendSession(project.id);
+      clearTemplateCloneContentFillQueue(project.id);
+      surfaceChatVisibleError(formatGenericBriefDeferFillNotice(), 'generic_brief_defer_fill');
       return;
     }
     // Cross-remount lock (StrictMode): clear the session flag early, but do

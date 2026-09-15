@@ -654,6 +654,38 @@ export function extractTemplateCloneUserFacingRequest(input: {
   return HOME_FILL_SLIDES_PROMPT;
 }
 
+/**
+ * 루프529 — Home create without source material: empty / boilerplate / title-only
+ * briefs that would only produce LOOK-seed fallback after a wasted MiniMax turn.
+ * Canvas/Drive (`hasSourceMaterial`) always return false — source brief anchors fill.
+ */
+export function isGenericTemplateCloneTopicBrief(
+  raw: string | null | undefined,
+  options?: { hasSourceMaterial?: boolean },
+): boolean {
+  if (options?.hasSourceMaterial) return false;
+  const visible = extractTemplateCloneUserFacingRequest({
+    userInstruction: raw,
+    pendingPrompt: raw,
+  }).trim();
+  if (!visible || looksLikeCanvasCreateBoilerplate(visible)) return true;
+  // Align with contracts SYNTH_GENERIC_TITLE_RE — cover-only labels.
+  if (/^(?:슬라이드|deck|slides?|presentation|발표\s*자료|untitled|artifact)$/i.test(visible)) {
+    return true;
+  }
+  // Extractable topic ("expo에 대해서…") → not generic.
+  if (deriveTemplateCloneTopicLabel(visible)) return false;
+  // Host / URL in the brief is enough of a topic for fill.
+  if (/\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\b/i.test(visible)) {
+    return false;
+  }
+  // Short instruction-only shells ("만들어줘", "슬라이드 만들어줘").
+  if (looksLikeInstructionNotSlideCopy(visible) && visible.length <= 24) return true;
+  // Longer free-form with content beyond the verb phrase → keep auto-fill.
+  if (visible.length >= 12) return false;
+  return looksLikeInstructionNotSlideCopy(visible);
+}
+
 /** Shared hard rules for Clone → first AI content fill (JSON slot-fill, 0901-N02). */
 export function templateCloneContentFillHardRules(): string[] {
   return [

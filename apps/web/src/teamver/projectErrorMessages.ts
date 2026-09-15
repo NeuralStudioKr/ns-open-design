@@ -440,8 +440,17 @@ export function formatOutlineDeckFallbackNotice(): string {
 }
 
 /**
- * 루프362/364 — Clone 첫 채우기 턴에서 slot-fill이 실패(저품질 HTML · soft-invalid JSON 등)해
- * 이미 디스크에 있는 LOOK seed를 열고 run을 마감했다는 안내.
+ * 루프529 — Home create deferred MiniMax fill because the brief had no usable topic.
+ * LOOK seed still lands; user should type a concrete topic in chat.
+ */
+export function formatGenericBriefDeferFillNotice(): string {
+  return isTeamverEmbedMode()
+    ? '템플릿 초안은 준비했습니다. 주제를 구체적으로 입력하면 슬라이드 내용을 채울 수 있습니다.'
+    : 'Template draft is ready. Enter a concrete topic in chat to fill the slides.';
+}
+
+/**
+ * 루프362/364 — Clone 첫 채우기 턴에서 slot-fill이 실패해 LOOK seed를 열고 run을 마감했다는 안내.
  *
  * 루프524 — Retry dock 부재로 "채팅에 재요청" copy 를 잠깐 썼다.
  * 루프525 — LOOK seed 를 failed+error event 로 마감해 Retry dock 이 동작한다.

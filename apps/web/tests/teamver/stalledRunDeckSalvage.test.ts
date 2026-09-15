@@ -75,5 +75,8 @@ describe('루프477 stalled deck salvage eligibility', () => {
   it('exposes a user-facing notice under a distinct status code', () => {
     expect(STALLED_PARTIAL_DECK_STATUS_CODE).toBe('stalled_partial_deck');
     expect(formatStalledPartialDeckNotice()).toMatch(/멈춰/);
+    // 루프529 — succeeded salvage must not promise a Retry dock button.
+    expect(formatStalledPartialDeckNotice()).toMatch(/채팅에서 이어서/);
+    expect(formatStalledPartialDeckNotice()).not.toMatch(/다시 시도/);
   });
 });

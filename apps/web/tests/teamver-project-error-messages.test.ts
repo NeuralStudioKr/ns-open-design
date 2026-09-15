@@ -73,6 +73,7 @@ describe("project conversation error messages", () => {
       formatProjectForkConversationError,
       formatCloneLookSeedFallbackNotice,
       formatOutlineDeckFallbackNotice,
+      formatGenericBriefDeferFillNotice,
       looksLikeLowSubstancePersistSkipReason,
       formatProjectRunLowSubstanceDeliverableError,
     } = await import("../src/teamver/projectErrorMessages");
@@ -127,6 +128,7 @@ describe("project conversation error messages", () => {
     expect(formatCloneLookSeedFallbackNotice()).toContain("우측");
     expect(formatOutlineDeckFallbackNotice()).toContain("다시 시도");
     expect(formatOutlineDeckFallbackNotice()).toContain("우측");
+    expect(formatGenericBriefDeferFillNotice()).toContain("주제를 구체적으로");
     expect(formatProjectRunDeliverableMissingError("low-substance deck artifact")).toBe(
       formatProjectRunLowSubstanceDeliverableError(),
     );

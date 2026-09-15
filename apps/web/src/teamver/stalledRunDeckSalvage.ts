@@ -20,7 +20,10 @@ const DAEMON_STALL_MESSAGE_RE = /Agent stalled without emitting/i;
 const DECK_DOCUMENT_START_RE = /<!doctype\s+html|<html[\s>]/i;
 
 export function formatStalledPartialDeckNotice(): string {
-  return '생성이 중간에 멈춰, 그때까지 만들어진 슬라이드를 저장했습니다. 이어서 만들거나 다시 시도해 주세요.';
+  // 루프529 — Partial HTML was salvaged and persisted as succeeded (like
+  // emergency salvage). Do not promise a Retry dock button that only renders
+  // for `runStatus === 'failed'`. Point users to chat continue / review.
+  return '생성이 중간에 멈춰, 그때까지 만들어진 슬라이드를 저장했습니다. 내용을 확인한 뒤, 채팅에서 이어서 요청해 주세요.';
 }
 
 export function looksLikeStalledRunError(input: {

@@ -147,6 +147,7 @@ import {
   autoSendSeedStorageKey,
   buildTemplateCloneFillSeedForCurrentMode,
   clearTemplateCloneContentFillQueue,
+  isGenericTemplateCloneTopicBrief,
   queueTemplateCloneContentFill,
   queueTemplateClonePromptFill,
   sanitizeCreateAutoSendSeed,
@@ -165,7 +166,7 @@ import { clearProjectCoverCache } from './teamver/projectCoverLoader';
 import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects, pruneSessionActiveRunProjectIds, buildEmbedActiveRunAllowMissingIds, noticeStatusForBackgroundRun, markEmbedUserStoppedBackgroundProject, reconcileEmbedUserStoppedBackgroundProjects, filterBackgroundRunSummariesForUserStop } from './teamver/teamverEmbedRunTracking';
 import { publishTeamverSessionActiveRunProjectIds } from './teamver/teamverEmbedSessionRuns';
 import { loadProjectListPage, loadProjectListSafe, loadProjectsForWorkspaceSwitch, loadRecentProjectsForHome } from './teamver/loadProjectList';
-import { formatProjectGetErrorForUser } from './teamver/projectErrorMessages';
+import { formatGenericBriefDeferFillNotice, formatProjectGetErrorForUser } from './teamver/projectErrorMessages';
 import { resolveProjectUploadBatchErrorMessage } from './teamver/projectUploadErrors';
 import { TeamverDaemonUnauthorizedError } from './teamver/teamverDaemonHeaders';
 import { runTeamverEmbedSessionBoot } from './teamver/teamverEmbedSessionBoot';
@@ -2841,6 +2842,8 @@ function AppInner() {
       // 루프414 — Home must not auto-send MiniMax JSON fill when the
       // server already slot-filled the LOOK seed.
       let usedDeterministicCloneFill = false;
+      // 루프529 — generic Home brief: LOOK seed only, defer MiniMax auto-fill.
+      let deferFillForGenericBrief = false;
       let deterministicSlideCount: number | null = null;
       if (!workingDirHandoffFailed && pendingCanvasHandoff) {
         try {
@@ -3126,6 +3129,31 @@ function AppInner() {
           setPendingTemplateClone(result.project.id, fillPromise);
           await fillPromise;
         } else {
+          // 루프529 — Empty/boilerplate Home brief would burn a MiniMax turn
+          // and land on LOOK-seed fallback. Keep LOOK preview; ask for a topic.
+          const genericHomeBrief = isGenericTemplateCloneTopicBrief(
+            userFacingRequest || derivedPendingPrompt,
+            { hasSourceMaterial },
+          );
+          if (genericHomeBrief) {
+            deferFillForGenericBrief = true;
+            setWorkingDirError(formatGenericBriefDeferFillNotice());
+            setPendingTemplateClone(
+              result.project.id,
+              seedTemplateClonedDeck(cloneRequest).then((seeded) => {
+                if (seeded.ok) {
+                  seededDeckFileName = seeded.fileName;
+                  preservedFilledDeck = seeded.preservedFilled === true;
+                } else {
+                  devLog.warn(
+                    'Home template clone seed failed; continuing without auto-fill (generic brief)',
+                    seeded,
+                  );
+                }
+                return seeded;
+              }),
+            );
+          } else {
           const homeFill = buildTemplateCloneFillSeedForCurrentMode({
             userInstruction: userFacingRequest || null,
             sourceBrief,
@@ -3162,6 +3190,7 @@ function AppInner() {
               return seeded;
             }),
           );
+          }
         }
       }
       trackProjectCreateResult(
@@ -3195,10 +3224,11 @@ function AppInner() {
       )) {
         usedDeterministicCloneFill = false;
       }
-      if (suppressAutoSendForFailedDriveImport || usedDeterministicCloneFill) {
+      if (suppressAutoSendForFailedDriveImport || usedDeterministicCloneFill || deferFillForGenericBrief) {
         // queueTemplateCloneContentFill may have run above — drop fill + any
         // residual auto-send so Neutral structure turns never fire without source.
         // 루프414 — deterministic Home fill must not auto-send MiniMax.
+        // 루프529 — generic brief: LOOK only until the user types a topic.
         clearTemplateCloneContentFillQueue(result.project.id);
         queuedFillSeed = null;
         try {
@@ -3212,6 +3242,7 @@ function AppInner() {
         !canvasImportFailed &&
         !suppressAutoSendForFailedDriveImport &&
         !usedDeterministicCloneFill &&
+        !deferFillForGenericBrief &&
         input.autoSendFirstMessage &&
         (derivedPendingPrompt !== undefined || firstMessageAttachments.length > 0)
       ) {
