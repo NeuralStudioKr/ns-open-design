@@ -7,8 +7,8 @@
 | 단계 | commit | 상태 |
 |---|---|---|
 | 상위·구현설계 | `197dcc6ab8` | ☑ |
-| sanitize · prompt · probe 922 | (본 커밋) | ☑ |
-| push staging | (본 커밋 후) | ☐ |
+| sanitize · prompt · probe 922 | `98e702f477` | ☑ |
+| push staging | `98e702f477` | ☑ |
 
 ## 구현 (완료)
 
