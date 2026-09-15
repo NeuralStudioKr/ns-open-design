@@ -193,9 +193,9 @@ describe("ProjectView message loading", () => {
 
   it("injects selected deck template skillIds into daemon runs from project metadata", () => {
     const source = readSource("src/components/ProjectView.tsx");
-    expect(source).toContain("enrichChatSendMetaWithProjectDeckTemplate(meta, project.metadata)");
-    expect(source).toContain("mergeRetryDeckTemplateIntoSendMeta(meta, retryTarget.userMsg)");
-    expect(source).toContain("findLatestExplicitDeckTemplateFromMessages(messages)");
+    expect(source).toContain("ensureChatSendMetaHasDurableDeckTemplate(meta, {");
+    expect(source).toContain("projectMetadataNeedsDeckTemplatePin(project.metadata, durablePin)");
+    expect(source).toContain("resolveDurableDeckTemplatePin({");
     expect(source).toContain("resolveDeckTemplateSkillId(project.metadata, meta)");
   });
 
@@ -389,6 +389,8 @@ describe("ProjectView message loading", () => {
     expect(persistBlock).toContain("htmlBody = sanitizeManualEditFullSource(htmlBody)");
     expect(persistBlock).toContain("mergeOfficialLookCssForTemplate");
     expect(persistBlock).toContain("firstOfficialDeckTemplateId");
+    expect(persistBlock).toContain("resolveDurableDeckTemplatePin");
+    expect(persistBlock).toContain("selectedDeckTemplateId: persistTemplateId");
     expect(persistBlock).toContain("runSelectedDeckTemplateIdRef.current");
     expect(persistBlock).toContain("Single terminal scrub after salvage/repair/stabilize");
     // Look/Motif merge before surface bleed so cream !important cannot win

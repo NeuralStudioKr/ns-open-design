@@ -206,11 +206,12 @@ import {
   emitRevisionUndo,
 } from '../runtime/revision-analytics';
 import {
-  enrichChatSendMetaWithProjectDeckTemplate,
-  findLatestExplicitDeckTemplateFromMessages,
+  deckTemplateSendMetaFromPin,
+  ensureChatSendMetaHasDurableDeckTemplate,
   formatSelectedDeckTemplateChipLabel,
-  mergeRetryDeckTemplateIntoSendMeta,
+  projectMetadataNeedsDeckTemplatePin,
   resolveDeckTemplateSkillId,
+  resolveDurableDeckTemplatePin,
   resolveScenarioPluginIdForLocalSkill,
   selectedDeckTemplateMetadata,
   selectedDeckTemplateTitleStub,
@@ -4888,6 +4889,11 @@ export function ProjectView({
                   entryFrom: AUTO_CONTINUE_ENTRY_FROM,
                   ...(autoContinueFill.jsonFill ? { templateCloneContentFill: true } : {}),
                   ...(autoContinueFill.promptFill ? { templateClonePromptFill: true } : {}),
+                  ...deckTemplateSendMetaFromPin(resolveDurableDeckTemplatePin({
+                    project: project.metadata,
+                    retryUser: autoContinueOriginUser,
+                    messages: messagesRef.current,
+                  })),
                 },
               );
               void Promise.resolve(started).then((ok) => {
@@ -5299,6 +5305,10 @@ export function ProjectView({
                   inferred: false,
                   templateCloneContentFilled: true,
                   templateClonedDeckSeeded: false,
+                  ...deckTemplateSendMetaFromPin(resolveDurableDeckTemplatePin({
+                    project: project.metadata,
+                    messages: messagesRef.current,
+                  })),
                 },
               }),
             });
@@ -5511,8 +5521,11 @@ export function ProjectView({
       {
         const artifactHtml = typeof art.html === 'string' ? art.html.trim() : '';
         const selectedTemplateId =
-          selectedDeckTemplateMetadata(project.metadata)?.id
-          ?? project.metadata?.selectedDeckTemplateId
+          resolveDurableDeckTemplatePin({
+            project: project.metadata,
+            runRef: runSelectedDeckTemplateIdRef.current,
+            messages: messagesRef.current,
+          })?.id
           ?? null;
         if (
           shouldDeferSlideOnlyDiscoveryArtifactPersist(messagesRef.current, {
@@ -6157,6 +6170,13 @@ export function ProjectView({
         }
       }
       const htmlBodyBeforeSanitize = htmlBody;
+      const persistTemplateId = firstOfficialDeckTemplateId(
+        resolveDurableDeckTemplatePin({
+          project: project.metadata,
+          runRef: runSelectedDeckTemplateIdRef.current,
+          messages: messagesRef.current,
+        })?.id,
+      );
       if (ext === '.html' && !patchHtmlAlreadySanitized) {
         // Single terminal scrub after salvage/repair/stabilize — avoids
         // 2–4× DOMParser passes on the same multi-KB deck per persist.
@@ -6180,11 +6200,6 @@ export function ProjectView({
         htmlBody = rewriteAttachmentImageSrcs(htmlBody, projectPaths, {
           preferredPaths: attachmentPaths,
         });
-        const persistTemplateId = firstOfficialDeckTemplateId(
-          runSelectedDeckTemplateIdRef.current,
-          selectedDeckTemplateMetadata(project.metadata)?.id,
-          project.metadata?.selectedDeckTemplateId,
-        );
         // Look/Motif/fonts first, then surface bleed — so cream !important
         // does not win over official dark identity (Hermes) or Motif washes.
         htmlBody = await mergeOfficialLookCssForTemplate(htmlBody, persistTemplateId);
@@ -6311,6 +6326,9 @@ export function ProjectView({
               templateClonedDeckSeeded: false,
               ...(runTemplateCloneSlotFillFallbackRef.current
                 ? { templateCloneSlotFillFallback: true }
+                : {}),
+              ...(persistTemplateId
+                ? { selectedDeckTemplateId: persistTemplateId }
                 : {}),
             }
           : {}),
@@ -8844,9 +8862,11 @@ export function ProjectView({
                         const withLook = await mergeOfficialLookCssForTemplate(
                           withHeadings,
                           firstOfficialDeckTemplateId(
-                            runSelectedDeckTemplateIdRef.current,
-                            selectedDeckTemplateMetadata(project.metadata)?.id,
-                            project.metadata?.selectedDeckTemplateId,
+                            resolveDurableDeckTemplatePin({
+                              project: project.metadata,
+                              runRef: runSelectedDeckTemplateIdRef.current,
+                              messages: messagesRef.current,
+                            })?.id,
                           ),
                         );
                         const withSalvage = sanitizePersistedDeckHostLeaks(withLook);
@@ -9706,6 +9726,11 @@ export function ProjectView({
                 entryFrom: AUTO_CONTINUE_ENTRY_FROM,
                 ...(autoContinueFill.jsonFill ? { templateCloneContentFill: true } : {}),
                 ...(autoContinueFill.promptFill ? { templateClonePromptFill: true } : {}),
+                ...deckTemplateSendMetaFromPin(resolveDurableDeckTemplatePin({
+                  project: project.metadata,
+                  retryUser: autoContinueOriginUser,
+                  messages: messagesRef.current,
+                })),
               },
             );
             void Promise.resolve(started).then((ok) => {
@@ -10062,7 +10087,6 @@ export function ProjectView({
         onEmbedSubmitBlocked?.();
         return false;
       }
-      meta = enrichChatSendMetaWithProjectDeckTemplate(meta, project.metadata);
       if (!activeConversationId) return false;
       if (messagesConversationIdRef.current !== activeConversationId) return false;
       const runSessionMode = meta?.sessionMode ?? activeSessionMode;
@@ -10070,29 +10094,38 @@ export function ProjectView({
         ? resolveRetryTarget(messages, meta.retryOfAssistantId)
         : null;
       if (meta?.retryOfAssistantId && !retryTarget) return false;
-      // 루프527 — Retry/follow-up must keep the first-turn visual template.
-      // handleRetry only sends `{ retryOfAssistantId }`. When project.metadata
-      // is stale or empty, compose/LOOK-seed would otherwise fall back to
-      // simple-deck ("기본 템플릿").
-      if (retryTarget) {
-        meta = enrichChatSendMetaWithProjectDeckTemplate(
-          mergeRetryDeckTemplateIntoSendMeta(meta, retryTarget.userMsg),
-          project.metadata,
-        );
-      } else if (!selectedDeckTemplateMetadata(project.metadata, meta)) {
-        const fromHistory = findLatestExplicitDeckTemplateFromMessages(messages);
-        if (fromHistory) {
-          meta = enrichChatSendMetaWithProjectDeckTemplate(
-            {
-              ...(meta ?? {}),
-              selectedDeckTemplateId: fromHistory.id,
-              ...(fromHistory.title
-                ? { selectedDeckTemplateTitle: fromHistory.title }
-                : {}),
-            },
-            project.metadata,
-          );
-        }
+      // 루프529 — Retry/auto-continue/follow-up share one durable pin.
+      // Recover from turn meta, retry user, history, then write it back to
+      // project.metadata so persist LOOK / LOOK-seed do not fall back to
+      // simple-deck after runSelectedDeckTemplateIdRef is cleared.
+      meta = ensureChatSendMetaHasDurableDeckTemplate(meta, {
+        project: project.metadata,
+        retryUser: retryTarget?.userMsg,
+        messages,
+      });
+      const durablePin = resolveDurableDeckTemplatePin({
+        turn: meta,
+        project: project.metadata,
+        retryUser: retryTarget?.userMsg,
+        messages,
+      });
+      if (projectMetadataNeedsDeckTemplatePin(project.metadata, durablePin) && durablePin) {
+        const nextMetadata = {
+          ...(project.metadata ?? {}),
+          selectedDeckTemplateId: durablePin.id,
+          ...(durablePin.title
+            ? { selectedDeckTemplateTitle: durablePin.title }
+            : {}),
+        };
+        onProjectChange({ ...project, metadata: nextMetadata });
+        void patchProject(project.id, {
+          metadata: nextMetadata,
+          updatedAt: project.updatedAt,
+        }).then((patched) => {
+          if (patched) onProjectChange(patched);
+        }).catch(() => {
+          // Local metadata already holds the recovered pin.
+        });
       }
       if (retryTarget && config.mode === 'api') {
         try {
@@ -10598,16 +10631,22 @@ export function ProjectView({
         projectSkipDiscoveryBrief: project.metadata?.skipDiscoveryBrief === true,
         projectKind: project.metadata?.kind ?? null,
         selectedDeckTemplateId:
-          selectedDeckTemplateMetadata(project.metadata, meta)?.id
-          ?? meta?.selectedDeckTemplateId
-          ?? project.metadata?.selectedDeckTemplateId
+          resolveDurableDeckTemplatePin({
+            turn: meta,
+            project: project.metadata,
+            retryUser: retryTarget?.userMsg,
+            messages,
+          })?.id
           ?? null,
         runSkipDiscoveryBrief: meta?.skipDiscoveryBrief === true,
       });
       runSelectedDeckTemplateIdRef.current =
-        selectedDeckTemplateMetadata(project.metadata, meta)?.id
-        ?? meta?.selectedDeckTemplateId
-        ?? project.metadata?.selectedDeckTemplateId
+        resolveDurableDeckTemplatePin({
+          turn: meta,
+          project: project.metadata,
+          retryUser: retryTarget?.userMsg,
+          messages,
+        })?.id
         ?? null;
       const commentPersistTarget = resolveCommentEditPersistTargetFileName(
         runCommentAttachments,
@@ -11012,9 +11051,11 @@ export function ProjectView({
               if (options.prepareArtifact !== false) {
                 try {
                   const templateId = firstOfficialDeckTemplateId(
-                    runSelectedDeckTemplateIdRef.current,
-                    selectedDeckTemplateMetadata(project.metadata)?.id,
-                    project.metadata?.selectedDeckTemplateId,
+                    resolveDurableDeckTemplatePin({
+                      project: project.metadata,
+                      runRef: runSelectedDeckTemplateIdRef.current,
+                      messages: messagesRef.current,
+                    })?.id,
                   );
                   const seedHtml = await resolveTemplateCloneLookSeedHtml({
                     templateId,
@@ -11071,9 +11112,11 @@ export function ProjectView({
               try {
                 const seedHtml = await resolveTemplateCloneLookSeedHtml({
                   templateId: firstOfficialDeckTemplateId(
-                    runSelectedDeckTemplateIdRef.current,
-                    selectedDeckTemplateMetadata(project.metadata)?.id,
-                    project.metadata?.selectedDeckTemplateId,
+                    resolveDurableDeckTemplatePin({
+                      project: project.metadata,
+                      runRef: runSelectedDeckTemplateIdRef.current,
+                      messages: messagesRef.current,
+                    })?.id,
                   ),
                   readProjectHtml,
                 });
@@ -11102,13 +11145,12 @@ export function ProjectView({
                     kind: decision.kind,
                     templateId:
                       firstOfficialDeckTemplateId(
-                        runSelectedDeckTemplateIdRef.current,
-                        selectedDeckTemplateMetadata(project.metadata)?.id,
-                        project.metadata?.selectedDeckTemplateId,
-                      )
-                      ?? (project.metadata as { selectedDeckTemplateId?: string } | undefined)
-                        ?.selectedDeckTemplateId
-                      ?? null,
+                        resolveDurableDeckTemplatePin({
+                          project: project.metadata,
+                          runRef: runSelectedDeckTemplateIdRef.current,
+                          messages: messagesRef.current,
+                        })?.id,
+                      ),
                   });
                   observeTemplateClonePersistQuality({
                     phase: 'json-slot-fill',
@@ -11116,13 +11158,12 @@ export function ProjectView({
                     applied: decision.kind === 'slot-fill',
                     templateId:
                       firstOfficialDeckTemplateId(
-                        runSelectedDeckTemplateIdRef.current,
-                        selectedDeckTemplateMetadata(project.metadata)?.id,
-                        project.metadata?.selectedDeckTemplateId,
-                      )
-                      ?? (project.metadata as { selectedDeckTemplateId?: string } | undefined)
-                        ?.selectedDeckTemplateId
-                      ?? null,
+                        resolveDurableDeckTemplatePin({
+                          project: project.metadata,
+                          runRef: runSelectedDeckTemplateIdRef.current,
+                          messages: messagesRef.current,
+                        })?.id,
+                      ),
                   });
                 }
                 if (decision.kind === 'slot-fill') {
@@ -11184,9 +11225,11 @@ export function ProjectView({
               try {
                 const seedHtml = await resolveTemplateCloneLookSeedHtml({
                   templateId: firstOfficialDeckTemplateId(
-                    runSelectedDeckTemplateIdRef.current,
-                    selectedDeckTemplateMetadata(project.metadata)?.id,
-                    project.metadata?.selectedDeckTemplateId,
+                    resolveDurableDeckTemplatePin({
+                      project: project.metadata,
+                      runRef: runSelectedDeckTemplateIdRef.current,
+                      messages: messagesRef.current,
+                    })?.id,
                   ),
                   readProjectHtml,
                 });
@@ -11199,13 +11242,12 @@ export function ProjectView({
                   {
                     templateId:
                       firstOfficialDeckTemplateId(
-                        runSelectedDeckTemplateIdRef.current,
-                        selectedDeckTemplateMetadata(project.metadata)?.id,
-                        project.metadata?.selectedDeckTemplateId,
-                      )
-                      ?? (project.metadata as { selectedDeckTemplateId?: string } | undefined)
-                        ?.selectedDeckTemplateId
-                      ?? null,
+                        resolveDurableDeckTemplatePin({
+                          project: project.metadata,
+                          runRef: runSelectedDeckTemplateIdRef.current,
+                          messages: messagesRef.current,
+                        })?.id,
+                      ),
                     brief: runVisiblePromptRef.current || '',
                     deckTitle: project.name || '슬라이드',
                     ...(honorCeiling != null ? { maxSlides: honorCeiling } : {}),
@@ -11218,13 +11260,12 @@ export function ProjectView({
                   applied: Boolean(merged?.html),
                   templateId:
                     firstOfficialDeckTemplateId(
-                      runSelectedDeckTemplateIdRef.current,
-                      selectedDeckTemplateMetadata(project.metadata)?.id,
-                      project.metadata?.selectedDeckTemplateId,
-                    )
-                    ?? (project.metadata as { selectedDeckTemplateId?: string } | undefined)
-                      ?.selectedDeckTemplateId
-                    ?? null,
+                      resolveDurableDeckTemplatePin({
+                        project: project.metadata,
+                        runRef: runSelectedDeckTemplateIdRef.current,
+                        messages: messagesRef.current,
+                      })?.id,
+                    ),
                 });
                 if (merged?.html) {
                   artifactToPersist = {
@@ -11279,9 +11320,11 @@ export function ProjectView({
                     const withLook = await mergeOfficialLookCssForTemplate(
                       withHeadings,
                       firstOfficialDeckTemplateId(
-                        runSelectedDeckTemplateIdRef.current,
-                        selectedDeckTemplateMetadata(project.metadata)?.id,
-                        project.metadata?.selectedDeckTemplateId,
+                        resolveDurableDeckTemplatePin({
+                          project: project.metadata,
+                          runRef: runSelectedDeckTemplateIdRef.current,
+                          messages: messagesRef.current,
+                        })?.id,
                       ),
                     );
                     const withSalvage = sanitizePersistedDeckHostLeaks(withLook);
@@ -11350,6 +11393,11 @@ export function ProjectView({
                               inferred: false,
                               templateCloneContentFilled: true,
                               templateClonedDeckSeeded: false,
+                              ...deckTemplateSendMetaFromPin(resolveDurableDeckTemplatePin({
+                                project: project.metadata,
+                                runRef: runSelectedDeckTemplateIdRef.current,
+                                messages: messagesRef.current,
+                              })),
                             },
                           }),
                         },
@@ -12005,6 +12053,11 @@ export function ProjectView({
                       ...(autoContinueFill.promptFill
                         ? { templateClonePromptFill: true }
                         : {}),
+                      ...deckTemplateSendMetaFromPin(resolveDurableDeckTemplatePin({
+                        project: project.metadata,
+                        retryUser: originatingUserMsg,
+                        messages: messagesRef.current,
+                      })),
                     },
                   );
                   void Promise.resolve(started).then((ok) => {
@@ -13771,9 +13824,25 @@ export function ProjectView({
     (assistantMessage: ChatMessage) => {
       if (currentConversationActionDisabled) return;
       if (currentConversationHasActiveRun) return;
-      void handleSend('', [], [], { retryOfAssistantId: assistantMessage.id });
+      const originUser = findPrecedingUserMessage(
+        messagesRef.current,
+        assistantMessage.id,
+      );
+      void handleSend('', [], [], {
+        retryOfAssistantId: assistantMessage.id,
+        ...deckTemplateSendMetaFromPin(resolveDurableDeckTemplatePin({
+          project: project.metadata,
+          retryUser: originUser,
+          messages: messagesRef.current,
+        })),
+      });
     },
-    [currentConversationActionDisabled, currentConversationHasActiveRun, handleSend],
+    [
+      currentConversationActionDisabled,
+      currentConversationHasActiveRun,
+      handleSend,
+      project.metadata,
+    ],
   );
 
   // "Continue" on a resumable failed run: send a fresh turn in the same
@@ -13817,10 +13886,15 @@ export function ProjectView({
           entryFrom: 'resume_continue',
           ...(resumeFill.jsonFill ? { templateCloneContentFill: true } : {}),
           ...(resumeFill.promptFill ? { templateClonePromptFill: true } : {}),
+          ...deckTemplateSendMetaFromPin(resolveDurableDeckTemplatePin({
+            project: project.metadata,
+            retryUser: resumeOriginUser,
+            messages: messagesRef.current,
+          })),
         },
       );
     },
-    [currentConversationActionDisabled, handleSend],
+    [currentConversationActionDisabled, handleSend, project.metadata],
   );
 
   // "Switch to AMR & retry" from the failed-run card: switch the run to AMR,

@@ -48,6 +48,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts 254 passed · daemon template-clone 37 passed · web templateCloneContentFill 38 passed · contracts build passed.
 
+### 루프529 / 0914-N12 — 선택 템플릿 핀 내구성
+
+체감: Retry에서 핀을 붙여도 persist/이어서 쓰기에서 다시 기본 템플릿이 적용됐다.
+
+수정: 핀 해석을 한 함수로 모으고 metadata/artifact에 다시 씀. fill/heal 비범위. [0914-N12-3](./0914-N12-3-구현현황-[템플릿_핀_내구성].md).
+
+검증: web selected-deck-template + project-view-message-load + embed-slide-only + canvas-slide-launch 133 passed.
+
 ### 루프527 / 0914-N10 — Retry 선택 템플릿 핀 복구
 
 체감: 1차 생성 실패 후 다시 시도하면 고른 템플릿이 사라지고 기본 템플릿이 적용됐다.

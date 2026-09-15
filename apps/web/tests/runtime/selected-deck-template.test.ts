@@ -1,14 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
   enrichChatSendMetaWithProjectDeckTemplate,
+  ensureChatSendMetaHasDurableDeckTemplate,
   findLatestExplicitDeckTemplateFromMessages,
   formatSelectedDeckTemplateChipLabel,
   looksLikeDeckTemplateSkillId,
   looksLikeExplicitVisualDeckTemplateId,
   mergeRetryDeckTemplateIntoSendMeta,
+  projectMetadataNeedsDeckTemplatePin,
   resolveDeckTemplateSkillId,
+  resolveDurableDeckTemplatePin,
   resolveSelectedDeckTemplateChipLabel,
   resolveScenarioPluginIdForLocalSkill,
+  selectedDeckTemplateMetadata,
   selectedDeckTemplateMetadataFromRunContext,
   wrapSelectedDeckTemplateSkillBody,
 } from '../../src/runtime/selected-deck-template';
@@ -293,5 +297,80 @@ describe('selected-deck-template runtime helpers', () => {
     expect(findLatestExplicitDeckTemplateFromMessages([
       { role: 'user', runContext: { skillIds: ['example-simple-deck'] } },
     ])).toBeNull();
+  });
+
+  it('ignores simple-deck as a selected visual pin', () => {
+    expect(selectedDeckTemplateMetadata({
+      kind: 'deck',
+      selectedDeckTemplateId: 'example-simple-deck',
+      selectedDeckTemplateTitle: '기본 슬라이드 템플릿',
+    })).toBeNull();
+    expect(selectedDeckTemplateMetadata(
+      { kind: 'deck', selectedDeckTemplateId: 'example-simple-deck' },
+      { selectedDeckTemplateId: 'example-html-ppt-zhangzara-studio', selectedDeckTemplateTitle: 'Studio' },
+    )).toEqual({
+      id: 'example-html-ppt-zhangzara-studio',
+      title: 'Studio',
+    });
+  });
+
+  it('resolves a durable pin from history when project metadata is empty (루프529)', () => {
+    expect(resolveDurableDeckTemplatePin({
+      project: { kind: 'deck' },
+      runRef: null,
+      messages: [
+        {
+          role: 'user',
+          runContext: {
+            selectedDeckTemplateId: 'example-html-ppt-zhangzara-studio',
+            selectedDeckTemplateTitle: 'Studio',
+          },
+        },
+      ],
+    })).toEqual({
+      id: 'example-html-ppt-zhangzara-studio',
+      title: 'Studio',
+    });
+    expect(resolveDurableDeckTemplatePin({
+      project: { kind: 'deck', selectedDeckTemplateId: 'example-simple-deck' },
+      artifactTemplateId: 'html-ppt-zhangzara-capsule',
+    })).toEqual({ id: 'html-ppt-zhangzara-capsule' });
+  });
+
+  it('ensures retry send meta keeps the first-turn visual pin without project metadata', () => {
+    const ensured = ensureChatSendMetaHasDurableDeckTemplate(
+      { retryOfAssistantId: 'asst-1' } as { retryOfAssistantId: string },
+      {
+        project: { kind: 'deck' },
+        retryUser: {
+          runContext: {
+            selectedDeckTemplateId: 'example-html-ppt-zhangzara-studio',
+            selectedDeckTemplateTitle: 'Studio',
+          },
+        },
+      },
+    );
+    expect(ensured?.selectedDeckTemplateId).toBe('example-html-ppt-zhangzara-studio');
+    expect(ensured?.skillIds).toEqual(['example-html-ppt-zhangzara-studio']);
+    expect(ensured?.context?.selectedDeckTemplateId).toBe('example-html-ppt-zhangzara-studio');
+  });
+
+  it('writes project metadata only when the recovered pin is missing or different', () => {
+    expect(projectMetadataNeedsDeckTemplatePin(
+      { kind: 'deck' },
+      { id: 'example-html-ppt-zhangzara-studio' },
+    )).toBe(true);
+    expect(projectMetadataNeedsDeckTemplatePin(
+      { kind: 'deck', selectedDeckTemplateId: 'example-simple-deck' },
+      { id: 'example-html-ppt-zhangzara-studio' },
+    )).toBe(true);
+    expect(projectMetadataNeedsDeckTemplatePin(
+      { kind: 'deck', selectedDeckTemplateId: 'example-html-ppt-zhangzara-studio' },
+      { id: 'example-html-ppt-zhangzara-studio' },
+    )).toBe(false);
+    expect(projectMetadataNeedsDeckTemplatePin(
+      { kind: 'deck' },
+      { id: 'example-simple-deck' },
+    )).toBe(false);
   });
 });
