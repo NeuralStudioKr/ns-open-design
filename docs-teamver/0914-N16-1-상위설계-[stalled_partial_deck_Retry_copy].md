@@ -1,4 +1,4 @@
-# 0914-N13-1 상위설계 — stalled_partial_deck Retry copy 불일치 (loop529)
+# 0914-N16-1 상위설계 — stalled_partial_deck Retry copy 불일치 (loop529)
 
 감사(N11 후속): `formatStalledPartialDeckNotice` 는 「다시 시도」를 말하지만, 부분 HTML 저장 성공 시 finalize 는 `succeeded` → Retry dock 미렌더.
 

@@ -1,6 +1,6 @@
-# 0914-N12-3 구현현황 — Generic brief soft defer (loop529)
+# 0914-N15-3 구현현황 — Generic brief soft defer (loop529)
 
-상위: `0914-N12-1`.
+상위: `0914-N15-1`.
 
 ## 변경
 

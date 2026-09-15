@@ -1,4 +1,4 @@
-# 0914-N12-1 상위설계 — Generic brief 시 MiniMax auto-fill soft defer (loop529)
+# 0914-N15-1 상위설계 — Generic brief 시 MiniMax auto-fill soft defer (loop529)
 
 상위: `0914-N09-1` Option A.
 

@@ -1,4 +1,4 @@
-# 0914-N14-1/3 — Emergency salvage succeeded 유지 pin (loop529)
+# 0914-N17-1/3 — Emergency salvage succeeded 유지 pin (loop529)
 
 N08/N11 감사: Emergency는 authored HTML 복구 → `succeeded` + review copy. Retry dock 불필요.
 
