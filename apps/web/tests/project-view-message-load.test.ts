@@ -1210,4 +1210,19 @@ describe("ProjectView message loading", () => {
     expect(recoveryBlock).toContain("const retryPersistResult = await persistArtifact");
     expect(recoveryBlock).toContain("await recoverCloneLookSeedFallback({ prepareArtifact: false })");
   });
+
+  // 루프528 — Outline fallback must mark failed + error event so Retry dock
+  // matches the banner copy (LOOK seed / 루프525 mirror). Emergency stays succeeded.
+  it("marks outline-deck fallback as failed with Retry-dock error event", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const start = source.indexOf("} else if (outlineFallbackRecovered) {");
+    expect(start).toBeGreaterThan(0);
+    const block = source.slice(start, start + 1800);
+    expect(block).toContain("OUTLINE_DECK_FALLBACK_STATUS_CODE");
+    expect(block).toContain("appendErrorStatusEvent");
+    expect(block).toContain("runStatus: 'failed'");
+    expect(block).toContain("resumable: false");
+    expect(block).toContain("updateConversationLatestRun('failed'");
+    expect(block).not.toContain("resolveSucceededRunStatus");
+  });
 });

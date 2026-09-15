@@ -11773,24 +11773,35 @@ export function ProjectView({
                 }));
                 updateConversationLatestRun('succeeded', endedAt);
               } else if (outlineFallbackRecovered) {
-                // Outline-only fallback: mark the run as SUCCEEDED (never
-                // "실패") with a warning notice + resumable retry, so the
-                // user sees a saved deck instead of a hard failure card.
-                // Keep `resumable: true` so the failed-run retry dock still
-                // renders and users can regenerate a full deck.
+                // Outline-only fallback: a temporary TOC deck was saved, not a
+                // finished deliverable. 루프528 — Mirror LOOK seed (루프525):
+                // mark failed + attach warning AND error events so ChatPane's
+                // Retry dock (requires runStatus === 'failed') matches the
+                // banner copy that asks for "다시 시도". `resumable: false`
+                // because MiniMax BYOK has no daemon session to Continue —
+                // Retry re-plays the original brief. Emergency salvage stays
+                // succeeded (authored HTML recovered; review, don't retry).
                 const outlineNotice = formatOutlineDeckFallbackNotice();
-                updateAssistant((prev) => ({
-                  ...appendWarningStatusEvent(
+                updateAssistant((prev) => {
+                  const withWarning = appendWarningStatusEvent(
                     clearDurableDeliverableErrorsAfterRecovery(prev),
                     outlineNotice,
                     OUTLINE_DECK_FALLBACK_STATUS_CODE,
-                  ),
-                  producedFiles: outlineFallbackProduced,
-                  runStatus: resolveSucceededRunStatus(prev.runStatus),
-                  resumable: true,
-                  endedAt: prev.endedAt ?? endedAt,
-                }));
-                updateConversationLatestRun('succeeded', endedAt);
+                  );
+                  const withError = appendErrorStatusEvent(
+                    withWarning,
+                    outlineNotice,
+                    OUTLINE_DECK_FALLBACK_STATUS_CODE,
+                  );
+                  return {
+                    ...withError,
+                    producedFiles: outlineFallbackProduced,
+                    runStatus: 'failed',
+                    resumable: false,
+                    endedAt: prev.endedAt ?? endedAt,
+                  };
+                });
+                updateConversationLatestRun('failed', endedAt);
               } else {
               // Decide whether to fire the capped automatic continue BEFORE
               // we finalize the assistant card, so the status event we append

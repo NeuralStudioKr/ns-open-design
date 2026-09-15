@@ -508,8 +508,8 @@ export async function attemptEmergencySlideDeckRecovery(options: {
  *   - marked with a distinct `OUTLINE_DECK_FALLBACK_STATUS_CODE`
  *   - accompanied by an "임시 개요만 저장" warning notice so the user
  *     immediately knows to hit "다시 시도"
- *   - still resumable via the existing failed-run retry affordance if we
- *     lift it back to `runStatus: 'failed'` at the caller site
+ *   - 루프528 — caller marks `runStatus: 'failed'` + matching error event so
+ *     ChatPane's Retry dock renders (same pattern as LOOK seed / 루프525)
  *
  * Returns `{ recovered: false }` when the conversation has no usable
  * outline material — in that case the caller should still surface the

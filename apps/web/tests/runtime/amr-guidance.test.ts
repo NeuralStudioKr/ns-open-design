@@ -61,6 +61,20 @@ describe('resolveRunFailureUi', () => {
     }
   });
 
+  // 루프528 — Outline fallback mirrors LOOK seed: failed + error event with
+  // `outline_deck_fallback` so Retry dock matches the banner copy.
+  it('falls through to plain retry for an outline-deck fallback status code', () => {
+    for (const agent of ['minimax-api', 'claude', null]) {
+      const ui = resolveRunFailureUi('outline_deck_fallback', agent);
+      expect(ui).toMatchObject({
+        primaryAction: 'retry',
+        messageKey: null,
+        secondaryRetry: false,
+        showSwitchCard: false,
+      });
+    }
+  });
+
   it('localizes a mid-stream connection drop for any agent, no AMR promotion', () => {
     for (const agent of ['claude', 'codex', null]) {
       const ui = resolveRunFailureUi('AGENT_CONNECTION_DROPPED', agent);
