@@ -32,6 +32,16 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **명시 5장+ 요청에서는 저장하지 않는다.** 8–10장 요청의 1장/4장 Template Clone fill은 `deck.html` 덮어쓰기 전에 incomplete로 막고 기존 덱을 보존한다. 6장 이상 첫 fill만 저장 후 top-up 가능하다. 사용자가 1장을 명시하거나 요청 장수가 작을 때만 1장 저장을 허용한다 |
 
+### 1.40 2026-09-15 — deterministic persist 후 sparse top-up만 연결
+
+loop532가 fill 기본을 deterministic으로 바꿔 MiniMax 2차 턴을 없앴다. 그 결과 MiniMax persist 뒤에만 돌던 persist-quality observe와 sparse-repair가 create landing에서 빠졌다. 병렬 loop534 (`0914-N20`) 는 Block-frame chart-svg 보존.
+
+- [x] `templateCloneSparseCheckPending` — Home / Canvas / Drive deterministic 성공 후 한 번만 검사 (루프535)
+- [x] persist-quality `phase: deterministic-fill` observe-only
+- [x] evidence가 있을 때만 기존 sparse-repair (soft-improvement). thin rewrite / 장수 APPEND는 연결하지 않음
+- fill/heal/LOOK merge HTML은 변경하지 않음
+- [ ] staging MiniMax live bake (Daisy / Block Frame / Capsule)
+
 ### 1.39 2026-09-15 — 선택 템플릿 핀이 persist/이어서 쓰기에서 다시 빠지지 않게
 
 loop527 이후 Retry는 원본 user 핀을 붙이지만, persist LOOK와 LOOK seed는 `runSelectedDeckTemplateIdRef`가 런 종료 후 null이면 기본 템플릿으로 떨어졌다.
