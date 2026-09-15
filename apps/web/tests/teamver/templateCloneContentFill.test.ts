@@ -19,6 +19,7 @@ import {
   extractTemplateCloneUserFacingRequest,
   getTemplateCloneFillMode,
   isGenericTemplateCloneTopicBrief,
+  shouldExplainGenericBriefOnLookSeedFallback,
   historyHasTemplateCloneContentFill,
   historyHasTemplateCloneSlotFillRepair,
   isTemplateCloneContentFillPrompt,
@@ -236,6 +237,7 @@ describe('templateCloneContentFill', () => {
     expect(app).toContain('never MiniMax');
     expect(app).toContain('deterministicCloneFilledMetadataFields');
     expect(composer).toContain('deterministicCloneFilledMetadataFields');
+    expect(projectView).toContain('shouldExplainGenericBriefOnLookSeedFallback');
     expect(projectView).toContain('shouldRunDeterministicSparseCheck');
     expect(projectView).toContain('mode: "sparse-only"');
     expect(projectView).toContain('phase: "deterministic-fill"');
@@ -640,6 +642,23 @@ describe('templateCloneContentFill', () => {
     expect(
       isGenericTemplateCloneTopicBrief('', { hasSourceMaterial: true }),
     ).toBe(false);
+  });
+
+  it('loop536 — LOOK seed generic-brief copy only when no topic and no source', () => {
+    expect(shouldExplainGenericBriefOnLookSeedFallback({
+      brief: '슬라이드 만들어줘',
+    })).toBe(true);
+    expect(shouldExplainGenericBriefOnLookSeedFallback({
+      brief: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+    })).toBe(false);
+    expect(shouldExplainGenericBriefOnLookSeedFallback({
+      brief: '만들어줘',
+      userContent: 'Fill REAL presentation CONTENT for this request and any attached source materials (Canvas/Drive/files).',
+    })).toBe(false);
+    expect(shouldExplainGenericBriefOnLookSeedFallback({
+      brief: '만들어줘',
+      attachments: [{ path: 'canvas.png' }],
+    })).toBe(false);
   });
 
   it('extracts topic from full run prompt with [User instruction] block', () => {

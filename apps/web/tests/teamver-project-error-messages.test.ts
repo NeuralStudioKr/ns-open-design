@@ -127,6 +127,12 @@ describe("project conversation error messages", () => {
     );
     expect(formatCloneLookSeedFallbackNotice()).toContain("다시 시도");
     expect(formatCloneLookSeedFallbackNotice()).toContain("우측");
+    expect(formatCloneLookSeedFallbackNotice()).not.toContain("주제가 명확하지");
+    expect(formatCloneLookSeedFallbackNotice({ genericBrief: true })).toContain("주제가 명확하지");
+    expect(formatCloneLookSeedFallbackNotice({ genericBrief: true })).toContain("다시 시도");
+    expect(formatCloneLookSeedFallbackErrorDetail("seed_fallback_untouched_look", {
+      genericBrief: true,
+    })).toContain("주제가 명확하지");
     expect(formatCloneLookSeedFallbackErrorDetail("seed_fallback_untouched_look")).toContain(
       "다시 시도",
     );

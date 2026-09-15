@@ -145,6 +145,41 @@ describe('attemptCloneContentFillLookSeedReloadRecovery (루프367)', () => {
     expect(built.resumable).toBe(false);
   });
 
+  it('adds N09 generic-brief copy only when the preceding user has no topic (루프536)', () => {
+    const genericUser: ChatMessage = {
+      id: 'user-generic',
+      role: 'user',
+      content: `${TEMPLATE_CLONE_CONTENT_FILL_MARKER}\n슬라이드 만들어줘`,
+      createdAt: 0,
+    };
+    const topicalUser: ChatMessage = {
+      id: 'user-topic',
+      role: 'user',
+      content: `${TEMPLATE_CLONE_CONTENT_FILL_MARKER}\nwww.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.`,
+      createdAt: 0,
+    };
+    const genericBuilt = buildCloneLookSeedReloadRecoveredAssistant(
+      incompleteAssistant,
+      [],
+      { messages: [genericUser, incompleteAssistant] },
+    );
+    const topicalBuilt = buildCloneLookSeedReloadRecoveredAssistant(
+      incompleteAssistant,
+      [],
+      { messages: [topicalUser, incompleteAssistant] },
+    );
+    const genericWarning = genericBuilt.events?.find(
+      (event) => event.kind === 'status' && event.label === 'warning',
+    )?.detail ?? '';
+    const topicalWarning = topicalBuilt.events?.find(
+      (event) => event.kind === 'status' && event.label === 'warning',
+    )?.detail ?? '';
+    expect(genericWarning).toMatch(/주제가 명확하지|did not have a clear topic/);
+    expect(genericWarning).toMatch(/다시 시도|retry button/i);
+    expect(topicalWarning).toMatch(/다시 시도|retry button/i);
+    expect(topicalWarning).not.toMatch(/주제가 명확하지|did not have a clear topic/);
+  });
+
   it('isCloneContentFillReloadRecoveryCandidate detects runContext json fill after brief-only persist', () => {
     const userBriefOnly: ChatMessage = {
       id: 'user-brief',

@@ -456,18 +456,28 @@ export function formatGenericBriefDeferFillNotice(): string {
  * 루프525 — LOOK seed 를 failed+error event 로 마감해 Retry dock 이 동작한다.
  * 루프528 — copy 를 다시 '다시 시도' 버튼 안내로 정렬한다 (채팅 재입력도 가능).
  */
-export function formatCloneLookSeedFallbackNotice(): string {
-  return isTeamverEmbedMode()
+export function formatCloneLookSeedFallbackNotice(options?: {
+  genericBrief?: boolean;
+}): string {
+  const base = isTeamverEmbedMode()
     ? "슬라이드 채우기에 실패해 템플릿 초안(LOOK seed)을 임시로 유지했습니다. 우측의 '다시 시도' 버튼으로 완성본을 다시 생성해 주세요."
     : 'Slide fill did not complete — kept the template draft (LOOK seed). Use the retry button to regenerate the full deck.';
+  if (!options?.genericBrief) return base;
+  const extra = isTeamverEmbedMode()
+    ? '이번 요청에 주제가 명확하지 않았습니다. 채팅에 주제를 더 구체적으로 입력해 주세요.'
+    : 'This request did not have a clear topic. Enter a more specific topic in chat.';
+  return `${base} ${extra}`;
 }
 
 /**
  * 루프533 — status:error detail for LOOK seed fallback. User sentence + hidden
  * diagnostic tail so ChatPane copy-diagnostics is not stuck on reason=unavailable.
  */
-export function formatCloneLookSeedFallbackErrorDetail(reason?: string | null): string {
-  const notice = formatCloneLookSeedFallbackNotice();
+export function formatCloneLookSeedFallbackErrorDetail(
+  reason?: string | null,
+  options?: { genericBrief?: boolean },
+): string {
+  const notice = formatCloneLookSeedFallbackNotice(options);
   const trimmed = String(reason ?? '').trim().slice(0, 240);
   return encodePersistedRunErrorDetail(notice, {
     kind: 'clone-look-seed-fallback',

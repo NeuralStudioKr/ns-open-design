@@ -704,6 +704,26 @@ export function isGenericTemplateCloneTopicBrief(
   return looksLikeInstructionNotSlideCopy(visible);
 }
 
+const LOOK_SEED_ATTACHED_SOURCE_RE =
+  /attached source materials \(Canvas\/Drive\/files\)/i;
+
+/**
+ * 루프536 — LOOK seed 배너에 N09 generic-brief 문장을 붙일지.
+ * Canvas/Drive 소스나 topical brief에는 붙이지 않는다.
+ */
+export function shouldExplainGenericBriefOnLookSeedFallback(input: {
+  brief?: string | null;
+  userContent?: string | null;
+  attachments?: readonly unknown[] | null;
+}): boolean {
+  const hasSourceMaterial =
+    (Array.isArray(input.attachments) && input.attachments.length > 0)
+    || LOOK_SEED_ATTACHED_SOURCE_RE.test(String(input.userContent ?? ''));
+  return isGenericTemplateCloneTopicBrief(input.brief ?? input.userContent, {
+    hasSourceMaterial,
+  });
+}
+
 /** Shared hard rules for Clone → first AI content fill (JSON slot-fill, 0901-N02). */
 export function templateCloneContentFillHardRules(): string[] {
   return [

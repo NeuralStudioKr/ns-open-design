@@ -33,7 +33,9 @@ import {
 } from '../teamver/slideCountTopUp';
 import { findPrecedingUserMessage } from './auto-continue-comment-scope';
 import {
+  extractTemplateCloneUserFacingRequest,
   historyHasTemplateCloneContentFill,
+  shouldExplainGenericBriefOnLookSeedFallback,
   templateCloneFillModeFromUserMessage,
 } from '../teamver/templateCloneContentFill';
 import {
@@ -637,17 +639,37 @@ export function isCloneContentFillReloadRecoveryCandidate(
 export function buildCloneLookSeedReloadRecoveredAssistant(
   incompleteAssistant: ChatMessage,
   producedFiles: readonly ProjectFile[],
+  options?: { reason?: string | null; messages?: readonly ChatMessage[] },
 ): ChatMessage {
-  return buildCloneLookSeedRecoveredAssistant(incompleteAssistant, producedFiles);
+  return buildCloneLookSeedRecoveredAssistant(incompleteAssistant, producedFiles, options);
+}
+
+function lookSeedFallbackGenericBriefFromMessages(
+  messages: readonly ChatMessage[] | undefined,
+  assistant: ChatMessage,
+): boolean {
+  if (!messages?.length) return false;
+  const precedingUser = findPrecedingUserMessage(messages, assistant.id);
+  return shouldExplainGenericBriefOnLookSeedFallback({
+    brief: extractTemplateCloneUserFacingRequest({
+      userInstruction: precedingUser?.content,
+      pendingPrompt: precedingUser?.content,
+    }),
+    userContent: precedingUser?.content,
+    attachments: precedingUser?.attachments,
+  });
 }
 
 function buildCloneLookSeedRecoveredAssistant(
   assistant: ChatMessage,
   producedFiles: readonly ProjectFile[],
-  options?: { reason?: string | null },
+  options?: { reason?: string | null; messages?: readonly ChatMessage[] },
 ): ChatMessage {
-  const lookSeedNotice = formatCloneLookSeedFallbackNotice();
-  const lookSeedErrorDetail = formatCloneLookSeedFallbackErrorDetail(options?.reason);
+  const genericBrief = lookSeedFallbackGenericBriefFromMessages(options?.messages, assistant);
+  const lookSeedNotice = formatCloneLookSeedFallbackNotice({ genericBrief });
+  const lookSeedErrorDetail = formatCloneLookSeedFallbackErrorDetail(options?.reason, {
+    genericBrief,
+  });
   let produced = [...producedFiles];
   if (!produced.some((file) => file.name === 'deck.html')) {
     produced = [
@@ -764,6 +786,7 @@ export async function attemptCloneSlotFillStuckRepairNoticeRecovery(options: {
     updatedAssistant: buildCloneLookSeedRecoveredAssistant(
       options.stuckAssistant,
       options.producedFiles,
+      { messages: options.messages },
     ),
   };
 }
@@ -797,6 +820,7 @@ export async function attemptCloneContentFillLookSeedReloadRecovery(options: {
     updatedAssistant: buildCloneLookSeedReloadRecoveredAssistant(
       options.incompleteAssistant,
       options.producedFiles,
+      { messages: options.messages },
     ),
   };
 }

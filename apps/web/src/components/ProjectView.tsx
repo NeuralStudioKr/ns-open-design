@@ -236,6 +236,7 @@ import {
   isTemplateClonePromptFillPrompt,
   extractTemplateCloneUserFacingRequest,
   isGenericTemplateCloneTopicBrief,
+  shouldExplainGenericBriefOnLookSeedFallback,
   templateCloneFillModeFromUserMessage,
   templateCloneAutoContinueFlags,
   isTemplateCloneContentFillQueued,
@@ -12119,9 +12120,17 @@ export function ProjectView({
               // compact fresh fill land without tripping regression guards.
               // `hasPersistedRunErrorEvent` already excludes this code (line
               // 161 of chat-events.ts), so reload reconciliation is safe.
-              const lookSeedNotice = formatCloneLookSeedFallbackNotice();
+              const lookSeedGenericBrief = shouldExplainGenericBriefOnLookSeedFallback({
+                brief: runVisiblePromptRef.current,
+                userContent: userMsg.content,
+                attachments: userMsg.attachments ?? effectiveAttachments,
+              });
+              const lookSeedNotice = formatCloneLookSeedFallbackNotice({
+                genericBrief: lookSeedGenericBrief,
+              });
               const lookSeedErrorDetail = formatCloneLookSeedFallbackErrorDetail(
                 cloneLookSeedFallbackReason,
+                { genericBrief: lookSeedGenericBrief },
               );
               updateAssistant((prev) => {
                 const withWarning = appendWarningStatusEvent(
