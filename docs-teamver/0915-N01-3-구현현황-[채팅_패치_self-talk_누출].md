@@ -19,6 +19,7 @@
 | `prompts/system.ts` | UI locale에 패치 self-talk 금지 · `ko`→Korean |
 | `prompts/official-system.ts` | 패치 계획 나레이션 금지 |
 | `chat-leak-probe-round922.test.ts` | 사용자 보고 전문 제거 · 한글 결과 보존 |
+| `packages/contracts/src/prompts/system.ts` | BYOK `composeSystemPrompt` locale에 패치 self-talk 금지 · ko→Korean (후속) |
 
 ### 정책
 
@@ -33,5 +34,6 @@
 
 ## 변경 이력
 
+| 2026-09-15 | 루프508 후속 — BYOK contracts `composeSystemPrompt` locale에 패치 금지 반영 |
 | 2026-09-15 | 루프508 완료 — 패치 self-talk 숨김 + locale 프롬프트 · staging push |
 | 2026-09-15 | 루프508 착수 — 채팅 패치 self-talk / 영어 내부 서술 |

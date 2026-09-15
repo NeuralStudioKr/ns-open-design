@@ -152,11 +152,14 @@ function renderUiLocalePrompt(locale: string | undefined): string {
     ? 'Simplified Chinese'
     : normalized === 'zh-TW'
       ? 'Traditional Chinese'
-      : normalized;
+      : normalized === 'ko' || normalized.toLowerCase() === 'ko-kr'
+        ? 'Korean'
+        : normalized;
   const lines = [
     '# UI locale override',
     '',
     `The UI locale for this run is \`${normalized}\` (${languageName}). All user-visible chat prose and generated UI controls must follow this locale, especially \`<question-form>\` titles, descriptions, labels, placeholders, helper text, and option labels. Keep machine-readable ids and object option \`value\` fields exact and unlocalized.`,
+    'Never put internal patch planning into chat prose: no slide indices (`slide 9 (index 8)`), no HTML/CSS class walkthroughs (`.slide--…`, `<span>` labels), and no first-person monologues like "I\'m checking the slide" / "I\'ll patch that slide". Emit element-patch / artifact quietly; user-visible chat is only a short outcome sentence in this locale.',
     'Exception: for the default task-type form, keep the `taskType` option labels as the canonical routing choices: `Prototype`, `Live artifact`, `Slide deck`, `Image`, `Video`, `HyperFrames`, `Audio`, `Other`. Do not translate, reorder, or rewrite those option labels.',
   ];
   if (normalized === 'zh-CN') {
@@ -203,11 +206,14 @@ function renderTeamverSlideUiLocalePrompt(
     ? 'Simplified Chinese'
     : normalized === 'zh-TW'
       ? 'Traditional Chinese'
-      : normalized;
+      : normalized === 'ko' || normalized.toLowerCase() === 'ko-kr'
+        ? 'Korean'
+        : normalized;
   const lines = [
     '# UI locale override (slide-only)',
     '',
     `UI locale: \`${normalized}\` (${languageName}). Localize user-visible chat status prose and any \`<question-form>\` labels to this locale. Keep machine-readable ids / option \`value\` fields in English.`,
+    'Never narrate internal deck patch plans in chat: no slide indices, HTML/CSS class inspection, or "I\'m checking the slide" / "I\'ll patch that slide" monologues. Emit patches quietly; chat is a short UI-locale outcome only.',
     'This project is always a slide deck — never emit Prototype / Live artifact / Image / Video / Audio task-type routing.',
     // 루프511 — locale ko must not force phonetic Hangul for Latin brands in the brief/URL.
     'Keep Latin product/brand spellings from the user brief or URL (derive from the host label). Do not phonetic-Hangulize proper nouns.',
@@ -822,7 +828,7 @@ When the user asks for a slide deck, presentation, PPT, pitch deck, or slide edi
 
 If the request contains enough information to proceed, your same response MUST include exactly one complete \`<artifact type="deck" identifier="deck">...</artifact>\` block. The artifact type must be \`deck\` (never \`text/html\`); the identifier MUST be \`deck\`. The host writes that artifact into the workspace automatically — never tell the user to save a file. Never copy or save an attached Canvas/Drive source HTML from \`refs/...\` into the project root. The artifact body must start with \`<!doctype html>\` and end with \`</html>\`.
 
-Before the artifact, optional: one tiny user-visible UI-locale status sentence tailored to the brief — **present or future tense only**. For a **new** deck: e.g. "작성 중", "making your deck". For a **follow-up edit** of an existing deck: e.g. "수정 반영 중", "Applying your edits" — never imply a brand-new draft ("초안 생성", "creating the deck"). Never past tense or completion claims ("만들었", "완성", "done", "created", "생성되었습니다") until the artifact is fully closed. Then start the artifact immediately. Artifact-only is OK for speed/tokens. Do not use a generic promise-only line, a slide outline, a task list, or a partial HTML head. If information is truly missing, ask one concise \`<question-form>\` instead of claiming completion.
+Before the artifact, optional: one tiny user-visible UI-locale status sentence tailored to the brief — **present or future tense only**. For a **new** deck: e.g. "작성 중", "making your deck". For a **follow-up edit** of an existing deck: e.g. "수정 반영 중", "Applying your edits" — never imply a brand-new draft ("초안 생성", "creating the deck"). Never past tense or completion claims ("만들었", "완성", "done", "created", "생성되었습니다") until the artifact is fully closed. Never narrate patch internals (slide index, HTML/CSS classes, "I'm checking the slide"). Then start the artifact immediately. Artifact-only is OK for speed/tokens. Do not use a generic promise-only line, a slide outline, a task list, or a partial HTML head. If information is truly missing, ask one concise \`<question-form>\` instead of claiming completion.
 
 ### Anti-patterns that keep breaking slide runs (do NOT do these)
 
