@@ -1233,6 +1233,64 @@ function stripAgentToolSelfTalkNotes(input: string): string {
     .replace(AGENT_TOOL_SELF_TALK_BARE_LINE_RE, "");
 }
 
+/**
+ * English first-person deck *patch planning* that leaked into chat as if it
+ * were a user-facing reply (0915-N01). Users must not see slide indices,
+ * HTML/CSS internals, or "I'll patch that slide" monologues — especially on
+ * non-English UI locales where the model still thinks in English.
+ */
+const DECK_PATCH_SELF_TALK_SLIDE_INDEX_RE =
+  /\bslide\s+\d+\s*\(\s*index\s+\d+\s*\)/i;
+const DECK_PATCH_SELF_TALK_PLAN_RE =
+  /\bI(?:'m| am) checking the slide\b|\bI(?:'ll| will) patch\b|\bneeds the patch\b|\bupgrading the label\b|\btitle-only body\b|\bI need to identify what card\b/i;
+const DECK_PATCH_SELF_TALK_HTML_RE =
+  /\bLooking at the (?:current HTML|slide content)\b|\bjust an?\s*<span>\b|\.slide--[\w-]+|\bmono label\b|\bfadelist-title\b/i;
+const DECK_PATCH_SELF_TALK_STRONG_RE =
+  /\bslide\s+\d+\s*\(\s*index\s+\d+\s*\)|\bI(?:'ll| will) patch that slide\b|\bI(?:'m| am) checking the slide that needs the patch\b|\bLooking at the current HTML\b/i;
+
+export function looksLikeDeckPatchSelfTalk(text: string): boolean {
+  const raw = String(text ?? "").trim();
+  if (!raw) return false;
+  if (DECK_PATCH_SELF_TALK_STRONG_RE.test(raw) && DECK_PATCH_SELF_TALK_HTML_RE.test(raw)) {
+    return true;
+  }
+  if (DECK_PATCH_SELF_TALK_STRONG_RE.test(raw) && DECK_PATCH_SELF_TALK_PLAN_RE.test(raw)) {
+    return true;
+  }
+  const signals = [
+    DECK_PATCH_SELF_TALK_SLIDE_INDEX_RE.test(raw),
+    DECK_PATCH_SELF_TALK_PLAN_RE.test(raw),
+    DECK_PATCH_SELF_TALK_HTML_RE.test(raw),
+  ].filter(Boolean).length;
+  return signals >= 2;
+}
+
+const HANGUL_RE = /[\uac00-\ud7af]/;
+
+function paragraphIsDeckPatchSelfTalk(paragraph: string): boolean {
+  const trimmed = paragraph.trim();
+  if (!trimmed || HANGUL_RE.test(trimmed)) return false;
+  if (looksLikeDeckPatchSelfTalk(trimmed)) return true;
+  // Continuations of a multi-paragraph monologue: index / I'll patch / class dump.
+  if (DECK_PATCH_SELF_TALK_SLIDE_INDEX_RE.test(trimmed)) return true;
+  if (/\bI(?:'ll| will) patch\b/i.test(trimmed)) return true;
+  if (/\.slide--[\w-]+/.test(trimmed) && /\b(mono label|fadelist|Looking at the slide)\b/i.test(trimmed)) {
+    return true;
+  }
+  return false;
+}
+
+export function stripDeckPatchSelfTalkProse(input: string): string {
+  const raw = String(input ?? "");
+  if (!raw.trim()) return raw;
+  if (looksLikeDeckPatchSelfTalk(raw) && !HANGUL_RE.test(raw)) {
+    return "";
+  }
+  const paragraphs = raw.split(/\n{2,}/);
+  const kept = paragraphs.filter((paragraph) => !paragraphIsDeckPatchSelfTalk(paragraph));
+  return kept.join("\n\n").replace(/^\n+|\n+$/g, "");
+}
+
 function stripTrailingOpenToolSelfTalkNote(input: string): {
   text: string;
   hadOpenInternalMarkup: boolean;
@@ -1907,6 +1965,7 @@ export function sanitizeLeakedAgentProse(
   out = out.replace(CLOSED_SUFFIX_ANALYSIS_RE, "");
   out = out.replace(FAKE_TOOL_NARRATION_RE, "");
   out = stripAgentToolSelfTalkNotes(out);
+  out = stripDeckPatchSelfTalkProse(out);
   out = out.replace(FAKE_FILE_READ_NARRATION_RE, "");
   out = out.replace(AGENT_RUNTIME_STATUS_LINE_RE, "");
   out = stripLeakedApiModeFilesystemProse(out);
@@ -2347,6 +2406,9 @@ export function sanitizeAssistantProseForDisplay(
   // (`html>WD · LECTURE…</artifact>`) after the open `<artifact` was lost.
   text = stripOrphanArtifactCloserDumpRespectingArtifacts(text, preservingArtifacts);
   text = stripSlideCountTopUpLeftover(text);
+  // Absolute last: English deck-patch monologues that survived earlier passes
+  // (plain prose — not tool XML). Prefer empty bubble over leaking internals.
+  text = stripDeckPatchSelfTalkProse(text);
   return text;
 }
 
