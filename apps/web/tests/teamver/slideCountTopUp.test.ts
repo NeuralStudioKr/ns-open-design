@@ -44,6 +44,9 @@ import {
   applyHonorSlideCeilingToHtml,
   THIN_PRIOR_FULL_REWRITE_PROMPT_SENTINEL,
   shouldBlockSlideCountAppendOntoThinPrior,
+  shouldRunDeterministicSparseCheck,
+  deterministicSparseCheckSessionKey,
+  claimDeterministicSparseCheck,
 } from "../../src/teamver/slideCountTopUp";
 
 function userMessage(id: string, content: string): ChatMessage {
@@ -607,6 +610,42 @@ describe("slideCountTopUp", () => {
       topUpCount: 0,
       thinPrior: false,
     })).toBe(true);
+  });
+
+  it("runs a deterministic sparse check only once on a filled pending deck (루프535)", () => {
+    expect(deterministicSparseCheckSessionKey(" proj-1 ")).toBe(
+      "od:deterministic-sparse-check:proj-1",
+    );
+    expect(shouldRunDeterministicSparseCheck({
+      sparseCheckPending: true,
+      fillMode: "deterministic",
+      contentFilled: true,
+      contentFillPending: false,
+    })).toBe(true);
+    expect(shouldRunDeterministicSparseCheck({
+      sparseCheckPending: false,
+      fillMode: "deterministic",
+      contentFilled: true,
+    })).toBe(false);
+    expect(shouldRunDeterministicSparseCheck({
+      sparseCheckPending: true,
+      fillMode: "prompt",
+      contentFilled: true,
+    })).toBe(false);
+    expect(shouldRunDeterministicSparseCheck({
+      sparseCheckPending: true,
+      fillMode: "deterministic",
+      contentFilled: false,
+    })).toBe(false);
+    expect(shouldRunDeterministicSparseCheck({
+      sparseCheckPending: true,
+      fillMode: "deterministic",
+      contentFilled: true,
+      contentFillPending: true,
+    })).toBe(false);
+    expect(claimDeterministicSparseCheck("n20-claim-a")).toBe(true);
+    expect(claimDeterministicSparseCheck("n20-claim-a")).toBe(false);
+    expect(claimDeterministicSparseCheck("n20-claim-b")).toBe(true);
   });
 
   it("queues a sparse-content repair only for a real deck with named gaps (루프480)", () => {

@@ -40,6 +40,7 @@ import {
   shouldUsePromptTemplateCloneFill,
   shouldQueueAiTemplateCloneFill,
   shouldQueueCloneSlotFillJsonRepair,
+  deterministicCloneFilledMetadataFields,
   templateCloneFillSlideCountOverrideNotice,
   withTemplateCloneFillPluginInputs,
   withoutCanonicalDeckAttachments,
@@ -233,6 +234,27 @@ describe('templateCloneContentFill', () => {
     expect(projectView).toContain('queueTemplateClonePromptFill');
     expect(app).toContain('cloneResultSuppressesAiFill');
     expect(app).toContain('never MiniMax');
+    expect(app).toContain('deterministicCloneFilledMetadataFields');
+    expect(composer).toContain('deterministicCloneFilledMetadataFields');
+    expect(projectView).toContain('shouldRunDeterministicSparseCheck');
+    expect(projectView).toContain('mode: "sparse-only"');
+    expect(projectView).toContain('phase: "deterministic-fill"');
+    expect(projectView).toMatch(/!sparseOnly\s*&&\s*shouldQueueThinPriorFullRewrite/);
+    expect(projectView).toMatch(/wantsCountTopUp = sparseOnly\s*\n\s*\? false/);
+    const daemonRoutes = readFileSync(
+      new URL('../../../daemon/src/project-routes.ts', import.meta.url),
+      'utf8',
+    );
+    expect(daemonRoutes).toContain('templateCloneSparseCheckPending: true');
+  });
+
+  it('loop535 — deterministic filled metadata asks for one sparse/observe pass', () => {
+    expect(deterministicCloneFilledMetadataFields()).toEqual({
+      templateCloneContentFilled: true,
+      templateCloneContentFillPending: false,
+      templateCloneFillMode: 'deterministic',
+      templateCloneSparseCheckPending: true,
+    });
   });
 
   it('loop421 — recovered LOOK/filled decks suppress MiniMax overwrite', () => {

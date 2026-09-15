@@ -155,6 +155,21 @@ export function shouldUseDeterministicTemplateCloneFill(
   return getTemplateCloneFillMode() === 'deterministic';
 }
 
+/** 루프535 — mark a just-filled deterministic deck for one sparse/observe pass. */
+export function deterministicCloneFilledMetadataFields(): {
+  templateCloneContentFilled: true;
+  templateCloneContentFillPending: false;
+  templateCloneFillMode: 'deterministic';
+  templateCloneSparseCheckPending: true;
+} {
+  return {
+    templateCloneContentFilled: true,
+    templateCloneContentFillPending: false,
+    templateCloneFillMode: 'deterministic',
+    templateCloneSparseCheckPending: true,
+  };
+}
+
 /** LOOK seed + AI JSON outline. Explicit `json` only — not the default. */
 export function shouldUseJsonTemplateCloneFill(): boolean {
   return getTemplateCloneFillMode() === 'json';

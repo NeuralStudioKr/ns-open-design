@@ -868,7 +868,8 @@ export type TemplateClonePersistQualitySnapshot = {
 
 export type TemplateClonePersistQualityPhase =
   | 'prompt-fill-look-merge'
-  | 'json-slot-fill';
+  | 'json-slot-fill'
+  | 'deterministic-fill';
 
 export type TemplateClonePersistQualityObserve = {
   phase: TemplateClonePersistQualityPhase;

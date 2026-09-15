@@ -40,12 +40,26 @@ describe("ProjectView automation submit guard", () => {
     expect(projectViewSource).toContain("requestedMin: requestedSpec?.min");
     expect(projectViewSource).toContain("userBrief: runVisiblePromptRef.current || ''");
     // Count gate is computed before sparse evidence is consulted.
-    const countIdx = projectViewSource.indexOf("const wantsCountTopUp = shouldQueueSlideCountTopUp({");
+    const countIdx = projectViewSource.indexOf("const wantsCountTopUp = sparseOnly");
     const sparseIdx = projectViewSource.indexOf("findDeckSparseContentEvidence(html)");
     expect(countIdx).toBeGreaterThan(0);
+    expect(projectViewSource.indexOf("shouldQueueSlideCountTopUp({")).toBeGreaterThan(countIdx);
     expect(sparseIdx).toBeGreaterThan(countIdx);
     expect(projectViewSource).toMatch(
       /if \(!wantsCountTopUp\) \{[\s\S]*?findDeckSparseContentEvidence\(html\)/,
     );
+  });
+
+  it("deterministic landing observes and sparse-repairs without rewrite/APPEND (루프535)", () => {
+    expect(projectViewSource).toContain("shouldRunDeterministicSparseCheck");
+    expect(projectViewSource).toContain('mode: "sparse-only"');
+    expect(projectViewSource).toContain('phase: "deterministic-fill"');
+    expect(projectViewSource).toMatch(/!sparseOnly\s*&&\s*shouldQueueThinPriorFullRewrite/);
+    expect(projectViewSource).toMatch(/!sparseOnly\s*&&\s*shouldBlockSlideCountAppendOntoThinPrior/);
+    expect(projectViewSource).toMatch(/wantsCountTopUp = sparseOnly\s*\n\s*\? false/);
+    const landingIdx = projectViewSource.indexOf("루프535 — Deterministic Home/Canvas/Drive persist");
+    const rewriteIdx = projectViewSource.indexOf("shouldQueueThinPriorFullRewrite({");
+    expect(landingIdx).toBeGreaterThan(0);
+    expect(rewriteIdx).toBeGreaterThan(0);
   });
 });

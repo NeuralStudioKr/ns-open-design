@@ -153,6 +153,7 @@ import {
   sanitizeCreateAutoSendSeed,
   shouldSkipTemplateCloneSeed,
   shouldUseDeterministicTemplateCloneFill,
+  deterministicCloneFilledMetadataFields,
   withoutCanonicalDeckAttachments,
 } from './teamver/templateCloneContentFill';
 import {
@@ -3297,9 +3298,7 @@ function AppInner() {
                 : { kind: 'deck' as const }),
               kind: project.metadata?.kind ?? 'deck',
               templateClonedDeckSeeded: !preservedFilledDeck,
-              templateCloneContentFilled: true,
-              templateCloneContentFillPending: false,
-              templateCloneFillMode: 'deterministic',
+              ...deterministicCloneFilledMetadataFields(),
               ...(selectedDeckTemplateId
                 ? { selectedDeckTemplateId }
                 : {}),

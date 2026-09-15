@@ -3779,6 +3779,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
                   ? {
                       templateCloneContentFilled: true,
                       templateCloneFillMode: 'deterministic',
+                      templateCloneSparseCheckPending: true,
                     }
                   : {}),
                 selectedDeckTemplateId: seededPluginId,

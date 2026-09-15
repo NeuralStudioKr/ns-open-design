@@ -594,6 +594,9 @@ import {
   shouldBlockSlideCountAppendOntoThinPrior,
   shouldQueueSparseContentTopUp,
   shouldQueueThinPriorFullRewrite,
+  shouldRunDeterministicSparseCheck,
+  deterministicSparseCheckSessionKey,
+  claimDeterministicSparseCheck,
   syncSlideCountTopUpCountFromMessages,
   type SlideAutomationPhase,
 } from '../teamver/slideCountTopUp';
@@ -3747,7 +3750,9 @@ export function ProjectView({
   /** 루프508 — Armed rewrite/top-up/sparse timer → ChatPane Working 단계 문구. */
   const [pendingSlideAutomationKind, setPendingSlideAutomationKind] =
     useState<SlideAutomationPhase | null>(null);
-  const requestSlideCountTopUpRef = useRef<(htmlPath: string | null) => void>(() => {});
+  const requestSlideCountTopUpRef = useRef<
+    (htmlPath: string | null, options?: { mode?: "full" | "sparse-only" }) => void
+  >(() => {});
   /**
    * Live streaming buffer mutator for the in-flight assistant row. `surfaceChatVisibleError`
    * updates React `messages` + saves, but the stream scheduler persists from a separate
@@ -13293,7 +13298,7 @@ export function ProjectView({
   const handleSendRef = useRef(handleSend);
   useLayoutEffect(() => {
     handleSendRef.current = handleSend;
-    requestSlideCountTopUpRef.current = (htmlPath) => {
+    requestSlideCountTopUpRef.current = (htmlPath, options) => {
       void (async () => {
         if (!htmlPath || !activeConversationId || !slideOnlyMvp) return;
         if (runCommentAttachmentsRef.current.length > 0) return;
@@ -13303,6 +13308,22 @@ export function ProjectView({
         if (slideCountTopUpTimerRef.current !== null) return;
         const html = await readProjectHtml(htmlPath);
         if (!html) return;
+        const sparseOnly = options?.mode === "sparse-only";
+        if (sparseOnly) {
+          // 루프535 — observe deterministic persist without rewriting HTML.
+          observeTemplateClonePersistQuality({
+            phase: "deterministic-fill",
+            html,
+            applied: true,
+            templateId: firstOfficialDeckTemplateId(
+              resolveDurableDeckTemplatePin({
+                project: project.metadata,
+                runRef: runSelectedDeckTemplateIdRef.current,
+                messages: messagesRef.current,
+              })?.id,
+            ),
+          });
+        }
         const produced = countDeckSlideSections(html);
         const conversationMessages = messagesRef.current;
         if (findIncompleteSlideAssistantForRecovery(conversationMessages)) return;
@@ -13319,7 +13340,8 @@ export function ProjectView({
           conversationMessages,
         );
         if (
-          shouldQueueThinPriorFullRewrite({
+          !sparseOnly
+          && shouldQueueThinPriorFullRewrite({
             hostCount: produced,
             thinPrior,
             rewriteCount: rewriteAlready,
@@ -13392,10 +13414,14 @@ export function ProjectView({
         }
         // 루프505 — Rewrite already spent and deck is still thin: APPEND would
         // hit thin-prior-no-append and leave the shortfall silent.
-        if (shouldBlockSlideCountAppendOntoThinPrior({
-          thinPrior,
-          rewriteCount: rewriteAlready,
-        })) {
+        // 루프535 — deterministic landing never rewrites or APPEND-expands.
+        if (
+          !sparseOnly
+          && shouldBlockSlideCountAppendOntoThinPrior({
+            thinPrior,
+            rewriteCount: rewriteAlready,
+          })
+        ) {
           surfaceChatVisibleError(
             formatThinPriorRewriteExhaustedNotice(),
             "thin_prior_rewrite_exhausted",
@@ -13407,15 +13433,17 @@ export function ProjectView({
           activeConversationId,
           conversationMessages,
         );
-        const wantsCountTopUp = shouldQueueSlideCountTopUp({
-          produced,
-          requested,
-          requestedMin: requestedSpec?.min,
-          defaultRequested: allowDefaultShortDeckTopUp ? 6 : undefined,
-          topUpCount: already,
-          commentAttachmentCount: runCommentAttachmentsRef.current.length,
-          rewriteCount: rewriteAlready,
-        });
+        const wantsCountTopUp = sparseOnly
+          ? false
+          : shouldQueueSlideCountTopUp({
+            produced,
+            requested,
+            requestedMin: requestedSpec?.min,
+            defaultRequested: allowDefaultShortDeckTopUp ? 6 : undefined,
+            topUpCount: already,
+            commentAttachmentCount: runCommentAttachmentsRef.current.length,
+            rewriteCount: rewriteAlready,
+          });
         // 루프505 — Explicit page shortfall beats sparse card repair so a
         // 4-of-8–10 miss is not consumed by a deck-patch of incomplete cards.
         if (!wantsCountTopUp) {
@@ -15408,6 +15436,64 @@ export function ProjectView({
     window.addEventListener('keydown', onKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', onKeyDown, { capture: true });
   }, [designMdState.exists, handleContinueInCli]);
+
+  // 루프535 — Deterministic Home/Canvas/Drive persist never reaches MiniMax
+  // persist, so observe + sparse-repair must run once on landing. Thin rewrite
+  // and slide-count APPEND stay off this path.
+  useEffect(() => {
+    if (!slideOnlyMvp) return;
+    if (!messagesInitialized) return;
+    if (!activeConversationId) return;
+    if (streaming) return;
+    if (abortRef.current) return;
+    if (
+      !shouldRunDeterministicSparseCheck({
+        sparseCheckPending: (
+          project.metadata as { templateCloneSparseCheckPending?: boolean } | undefined
+        )?.templateCloneSparseCheckPending,
+        fillMode: (
+          project.metadata as { templateCloneFillMode?: string } | undefined
+        )?.templateCloneFillMode,
+        contentFilled: (
+          project.metadata as { templateCloneContentFilled?: boolean } | undefined
+        )?.templateCloneContentFilled,
+        contentFillPending: (
+          project.metadata as { templateCloneContentFillPending?: boolean } | undefined
+        )?.templateCloneContentFillPending,
+      })
+    ) {
+      return;
+    }
+    const latchKey = deterministicSparseCheckSessionKey(project.id);
+    try {
+      if (window.sessionStorage.getItem(latchKey) === "1") return;
+      window.sessionStorage.setItem(latchKey, "1");
+    } catch {
+      /* memory claim below still blocks a same-tab double start */
+    }
+    if (!claimDeterministicSparseCheck(project.id)) return;
+    const nextMetadata = {
+      ...(project.metadata ?? {}),
+      templateCloneSparseCheckPending: false,
+    };
+    onProjectChange({ ...project, metadata: nextMetadata });
+    void patchProject(project.id, {
+      metadata: nextMetadata,
+      updatedAt: project.updatedAt,
+    }).catch(() => {
+      // Local flag is already cleared; a later reload may re-check once.
+    });
+    const htmlPath = resolveCanonicalDeckEntryPath(projectFiles) ?? "deck.html";
+    requestSlideCountTopUpRef.current(htmlPath, { mode: "sparse-only" });
+  }, [
+    slideOnlyMvp,
+    messagesInitialized,
+    activeConversationId,
+    streaming,
+    project,
+    projectFiles,
+    onProjectChange,
+  ]);
 
   // PluginLoopHome auto-send: when the user submits on Home, app.tsx
   // sets `sessionStorage['od:auto-send-first:<projectId>']` and routes

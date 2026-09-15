@@ -5651,6 +5651,15 @@ describe('루프523 persist quality observe-only', () => {
       applied: true,
       templateId: 'html-ppt-zhangzara-daisy-days',
     });
+    const deterministicObserve = buildTemplateClonePersistQualityObserve({
+      phase: 'deterministic-fill',
+      html: afterHtml,
+      applied: true,
+      templateId: 'html-ppt-zhangzara-daisy-days',
+    });
+    expect(deterministicObserve.phase).toBe('deterministic-fill');
+    expect(deterministicObserve.applied).toBe(true);
+    expect(deterministicObserve.after?.titleOnlyCardRate).toBe(0);
     expect(beforeHtml).toBe(frozenBefore);
     expect(afterHtml).toBe(frozenAfter);
     expect(observe.applied).toBe(true);

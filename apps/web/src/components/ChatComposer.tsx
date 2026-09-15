@@ -114,6 +114,7 @@ import {
   shouldSkipTemplateCloneSeed,
   shouldUseDeterministicTemplateCloneFill,
   shouldUseJsonTemplateCloneFill,
+  deterministicCloneFilledMetadataFields,
   withTemplateCloneFillPluginInputs,
   withoutCanonicalDeckAttachments,
 } from '../teamver/templateCloneContentFill';
@@ -2304,9 +2305,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                   ...(projectMetadata ?? {}),
                   ...templateBinding.projectMetadata,
                   templateClonedDeckSeeded: true,
-                  templateCloneContentFilled: true,
-                  templateCloneContentFillPending: false,
-                  templateCloneFillMode: 'deterministic',
+                  ...deterministicCloneFilledMetadataFields(),
                 },
               });
               return;
@@ -2323,9 +2322,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                     ...(projectMetadata ?? {}),
                     ...templateBinding.projectMetadata,
                     templateClonedDeckSeeded: true,
-                    templateCloneContentFilled: true,
-                    templateCloneContentFillPending: false,
-                    templateCloneFillMode: 'deterministic',
+                    ...deterministicCloneFilledMetadataFields(),
                   },
                 });
                 return;
@@ -2579,9 +2576,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 ...(projectMetadata ?? {}),
                 ...templateBinding.projectMetadata,
                 templateClonedDeckSeeded: true,
-                templateCloneContentFilled: true,
-                templateCloneContentFillPending: false,
-                templateCloneFillMode: 'deterministic',
+                ...deterministicCloneFilledMetadataFields(),
               },
             });
             return;
@@ -2597,9 +2592,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                   ...(projectMetadata ?? {}),
                   ...templateBinding.projectMetadata,
                   templateClonedDeckSeeded: true,
-                  templateCloneContentFilled: true,
-                  templateCloneContentFillPending: false,
-                  templateCloneFillMode: 'deterministic',
+                  ...deterministicCloneFilledMetadataFields(),
                 },
               });
               return;

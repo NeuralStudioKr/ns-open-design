@@ -179,6 +179,37 @@ export function countSparseContentTopUpAttemptsInConversation(
   ).length;
 }
 
+/**
+ * 루프535 — Home/Canvas/Drive deterministic persist never hits MiniMax
+ * persist, so ProjectView lands once with this pending flag.
+ */
+export function deterministicSparseCheckSessionKey(projectId: string): string {
+  return `od:deterministic-sparse-check:${projectId.trim()}`;
+}
+
+const claimedDeterministicSparseChecks = new Set<string>();
+
+/** One claim per project per JS realm (StrictMode remount + sessionStorage miss). */
+export function claimDeterministicSparseCheck(projectId: string): boolean {
+  const id = projectId.trim();
+  if (!id) return false;
+  if (claimedDeterministicSparseChecks.has(id)) return false;
+  claimedDeterministicSparseChecks.add(id);
+  return true;
+}
+
+export function shouldRunDeterministicSparseCheck(input: {
+  sparseCheckPending?: boolean | null;
+  fillMode?: string | null;
+  contentFilled?: boolean | null;
+  contentFillPending?: boolean | null;
+}): boolean {
+  if (input.sparseCheckPending !== true) return false;
+  if (input.contentFillPending === true) return false;
+  if (input.contentFilled !== true) return false;
+  return String(input.fillMode ?? "").trim() === "deterministic";
+}
+
 export function shouldQueueSparseContentTopUp(input: {
   evidenceCount: number;
   slideCount: number;
