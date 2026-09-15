@@ -1208,15 +1208,18 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const recoveryStart = source.indexOf("// 루프362/364/365 — Clone first-fill LOOK seed recovery.");
     expect(recoveryStart).toBeGreaterThan(0);
-    const recoveryBlock = source.slice(recoveryStart, recoveryStart + 2600);
+    const recoveryBlock = source.slice(recoveryStart, recoveryStart + 3600);
     expect(recoveryBlock).toContain("terminalPersistResult?.kind === 'skipped-incomplete'");
+    expect(recoveryBlock).toContain("terminalPersistResult?.kind === 'artifact-regression'");
     expect(recoveryBlock).toContain("artifactToPersist = null");
     expect(recoveryBlock).toContain("await recoverCloneLookSeedFallback({");
-    expect(recoveryBlock).toContain("reason: `skipped_incomplete:");
+    expect(recoveryBlock).toContain("`skipped_incomplete:${String(failedPersistResult.reason");
+    expect(recoveryBlock).toContain("reason: failedPersistPrefix");
+    expect(recoveryBlock).toContain("artifact_regression_retry:");
     expect(recoveryBlock).toContain("artifactToPersist?.html");
     expect(recoveryBlock).toContain("const retryPersistResult = await persistArtifact");
     expect(recoveryBlock).toContain("prepareArtifact: false");
-    expect(recoveryBlock).toContain("reason: `skipped_incomplete_retry:");
+    expect(recoveryBlock).toContain("`skipped_incomplete_retry:${String(failedPersistResult.reason");
   });
 
   // 루프528 — Outline fallback must mark failed + error event so Retry dock

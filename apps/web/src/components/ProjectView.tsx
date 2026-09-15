@@ -11457,10 +11457,12 @@ export function ProjectView({
             }
 
             // 루프362/364/365 — Clone first-fill LOOK seed recovery.
-            // Any skipped-incomplete (e.g. structure gate) with a LOOK seed on
-            // disk → succeeded on the seed (warning notice). Loop404: include
-            // prompt-fill — count shortfalls now save+top-up, but structure
-            // skips still need the same seed path content-fill already had.
+            // Any skipped-incomplete (e.g. structure gate) or slide-count
+            // artifact-regression with a LOOK seed on disk first tries a
+            // host-filled deterministic deck before falling back to the raw
+            // seed notice. Loop404: include prompt-fill — model count
+            // shortfalls must not strand users on a failed row when the host
+            // can still fill the selected template safely.
             // 루프468 — slide-count top-up turns drop fill markers; still recover
             // when the conversation has Clone host-fill lineage.
             if (
@@ -11473,12 +11475,19 @@ export function ProjectView({
                   && conversationHasTemplateCloneHostFill(cloneFillMessageHistory)
                 )
               )
-              && terminalPersistResult?.kind === 'skipped-incomplete'
+              && (
+                terminalPersistResult?.kind === 'skipped-incomplete'
+                || terminalPersistResult?.kind === 'artifact-regression'
+              )
             ) {
-              const skippedResult = terminalPersistResult;
+              const failedPersistResult = terminalPersistResult;
+              const failedPersistPrefix =
+                failedPersistResult.kind === 'artifact-regression'
+                  ? `artifact_regression:${failedPersistResult.bannerKind ?? 'unknown'}`
+                  : `skipped_incomplete:${String(failedPersistResult.reason ?? 'unknown').slice(0, 180)}`;
               artifactToPersist = null;
               if (await recoverCloneLookSeedFallback({
-                reason: `skipped_incomplete:${String(skippedResult.reason ?? 'unknown').slice(0, 180)}`,
+                reason: failedPersistPrefix,
               }) && artifactToPersist?.html) {
                 const retryPersistResult = await persistArtifact(
                   artifactToPersist,
@@ -11496,13 +11505,20 @@ export function ProjectView({
               }
               if (
                 !cloneLookSeedFallbackRecovered
-                && (terminalPersistResult?.kind === 'skipped-incomplete' || terminalPersistResult == null)
+                && (
+                  terminalPersistResult?.kind === 'skipped-incomplete'
+                  || terminalPersistResult?.kind === 'artifact-regression'
+                  || terminalPersistResult == null
+                )
               ) {
-                terminalPersistResult = skippedResult;
-                terminalPersistResultKind = skippedResult.kind;
+                terminalPersistResult = failedPersistResult;
+                terminalPersistResultKind = failedPersistResult.kind;
                 if (await recoverCloneLookSeedFallback({
                   prepareArtifact: false,
-                  reason: `skipped_incomplete_retry:${String(skippedResult.reason ?? 'unknown').slice(0, 160)}`,
+                  reason:
+                    failedPersistResult.kind === 'artifact-regression'
+                      ? `artifact_regression_retry:${failedPersistResult.bannerKind ?? 'unknown'}`
+                      : `skipped_incomplete_retry:${String(failedPersistResult.reason ?? 'unknown').slice(0, 160)}`,
                 })) {
                   runTemplateCloneSlotFillFallbackRef.current = true;
                 } else {
