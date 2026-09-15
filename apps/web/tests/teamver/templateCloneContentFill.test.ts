@@ -73,16 +73,16 @@ afterEach(() => {
 });
 
 describe('templateCloneContentFill', () => {
-  it('loop463 — defaults to LOOK seed + MiniMax prompt-fill; deterministic is opt-in', () => {
-    expect(normalizeTemplateCloneFillMode(undefined)).toBe('prompt');
-    expect(normalizeTemplateCloneFillMode('')).toBe('prompt');
-    expect(normalizeTemplateCloneFillMode('nonsense')).toBe('prompt');
-    expect(getTemplateCloneFillMode()).toBe('prompt');
+  it('loop532 — defaults to LOOK seed + deterministic server fill; prompt is rollback', () => {
+    expect(normalizeTemplateCloneFillMode(undefined)).toBe('deterministic');
+    expect(normalizeTemplateCloneFillMode('')).toBe('deterministic');
+    expect(normalizeTemplateCloneFillMode('nonsense')).toBe('deterministic');
+    expect(getTemplateCloneFillMode()).toBe('deterministic');
     expect(shouldSkipTemplateCloneSeed()).toBe(false);
     expect(shouldUseJsonTemplateCloneFill()).toBe(false);
-    expect(shouldQueueAiTemplateCloneFill()).toBe(true);
-    expect(shouldUsePromptTemplateCloneFill()).toBe(true);
-    expect(shouldUseDeterministicTemplateCloneFill()).toBe(false);
+    expect(shouldQueueAiTemplateCloneFill()).toBe(false);
+    expect(shouldUsePromptTemplateCloneFill()).toBe(false);
+    expect(shouldUseDeterministicTemplateCloneFill()).toBe(true);
 
     // Existing env tokens stay on HTML rewrite — remapping them to JSON
     // caused MiniMax AGENT_EXECUTION_FAILED (loop414).
@@ -120,7 +120,7 @@ describe('templateCloneContentFill', () => {
   });
 
   it('accepts the loop401 `pure-prompt` rollback mode via env and multiple aliases', () => {
-    expect(getTemplateCloneFillMode()).toBe('prompt');
+    expect(getTemplateCloneFillMode()).toBe('deterministic');
     expect(shouldSkipTemplateCloneSeed()).toBe(false);
     expect(normalizeTemplateCloneFillMode('pure-prompt')).toBe('pure-prompt');
     expect(normalizeTemplateCloneFillMode('no-seed')).toBe('pure-prompt');
@@ -143,7 +143,7 @@ describe('templateCloneContentFill', () => {
     expect(normalizeTemplateCloneFillMode('NO-CLONE')).toBe('pure-prompt');
   });
 
-  it('loop420/463 — Teamver embed ignores leftover localStorage fill mode', () => {
+  it('loop420/532 — Teamver embed ignores leftover localStorage fill mode', () => {
     const store = new Map<string, string>();
     store.set('od:template-clone-fill-mode', 'pure-prompt');
     const prev = globalThis.window;
@@ -161,10 +161,10 @@ describe('templateCloneContentFill', () => {
     };
     try {
       process.env.VITE_TEAMVER_EMBED = '1';
-      expect(getTemplateCloneFillMode()).toBe('prompt');
+      expect(getTemplateCloneFillMode()).toBe('deterministic');
       expect(shouldSkipTemplateCloneSeed()).toBe(false);
-      expect(shouldUseDeterministicTemplateCloneFill()).toBe(false);
-      expect(shouldQueueAiTemplateCloneFill()).toBe(true);
+      expect(shouldUseDeterministicTemplateCloneFill()).toBe(true);
+      expect(shouldQueueAiTemplateCloneFill()).toBe(false);
 
       process.env.VITE_TEAMVER_EMBED = '0';
       expect(getTemplateCloneFillMode()).toBe('pure-prompt');
@@ -216,8 +216,7 @@ describe('templateCloneContentFill', () => {
       new URL('../../../../deploy/teamver/.env.staging.example', import.meta.url),
       'utf8',
     );
-    expect(stagingEnv).toMatch(/VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=prompt/);
-    expect(stagingEnv).not.toMatch(/VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=deterministic/);
+    expect(stagingEnv).toMatch(/^VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=deterministic$/m);
     expect(stagingEnv).not.toMatch(/VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=pure-prompt/);
     const composer = readFileSync(
       new URL('../../src/components/ChatComposer.tsx', import.meta.url),

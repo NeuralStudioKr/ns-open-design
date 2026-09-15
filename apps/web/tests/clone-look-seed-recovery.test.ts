@@ -96,6 +96,13 @@ describe('attemptCloneContentFillLookSeedReloadRecovery (루프367)', () => {
         && event.label === 'error'
         && event.code === 'clone_look_seed_fallback',
     )).toBe(true);
+    // 루프533 — error detail must carry the hidden diagnostic tail.
+    const errorEvent = events.find(
+      (event) => event.kind === 'status'
+        && event.label === 'error'
+        && event.code === 'clone_look_seed_fallback',
+    );
+    expect(errorEvent?.detail).toMatch(/kind=clone-look-seed-fallback|code=clone_look_seed_fallback/);
     expect(result.updatedAssistant?.producedFiles?.some((file) => file.name === 'deck.html')).toBe(true);
   });
 

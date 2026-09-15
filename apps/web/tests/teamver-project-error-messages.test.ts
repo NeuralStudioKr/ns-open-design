@@ -72,6 +72,7 @@ describe("project conversation error messages", () => {
       formatProjectConversationErrorForUser,
       formatProjectForkConversationError,
       formatCloneLookSeedFallbackNotice,
+      formatCloneLookSeedFallbackErrorDetail,
       formatOutlineDeckFallbackNotice,
       formatGenericBriefDeferFillNotice,
       looksLikeLowSubstancePersistSkipReason,
@@ -126,6 +127,14 @@ describe("project conversation error messages", () => {
     );
     expect(formatCloneLookSeedFallbackNotice()).toContain("다시 시도");
     expect(formatCloneLookSeedFallbackNotice()).toContain("우측");
+    expect(formatCloneLookSeedFallbackErrorDetail("seed_fallback_untouched_look")).toContain(
+      "다시 시도",
+    );
+    expect(
+      extractPersistedRunErrorDiagnostic(
+        formatCloneLookSeedFallbackErrorDetail("seed_fallback_untouched_look"),
+      ),
+    ).toMatch(/seed_fallback_untouched_look/);
     expect(formatOutlineDeckFallbackNotice()).toContain("다시 시도");
     expect(formatOutlineDeckFallbackNotice()).toContain("우측");
     expect(formatGenericBriefDeferFillNotice()).toContain("주제를 구체적으로");

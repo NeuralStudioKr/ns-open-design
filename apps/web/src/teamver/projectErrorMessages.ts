@@ -462,6 +462,20 @@ export function formatCloneLookSeedFallbackNotice(): string {
     : 'Slide fill did not complete — kept the template draft (LOOK seed). Use the retry button to regenerate the full deck.';
 }
 
+/**
+ * 루프533 — status:error detail for LOOK seed fallback. User sentence + hidden
+ * diagnostic tail so ChatPane copy-diagnostics is not stuck on reason=unavailable.
+ */
+export function formatCloneLookSeedFallbackErrorDetail(reason?: string | null): string {
+  const notice = formatCloneLookSeedFallbackNotice();
+  const trimmed = String(reason ?? '').trim().slice(0, 240);
+  return encodePersistedRunErrorDetail(notice, {
+    kind: 'clone-look-seed-fallback',
+    reason: trimmed || 'look_seed_fallback',
+    code: 'clone_look_seed_fallback',
+  });
+}
+
 /** 루프368 — JSON repair auto-send 진행 중 (LOOK seed 경고 전). @deprecated 루프371에서 FE repair loop 제거. */
 export function formatCloneSlotFillRepairInProgressNotice(): string {
   return isTeamverEmbedMode()

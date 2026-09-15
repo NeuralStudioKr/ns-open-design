@@ -507,6 +507,7 @@ import {
   userFacingRunErrorDetail,
   formatAutoContinueIncompleteOutputNotice,
   formatCloneLookSeedFallbackNotice,
+  formatCloneLookSeedFallbackErrorDetail,
   formatEmergencyDeckFallbackNotice,
   formatGenericBriefDeferFillNotice,
   formatOutlineDeckFallbackNotice,
@@ -11016,6 +11017,7 @@ export function ProjectView({
             // so the user sees the fallback banner + Retry instead of a
             // blank incomplete_output. Non-Clone runs never set this flag.
             let cloneLookSeedFallbackRecovered = false;
+            let cloneLookSeedFallbackReason = 'look_seed_fallback';
             const cloneFillMessageHistory = retryTarget
               ? [...historyBase, retryTarget.userMsg]
               : [...historyBase, userMsg];
@@ -11056,8 +11058,11 @@ export function ProjectView({
               },
             );
             const recoverCloneLookSeedFallback = async (
-              options: { prepareArtifact?: boolean } = {},
+              options: { prepareArtifact?: boolean; reason?: string } = {},
             ): Promise<boolean> => {
+              if (options.reason) {
+                cloneLookSeedFallbackReason = options.reason.slice(0, 240);
+              }
               if (options.prepareArtifact !== false) {
                 try {
                   const templateId = firstOfficialDeckTemplateId(
@@ -11207,7 +11212,9 @@ export function ProjectView({
                     };
                   } else {
                     runTemplateCloneSlotFillFallbackRef.current = true;
-                    if (!(await recoverCloneLookSeedFallback())) {
+                    if (!(await recoverCloneLookSeedFallback({
+                      reason: 'seed_fallback_untouched_look',
+                    }))) {
                       artifactToPersist = {
                         identifier: 'deck',
                         artifactType: 'deck',
@@ -11223,7 +11230,9 @@ export function ProjectView({
               } catch (error) {
                 devLog.warn('[teamver] template clone slot-fill failed; keeping LOOK seed', error);
                 runTemplateCloneSlotFillFallbackRef.current = true;
-                if (!(await recoverCloneLookSeedFallback())) {
+                if (!(await recoverCloneLookSeedFallback({
+                  reason: `slot_fill_exception:${error instanceof Error ? error.message : String(error)}`.slice(0, 240),
+                }))) {
                   artifactToPersist = null;
                 }
               }
@@ -11460,7 +11469,9 @@ export function ProjectView({
             ) {
               const skippedResult = terminalPersistResult;
               artifactToPersist = null;
-              if (await recoverCloneLookSeedFallback() && artifactToPersist?.html) {
+              if (await recoverCloneLookSeedFallback({
+                reason: `skipped_incomplete:${String(skippedResult.reason ?? 'unknown').slice(0, 180)}`,
+              }) && artifactToPersist?.html) {
                 const retryPersistResult = await persistArtifact(
                   artifactToPersist,
                   nextFiles,
@@ -11481,7 +11492,10 @@ export function ProjectView({
               ) {
                 terminalPersistResult = skippedResult;
                 terminalPersistResultKind = skippedResult.kind;
-                if (await recoverCloneLookSeedFallback({ prepareArtifact: false })) {
+                if (await recoverCloneLookSeedFallback({
+                  prepareArtifact: false,
+                  reason: `skipped_incomplete_retry:${String(skippedResult.reason ?? 'unknown').slice(0, 160)}`,
+                })) {
                   runTemplateCloneSlotFillFallbackRef.current = true;
                 } else {
                   devLog.warn('[teamver] clone fill LOOK seed recovery failed; seed missing');
@@ -12101,6 +12115,9 @@ export function ProjectView({
               // `hasPersistedRunErrorEvent` already excludes this code (line
               // 161 of chat-events.ts), so reload reconciliation is safe.
               const lookSeedNotice = formatCloneLookSeedFallbackNotice();
+              const lookSeedErrorDetail = formatCloneLookSeedFallbackErrorDetail(
+                cloneLookSeedFallbackReason,
+              );
               updateAssistant((prev) => {
                 const withWarning = appendWarningStatusEvent(
                   clearDurableDeliverableErrorsAfterRecovery(prev),
@@ -12109,7 +12126,7 @@ export function ProjectView({
                 );
                 const withError = appendErrorStatusEvent(
                   withWarning,
-                  lookSeedNotice,
+                  lookSeedErrorDetail,
                   CLONE_LOOK_SEED_FALLBACK_STATUS_CODE,
                 );
                 return {

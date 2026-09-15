@@ -42,7 +42,7 @@ import {
   clearDurableDeliverableErrorsAfterRecovery,
 } from './chat-events';
 import { CLONE_LOOK_SEED_FALLBACK_STATUS_CODE } from './deliverable-lifecycle-codes';
-import { formatCloneLookSeedFallbackNotice, isCloneSlotFillRepairInProgressNotice } from '../teamver/projectErrorMessages';
+import { formatCloneLookSeedFallbackErrorDetail, formatCloneLookSeedFallbackNotice, isCloneSlotFillRepairInProgressNotice } from '../teamver/projectErrorMessages';
 
 /**
  * Status-event code for the "auto-continue cap exhausted and we synthesized a
@@ -644,8 +644,10 @@ export function buildCloneLookSeedReloadRecoveredAssistant(
 function buildCloneLookSeedRecoveredAssistant(
   assistant: ChatMessage,
   producedFiles: readonly ProjectFile[],
+  options?: { reason?: string | null },
 ): ChatMessage {
   const lookSeedNotice = formatCloneLookSeedFallbackNotice();
+  const lookSeedErrorDetail = formatCloneLookSeedFallbackErrorDetail(options?.reason);
   let produced = [...producedFiles];
   if (!produced.some((file) => file.name === 'deck.html')) {
     produced = [
@@ -682,9 +684,11 @@ function buildCloneLookSeedRecoveredAssistant(
   // ("우측 '다시 시도' 버튼") was pointing at a button that never rendered.
   // `hasPersistedRunErrorEvent` already excludes this code, so reload does not
   // flip legacy succeeded rows to failed; new rows are already failed.
+  // 루프533 — Error detail carries encodePersistedRunErrorDetail so
+  // copy-diagnostics is not stuck on reason=unavailable.
   const withError = appendErrorStatusEvent(
     withWarning,
-    lookSeedNotice,
+    lookSeedErrorDetail,
     CLONE_LOOK_SEED_FALLBACK_STATUS_CODE,
   );
   return {

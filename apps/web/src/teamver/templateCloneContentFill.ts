@@ -58,12 +58,12 @@ export const CLONE_SLOT_FILL_REPAIR_ENTRY_FROM = 'clone_slot_fill_json_repair';
 /**
  * Fill mode for explicit-template deck creates.
  *
- *   `prompt` (**env-empty / staging default since loop463**): LOOK seed, then
- *     MiniMax HTML content fill. Template chrome stays; copy is model-written.
+ *   `deterministic` (**env-empty / staging default since loop532**): daemon
+ *     seeds LOOK and fills shells on the server. No MiniMax second turn, so a
+ *     provider failure cannot leave users on LOOK seed fallback.
  *
- *   `deterministic`: daemon seeds LOOK and fills shells on the server.
- *     Home skips MiniMax — fast, but outline/slot copy is thin (loop421).
- *     Explicit opt-in only after loop463.
+ *   `prompt`: LOOK seed, then MiniMax HTML content fill. Kept as a rollback
+ *     mode when QA wants the pre-deterministic behavior.
  *
  *   `json`: LOOK seed + AI dense JSON outline (opt-in only — MiniMax
  *     JSON-only turns often fail AGENT_EXECUTION_FAILED).
@@ -75,11 +75,11 @@ export const CLONE_SLOT_FILL_REPAIR_ENTRY_FROM = 'clone_slot_fill_json_repair';
 export type TemplateCloneFillMode = 'json' | 'prompt' | 'deterministic' | 'pure-prompt';
 
 /**
- * 루프463 — Content quality requires MiniMax after LOOK seed.
- * Deterministic slot-fill alone leaves outline-shaped copy (user report).
- * Roll back to `deterministic` only via explicit env / localStorage.
+ * 루프532 — Default back to deterministic. MiniMax prompt-fill regressions
+ * surfaced clone_look_seed_fallback / AGENT_EXECUTION_FAILED before any
+ * usable deck was produced. Prompt remains available as an explicit rollback.
  */
-export const TEMPLATE_CLONE_FILL_DEFAULT_MODE: TemplateCloneFillMode = 'prompt';
+export const TEMPLATE_CLONE_FILL_DEFAULT_MODE: TemplateCloneFillMode = 'deterministic';
 
 export function normalizeTemplateCloneFillMode(value: unknown): TemplateCloneFillMode {
   const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
