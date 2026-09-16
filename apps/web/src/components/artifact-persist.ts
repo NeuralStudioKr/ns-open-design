@@ -154,6 +154,20 @@ export function shouldReuseSameTurnHtmlWriteAsPersist(
   return rel.toLowerCase() === 'deck.html';
 }
 
+/**
+ * Deck-generation HTML validation failures caused by incomplete model output
+ * should enter the normal auto-continue / incomplete-output recovery path,
+ * not surface as a "저장 거부" banner. Security/path refusals still return false.
+ */
+export function htmlArtifactValidationFailureShouldAutoContinue(input: {
+  artifactType?: string | null;
+  reason: string;
+}): boolean {
+  if ((input.artifactType ?? '').trim().toLowerCase() !== 'deck') return false;
+  return /^(?:empty content|content too short to be HTML|content does not start with <!doctype html> or <html)/i
+    .test(input.reason);
+}
+
 /** Open tabs that are older numbered siblings of the file being focused. */
 export function artifactVersionTabsToClose(
   fileName: string,

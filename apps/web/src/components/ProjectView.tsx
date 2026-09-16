@@ -677,6 +677,7 @@ import {
   artifactBaseNameForPersist,
   artifactVersionTabsToClose,
   collapseArtifactVersionOpenTabs,
+  htmlArtifactValidationFailureShouldAutoContinue,
   normalizeSlideOnlyArtifactContractType,
   resolveArtifactPersistFileName,
   resolveSlideOnlySkipDiscoveryBrief,
@@ -6223,6 +6224,18 @@ export function ProjectView({
         }
         const validation = validateHtmlArtifact(artifactToPersist.html);
         if (!validation.ok) {
+          if (
+            htmlArtifactValidationFailureShouldAutoContinue({
+              artifactType: normalizedArtifactType,
+              reason: validation.reason,
+            })
+          ) {
+            return {
+              kind: 'skipped-incomplete',
+              fileName,
+              reason: validation.reason,
+            };
+          }
           surfaceChatVisibleError(
             formatProjectArtifactRejectedError(
               persistDisplayTitle,
