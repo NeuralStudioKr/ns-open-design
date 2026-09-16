@@ -102,10 +102,13 @@ export function schedulePresentationCompletedFromRequest(
   if (!identity) return;
   const artifactId = presentationArtifactId(args);
   if (!artifactId) return;
+  // args.jobId는 optional (`string | null | undefined`). 대상 시그니처는
+  // `jobId?: string | null` — exactOptionalPropertyTypes 하에서 명시적
+  // undefined를 넘길 수 없으므로 undefined면 프로퍼티를 뺀다.
   void reportTeamverPresentationCompleted({
     workspaceId: identity.workspaceId,
     userId: identity.userId,
     artifactId,
-    jobId: args.jobId,
+    ...(args.jobId !== undefined ? { jobId: args.jobId } : {}),
   }).catch(() => undefined);
 }
