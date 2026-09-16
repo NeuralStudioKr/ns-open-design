@@ -9455,7 +9455,10 @@ function fitDenseCardPeerText(html: string, compacted: boolean): string {
   return next;
 }
 
-function fitBlockFrameCardPeerText(html: string): string {
+const READABLE_TEMPLATE_CARD_PEER_RE =
+  /\b(?:feature-card|intro-card|nb-card|team-card|info-card|pillar-card|timeline-card|step-card|member-card|price-card|pricing-card|card-text|compare-postit|feature-postit|col-postit)\b/i;
+
+function fitTemplateCloneReadableCardPeerText(html: string): string {
   if (!/\b(?:feature-card|intro-card|nb-card|team-card)\b/i.test(html)) return html;
   let next = html.replace(/<h([3-5])\b([^>]*)>/i, (_m, level: string, attrs: string) => (
     `<h${level}${appendInlineStyle(attrs, 'font-size:36px;line-height:1.08;word-break:keep-all;overflow-wrap:break-word')}>`
@@ -9469,6 +9472,82 @@ function fitBlockFrameCardPeerText(html: string): string {
   next = next.replace(/(<[^>]*\bteam-bio\b[^>]*)(>)/i, (_m, open: string, close: string) => (
     `${appendInlineStyle(open, 'font-size:21px;line-height:1.35;word-break:keep-all;overflow-wrap:break-word')}${close}`
   ));
+  return next;
+}
+
+function fillCommonReadableCardBodySlots(html: string, title: string, body: string): string {
+  if (!READABLE_TEMPLATE_CARD_PEER_RE.test(html)) return html;
+  const primary = normalizeTemplateCloneInlineText(body)
+    || `${normalizeTemplateCloneInlineText(title)} 항목의 역할과 기대 효과를 구체적으로 정리한다.`;
+  if (!primary) return html;
+  let next = html;
+  for (const className of [
+    'card-text',
+    'desc',
+    'description',
+    'copy',
+    'note',
+    'team-bio',
+    'member-role',
+    'step-desc',
+    'flow-desc',
+    'cycle-desc',
+    'kb-step-body',
+  ]) {
+    if (!firstExactClassRange(next, className)) continue;
+    next = replaceFirstExactClassText(next, className, primary);
+  }
+  return next;
+}
+
+function rewriteGenericTemplateCloneCtas(html: string, input: {
+  title: string;
+  lead: string;
+  bodyText: string;
+}): string {
+  const context = `${input.title} ${input.lead} ${input.bodyText}`;
+  if (!/[가-힣]/.test(context)) return html;
+  const cta = /(?:시작|도입|문의|데모|상담|전환|실행|무료)/.test(context)
+    ? '지금 시작하기'
+    : '자세히 보기';
+  return html.replace(
+    /(<(?:a|button)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:btn|cta|button|nb-btn|pixel-btn|hero-cta)\b[^"']*["'][^>]*>)([\s\S]*?)(<\/(?:a|button)>)/gi,
+    (full: string, open: string, inner: string, close: string) => {
+      const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (/^(?:Get Started|Learn More|Read More|View Process|View Documentation|Initialize Deck|Enterprise Demo|Enterprise 데모)$/i.test(plain)) {
+        return `${open}${cta}${close}`;
+      }
+      if (/^Enterprise\s+/i.test(plain)) {
+        return `${open}${escapeHtml(plain.replace(/^Enterprise/i, '기업'))}${close}`;
+      }
+      return full;
+    },
+  );
+}
+
+function healTemplateCloneCommonQualitySlots(
+  html: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  let next = rewriteGenericTemplateCloneCtas(html, input);
+  const fallbackLine = input.fillLines[0] ?? input.bodyText ?? input.lead ?? input.title;
+  const resolved = resolveTemplateCloneCardFill(fallbackLine || input.title);
+  const fallbackBody = normalizeTemplateCloneInlineText(resolved.body || input.bodyText || input.lead)
+    || `${normalizeTemplateCloneInlineText(resolved.title || input.title)} 내용을 사용자가 바로 이해할 수 있게 정리한다.`;
+  if (!fallbackBody || !READABLE_TEMPLATE_CARD_PEER_RE.test(next)) return next;
+  for (const className of ['card-text', 'team-bio', 'member-role', 'step-desc', 'flow-desc', 'cycle-desc', 'kb-step-body']) {
+    const span = firstExactClassRange(next, className);
+    if (!span) continue;
+    const block = next.slice(span.start, span.end);
+    const visible = block.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (visible.length > 0 && !/^(?:Get Started|Learn More|Read More|View Process)$/i.test(visible)) continue;
+    next = replaceFirstExactClassText(next, className, fallbackBody);
+  }
   return next;
 }
 
@@ -9557,7 +9636,8 @@ function fillOneCardPeer(
       /(<[^>]*\bteam-avatar\b[^>]*>)([\s\S]*?)(<\/)/i,
       blockFrameAvatarText(text, peerIndex),
     );
-    return fitBlockFrameCardPeerText(next);
+    next = fillCommonReadableCardBodySlots(next, text, bio);
+    return fitTemplateCloneReadableCardPeerText(next);
   }
   // Block Frame `.data-box`: sample metrics must not survive when the
   // outline carries ordinary copy. Use numbered stat badges unless a real
@@ -9746,7 +9826,8 @@ function fillOneCardPeer(
       replaced = true;
       return `${open}${body ? escapeHtml(body) : ''}${close}`;
     });
-    return fitBlockFrameCardPeerText(fitDenseCardPeerText(next, compacted));
+    next = fillCommonReadableCardBodySlots(next, text, body);
+    return fitTemplateCloneReadableCardPeerText(fitDenseCardPeerText(next, compacted));
   }
   if (/<p\b/i.test(next)) {
     let replaced = false;
@@ -9757,7 +9838,8 @@ function fillOneCardPeer(
       }
       return `${open}${close}`;
     });
-    return fitBlockFrameCardPeerText(next);
+    next = fillCommonReadableCardBodySlots(next, text, body);
+    return fitTemplateCloneReadableCardPeerText(next);
   }
   if (!text) return next;
   // 루프430 — idempotent prepend. `fillAndTrimCardPeers` re-runs up to 8
@@ -10000,6 +10082,7 @@ function fillSlideShell(
   body = stripBlueProfessionalCatalogDemoCopy(body);
   body = stripStudioCreativeCatalogDemoCopy(body);
   body = stripLeftoverCatalogDemoPhrases(body);
+  body = healTemplateCloneCommonQualitySlots(body, { title, lead, bodyText, fillLines });
 
   // Loop376 — Empty content-list / subtitle shells left behind by the
   // placeholder / title-only wipe paths render as visible orphan pills or
