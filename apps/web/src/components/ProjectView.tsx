@@ -186,6 +186,7 @@ import {
   sanitizePersistedDeckHostLeaks,
   decideTemplateCloneSlotFillTerminal,
   applyTemplateClonePromptFillLookMerge,
+  listTemplateCloneSlideShells,
   prepareTemplateCloneSlotFillAssistantText,
   type AudioVoiceOption,
   type MemorySystemPromptResponse,
@@ -251,11 +252,17 @@ import {
   shouldUseDeterministicTemplateCloneFill,
   shouldUseJsonTemplateCloneFill,
   getTemplateCloneFillMode,
+  applyQuantitativeSlideCountInstruction,
   templateCloneContentFillHardRules,
   templateCloneFillSlideCountOverrideNotice,
   withTemplateCloneFillPluginInputs,
   withoutCanonicalDeckAttachments,
 } from '../teamver/templateCloneContentFill';
+import {
+  isShortResponseAutoRetryPrompt,
+  renderShortResponseAutoRetryPrompt,
+  shouldAutoRetryShortSlideResponse,
+} from '../teamver/shortResponseAutoRetry';
 import {
   anonymizeArtifactId,
   artifactKindToTracking,
@@ -724,6 +731,8 @@ type ProjectChatSendMeta = ChatSendMeta & {
   templateCloneContentFill?: boolean;
   /** Prompt-mode HTML fill — system prompt owns the host contract. */
   templateClonePromptFill?: boolean;
+  /** 루프550 — 짧은 응답 자동 재시도 1회. 무한 루프 방지. */
+  autoRetryForShortResponse?: boolean;
 };
 
 const DAEMON_REATTACH_MISSING_RUN_GRACE_MS = 90_000;
@@ -1783,15 +1792,20 @@ function slideExistingDeckEditInstruction(
   return lines.join('\n');
 }
 
-/** First AI turn after daemon template Clone — JSON outline, host slot-fills LOOK seed. */
+/**
+ * First AI turn after daemon template Clone — JSON outline, host slot-fills LOOK seed.
+ * 루프550 — seedShellCount가 있으면 hard rules에 정량 slide-count 요구를 emit.
+ */
 function slideTemplateCloneContentFillInstruction(
   imagePaths: readonly string[] = [],
+  options: { seedShellCount?: number | null } = {},
 ): string {
+  const seedShellCount = options.seedShellCount ?? null;
   const lines = [
     TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
     'Daemon Clone seeded a LOOK preview at `deck.html`. This turn emits a JSON outline only — the host slot-fills that seed.',
     'Do NOT emit <!doctype / <section class="slide"> / Motif SVG. Titles and bodies only.',
-    ...templateCloneContentFillHardRules(),
+    ...templateCloneContentFillHardRules({ seedShellCount }),
   ];
   if (imagePaths.length > 0) {
     lines.push(
@@ -2932,7 +2946,14 @@ type ArtifactPersistResult =
   | { kind: 'rejected'; fileName: string; reason: string }
   | { kind: 'save-failed'; fileName: string; status?: number; code?: string; message?: string }
   | { kind: 'auth-replay-queued'; fileName: string }
-  | { kind: 'skipped-discovery-turn'; fileName: string };
+  | { kind: 'skipped-discovery-turn'; fileName: string }
+  | {
+    kind: 'needs-short-response-retry';
+    fileName: string;
+    producedCount: number;
+    expectedCount: number;
+    reason?: string;
+  };
 
 export function shouldFailRunForArtifactPersistResult(
   result: ArtifactPersistResult | null,
@@ -2946,6 +2967,7 @@ export function shouldFailRunForArtifactPersistResult(
   // can retry instead of painting "완료됨" over an unchanged slide.
   // skipped-noop is intentionally excluded: the edit was a calm no-op.
   return result?.kind === 'skipped-incomplete'
+    || result?.kind === 'needs-short-response-retry'
     || result?.kind === 'rejected'
     || result?.kind === 'save-failed'
     || result?.kind === 'scope-rejected'
@@ -3742,6 +3764,10 @@ export function ProjectView({
   const runTemplateClonePromptFillRef = useRef(false);
   /** 0901-N02 B5/D — persist metadata when slot-fill fell back to LOOK seed. */
   const runTemplateCloneSlotFillFallbackRef = useRef(false);
+  /** 루프550 — 이 턴이 짧은 응답 자동 재시도인지. persist가 pad 대신 재시도를 막을 때 사용. */
+  const runAutoRetryForShortResponseRef = useRef(false);
+  /** 루프550 — 모델에 보낸 원본 fill prompt. 재시도 때 뒤에 정량 문구를 붙인다. */
+  const runModelPromptRef = useRef('');
   /** Hidden / user slide-count append — persist merges new sections onto disk. */
   const runSlideCountTopUpRef = useRef(false);
   /**
@@ -6328,6 +6354,41 @@ export function ProjectView({
                   templateId: persistTemplateId,
                   readProjectHtml,
                 });
+                const seedCount = seedHtml
+                  ? (listTemplateCloneSlideShells(seedHtml).length
+                    || countDeckSlideSections(seedHtml)
+                    || slideCountIncomplete.expectedCount)
+                  : slideCountIncomplete.expectedCount;
+                const runImagePaths = imageAttachmentPathsForSlideEmbed(runAttachmentsRef.current);
+                if (shouldAutoRetryShortSlideResponse({
+                  seedCount,
+                  returnedCount: producedCount,
+                  requestedSlideCount:
+                    requestedSpec?.min
+                    ?? requestedSpec?.max
+                    ?? null,
+                  alreadyRetried: runAutoRetryForShortResponseRef.current,
+                  scopedEdit:
+                    persistCommentAttachments.length > 0
+                    || runImagePaths.length > 0,
+                  isCreateOrFullFill:
+                    runTemplateCloneContentFillRef.current
+                    || runTemplateClonePromptFillRef.current,
+                })) {
+                  devLog.warn('[teamver] short-response auto-retry armed', {
+                    fileName,
+                    producedCount,
+                    seedCount,
+                    expected: slideCountIncomplete.expectedCount,
+                  });
+                  return {
+                    kind: 'needs-short-response-retry',
+                    fileName: slideCountIncomplete.fileName,
+                    producedCount,
+                    expectedCount: seedCount,
+                    reason: slideCountIncomplete.reason,
+                  };
+                }
                 const padded = seedHtml
                   ? applyTemplateClonePromptFillLookMerge(seedHtml, htmlBody, {
                       templateId: persistTemplateId,
@@ -10416,6 +10477,9 @@ export function ProjectView({
       runTemplateCloneContentFillRef.current = isCloneContentFillTurn;
       runTemplateClonePromptFillRef.current = isClonePromptFillTurn;
       runTemplateCloneSlotFillFallbackRef.current = false;
+      runAutoRetryForShortResponseRef.current =
+        meta?.autoRetryForShortResponse === true
+        || isShortResponseAutoRetryPrompt(prompt);
       const fillSlideCountHint =
         extractTemplateCloneFillSlideCountHintFromPrompt(
           retryTarget ? retryTarget.userMsg.content || prompt : prompt,
@@ -10634,6 +10698,19 @@ export function ProjectView({
           'Status tone: "슬라이드 추가 중" — NEVER "수정 반영 중" / "Applying your edits".',
         ].join('\n');
       }
+      if (isCloneHostFillTurn && slideOnlyMvp) {
+        try {
+          const seedPath = resolveCanonicalDeckEntryPath(filesSnapshot) ?? 'deck.html';
+          const seedHtml = seedPath ? await readProjectHtml(seedPath) : null;
+          const seedShellCount = seedHtml ? listTemplateCloneSlideShells(seedHtml).length : 0;
+          if (seedShellCount > 0) {
+            modelPrompt = applyQuantitativeSlideCountInstruction(modelPrompt, seedShellCount);
+          }
+        } catch {
+          // LOOK seed not on disk yet — keep fallback keep-slide-count constant.
+        }
+      }
+      runModelPromptRef.current = modelPrompt;
       if (!retryTarget && meta?.queueOnly) {
         queueChatSendForCurrentConversation({
           conversationId: activeConversationId,
@@ -10654,7 +10731,8 @@ export function ProjectView({
           || meta?.entryFrom === SLIDE_COUNT_TOP_UP_ENTRY_FROM
           || meta?.entryFrom === SPARSE_CONTENT_TOP_UP_ENTRY_FROM
           || meta?.entryFrom === THIN_PRIOR_FULL_REWRITE_ENTRY_FROM
-          || meta?.entryFrom === CLONE_SLOT_FILL_REPAIR_ENTRY_FROM)
+          || meta?.entryFrom === CLONE_SLOT_FILL_REPAIR_ENTRY_FROM
+          || meta?.autoRetryForShortResponse === true)
         && !abortRef.current;
       const bypassBusyForQueuedDrain = meta?.drainQueuedSend === true;
       // Home create auto-send: never queue+false — that pairs with retry nonce
@@ -10687,7 +10765,11 @@ export function ProjectView({
       // Manual retries and fresh user turns get a full auto-continue budget.
       // Without this reset, a conversation that exhausted the cap on earlier
       // incomplete_output rows would never auto-recover on the next real send.
-      if (!isAutoContinueSend && !isSlideCountTopUpSend) {
+      if (
+        !isAutoContinueSend
+        && !isSlideCountTopUpSend
+        && meta?.autoRetryForShortResponse !== true
+      ) {
         conversationAutoContinueCountRef.current.set(runConversationId, 0);
         conversationSlideCountTopUpCountRef.current.set(runConversationId, 0);
       }
@@ -11575,6 +11657,39 @@ export function ProjectView({
                 terminalPersistResultKind = persistResult?.kind ?? null;
                 terminalPersistResult = persistResult;
                 nextFiles = await refreshProjectFiles();
+                if (persistResult?.kind === 'needs-short-response-retry') {
+                  const retryPrompt = [
+                    runModelPromptRef.current.trim() || prompt,
+                    '',
+                    renderShortResponseAutoRetryPrompt({
+                      returnedCount: persistResult.producedCount,
+                      seedCount: persistResult.expectedCount,
+                    }),
+                  ].join('\n');
+                  const scheduledProjectId = project.id;
+                  const scheduledConversationId = activeConversationId;
+                  const fillMeta = {
+                    autoRetryForShortResponse: true as const,
+                    ...(runTemplateCloneContentFillRef.current
+                      ? { templateCloneContentFill: true as const }
+                      : {}),
+                    ...(runTemplateClonePromptFillRef.current
+                      ? { templateClonePromptFill: true as const }
+                      : {}),
+                    ...deckTemplateSendMetaFromPin(resolveDurableDeckTemplatePin({
+                      project: project.metadata,
+                      runRef: runSelectedDeckTemplateIdRef.current,
+                      messages: messagesRef.current,
+                    })),
+                  };
+                  window.setTimeout(() => {
+                    if (project.id !== scheduledProjectId) return;
+                    if (messagesConversationIdRef.current !== scheduledConversationId) return;
+                    const sendNow = handleSendRef.current;
+                    if (!sendNow) return;
+                    void sendNow(retryPrompt, [], [], fillMeta);
+                  }, 400);
+                }
               }
             }
 
@@ -11693,15 +11808,20 @@ export function ProjectView({
               healBrief: runVisiblePromptRef.current || '',
               healTitle: project.name || '슬라이드',
             });
-            if (shouldFailMissingSlideHtml) {
+            const shortResponseRetryArmed =
+              terminalPersistResult?.kind === 'needs-short-response-retry';
+            if (shouldFailMissingSlideHtml && !shortResponseRetryArmed) {
               terminalArtifactPersistFailed = true;
             }
             // Persist already failed ⇒ shouldFailSlideRunForMissingHtmlDeliverable
             // returns false (double-count guard). Still treat "no HTML on disk"
             // as a missing-slide signal so rejected / discovery-skip can arm AC.
             const missingSlideDeliverableForAutoContinue =
-              shouldFailMissingSlideHtml
-              || (slideOnlyMvp && !producedHtmlToOpen && terminalArtifactPersistFailed);
+              !shortResponseRetryArmed
+              && (
+                shouldFailMissingSlideHtml
+                || (slideOnlyMvp && !producedHtmlToOpen && terminalArtifactPersistFailed)
+              );
 
             if (producedHtmlToOpen && runIsVisible()) {
               maybeArmTeamverPublishMenuAfterRunSuccess(project.id, producedHtmlToOpen);
@@ -11722,7 +11842,16 @@ export function ProjectView({
             if (!isLatestTerminalAutoOpen()) return;
 
             const endedAt = Date.now();
-            if (
+            if (terminalPersistResult?.kind === 'needs-short-response-retry') {
+              // 루프550 — pad 대신 MiniMax 1회 재호출. 첫 턴은 조용히 닫고
+              // 재시도 턴이 저장/notice를 책임진다.
+              updateAssistant((prev) => ({
+                ...prev,
+                endedAt: prev.endedAt ?? endedAt,
+                runStatus: 'canceled',
+              }));
+              updateConversationLatestRun('canceled', endedAt);
+            } else if (
               terminalArtifactPersistFailed
               && shouldSoftCancelEmptyDeckPatchPersist({
                 persistKind: terminalPersistResult?.kind,

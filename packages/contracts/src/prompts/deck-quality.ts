@@ -71,6 +71,53 @@ export const SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION =
   "Deliver the same number of `<section class=\"slide\">` slides as the seed. If two slots would repeat, rewrite one with a different angle — do not merge or drop slides.";
 
 /**
+ * 루프550 — 정량·강제 slide-count 순응 프롬프트.
+ *
+ * `SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION`은 seed count를 모델이 스스로 세도록
+ * 두었지만, 사용자 케이스(project `031f42a2-…`, 10→2)에서 순응이 흔들렸다.
+ * 실제 seed shell 개수 N을 치환해 못박는다.
+ *
+ * `seedShellCount`가 null이면 기존 상수(길이 미확정 상황) fallback.
+ */
+export function renderSlideCountRequirementInstruction(
+  seedShellCount: number | null | undefined,
+): string {
+  if (
+    seedShellCount == null
+    || !Number.isFinite(seedShellCount)
+    || seedShellCount <= 0
+  ) {
+    return SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION;
+  }
+  const n = Math.max(1, Math.floor(seedShellCount));
+  return (
+    `Return EXACTLY ${n} <section class="slide"> elements. `
+    + `Seed contains ${n} slides. `
+    + `If unsure, copy missing slides verbatim from the seed.`
+  );
+}
+
+/**
+ * 루프550 — seed 상단(첫 사용자 메시지 초입)에 emit할 짧은 정량 힌트.
+ *
+ * hard rules와 별도로, 세션 초입에도 seed shell 개수를 명시해 모델이 요청 파악
+ * 단계부터 slide count를 기억하게 한다.
+ */
+export function renderSlideCountSeedHeaderHint(
+  seedShellCount: number | null | undefined,
+): string | null {
+  if (
+    seedShellCount == null
+    || !Number.isFinite(seedShellCount)
+    || seedShellCount <= 0
+  ) {
+    return null;
+  }
+  const n = Math.max(1, Math.floor(seedShellCount));
+  return `Seed contains ${n} slides. Return EXACTLY ${n} <section class="slide"> elements.`;
+}
+
+/**
  * 루프544 — Topic-lock: brief 주제 밖 일반론(`개념/구조/영향`, `용어와 원리를 짧고
  * 정확하게 정의`, `배경/핵심 질문/판단 기준`) 을 그대로 카드에 붙이면 어떤 주제든
  * 같은 덱처럼 보인다. deterministic synth outline이 넣어도 되는 skeleton과 달리,

@@ -15,6 +15,8 @@ import {
   SLIDE_DECK_COPY_DENSITY_INSTRUCTION,
   SLIDE_DECK_LAYOUT_VARIETY_INSTRUCTION,
   SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION,
+  renderSlideCountRequirementInstruction,
+  renderSlideCountSeedHeaderHint,
 } from '@open-design/contracts';
 import {
   briefLooksLikeAttachedSource,
@@ -725,8 +727,19 @@ export function shouldExplainGenericBriefOnLookSeedFallback(input: {
   });
 }
 
-/** Shared hard rules for Clone → first AI content fill (JSON slot-fill, 0901-N02). */
-export function templateCloneContentFillHardRules(): string[] {
+/**
+ * Shared hard rules for Clone → first AI content fill (JSON slot-fill, 0901-N02).
+ *
+ * 루프550 — optional `seedShellCount`가 있으면 정량·강제 문구
+ * (`renderSlideCountRequirementInstruction`) 로 slide-count 순응을 못박는다.
+ * null이면 기존 `SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION` fallback (backward-compat).
+ */
+export function templateCloneContentFillHardRules(options: {
+  seedShellCount?: number | null;
+} = {}): string[] {
+  const slideCountRequirement = renderSlideCountRequirementInstruction(
+    options.seedShellCount ?? null,
+  );
   return [
     'Hard rules (READ — JSON slot-fill):',
     '- This is CREATE of real topical content, not a surgical edit. Status tone: "슬라이드 초안 작성 중" — NEVER "수정 반영 중" / "Applying your edits".',
@@ -739,7 +752,8 @@ export function templateCloneContentFillHardRules(): string[] {
     // satisfy quality by shrinking a 10-shell seed to 6 slides, which then
     // tripped artifact_regression. Keep only the count-preservation rule here;
     // post-fill heal/gates own leftover/topic-density cleanup.
-    `- ${SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION}`,
+    // 루프550 — seedShellCount가 확정되면 정량·강제 문구로 대체해 순응률↑.
+    `- ${slideCountRequirement}`,
     '- Expand THIS turn\'s brief only. Do not copy host-contract examples or the user instruction onto slides.',
     '- JSON shape: {"title":"...","slides":[{"title":"...","kicker":"...","lead":"...","roleHint":"cover|list|cards|timeline|stat|quote|team|process|closing|body","items":[{"title":"...","body":"..."}]}]}',
     '- Layout variety is mandatory: for 5+ slides use at least 3 distinct body `roleHint` values, and for 8–10 slides use at least 4 when the scaffold map offers them. Do not repeat the same cards/body layout for every page.',
@@ -916,6 +930,7 @@ export function buildTemplateCloneContentFillSeed(options: {
   templateTitle?: string | null;
   hasSourceMaterial?: boolean;
   slideCountHint?: string | number | null;
+  seedShellCount?: number | null;
 }): string {
   const visible = extractTemplateCloneUserFacingRequest(options);
   const topic = deriveTemplateCloneTopicLabel(visible);
@@ -941,7 +956,8 @@ export function buildTemplateCloneContentFillSeed(options: {
       : 'Fill REAL presentation CONTENT for this create (user prompt may be empty; invent clear topical copy — do not paste boilerplate leads into titles).',
     'The visible request above is a BRIEF/TOPIC. Expand it into a real presentation with domain knowledge. Do NOT paste the request onto the cover or body slides.',
     topic ? `Cover topic (use as the title — not the instruction): ${topic}.` : '',
-    ...templateCloneContentFillHardRules(),
+    renderSlideCountSeedHeaderHint(options.seedShellCount ?? null) ?? '',
+    ...templateCloneContentFillHardRules({ seedShellCount: options.seedShellCount ?? null }),
     websiteOutline ?? '',
   ].filter((line) => line !== '');
   if (templateTitle) {
@@ -980,6 +996,13 @@ export function buildTemplateClonePromptFillSeed(options: {
   templateTitle?: string | null;
   hasSourceMaterial?: boolean;
   slideCountHint?: string | number | null;
+  /**
+   * 루프550 — LOOK seed에 실제로 존재하는 slide shell 개수. 있으면 정량·강제
+   * slide-count 순응 문구(`renderSlideCountRequirementInstruction`)와 세션
+   * 초입 힌트(`renderSlideCountSeedHeaderHint`)를 emit해 MiniMax가 slide
+   * count를 정확히 맞추도록 유도한다.
+   */
+  seedShellCount?: number | null;
 }): string {
   const visible = extractTemplateCloneUserFacingRequest(options);
   const topic = deriveTemplateCloneTopicLabel(visible);
@@ -1002,10 +1025,16 @@ export function buildTemplateClonePromptFillSeed(options: {
       : (options.slideCountHint ?? visibleSlideCount);
   const slideCountHint = normalizeTemplateCloneFillSlideCountHint(slideCountHintSource);
   const requestedLine = formatUserRequestedSlideCountLine(slideCountHintSource);
+  // 루프550 — seed 상단 정량 힌트(있으면).
+  const seedHeaderHint = renderSlideCountSeedHeaderHint(options.seedShellCount ?? null);
+  // 루프550 — hard rules 라인 (정량·강제 slide-count 요구).
+  const slideCountRequirementLine =
+    renderSlideCountRequirementInstruction(options.seedShellCount ?? null);
   const parts = [
     visible,
     '',
     TEMPLATE_CLONE_PROMPT_FILL_MARKER,
+    seedHeaderHint ?? '',
     'A visual deck template was selected. Create ONE complete final deck artifact now.',
     'Emit `<artifact type="deck" identifier="deck">` with a complete HTML document and filled slides. Do not emit JSON outline.',
     'Never emit `<artifact type="deck-patch">` on this create turn — this is a first fill, not a surgical edit. Emit ONE full `<artifact type="deck">` only.',
@@ -1030,7 +1059,8 @@ export function buildTemplateClonePromptFillSeed(options: {
     // 루프546 — keep v1.4.15 prompt-fill behavior: do not inject topic-lock /
     // unique-per-slot penalty text into MiniMax HTML fill. It caused slide
     // shrinkage under strict count guards. Count preservation remains explicit.
-    SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION,
+    // 루프550 — seedShellCount가 있으면 정량·강제 문구로 대체 (기본은 상수).
+    slideCountRequirementLine,
     requestedLine,
     templateClonePromptFillSlideCountInstruction({ slideCountHint, slideCountHintSource }),
     websiteOutline
@@ -1047,6 +1077,43 @@ export function buildTemplateClonePromptFillSeed(options: {
     parts.push('', '[Source brief]', brief);
   }
   return parts.join('\n');
+}
+
+/**
+ * 루프550 — handleSend 시점에 디스크 LOOK seed 개수가 확정되면 fallback 상수를
+ * 정량 문구로 치환한다. Home 큐잉은 clone 전에 seed를 만들어 N을 모를 수 있다.
+ */
+export function applyQuantitativeSlideCountInstruction(
+  prompt: string,
+  seedShellCount: number | null | undefined,
+): string {
+  const next = String(prompt ?? '');
+  if (
+    seedShellCount == null
+    || !Number.isFinite(seedShellCount)
+    || seedShellCount <= 0
+  ) {
+    return next;
+  }
+  const n = Math.max(1, Math.floor(seedShellCount));
+  const requirement = renderSlideCountRequirementInstruction(n);
+  const header = renderSlideCountSeedHeaderHint(n);
+  let out = next;
+  if (out.includes(`Return EXACTLY ${n}`)) {
+    if (header && !out.includes(`Seed contains ${n}`)) {
+      out = `${header}\n${out}`;
+    }
+    return out;
+  }
+  if (out.includes(SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION)) {
+    out = out.replace(SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION, requirement);
+  } else if (!out.includes(requirement)) {
+    out = `${out.trim()}\n${requirement}`;
+  }
+  if (header && !out.includes(`Seed contains ${n}`)) {
+    out = `${header}\n${out}`;
+  }
+  return out;
 }
 
 const CANVAS_CREATE_DELIVERABLE_DUMP_RE =

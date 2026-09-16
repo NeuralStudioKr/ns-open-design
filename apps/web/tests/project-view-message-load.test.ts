@@ -1257,4 +1257,15 @@ describe("ProjectView message loading", () => {
     expect(block).not.toContain("appendErrorStatusEvent");
     expect(block).not.toContain("runStatus: 'failed'");
   });
+
+  it("루프550 · short-response auto-retry arms once then falls back to pad", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("shouldAutoRetryShortSlideResponse({");
+    expect(source).toContain("kind: 'needs-short-response-retry'");
+    expect(source).toContain("autoRetryForShortResponse: true");
+    expect(source).toContain("renderShortResponseAutoRetryPrompt({");
+    expect(source).toContain("applyQuantitativeSlideCountInstruction(modelPrompt, seedShellCount)");
+    expect(source).toContain("padToSeedSlideCount: true");
+    expect(source).toContain("artifact_short_response_persisted");
+  });
 });
