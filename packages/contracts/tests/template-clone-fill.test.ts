@@ -65,6 +65,10 @@ import {
   officialLookIsRawGridPitch,
   RAW_GRID_PITCH_KIT_KEY,
   RAW_GRID_PITCH_SLOT_MAP,
+  healProductLaunchLeftoverCatalogCopy,
+  officialLookIsProductLaunchHalo,
+  PRODUCT_LAUNCH_HALO_KIT_KEY,
+  PRODUCT_LAUNCH_SLOT_MAP,
   resolveTemplateCloneKitKey,
   scrubRawGridFinancialClicheText,
   synthesizeTemplateCloneSlideBody,
@@ -1527,6 +1531,60 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(blob).not.toMatch(/Series\s+[A-E]/i);
     expect(stripRawGridCatalogDemoCopy('<div class="s3-stat-number">$27.6M</div>'))
       .not.toMatch(/\$27\.6M/);
+  });
+
+  it('루프551 — Product Launch Halo 카탈로그 데모 스크럽 + feature/price/hero shell 유지', async () => {
+    const html = await readFile(
+      new URL('./fixtures/loop551-product-launch-halo.html', import.meta.url),
+      'utf8',
+    );
+    expect(officialLookIsProductLaunchHalo(html)).toBe(true);
+    expect(resolveTemplateCloneKitKey(html)).toBe(PRODUCT_LAUNCH_HALO_KIT_KEY);
+    expect(resolveTemplateCloneSlotMap({
+      templateId: 'html-ppt-product-launch',
+    })).toEqual(PRODUCT_LAUNCH_SLOT_MAP);
+    expect(resolveTemplateCloneSlotMap({ html })).toEqual(PRODUCT_LAUNCH_SLOT_MAP);
+
+    const healed = healProductLaunchLeftoverCatalogCopy(
+      html,
+      TEAMVER_SERVICE_INTRO_BRIEF,
+    );
+    expect(healed).not.toMatch(/Halo v2/);
+    expect(healed).not.toMatch(/halo\.audio/);
+    expect(healed).not.toMatch(/Studio-grade spatial/);
+    expect(healed).not.toMatch(/Four years of research/);
+    expect(healed).not.toMatch(/\$179/);
+    expect(healed).not.toMatch(/\$279/);
+    expect(healed).not.toMatch(/\$399/);
+    expect(healed).not.toMatch(/Marques Lin/);
+    expect(healed).not.toMatch(/Pre-order Halo/);
+    expect(healed).not.toMatch(/AAC \+ SBC/);
+    expect(healed).not.toMatch(/Hi-Res Lossless/);
+    expect(healed).toContain('hero-shot');
+    expect(healed).toContain('price-card');
+    expect(healed).toContain('feature-card');
+    expect(healed).toMatch(/Teamver|팀버/i);
+    expect(healed).not.toMatch(/<h[12][^>]*>\s*(?:개요|핵심 포인트|근거와 사례|실행 방안|고객 경험|도입 로드맵|성과 지표|요약)\s*</);
+    expect(healed).not.toMatch(/<h4[^>]*>\s*(?:핵심 가치|사용 장면|차별점|탐색|실행|확장|실무자|리더|운영자)\s*</);
+  });
+
+  it('루프551 — Product Launch healer는 Grove / Broadside 킷에 발동하지 않는다', async () => {
+    const grove = await readFile(
+      new URL('./fixtures/loop538-grove-teamver-leftover.html', import.meta.url),
+      'utf8',
+    );
+    expect(officialLookIsGrove(grove)).toBe(true);
+    expect(officialLookIsProductLaunchHalo(grove)).toBe(false);
+    expect(healProductLaunchLeftoverCatalogCopy(grove, TEAMVER_SERVICE_INTRO_BRIEF)).toBe(grove);
+
+    const broadside = await readFile(
+      new URL('./fixtures/loop536-broadside-teamver-empty-bottom.html', import.meta.url),
+      'utf8',
+    );
+    expect(officialLookIsBroadside(broadside)).toBe(true);
+    expect(officialLookIsProductLaunchHalo(broadside)).toBe(false);
+    expect(healProductLaunchLeftoverCatalogCopy(broadside, TEAMVER_SERVICE_INTRO_BRIEF)).toBe(broadside);
+    expect(broadside).toMatch(/\$3\.5B/);
   });
 
   it('루프538 — Grove forest kit demo chrome (landscape / grove-stat KPI / sidebar) is scrubbed', async () => {
@@ -6375,6 +6433,36 @@ describe('루프515 prompt-fill LOOK seed merge (Canvas/Home same host path)', (
     expect(merged!.html).toMatch(/info-card|content-list|stats-grid/);
     expect(merged!.html).not.toMatch(/<div class="cards-grid">\s*<\/div>/);
     expect(merged!.html).not.toMatch(/Demo A body that is a real sentence/);
+  });
+
+  it('루프552 — prompt-fill merge strips Product Launch Halo seed copy from extracted model HTML', async () => {
+    const seed = await readFile(
+      new URL('./fixtures/loop551-product-launch-halo.html', import.meta.url),
+      'utf8',
+    );
+    const model = [
+      '<!doctype html><html><body>',
+      '<section class="slide"><h1>◎ Halo</h1><p class="subtitle">Teamver가 다루는 문제와 제공 가치</p><p>Studio-grade spatial audio in the lightest open-ear earbuds ever made.</p><p>halo.audio</p></section>',
+      '<section class="slide"><h2>Teamver가 풀어야 하는 문제</h2><p>Four years of research. Three generations of silicon. One product you&#39;ll forget you&#39;re wearing.</p></section>',
+      '<section class="slide"><h2>Pricing 실행 방안</h2><div class="cards-grid">',
+      '<article class="price-card"><h3>실무자</h3><p>$179 반복 작업을 줄이고 결과물 완성도를 높이는 방식 AAC + SBC Single-tap controls USB-C charging</p></article>',
+      '<article class="price-card"><h3>리더</h3><p>$279 팀 속도, 품질, 비용을 함께 관리할 수 있는 기준 Hi-Res Lossless Live translate · 41 lang Wireless + MagSafe charging</p></article>',
+      '<article class="price-card"><h3>운영자</h3><p>$399 권한, 저장, 감사, 보안 요구를 만족시키는 운영 체계 32-bit binaural capture XLR dongle included Lifetime firmware</p></article>',
+      '</div></section>',
+      '<section class="slide"><h2>도입 로드맵</h2><blockquote>I forgot I was wearing them. Then I remembered, and I didn&#39;t want to take them off. — Marques Lin, The Verge</blockquote><p>Ships May 14 $279 Pre-order Halo v2 → Free shipping · 45-day return · 2-year warranty</p></section>',
+      '</body></html>',
+    ].join('');
+    const merged = applyTemplateClonePromptFillLookMerge(seed, model, {
+      brief: TEAMVER_SERVICE_INTRO_BRIEF,
+      deckTitle: 'Teamver 소개',
+      maxSlides: 4,
+    });
+
+    expect(merged).not.toBeNull();
+    expect(merged!.html).toMatch(/Teamver|팀버/i);
+    expect(merged!.html).not.toMatch(/Halo v2|◎\s*Halo|halo\.audio|Studio-grade spatial|open-ear earbuds/i);
+    expect(merged!.html).not.toMatch(/Four years of research|Three generations of silicon|forget you(?:'|&#39;|&#x27;|\u2019)ll/i);
+    expect(merged!.html).not.toMatch(/AAC \+ SBC|Hi-Res Lossless|MagSafe|binaural capture|Marques Lin|The Verge|45-day return/i);
   });
 
   it('prefers plugin preview over MiniMax-overwritten disk deck.html', () => {

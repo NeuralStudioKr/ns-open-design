@@ -566,6 +566,7 @@ const PROMPT_FILL_LOOK_MERGE_MIN_SLIDES = 2;
 /** Skip merge only when leftover unparsed sentences look like real copy. */
 const PROMPT_FILL_LOOK_MERGE_MIN_UNPARSED = 280;
 const PROMPT_FILL_ITEM_BODY_MIN = 12;
+const PROMPT_FILL_EXTRACTED_COPY_MAX = 400;
 
 const PROMPT_FILL_CARD_PEER_RE_SOURCE =
   '<(article|div|li)\\b([^>]*\\b(?:info-card|nb-card|feature-card|intro-card|team-card|stat-card|price-card|pricing-card|pillar-card|timeline-card|step-card|member-card|metric-card|hc-card|oc-card|kb-card|xp-card|kpi-card|day-card|weekly-card|feature-postit|col-postit|compare-postit)\\b[^>]*)>([\\s\\S]*?)<\\/\\1>';
@@ -578,11 +579,60 @@ function templateCloneItemBodyLooksDense(body: string | null | undefined): boole
   return String(body ?? '').trim().length >= PROMPT_FILL_ITEM_BODY_MIN;
 }
 
+function sanitizePromptFillExtractedCopy(
+  raw: string,
+  kind: 'title' | 'lead' | 'body' | 'item-title' | 'item-body',
+): string {
+  const normalized = String(raw ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return '';
+  const stripped = stripLeftoverCatalogDemoPhrases(
+    stripProductLaunchCatalogDemoCopy(
+      stripEightBitOrbitCatalogDemoCopy(
+        stripStudioCreativeCatalogDemoCopy(
+          stripBlueProfessionalCatalogDemoCopy(
+            stripBlockFrameNeoCatalogDemoCopy(
+              stripCapsuleCatalogDemoCopy(normalized),
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+    .replace(/\s+/g, ' ')
+    .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}.!?]+$/gu, '')
+    .trim();
+  if (!stripped) return '';
+  if (looksLikeLeftoverTemplateDemoDeck(stripped)) return '';
+  const max =
+    kind === 'title' || kind === 'item-title'
+      ? TEMPLATE_CLONE_ITEM_TITLE_MAX
+      : kind === 'lead'
+        ? TEMPLATE_CLONE_LEAD_MAX
+        : PROMPT_FILL_EXTRACTED_COPY_MAX;
+  return stripped.slice(0, max);
+}
+
 function leftoverUnparsedSentenceChars(
   modelHtml: string,
   outline: TemplateCloneDeckOutline,
 ): number {
-  let visible = visibleDeckCopy(modelHtml);
+  let visible = visibleDeckCopy(
+    stripLeftoverCatalogDemoPhrases(
+      stripProductLaunchCatalogDemoCopy(
+        stripEightBitOrbitCatalogDemoCopy(
+          stripStudioCreativeCatalogDemoCopy(
+            stripBlueProfessionalCatalogDemoCopy(
+              stripBlockFrameNeoCatalogDemoCopy(
+                stripCapsuleCatalogDemoCopy(modelHtml),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
   for (const slide of outline.slides) {
     for (const piece of [
       slide.title,
@@ -616,7 +666,7 @@ function extractSlideTitleFromHtmlBody(body: string): string {
   const classTitle = /<(?:div|p|span)\b[^>]*\b(?:title-main|hero-title|headline|font-display|display|disp|ttl|title)\b[^>]*>([\s\S]*?)<\//i
     .exec(body);
   const rawClass = classTitle ? stripTagsToText(classTitle[1] ?? '') : '';
-  const raw = (rawHeading || rawClass).trim();
+  const raw = sanitizePromptFillExtractedCopy(rawHeading || rawClass, 'title');
   if (!raw) return '';
   return sanitizeTemplateCloneDeckTitle(raw) ?? raw.slice(0, 80);
 }
@@ -624,13 +674,16 @@ function extractSlideTitleFromHtmlBody(body: string): string {
 function extractSlideLeadFromHtmlBody(body: string, title: string): string {
   const preferred = /<(p|div|span)\b[^>]*\b(?:subtitle|lead|lede|dek|deck|stmt|qbody|quote|ed|subkicker)\b[^>]*>([\s\S]*?)<\/\1>/i
     .exec(body);
-  const preferredText = preferred ? stripTagsToText(preferred[2] ?? '').trim() : '';
+  const preferredText = sanitizePromptFillExtractedCopy(
+    preferred ? stripTagsToText(preferred[2] ?? '') : '',
+    'lead',
+  );
   if (preferredText && preferredText !== title && preferredText.length >= 8) {
     return preferredText.slice(0, 240);
   }
   const withoutCards = body.replace(promptFillCardPeerRe(), ' ');
   const paragraphs = [...withoutCards.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)]
-    .map((match) => stripTagsToText(match[1] ?? '').trim())
+    .map((match) => sanitizePromptFillExtractedCopy(stripTagsToText(match[1] ?? ''), 'lead'))
     .filter((text) => text && text !== title && text.length >= 8);
   return (paragraphs[0] ?? '').slice(0, 240);
 }
@@ -638,12 +691,12 @@ function extractSlideLeadFromHtmlBody(body: string, title: string): string {
 function itemFromExtractedInner(inner: string): TemplateCloneSlideItem | null {
   const heading = /<(h[1-6]|strong|b)\b[^>]*>([\s\S]*?)<\/\1>/i.exec(inner);
   const paragraph = /<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(inner);
-  const title = stripTagsToText(heading?.[2] ?? '').trim()
-    || stripTagsToText(inner).trim().slice(0, 40);
-  const itemBody = stripTagsToText(paragraph?.[1] ?? '').trim();
+  const title = sanitizePromptFillExtractedCopy(stripTagsToText(heading?.[2] ?? ''), 'item-title')
+    || sanitizePromptFillExtractedCopy(stripTagsToText(inner), 'item-title').slice(0, 40);
+  const itemBody = sanitizePromptFillExtractedCopy(stripTagsToText(paragraph?.[1] ?? ''), 'item-body');
   if (!title) return null;
   if (title === itemBody) {
-    const visible = stripTagsToText(inner).trim();
+    const visible = sanitizePromptFillExtractedCopy(stripTagsToText(inner), 'item-body');
     if (!visible) return null;
     const split = visible.split(/[.—–:]\s+/).map((part) => part.trim()).filter(Boolean);
     return {
@@ -684,7 +737,7 @@ function extractSlideItemsFromGenericCopy(body: string): TemplateCloneSlideItem[
   const copyRe = /<(div|p|span)\b[^>]*\b(?:copy|body-tx|desc|caption)\b[^>]*>([\s\S]*?)<\/\1>/gi;
   let match: RegExpExecArray | null;
   while ((match = copyRe.exec(body)) !== null && items.length < 8) {
-    const visible = stripTagsToText(match[2] ?? '').trim();
+    const visible = sanitizePromptFillExtractedCopy(stripTagsToText(match[2] ?? ''), 'item-body');
     if (visible.length < 8) continue;
     const split = visible.split(/[.—–:]\s+/).map((part) => part.trim()).filter(Boolean);
     if (split.length >= 2) {
@@ -722,9 +775,9 @@ function extractSlideItemsFromHtmlBody(body: string): TemplateCloneSlideItem[] {
     const inner = listMatch[1] ?? '';
     const heading = /<(h[1-6]|strong|b)\b[^>]*>([\s\S]*?)<\/\1>/i.exec(inner);
     const paragraph = /<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(inner);
-    const title = stripTagsToText(heading?.[2] ?? '').trim();
-    const itemBody = stripTagsToText(paragraph?.[1] ?? '').trim();
-    const visible = stripTagsToText(inner).trim();
+    const title = sanitizePromptFillExtractedCopy(stripTagsToText(heading?.[2] ?? ''), 'item-title');
+    const itemBody = sanitizePromptFillExtractedCopy(stripTagsToText(paragraph?.[1] ?? ''), 'item-body');
+    const visible = sanitizePromptFillExtractedCopy(stripTagsToText(inner), 'item-body');
     if (!visible) continue;
     if (title && itemBody && itemBody !== title) {
       items.push({ title: title.slice(0, 40), body: itemBody.slice(0, 160) });
@@ -752,12 +805,12 @@ function extractSlideBodyFromHtmlBody(
   const classCopy = [...withoutCards.matchAll(
     /<(?:p|div|span|blockquote)\b[^>]*\b(?:stmt|qbody|quote|copy|body-tx|desc)\b[^>]*>([\s\S]*?)<\//gi,
   )]
-    .map((match) => stripTagsToText(match[1] ?? '').trim())
+    .map((match) => sanitizePromptFillExtractedCopy(stripTagsToText(match[1] ?? ''), 'body'))
     .filter((text) => text && text !== title && text !== lead && text.length >= 8);
   const lines = [
     ...classCopy,
     ...[...withoutCards.matchAll(/<(?:p|li)\b[^>]*>([\s\S]*?)<\/(?:p|li)>/gi)]
-      .map((match) => stripTagsToText(match[1] ?? '').trim())
+      .map((match) => sanitizePromptFillExtractedCopy(stripTagsToText(match[1] ?? ''), 'body'))
       .filter((text) => {
         if (!text || text === title || text === lead) return false;
         return text.length >= 8;
@@ -2637,6 +2690,31 @@ export function officialLookIsRawGridPitch(html: string): boolean {
 export const RAW_GRID_PITCH_KIT_KEY = 'raw-grid-pitch' as const;
 
 /**
+ * 루프551 — Product Launch (Halo v2 earbuds) kit fingerprint.
+ *
+ * Official `html-ppt-product-launch` ships `body.tpl-product-launch` plus
+ * `.hero-shot` / `.price-card` / `.feature-card` chrome. Exclusive deny
+ * keeps Broadside / Grove / RawGrid / EightBit / Creative from matching
+ * a stray `hero-shot` deco token. `price-card` + `hero-shot` is unique
+ * to this kit; `feature-card` alone is shared with Block Frame.
+ */
+export function officialLookIsProductLaunchHalo(html: string): boolean {
+  const source = String(html ?? '');
+  if (!source.trim()) return false;
+  if (officialLookIsCreativeMode(source)) return false;
+  if (officialLookIsBroadside(source)) return false;
+  if (officialLookIsGrove(source)) return false;
+  if (officialLookIsMat(source)) return false;
+  if (officialLookIsEightBitOrbit(source)) return false;
+  if (officialLookIsRawGridPitch(source)) return false;
+  if (/\btpl-product-launch\b/i.test(source)) return true;
+  return /\bhero-shot\b/i.test(source) && /\bprice-card\b/i.test(source);
+}
+
+/** Stable kit key for Product Launch Halo catalog (resolver + heal). */
+export const PRODUCT_LAUNCH_HALO_KIT_KEY = 'product-launch-halo' as const;
+
+/**
  * 루프550 — look HTML → kit key. Raw Grid is first so its `s1`/`s8`
  * chrome does not fall through to Creative / other numeric-sN kits.
  * Other official looks keep using `resolveOfficialPosterKit`.
@@ -2645,6 +2723,7 @@ export function resolveTemplateCloneKitKey(html: string): string | null {
   const source = String(html ?? '');
   if (!source.trim()) return null;
   if (officialLookIsRawGridPitch(source)) return RAW_GRID_PITCH_KIT_KEY;
+  if (officialLookIsProductLaunchHalo(source)) return PRODUCT_LAUNCH_HALO_KIT_KEY;
   return null;
 }
 
@@ -6067,6 +6146,10 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   // / `--pink:#f2d4cf`)이 있는 슬라이드에서만 발동. 다른 킷의 정상 % 표기
   // (예: Grove `73%` real fill)를 건드리지 않도록 shell-scoped 로만 동작.
   next = healRawGridLeftoverCatalogCopy(next, brief);
+  // 루프551 — Product Launch Halo v2 leftover (`Halo v2` / `halo.audio` /
+  // `$179` / Marques Lin / generic 핵심 포인트). Kit fingerprint 에서만
+  // 발동. Broadside / EightBit / Raw-Grid healer 순서는 그대로.
+  next = healProductLaunchLeftoverCatalogCopy(next, brief);
   // 루프548 — Retro-Windows 로드맵 표의 Q1–Q4 2026 / $1.2M–$2.1M 만.
   // 전역 regex 로 지우면 정상 분기 표기까지 날아가므로 킷 지문 + 데모 클러스터일 때만.
   next = healRetroWindowsRoadmapDemo(next, brief);
@@ -6679,7 +6762,7 @@ function stripBlueProfessionalCatalogDemoCopy(html: string): string {
 }
 
 const LEFTOVER_CATALOG_PHRASE_RE =
-/The landscape has shifted|The brands that will lead the next decade|Strategy\s*[·•]\s*Presentation|Three numbers that define the|Of consumers distrust brand-created content|The most radical thing a brand can do|\[Prepared by\]|\[Confidential\]|\[IMAGE PLACEHOLDER\]|Grove Presentation|\[Studio\s*X\]\s*Guidelines|TOTAL\s+MARKET\s*:\s*\$?\[X\]B|Hartfield(?:\s*&(?:amp;)?\s*Co\.?)?|NorthPeak Industries|WACC\s*\(\s*base\s*\)|Revenue CAGR|Filebase|Northwind Studios|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Maya Chen|pnpm vitest auth|MMXXVI|Team Structure(?:\s*(?:&|&amp;)?\s*(?:Resource Allocation|Leadership))?|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|Composed in kami|52\.5200°\s*N|\[?\[Author Name\]\]?|\[Year\]|this is the broadside style|Aurora Institute|Aurora Programme|Aurora Charter|Public Form|Public attendance|Open programme|Field Notes|Quiet Editions|Open Conversations|The Long Yellow|Pavilion of Quiet Form|Reading Garden|A field study of light,\s*matter and atmosphere|Six months of exhibitions[\s\S]{0,160}?palette of yellow\.?|A room is a slow argument with the sun[\s\S]{0,160}?answers\.?|Curator-at-large[\s\S]{0,120}?January 2026|Visitors\s*·\s*Year four|Returning audience|Three quarters of last year[\s\S]{0,120}?twice\.?|A 2\.4× rise[\s\S]{0,120}?audience\.?|Strands\s*·\s*2026|Slow Atmospheres|Selected dates|Sector context(?:\s*&(?:amp;)?\s*market dynamics)?|Trading comparables analysis|Precedent transactions|Industrial automation cycle, capital flows, trading multiples|12 selected listed peers, EV\/EBITDA(?:\s*&(?:amp;)?\s*EV\/Revenue 2026E)?|M&amp;A transactions \$0\.5–5\.0B, 2022–2025|Selection criteria|Fictional illustrative sample|38\s*[×x]|Apache-2\.0|\bBYOK\b|Your agent reads a folder of\s*<code>SKILL\.md<\/code> files\.?|Open Design is the\s*(?:<strong>)?\s*(?:<\/strong>)?\s*\.?|Neobrutalist Presentation Template|(?:Analog|Editorial|Modern|Retro|Studio|Design|Brand|Business|Pixel|Product)\s+Presentation Template|(?<![가-힣A-Za-z])Presentation\s+Template(?![가-힣A-Za-z])|Pixel Perfect Presentation System|THANK YOU FOR WATCHING|NEXUS(?:\s*(?:<br\s*\/?>)?\s*)VENTURES|8-?BIT(?:\s*(?:<br\s*\/?>)?\s*)ORBIT|Q3\s+Strategic\s+Overview|\+1\s*\(?555\)?[-\s]?\d{3}[-\s]?\d{4}|hello@(?:example|venture|hello|studio)\.(?:studio|com|io)|HELLO@[A-Z][A-Z0-9]+\.(?:IO|COM|STUDIO)|www\.example\.(?:studio|com|io)|SEATTLE,\s*WA|AGENDA\.TXT|All systems operational|API Calls\s*\/\s*Day|Avg\.?\s*Response Time|Concept development and prototype validation|Full implementation and iterative refinement|Expansion and long-term optimization|Complex problems deserve simple explanations\.?|Every partnership is built on radical transparency\.?|Connecting Founders With Opportunity|Advanced Analytics Suite|API marketplace|Quarterly Growth Metrics|Field Office Quarterly|Field Office Editorial|field-office\.co|Lin Ito(?:\s*&(?:amp;)?\s*Anya Mehrotra)?|Anya Mehrotra|the field-office collective|In Newsreader, Hanken Grotesk\s*(?:&(?:amp;)?)?\s*DM Mono|quiet, paid, and read slowly|The next issue ships October 20\d{2}[\s\S]{0,120}?Monday morning\.?|A trend is a quiet question that several rooms started asking(?:\s+(?:<[^>]+>)?[^<]{0,80}?(?:<\/[^>]+>)?)?|at roughly the same time\.?|From the editor's note|Index 20\d{2}\s*·\s*opening pages|Colophon\s*·\s*Index 20\d{2}|The index, in six entries\.?|Trend ledger, in long\.?|Spring 20\d{2}(?:\s*·\s*selected trends)?|Newsletter opens\s*·\s*20\d{2}\s*Q\d\s*—\s*20\d{2}\s*Q\d|Chapter one\s*—\s*the case for slow software|Software is a room, and rooms are designed to be lived in slowly\.?|In its first chapter the Index[\s\S]{0,240}?read first\.?|Slow software|Domestic interfaces|Hand-set print(?:\s+again)?|Quietly weird type|Receipts (?:and|&(?:amp;)?)\s*ledgers|Public weather|Long-form receipts|Pre-loved objects|Tools that opt out of[\s\S]{0,160}?on by default\.?|Screens designed to live in living rooms[\s\S]{0,200}?willingness to be ignored\.?|A return to letterpress[\s\S]{0,160}?digital-feeling clients\.?|Display type with one slightly off detail[\s\S]{0,160}?looking twice\.?|Information designed to be filed, not consumed\.[\s\S]{0,160}?the favour\.?|Brand and product writing that includes[\s\S]{0,200}?unfinished thought\.?|Tools that opt out of urgency by default\.?|Screens designed to live in living rooms\.?|Letterpress and risograph paired with digital briefs\.?|Display faces with one slightly off detail\.?|Brand voice that admits the day's actual mood\.?|Newsletters that read like printed pamphlets\.?|Resale and repair as the front of the brand\.?|Information designed to be filed, not consumed\.?|A field report on the state of things\.?|Look for the cobalt envelope on a Monday morning\.?|issue\.0\d|spring\s+20\d{2}|autumn\s+20\d{2}|All ten\s*·\s*with our reading on each|A 2\.1× lift on the inaugural issue[\s\S]{0,160}?Sunday mornings\.?|Quiet, mostly-not-on-social[\s\S]{0,140}?referral programme\.?|We started the bulletin[\s\S]{0,220}?rereading\.?"?|To subscribers[\s\S]{0,80}?twice a year|Reader response, by quarter\.?|A note from the studio|Open rate\s*·\s*Q1 20\d{2}|Active subscribers|Tape Garden|tape garden|SUPERCATALOG|CATALOGUE NO\.\s*[78]|Catalogue No\.\s*[78]|We make small\s+(?:<em>)?analog(?:<\/em>)?\s+things[\s\S]{0,160}?desks\.?|SUPER(?:\s|&nbsp;)+TAPE|MIX(?:\s|&nbsp;)+CHAIR|Bloom Pedal|BLOOM(?:\s|&nbsp;)+PEDAL|CHROMA(?:\s|&nbsp;)+DECK|Chroma Deck|Ren Kobayashi|Mei Tanaka|See you in\s+(?:<em>)?volume eight|made in matsumoto|Matsumoto workshop|A short letter from the studio|A note pinned above the workbench|A reader writes|The 2026\s+(?:<em>)?Catalogue|Four products\s*·\s*spring|Output, by year|Units shipped|Repeat customers|Release schedule|Colophon\s*·\s*Catalogue|It feels less like a\s+(?:<em>)?gadget|Build the\s+(?:<em>)?thing[\s\S]{0,80}?spec sheet\.?|A tape-saturation pedal|A studio cassette deck|A box of seven C-60|A listening chair|\bT-26\b|\bSC-0[1-4]b?\b|Key Metrics|Visuals first|We started Long Table|long-table\.co|Iris\s*(?:&|&amp;)\s*Theo|Hana Brennan|A Plate(?:<br\s*\/?>|\s)+of Quiet|A Soup(?:<br\s*\/?>|\s)+of Letters|Roasted chestnut soup|Not a meal, an evening|22 seats only|Bairro Alto|See you(?:<br\s*\/?>|\s)+at the table|An evening I keep|December edition|a letter from the table|come and sit with us|More than dinner|Twice a month, by application|Placeholder lede|The Editorial Desk|Studio\s*(?:&|&amp;)\s*Salon|Editorial Brief|Eight principles|Twelve weeks of after-hours behavior\.?|Three rules we'?re keeping\.?|User Research Synthesis(?:\s*\/\s*\[[^\]]+\])?|WHO WE ARE|GREAT WORK DOESN'T HAPPEN BY ACCIDENT|WE BUILD WHAT OTHERS PLAN|Our studio pairs strategic thinking|Years of practice|Projects delivered|Continents active|GENERIC IDENTITY|A DISTINCTIVE VOICE PEOPLE RECOGNIZE|BOLD IDEAS DESERVE BOLD EXECUTION|\[Studio Name\]|\[Client Name\]|\[Presentation Title\]|WHAT WE OFFER|Ownable visual and verbal territory|Campaigns that created lasting recall|Lift In Engagement|Throughput Multiplier|Active Placeholders|Total Sample Value|Placeholder caption describing the metric|Layer alpha|Layer beta|VALUES ARE PLACEHOLDER|PLACEHOLDER METRIC|eight pages, eight layouts|Replace freely|Generic placeholder|Filler text|Filler descriptor|FY PLACEHOLDER|CHAPTER OPENER|A PRESENTATION TEMPLATE|A FOUR-STEP PROCESS|PRESS\s*(?:&nbsp;)?\s*PLAY/gi;
+/The landscape has shifted|The brands that will lead the next decade|Strategy\s*[·•]\s*Presentation|Three numbers that define the|Of consumers distrust brand-created content|The most radical thing a brand can do|\[Prepared by\]|\[Confidential\]|\[IMAGE PLACEHOLDER\]|Grove Presentation|\[Studio\s*X\]\s*Guidelines|TOTAL\s+MARKET\s*:\s*\$?\[X\]B|Hartfield(?:\s*&(?:amp;)?\s*Co\.?)?|NorthPeak Industries|WACC\s*\(\s*base\s*\)|Revenue CAGR|Filebase|Northwind Studios|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Maya Chen|pnpm vitest auth|MMXXVI|Team Structure(?:\s*(?:&|&amp;)?\s*(?:Resource Allocation|Leadership))?|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|Composed in kami|52\.5200°\s*N|\[?\[Author Name\]\]?|\[Year\]|this is the broadside style|Aurora Institute|Aurora Programme|Aurora Charter|Public Form|Public attendance|Open programme|Field Notes|Quiet Editions|Open Conversations|The Long Yellow|Pavilion of Quiet Form|Reading Garden|A field study of light,\s*matter and atmosphere|Six months of exhibitions[\s\S]{0,160}?palette of yellow\.?|A room is a slow argument with the sun[\s\S]{0,160}?answers\.?|Curator-at-large[\s\S]{0,120}?January 2026|Visitors\s*·\s*Year four|Returning audience|Three quarters of last year[\s\S]{0,120}?twice\.?|A 2\.4× rise[\s\S]{0,120}?audience\.?|Strands\s*·\s*2026|Slow Atmospheres|Selected dates|Sector context(?:\s*&(?:amp;)?\s*market dynamics)?|Trading comparables analysis|Precedent transactions|Industrial automation cycle, capital flows, trading multiples|12 selected listed peers, EV\/EBITDA(?:\s*&(?:amp;)?\s*EV\/Revenue 2026E)?|M&amp;A transactions \$0\.5–5\.0B, 2022–2025|Selection criteria|Fictional illustrative sample|38\s*[×x]|Apache-2\.0|\bBYOK\b|Your agent reads a folder of\s*<code>SKILL\.md<\/code> files\.?|Open Design is the\s*(?:<strong>)?\s*(?:<\/strong>)?\s*\.?|Neobrutalist Presentation Template|(?:Analog|Editorial|Modern|Retro|Studio|Design|Brand|Business|Pixel|Product)\s+Presentation Template|(?<![가-힣A-Za-z])Presentation\s+Template(?![가-힣A-Za-z])|Pixel Perfect Presentation System|THANK YOU FOR WATCHING|NEXUS(?:\s*(?:<br\s*\/?>)?\s*)VENTURES|8-?BIT(?:\s*(?:<br\s*\/?>)?\s*)ORBIT|Q3\s+Strategic\s+Overview|\+1\s*\(?555\)?[-\s]?\d{3}[-\s]?\d{4}|hello@(?:example|venture|hello|studio)\.(?:studio|com|io)|HELLO@[A-Z][A-Z0-9]+\.(?:IO|COM|STUDIO)|www\.example\.(?:studio|com|io)|SEATTLE,\s*WA|AGENDA\.TXT|All systems operational|API Calls\s*\/\s*Day|Avg\.?\s*Response Time|Concept development and prototype validation|Full implementation and iterative refinement|Expansion and long-term optimization|Complex problems deserve simple explanations\.?|Every partnership is built on radical transparency\.?|Connecting Founders With Opportunity|Advanced Analytics Suite|API marketplace|Quarterly Growth Metrics|Field Office Quarterly|Field Office Editorial|field-office\.co|Lin Ito(?:\s*&(?:amp;)?\s*Anya Mehrotra)?|Anya Mehrotra|the field-office collective|In Newsreader, Hanken Grotesk\s*(?:&(?:amp;)?)?\s*DM Mono|quiet, paid, and read slowly|The next issue ships October 20\d{2}[\s\S]{0,120}?Monday morning\.?|A trend is a quiet question that several rooms started asking(?:\s+(?:<[^>]+>)?[^<]{0,80}?(?:<\/[^>]+>)?)?|at roughly the same time\.?|From the editor's note|Index 20\d{2}\s*·\s*opening pages|Colophon\s*·\s*Index 20\d{2}|The index, in six entries\.?|Trend ledger, in long\.?|Spring 20\d{2}(?:\s*·\s*selected trends)?|Newsletter opens\s*·\s*20\d{2}\s*Q\d\s*—\s*20\d{2}\s*Q\d|Chapter one\s*—\s*the case for slow software|Software is a room, and rooms are designed to be lived in slowly\.?|In its first chapter the Index[\s\S]{0,240}?read first\.?|Slow software|Domestic interfaces|Hand-set print(?:\s+again)?|Quietly weird type|Receipts (?:and|&(?:amp;)?)\s*ledgers|Public weather|Long-form receipts|Pre-loved objects|Tools that opt out of[\s\S]{0,160}?on by default\.?|Screens designed to live in living rooms[\s\S]{0,200}?willingness to be ignored\.?|A return to letterpress[\s\S]{0,160}?digital-feeling clients\.?|Display type with one slightly off detail[\s\S]{0,160}?looking twice\.?|Information designed to be filed, not consumed\.[\s\S]{0,160}?the favour\.?|Brand and product writing that includes[\s\S]{0,200}?unfinished thought\.?|Tools that opt out of urgency by default\.?|Screens designed to live in living rooms\.?|Letterpress and risograph paired with digital briefs\.?|Display faces with one slightly off detail\.?|Brand voice that admits the day's actual mood\.?|Newsletters that read like printed pamphlets\.?|Resale and repair as the front of the brand\.?|Information designed to be filed, not consumed\.?|A field report on the state of things\.?|Look for the cobalt envelope on a Monday morning\.?|issue\.0\d|spring\s+20\d{2}|autumn\s+20\d{2}|All ten\s*·\s*with our reading on each|A 2\.1× lift on the inaugural issue[\s\S]{0,160}?Sunday mornings\.?|Quiet, mostly-not-on-social[\s\S]{0,140}?referral programme\.?|We started the bulletin[\s\S]{0,220}?rereading\.?"?|To subscribers[\s\S]{0,80}?twice a year|Reader response, by quarter\.?|A note from the studio|Open rate\s*·\s*Q1 20\d{2}|Active subscribers|Tape Garden|tape garden|SUPERCATALOG|CATALOGUE NO\.\s*[78]|Catalogue No\.\s*[78]|We make small\s+(?:<em>)?analog(?:<\/em>)?\s+things[\s\S]{0,160}?desks\.?|SUPER(?:\s|&nbsp;)+TAPE|MIX(?:\s|&nbsp;)+CHAIR|Bloom Pedal|BLOOM(?:\s|&nbsp;)+PEDAL|CHROMA(?:\s|&nbsp;)+DECK|Chroma Deck|Ren Kobayashi|Mei Tanaka|See you in\s+(?:<em>)?volume eight|made in matsumoto|Matsumoto workshop|A short letter from the studio|A note pinned above the workbench|A reader writes|The 2026\s+(?:<em>)?Catalogue|Four products\s*·\s*spring|Output, by year|Units shipped|Repeat customers|Release schedule|Colophon\s*·\s*Catalogue|It feels less like a\s+(?:<em>)?gadget|Build the\s+(?:<em>)?thing[\s\S]{0,80}?spec sheet\.?|A tape-saturation pedal|A studio cassette deck|A box of seven C-60|A listening chair|\bT-26\b|\bSC-0[1-4]b?\b|Key Metrics|Visuals first|We started Long Table|long-table\.co|Iris\s*(?:&|&amp;)\s*Theo|Hana Brennan|A Plate(?:<br\s*\/?>|\s)+of Quiet|A Soup(?:<br\s*\/?>|\s)+of Letters|Roasted chestnut soup|Not a meal, an evening|22 seats only|Bairro Alto|See you(?:<br\s*\/?>|\s)+at the table|An evening I keep|December edition|a letter from the table|come and sit with us|More than dinner|Twice a month, by application|Placeholder lede|The Editorial Desk|Studio\s*(?:&|&amp;)\s*Salon|Editorial Brief|Eight principles|Twelve weeks of after-hours behavior\.?|Three rules we'?re keeping\.?|User Research Synthesis(?:\s*\/\s*\[[^\]]+\])?|WHO WE ARE|GREAT WORK DOESN'T HAPPEN BY ACCIDENT|WE BUILD WHAT OTHERS PLAN|Our studio pairs strategic thinking|Years of practice|Projects delivered|Continents active|GENERIC IDENTITY|A DISTINCTIVE VOICE PEOPLE RECOGNIZE|BOLD IDEAS DESERVE BOLD EXECUTION|\[Studio Name\]|\[Client Name\]|\[Presentation Title\]|WHAT WE OFFER|Ownable visual and verbal territory|Campaigns that created lasting recall|Lift In Engagement|Throughput Multiplier|Active Placeholders|Total Sample Value|Placeholder caption describing the metric|Layer alpha|Layer beta|VALUES ARE PLACEHOLDER|PLACEHOLDER METRIC|eight pages, eight layouts|Replace freely|Generic placeholder|Filler text|Filler descriptor|FY PLACEHOLDER|CHAPTER OPENER|A PRESENTATION TEMPLATE|A FOUR-STEP PROCESS|PRESS\s*(?:&nbsp;)?\s*PLAY|Halo v2|Studio-grade spatial audio in the lightest open-ear earbuds ever made\.?|Four years of research\.\s*Three generations of silicon\.\s*One product you(?:'|&#39;|&#x27;|\u2019)ll forget you(?:'|&#39;|&#x27;|\u2019)re wearing\.?|halo\.audio|◎\s*Halo|I forgot I was wearing them[\s\S]{0,120}?take them off\.?"?|Marques Lin|Pre-order Halo(?:\s+v2)?|AAC \+ SBC|Hi-Res Lossless|32-bit binaural capture|XLR dongle included|Live translate\s*[·•]\s*41 lang|Wireless \+ MagSafe charging|Ships May 14|Free shipping\s*[·•]\s*45-day return/gi;
 
 export function stripLeftoverCatalogDemoPhrases(html: string): string {
   return String(html ?? '')
@@ -9016,6 +9099,345 @@ export function healRawGridLeftoverCatalogCopy(
   return stripRawGridCatalogDemoCopy(out);
 }
 
+/**
+ * 루프551 — Product Launch Halo leftover phrases that are safe as a
+ * kit-scoped strip (earbuds feature bullets, dollar amounts, CTA chrome).
+ * Distinctive Halo slogans also live in `LEFTOVER_CATALOG_PHRASE_RE`.
+ */
+const PRODUCT_LAUNCH_DEMO_COPY_RE =
+  /Halo v2|Meet Halo|Pick your Halo|◎\s*Halo|halo\.audio|Studio-grade spatial audio[\s\S]{0,80}?earbuds ever made\.?|Four years of research[\s\S]{0,80}?wearing\.?|I forgot I was wearing them[\s\S]{0,120}?take them off\.?"?|Marques Lin|The Verge|Pre-order Halo(?:\s+v2)?|Ships May 14|Free shipping\s*[·•]\s*45-day return(?:\s*[·•]\s*2-year warranty)?|AAC \+ SBC|Single-tap controls|USB-C charging|Hi-Res Lossless|Live translate\s*[·•]\s*41 lang|Wireless \+ MagSafe charging|Adaptive EQ|32-bit binaural capture|XLR dongle included|Lifetime firmware|Open-ear (?:spatial|audio)|Lossless 24-bit|Hear the room|All-day forgettable|An AI that listens|Three taps\. You're in/gi;
+
+const PRODUCT_LAUNCH_LEFTOVER_BODY_RE =
+  /Halo v2|halo\.audio|Studio-grade spatial|Four years of research|Marques Lin|Pre-order Halo|Pick your Halo|◎\s*Halo|\$179|\$279|\$399|AAC \+ SBC|Hi-Res Lossless/i;
+
+const PRODUCT_LAUNCH_GENERIC_HEADING_RE =
+  /^(?:개요|핵심 포인트|근거와 사례|실행 방안|고객 경험|도입 로드맵|성과 지표|요약)$/;
+
+const PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE =
+  /^(?:핵심 가치|사용 장면|차별점|탐색|실행|확장|실무자|리더|운영자)$/;
+
+const PRODUCT_LAUNCH_GENERIC_CARD_BODY_RE =
+  /사용자가 즉시 얻는 시간 절감|도입 전 탐색, 팀 협업|기존 대안 대비 더 적은 단계|첫 방문에서 문제와 해결|주요 기능을 체험하거나 문의|팀 규모, 권한, 반복 작업|반복 작업을 줄이고 결과물|팀 속도, 품질, 비용|권한, 저장, 감사, 보안/;
+
+const PRODUCT_LAUNCH_GENERIC_TITLE_MAP: Record<string, (topic: string) => string> = {
+  개요: (topic) => `${topic} 한눈에`,
+  '핵심 포인트': (topic) => `${topic}이 해결하는 문제`,
+  '근거와 사례': (topic) => `${topic}의 쓰임과 근거`,
+  '실행 방안': (topic) => `${topic}을 쓰는 순서`,
+  '고객 경험': (topic) => `${topic}을 쓰는 사람들`,
+  '도입 로드맵': (topic) => `${topic} 도입 경로`,
+  '성과 지표': (topic) => `${topic}에서 확인할 성과`,
+  요약: (topic) => `${topic} 정리와 다음 단계`,
+};
+
+const PRODUCT_LAUNCH_GENERIC_CARD_TITLE_MAP: Record<string, (topic: string) => string> = {
+  '핵심 가치': (topic) => `${topic} 핵심`,
+  '사용 장면': (topic) => `${topic} 장면`,
+  차별점: (topic) => `${topic} 차이`,
+  탐색: (topic) => `${topic} 탐색`,
+  실행: (topic) => `${topic} 실행`,
+  확장: (topic) => `${topic} 확장`,
+  실무자: (topic) => `${topic} 실무`,
+  리더: (topic) => `${topic} 리더`,
+  운영자: (topic) => `${topic} 운영`,
+};
+
+function productLaunchShortBrand(brief?: string | null, topic?: string | null): string {
+  const fromTopic = String(topic ?? '').replace(/\s+/g, ' ').trim();
+  if (fromTopic && fromTopic !== '핵심 주제' && fromTopic.length <= 16) return fromTopic;
+  const fromBrief = topicKeywordForSynthBody(String(brief ?? ''));
+  if (fromBrief && fromBrief !== '핵심 주제') return fromBrief.slice(0, 16);
+  return '';
+}
+
+function productLaunchKitAwareTitle(rawTitle: string, topic: string): string {
+  const title = String(rawTitle ?? '').replace(/\s+/g, ' ').trim();
+  if (!title || PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(title) || /Halo|Pick your Halo/i.test(title)) {
+    return PRODUCT_LAUNCH_GENERIC_TITLE_MAP['개요']!(topic);
+  }
+  if (PRODUCT_LAUNCH_GENERIC_HEADING_RE.test(title)) {
+    return (PRODUCT_LAUNCH_GENERIC_TITLE_MAP[title] ?? ((value: string) => `${value} 한눈에`))(topic);
+  }
+  return title;
+}
+
+function productLaunchKitAwareCardTitle(rawTitle: string, topic: string, index: number): string {
+  const title = String(rawTitle ?? '').replace(/\s+/g, ' ').trim();
+  if (PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(title)) {
+    return (PRODUCT_LAUNCH_GENERIC_CARD_TITLE_MAP[title] ?? ((value: string) => `${value} ${index + 1}`))(topic);
+  }
+  if (!title || PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(title) || PRODUCT_LAUNCH_DEMO_COPY_RE.test(title)) {
+    PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+    return `${topic} ${index + 1}`;
+  }
+  PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+  return title;
+}
+
+function productLaunchKitAwareCardBody(
+  cardTitle: string,
+  rawBody: string,
+  topic: string,
+): string {
+  const body = String(rawBody ?? '').replace(/\s+/g, ' ').trim();
+  if (
+    !body
+    || PRODUCT_LAUNCH_GENERIC_CARD_BODY_RE.test(body)
+    || PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(body)
+    || PRODUCT_LAUNCH_DEMO_COPY_RE.test(body)
+  ) {
+    PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+    return `${cardTitle} — ${topic}에서 의미와 적용 기준을 한 문장으로 정리한다.`;
+  }
+  PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+  return body;
+}
+
+function slideLooksLikeProductLaunchKit(attrs: string, body: string): boolean {
+  const hay = `${attrs}\n${body}`;
+  return /\btpl-product-launch\b/i.test(hay)
+    || /\bhero-shot\b/i.test(hay)
+    || /\bprice-card\b/i.test(hay)
+    || /\btestimonial\b/i.test(hay);
+}
+
+function wipeProductLaunchDemoAmounts(html: string, ordinal?: string | null): string {
+  return String(html ?? '').replace(
+    /(<(?:div|span)\b[^>]*\bclass\s*=\s*["'][^"']*\bamount\b[^"']*["'][^>]*>)([\s\S]*?)(<\/(?:div|span)>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const plain = String(inner ?? '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (!plain) return full;
+      if (/[가-힣]/.test(plain)) return full;
+      if (!/^\$\d+/.test(plain)) return full;
+      const replacement = ordinal == null || ordinal === '' ? '' : String(ordinal);
+      return `${open}${replacement}${close}`;
+    },
+  );
+}
+
+function replaceProductLaunchHeroShotCssBrand(html: string, brand: string): string {
+  const safe = String(brand ?? '').replace(/["'\\<>]/g, '').trim().slice(0, 16);
+  const next = safe ? `"${safe}"` : '""';
+  return String(html ?? '').replace(/content\s*:\s*(["'])Halo v2\1/gi, `content:${next}`);
+}
+
+function fillProductLaunchKitSlide(
+  body: string,
+  input: StudioCreativeFillInput,
+): string {
+  let next = body;
+  const topic = topicKeywordForSynthBody(input.title || input.lead || input.kicker || '');
+  const resolvedTitle = productLaunchKitAwareTitle(input.title, topic);
+  const lines = biennaleFillLines({ ...input, title: resolvedTitle }, 6)
+    .map((line, index) => {
+      const title = productLaunchKitAwareCardTitle(line.title, topic, index);
+      return {
+        title,
+        body: productLaunchKitAwareCardBody(title, line.body, topic),
+      };
+    });
+  const heading = visibleDeckCopy(
+    next.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
+  );
+  if (
+    heading
+    && (
+      PRODUCT_LAUNCH_GENERIC_HEADING_RE.test(heading)
+      || PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(heading)
+      || /Halo|Pick your Halo|Meet Halo/i.test(heading)
+    )
+  ) {
+    next = replaceFirstHeadingText(next, resolvedTitle);
+  }
+  if (/\blede\b/i.test(next)) {
+    const lede = visibleDeckCopy(
+      /<[^>]*\blede\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (
+      !lede
+      || PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(lede)
+      || PRODUCT_LAUNCH_DEMO_COPY_RE.test(lede)
+      || PRODUCT_LAUNCH_GENERIC_CARD_BODY_RE.test(lede)
+    ) {
+      PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+      next = replaceFirstExactClassText(
+        next,
+        'lede',
+        input.lead || synthesizeTemplateCloneCoverLead(resolvedTitle),
+      );
+    }
+    PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+  }
+  if (/\bfeature-card\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'feature-card', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = block.replace(
+        /(<h[3-5]\b[^>]*>)([\s\S]*?)(<\/h[3-5]>)/i,
+        `$1${escapeHtml(resolved.title)}$3`,
+      );
+      filled = replaceFirstExactClassText(
+        filled,
+        'dim',
+        resolved.body || resolved.title,
+      );
+      if (filled === block) filled = fillOneCardPeer(block, resolved);
+      return filled;
+    });
+  }
+  if (/\bprice-card\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'price-card', lines, (block, line, index) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = block.replace(
+        /(<h[3-5]\b[^>]*>)([\s\S]*?)(<\/h[3-5]>)/i,
+        `$1${escapeHtml(resolved.title)}$3`,
+      );
+      filled = wipeProductLaunchDemoAmounts(
+        filled,
+        String(index + 1).padStart(2, '0'),
+      );
+      if (/<[uo]l\b/i.test(filled)) {
+        const bullets = compactTextLines(resolved.body, resolved.title).slice(0, 3);
+        filled = replaceListItems(filled, bullets.length > 0 ? bullets : [resolved.title]);
+      }
+      return filled;
+    });
+  }
+  if (/\bstep\b/i.test(next) && /<div\b[^>]*\bstep\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'step', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = block.replace(
+        /(<h[3-5]\b[^>]*>)([\s\S]*?)(<\/h[3-5]>)/i,
+        `$1${escapeHtml(resolved.title)}$3`,
+      );
+      filled = replaceFirstExactClassText(
+        filled,
+        'dim',
+        resolved.body || resolved.title,
+      );
+      return filled;
+    });
+  }
+  if (/\btestimonial\b/i.test(next)) {
+    const quote = visibleDeckCopy(
+      /<[^>]*\btestimonial\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (!quote || PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(quote) || PRODUCT_LAUNCH_DEMO_COPY_RE.test(quote)) {
+      PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+      next = replaceFirstExactClassText(
+        next,
+        'testimonial',
+        `${topic}을 쓰기 시작한 뒤, 작업이 한곳으로 모이기 시작했다.`,
+      );
+    }
+    PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+  }
+  if (/\bbrand\b/i.test(next)) {
+    const brand = visibleDeckCopy(
+      /<[^>]*\bbrand\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (/Halo/i.test(brand)) {
+      const short = productLaunchShortBrand(null, topic);
+      next = replaceFirstExactClassText(next, 'brand', short ? `◎ ${short}` : '');
+    }
+  }
+  next = next.replace(
+    /(<a\b[^>]*\bcta-btn\b[^>]*>)([\s\S]*?)(<\/a>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      if (/Halo|Pre-order/i.test(inner)) {
+        return `${open}${escapeHtml(`${topic} 시작하기`)}${close}`;
+      }
+      return full;
+    },
+  );
+  return next;
+}
+
+/**
+ * String-level Product Launch Halo catalog scrub. Kept separate from
+ * `healProductLaunchLeftoverCatalogCopy` so callers can invoke a pure
+ * strip without kit detection.
+ */
+export function stripProductLaunchCatalogDemoCopy(html: string): string {
+  let out = wipeProductLaunchDemoAmounts(String(html ?? ''));
+  out = out.replace(PRODUCT_LAUNCH_DEMO_COPY_RE, '');
+  out = out.replace(/\$\s*(?:179|279|399)\b/g, '');
+  return out
+    .replace(/<p\b[^>]*>\s*(?:<strong>\s*<\/strong>)?\s*<\/p>/gi, '')
+    .replace(/<span\b[^>]*>\s*<\/span>/gi, '');
+}
+
+/**
+ * 루프551 — Product Launch Halo leftover heal. Fires only on the
+ * product-launch fingerprint. Walks slide hosts; leftover Halo copy or
+ * generic Korean section labels are refilled via `fillProductLaunchKitSlide`
+ * then stripped. `.hero-shot` / `.price-card` / `.feature-card` shells stay.
+ * Never invents dollar KPIs.
+ */
+export function healProductLaunchLeftoverCatalogCopy(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsProductLaunchHalo(dest)) return dest;
+  const topic = topicKeywordForSynthBody(
+    deriveDeckCoverTitleFromBrief(String(brief ?? ''), null)
+    || String(brief ?? ''),
+  );
+  const brand = productLaunchShortBrand(brief, topic);
+  let out = replaceProductLaunchHeroShotCssBrand(dest, brand);
+  const spans = listHealSlideHostSpans(out);
+  if (spans.length === 0) {
+    return stripLeftoverCatalogDemoPhrases(stripProductLaunchCatalogDemoCopy(out));
+  }
+  const harvested = [...out.matchAll(/<(?:h[1-3]|div)\b[^>]*>([\s\S]*?)<\/(?:h[1-3]|div)>/gi)]
+    .map((match) => visibleDeckCopy(match[1] ?? ''))
+    .filter((text) => text.length >= 2 && text.length <= 40)
+    .filter((text) => (
+      !PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(text)
+      && !PRODUCT_LAUNCH_GENERIC_HEADING_RE.test(text)
+    ));
+  const outline = resolveTemplateCloneSlidesForDeterministicFill({
+    userInstruction: brief || harvested.join('\n') || '',
+    deckTitle: harvested[0] ?? null,
+    slideCount: spans.length,
+  });
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    if (!slideLooksLikeProductLaunchKit(span.attrs, body) && !PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(body)
+      && !PRODUCT_LAUNCH_GENERIC_HEADING_RE.test(visibleDeckCopy(
+        body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
+      ))) {
+      continue;
+    }
+    const hasLeftover = PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(body)
+      || PRODUCT_LAUNCH_DEMO_COPY_RE.test(body)
+      || PRODUCT_LAUNCH_GENERIC_HEADING_RE.test(visibleDeckCopy(
+        body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
+      ))
+      || PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(visibleDeckCopy(body));
+    PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+    if (!hasLeftover) continue;
+    const slide = outline[i] ?? outline[Math.min(i, outline.length - 1)];
+    const rawTitle = slide?.title || harvested[i] || harvested[0] || topic || '슬라이드';
+    const title = productLaunchKitAwareTitle(rawTitle, topic || rawTitle);
+    const nextBody = fillProductLaunchKitSlide(body, {
+      title,
+      lead: slide?.lead ?? synthesizeTemplateCloneCoverLead(title, brief),
+      bodyText: slide?.body ?? '',
+      kicker: slide?.kicker ?? '',
+      fillLines: templateCloneSlideFillLines(slide ?? { title }),
+    });
+    const scrubbed = stripProductLaunchCatalogDemoCopy(nextBody);
+    if (scrubbed === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${scrubbed}${out.slice(span.bodyEnd)}`;
+  }
+  return stripLeftoverCatalogDemoPhrases(stripProductLaunchCatalogDemoCopy(out));
+}
+
 function replaceGroveStatValue(block: string, text: string): string {
   return block.replace(
     /(<[^>]*\bgrove-stat-val\b[^>]*>)([\s\S]*?)(<\/[^>]+>)/i,
@@ -10497,6 +10919,9 @@ function fillSlideShell(
   body = fillBlockFrameNeoSlots(body, { title, lead, bodyText, kicker, fillLines });
   // 루프540 — 8-Bit Orbit tier/timeline/stat/quote/badge slots.
   body = fillEightBitOrbitKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
+  if (slideLooksLikeProductLaunchKit(shell.attrs, body)) {
+    body = fillProductLaunchKitSlide(body, { title, lead, bodyText, kicker, fillLines });
+  }
   body = stripCapsuleCatalogDemoCopy(body);
   body = stripBlockFrameNeoCatalogDemoCopy(body);
   body = stripEightBitOrbitCatalogDemoCopy(body);
@@ -11000,6 +11425,7 @@ export function buildTemplateClonedDeckHtml(
   out = stripBlockFrameNeoCatalogDemoCopy(out);
   out = stripBlueProfessionalCatalogDemoCopy(out);
   out = stripStudioCreativeCatalogDemoCopy(out);
+  out = stripProductLaunchCatalogDemoCopy(out);
   out = stripLeftoverCatalogDemoPhrases(out);
   out = renumberBiennalePagenums(out, filled.length);
   return out.trim() || null;
@@ -11271,7 +11697,7 @@ function cleanCloneTitle(title: string): string {
 export function looksLikeLeftoverTemplateDemoDeck(html: string): boolean {
   const text = String(html ?? '');
   if (!text.trim()) return false;
-  return /The landscape has shifted|The brands that will lead the next decade|Strategy\s*[·•]\s*Presentation|Of consumers distrust brand-created|The most radical thing a brand can do|Grove Presentation|\[Prepared by\]|\[Confidential\]|\[IMAGE PLACEHOLDER\]|Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Maya Chen|pnpm vitest auth|MMXXVI|Team Structure(?:\s*(?:&|&amp;)?\s*(?:Resource Allocation|Leadership))?|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|52\.5200°\s*N|Composed in kami|Apache-2\.0[\s\S]{0,800}Local-first[\s\S]{0,800}BYOK|\[?\[Author Name\]\]?|\[Year\]|this is the broadside style|Clarity of Purpose|The Journey Continues|A Framework for Bold Ideas|Neobrutalist Presentation Template|Quarterly Growth Metrics|Sentiment has shifted measurably|Bullish on three-year outlook|Aurora Institute|Field Office Quarterly|field-office\.co|Lin Ito|Slow software|Public attendance|Open programme|Domestic interfaces|The index, in six entries|A trend is a quiet question|See you in the autumn issue|Trend ledger, in long|Hand-set print|We started the bulletin|Software is a room|Tape Garden|SUPERCATALOG|CATALOGUE NO\. 7|We make small analog|Bloom Pedal|SUPER TAPE|MIX CHAIR|Ren Kobayashi|Mei Tanaka|See you in volume eight|made in matsumoto|Chroma Deck|We started Long Table|long-table\.co|Hana Brennan|Iris(?:\s|&|&amp;)+Theo|A Plate of Quiet|Roasted chestnut soup|Not a meal, an evening|Placeholder lede|The Editorial Desk|Studio & Salon|Twelve weeks of after-hours|Three rules we.?re keeping|User Research Synthesis|WHO WE ARE|GREAT WORK DOESN'T HAPPEN|Our studio pairs|Years of practice|\[Studio Name\]|A DISTINCTIVE VOICE|Lift In Engagement|Throughput Multiplier|Active Placeholders|Layer alpha|VALUES ARE PLACEHOLDER|eight pages, eight layouts|FLIP THE|PLACEHOLDER METRIC|Generic placeholder copy throughout/i.test(
+  return /The landscape has shifted|The brands that will lead the next decade|Strategy\s*[·•]\s*Presentation|Of consumers distrust brand-created|The most radical thing a brand can do|Grove Presentation|\[Prepared by\]|\[Confidential\]|\[IMAGE PLACEHOLDER\]|Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Maya Chen|pnpm vitest auth|MMXXVI|Team Structure(?:\s*(?:&|&amp;)?\s*(?:Resource Allocation|Leadership))?|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|52\.5200°\s*N|Composed in kami|Apache-2\.0[\s\S]{0,800}Local-first[\s\S]{0,800}BYOK|\[?\[Author Name\]\]?|\[Year\]|this is the broadside style|Clarity of Purpose|The Journey Continues|A Framework for Bold Ideas|Neobrutalist Presentation Template|Quarterly Growth Metrics|Sentiment has shifted measurably|Bullish on three-year outlook|Aurora Institute|Field Office Quarterly|field-office\.co|Lin Ito|Slow software|Public attendance|Open programme|Domestic interfaces|The index, in six entries|A trend is a quiet question|See you in the autumn issue|Trend ledger, in long|Hand-set print|We started the bulletin|Software is a room|Tape Garden|SUPERCATALOG|CATALOGUE NO\. 7|We make small analog|Bloom Pedal|SUPER TAPE|MIX CHAIR|Ren Kobayashi|Mei Tanaka|See you in volume eight|made in matsumoto|Chroma Deck|We started Long Table|long-table\.co|Hana Brennan|Iris(?:\s|&|&amp;)+Theo|A Plate of Quiet|Roasted chestnut soup|Not a meal, an evening|Placeholder lede|The Editorial Desk|Studio & Salon|Twelve weeks of after-hours|Three rules we.?re keeping|User Research Synthesis|WHO WE ARE|GREAT WORK DOESN'T HAPPEN|Our studio pairs|Years of practice|\[Studio Name\]|A DISTINCTIVE VOICE|Lift In Engagement|Throughput Multiplier|Active Placeholders|Layer alpha|VALUES ARE PLACEHOLDER|eight pages, eight layouts|FLIP THE|PLACEHOLDER METRIC|Generic placeholder copy throughout|Halo v2|Studio-grade spatial audio|halo\.audio|Marques Lin|Pre-order Halo/i.test(
     text,
   );
 }

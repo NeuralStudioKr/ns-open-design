@@ -44,7 +44,11 @@ export const BLOCK_FRAME_SLOT_MAP: TemplateCloneSlotMap = mapOf(
 );
 
 export const PRODUCT_LAUNCH_SLOT_MAP: TemplateCloneSlotMap = mapOf(
-  ['example-html-ppt-product-launch', 'html-ppt-product-launch'],
+  [
+    'example-html-ppt-product-launch',
+    'html-ppt-product-launch',
+    'product-launch-halo',
+  ],
   ['grid', 'g3', 'pricing-grid', 'feature-grid'],
   ['feature-card', 'price-card', 'pricing-card', 'card'],
   /\btpl-product-launch\b[\s\S]{0,8000}?\b(?:price-card|feature-card)\b/i,
