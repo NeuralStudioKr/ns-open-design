@@ -1269,6 +1269,18 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("artifact_short_response_persisted");
   });
 
+  it("루프553 · slide-count short response is retried or blocked before save", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const start = source.indexOf("const slideRegression = findClientSlideCountRegression({");
+    expect(start).toBeGreaterThan(0);
+    const block = source.slice(start, start + 3200);
+    expect(block).toContain("shouldAutoRetryShortSlideResponse({");
+    expect(block).toContain("kind: 'needs-short-response-retry'");
+    expect(block).toContain("retryKind: 'slide-count'");
+    expect(block).toContain("kind: 'artifact-regression'");
+    expect(block).not.toContain("formatProjectArtifactShortResponsePersistedNotice");
+  });
+
   it("루프552 · too-short HTML uses the same retry gate then LOOK seed fallback", () => {
     const source = readSource("src/components/ProjectView.tsx");
     expect(source).toContain("resolveTooShortHtmlArtifactPersist({");

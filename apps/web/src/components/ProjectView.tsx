@@ -6720,18 +6720,43 @@ export function ProjectView({
                 bannerKind: 'slide-count',
               };
             }
-            // 루프547 · warn 경로 — substance-rich prior 위 짧지만 온전한
-            // fill(≥2 slides · non-strict)이 왔을 때 저장 자체를 막지 않고
-            // 진행한다. 사용자에게는 diagnostic 배너로 "장 수가 줄었다"고 알려
-            // 필요 시 재요청하게 한다.
-            surfaceChatVisibleError(
-              formatProjectArtifactShortResponsePersistedNotice(
-                slideRegression.fileName,
-                slideRegression.priorCount,
-                slideRegression.newCount,
-              ),
-              'artifact_short_response_persisted',
-            );
+            const requestedSpec = extractRequestedSlideCountSpecFromMessages(messagesRef.current);
+            const requestedCount =
+              requestedSpec?.min
+              ?? requestedSpec?.max
+              ?? null;
+            if (shouldAutoRetryShortSlideResponse({
+              seedCount: Math.max(slideRegression.priorCount, requestedSpec?.max ?? 0),
+              returnedCount: slideRegression.newCount,
+              requestedSlideCount: requestedCount,
+              alreadyRetried: runAutoRetryForShortResponseRef.current,
+              scopedEdit: strictSlideCount,
+              isCreateOrFullFill:
+                runTemplateCloneContentFillRef.current
+                || runTemplateClonePromptFillRef.current
+                || slideOnlyMvp,
+            })) {
+              devLog.warn('[teamver] slide-count short response auto-retry armed', {
+                fileName: slideRegression.fileName,
+                priorCount: slideRegression.priorCount,
+                newCount: slideRegression.newCount,
+                requested: requestedCount,
+              });
+              return {
+                kind: 'needs-short-response-retry',
+                fileName: slideRegression.fileName,
+                producedCount: slideRegression.newCount,
+                expectedCount: Math.max(slideRegression.priorCount, requestedSpec?.max ?? 0),
+                reason: slideRegression.reason,
+                retryKind: 'slide-count',
+              };
+            }
+            return {
+              kind: 'artifact-regression',
+              fileName: slideRegression.fileName,
+              reason: slideRegression.reason,
+              bannerKind: 'slide-count',
+            };
           }
         } catch {
           // Soft-fail — missing prior HTML should not block otherwise-valid saves.
