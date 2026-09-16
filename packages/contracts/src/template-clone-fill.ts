@@ -10533,7 +10533,18 @@ export function buildTemplateClonedDeckHtml(
     if (
       hint != null
       && hint > workingSlides.length
-      && !workingSlides.every((slide) => isPlaceholderCloneBody(slide.body))
+      // 루프547 · slide.body가 undefined여도 items/lead가 있으면 substance로
+      // 인정. 이전 검사(`every(slide => isPlaceholderCloneBody(slide.body))`)는
+      // items-only cards outline(body 없음)을 empty placeholder로 오판해 pad
+      // 조건을 통과하지 못했다. items·lead·kicker 중 하나라도 substance면 pad
+      // 진행.
+      && !workingSlides.every((slide) => {
+        if (!isPlaceholderCloneBody(slide.body)) return false;
+        if (Array.isArray(slide.items) && slide.items.length > 0) return false;
+        if (typeof slide.lead === 'string' && slide.lead.trim()) return false;
+        if (typeof slide.kicker === 'string' && slide.kicker.trim()) return false;
+        return true;
+      })
     ) {
       padStartIndex = workingSlides.length;
       while (workingSlides.length < hint) {

@@ -130,6 +130,24 @@ export function formatProjectArtifactRegressionRejectedError(
     : 'The AI returned a short draft instead of a full slide deck, so it was not saved. Your existing deck is preserved — please try again.';
 }
 
+/**
+ * 루프547 · short-response persisted notice.
+ *
+ * substance-rich prior 위에 짧지만 온전한 다중-slide fill (non-strict + newCount≥2)이
+ * 왔을 때 저장을 막지 않고 그대로 진행하되, "장 수가 줄었으니 필요 시 다시 시도"라고
+ * 알린다. reject 배너와 달리 결과가 저장됐음을 명시해 사용자 혼동 방지.
+ */
+export function formatProjectArtifactShortResponsePersistedNotice(
+  _fileName: string,
+  priorCount: number,
+  newCount: number,
+): string {
+  const embed = isTeamverEmbedMode();
+  return embed
+    ? `AI가 이번 응답에서 슬라이드 수를 ${priorCount} → ${newCount}장으로 줄여 반환했습니다. 결과는 저장했지만, 부족한 슬라이드가 있다면 "다시 시도"로 재요청할 수 있어요.`
+    : `The AI returned ${newCount} slides instead of ${priorCount}. The result was saved; if you need the full deck, please try again.`;
+}
+
 export function formatProjectArtifactSaveFailedError(
   fileName: string,
   detail?: ProjectArtifactSaveErrorDetail,

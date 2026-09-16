@@ -255,6 +255,68 @@ describe('findClientSlideCountRegression · 루프279 substance-rich exemption',
     });
     expect(result).toMatchObject({ priorCount: 8, newCount: 3 });
   });
+
+  /**
+   * 루프547 · severity 분리 pin.
+   *
+   * substance-rich prior 위에 짧지만 온전한 다중-slide fill이 왔을 때:
+   * - non-strict + newCount≥2 → severity='warn' (저장 진행 · notice 배너)
+   * - non-strict + newCount≤1 → severity='reject' (기존 거절 유지)
+   * - strict 모드 · 어떤 drop이든 → severity='reject'
+   * - low-substance prior → null (bypass 유지 · severity 없음)
+   */
+  it('루프547 · non-strict + substance-rich prior + newCount≥2 → severity=warn', () => {
+    // 8-slide substance-rich prior → 4-slide fill (loop279 substance-rich-
+    // exemption을 벗어난 얇은 4장 · dropped=4≥3 hard collapse).
+    const thinFourSlide = [
+      '<!doctype html><html lang="ko"><body>',
+      '<section class="slide"><h1>표지</h1><p>짧은 표지</p></section>',
+      '<section class="slide"><h2>문제</h2><p>한 문장.</p></section>',
+      '<section class="slide"><h2>해결</h2><p>한 문장.</p></section>',
+      '<section class="slide"><h2>다음</h2><p>마무리.</p></section>',
+      '</body></html>',
+    ].join('');
+    const result = findClientSlideCountRegression({
+      fileName: 'deck.html',
+      htmlBody: thinFourSlide,
+      priorHtml: priorFullEightSlides,
+    });
+    expect(result).toMatchObject({ priorCount: 8, newCount: 4, severity: 'warn' });
+  });
+
+  it('루프547 · non-strict + substance-rich prior + newCount≤1 → severity=reject', () => {
+    // 완전 collapse — 1장으로 줄어들면 여전히 저장 거절.
+    const oneSlideCover = [
+      '<!doctype html><html lang="ko"><body>',
+      '<section class="slide"><h1>표지</h1><p>한 줄 표지.</p></section>',
+      '</body></html>',
+    ].join('');
+    const result = findClientSlideCountRegression({
+      fileName: 'deck.html',
+      htmlBody: oneSlideCover,
+      priorHtml: priorFullEightSlides,
+    });
+    expect(result).toMatchObject({ priorCount: 8, newCount: 1, severity: 'reject' });
+  });
+
+  it('루프547 · strict(image-embed) + substance-rich prior + newCount≥2 → severity=reject', () => {
+    // 이미지·comment scoped 턴은 스코프가 극도로 좁아 어떤 slide drop도 reject.
+    const thinFourSlide = [
+      '<!doctype html><html lang="ko"><body>',
+      '<section class="slide"><h1>표지</h1><p>짧은 표지</p></section>',
+      '<section class="slide"><h2>문제</h2><p>한 문장.</p></section>',
+      '<section class="slide"><h2>해결</h2><p>한 문장.</p></section>',
+      '<section class="slide"><h2>다음</h2><p>마무리.</p></section>',
+      '</body></html>',
+    ].join('');
+    const result = findClientSlideCountRegression({
+      fileName: 'deck.html',
+      htmlBody: thinFourSlide,
+      priorHtml: priorFullEightSlides,
+      strict: true,
+    });
+    expect(result).toMatchObject({ priorCount: 8, newCount: 4, severity: 'reject' });
+  });
 });
 
 describe('shouldSkipDaemonArtifactStubGuard · 루프280', () => {

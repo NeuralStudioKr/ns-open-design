@@ -498,6 +498,7 @@ import {
   formatProjectConversationErrorForUser,
   formatProjectMessagesLoadError,
   formatProjectArtifactRegressionRejectedError,
+  formatProjectArtifactShortResponsePersistedNotice,
   type ArtifactRegressionBannerKind,
   formatProjectArtifactRejectedError,
   formatProjectArtifactSaveFailedError,
@@ -3124,7 +3125,21 @@ export function findClientSlideCountRegression(input: {
   /** Same brief leftover-catalog detection uses on persist. */
   healBrief?: string | null;
   healTitle?: string | null;
-}): { fileName: string; priorCount: number; newCount: number; reason: string } | null {
+}): {
+  fileName: string;
+  priorCount: number;
+  newCount: number;
+  reason: string;
+  /**
+   * 루프547 — severity separator:
+   * - `reject`: 완전 collapse(newCount ≤ 1) 또는 strict(이미지/comment scoped)
+   *   턴의 어떤 drop이든. 저장 거절 + 배너 (기존 동작 유지).
+   * - `warn`: substance-rich prior 위에 짧지만 온전한 다중-slide fill이 왔을
+   *   때. 저장은 진행하고 사용자에게 "슬라이드 수가 줄었으니 필요 시 다시 시도"
+   *   notice 배너로 안내. 사용자에게 결과물이 나오도록.
+   */
+  severity: 'reject' | 'warn';
+} | null {
   if (input.allowSlideCountReduction) return null;
   if (isTemplateCloneLookSeedFile(input.priorProjectFile)) return null;
   if (priorDeckAllowsCompactReplacement(input.priorHtml, input.healBrief)) return null;
@@ -3162,13 +3177,24 @@ export function findClientSlideCountRegression(input: {
     ? dropped >= 1
     : newCount <= Math.floor(priorCount * 0.5) || dropped >= 3;
   if (!collapsedHard) return null;
+  // 루프547 · severity 결정.
+  // - strict(이미지/comment scoped) 턴은 어떤 drop도 reject: 스코프가 극도로
+  //   좁아 슬라이드 하나라도 사라지면 스포일러급 데이터 손실.
+  // - non-strict에서 newCount≤1은 여전히 reject (완전 collapse).
+  // - 그 외 substance-rich prior 위 부분 collapse는 warn — 저장은 진행하고
+  //   사용자에게 알림.
+  const severity: 'reject' | 'warn' =
+    input.strict || newCount <= 1 ? 'reject' : 'warn';
   return {
     fileName,
     priorCount,
     newCount,
+    severity,
     reason:
       `New artifact for "${fileName}" has ${newCount} slides, but the current deck has ${priorCount}. ` +
-      'Slide-count collapse was blocked so the existing deck is preserved.',
+      (severity === 'reject'
+        ? 'Slide-count collapse was blocked so the existing deck is preserved.'
+        : 'Slide-count shrank but the fill was persisted with a short-response notice.'),
   };
 }
 
@@ -6474,19 +6500,34 @@ export function ProjectView({
             healTitle: project.name || '슬라이드',
           });
           if (slideRegression) {
-            devLog.warn('[teamver] blocked slide-count collapse before save', {
+            devLog.warn('[teamver] slide-count regression detected', {
               fileName: slideRegression.fileName,
               priorCount: slideRegression.priorCount,
               newCount: slideRegression.newCount,
+              severity: slideRegression.severity,
               commentScoped: persistCommentAttachments.length > 0,
               strict: strictSlideCount,
             });
-            return {
-              kind: 'artifact-regression',
-              fileName: slideRegression.fileName,
-              reason: slideRegression.reason,
-              bannerKind: 'slide-count',
-            };
+            if (slideRegression.severity === 'reject') {
+              return {
+                kind: 'artifact-regression',
+                fileName: slideRegression.fileName,
+                reason: slideRegression.reason,
+                bannerKind: 'slide-count',
+              };
+            }
+            // 루프547 · warn 경로 — substance-rich prior 위 짧지만 온전한
+            // fill(≥2 slides · non-strict)이 왔을 때 저장 자체를 막지 않고
+            // 진행한다. 사용자에게는 diagnostic 배너로 "장 수가 줄었다"고 알려
+            // 필요 시 재요청하게 한다.
+            surfaceChatVisibleError(
+              formatProjectArtifactShortResponsePersistedNotice(
+                slideRegression.fileName,
+                slideRegression.priorCount,
+                slideRegression.newCount,
+              ),
+              'artifact_short_response_persisted',
+            );
           }
         } catch {
           // Soft-fail — missing prior HTML should not block otherwise-valid saves.
