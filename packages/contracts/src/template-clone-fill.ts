@@ -1585,13 +1585,16 @@ export function synthesizeTemplateCloneSlideBody(
     ...result,
     lead: scrubRawGridFinancialClicheText(result.lead),
     body: scrubRawGridFinancialClicheText(result.body),
-    items: result.items.map((item, itemIndex) => ({
-      title: scrubRawGridFinancialClicheText(
-        item.title,
-        String(itemIndex + 1).padStart(2, '0'),
-      ),
-      body: item.body ? scrubRawGridFinancialClicheText(item.body) : item.body,
-    })),
+    items: result.items.map((item, itemIndex) => {
+      const next: TemplateCloneSlideItem = {
+        title: scrubRawGridFinancialClicheText(
+          item.title,
+          String(itemIndex + 1).padStart(2, '0'),
+        ),
+      };
+      if (item.body) next.body = scrubRawGridFinancialClicheText(item.body);
+      return next;
+    }),
   };
 }
 
