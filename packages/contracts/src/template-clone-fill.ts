@@ -818,6 +818,14 @@ export function applyTemplateClonePromptFillLookMerge(
     brief?: string | null;
     maxSlides?: number;
     deckTitle?: string | null;
+    /**
+     * 루프547 — Auto-pad the merged deck up to the seed shell count when
+     * the model outline is shorter. Defaults to `true` so the persist
+     * pipeline never surfaces a legitimate short fill as
+     * `artifact_regression / slide-count`. Callers that want the raw
+     * (short) merge behavior can pass `false` explicitly.
+     */
+    padToSeedSlideCount?: boolean;
   } = {},
 ): { html: string; title: string } | null {
   const seed = String(seedHtml ?? '').trim();
@@ -830,11 +838,13 @@ export function applyTemplateClonePromptFillLookMerge(
   const title =
     sanitizeTemplateCloneDeckTitle(options.deckTitle)
     || outline.title;
+  const padToSeedSlideCount = options.padToSeedSlideCount !== false;
   const html = buildTemplateClonedDeckHtml(seed, outline.slides, {
     title,
     ...(options.templateId != null ? { templateId: options.templateId } : {}),
     ...(options.brief != null ? { brief: options.brief } : {}),
     ...(options.maxSlides != null ? { maxSlides: options.maxSlides } : {}),
+    padToSeedSlideCount,
   });
   if (!html?.trim()) return null;
   return { html, title };
@@ -4634,6 +4644,13 @@ export function dropEmptyDeckSlides(html: string): string {
     const span = spans[i]!;
     const body = out.slice(span.bodyStart, span.bodyEnd);
     if (!slideBodyLooksEmpty(body)) continue;
+    // 루프547 · pad marker gate — short-response auto-pad section은 synth
+    // 문장이 채워져 있어야 정상이지만, 특정 kit에서 fillSlideShell이 슬롯을
+    // 잃어 body가 빈 것처럼 판정되어도 drop되면 저장 후 client 가드가 다시
+    // slide-count 회귀를 발생시킨다. 명시적으로 pad marker가 있으면 유지.
+    if (new RegExp(`${TEAMVER_SHORT_RESPONSE_PAD_ATTR}\\s*=\\s*"${TEAMVER_SHORT_RESPONSE_PAD_VALUE}"`, 'i').test(span.attrs)) {
+      continue;
+    }
     // Never delete the sole remaining slide.
     const remaining = listHealSlideHostSpans(out);
     if (remaining.length <= 1) break;
@@ -9095,21 +9112,78 @@ export function healBlockFrameInventedHeroShells(html: string): string {
   return neutralizeBlockFrameEnglishHeroCta(next);
 }
 
-/** Keep chart-svg flex sibling; blank demo number / month glyphs inside. */
-function neutralizeBlockFrameChartSvgDemoMetrics(html: string): string {
+/**
+ * Keep chart-svg flex sibling; blank demo number / month / quarter glyphs
+ * inside and equalize colored bar heights so the surviving axes read as an
+ * empty placeholder frame rather than a growth-implying dummy chart.
+ *
+ * 루프547 — Block Frame 예시 슬라이드 4의 X 축 `Q1..Q5` 라벨과 3-계열
+ * (분홍/파랑/초록) 성장형 막대가 non-metric 프로즈 슬라이드에 그대로 남는
+ * 회귀를 잡기 위한 확장. `chart-svg` shell은 그대로 유지하고, 축 라벨과
+ * 막대의 데모 시멘틱만 wipe한다.
+ */
+export function neutralizeBlockFrameChartSvgDemoMetrics(html: string): string {
   return String(html ?? '').replace(
     /(<svg\b[^>]*\bclass\s*=\s*["'][^"']*\bchart-svg\b[^"']*["'][^>]*>)([\s\S]*?)(<\/svg>)/gi,
     (_m, open: string, inner: string, close: string) => {
-      const cleaned = String(inner)
+      let cleaned = String(inner)
         .replace(/>(\s*\+?\d+(?:\.\d+)?%?\s*)</g, '><')
         .replace(/>(\s*\d+(?:\.\d+)?[MBK]\s*)</gi, '><')
         .replace(
           />(\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s*)</gi,
           '><',
-        );
+        )
+        // 루프547 — Q1..Q9 (optionally followed by an FY year "Q1 2026")
+        // are demo axis labels; they never correspond to a Korean deck
+        // topic. Blank them so only the axis shell remains.
+        .replace(/>(\s*Q[1-9](?:\s*20\d{2})?\s*)</gi, '><');
+      cleaned = equalizeBlockFrameChartBars(cleaned);
       return `${open}${cleaned}${close}`;
     },
   );
+}
+
+/**
+ * 루프547 — Colored `<rect>` bars inside `chart-svg` sit at a shared
+ * baseline (`y + height` constant). When healed as a placeholder chart,
+ * equalize every colored bar to the mean height so the surviving frame
+ * no longer visually implies quarterly growth. Axes / grid lines are
+ * `<line>` elements and are untouched.
+ */
+function equalizeBlockFrameChartBars(svgInner: string): string {
+  const barRe = /<rect\b[^>]*\bfill\s*=\s*(["'])#[0-9A-Fa-f]{3,8}\1[^>]*\/?>/g;
+  const matches = Array.from(svgInner.matchAll(barRe));
+  if (matches.length < 2) return svgInner;
+  const infos = matches
+    .map((m) => {
+      const tag = m[0];
+      const yM = /\by\s*=\s*(["'])(-?\d+(?:\.\d+)?)\1/.exec(tag);
+      const hM = /\bheight\s*=\s*(["'])(-?\d+(?:\.\d+)?)\1/.exec(tag);
+      if (!yM || !hM) return null;
+      const y = Number(yM[2]);
+      const h = Number(hM[2]);
+      if (!Number.isFinite(y) || !Number.isFinite(h) || h <= 0) return null;
+      return { y, h };
+    })
+    .filter((x): x is { y: number; h: number } => x !== null);
+  if (infos.length < 2) return svgInner;
+  // Require a shared baseline (`y + h` roughly constant) — this is the
+  // Block Frame convention. If the SVG uses some other bar layout,
+  // bail out so we don't mangle it.
+  const baselines = infos.map((i) => i.y + i.h);
+  const baseline = baselines[0] ?? 0;
+  if (!Number.isFinite(baseline)) return svgInner;
+  if (!baselines.every((b) => Math.abs(b - baseline) < 1)) return svgInner;
+  const meanH = Math.max(
+    1,
+    Math.round(infos.reduce((sum, i) => sum + i.h, 0) / infos.length),
+  );
+  const newY = baseline - meanH;
+  return svgInner.replace(barRe, (tag) => (
+    tag
+      .replace(/\by\s*=\s*(["'])-?\d+(?:\.\d+)?\1/, `y="${newY}"`)
+      .replace(/\bheight\s*=\s*(["'])-?\d+(?:\.\d+)?\1/, `height="${meanH}"`)
+  ));
 }
 
 /**
@@ -9884,6 +9958,28 @@ function listLinesFromCardFills(lines: TemplateCloneCardFillLine[]): string[] {
   }).filter(Boolean);
 }
 
+/**
+ * 루프547 — Stamp `data-teamver-pad="short-response"` on a filled section
+ * so downstream healers / drop-empty passes / persist diagnostics can
+ * identify auto-padded slides. Idempotent — safe to call twice.
+ */
+function stampShortResponsePadMarker(sectionHtml: string): string {
+  if (!sectionHtml) return sectionHtml;
+  if (new RegExp(`${TEAMVER_SHORT_RESPONSE_PAD_ATTR}\\s*=\\s*"${TEAMVER_SHORT_RESPONSE_PAD_VALUE}"`, 'i').test(sectionHtml)) {
+    return sectionHtml;
+  }
+  return sectionHtml.replace(
+    /<section\b/i,
+    `<section ${TEAMVER_SHORT_RESPONSE_PAD_ATTR}="${TEAMVER_SHORT_RESPONSE_PAD_VALUE}"`,
+  );
+}
+
+/** 루프547 · pad marker check — 다른 healer / drop 로직에서 gate로 사용. */
+export function slideSectionIsShortResponsePad(sectionHtml: string): boolean {
+  if (!sectionHtml) return false;
+  return new RegExp(`${TEAMVER_SHORT_RESPONSE_PAD_ATTR}\\s*=\\s*"${TEAMVER_SHORT_RESPONSE_PAD_VALUE}"`, 'i').test(sectionHtml);
+}
+
 function fillSlideShell(
   shell: SlideShell,
   content: TemplateCloneSlideContent,
@@ -10354,10 +10450,29 @@ function enrichSparseSlideForShell(
   return enriched;
 }
 
+/** 루프547 · pad marker attribute for auto-padded short-response slides. */
+export const TEAMVER_SHORT_RESPONSE_PAD_ATTR = 'data-teamver-pad';
+export const TEAMVER_SHORT_RESPONSE_PAD_VALUE = 'short-response';
+
 export function buildTemplateClonedDeckHtml(
   exampleHtml: string,
   slides: TemplateCloneSlideContent[],
-  options: { title?: string; maxSlides?: number; templateId?: string | null; brief?: string | null } = {},
+  options: {
+    title?: string;
+    maxSlides?: number;
+    templateId?: string | null;
+    brief?: string | null;
+    /**
+     * 루프547 — Short-response auto-pad. When the model outline has fewer
+     * slides than the seed shells (e.g. 6 outline vs 10 seed), extend
+     * workingSlides up to the seed shell count so `client
+     * findClientSlideCountRegression` (`substance-rich prior`) doesn't
+     * reject a legitimate short fill. Padded slides receive
+     * `data-teamver-pad="short-response"` so downstream healers /
+     * diagnostics can distinguish them from real fill.
+     */
+    padToSeedSlideCount?: boolean;
+  } = {},
 ): string | null {
   const source = stripScriptsAndNav(String(exampleHtml ?? '').trim());
   if (!source) return null;
@@ -10386,8 +10501,16 @@ export function buildTemplateClonedDeckHtml(
   //   outlines — 15 is not a deliverable when the user asked for 8–10.
   // - Explicit user maxSlides may expand a short outline.
   // - Never default to the template's natural page count/order.
-  const hint = options.maxSlides != null
-    ? Math.min(20, Math.max(1, options.maxSlides))
+  // 루프547 — Short-response auto-pad. When the caller opted in and
+  // outline length falls below seed shell count, treat seed shell count as
+  // the implicit hint. Preserves explicit `maxSlides` when higher/lower.
+  const effectiveMaxSlides = options.padToSeedSlideCount === true
+    && options.maxSlides == null
+    && shells.length > 0
+    ? shells.length
+    : options.maxSlides;
+  const hint = effectiveMaxSlides != null
+    ? Math.min(20, Math.max(1, effectiveMaxSlides))
     : null;
   const honorShrink = hint != null && hint >= 5;
   const deckTitle =
@@ -10396,6 +10519,9 @@ export function buildTemplateClonedDeckHtml(
     || '슬라이드';
 
   let workingSlides: TemplateCloneSlideContent[];
+  // 루프547 · pad start index — marker attribute를 이 index 이후 filled
+  // section에만 삽입한다. -1이면 pad 없음.
+  let padStartIndex = -1;
   if (cleanedSlides.length > 0) {
     workingSlides = rewriteInstructionParrotingSlideTitles(
       cleanedSlides.slice(0, honorShrink ? hint : 20),
@@ -10409,6 +10535,7 @@ export function buildTemplateClonedDeckHtml(
       && hint > workingSlides.length
       && !workingSlides.every((slide) => isPlaceholderCloneBody(slide.body))
     ) {
+      padStartIndex = workingSlides.length;
       while (workingSlides.length < hint) {
         const n = workingSlides.length + 1;
         const label = n === 1 ? deckTitle : `${deckTitle} · ${n}`;
@@ -10471,7 +10598,15 @@ export function buildTemplateClonedDeckHtml(
     const content = enrichedSlides[index] ?? {
       title: index === 0 ? deckTitle : `${deckTitle} · ${index + 1}`,
     };
-    return fillSlideShell(shell, content, index, slotMap);
+    const section = fillSlideShell(shell, content, index, slotMap);
+    // 루프547 · pad marker · outline이 seed shell 개수보다 짧아서 auto-pad된
+    // slide만 `data-teamver-pad="short-response"`로 표시. leftover healer /
+    // dropEmptyDeckSlides가 이 마커를 보면 스크럽 대상에서 제외한다 (아래
+    // stampShortResponsePadMarker에서 attribute 삽입).
+    if (padStartIndex >= 0 && index >= padStartIndex) {
+      return stampShortResponsePadMarker(section);
+    }
+    return section;
   });
 
   let out = replaceSlideBlocks(source, shells, filled);

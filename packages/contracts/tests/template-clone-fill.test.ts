@@ -55,6 +55,7 @@ import {
   neutralizeBlockFrameInventedHeroTitleHighlight,
   stripInventedBlockFramePlatformCards,
   neutralizeBlockFrameEnglishHeroCta,
+  neutralizeBlockFrameChartSvgDemoMetrics,
   healBlockFrameInventedHeroShells,
   healEightBitOrbitLeftoverCatalogCopy,
   fillEightBitOrbitKitSlide,
@@ -119,6 +120,9 @@ import {
   hoistCloneSlidesOutOfFlexTrack,
   resolveTemplateCloneSlotMap,
   stripSynthRotationSaltLeaks,
+  slideSectionIsShortResponsePad,
+  TEAMVER_SHORT_RESPONSE_PAD_ATTR,
+  TEAMVER_SHORT_RESPONSE_PAD_VALUE,
 } from '../src/template-clone-fill.js';
 import { pinDeckSlidesToFixedCanvas } from '../src/html/deck-fixed-canvas.js';
 import { hoistDeckHostStylesToHead } from '../src/html/deck-template-look-css.js';
@@ -1911,6 +1915,83 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(healed).not.toMatch(/사업자등록번호/);
     expect(healed).toMatch(/기업 도입 문의/);
     expect(healed).toMatch(/팀의 AI 업무 공간을 지금 시작/);
+  });
+
+  // 루프547 — Block Frame chart-svg 데모 잔재 (X 축 Q1..Q5 + 3-계열 성장형
+  // 막대)가 non-metric 프로즈 슬라이드에 그대로 남는 사용자 케이스.
+  // 힐 후: chart-svg shell 유지 · Q1..Q5 wipe · 15개 컬러 막대 y/height 균등화.
+  it('루프547: Block-frame chart-svg strips Q1..Q5 labels and equalizes demo bars', async () => {
+    const html = await readFile(
+      new URL('./fixtures/loop547-block-frame-q1-q5.html', import.meta.url),
+      'utf8',
+    );
+    const healed = neutralizeBlockFrameChartSvgDemoMetrics(html);
+    // Chart shell must survive so `.data-column` sibling does not collapse.
+    expect(healed).toMatch(/class="chart-svg"/);
+    // X-axis Q1..Q5 demo labels must be blanked (only axis labels use `Q\d+`).
+    expect(healed).not.toMatch(/>Q[1-9](?:\s*20\d{2})?</);
+    // Y-axis 0/33/66/100 demo labels blanked by the existing digit rule.
+    expect(healed).not.toMatch(/>\s*(?:0|33|66|100)\s*</);
+    // All 15 colored bars must be equalized: single `y` and single `height`
+    // across the pink / blue / green series.
+    const rectTags = Array.from(
+      healed.matchAll(/<rect\b[^>]*\bfill\s*=\s*(["'])#[0-9A-Fa-f]{6}\1[^>]*>/gi),
+    ).map((m) => m[0]);
+    expect(rectTags.length).toBe(15);
+    const heights = new Set(
+      rectTags
+        .map((tag) => /\bheight\s*=\s*(["'])(-?\d+(?:\.\d+)?)\1/.exec(tag)?.[2])
+        .filter(Boolean),
+    );
+    const ys = new Set(
+      rectTags
+        .map((tag) => /\by\s*=\s*(["'])(-?\d+(?:\.\d+)?)\1/.exec(tag)?.[2])
+        .filter(Boolean),
+    );
+    expect(heights.size, 'expected uniform bar height').toBe(1);
+    expect(ys.size, 'expected uniform bar y').toBe(1);
+    // Baseline preserved (y + h = 280 in the example.html viewBox).
+    const uniqH = Number([...heights][0]);
+    const uniqY = Number([...ys][0]);
+    expect(uniqY + uniqH).toBe(280);
+    // Axes (`<line>` elements) must be untouched by the bar equalizer.
+    expect(healed).toMatch(/<line[^>]+y1="280"[^>]+y2="280"/);
+    expect(healed).toMatch(/<line[^>]+y1="20"[^>]+y2="280"/);
+  });
+
+  // 루프547 — full-pipeline pin: chart slide is Korean prose ("운영과 보안")
+  // → non-metric branch runs `neutralizeBlockFrameChartSvgDemoMetrics`. Q1..Q5
+  // must not survive into the persisted deck, and chart-svg shell stays.
+  it('루프547: buildTemplateClonedDeckHtml drops Q1..Q5 from block-frame chart slide', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-block-frame/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const slides = Array.from({ length: 10 }, (_, i) => ({
+      title: i === 3 ? '운영과 보안' : `슬라이드 ${i + 1}`,
+      body:
+        i === 3
+          ? '전환 — 방문에서 문의\n활성 — 핵심 기능 반복\n품질 — 결과물 완성도'
+          : '포인트 A\n포인트 B\n포인트 C',
+      roleHint: i === 3 ? 'chart' : 'cards',
+      kicker: 'OVERVIEW',
+      lead: 'lead',
+    }));
+    const cloned = buildTemplateClonedDeckHtml(html, slides, {
+      title: 'Teamver 소개',
+      templateId: 'example-html-ppt-zhangzara-block-frame',
+      brief: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드',
+    });
+    expect(cloned).toBeTruthy();
+    const slide4 = /<section\b[^>]*\bslide-4\b[\s\S]*?<\/section>/i.exec(cloned ?? '');
+    expect(slide4?.[0], 'expected .slide-4 section').toBeTruthy();
+    // chart-svg shell still present (regression guard for loop534).
+    expect(slide4![0]).toContain('chart-svg');
+    // No Q\d+ demo labels remain anywhere in the persisted deck.
+    expect(cloned).not.toMatch(/>Q[1-9](?:\s*20\d{2})?</);
   });
 
   it('loop421 — empty-brief padding synthesizes card bodies instead of empty shells', () => {
@@ -6520,5 +6601,99 @@ describe('루프537 look-seed-fallback observe-only', () => {
       fillMode: null,
       templateId: null,
     });
+  });
+});
+
+describe('루프547 short-response auto-pad (padToSeedSlideCount)', () => {
+  // 검증된 seed(5 shell · 다양한 role) · 위 루프515 describe에서 사용하는 것과
+  // 동일 구조. LOOK merge extract/gate를 통과함.
+  const fiveShellSeed = [
+    '<!doctype html><html><head><style>.motif{color:#FCDF6C}</style></head><body>',
+    '<section class="slide slide-title cover"><h1>Demo Cover</h1><p class="subtitle">Demo lead</p></section>',
+    '<section class="slide slide-cards">',
+    '<h2>Demo Cards</h2>',
+    '<div class="cards-grid">',
+    '<article class="info-card"><h3>Demo A</h3><p>Demo A body that is a real sentence.</p></article>',
+    '<article class="info-card"><h3>Demo B</h3><p>Demo B body that is a real sentence.</p></article>',
+    '<article class="info-card"><h3>Demo C</h3><p>Demo C body that is a real sentence.</p></article>',
+    '</div>',
+    '</section>',
+    '<section class="slide slide-6"><div class="split-content"><h2>Demo List</h2><ul class="content-list"><li>Demo A</li><li>Demo B</li><li>Demo C</li></ul></div></section>',
+    '<section class="slide slide-chart"><h2>Demo Stat</h2><div class="stats-grid"><div class="stat-card"><h3>12</h3><p>Demo metric</p></div></div></section>',
+    '<section class="slide slide-close"><h2>Demo Close</h2><p>Demo closing sentence.</p></section>',
+    '</body></html>',
+  ].join('');
+
+  // 짧은 응답: 2 slide만 반환.
+  const twoSlideModel = [
+    '<!doctype html><html><body>',
+    '<section class="slide slide-title cover"><h1>글쓰기 팁</h1><p class="subtitle">한 문장으로 매력적인 글의 원리를 정리합니다.</p></section>',
+    '<section class="slide slide-cards"><h2>핵심 원칙</h2><div class="cards-grid">',
+    '<article class="info-card"><h3>구체성</h3><p>추상 대신 사례를 든다.</p></article>',
+    '<article class="info-card"><h3>리듬</h3><p>짧은 문장과 긴 문장을 섞는다.</p></article>',
+    '<article class="info-card"><h3>독자</h3><p>독자의 질문에 먼저 답한다.</p></article>',
+    '</div></section>',
+    '</body></html>',
+  ].join('');
+
+  it('applyTemplateClonePromptFillLookMerge · 기본값(padToSeedSlideCount=true)로 seed shell 개수까지 확장', () => {
+    const merged = applyTemplateClonePromptFillLookMerge(fiveShellSeed, twoSlideModel, {
+      brief: '글을 매력적으로 쓰는 팁',
+      deckTitle: '글쓰기 팁',
+    });
+    expect(merged?.html).toBeTruthy();
+    const sectionCount = (merged?.html?.match(/<section\b[^>]*\bslide\b/gi) ?? []).length;
+    // seed 5 shells · outline 2 → auto-pad로 5까지.
+    expect(sectionCount).toBe(5);
+  });
+
+  it('padToSeedSlideCount=false는 short outline을 그대로 유지 (backward compat)', () => {
+    const merged = applyTemplateClonePromptFillLookMerge(fiveShellSeed, twoSlideModel, {
+      brief: '글을 매력적으로 쓰는 팁',
+      deckTitle: '글쓰기 팁',
+      padToSeedSlideCount: false,
+    });
+    expect(merged?.html).toBeTruthy();
+    const sectionCount = (merged?.html?.match(/<section\b[^>]*\bslide\b/gi) ?? []).length;
+    // outline 2 · seed 5인데 pad 안 함 → 2 유지.
+    expect(sectionCount).toBe(2);
+  });
+
+  it('auto-pad된 슬라이드에 data-teamver-pad="short-response" attribute가 붙는다', () => {
+    const merged = applyTemplateClonePromptFillLookMerge(fiveShellSeed, twoSlideModel, {
+      brief: '글을 매력적으로 쓰는 팁',
+      deckTitle: '글쓰기 팁',
+    });
+    expect(merged?.html).toBeTruthy();
+    const padMatches = merged?.html?.match(
+      new RegExp(`${TEAMVER_SHORT_RESPONSE_PAD_ATTR}="${TEAMVER_SHORT_RESPONSE_PAD_VALUE}"`, 'gi'),
+    );
+    // outline 2 · seed 5 → 3개 pad section.
+    expect((padMatches ?? []).length).toBe(3);
+  });
+
+  it('dropEmptyDeckSlides가 pad marker section을 유지한다', () => {
+    // pad section이 body-empty처럼 보여도 marker gate로 살아남아야 한다.
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide"><h1>표지</h1><p>표지 문장</p></section>',
+      // 정상적으로는 pad section도 채워지지만, marker gate가 방어층이므로
+      // 극단적으로 body가 empty해도 drop되지 않아야 한다.
+      `<section class="slide" ${TEAMVER_SHORT_RESPONSE_PAD_ATTR}="${TEAMVER_SHORT_RESPONSE_PAD_VALUE}"></section>`,
+      '<section class="slide"><h2>본문</h2><p>본문 문장</p></section>',
+      '</body></html>',
+    ].join('');
+    const out = dropEmptyDeckSlides(html);
+    expect(out).toContain(`${TEAMVER_SHORT_RESPONSE_PAD_ATTR}="${TEAMVER_SHORT_RESPONSE_PAD_VALUE}"`);
+    // 3개 section 모두 유지.
+    expect((out.match(/<section\b/gi) ?? []).length).toBe(3);
+  });
+
+  it('slideSectionIsShortResponsePad 헬퍼가 marker를 정확히 판정', () => {
+    expect(slideSectionIsShortResponsePad(
+      `<section class="slide" ${TEAMVER_SHORT_RESPONSE_PAD_ATTR}="${TEAMVER_SHORT_RESPONSE_PAD_VALUE}"><h2>x</h2></section>`,
+    )).toBe(true);
+    expect(slideSectionIsShortResponsePad('<section class="slide"><h2>x</h2></section>')).toBe(false);
+    expect(slideSectionIsShortResponsePad('')).toBe(false);
   });
 });
