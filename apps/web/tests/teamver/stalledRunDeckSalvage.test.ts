@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  STALLED_HEAD_PREAMBLE_STATUS_CODE,
   STALLED_PARTIAL_DECK_MIN_CHARS,
   STALLED_PARTIAL_DECK_STATUS_CODE,
+  formatStalledHeadPreambleNotice,
   formatStalledPartialDeckNotice,
+  stalledRunHeadPreambleText,
   stalledRunPartialDeckText,
 } from '../../src/teamver/stalledRunDeckSalvage';
 
@@ -70,6 +73,43 @@ describe('루프477 stalled deck salvage eligibility', () => {
       }),
     ).toBeNull();
     expect(STALLED_PARTIAL_DECK_MIN_CHARS).toBeGreaterThan(0);
+  });
+
+  it('루프540 hands a head preamble stub to finalize/auto-continue', () => {
+    const stub = [
+      'Teamver 서비스 소개 슬라이드를 C Cobalt Grid 템플릿 비주얼로 작성 중입니다.',
+      '<artifact type="deck" identifier="deck">',
+      '<!doctype html>',
+      '<html lang="ko">',
+      '<head>',
+    ].join('\n');
+    expect(
+      stalledRunPartialDeckText({
+        errorCode: 'AGENT_EXECUTION_STALLED',
+        slideOnlyMvp: true,
+        streamedText: stub,
+      }),
+    ).toBeNull();
+    expect(
+      stalledRunHeadPreambleText({
+        errorCode: 'AGENT_EXECUTION_STALLED',
+        slideOnlyMvp: true,
+        streamedText: stub,
+      }),
+    ).toBe(stub);
+    expect(STALLED_HEAD_PREAMBLE_STATUS_CODE).toBe('stalled_head_preamble');
+    expect(formatStalledHeadPreambleNotice()).toMatch(/머리글/);
+  });
+
+  it('루프540 does not treat a titled slide as a head preamble', () => {
+    const withSlide = `${partialDeck}\n<body><section class="slide"><h1>표지</h1></section></body>`;
+    expect(
+      stalledRunHeadPreambleText({
+        errorCode: 'AGENT_EXECUTION_STALLED',
+        slideOnlyMvp: true,
+        streamedText: withSlide,
+      }),
+    ).toBeNull();
   });
 
   it('exposes a user-facing notice under a distinct status code', () => {

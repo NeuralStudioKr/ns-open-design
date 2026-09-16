@@ -17,12 +17,14 @@ import {
   isValidAnthropicImageBytes,
   MAX_ANTHROPIC_PROXY_IMAGE_BYTES,
   PROXY_SOFT_RETRY_DELAY_MS,
+  PROXY_STREAM_HEAD_PREAMBLE_IDLE_MS,
   PROXY_STREAM_IDLE_TIMEOUT_DECK_MS,
   PROXY_STREAM_IDLE_TIMEOUT_MS,
   PROXY_STREAM_SOFT_RETRY_MAX_ATTEMPTS,
   PROXY_STREAM_STALL_MAX_ATTEMPTS,
   maxProxySoftRetryAttempts,
   normalizeAnthropicProxyMessageRoles,
+  resolveAdaptiveProxyStreamIdleTimeoutMs,
   resolveProxyStreamIdleTimeoutMs,
   shouldSoftRetryProxyFailure,
   streamProxyEndpoint,
@@ -1194,6 +1196,25 @@ describe('streamProxyEndpoint idle-timeout stall (AGENT_EXECUTION_STALLED)', () 
       PROXY_STREAM_IDLE_TIMEOUT_DECK_MS,
     );
     expect(resolveProxyStreamIdleTimeoutMs({ streamIdleTimeoutMs: 90_000 })).toBe(90_000);
+    expect(PROXY_STREAM_HEAD_PREAMBLE_IDLE_MS).toBe(60 * 1000);
+    expect(
+      resolveAdaptiveProxyStreamIdleTimeoutMs(
+        [
+          'Teamver 서비스 소개 슬라이드를 C Cobalt Grid 템플릿 비주얼로 작성 중입니다.',
+          '<artifact type="deck" identifier="deck">',
+          '<!doctype html>',
+          '<html lang="ko">',
+          '<head>',
+        ].join('\n'),
+        { minOutputTokens: 16_000 },
+      ),
+    ).toBe(PROXY_STREAM_HEAD_PREAMBLE_IDLE_MS);
+    expect(
+      resolveAdaptiveProxyStreamIdleTimeoutMs(
+        '<!doctype html><html><body><section class="slide"><h1>표지</h1></section></body></html>',
+        { minOutputTokens: 16_000 },
+      ),
+    ).toBe(PROXY_STREAM_IDLE_TIMEOUT_DECK_MS);
   });
 
   it('surfaces AGENT_EXECUTION_STALLED as non-retryable after a substantive delta', async () => {
@@ -1805,5 +1826,77 @@ describe('streamProxyEndpoint idle-timeout stall (AGENT_EXECUTION_STALLED)', () 
     };
     expect(err.code).toBe('AGENT_EXECUTION_STALLED');
     expect(err.retryable).toBe(false);
+  });
+
+  it('loop540 — head preamble + keepalive stalls at 60s, not the full deck idle', async () => {
+    const preamble = [
+      'Teamver 서비스 소개 슬라이드를 C Cobalt Grid 템플릿 비주얼로 작성 중입니다.',
+      '<artifact type="deck" identifier="deck">',
+      '<!doctype html>',
+      '<html lang="ko">',
+      '<head>',
+    ].join('\n');
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        body: {
+          getReader() {
+            let step = 0;
+            return {
+              read() {
+                step += 1;
+                if (step === 1) {
+                  return Promise.resolve({
+                    done: false,
+                    value: new TextEncoder().encode(
+                      `event: delta\ndata: ${JSON.stringify({ delta: preamble })}\n\n`,
+                    ),
+                  });
+                }
+                if (step <= 6) {
+                  return Promise.resolve({
+                    done: false,
+                    value: new TextEncoder().encode(': keepalive\n\n'),
+                  });
+                }
+                return new Promise(() => {});
+              },
+              cancel() {},
+              releaseLock() {},
+            };
+          },
+        },
+      }),
+    );
+
+    const onDelta = vi.fn();
+    const onError = vi.fn();
+    const onDone = vi.fn();
+    const runPromise = streamProxyEndpoint(
+      '/api/proxy/minimax/stream',
+      {
+        apiKey: 'test-api-key',
+        baseUrl: 'https://api.minimaxi.com',
+        model: 'MiniMax-M3',
+      } as any,
+      'System',
+      [{ id: 'm1', role: 'user', content: 'hi', createdAt: 1 }],
+      new AbortController().signal,
+      { onDelta, onDone, onError },
+      { minOutputTokens: 16_000 },
+    );
+
+    await Promise.resolve();
+    await Promise.resolve();
+    for (let i = 0; i < 12; i += 1) await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(PROXY_STREAM_HEAD_PREAMBLE_IDLE_MS + 2000);
+    await runPromise;
+
+    expect(onDone).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledTimes(1);
+    const err = onError.mock.calls[0]?.[0] as Error & { code?: string };
+    expect(err.code).toBe('AGENT_EXECUTION_STALLED');
   });
 });

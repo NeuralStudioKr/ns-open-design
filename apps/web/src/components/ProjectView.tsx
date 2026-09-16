@@ -520,8 +520,11 @@ import {
   formatProjectForkConversationError,
 } from '../teamver/projectErrorMessages';
 import {
+  STALLED_HEAD_PREAMBLE_STATUS_CODE,
   STALLED_PARTIAL_DECK_STATUS_CODE,
+  formatStalledHeadPreambleNotice,
   formatStalledPartialDeckNotice,
+  stalledRunHeadPreambleText,
   stalledRunPartialDeckText,
 } from '../teamver/stalledRunDeckSalvage';
 import { resolvePersistDeckDisplayTitle } from '../teamver/persistDeckDisplayTitle';
@@ -12775,22 +12778,30 @@ export function ProjectView({
           // dropped for a bare failure card. Run refs are intentionally left
           // alone here: the finalize pipeline's `finally` owns them, and
           // clearing them early would erase the persist target.
+          const stallStreamInput = {
+            errorCode:
+              (err as Error & { code?: string }).code
+              ?? persisted.code,
+            errorDetail: err.message,
+            slideOnlyMvp,
+            streamedText: latestAssistantMsg.content,
+          };
           const stalledPartialDeck = runMayFinalize
-            ? stalledRunPartialDeckText({
-                errorCode:
-                  (err as Error & { code?: string }).code
-                  ?? persisted.code,
-                errorDetail: err.message,
-                slideOnlyMvp,
-                streamedText: latestAssistantMsg.content,
-              })
+            ? stalledRunPartialDeckText(stallStreamInput)
             : null;
-          if (stalledPartialDeck) {
+          const stalledHeadPreamble = runMayFinalize && !stalledPartialDeck
+            ? stalledRunHeadPreambleText(stallStreamInput)
+            : null;
+          if (stalledPartialDeck || stalledHeadPreamble) {
             updateAssistant((prev) => ({
               ...appendWarningStatusEvent(
                 prev,
-                formatStalledPartialDeckNotice(),
-                STALLED_PARTIAL_DECK_STATUS_CODE,
+                stalledPartialDeck
+                  ? formatStalledPartialDeckNotice()
+                  : formatStalledHeadPreambleNotice(),
+                stalledPartialDeck
+                  ? STALLED_PARTIAL_DECK_STATUS_CODE
+                  : STALLED_HEAD_PREAMBLE_STATUS_CODE,
               ),
               resumable: true,
             }));
@@ -12811,7 +12822,7 @@ export function ProjectView({
                 active: false,
               });
             }
-            scheduleStreamRunHtmlAutoOpen(stalledPartialDeck);
+            scheduleStreamRunHtmlAutoOpen(stalledPartialDeck ?? stalledHeadPreamble ?? '');
             onProjectsRefresh();
             releaseOwnedDaemonRun();
             return;

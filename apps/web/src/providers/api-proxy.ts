@@ -35,6 +35,7 @@ import {
   isProjectRawFileKnownMissing,
 } from '../utils/projectFileFetchCache';
 import { loadAuthenticatedProjectFileBlob } from '../hooks/useAuthenticatedProjectFileObjectUrl';
+import { looksLikeHeadOpenedDeckPreamble } from '../artifacts/deck-html-content';
 
 /** No *content* SSE events for this long → stall (keepalive comments ignored). */
 export const PROXY_STREAM_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
@@ -45,6 +46,11 @@ export const PROXY_STREAM_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
  * Idle is measured from the last real event (delta/thinking/…), not TCP keepalives.
  */
 export const PROXY_STREAM_IDLE_TIMEOUT_DECK_MS = 6 * 60 * 1000;
+/**
+ * After MiniMax opens `<artifact>`/`<head>` with no titled slide, further
+ * silence is a hang — not mid-deck planning. Do not wait the full deck idle.
+ */
+export const PROXY_STREAM_HEAD_PREAMBLE_IDLE_MS = 60 * 1000;
 
 /** @internal vitest + ProjectView deck runs */
 export function resolveProxyStreamIdleTimeoutMs(context?: ProxyContext): number {
@@ -56,6 +62,18 @@ export function resolveProxyStreamIdleTimeoutMs(context?: ProxyContext): number 
     return PROXY_STREAM_IDLE_TIMEOUT_DECK_MS;
   }
   return PROXY_STREAM_IDLE_TIMEOUT_MS;
+}
+
+/** @internal vitest — shorten idle once the stream is a head-only preamble. */
+export function resolveAdaptiveProxyStreamIdleTimeoutMs(
+  streamedText: string,
+  context?: ProxyContext,
+): number {
+  const base = resolveProxyStreamIdleTimeoutMs(context);
+  if (looksLikeHeadOpenedDeckPreamble(streamedText)) {
+    return Math.min(base, PROXY_STREAM_HEAD_PREAMBLE_IDLE_MS);
+  }
+  return base;
 }
 
 /** Daemon `: keepalive` comments must not reset the stall clock (loop423). */
@@ -472,10 +490,10 @@ async function streamProxyEndpointOnce(
     let buf = '';
     // 루프423 — Stall on content silence. Daemon `: keepalive` every 25s must
     // not reset the clock or Working UI hangs forever mid-<head>.
-    const contentIdleTimeoutMs = resolveProxyStreamIdleTimeoutMs(context);
     let lastContentAt = Date.now();
 
     while (true) {
+      const contentIdleTimeoutMs = resolveAdaptiveProxyStreamIdleTimeoutMs(acc, context);
       const remainingMs = contentIdleTimeoutMs - (Date.now() - lastContentAt);
       if (remainingMs <= 0) {
         throw createProxyStreamIdleError();

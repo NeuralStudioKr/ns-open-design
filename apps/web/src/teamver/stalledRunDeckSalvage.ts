@@ -1,3 +1,5 @@
+import { looksLikeHeadOpenedDeckPreamble } from '../artifacts/deck-html-content';
+
 /**
  * 루프477 — A stalled BYOK deck run (AGENT_EXECUTION_STALLED) used to discard the
  * HTML it had already streamed: onError never reached the terminal salvage /
@@ -51,5 +53,30 @@ export function stalledRunPartialDeckText(input: {
   const text = String(input.streamedText ?? '');
   if (text.length < STALLED_PARTIAL_DECK_MIN_CHARS) return null;
   if (!DECK_DOCUMENT_START_RE.test(text)) return null;
+  return text;
+}
+
+export const STALLED_HEAD_PREAMBLE_STATUS_CODE = 'stalled_head_preamble';
+
+export function formatStalledHeadPreambleNotice(): string {
+  return '생성이 표지 HTML 머리글에서 멈춰, 이어서 본문을 작성합니다.';
+}
+
+/**
+ * 루프540 — `<artifact>` + `<head>` stub is too thin to save, but it must
+ * still enter the incomplete-shell finalize/auto-continue path. Otherwise
+ * the first request dies on keepalive and the user has to send 2nd/3rd turns.
+ */
+export function stalledRunHeadPreambleText(input: {
+  errorCode?: string | null;
+  errorDetail?: string | null;
+  slideOnlyMvp: boolean;
+  streamedText?: string | null;
+}): string | null {
+  if (!input.slideOnlyMvp) return null;
+  if (!looksLikeStalledRunError(input)) return null;
+  if (stalledRunPartialDeckText(input)) return null;
+  const text = String(input.streamedText ?? '');
+  if (!looksLikeHeadOpenedDeckPreamble(text)) return null;
   return text;
 }

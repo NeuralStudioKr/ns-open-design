@@ -18,6 +18,7 @@ import {
   deckLooksLikeUnfilledCatalogExample,
   deckLooksLikeRepeatedUserBriefParrot,
   deckSlideHeadingsLookLikeFailedGenerate,
+  looksLikeHeadOpenedDeckPreamble,
   shouldAbortStreamForHeadOnlyKitDump,
   shouldAbortStreamForMotifSvgDump,
   shouldDiscardPartialHtmlForMotifSvgDump,
@@ -451,6 +452,22 @@ describe("deck-html-content", () => {
     expect(stripped).toContain("<!-- motif svg dump abandoned -->");
     expect(stripped).not.toContain("<path d=");
     expect(stripped).not.toMatch(/<svg\s/);
+  });
+
+  it("detects the MiniMax first-turn head preamble hang (loop540)", () => {
+    const stub = [
+      "Teamver 서비스 소개 슬라이드를 C Cobalt Grid 템플릿 비주얼로 작성 중입니다.",
+      '<artifact type="deck" identifier="deck">',
+      "<!doctype html>",
+      '<html lang="ko">',
+      "<head>",
+    ].join("\n");
+    expect(looksLikeHeadOpenedDeckPreamble(stub)).toBe(true);
+    expect(
+      looksLikeHeadOpenedDeckPreamble(
+        `${stub}</head><body><section class="slide"><h1>표지</h1></section></body></html>`,
+      ),
+    ).toBe(false);
   });
 
   it("aborts fill streams that dump a long head/style kit with no titled slide", () => {

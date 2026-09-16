@@ -52,6 +52,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts 254 passed · daemon template-clone 37 passed · web templateCloneContentFill 38 passed · contracts build passed.
 
+### 루프540 — 첫 턴 `<head>` preamble 스톨을 60초 후 auto-continue
+
+체감: 첫 요청이 `<artifact>`/`<head>` + `: keepalive`에서 끊기고 2·3차 작업을 수동으로 이어가야 함.
+
+수정: head-opened preamble(제목 슬라이드 없음)은 덱 6분 idle 대신 60초. 400자 미만 stub도 finalize → incomplete-shell 이어쓰기. 이미 그린 토큰의 soft-retry는 그대로 금지.
+
 ### 루프529 / 0914-N12 — 선택 템플릿 핀 내구성
 
 체감: Retry에서 핀을 붙여도 persist/이어서 쓰기에서 다시 기본 템플릿이 적용됐다.

@@ -256,6 +256,19 @@ export function shouldAbortStreamForMotifSvgDump(options: {
 
 const FILL_HEAD_KIT_DUMP_MIN_CHARS = 800;
 
+/**
+ * MiniMax first-turn hang: intro + `<artifact>` + `<!doctype>`/`<head>` and
+ * then silence. Not a titled slide yet — 10-minute deck idle used to sit on
+ * `: keepalive` until the user sent a 2nd/3rd request.
+ */
+export function looksLikeHeadOpenedDeckPreamble(text: string): boolean {
+  const raw = String(text ?? '');
+  if (!/<artifact\b|<!doctype\s+html|<html\b/i.test(raw)) return false;
+  if (!/<head\b|<style\b|<!doctype\s+html/i.test(raw)) return false;
+  const htmlish = extractStreamedDeckHtml(raw);
+  return !htmlishHasSlideWithHeading(htmlish);
+}
+
 function htmlishHasSlideWithHeading(html: string): boolean {
   if (!htmlHasDeckSlideHost(html) || !/<h[1-3]\b/i.test(html)) return false;
   return extractSlideHostBlocks(html).some((block) => /<h[1-3]\b/i.test(block.inner));
