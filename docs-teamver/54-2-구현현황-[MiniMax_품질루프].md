@@ -52,6 +52,14 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 검증: contracts 254 passed · daemon template-clone 37 passed · web templateCloneContentFill 38 passed · contracts build passed.
 
+### 루프548 — Clone LOOK 위 발명 커버 persist 금지
+
+체감: 빈 doctype / kit CSS dump가 last-resort 1920 커버로 저장되면 LOOK seed가 덮이고 이어쓰기가 숨음.
+
+수정: Clone fill 턴에서는 `salvageTemplateFillShellAsCoverDraft` / `resolveDeckHtmlForIncompleteShellPersist`를 건너뛴다. 그린필드 last-resort는 유지.
+
+검증: web salvage-truncated `루프548` · project-view-message-load · canvas-slide-launch bind.
+
 ### 루프541 — preamble 이어쓰기 품질 가드 (LOOK / CSS dump / `<html>` hang)
 
 체감: 루프540 이후에도 `<html>`에서 멈추면 6분 idle, CSS dump가 저장된 슬라이드로 남거나 last-resort 커버가 LOOK을 덮음.

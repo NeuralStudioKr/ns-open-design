@@ -800,6 +800,7 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).toContain("shouldAbortStreamForHeadOnlyKitDump");
     expect(projectView).toContain("stalledRunHeadPreambleText(");
     expect(projectView).toContain("stripAbandonedHeadPreambleFromStreamedText(");
+    expect(projectView).toContain("shouldPreserveLookSeedOverInventedCover(");
     expect(projectView).toMatch(
       /stalledHeadPreamble && finalizeText[\s\S]{0,180}rewriteLiveContent\(finalizeText\)/,
     );

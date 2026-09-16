@@ -88,6 +88,7 @@ import {
   resolveDeckHtmlForIncompleteShellPersist,
   salvageTemplateFillShellAsCoverDraft,
   salvageTruncatedHtmlDocument,
+  shouldPreserveLookSeedOverInventedCover,
 } from '../artifacts/recover';
 import {
   artifactPreviewFromInFlightContent,
@@ -5933,9 +5934,12 @@ export function ProjectView({
           project.name || '슬라이드',
         );
         const incomingBeforeSalvage = artifactToPersist.html;
+        const preserveLookSeedOverInventedCover = shouldPreserveLookSeedOverInventedCover(
+          runTemplateCloneContentFillRef.current || runTemplateClonePromptFillRef.current,
+        );
         const salvaged = salvageTruncatedHtmlDocument(artifactToPersist.html)
           ?? (
-            runSlideCountTopUpRef.current
+            runSlideCountTopUpRef.current || preserveLookSeedOverInventedCover
               ? null
               : salvageTemplateFillShellAsCoverDraft(artifactToPersist.html, {
                 fallbackTitle: coverFallbackTitle,
@@ -6064,6 +6068,7 @@ export function ProjectView({
         // instead of skipped-incomplete / incomplete-html-document-shell.
         if (
           !runSlideCountTopUpRef.current
+          && !preserveLookSeedOverInventedCover
           && isIncompleteHtmlDocumentShell(
             artifactToPersist.html,
             persistHealBrief,
@@ -6081,6 +6086,7 @@ export function ProjectView({
             {
               fallbackTitle: coverFallbackTitle,
               lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
+              preserveLookSeed: preserveLookSeedOverInventedCover,
             },
           );
           if (lastResortCover) {

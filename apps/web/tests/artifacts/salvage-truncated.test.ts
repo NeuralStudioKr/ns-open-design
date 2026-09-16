@@ -6,6 +6,7 @@ import {
   recoverBestHtmlDocumentFromText,
   resolveDeckHtmlForIncompleteShellPersist,
   salvageTemplateFillShellAsCoverDraft,
+  shouldPreserveLookSeedOverInventedCover,
   salvageTruncatedHtmlDocument,
 } from "../../src/artifacts/recover";
 import { isIncompleteHtmlDocumentShell } from "../../src/artifacts/validate";
@@ -463,5 +464,28 @@ describe("resolveDeckHtmlForIncompleteShellPersist", () => {
     expect(persisted.kind).toBe("saved");
     expect(persisted.html).toContain(`<h1>${LAST_RESORT_DECK_COVER_TITLE}</h1>`);
     expect(persisted.html).not.toContain(":root{--bg:#111");
+  });
+
+  it("루프548 does not invent a cover when LOOK seed must be preserved", () => {
+    expect(shouldPreserveLookSeedOverInventedCover(true)).toBe(true);
+    expect(shouldPreserveLookSeedOverInventedCover(false)).toBe(false);
+    const tiny = "<!doctype html><html>";
+    expect(
+      resolveDeckHtmlForIncompleteShellPersist(tiny, {
+        lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
+        preserveLookSeed: true,
+      }),
+    ).toBeNull();
+    expect(
+      resolveDeckHtmlForIncompleteShellPersist(tiny, {
+        lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
+      }),
+    ).toContain(`<h1>${LAST_RESORT_DECK_COVER_TITLE}</h1>`);
+    const kitDump =
+      '<!doctype html><html lang="ko"><head><title>Daisy Days</title></head><body>\n<style>\n'
+      + kit;
+    expect(
+      resolveDeckHtmlForIncompleteShellPersist(kitDump, { preserveLookSeed: true }),
+    ).toBeNull();
   });
 });
