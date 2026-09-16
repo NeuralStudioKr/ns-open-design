@@ -833,12 +833,19 @@ export function applyTemplateClonePromptFillLookMerge(
   if (!seed || !model) return null;
   if (listTemplateCloneSlideShells(seed).length === 0) return null;
   const outline = extractTemplateCloneOutlineFromDeckHtml(model);
-  if (!outline || outline.slides.length < PROMPT_FILL_LOOK_MERGE_MIN_SLIDES) return null;
+  if (!outline) return null;
+  const padToSeedSlideCount = options.padToSeedSlideCount !== false;
+  // 루프549 — Short-response pad recovery는 outline이 1 slide여도 seed로
+  // 부족분을 채워 저장 가능한 결과를 만들어야 한다. min-slides gate는 pad를
+  // 원하지 않는 legacy 호출부(padToSeedSlideCount=false)에만 적용.
+  const minOutlineSlides = padToSeedSlideCount
+    ? 1
+    : PROMPT_FILL_LOOK_MERGE_MIN_SLIDES;
+  if (outline.slides.length < minOutlineSlides) return null;
   if (!promptFillOutlineKeepsModelSubstance(outline, model)) return null;
   const title =
     sanitizeTemplateCloneDeckTitle(options.deckTitle)
     || outline.title;
-  const padToSeedSlideCount = options.padToSeedSlideCount !== false;
   const html = buildTemplateClonedDeckHtml(seed, outline.slides, {
     title,
     ...(options.templateId != null ? { templateId: options.templateId } : {}),
@@ -5934,6 +5941,9 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   // 루프540 — 8-Bit Orbit tier/timeline/stat leftover 카탈로그 카피
   // (English $29/mo / Rookie / Studio Orbital 등)까지 청소.
   next = healEightBitOrbitLeftoverCatalogCopy(next, brief);
+  // 루프548 — Retro-Windows 로드맵 표의 Q1–Q4 2026 / $1.2M–$2.1M 만.
+  // 전역 regex 로 지우면 정상 분기 표기까지 날아가므로 킷 지문 + 데모 클러스터일 때만.
+  next = healRetroWindowsRoadmapDemo(next, brief);
   // 루프545 — synth rotation salt (`(요약)`, `· 요약`, `— 요약` 등)가 이미
   // 저장된 HTML에 남아 있으면 사용자에게 그대로 노출되므로 여기서 벗긴다.
   // 라벨 8종만 매치해 사용자가 자유롭게 쓴 텍스트는 보존.
@@ -8562,6 +8572,69 @@ export function healStudioLeftoverCatalogCopy(
     out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
   }
   return stripStudioCreativeCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out));
+}
+
+const RETRO_WINDOWS_DEMO_QUARTERS = ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'] as const;
+const RETRO_WINDOWS_DEMO_DOLLARS = ['$1.2M', '$1.5M', '$1.9M', '$2.1M'] as const;
+const RETRO_WINDOWS_DEMO_LIST_ITEMS = [
+  'Platform v2.0 release',
+  'Mobile app launch',
+  'Partner integrations',
+  'Analytics dashboard',
+  'API marketplace',
+  'Regional expansion EU',
+  'AI assistant beta',
+  'Enterprise security',
+  'Team expansion',
+  'Global data centers',
+  'Advanced reporting',
+  'Series C prep',
+  'Q3 exceeded projections by 18%',
+  'Enterprise segment grew 24% YoY',
+  'Recurring revenue now at 62% of total',
+] as const;
+
+function replaceExactTextNode(html: string, token: string, label: string): string {
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return html.replace(new RegExp(`>${escaped}<`, 'g'), `>${escapeHtml(label)}<`);
+}
+
+function retroWindowsTopicLabel(brief: string | null | undefined, html: string): string {
+  const briefLine = String(brief ?? '').replace(/\s+/g, ' ').trim().split(/[.\n]/)[0]?.trim() ?? '';
+  if (briefLine.length >= 2) return briefLine.slice(0, 24);
+  const heading = /<h[1-2]\b[^>]*>([\s\S]*?)<\/h[1-2]>/i.exec(html);
+  const fromHeading = visibleDeckCopy(heading?.[1] ?? '');
+  if (fromHeading && !/roadmap|timeline|agenda/i.test(fromHeading)) return fromHeading.slice(0, 24);
+  return '진행';
+}
+
+/**
+ * Retro-Windows catalog ships `Q1 2026`–`Q4 2026` titlebars and a
+ * `$1.2M`–`$2.1M` revenue table. Those tokens also appear in real decks,
+ * so this healer fires only when both the kit chrome and the demo cluster
+ * are still intact.
+ */
+export function healRetroWindowsRoadmapDemo(html: string, brief?: string | null): string {
+  const dest = String(html ?? '');
+  if (!/\bwin-titlebar\b/i.test(dest)) return dest;
+  const quarterHits = RETRO_WINDOWS_DEMO_QUARTERS.filter((token) => dest.includes(`>${token}<`)).length;
+  if (quarterHits < 3 || !dest.includes('>$1.2M<')) return dest;
+  const topic = retroWindowsTopicLabel(brief, dest);
+  const phase = ['도입', '전개', '검증', '정리'];
+  let out = dest;
+  RETRO_WINDOWS_DEMO_QUARTERS.forEach((token, index) => {
+    out = replaceExactTextNode(out, token, `${topic} · ${phase[index]}`);
+  });
+  const money = ['기준', '확장', '점검', '다음'];
+  RETRO_WINDOWS_DEMO_DOLLARS.forEach((token, index) => {
+    out = replaceExactTextNode(out, token, `${topic} ${money[index]}`);
+  });
+  out = replaceExactTextNode(out, 'Project Roadmap 2026', `${topic} 로드맵`);
+  out = out.replace(/Current Milestone:\s*Q3 2026/g, escapeHtml(`${topic} 현재 단계`));
+  RETRO_WINDOWS_DEMO_LIST_ITEMS.forEach((item, index) => {
+    out = replaceExactTextNode(out, item, `${topic} ${index + 1}`);
+  });
+  return out;
 }
 
 /**

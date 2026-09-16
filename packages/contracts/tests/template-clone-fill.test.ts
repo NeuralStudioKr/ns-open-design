@@ -6696,4 +6696,28 @@ describe('루프547 short-response auto-pad (padToSeedSlideCount)', () => {
     expect(slideSectionIsShortResponsePad('<section class="slide"><h2>x</h2></section>')).toBe(false);
     expect(slideSectionIsShortResponsePad('')).toBe(false);
   });
+
+  // 루프549 · incomplete-retry pad · 사용자 케이스 재현.
+  // MiniMax가 explicit 5+ slide 요청에 1 slide만 반환한 상황에서 pad 훅이
+  // seed shells로 부족분을 채워 저장 가능한 5장 결과를 만들어야 한다.
+  const oneSlideModel = [
+    '<!doctype html><html><body>',
+    '<section class="slide slide-title cover"><h1>글쓰기 팁</h1><p class="subtitle">한 문장으로 매력적인 글의 원리.</p></section>',
+    '</body></html>',
+  ].join('');
+
+  it('루프549 · seed 5 shell + 1-slide 응답을 pad로 5장으로 완성 (사용자 케이스)', () => {
+    const merged = applyTemplateClonePromptFillLookMerge(fiveShellSeed, oneSlideModel, {
+      brief: '글을 매력적으로 쓰는 팁',
+      deckTitle: '글쓰기 팁',
+    });
+    expect(merged?.html).toBeTruthy();
+    const sectionCount = (merged?.html?.match(/<section\b[^>]*\bslide\b/gi) ?? []).length;
+    expect(sectionCount).toBe(5);
+    const padMatches = merged?.html?.match(
+      new RegExp(`${TEAMVER_SHORT_RESPONSE_PAD_ATTR}="${TEAMVER_SHORT_RESPONSE_PAD_VALUE}"`, 'gi'),
+    );
+    // 1 real slide + 4 padded slides.
+    expect((padMatches ?? []).length).toBe(4);
+  });
 });

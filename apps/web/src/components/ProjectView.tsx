@@ -6306,16 +6306,86 @@ export function ProjectView({
             requestedSlideCountMin: requestedSpec?.min ?? null,
           });
           if (slideCountIncomplete) {
-            devLog.warn('[teamver] blocked incomplete template fill before save', {
+            devLog.warn('[teamver] incomplete template fill detected', {
               fileName: slideCountIncomplete.fileName,
               producedCount: slideCountIncomplete.producedCount,
               expectedCount: slideCountIncomplete.expectedCount,
             });
-            return {
-              kind: 'skipped-incomplete',
-              fileName: slideCountIncomplete.fileName,
-              reason: slideCountIncomplete.reason,
-            };
+            // 루프548 · short-response 자동 pad recovery.
+            //
+            // MiniMax가 explicit 5+ slide 요청에 1~4장만 반환하면 기존엔
+            // `skipped-incomplete`로 seed를 그대로 두고 사용자에게 `clone_look_
+            // seed_fallback` 배너만 뜨는 dead-end였다. 이 상황에서 1+ slide가
+            // 있으면 루프547 pad 훅을 재사용해 LOOK seed로 부족분을 채운 뒤
+            // 저장하고, 사용자에게 short-response notice를 띄운다.
+            //
+            // producedCount=0 (완전 collapse)만 기존 skip 경로 유지 —
+            // seed로 pad할 substance가 아무것도 없어 결과가 seed 그대로가 됨.
+            const producedCount = slideCountIncomplete.producedCount;
+            if (producedCount > 0) {
+              try {
+                const seedHtml = await resolveTemplateCloneLookSeedHtml({
+                  templateId: persistTemplateId,
+                  readProjectHtml,
+                });
+                const padded = seedHtml
+                  ? applyTemplateClonePromptFillLookMerge(seedHtml, htmlBody, {
+                      templateId: persistTemplateId,
+                      brief: runVisiblePromptRef.current || '',
+                      deckTitle: project.name || '슬라이드',
+                      padToSeedSlideCount: true,
+                    })
+                  : null;
+                const paddedCount = padded?.html ? countDeckSlideSections(padded.html) : 0;
+                if (padded?.html && paddedCount >= slideCountIncomplete.expectedCount) {
+                  devLog.warn('[teamver] incomplete fill recovered via short-response pad', {
+                    fileName,
+                    producedCount,
+                    paddedCount,
+                    expected: slideCountIncomplete.expectedCount,
+                  });
+                  htmlBody = padded.html;
+                  // 이후 line 11305 근처의 prompt-fill LOOK merge가 이미 pad된
+                  // htmlBody 위에서 재실행돼도 idempotent — pad marker는
+                  // stampShortResponsePadMarker에 의해 중복되지 않는다.
+                  runTemplateCloneSlotFillFallbackRef.current = false;
+                  surfaceChatVisibleError(
+                    formatProjectArtifactShortResponsePersistedNotice(
+                      fileName,
+                      slideCountIncomplete.expectedCount,
+                      producedCount,
+                    ),
+                    'artifact_short_response_persisted',
+                  );
+                  // Fall through to normal save flow.
+                } else {
+                  devLog.warn('[teamver] pad recovery unavailable; keeping LOOK seed', {
+                    fileName,
+                    producedCount,
+                    paddedCount,
+                    hasSeed: Boolean(seedHtml),
+                  });
+                  return {
+                    kind: 'skipped-incomplete',
+                    fileName: slideCountIncomplete.fileName,
+                    reason: slideCountIncomplete.reason,
+                  };
+                }
+              } catch (error) {
+                devLog.warn('[teamver] pad recovery threw; keeping LOOK seed', error);
+                return {
+                  kind: 'skipped-incomplete',
+                  fileName: slideCountIncomplete.fileName,
+                  reason: slideCountIncomplete.reason,
+                };
+              }
+            } else {
+              return {
+                kind: 'skipped-incomplete',
+                fileName: slideCountIncomplete.fileName,
+                reason: slideCountIncomplete.reason,
+              };
+            }
           }
           const structureIncomplete = findTemplateCloneFillStructureIncomplete({
             fileName,
