@@ -5899,6 +5899,9 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = healGroveLeftoverCatalogCopy(next, brief);
   next = healCreativeLeftoverCatalogCopy(next, brief);
   next = healBlockFrameInventedHeroShells(next);
+  // 루프540 — 8-Bit Orbit tier/timeline/stat leftover 카탈로그 카피
+  // (English $29/mo / Rookie / Studio Orbital 등)까지 청소.
+  next = healEightBitOrbitLeftoverCatalogCopy(next, brief);
   next = healCobaltOrphanDataStats(next);
   next = enrichSparseCobaltCover(next, brief);
   next = restyleBiennaleSparseChapterBodies(next);
@@ -6504,7 +6507,7 @@ function stripBlueProfessionalCatalogDemoCopy(html: string): string {
 }
 
 const LEFTOVER_CATALOG_PHRASE_RE =
-/The landscape has shifted|The brands that will lead the next decade|Strategy\s*[·•]\s*Presentation|Three numbers that define the|Of consumers distrust brand-created content|The most radical thing a brand can do|\[Prepared by\]|\[Confidential\]|\[IMAGE PLACEHOLDER\]|Grove Presentation|\[Studio\s*X\]\s*Guidelines|TOTAL\s+MARKET\s*:\s*\$?\[X\]B|Hartfield(?:\s*&(?:amp;)?\s*Co\.?)?|NorthPeak Industries|WACC\s*\(\s*base\s*\)|Revenue CAGR|Filebase|Northwind Studios|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Maya Chen|pnpm vitest auth|MMXXVI|Team Structure(?:\s*(?:&|&amp;)?\s*(?:Resource Allocation|Leadership))?|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|Composed in kami|52\.5200°\s*N|\[?\[Author Name\]\]?|\[Year\]|this is the broadside style|Aurora Institute|Aurora Programme|Aurora Charter|Public Form|Public attendance|Open programme|Field Notes|Quiet Editions|Open Conversations|The Long Yellow|Pavilion of Quiet Form|Reading Garden|A field study of light,\s*matter and atmosphere|Six months of exhibitions[\s\S]{0,160}?palette of yellow\.?|A room is a slow argument with the sun[\s\S]{0,160}?answers\.?|Curator-at-large[\s\S]{0,120}?January 2026|Visitors\s*·\s*Year four|Returning audience|Three quarters of last year[\s\S]{0,120}?twice\.?|A 2\.4× rise[\s\S]{0,120}?audience\.?|Strands\s*·\s*2026|Slow Atmospheres|Selected dates|Sector context(?:\s*&(?:amp;)?\s*market dynamics)?|Trading comparables analysis|Precedent transactions|Industrial automation cycle, capital flows, trading multiples|12 selected listed peers, EV\/EBITDA(?:\s*&(?:amp;)?\s*EV\/Revenue 2026E)?|M&amp;A transactions \$0\.5–5\.0B, 2022–2025|Selection criteria|Fictional illustrative sample|38\s*[×x]|Apache-2\.0|\bBYOK\b|Your agent reads a folder of\s*<code>SKILL\.md<\/code> files\.?|Open Design is the\s*(?:<strong>)?\s*(?:<\/strong>)?\s*\.?|Neobrutalist Presentation Template|(?:Analog|Editorial|Modern|Retro|Studio|Design|Brand|Business|Pixel|Product)\s+Presentation Template|(?<![가-힣A-Za-z])Presentation\s+Template(?![가-힣A-Za-z])|THANK YOU FOR WATCHING|NEXUS(?:\s*(?:<br\s*\/?>)?\s*)VENTURES|Q3\s+Strategic\s+Overview|Quarterly Growth Metrics|Field Office Quarterly|Field Office Editorial|field-office\.co|Lin Ito(?:\s*&(?:amp;)?\s*Anya Mehrotra)?|Anya Mehrotra|the field-office collective|In Newsreader, Hanken Grotesk\s*(?:&(?:amp;)?)?\s*DM Mono|quiet, paid, and read slowly|The next issue ships October 20\d{2}[\s\S]{0,120}?Monday morning\.?|A trend is a quiet question that several rooms started asking(?:\s+(?:<[^>]+>)?[^<]{0,80}?(?:<\/[^>]+>)?)?|at roughly the same time\.?|From the editor's note|Index 20\d{2}\s*·\s*opening pages|Colophon\s*·\s*Index 20\d{2}|The index, in six entries\.?|Trend ledger, in long\.?|Spring 20\d{2}(?:\s*·\s*selected trends)?|Newsletter opens\s*·\s*20\d{2}\s*Q\d\s*—\s*20\d{2}\s*Q\d|Chapter one\s*—\s*the case for slow software|Software is a room, and rooms are designed to be lived in slowly\.?|In its first chapter the Index[\s\S]{0,240}?read first\.?|Slow software|Domestic interfaces|Hand-set print(?:\s+again)?|Quietly weird type|Receipts (?:and|&(?:amp;)?)\s*ledgers|Public weather|Long-form receipts|Pre-loved objects|Tools that opt out of[\s\S]{0,160}?on by default\.?|Screens designed to live in living rooms[\s\S]{0,200}?willingness to be ignored\.?|A return to letterpress[\s\S]{0,160}?digital-feeling clients\.?|Display type with one slightly off detail[\s\S]{0,160}?looking twice\.?|Information designed to be filed, not consumed\.[\s\S]{0,160}?the favour\.?|Brand and product writing that includes[\s\S]{0,200}?unfinished thought\.?|Tools that opt out of urgency by default\.?|Screens designed to live in living rooms\.?|Letterpress and risograph paired with digital briefs\.?|Display faces with one slightly off detail\.?|Brand voice that admits the day's actual mood\.?|Newsletters that read like printed pamphlets\.?|Resale and repair as the front of the brand\.?|Information designed to be filed, not consumed\.?|A field report on the state of things\.?|Look for the cobalt envelope on a Monday morning\.?|issue\.0\d|spring\s+20\d{2}|autumn\s+20\d{2}|All ten\s*·\s*with our reading on each|A 2\.1× lift on the inaugural issue[\s\S]{0,160}?Sunday mornings\.?|Quiet, mostly-not-on-social[\s\S]{0,140}?referral programme\.?|We started the bulletin[\s\S]{0,220}?rereading\.?"?|To subscribers[\s\S]{0,80}?twice a year|Reader response, by quarter\.?|A note from the studio|Open rate\s*·\s*Q1 20\d{2}|Active subscribers|Tape Garden|tape garden|SUPERCATALOG|CATALOGUE NO\.\s*[78]|Catalogue No\.\s*[78]|We make small\s+(?:<em>)?analog(?:<\/em>)?\s+things[\s\S]{0,160}?desks\.?|SUPER(?:\s|&nbsp;)+TAPE|MIX(?:\s|&nbsp;)+CHAIR|Bloom Pedal|BLOOM(?:\s|&nbsp;)+PEDAL|CHROMA(?:\s|&nbsp;)+DECK|Chroma Deck|Ren Kobayashi|Mei Tanaka|See you in\s+(?:<em>)?volume eight|made in matsumoto|Matsumoto workshop|A short letter from the studio|A note pinned above the workbench|A reader writes|The 2026\s+(?:<em>)?Catalogue|Four products\s*·\s*spring|Output, by year|Units shipped|Repeat customers|Release schedule|Colophon\s*·\s*Catalogue|It feels less like a\s+(?:<em>)?gadget|Build the\s+(?:<em>)?thing[\s\S]{0,80}?spec sheet\.?|A tape-saturation pedal|A studio cassette deck|A box of seven C-60|A listening chair|\bT-26\b|\bSC-0[1-4]b?\b|Key Metrics|Visuals first|We started Long Table|long-table\.co|Iris\s*(?:&|&amp;)\s*Theo|Hana Brennan|A Plate(?:<br\s*\/?>|\s)+of Quiet|A Soup(?:<br\s*\/?>|\s)+of Letters|Roasted chestnut soup|Not a meal, an evening|22 seats only|Bairro Alto|See you(?:<br\s*\/?>|\s)+at the table|An evening I keep|December edition|a letter from the table|come and sit with us|More than dinner|Twice a month, by application|Placeholder lede|The Editorial Desk|Studio\s*(?:&|&amp;)\s*Salon|Editorial Brief|Eight principles|Twelve weeks of after-hours behavior\.?|Three rules we'?re keeping\.?|User Research Synthesis(?:\s*\/\s*\[[^\]]+\])?|WHO WE ARE|GREAT WORK DOESN'T HAPPEN BY ACCIDENT|WE BUILD WHAT OTHERS PLAN|Our studio pairs strategic thinking|Years of practice|Projects delivered|Continents active|GENERIC IDENTITY|A DISTINCTIVE VOICE PEOPLE RECOGNIZE|BOLD IDEAS DESERVE BOLD EXECUTION|\[Studio Name\]|\[Client Name\]|\[Presentation Title\]|WHAT WE OFFER|Ownable visual and verbal territory|Campaigns that created lasting recall|Lift In Engagement|Throughput Multiplier|Active Placeholders|Total Sample Value|Placeholder caption describing the metric|Layer alpha|Layer beta|VALUES ARE PLACEHOLDER|PLACEHOLDER METRIC|eight pages, eight layouts|Replace freely|Generic placeholder|Filler text|Filler descriptor|FY PLACEHOLDER|CHAPTER OPENER|A PRESENTATION TEMPLATE|A FOUR-STEP PROCESS|PRESS\s*(?:&nbsp;)?\s*PLAY/gi;
+/The landscape has shifted|The brands that will lead the next decade|Strategy\s*[·•]\s*Presentation|Three numbers that define the|Of consumers distrust brand-created content|The most radical thing a brand can do|\[Prepared by\]|\[Confidential\]|\[IMAGE PLACEHOLDER\]|Grove Presentation|\[Studio\s*X\]\s*Guidelines|TOTAL\s+MARKET\s*:\s*\$?\[X\]B|Hartfield(?:\s*&(?:amp;)?\s*Co\.?)?|NorthPeak Industries|WACC\s*\(\s*base\s*\)|Revenue CAGR|Filebase|Northwind Studios|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Maya Chen|pnpm vitest auth|MMXXVI|Team Structure(?:\s*(?:&|&amp;)?\s*(?:Resource Allocation|Leadership))?|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|Composed in kami|52\.5200°\s*N|\[?\[Author Name\]\]?|\[Year\]|this is the broadside style|Aurora Institute|Aurora Programme|Aurora Charter|Public Form|Public attendance|Open programme|Field Notes|Quiet Editions|Open Conversations|The Long Yellow|Pavilion of Quiet Form|Reading Garden|A field study of light,\s*matter and atmosphere|Six months of exhibitions[\s\S]{0,160}?palette of yellow\.?|A room is a slow argument with the sun[\s\S]{0,160}?answers\.?|Curator-at-large[\s\S]{0,120}?January 2026|Visitors\s*·\s*Year four|Returning audience|Three quarters of last year[\s\S]{0,120}?twice\.?|A 2\.4× rise[\s\S]{0,120}?audience\.?|Strands\s*·\s*2026|Slow Atmospheres|Selected dates|Sector context(?:\s*&(?:amp;)?\s*market dynamics)?|Trading comparables analysis|Precedent transactions|Industrial automation cycle, capital flows, trading multiples|12 selected listed peers, EV\/EBITDA(?:\s*&(?:amp;)?\s*EV\/Revenue 2026E)?|M&amp;A transactions \$0\.5–5\.0B, 2022–2025|Selection criteria|Fictional illustrative sample|38\s*[×x]|Apache-2\.0|\bBYOK\b|Your agent reads a folder of\s*<code>SKILL\.md<\/code> files\.?|Open Design is the\s*(?:<strong>)?\s*(?:<\/strong>)?\s*\.?|Neobrutalist Presentation Template|(?:Analog|Editorial|Modern|Retro|Studio|Design|Brand|Business|Pixel|Product)\s+Presentation Template|(?<![가-힣A-Za-z])Presentation\s+Template(?![가-힣A-Za-z])|Pixel Perfect Presentation System|THANK YOU FOR WATCHING|NEXUS(?:\s*(?:<br\s*\/?>)?\s*)VENTURES|8-?BIT(?:\s*(?:<br\s*\/?>)?\s*)ORBIT|Q3\s+Strategic\s+Overview|\+1\s*\(?555\)?[-\s]?\d{3}[-\s]?\d{4}|hello@(?:example|venture|hello|studio)\.(?:studio|com|io)|HELLO@[A-Z][A-Z0-9]+\.(?:IO|COM|STUDIO)|www\.example\.(?:studio|com|io)|SEATTLE,\s*WA|Quarterly Growth Metrics|Field Office Quarterly|Field Office Editorial|field-office\.co|Lin Ito(?:\s*&(?:amp;)?\s*Anya Mehrotra)?|Anya Mehrotra|the field-office collective|In Newsreader, Hanken Grotesk\s*(?:&(?:amp;)?)?\s*DM Mono|quiet, paid, and read slowly|The next issue ships October 20\d{2}[\s\S]{0,120}?Monday morning\.?|A trend is a quiet question that several rooms started asking(?:\s+(?:<[^>]+>)?[^<]{0,80}?(?:<\/[^>]+>)?)?|at roughly the same time\.?|From the editor's note|Index 20\d{2}\s*·\s*opening pages|Colophon\s*·\s*Index 20\d{2}|The index, in six entries\.?|Trend ledger, in long\.?|Spring 20\d{2}(?:\s*·\s*selected trends)?|Newsletter opens\s*·\s*20\d{2}\s*Q\d\s*—\s*20\d{2}\s*Q\d|Chapter one\s*—\s*the case for slow software|Software is a room, and rooms are designed to be lived in slowly\.?|In its first chapter the Index[\s\S]{0,240}?read first\.?|Slow software|Domestic interfaces|Hand-set print(?:\s+again)?|Quietly weird type|Receipts (?:and|&(?:amp;)?)\s*ledgers|Public weather|Long-form receipts|Pre-loved objects|Tools that opt out of[\s\S]{0,160}?on by default\.?|Screens designed to live in living rooms[\s\S]{0,200}?willingness to be ignored\.?|A return to letterpress[\s\S]{0,160}?digital-feeling clients\.?|Display type with one slightly off detail[\s\S]{0,160}?looking twice\.?|Information designed to be filed, not consumed\.[\s\S]{0,160}?the favour\.?|Brand and product writing that includes[\s\S]{0,200}?unfinished thought\.?|Tools that opt out of urgency by default\.?|Screens designed to live in living rooms\.?|Letterpress and risograph paired with digital briefs\.?|Display faces with one slightly off detail\.?|Brand voice that admits the day's actual mood\.?|Newsletters that read like printed pamphlets\.?|Resale and repair as the front of the brand\.?|Information designed to be filed, not consumed\.?|A field report on the state of things\.?|Look for the cobalt envelope on a Monday morning\.?|issue\.0\d|spring\s+20\d{2}|autumn\s+20\d{2}|All ten\s*·\s*with our reading on each|A 2\.1× lift on the inaugural issue[\s\S]{0,160}?Sunday mornings\.?|Quiet, mostly-not-on-social[\s\S]{0,140}?referral programme\.?|We started the bulletin[\s\S]{0,220}?rereading\.?"?|To subscribers[\s\S]{0,80}?twice a year|Reader response, by quarter\.?|A note from the studio|Open rate\s*·\s*Q1 20\d{2}|Active subscribers|Tape Garden|tape garden|SUPERCATALOG|CATALOGUE NO\.\s*[78]|Catalogue No\.\s*[78]|We make small\s+(?:<em>)?analog(?:<\/em>)?\s+things[\s\S]{0,160}?desks\.?|SUPER(?:\s|&nbsp;)+TAPE|MIX(?:\s|&nbsp;)+CHAIR|Bloom Pedal|BLOOM(?:\s|&nbsp;)+PEDAL|CHROMA(?:\s|&nbsp;)+DECK|Chroma Deck|Ren Kobayashi|Mei Tanaka|See you in\s+(?:<em>)?volume eight|made in matsumoto|Matsumoto workshop|A short letter from the studio|A note pinned above the workbench|A reader writes|The 2026\s+(?:<em>)?Catalogue|Four products\s*·\s*spring|Output, by year|Units shipped|Repeat customers|Release schedule|Colophon\s*·\s*Catalogue|It feels less like a\s+(?:<em>)?gadget|Build the\s+(?:<em>)?thing[\s\S]{0,80}?spec sheet\.?|A tape-saturation pedal|A studio cassette deck|A box of seven C-60|A listening chair|\bT-26\b|\bSC-0[1-4]b?\b|Key Metrics|Visuals first|We started Long Table|long-table\.co|Iris\s*(?:&|&amp;)\s*Theo|Hana Brennan|A Plate(?:<br\s*\/?>|\s)+of Quiet|A Soup(?:<br\s*\/?>|\s)+of Letters|Roasted chestnut soup|Not a meal, an evening|22 seats only|Bairro Alto|See you(?:<br\s*\/?>|\s)+at the table|An evening I keep|December edition|a letter from the table|come and sit with us|More than dinner|Twice a month, by application|Placeholder lede|The Editorial Desk|Studio\s*(?:&|&amp;)\s*Salon|Editorial Brief|Eight principles|Twelve weeks of after-hours behavior\.?|Three rules we'?re keeping\.?|User Research Synthesis(?:\s*\/\s*\[[^\]]+\])?|WHO WE ARE|GREAT WORK DOESN'T HAPPEN BY ACCIDENT|WE BUILD WHAT OTHERS PLAN|Our studio pairs strategic thinking|Years of practice|Projects delivered|Continents active|GENERIC IDENTITY|A DISTINCTIVE VOICE PEOPLE RECOGNIZE|BOLD IDEAS DESERVE BOLD EXECUTION|\[Studio Name\]|\[Client Name\]|\[Presentation Title\]|WHAT WE OFFER|Ownable visual and verbal territory|Campaigns that created lasting recall|Lift In Engagement|Throughput Multiplier|Active Placeholders|Total Sample Value|Placeholder caption describing the metric|Layer alpha|Layer beta|VALUES ARE PLACEHOLDER|PLACEHOLDER METRIC|eight pages, eight layouts|Replace freely|Generic placeholder|Filler text|Filler descriptor|FY PLACEHOLDER|CHAPTER OPENER|A PRESENTATION TEMPLATE|A FOUR-STEP PROCESS|PRESS\s*(?:&nbsp;)?\s*PLAY/gi;
 
 export function stripLeftoverCatalogDemoPhrases(html: string): string {
   return String(html ?? '')
@@ -8521,6 +8524,77 @@ export function healBroadsideLeftoverCatalogCopy(
   return stripStudioCreativeCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out));
 }
 
+/**
+ * 루프540 — 8-Bit Orbit healer.
+ *
+ * MiniMax가 fill 단계에서 놓친 leftover 카탈로그 카피 (English tier
+ * pricing, timeline dates, Studio Orbital quote, hero badges 등)를 heal
+ * 파이프라인에서 다시 청소한다. `stripEightBitOrbitCatalogDemoCopy`가
+ * 문자열 기반 스크럽, 이 헬퍼는 슬라이드 스팬을 다시 돌면서 남은
+ * shell에 대해 `fillEightBitOrbitKitSlide`를 재적용한다.
+ */
+export function healEightBitOrbitLeftoverCatalogCopy(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim()) return dest;
+  // Fire on either official look fingerprint OR the presence of 8-bit
+  // structural markers anywhere in the deck. `officialLookIsEightBitOrbit`
+  // returns false when `<style data-od-official-...>` is absent (e.g. a
+  // fixture with plain `<style>` tags), so structural markers are the
+  // safer per-shell gate. `fillEightBitOrbitKitSlide` itself no-ops on
+  // shells without markers.
+  if (
+    !officialLookIsEightBitOrbit(dest)
+    && !/\b(?:pixel-hero-text|pixel-label|pixel-box|tier-card|timeline-event|stat-block|quote-author|hero-badge|pixel-btn)\b/i.test(dest)
+  ) {
+    return dest;
+  }
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) {
+    return stripEightBitOrbitCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(dest));
+  }
+  const harvested = [...dest.matchAll(/<(?:h[1-3]|div)\b[^>]*>([\s\S]*?)<\/(?:h[1-3]|div)>/gi)]
+    .map((match) => visibleDeckCopy(match[1] ?? ''))
+    .filter((text) => text.length >= 2 && text.length <= 40)
+    .filter((text) => !EIGHTBIT_DEMO_COPY_RE.test(text));
+  // Reset lastIndex — /g regex is stateful.
+  EIGHTBIT_DEMO_COPY_RE.lastIndex = 0;
+  const outline = resolveTemplateCloneSlidesForDeterministicFill({
+    userInstruction: brief || harvested.join('\n') || '',
+    deckTitle: harvested[0] ?? null,
+    slideCount: spans.length,
+  });
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    if (
+      !/\b(?:tier-card|timeline-event|stat-block|quote-author|hero-badge|hero-subtitle|pixel-label|pixel-btn|cta-content)\b/i.test(body)
+    ) {
+      continue;
+    }
+    if (!EIGHTBIT_DEMO_COPY_RE.test(body) && !/\btier-card\b/i.test(body)) {
+      EIGHTBIT_DEMO_COPY_RE.lastIndex = 0;
+      continue;
+    }
+    EIGHTBIT_DEMO_COPY_RE.lastIndex = 0;
+    const slide = outline[i] ?? outline[Math.min(i, outline.length - 1)];
+    const title = slide?.title || harvested[i] || harvested[0] || '슬라이드';
+    const nextBody = fillEightBitOrbitKitSlide(body, span.attrs, {
+      title,
+      lead: slide?.lead ?? '',
+      bodyText: slide?.body ?? '',
+      kicker: slide?.kicker ?? '',
+      fillLines: templateCloneSlideFillLines(slide ?? { title }),
+    });
+    if (nextBody === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
+  }
+  return stripEightBitOrbitCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out));
+}
+
 function replaceGroveStatValue(block: string, text: string): string {
   return block.replace(
     /(<[^>]*\bgrove-stat-val\b[^>]*>)([\s\S]*?)(<\/[^>]+>)/i,
@@ -8973,6 +9047,206 @@ function refillEmptyBlockFrameNeoLabels(html: string, chromeLabel: string): stri
   );
 }
 
+/**
+ * 루프540 — 8-Bit Orbit 킷 슬롯 채우기.
+ *
+ * MiniMax는 `.tier-card` / `.timeline-event` / `.stat-block` / `.quote-author`
+ * / `.hero-badge` / `.pixel-label` 슬롯에 아무 조치도 안 하고 원본 English
+ * 카탈로그 demo copy를 그대로 두는 경우가 많다. 사용자 리포트 2026-09-16
+ * (제목 "글을 매력적으로 쓰는 팁") 참고: `$0/mo` / `Q1 2026` / `Rookie` /
+ * `Studio Orbital` / `Active Worlds` / `Pixel Perfect Presentation System`
+ * 등이 한국어 덱에 그대로 남고, `data-target="847"` 카운터는 JS가 없어서
+ * 0으로 렌더된다.
+ *
+ * 이 함수는 fill 파이프라인에서 shell 단위로 실행되고, structural marker가
+ * 있는 슬라이드에만 fire한다. slot이 채워지지 못하면 English literal이
+ * 남는 대신 아예 wipe → stripEightBitOrbitCatalogDemoCopy가 청소.
+ */
+export function fillEightBitOrbitKitSlide(
+  body: string,
+  attrs: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    kicker: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  const src = String(body ?? '');
+  if (
+    !/\b(?:pixel-hero-text|pixel-label|hero-badge|hero-subtitle|hero-tagline|tier-card|tier-features|timeline-event|timeline-text|stat-block|stat-label|stat-number|quote-author|quote-text|pixel-btn|cta-content)\b/i.test(src)
+  ) {
+    return src;
+  }
+  const chromeLabel = normalizeTemplateCloneInlineText(input.kicker || input.title || '핵심').slice(0, 40) || '핵심';
+  const lines = biennaleFillLines(input, 6);
+  let next = src;
+
+  // Cover: hero-subtitle + hero-badge trio.
+  if (/\bpixel-hero-text\b/i.test(next) || /\bhero-badges\b/i.test(next)) {
+    // hero-subtitle should be a short korean lede — replace the "Pixel
+    // Perfect Presentation System" placeholder with the deck's actual lead.
+    const heroSub = input.lead || input.bodyText || synthesizeTemplateCloneCoverLead(input.title);
+    next = replaceFirstExactClassText(next, 'hero-subtitle', heroSub);
+    // hero-badge triplet: use topic-derived short labels from lines[0..2]. If
+    // fewer lines exist, fall back to the chromeLabel / ordinal.
+    const badgeLabels = [0, 1, 2].map((i) => {
+      const line = lines[i];
+      const t = normalizeTemplateCloneInlineText(line?.title ?? '');
+      return t ? t.slice(0, 12) : `${String(i + 1).padStart(2, '0')} · ${chromeLabel.slice(0, 8)}`;
+    });
+    // `.hero-badge` is a <span> in the kit example — `exactClassBlocks` only
+    // walks div|section|article|aside|li|tr, so use a direct regex sequence
+    // to swap the badge text.
+    let badgeIdx = 0;
+    next = next.replace(
+      /(<span\b[^>]*\bhero-badge\b[^>]*>)([\s\S]*?)(<\/span>)/gi,
+      (_m, open: string, _inner: string, close: string) => {
+        const label = badgeLabels[badgeIdx] ?? badgeLabels[badgeLabels.length - 1] ?? '';
+        badgeIdx += 1;
+        return `${open}${escapeHtml(label)}${close}`;
+      },
+    );
+  }
+
+  // pixel-label chrome (Mission Brief / Core Systems / Chronology / Live
+  // Telemetry / Access Tiers) → chromeLabel.
+  if (/\bpixel-label\b/i.test(next)) {
+    next = next.replace(
+      /(<(?:div|span)\b[^>]*\bpixel-label\b[^>]*>)([\s\S]*?)(<\/(?:div|span)>)/gi,
+      (full, open: string, inner: string, close: string) => {
+        const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (!plain) return `${open}${escapeHtml(chromeLabel)}${close}`;
+        // English demo chrome literals — always rewrite.
+        if (/^(?:Mission\s+Brief|Core\s+Systems|Chronology|Live\s+Telemetry|Access\s+Tiers|Loadout|Roadmap|Vision)$/i.test(plain)) {
+          return `${open}${escapeHtml(chromeLabel)}${close}`;
+        }
+        return full;
+      },
+    );
+  }
+
+  // Timeline (slide 6): .timeline-event × N → fill .date/h4/p from lines.
+  if (/\btimeline-event\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(
+      next,
+      'timeline-event',
+      lines,
+      (block, line, index) => {
+        const resolved = resolveTemplateCloneCardFill(line);
+        // `.date` → ordinal step label (Korean deck rarely uses Q1..Q4).
+        let filled = block.replace(
+          /(<(?:span|div)\b[^>]*\bdate\b[^>]*>)([\s\S]*?)(<\/(?:span|div)>)/i,
+          (_m, open: string, _inner: string, close: string) => (
+            `${open}${escapeHtml(`STEP ${String(index + 1).padStart(2, '0')}`)}${close}`
+          ),
+        );
+        filled = filled.replace(
+          /(<h[3-5]\b[^>]*>)([\s\S]*?)(<\/h[3-5]>)/i,
+          (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(resolved.title)}${close}`,
+        );
+        filled = filled.replace(
+          /(<p\b[^>]*>)([\s\S]*?)(<\/p>)/i,
+          (_m, open: string, _inner: string, close: string) => (
+            `${open}${escapeHtml(resolved.body || resolved.title)}${close}`
+          ),
+        );
+        return filled;
+      },
+    );
+  }
+
+  // Stats (slide 7): .stat-block × N. Zero-out data-target so a headless
+  // render (no JS) does not show `0`, and put a real number/ordinal in
+  // .stat-number. .stat-label → Korean topic label from fillLines.
+  if (/\bstat-block\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(
+      next,
+      'stat-block',
+      lines,
+      (block, line, index) => {
+        const resolved = resolveTemplateCloneCardFill(line);
+        const metricSource = titleLooksLikeMetric(resolved.title)
+          ? resolved.title
+          : titleLooksLikeMetric(resolved.body)
+            ? resolved.body
+            : `${String(index + 1).padStart(2, '0')}`;
+        let filled = block.replace(
+          /(<div\b[^>]*\bstat-number\b[^>]*)>([\s\S]*?)(<\/div>)/i,
+          (_m, open: string, _inner: string, close: string) => {
+            // Neutralize data-target / data-suffix so a headless render
+            // shows the resolved metric instead of the placeholder "0".
+            let attrsOut = open
+              .replace(/\sdata-target\s*=\s*(["'])[^"']*\1/gi, '')
+              .replace(/\sdata-suffix\s*=\s*(["'])[^"']*\1/gi, '');
+            return `${attrsOut}>${escapeHtml(metricSource)}${close}`;
+          },
+        );
+        const label = resolved.title || `${chromeLabel} ${index + 1}`;
+        filled = filled.replace(
+          /(<div\b[^>]*\bstat-label\b[^>]*>)([\s\S]*?)(<\/div>)/i,
+          (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(label)}${close}`,
+        );
+        return filled;
+      },
+    );
+  }
+
+  // Pricing tiers (slide 9) — Korean writing-tips deck never has $29/mo
+  // pricing. Strip the whole tier block: sends the slide to fallback
+  // rendering. The heal path later replaces with topic keypoints via the
+  // shared list slot.
+  if (/\btier-card\b/i.test(next) || /\btier-grid\b/i.test(next)) {
+    next = stripClassBlocks(next, 'tier-grid');
+    next = stripClassBlocks(next, 'tier-card');
+  }
+
+  // Quote (slide 8): drop the demo attribution — if we don't know the
+  // author, don't fabricate one. Wipe the demo English quote-text too;
+  // caller populates .quote-text via body/lead resolver later.
+  if (/\bquote-author\b/i.test(next)) {
+    next = next.replace(
+      /(<(?:div|span|p)\b[^>]*\bquote-author\b[^>]*>)([\s\S]*?)(<\/(?:div|span|p)>)/gi,
+      (_m, open: string, _inner: string, close: string) => `${open}${close}`,
+    );
+  }
+  if (/\bquote-text\b/i.test(next)) {
+    const quoteBody = input.lead || input.bodyText || input.title;
+    next = next.replace(
+      /(<(?:p|div|blockquote)\b[^>]*\bquote-text\b[^>]*>)([\s\S]*?)(<\/(?:p|div|blockquote)>)/i,
+      (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(quoteBody)}${close}`,
+    );
+  }
+
+  // CTA (slide 10): .pixel-btn text → Korean "자세히 보기" / "지금 시작하기".
+  if (/\bpixel-btn\b/i.test(next)) {
+    next = next.replace(
+      /(<(?:button|a)\b[^>]*\bpixel-btn\b[^>]*>)([\s\S]*?)(<\/(?:button|a)>)/gi,
+      (full, open: string, inner: string, close: string) => {
+        const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (/^(?:Select|Initialize Deck|View Documentation|Get Started|Learn More|Start|Play)$/i.test(plain)) {
+          return `${open}자세히 보기${close}`;
+        }
+        return full;
+      },
+    );
+  }
+
+  return next;
+}
+
+const EIGHTBIT_DEMO_COPY_RE =
+  /Pixel Perfect Presentation System|Access Tiers|Live Telemetry|Chronology|Mission Brief|Core Systems|Loadout|Ready Player(?:<br\s*\/?>|\s)+One\?|Deploy your first 8-BIT ORBIT deck[\s\S]{0,120}?power\.?|Initialize Deck|View Documentation|Wireframes,\s*palette selection[\s\S]{0,120}?established\.?|Pixel components, iconography[\s\S]{0,120}?coded\.?|Charting engine, animated counters[\s\S]{0,120}?binding\.?|Public release with full documentation[\s\S]{0,120}?support\.?|Real-time aggregate figures from active deployments|Active Worlds|Pixels Rendered|Uptime Score|Max Resolution|Concept\s*(?:&(?:amp;)?)?\s*Architecture|Asset Generation|Data Integration|Global Launch|The best presentations do not merely inform[\s\S]{0,240}?unlocked\.?|Lead Creative Technologist,\s*Studio Orbital|Studio Orbital|10\s*Slides|CSS Native|Zero Dependencies|Rookie|Arcade\b(?!\s*[가-힣])|\bBoss\b(?=\s*(?:$|<|\s*<))|\$\s*0\s*\/\s*mo|\$\s*29\s*\/\s*mo|\$\s*79\s*\/\s*mo|For solo explorers testing the waters\.?|Serious builders need serious tooling\.?|Enterprise-grade control and compliance\.?|5\s*slide\s*maximum|Standard grid themes|Community support|Static export only|Unlimited slides|All atmospheric packs|Live data binding|Priority rendering|Custom cursor sets|Everything in Arcade|White-label export|SSO\s*(?:&(?:amp;)?)?\s*audit logs|Dedicated pipeline|No canvas limits\.\s*No cookie-cutter layouts\.[\s\S]{0,140}?architecture[\s\S]{0,80}?compromise\.?|Development Roadmap|Platform Vitals|Choose Your Loadout|8-BIT(?:<br\s*\/?>|\s)+ORBIT/gi;
+
+export function stripEightBitOrbitCatalogDemoCopy(html: string): string {
+  return String(html ?? '')
+    .replace(EIGHTBIT_DEMO_COPY_RE, '')
+    .replace(/<p\b[^>]*>\s*(?:<strong>\s*<\/strong>)?\s*<\/p>/gi, '')
+    .replace(/<li\b[^>]*>\s*<\/li>/gi, '')
+    .replace(/<span\b[^>]*>\s*<\/span>/gi, '');
+}
+
 type ResolvedTemplateCloneCardFill = {
   title: string;
   body: string;
@@ -9053,7 +9327,32 @@ function appendInlineStyle(attrs: string, style: string): string {
   if (!styleMatch) return `${attrs} style="${style}"`;
   const quote = styleMatch[1] ?? '"';
   const current = String(styleMatch[2] ?? '').trim().replace(/;+$/g, '');
-  return attrs.replace(styleMatch[0], ` style=${quote}${current ? `${current};` : ''}${style}${quote}`);
+  // 루프540 — 힐러/피어핏이 같은 카드에 두 번 이상 실행될 때 동일한 style
+  // 조각 (font-size:36px;line-height:1.08;word-break:keep-all;overflow-wrap:break-word)이
+  // 8회까지 누적되는 회귀. property 이름 기준으로 dedupe해서 재적용해도
+  // 최종 style 문자열이 그대로 유지되게 한다.
+  const merged = mergeCssDeclarations(current, style);
+  return attrs.replace(styleMatch[0], ` style=${quote}${merged}${quote}`);
+}
+
+function mergeCssDeclarations(current: string, incoming: string): string {
+  const seen = new Map<string, string>();
+  const push = (chunk: string) => {
+    for (const decl of chunk.split(/;+/g)) {
+      const trimmed = decl.trim();
+      if (!trimmed) continue;
+      const idx = trimmed.indexOf(':');
+      if (idx <= 0) continue;
+      const prop = trimmed.slice(0, idx).trim().toLowerCase();
+      const value = trimmed.slice(idx + 1).trim();
+      if (!prop) continue;
+      // Incoming overwrites current for the same property.
+      seen.set(prop, `${prop}:${value}`);
+    }
+  };
+  push(current);
+  push(incoming);
+  return Array.from(seen.values()).join(';');
 }
 
 function markDenseCardPeerAsCompacted(html: string, compacted: boolean): string {
@@ -9614,8 +9913,11 @@ function fillSlideShell(
     body = fillCreativeModeKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
   }
   body = fillBlockFrameNeoSlots(body, { title, lead, bodyText, kicker, fillLines });
+  // 루프540 — 8-Bit Orbit tier/timeline/stat/quote/badge slots.
+  body = fillEightBitOrbitKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
   body = stripCapsuleCatalogDemoCopy(body);
   body = stripBlockFrameNeoCatalogDemoCopy(body);
+  body = stripEightBitOrbitCatalogDemoCopy(body);
   // 루프534 — Demo-copy strip may empty nb-label chips; refill from title.
   body = refillEmptyBlockFrameNeoLabels(body, title || kicker || '개요');
   body = stripBlueProfessionalCatalogDemoCopy(body);

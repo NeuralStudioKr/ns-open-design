@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="ko"><head>
+  <meta charset="utf-8" />
+  <title>글을 매력적으로 쓰는 팁</title>
+  <style>
+    :root { --neon-pink:#F0A6CA; --neon-cyan:#5EDCF4; --dark-void:#0A0E27; }
+    body { background: var(--dark-void); color: white; }
+    .slide { width: 1920px; height: 1080px; padding: 40px; box-sizing: border-box; }
+    .pixel-hero-text { font-size: 120px; }
+    .pixel-label { display: inline-block; padding: 4px 12px; background: var(--neon-cyan); }
+    .hero-badges { display: flex; gap: 12px; }
+    .hero-badge { padding: 6px 12px; border: 2px solid white; }
+    .tier-card { padding: 24px; border: 2px solid white; }
+    .tier-name { font-weight: 700; }
+    .tier-price { font-size: 48px; }
+    .tier-features li { list-style: none; }
+    .timeline-event { display: grid; grid-template-columns: 1fr auto 1fr; }
+    .timeline-text .date { color: var(--neon-cyan); }
+    .stat-block { text-align: center; }
+    .stat-number { font-size: 72px; }
+    .stat-label { text-transform: uppercase; }
+    .quote-text { font-size: 32px; font-style: italic; }
+    .quote-author { color: var(--neon-yellow); }
+    .pixel-btn { padding: 12px 24px; }
+  </style>
+</head>
+<body>
+  <section class="slide bg-grid scanlines grain crt-glow" data-slide="1">
+    <div class="starfield"></div>
+    <div class="slide-content">
+      <div class="hero-subtitle">Pixel Perfect Presentation System</div>
+      <h1 class="pixel-hero-text">글을<br>매력적으로<br>쓰는 팁</h1>
+      <div class="hero-badges">
+        <span class="hero-badge">10 Slides</span>
+        <span class="hero-badge">CSS Native</span>
+        <span class="hero-badge">Zero Dependencies</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide" data-slide="2">
+    <span class="pixel-label">Mission Brief</span>
+    <h2>글쓰기의 근본</h2>
+    <p>No canvas limits. No cookie-cutter layouts. Just pure CSS architecture with zero framework compromise.</p>
+  </section>
+
+  <section class="slide bg-grid-pink scanlines grain" data-slide="6">
+    <div class="slide-content">
+      <span class="pixel-label">Chronology</span>
+      <h2>Development Roadmap</h2>
+      <div class="timeline-events">
+        <div class="timeline-event">
+          <div class="timeline-text">
+            <span class="date">Q1 2026</span>
+            <h4>Concept &amp; Architecture</h4>
+            <p>Wireframes, palette selection, and core grid system established.</p>
+          </div>
+        </div>
+        <div class="timeline-event">
+          <div class="timeline-text">
+            <span class="date">Q2 2026</span>
+            <h4>Asset Generation</h4>
+            <p>Pixel components, iconography, and atmospheric effects coded.</p>
+          </div>
+        </div>
+        <div class="timeline-event">
+          <div class="timeline-text">
+            <span class="date">Q3 2026</span>
+            <h4>Data Integration</h4>
+            <p>Charting engine, animated counters, and dynamic state binding.</p>
+          </div>
+        </div>
+        <div class="timeline-event">
+          <div class="timeline-text">
+            <span class="date">Q4 2026</span>
+            <h4>Global Launch</h4>
+            <p>Public release with full documentation and community support.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide bg-grid scanlines grain crt-glow" data-slide="7">
+    <div class="slide-content">
+      <span class="pixel-label">Live Telemetry</span>
+      <h2>Platform Vitals</h2>
+      <div class="stats-grid">
+        <div class="stat-block">
+          <div class="stat-number" data-target="847">0</div>
+          <div class="stat-label">Active Worlds</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-number" data-target="12.4" data-suffix="M">0</div>
+          <div class="stat-label">Pixels Rendered</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-number" data-target="99.9" data-suffix="%">0</div>
+          <div class="stat-label">Uptime Score</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-number" data-target="2048">0</div>
+          <div class="stat-label">Max Resolution</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide bg-grid-cyan scanlines grain" data-slide="8">
+    <div class="slide-content">
+      <div class="quote-container">
+        <p class="quote-text">The best presentations do not merely inform. They immerse. They transform the conference room into an arcade cabinet where every slide is a new level waiting to be unlocked.</p>
+        <div class="quote-author">— Lead Creative Technologist, Studio Orbital</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide bg-grid-lavender scanlines grain" data-slide="9">
+    <div class="slide-content">
+      <span class="pixel-label">Access Tiers</span>
+      <h2>Choose Your Loadout</h2>
+      <div class="tier-grid">
+        <div class="tier-card">
+          <div class="tier-name">Rookie</div>
+          <div class="tier-price">$0<span>/mo</span></div>
+          <div class="tier-desc">For solo explorers testing the waters.</div>
+          <ul class="tier-features">
+            <li>5 slide maximum</li>
+            <li>Standard grid themes</li>
+            <li>Community support</li>
+            <li>Static export only</li>
+          </ul>
+          <button class="pixel-btn">Select</button>
+        </div>
+        <div class="tier-card featured">
+          <div class="tier-name">Arcade</div>
+          <div class="tier-price">$29<span>/mo</span></div>
+          <div class="tier-desc">Serious builders need serious tooling.</div>
+          <ul class="tier-features">
+            <li>Unlimited slides</li>
+            <li>All atmospheric packs</li>
+            <li>Live data binding</li>
+            <li>Priority rendering</li>
+            <li>Custom cursor sets</li>
+          </ul>
+          <button class="pixel-btn pink-btn">Select</button>
+        </div>
+        <div class="tier-card">
+          <div class="tier-name">Boss</div>
+          <div class="tier-price">$79<span>/mo</span></div>
+          <div class="tier-desc">Enterprise-grade control and compliance.</div>
+          <ul class="tier-features">
+            <li>Everything in Arcade</li>
+            <li>White-label export</li>
+            <li>SSO &amp; audit logs</li>
+            <li>Dedicated pipeline</li>
+          </ul>
+          <button class="pixel-btn">Select</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide bg-grid scanlines grain crt-glow" data-slide="10">
+    <div class="slide-content">
+      <div class="cta-content">
+        <h2>Ready Player<br>One?</h2>
+        <p>Deploy your first 8-BIT ORBIT deck in under sixty seconds. No dependencies. No friction. Just pure presentation power.</p>
+        <div class="cta-buttons">
+          <button class="pixel-btn">Initialize Deck</button>
+          <button class="pixel-btn pink-btn">View Documentation</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</body></html>

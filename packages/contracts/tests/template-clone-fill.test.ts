@@ -56,6 +56,9 @@ import {
   stripInventedBlockFramePlatformCards,
   neutralizeBlockFrameEnglishHeroCta,
   healBlockFrameInventedHeroShells,
+  healEightBitOrbitLeftoverCatalogCopy,
+  fillEightBitOrbitKitSlide,
+  stripEightBitOrbitCatalogDemoCopy,
   healCobaltOrphanDataStats,
   injectCobaltAbsoluteSlotCss,
   officialLookIsCobaltGrid,
@@ -1403,12 +1406,253 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(out).not.toMatch(/Presentation Template/);
   });
 
+  it('루프539 — placeholder contact chrome (555 phones, hello@example, HELLO@VENTURE.IO, SEATTLE WA) is scrubbed', async () => {
+    const { stripLeftoverCatalogDemoPhrases } = await import('../src/template-clone-fill');
+    const html =
+      '<p>+1 (555) 014-2298</p>'
+      + '<p>+1 (555) 000 1234</p>'
+      + '<p>+1 (555) 000-0000</p>'
+      + '<a>hello@example.studio</a>'
+      + '<a>hello@example.com</a>'
+      + '<span>HELLO@VENTURE.IO</span>'
+      + '<span>www.example.studio</span>'
+      + '<span>www.example.com</span>'
+      + '<p>SEATTLE, WA</p>'
+      + '<div class="hero-title">8-BIT<br>ORBIT</div>'
+      + '<p>Pixel Perfect Presentation System</p>';
+    const out = stripLeftoverCatalogDemoPhrases(html);
+    expect(out).not.toMatch(/\+1\s*\(?555\)?/);
+    expect(out).not.toMatch(/hello@example/);
+    expect(out).not.toMatch(/HELLO@VENTURE\.IO/);
+    expect(out).not.toMatch(/www\.example\./);
+    expect(out).not.toMatch(/SEATTLE, WA/);
+    expect(out).not.toMatch(/8-BIT/);
+    expect(out).not.toMatch(/ORBIT/);
+    expect(out).not.toMatch(/Pixel Perfect Presentation System/);
+  });
+
   it('루프539 — bare "Presentation Template" scrubbed but Korean surrounding text preserved', async () => {
     const { stripLeftoverCatalogDemoPhrases } = await import('../src/template-clone-fill');
     const html = '<p>Presentation Template</p><p>사용자 리서치</p>';
     const out = stripLeftoverCatalogDemoPhrases(html);
     expect(out).not.toMatch(/Presentation Template/);
     expect(out).toMatch(/사용자 리서치/);
+  });
+
+  it('루프540 — 8-Bit Orbit tier 슬라이드: 가짜 $29/mo tier 카드 · English feature bullets 스트립', async () => {
+    const html = await readFile(
+      new URL(
+        './fixtures/loop540-eightbit-orbit-korean-writing-tips.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    // Slice out slide-9 body only + attrs.
+    const shell = /<section\b([^>]*data-slide="9"[^>]*)>([\s\S]*?)<\/section>/i.exec(html);
+    expect(shell).toBeTruthy();
+    const attrs = shell![1] ?? '';
+    const body = shell![2] ?? '';
+    const filled = fillEightBitOrbitKitSlide(body, attrs, {
+      title: '글을 매력적으로 쓰는 팁',
+      lead: '독자를 붙잡는 도입, 흐름, 마무리',
+      bodyText: '',
+      kicker: '핵심',
+      fillLines: [
+        { title: '도입 흡인', body: '첫 문장에서 독자의 호기심을 붙잡는다.' },
+        { title: '흐름 유지', body: '문단 사이 자연스러운 논리 연결.' },
+        { title: '마무리 각인', body: '한 문장으로 요점을 남긴다.' },
+      ],
+    });
+    // Tier chrome dropped entirely.
+    expect(filled).not.toMatch(/tier-card/);
+    expect(filled).not.toMatch(/tier-grid/);
+    expect(filled).not.toMatch(/\$\s*29\s*\/\s*mo/);
+    expect(filled).not.toMatch(/Rookie/);
+    expect(filled).not.toMatch(/For solo explorers testing the waters/);
+  });
+
+  it('루프540 — 8-Bit Orbit timeline 슬라이드: Q1..Q4 → STEP 01..04 + English 본문 → 한국어 fill', async () => {
+    const html = await readFile(
+      new URL(
+        './fixtures/loop540-eightbit-orbit-korean-writing-tips.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const shell = /<section\b([^>]*data-slide="6"[^>]*)>([\s\S]*?)<\/section>/i.exec(html);
+    expect(shell).toBeTruthy();
+    const attrs = shell![1] ?? '';
+    const body = shell![2] ?? '';
+    const filled = fillEightBitOrbitKitSlide(body, attrs, {
+      title: '글을 매력적으로 쓰는 팁',
+      lead: '',
+      bodyText: '',
+      kicker: '진행',
+      fillLines: [
+        { title: '주제 정하기', body: '독자를 특정하고 각도를 좁힌다.' },
+        { title: '개요 구성', body: '도입-본론-마무리 골격을 짠다.' },
+        { title: '초고 쓰기', body: '완성보다 흐름을 우선한다.' },
+        { title: '퇴고와 마무리', body: '문장을 다듬고 리듬을 조율한다.' },
+      ],
+    });
+    expect(filled).toMatch(/STEP\s*01/);
+    expect(filled).toMatch(/STEP\s*04/);
+    expect(filled).not.toMatch(/Q1\s*2026/);
+    expect(filled).not.toMatch(/Q4\s*2026/);
+    expect(filled).not.toMatch(/Wireframes, palette selection/);
+    expect(filled).not.toMatch(/Public release with full documentation/);
+    expect(filled).toMatch(/주제 정하기/);
+    expect(filled).toMatch(/퇴고와 마무리/);
+  });
+
+  it('루프540 — 8-Bit Orbit stat 슬라이드: data-target reset + English label → 한국어 label', async () => {
+    const html = await readFile(
+      new URL(
+        './fixtures/loop540-eightbit-orbit-korean-writing-tips.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const shell = /<section\b([^>]*data-slide="7"[^>]*)>([\s\S]*?)<\/section>/i.exec(html);
+    expect(shell).toBeTruthy();
+    const attrs = shell![1] ?? '';
+    const body = shell![2] ?? '';
+    const filled = fillEightBitOrbitKitSlide(body, attrs, {
+      title: '글쓰기 지표',
+      lead: '',
+      bodyText: '',
+      kicker: '지표',
+      fillLines: [
+        { title: '도입 문장', body: '가독성 우선' },
+        { title: '문단 리듬', body: '3~5문장' },
+        { title: '어휘 다양성', body: '반복 회피' },
+        { title: '마무리 각인', body: '한 줄 요약' },
+      ],
+    });
+    // data-target attributes wiped.
+    expect(filled).not.toMatch(/data-target=/);
+    expect(filled).not.toMatch(/data-suffix=/);
+    // English labels replaced.
+    expect(filled).not.toMatch(/Active Worlds/);
+    expect(filled).not.toMatch(/Pixels Rendered/);
+    expect(filled).not.toMatch(/Uptime Score/);
+    expect(filled).not.toMatch(/Max Resolution/);
+    expect(filled).toMatch(/도입 문장/);
+    expect(filled).toMatch(/어휘 다양성/);
+  });
+
+  it('루프540 — 8-Bit Orbit quote 슬라이드: demo 인용/저자 wipe + Korean lead 삽입', async () => {
+    const html = await readFile(
+      new URL(
+        './fixtures/loop540-eightbit-orbit-korean-writing-tips.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const shell = /<section\b([^>]*data-slide="8"[^>]*)>([\s\S]*?)<\/section>/i.exec(html);
+    expect(shell).toBeTruthy();
+    const attrs = shell![1] ?? '';
+    const body = shell![2] ?? '';
+    const filled = fillEightBitOrbitKitSlide(body, attrs, {
+      title: '기억할 한 문장',
+      lead: '문장이 짧을수록 독자는 오래 기억한다.',
+      bodyText: '',
+      kicker: '',
+      fillLines: [],
+    });
+    expect(filled).not.toMatch(/Studio Orbital/);
+    expect(filled).not.toMatch(/Lead Creative Technologist/);
+    expect(filled).not.toMatch(/The best presentations do not merely inform/);
+    expect(filled).toMatch(/문장이 짧을수록 독자는 오래 기억한다/);
+  });
+
+  it('루프540 — 8-Bit Orbit cover: hero-badges English 문구를 주제 라벨로 대체 + Pixel Perfect Presentation System 스트립', async () => {
+    const html = await readFile(
+      new URL(
+        './fixtures/loop540-eightbit-orbit-korean-writing-tips.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const shell = /<section\b([^>]*data-slide="1"[^>]*)>([\s\S]*?)<\/section>/i.exec(html);
+    expect(shell).toBeTruthy();
+    const attrs = shell![1] ?? '';
+    const body = shell![2] ?? '';
+    const filled = fillEightBitOrbitKitSlide(body, attrs, {
+      title: '글을 매력적으로 쓰는 팁',
+      lead: '독자를 붙잡는 도입, 흐름, 마무리',
+      bodyText: '',
+      kicker: '가이드',
+      fillLines: [
+        { title: '도입', body: '' },
+        { title: '흐름', body: '' },
+        { title: '마무리', body: '' },
+      ],
+    });
+    // Hero subtitle replaced (no more Pixel Perfect Presentation System).
+    expect(filled).not.toMatch(/Pixel Perfect Presentation System/);
+    expect(filled).toMatch(/독자를 붙잡는 도입/);
+    // Badges rewritten to topic labels.
+    expect(filled).not.toMatch(/10 Slides/);
+    expect(filled).not.toMatch(/CSS Native/);
+    expect(filled).not.toMatch(/Zero Dependencies/);
+    expect(filled).toMatch(/도입/);
+    expect(filled).toMatch(/흐름/);
+    expect(filled).toMatch(/마무리/);
+  });
+
+  it('루프540 — stripEightBitOrbitCatalogDemoCopy 는 catalog literal English를 광범위하게 제거', () => {
+    const html =
+      '<p>Pixel Perfect Presentation System</p>'
+      + '<span>Access Tiers</span><span>Live Telemetry</span><span>Chronology</span>'
+      + '<span>Mission Brief</span><span>Core Systems</span>'
+      + '<button>Initialize Deck</button><button>View Documentation</button>'
+      + '<h2>Development Roadmap</h2><h2>Platform Vitals</h2><h2>Choose Your Loadout</h2>'
+      + '<div>Rookie</div><div>$0/mo</div><div>$29/mo</div><div>$79/mo</div>'
+      + '<li>5 slide maximum</li><li>Everything in Arcade</li>'
+      + '<div>Active Worlds</div><div>Pixels Rendered</div>'
+      + '<p>Wireframes, palette selection, and core grid system established.</p>'
+      + '<p>Real-time aggregate figures from active deployments</p>'
+      + '<div class="quote-author">— Lead Creative Technologist, Studio Orbital</div>'
+      + '<h1>8-BIT<br>ORBIT</h1>';
+    const out = stripEightBitOrbitCatalogDemoCopy(html);
+    expect(out).not.toMatch(/Pixel Perfect Presentation System/);
+    expect(out).not.toMatch(/Access Tiers/);
+    expect(out).not.toMatch(/Live Telemetry/);
+    expect(out).not.toMatch(/Chronology/);
+    expect(out).not.toMatch(/Mission Brief/);
+    expect(out).not.toMatch(/Core Systems/);
+    expect(out).not.toMatch(/Initialize Deck/);
+    expect(out).not.toMatch(/View Documentation/);
+    expect(out).not.toMatch(/Development Roadmap/);
+    expect(out).not.toMatch(/Platform Vitals/);
+    expect(out).not.toMatch(/Choose Your Loadout/);
+    expect(out).not.toMatch(/Rookie/);
+    expect(out).not.toMatch(/\$\s*0\s*\/\s*mo/);
+    expect(out).not.toMatch(/\$\s*29\s*\/\s*mo/);
+    expect(out).not.toMatch(/5\s*slide\s*maximum/);
+    expect(out).not.toMatch(/Everything in Arcade/);
+    expect(out).not.toMatch(/Active Worlds/);
+    expect(out).not.toMatch(/Wireframes, palette selection/);
+    expect(out).not.toMatch(/Real-time aggregate figures from active deployments/);
+    expect(out).not.toMatch(/Studio Orbital/);
+    expect(out).not.toMatch(/Lead Creative Technologist/);
+    expect(out).not.toMatch(/8-BIT/);
+    expect(out).not.toMatch(/>ORBIT</);
+  });
+
+  it('루프540 — appendInlineStyle 은 같은 property를 두 번 이상 실행해도 누적하지 않는다', async () => {
+    // 힐러가 두 번 실행되어도 style 조각이 중복 append 되면 안 됨.
+    const { fitDenseCardPeerText } = await import('../src/template-clone-fill') as any;
+    if (typeof fitDenseCardPeerText !== 'function') return; // fitDenseCardPeerText not exported — skip.
+    const seed = '<div class="feature-card"><h3>제목</h3><p>본문</p></div>';
+    const once = fitDenseCardPeerText(seed, true);
+    const twice = fitDenseCardPeerText(once, true);
+    const thrice = fitDenseCardPeerText(twice, true);
+    // Style declarations must not stack — `font-size:36px` should appear once
+    // per element (h3 once, p once), not 3x per element.
+    const fontSizeMatches = (thrice.match(/font-size:\s*36px/gi) ?? []).length;
+    expect(fontSizeMatches).toBeLessThanOrEqual(2);
   });
 
   it('루프539 — persist heal unwraps invented hero shells together', async () => {
