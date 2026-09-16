@@ -60,6 +60,14 @@ import {
   healEightBitOrbitLeftoverCatalogCopy,
   fillEightBitOrbitKitSlide,
   stripEightBitOrbitCatalogDemoCopy,
+  healRawGridLeftoverCatalogCopy,
+  stripRawGridCatalogDemoCopy,
+  officialLookIsRawGridPitch,
+  RAW_GRID_PITCH_KIT_KEY,
+  RAW_GRID_PITCH_SLOT_MAP,
+  resolveTemplateCloneKitKey,
+  scrubRawGridFinancialClicheText,
+  synthesizeTemplateCloneSlideBody,
   healCobaltOrphanDataStats,
   injectCobaltAbsoluteSlotCss,
   officialLookIsCobaltGrid,
@@ -1443,6 +1451,82 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(healed).not.toMatch(/\[Studio\s*X\]\s*Guidelines/i);
     // Broadside footer label wiped.
     expect(healed).not.toMatch(/>Broadside</);
+  });
+
+  it('루프550 — Raw Grid pitch 재무 KPI($27.6M / $4.5M / +47% / Series B) wipe + chart/table shell 유지', async () => {
+    const html = await readFile(
+      new URL('./fixtures/loop550-raw-grid-kpi.html', import.meta.url),
+      'utf8',
+    );
+    expect(officialLookIsRawGridPitch(html)).toBe(true);
+    expect(resolveTemplateCloneKitKey(html)).toBe(RAW_GRID_PITCH_KIT_KEY);
+    expect(resolveTemplateCloneSlotMap({
+      templateId: 'html-ppt-zhangzara-raw-grid',
+    })).toEqual(RAW_GRID_PITCH_SLOT_MAP);
+    expect(resolveTemplateCloneSlotMap({ html })).toEqual(RAW_GRID_PITCH_SLOT_MAP);
+
+    const healed = healRawGridLeftoverCatalogCopy(
+      html,
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+    );
+    expect(healed).not.toMatch(/\$27\.6M/);
+    expect(healed).not.toMatch(/\$4\.5M/);
+    expect(healed).not.toMatch(/\$6\.2M/);
+    expect(healed).not.toMatch(/\$42M/);
+    expect(healed).not.toMatch(/\$1B\+/);
+    expect(healed).not.toMatch(/\$5\.0M/);
+    expect(healed).not.toMatch(/\+47%/);
+    expect(healed).not.toMatch(/>63%</);
+    expect(healed).not.toMatch(/Series\s+B/);
+    expect(healed).not.toMatch(/\$\d+\.?\d*[MBK]/i);
+    expect(healed).toContain('s3-bar-track');
+    expect(healed).toContain('s3-bar-fill');
+    expect(healed).toContain('s7-donut-container');
+    expect(healed).toContain('viewBox="0 0 200 200"');
+    expect(healed).toContain('s9-table');
+    expect(healed).toContain('s7-legend-swatch');
+  });
+
+  it('루프550 — Raw Grid healer는 Grove / Broadside 킷에 발동하지 않는다', async () => {
+    const grove = await readFile(
+      new URL('./fixtures/loop538-grove-teamver-leftover.html', import.meta.url),
+      'utf8',
+    );
+    expect(officialLookIsGrove(grove)).toBe(true);
+    expect(officialLookIsRawGridPitch(grove)).toBe(false);
+    expect(healRawGridLeftoverCatalogCopy(grove, TEAMVER_SERVICE_INTRO_BRIEF)).toBe(grove);
+    expect(grove).toMatch(/73<em>%<\/em>/);
+
+    const broadside = await readFile(
+      new URL('./fixtures/loop536-broadside-teamver-empty-bottom.html', import.meta.url),
+      'utf8',
+    );
+    expect(officialLookIsBroadside(broadside)).toBe(true);
+    expect(officialLookIsRawGridPitch(broadside)).toBe(false);
+    expect(healRawGridLeftoverCatalogCopy(broadside, TEAMVER_SERVICE_INTRO_BRIEF)).toBe(broadside);
+    expect(broadside).toMatch(/\$3\.5B/);
+  });
+
+  it('루프550 — synth fallback은 raw-grid-pitch에서 재무 상투어를 남기지 않는다', () => {
+    expect(scrubRawGridFinancialClicheText('ARR $27.6M · Series B · +47%')).toBe('ARR  ·  · ');
+    expect(scrubRawGridFinancialClicheText('Series A', '01')).toBe('01');
+    const synth = synthesizeTemplateCloneSlideBody(
+      '팀버 소개',
+      '성과 지표',
+      7,
+      [
+        '<div class="slide-deck"><div class="slide s3">',
+        '<div class="s3-stat-number">$27.6M</div>',
+        '<style>:root{--pink:#f2d4cf;--green:#e5edd6}</style>',
+        '</div></div>',
+      ].join(''),
+      RAW_GRID_PITCH_KIT_KEY,
+    );
+    const blob = JSON.stringify(synth);
+    expect(blob).not.toMatch(/\$\d+\.?\d*[MBK]/i);
+    expect(blob).not.toMatch(/Series\s+[A-E]/i);
+    expect(stripRawGridCatalogDemoCopy('<div class="s3-stat-number">$27.6M</div>'))
+      .not.toMatch(/\$27\.6M/);
   });
 
   it('루프538 — Grove forest kit demo chrome (landscape / grove-stat KPI / sidebar) is scrubbed', async () => {

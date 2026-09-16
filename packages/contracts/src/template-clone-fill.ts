@@ -27,6 +27,7 @@ export {
   PLAYFUL_SLOT_MAP,
   EIGHT_BIT_ORBIT_SLOT_MAP,
   MAT_SLOT_MAP,
+  RAW_GRID_PITCH_SLOT_MAP,
   TEMPLATE_CLONE_SLOT_MAPS,
   resolveTemplateCloneSlotMap,
 } from './template-clone-slot-maps.js';
@@ -1538,21 +1539,59 @@ function bindTemplateCloneSynthItemBody(input: {
  * 일어나 100% 동일 body가 생기더라도, template pool은 topic이 이미 안에
  * 있어 카피가 자연스럽고 사용자 UX 손해가 salt 노출보다 훨씬 작다.
  */
-function synthesizeTemplateCloneSlideBody(
+const RAW_GRID_SYNTH_FINANCIAL_RE =
+  /\$\d+(?:\.\d+)?[MBK]\+?|\bSeries\s+[A-E]\+?\b|[+\-]?\d+(?:\.\d+)?%/gi;
+
+/** Wipe pitch-kit financial cliches from synth text. Never invents a number. */
+export function scrubRawGridFinancialClicheText(
+  text: string,
+  ordinal?: string | null,
+): string {
+  const source = String(text ?? '');
+  if (!source) return source;
+  const replacement = ordinal == null || ordinal === '' ? '' : String(ordinal);
+  return source.replace(RAW_GRID_SYNTH_FINANCIAL_RE, replacement);
+}
+
+function looksLikeRawGridPitchSynthContext(
+  kitKey?: string | null,
+  cover?: string | null,
+  brief?: string | null,
+): boolean {
+  if (kitKey === RAW_GRID_PITCH_KIT_KEY) return true;
+  const hay = `${cover ?? ''}\n${brief ?? ''}`;
+  return officialLookIsRawGridPitch(hay);
+}
+
+export function synthesizeTemplateCloneSlideBody(
   cover: string,
   label: string,
   index: number,
   brief?: string | null,
+  kitKey?: string | null,
 ): Pick<TemplateCloneSlideContent, 'body' | 'roleHint' | 'items' | 'lead'> {
   const templates = templatesForSynthTemplateTopic(
     classifySynthTemplateTopicProfile(cover, brief),
   );
   const picked = templates[(index - 1) % templates.length]!;
-  return {
+  const result = {
     roleHint: picked.roleHint,
     lead: picked.lead || label,
     body: picked.lines.join('\n'),
     items: synthTemplateItems(picked.itemTitles, picked.lines),
+  };
+  if (!looksLikeRawGridPitchSynthContext(kitKey, cover, brief)) return result;
+  return {
+    ...result,
+    lead: scrubRawGridFinancialClicheText(result.lead),
+    body: scrubRawGridFinancialClicheText(result.body),
+    items: result.items.map((item, itemIndex) => ({
+      title: scrubRawGridFinancialClicheText(
+        item.title,
+        String(itemIndex + 1).padStart(2, '0'),
+      ),
+      body: item.body ? scrubRawGridFinancialClicheText(item.body) : item.body,
+    })),
   };
 }
 
@@ -2550,6 +2589,60 @@ export function officialLookIsEightBitOrbit(html: string): boolean {
   return /\bpixel-box\b/i.test(source)
     && /\b(?:scanlines|grain|starfield|pixel-hero-text)\b/i.test(source)
     && /(?:#0A0E27|--dark-void|--neon-pink)/i.test(source);
+}
+
+/**
+ * 루프550 — Raw Grid (Zhangzara neobrutalist pitch) kit fingerprint.
+ *
+ * Highly specific compound class chrome (`s3-bar-fill`, `s3-stat-number`,
+ * `s7-donut-value`, `s7-metric-num`, `s8-stat-num`, `s10-rb-block`,
+ * `s9-table`) only ships in this pitch kit. The `--pink:#f2d4cf` +
+ * `--green:#e5edd6` palette combined with `.slide-deck` provides the
+ * secondary CSS-side signal. Fingerprint must NOT fire on Broadside /
+ * Grove / Mat / EightBitOrbit / Cobalt / Studio kits — each of those has
+ * its own chrome names and is exclusive with the `sN-*` compound above.
+ */
+export function officialLookIsRawGridPitch(html: string): boolean {
+  const source = String(html ?? '');
+  if (!source.trim()) return false;
+  // Exclusive deny — none of these kits use `s3-bar-fill` / `s7-donut-value`
+  // / `s8-stat-num` compound chrome, but keep an explicit gate so a fixture
+  // that happens to duplicate raw-grid classes inside another look does not
+  // trigger this healer.
+  if (officialLookIsCreativeMode(source)) return false;
+  if (officialLookIsBroadside(source)) return false;
+  if (officialLookIsGrove(source)) return false;
+  if (officialLookIsMat(source)) return false;
+  if (officialLookIsEightBitOrbit(source)) return false;
+  const chrome =
+    /\b(?:s3-bar-fill|s3-stat-number|s7-donut-value|s7-metric-num|s8-stat-num|s10-rb-block|s9-table|s1-brand-text|s4-card-top|s6-step-num)\b/i
+      .test(source);
+  if (!chrome) return false;
+  const css = lookCssWithoutNeutralize(source);
+  const hay = `${css}\n${source}`;
+  const palette =
+    /--pink\s*:\s*#f2d4cf/i.test(hay)
+    && /--green\s*:\s*#e5edd6/i.test(hay);
+  if (palette) return true;
+  // Cover / brand mark fallback: neobrutalist Raw Grid decks carry the
+  // literal brand text plus the `slide-deck` shell used only by this kit.
+  return /\bRAW\s+GRID\b/i.test(source)
+    && /\bslide-deck\b/i.test(source);
+}
+
+/** Stable kit key for Raw Grid pitch (resolver + synth guard). */
+export const RAW_GRID_PITCH_KIT_KEY = 'raw-grid-pitch' as const;
+
+/**
+ * 루프550 — look HTML → kit key. Raw Grid is first so its `s1`/`s8`
+ * chrome does not fall through to Creative / other numeric-sN kits.
+ * Other official looks keep using `resolveOfficialPosterKit`.
+ */
+export function resolveTemplateCloneKitKey(html: string): string | null {
+  const source = String(html ?? '');
+  if (!source.trim()) return null;
+  if (officialLookIsRawGridPitch(source)) return RAW_GRID_PITCH_KIT_KEY;
+  return null;
 }
 
 function formatEightBitCoverTitle(title: string): string {
@@ -5193,6 +5286,11 @@ const BROADSIDE_POSTER_LAYOUT_CSS = [
   '.slide--end .display{font-size:clamp(56px,min(8vw,14vh),140px);max-width:90%;line-height:0.95}',
 ].join('');
 
+/** 루프550 — Raw Grid pitch: keep cover/closing horizontal; no size rewrite. */
+const RAW_GRID_PITCH_POSTER_LAYOUT_CSS = [
+  '.s1 .t-display,.s1 .s1-headline,.s10 .t-title,.s10 .s10-r-top{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}',
+].join('');
+
 /** 루프492 — Long Table: no kit vertical writing; cover/featured/closing title bands stay horizontal. */
 const LONG_TABLE_POSTER_LAYOUT_CSS = [
   '.s-cover .title,.s-cover .left,.s-featured .ttl,.s-featured .left,.s-closing .h,.s-closing .footer-line{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}',
@@ -5269,7 +5367,8 @@ type OfficialPosterKit =
   | 'daisy'
   | 'eightbit'
   | 'blockframe'
-  | 'broadside';
+  | 'broadside'
+  | 'raw-grid-pitch';
 
 type OfficialPosterKitPlan = {
   kind: OfficialPosterKit;
@@ -5344,6 +5443,12 @@ const BROADSIDE_COVER_KIT_SLOT_RE =
 
 const BROADSIDE_CLOSING_KIT_SLOT_RE =
   /\b(?:broadside-top-chrome|broadside-num|corner-label|display|lead|data-od-official-motif-html)\b/i;
+
+const RAW_GRID_COVER_KIT_SLOT_RE =
+  /\b(?:s1-left|s1-right|s1-brand|s1-headline|s1-cta|s1-brand-text|t-display|slide-content|data-od-official-motif-html)\b/i;
+
+const RAW_GRID_CLOSING_KIT_SLOT_RE =
+  /\b(?:s10-right|s10-r-top|s10-r-bottom|s10-rb-block|t-title|t-body|slide-content|data-od-official-motif-html)\b/i;
 
 const LONG_TABLE_COVER_KIT_SLOT_RE =
   /\b(?:grid|ed-row|ed-badge|ed-label|title|actions|stats|bottom-block|tagline|big-edition|big-edition-lab|big-edition-meta|frame|ttl|lede|info-row|pill|nav-hint|pagenum|data-od-official-motif-html)\b/i;
@@ -5468,6 +5573,19 @@ function resolveOfficialPosterKit(html: string): OfficialPosterKitPlan | null {
       coverPrimarySlotRe: /\btitle\b/i,
       preserveVerticalSlotRe: null,
       layoutCss: CREATIVE_POSTER_LAYOUT_CSS,
+      layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
+    };
+  }
+  if (officialLookIsRawGridPitch(dest)) {
+    return {
+      kind: 'raw-grid-pitch',
+      coverHostRe: /\bs1\b/i,
+      closingHostRe: /\bs10\b/i,
+      coverSlotRe: RAW_GRID_COVER_KIT_SLOT_RE,
+      colophonSlotRe: RAW_GRID_CLOSING_KIT_SLOT_RE,
+      coverPrimarySlotRe: /\b(?:s1-headline|t-display)\b/i,
+      preserveVerticalSlotRe: null,
+      layoutCss: RAW_GRID_PITCH_POSTER_LAYOUT_CSS,
       layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
     };
   }
@@ -5941,6 +6059,11 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   // 루프540 — 8-Bit Orbit tier/timeline/stat leftover 카탈로그 카피
   // (English $29/mo / Rookie / Studio Orbital 등)까지 청소.
   next = healEightBitOrbitLeftoverCatalogCopy(next, brief);
+  // 루프550 — Raw Grid pitch 킷의 하드코딩 재무 KPI(`$27.6M` / `$4.5M` /
+  // `$42M` / `$1B+` / `+47%`)를 wipe. 킷 지문(`s3-bar-fill` / `s7-donut-value`
+  // / `--pink:#f2d4cf`)이 있는 슬라이드에서만 발동. 다른 킷의 정상 % 표기
+  // (예: Grove `73%` real fill)를 건드리지 않도록 shell-scoped 로만 동작.
+  next = healRawGridLeftoverCatalogCopy(next, brief);
   // 루프548 — Retro-Windows 로드맵 표의 Q1–Q4 2026 / $1.2M–$2.1M 만.
   // 전역 regex 로 지우면 정상 분기 표기까지 날아가므로 킷 지문 + 데모 클러스터일 때만.
   next = healRetroWindowsRoadmapDemo(next, brief);
@@ -8762,6 +8885,134 @@ export function healEightBitOrbitLeftoverCatalogCopy(
   return stripEightBitOrbitCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out));
 }
 
+/**
+ * 루프550 — Raw Grid pitch kit catalog leftover. Neobrutalist s{N}-* chrome
+ * ships fake financial KPIs ($27.6M / $4.5M / $42M / $1B+ / +47% / 98%) in
+ * `.s3-bar-fill` / `.s3-stat-number` / `.s7-donut-value` / `.s7-metric-num`
+ * / `.s8-stat-num` and English pitch catalog copy ("Discover All Startups",
+ * "Connecting Founders With Opportunity", "The Founders Lab", "Plan
+ * Comparison / Pricing Tiers", "Get In Touch", "hello@rawgrid.studio").
+ * Fill pipeline does not know how to rewrite pitch KPIs so the demo digits
+ * survive to persist. This healer wipes the KPI text INSIDE the numeric
+ * shells (bar-fill / stat-number / metric-num / donut-value / stat-num)
+ * and strips the English pitch catalog phrases, while leaving the shell
+ * markup + chart geometry (svg viewBox, `.s3-bar-track`, `.s7-donut-container`,
+ * `.s7-legend-swatch`, `.s9-table` grid) intact. NEVER invents replacement
+ * numbers — real user KPIs must not be forged.
+ */
+const RAW_GRID_KIT_INNER_KPI_CLASSES =
+  /(<(?:div|span)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:s3-bar-fill|s3-stat-number|s7-donut-value|s7-metric-num|s8-stat-num)\b[^"']*["'][^>]*>)([\s\S]*?)(<\/(?:div|span)>)/gi;
+
+/**
+ * Numeric KPI shells inside Raw Grid demo shells. Financial money tokens
+ * (`$27.6M`, `$1B+`), demo growth percentages (`+47%`), and mock counts
+ * (`12.4K`, `500+`, `3.2x`, `4.9`, `156`) all match. Applied INSIDE the
+ * shell only — global text is untouched. `Series [A-E]` is added even
+ * though the current Raw Grid example lacks it, because pitch kits often
+ * bake round labels and the parent task calls it out as a scrub target.
+ */
+const RAW_GRID_KPI_VALUE_RE =
+  /^\s*(?:[+\-]?\$?\d+(?:\.\d+)?\s*[MBK]\+?|[+\-]?\$?\d+(?:\.\d+)?[×xX]|[+\-]?\d+(?:\.\d+)?\s*%|Series\s+[A-E]\+?|\$\d+(?:\.\d+)?\+?|\d{2,}(?:\.\d+)?|\d\.\d+|\d+(?:\.\d+)?\+)\s*$/;
+
+const RAW_GRID_MONEY_OR_SERIES_RE =
+  /\$\d+(?:\.\d+)?[MBK]\+?|\bSeries\s+[A-E]\+?/gi;
+
+const RAW_GRID_TABLE_KPI_CELL_RE =
+  /(<(?:td|th)\b[^>]*>)(\s*(?:\$\d+(?:\.\d+)?[MBK]\+?|Series\s+[A-E]\+?|[+\-]?\d+(?:\.\d+)?\s*%)\s*)(<\/(?:td|th)>)/gi;
+
+/**
+ * Raw Grid demo copy phrases. Match plain-text (`>phrase<`) with word
+ * boundaries so shells that already got user fill are left alone.
+ */
+const RAW_GRID_DEMO_COPY_RE =
+  /Discover All Startups|Connecting Founders With Opportunity|Quarterly Growth Metrics|Fiscal Year\s*20\d\d|Revenue by Quarter(?:\s*\(\$M\))?|Total Annual Revenue|Year over Year Growth|New User Signups|Core Services|What We Provide|Venture Funding|The Founders Lab|Cohots launch every quarter|Application Process|Non-Profit|Retention Rate|Founders who renew after year one|Average ROI|Return on capital invested|Jobs Created|Net new positions this quarter|Capital Deployed|Total funding distributed to date|Plan Comparison|Pricing Tiers|Shared Desk|Dedicated Desk|Private Office|Mentor Hours|Investor Introductions|Legal (?:&|&amp;) Accounting|Basic Templates|Guided Support|Full Service|Event Access|Online Only|VIP (?:&|&amp;) Speaker|Support Response|We don(?:'|&#39;|&#x27;|\u2019)t incubate ideas\.?\s*We accelerate the people bold enough to build them\.?|Avg Rating|hello@rawgrid\.studio|\+1\s*\(555\)\s*000-0000|123 Innovation Drive[^<]*|Monday\s*[—–-]\s*Friday,\s*9:00\s*[—–-]\s*18:00|Get In Touch|Get Started Now|Let(?:'|&#39;|&#x27;|\u2019)s\s*<br\s*\/?>\s*Build\.?|Cities\.\s*(?:<br\s*\/?>\s*)?Startups\.?|Ready to take your venture to the next level\?\s*Join the Raw Grid community and start scaling today\.?|Raw Grid Presentation|RAW GRID|Active Startups|Cities Covered|Fiscal Year\b|Market Share|Alumni|Valuation|Satisfaction/gi;
+
+/**
+ * Leftover body detector — text that ONLY appears in raw-grid catalog demo
+ * copy. Used to gate the heal: if a slide body still has these strings AND
+ * still ships the raw-grid chrome, treat it as unrepaired demo shell.
+ */
+const RAW_GRID_LEFTOVER_BODY_RE =
+  /Cities\.\s*(?:<br\s*\/?>\s*)?Startups\.?|Discover All Startups|Connecting Founders With Opportunity|Quarterly Growth Metrics|The Founders Lab|Plan Comparison|Pricing Tiers|hello@rawgrid\.studio|Ready to take your venture to the next level|We don(?:'|&#39;|&#x27;|\u2019)t incubate ideas|RAW GRID|Get In Touch/i;
+
+/**
+ * Blank inner text of KPI shells (`s3-bar-fill`, `s3-stat-number`,
+ * `s7-donut-value`, `s7-metric-num`, `s8-stat-num`) when the current inner
+ * text matches a financial-KPI cliche or a hard-coded pitch number. Never
+ * invents a replacement digit — the shell just becomes empty (`<div
+ * class="s3-stat-number"></div>`), preserving the visual card slot for
+ * fill or CSS-only styling.
+ */
+function wipeRawGridKpiInnerText(html: string): string {
+  return String(html ?? '').replace(
+    RAW_GRID_KIT_INNER_KPI_CLASSES,
+    (full, open: string, inner: string, close: string) => {
+      const plain = String(inner ?? '')
+        .replace(/<br\s*\/?>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&(?:amp|nbsp|#\d+|#x[0-9a-f]+);/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (!plain) return full;
+      // Real user fill (with Hangul or long text) is never wiped.
+      if (/[가-힣]/.test(plain)) return full;
+      if (plain.length > 12) return full;
+      if (!RAW_GRID_KPI_VALUE_RE.test(plain)) return full;
+      return `${open}${close}`;
+    },
+  );
+}
+
+/**
+ * String-level scrub of raw-grid catalog demo phrases and inner KPI cell
+ * text. Kept separate from `healRawGridLeftoverCatalogCopy` so callers
+ * (e.g. persist-quality assertions, template audit tools) can invoke a
+ * pure scrub without kit detection.
+ */
+export function stripRawGridCatalogDemoCopy(html: string): string {
+  let out = wipeRawGridKpiInnerText(String(html ?? ''));
+  out = out.replace(RAW_GRID_TABLE_KPI_CELL_RE, '$1$3');
+  out = out.replace(RAW_GRID_MONEY_OR_SERIES_RE, '');
+  out = out.replace(RAW_GRID_DEMO_COPY_RE, '');
+  return out
+    .replace(/<p\b[^>]*>\s*(?:<strong>\s*<\/strong>)?\s*<\/p>/gi, '')
+    .replace(/<span\b[^>]*>\s*<\/span>/gi, '')
+    .replace(/<(?:td|th)\b[^>]*>\s*<\/(?:td|th)>/gi, (full) => full.replace(/>\s*</, '><'));
+}
+
+/**
+ * 루프550 — Raw Grid heal pass. Fires only on raw-grid pitch fingerprint.
+ * Walks slide host spans; for each body still carrying pitch KPI shells or
+ * catalog phrases, wipes the KPI inner text and strips the pitch phrases.
+ * Never invents replacement numbers or English copy — user-authored Hangul
+ * or long text inside a KPI shell is preserved. The `slide-deck`, `.s3-bar-
+ * track`, `.s7-donut-container` svg, and `.s9-table` layout survive.
+ */
+export function healRawGridLeftoverCatalogCopy(
+  html: string,
+  brief?: string | null,
+): string {
+  void brief; // kept for symmetry with other kit healers; not consulted yet.
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsRawGridPitch(dest)) return dest;
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) return stripRawGridCatalogDemoCopy(dest);
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    const hasKpiShell = /\b(?:s3-bar-fill|s3-stat-number|s7-donut-value|s7-metric-num|s8-stat-num)\b/i.test(body);
+    const hasDemoPhrase = RAW_GRID_LEFTOVER_BODY_RE.test(body) || RAW_GRID_DEMO_COPY_RE.test(body);
+    // Reset lastIndex — /gi regex is stateful.
+    RAW_GRID_DEMO_COPY_RE.lastIndex = 0;
+    if (!hasKpiShell && !hasDemoPhrase) continue;
+    const scrubbed = stripRawGridCatalogDemoCopy(body);
+    if (scrubbed === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${scrubbed}${out.slice(span.bodyEnd)}`;
+  }
+  return stripRawGridCatalogDemoCopy(out);
+}
+
 function replaceGroveStatValue(block: string, text: string): string {
   return block.replace(
     /(<[^>]*\bgrove-stat-val\b[^>]*>)([\s\S]*?)(<\/[^>]+>)/i,
@@ -10411,6 +10662,9 @@ function enrichSparseSlideForShell(
     slide.title,
     Math.max(1, index),
     brief,
+    officialLookIsRawGridPitch(shell.body) || officialLookIsRawGridPitch(String(brief ?? ''))
+      ? RAW_GRID_PITCH_KIT_KEY
+      : null,
   );
 
   // Loop517 — Prompt-fill often extracts title-only cards. Keep those titles

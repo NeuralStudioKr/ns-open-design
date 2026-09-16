@@ -112,6 +112,21 @@ export const COBALT_GRID_SLOT_MAP: TemplateCloneSlotMap = mapOf(
   /\b(?:s-index|s-table)\b[\s\S]{0,4000}?\brow\b/i,
 );
 
+/**
+ * 루프550 — Raw Grid pitch kit. KPI / card / table peers so leftover
+ * `$27.6M` shells still get a fill pass when templateId is known.
+ */
+export const RAW_GRID_PITCH_SLOT_MAP: TemplateCloneSlotMap = mapOf(
+  [
+    'example-html-ppt-zhangzara-raw-grid',
+    'html-ppt-zhangzara-raw-grid',
+    'raw-grid-pitch',
+  ],
+  ['s3-insights', 's4-grid', 's7-right', 's8-bottom', 's9-table-wrap'],
+  ['s3-stat-box', 's4-card', 's7-metric-row', 's8-stat'],
+  /\b(?:s3-bar-fill|s7-donut-value|s8-stat-num|s9-table)\b/i,
+);
+
 export const TEMPLATE_CLONE_SLOT_MAPS: readonly TemplateCloneSlotMap[] = [
   DAISY_DAYS_SLOT_MAP,
   BLOCK_FRAME_SLOT_MAP,
@@ -124,6 +139,7 @@ export const TEMPLATE_CLONE_SLOT_MAPS: readonly TemplateCloneSlotMap[] = [
   EIGHT_BIT_ORBIT_SLOT_MAP,
   MAT_SLOT_MAP,
   COBALT_GRID_SLOT_MAP,
+  RAW_GRID_PITCH_SLOT_MAP,
 ];
 
 function normalizeTemplateId(raw: string | null | undefined): string {
