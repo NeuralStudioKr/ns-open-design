@@ -24,7 +24,7 @@ pnpm --filter @open-design/contracts test
 ```
 
 ## 남은 후속 (다음 라운드에서 소화)
-- **Round 1 (a)**: 다른 공식 킷(EightBit, Coral, Playful, BlockFrame-Neo, Mat, Grove, Signal, Cobalt, Sakura, LongTable, Capsule)의 example.html도 catalog leftover 검사·힐러 확장.
+- **Round 1 (a)**: 다른 공식 킷 leftover. **Grove는 0916-N02 / 루프538.** 남은 킷: EightBit, Coral, Playful, BlockFrame-Neo, Mat, Signal, Capsule. Cobalt/Sakura/LongTable은 기존 힐러 유지.
 - **Round 2 (b)**: Studio/Signal/Grove/Coral/Playful 등에서도 `.slide-body` flow-wrapper 안 layout 붕괴 여부 재검사.
 - **Round 3 (c)**: `TEMPLATE_CLONE_FILL_DEFAULT_MODE`와 env, prompt/deterministic 경로 일관성 검증.
 - **Round 4 (d)**: `.stat-value` 데모 검출·중립화 로직을 공통 helper로 추출 (다른 KPI 슬롯 재사용).
