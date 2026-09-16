@@ -1386,6 +1386,31 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(out).not.toMatch(/\bEnterprise\b/);
   });
 
+  it('루프539 — cross-kit leftover chrome (THANK YOU FOR WATCHING, NEXUS VENTURES, Analog Presentation Template) is scrubbed', async () => {
+    const { stripLeftoverCatalogDemoPhrases } = await import('../src/template-clone-fill');
+    const html =
+      '<h2>THANK YOU FOR WATCHING</h2>'
+      + '<div class="hero-title">NEXUS<br>VENTURES</div>'
+      + '<span>Analog Presentation Template</span>'
+      + '<div>Q3 Strategic Overview</div>'
+      + '<p>Neobrutalist Presentation Template</p>';
+    const out = stripLeftoverCatalogDemoPhrases(html);
+    expect(out).not.toMatch(/THANK YOU FOR WATCHING/);
+    expect(out).not.toMatch(/NEXUS/);
+    expect(out).not.toMatch(/VENTURES/);
+    expect(out).not.toMatch(/Analog Presentation Template/);
+    expect(out).not.toMatch(/Q3 Strategic Overview/);
+    expect(out).not.toMatch(/Presentation Template/);
+  });
+
+  it('루프539 — bare "Presentation Template" scrubbed but Korean surrounding text preserved', async () => {
+    const { stripLeftoverCatalogDemoPhrases } = await import('../src/template-clone-fill');
+    const html = '<p>Presentation Template</p><p>사용자 리서치</p>';
+    const out = stripLeftoverCatalogDemoPhrases(html);
+    expect(out).not.toMatch(/Presentation Template/);
+    expect(out).toMatch(/사용자 리서치/);
+  });
+
   it('루프539 — persist heal unwraps invented hero shells together', async () => {
     const html = await readFile(
       new URL(
