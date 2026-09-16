@@ -8638,6 +8638,22 @@ function fillBlockFrameNeoSlots(
   next = replaceFirstExactClassText(next, 'nb-btn', '자세히 보기');
   next = replaceFirstExactClassText(next, 'close-btn', '다음 단계');
 
+  if (/\bclose-frame\b/i.test(next)) {
+    next = replaceFirstExactClassText(next, 'close-title', input.title);
+    next = replaceFirstExactClassText(
+      next,
+      'close-subtitle',
+      input.lead || input.bodyText || `${input.title}의 다음 실행 단계를 정리합니다.`,
+    );
+    next = replaceFirstExactClassText(next, 'close-btn', '무료로 시작하기');
+  }
+  if (/\bnb-btn\b/i.test(next)) {
+    const buttonText = /(?:시작|도입|문의|데모|상담|지금)/.test(input.title + input.bodyText)
+      ? '무료로 시작하기'
+      : '자세히 보기';
+    next = replaceFirstExactClassText(next, 'nb-btn', buttonText);
+  }
+
   if (/\bvisual-box\b/i.test(next)) {
     next = replaceExactClassBlocksBySequence(next, 'visual-box', [lines[0] ?? { title: input.title, body: input.lead }], (block) => {
       if (!/Image Placeholder/i.test(block)) return block;
@@ -8821,6 +8837,34 @@ function fitDenseCardPeerText(html: string, compacted: boolean): string {
   return next;
 }
 
+function fitBlockFrameCardPeerText(html: string): string {
+  if (!/\b(?:feature-card|intro-card|nb-card|team-card)\b/i.test(html)) return html;
+  let next = html.replace(/<h([3-5])\b([^>]*)>/i, (_m, level: string, attrs: string) => (
+    `<h${level}${appendInlineStyle(attrs, 'font-size:36px;line-height:1.08;word-break:keep-all;overflow-wrap:break-word')}>`
+  ));
+  next = next.replace(/<p\b([^>]*)>/i, (_m, attrs: string) => (
+    `<p${appendInlineStyle(attrs, 'font-size:24px;line-height:1.34;word-break:keep-all;overflow-wrap:break-word')}>`
+  ));
+  next = next.replace(/(<[^>]*\bteam-role\b[^>]*)(>)/i, (_m, open: string, close: string) => (
+    `${appendInlineStyle(open, 'font-size:22px;line-height:1.25;word-break:keep-all;overflow-wrap:break-word')}${close}`
+  ));
+  next = next.replace(/(<[^>]*\bteam-bio\b[^>]*)(>)/i, (_m, open: string, close: string) => (
+    `${appendInlineStyle(open, 'font-size:21px;line-height:1.35;word-break:keep-all;overflow-wrap:break-word')}${close}`
+  ));
+  return next;
+}
+
+function blockFrameAvatarText(title: string, index: number): string {
+  const raw = normalizeTemplateCloneInlineText(title).replace(/[^\p{L}\p{N}\s]/gu, ' ');
+  const latin = raw.match(/[A-Za-z0-9]+/g);
+  if (latin && latin.length > 0) {
+    return latin.map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+  }
+  const chars = Array.from(raw.replace(/\s+/g, ''));
+  if (chars.length > 0) return chars.slice(0, 2).join('');
+  return String(index + 1).padStart(2, '0');
+}
+
 function fillOneCardPeer(
   cardHtml: string,
   line: TemplateCloneCardFillLine,
@@ -8873,6 +8917,8 @@ function fillOneCardPeer(
   }
   // Block Frame `.team-card`: keep the avatar/card chrome, fill named slots.
   if (/\bteam-card\b/i.test(cardHtml) && /\bteam-name\b/i.test(next)) {
+    const role = body ? text : '핵심 항목';
+    const bio = body || `${text} 항목의 역할과 사용 장면을 구체적으로 정리한다.`;
     next = fillClassInner(
       next,
       /(<[^>]*\bteam-name\b[^>]*>)([\s\S]*?)(<\/)/i,
@@ -8881,19 +8927,19 @@ function fillOneCardPeer(
     next = fillClassInner(
       next,
       /(<[^>]*\bteam-role\b[^>]*>)([\s\S]*?)(<\/)/i,
-      body || text,
+      role,
     );
     next = fillClassInner(
       next,
       /(<[^>]*\bteam-bio\b[^>]*>)([\s\S]*?)(<\/)/i,
-      body || text,
+      bio,
     );
     next = fillClassInner(
       next,
       /(<[^>]*\bteam-avatar\b[^>]*>)([\s\S]*?)(<\/)/i,
-      text.replace(/<[^>]+>/g, '').trim().slice(0, 2).toUpperCase() || 'TV',
+      blockFrameAvatarText(text, peerIndex),
     );
-    return next;
+    return fitBlockFrameCardPeerText(next);
   }
   // Block Frame `.data-box`: sample metrics must not survive when the
   // outline carries ordinary copy. Use numbered stat badges unless a real
@@ -9082,17 +9128,18 @@ function fillOneCardPeer(
       replaced = true;
       return `${open}${body ? escapeHtml(body) : ''}${close}`;
     });
-    return fitDenseCardPeerText(next, compacted);
+    return fitBlockFrameCardPeerText(fitDenseCardPeerText(next, compacted));
   }
   if (/<p\b/i.test(next)) {
     let replaced = false;
-    return next.replace(/(<p\b[^>]*>)([\s\S]*?)(<\/p>)/gi, (_match, open: string, _inner: string, close: string) => {
+    next = next.replace(/(<p\b[^>]*>)([\s\S]*?)(<\/p>)/gi, (_match, open: string, _inner: string, close: string) => {
       if (!replaced) {
         replaced = true;
         return `${open}${escapeHtml(body || text)}${close}`;
       }
       return `${open}${close}`;
     });
+    return fitBlockFrameCardPeerText(next);
   }
   if (!text) return next;
   // 루프430 — idempotent prepend. `fillAndTrimCardPeers` re-runs up to 8

@@ -4880,6 +4880,64 @@ describe('0901-N02-C13 peer-fit catalog + sticky chrome deny', () => {
     expect(bodyOnly).toMatch(/font-size:36px;line-height:1\.08/);
   });
 
+  it('루프537: block-frame cards and CTA keep readable copy instead of empty UI shells', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-block-frame/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      [
+        { title: '킥오프', roleHint: 'cover' },
+        {
+          title: '단독 도구가 아니라, 워크스페이스와 연결.',
+          roleHint: 'cards',
+          items: [
+            { title: 'AI Slides', body: '공유 자료와 채팅 대화를 기반으로 발표자료 초안을 자동 생성한다.' },
+            { title: 'AI Docs', body: '회의 메모와 리서치 PDF를 보고서 초안으로 통합한다.' },
+            { title: 'AI Meetings', body: '녹음과 메모를 회의록과 다음 액션으로 정리한다.' },
+          ],
+        },
+        { title: '중간', body: '제품 이해\n전환 설계\n운영 준비', roleHint: 'cards' },
+        { title: '차트', body: '전환 — 방문에서 문의\n활성 — 핵심 기능 반복\n품질 — 결과물 완성도', roleHint: 'chart' },
+        { title: '문장', body: '핵심 메시지', roleHint: 'quote' },
+        { title: '방법', body: '탐색\n도입\n확장\n검증', roleHint: 'process' },
+        { title: '로드맵', body: '준비\n실행\n측정\n확장', roleHint: 'timeline' },
+        { title: '지표', body: '전환\n활성\n품질\n지원', roleHint: 'stat' },
+        {
+          title: '팀의 AI 업무 공간을 지금 시작하세요.',
+          roleHint: 'team',
+          items: [
+            { title: '무료 시작', body: '자료 업로드와 첫 덱 생성을 바로 시험한다.' },
+            { title: 'Enterprise 데모', body: '보안, 권한, 도입 절차를 함께 확인한다.' },
+            { title: 'Desktop', body: '팀 파일과 프로젝트 맥락을 한 화면에서 관리한다.' },
+            { title: 'Android', body: '이동 중에도 회의 메모와 요청을 이어간다.' },
+            { title: 'iOS', body: '알림, 승인, 결과물 검토를 빠르게 처리한다.' },
+          ],
+        },
+      ],
+      {
+        title: 'Teamver 소개',
+        templateId: 'example-html-ppt-zhangzara-block-frame',
+        brief: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+        maxSlides: 9,
+      },
+    );
+    expect(cloned).toBeTruthy();
+    const bodyOnly = (cloned ?? '').replace(/<style[\s\S]*?<\/style>/gi, '');
+    expect(bodyOnly).toMatch(/<p\b[^>]*font-size:2[246]px[^>]*>공유 자료와 채팅 대화를 기반으로 발표자료 초안을 자동 생성한다\./);
+    expect(bodyOnly).toContain('무료 시작');
+    expect(bodyOnly).toContain('자료 업로드와 첫 덱 생성을 바로 시험한다.');
+    expect(bodyOnly).toContain('Enterprise 데모');
+    expect(bodyOnly).toContain('보안, 권한, 도입 절차를 함께 확인한다.');
+    expect(bodyOnly).not.toMatch(/<div class="team-bio">\s*<\/div>/);
+    expect(bodyOnly).not.toMatch(/>\s*Desktop\s*<\/div>\s*<div class="team-role">\s*<\/div>/);
+    expect(bodyOnly).not.toMatch(/View Process|Get In Touch/);
+  });
+
   it('루프532: Capsule stat pills never place prose in the stat-number slot', async () => {
     const html = await readFile(
       new URL(
