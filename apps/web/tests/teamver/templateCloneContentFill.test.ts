@@ -501,6 +501,23 @@ describe('templateCloneContentFill', () => {
     expect(joined).toMatch(/Content expansion contract/i);
   });
 
+  it('루프545 — prompt seed / hard rules에 "슬라이드 수를 줄이지 말 것" 지시가 있다', () => {
+    const seed = buildTemplateClonePromptFillSeed({
+      userInstruction: '글을 매력적으로 쓰는 팁 정리해줘',
+      templateTitle: 'Html Ppt Zhangzara Block Frame',
+      slideCountHint: '10',
+    });
+    // 유일성을 지키기 위해 슬라이드를 드롭/머지하는 것을 금지 · 템플릿 장 수 유지.
+    expect(seed).toMatch(/Keep the template's slide count/);
+    expect(seed).toMatch(/do NOT drop or merge slides/);
+    expect(seed).toMatch(/Preserve every `<section class="slide">` shell/);
+
+    // JSON slot-fill hard rules도 같은 지시를 공유.
+    const rules = templateCloneContentFillHardRules().join('\n');
+    expect(rules).toMatch(/Keep the template's slide count/);
+    expect(rules).toMatch(/do NOT drop or merge slides/);
+  });
+
   it('binds website-analysis outline anchors from headings/preview in the brief', () => {
     const brief = [
       'User instruction:',

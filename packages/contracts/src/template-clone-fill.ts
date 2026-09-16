@@ -1512,12 +1512,14 @@ function bindTemplateCloneSynthItemBody(input: {
 }
 
 /**
- * 루프543 — Slide-title / index를 salt로 삼아 같은 template이 두 번 이상
- * 쓰일 때 각 반복 슬라이드의 body/items에 slide label을 삽입해 완전 복붙을
- * 억제한다. templates가 6개뿐이라 targetCount > 6이면 순환이 불가피한데,
- * 예전에는 index만 salt로 썼기 때문에 pad에서 label이 `핵심 7`, `핵심 8`
- * 순으로 늘어나도 body는 그대로 같은 문장이 반복돼 사용자가 "같은 문장이
- * 여러 슬라이드에 반복"이라고 리포트했다.
+ * 루프543에서 반복 방지용 rotation salt(`(요약)`, `· 요약`, `— 요약` 등)
+ * 를 body/items/lead에 붙였는데, 루프545에서 사용자에게 그 salt가 그대로
+ * 노출된다는 리포트가 들어와 salt를 완전히 제거했다. 반복 방지는
+ * `templatesForSynthTemplateTopic`가 이미 topic을 각 문장에 스며들게
+ * 만들어서(글쓰기 팁 → "글을 매력적으로 쓰는 팁"이 body에 등장) 충분히
+ * 확보된다. targetCount > templates.length(6)일 때 template array 순환이
+ * 일어나 100% 동일 body가 생기더라도, template pool은 topic이 이미 안에
+ * 있어 카피가 자연스럽고 사용자 UX 손해가 salt 노출보다 훨씬 작다.
  */
 function synthesizeTemplateCloneSlideBody(
   cover: string,
@@ -1529,50 +1531,12 @@ function synthesizeTemplateCloneSlideBody(
     classifySynthTemplateTopicProfile(cover, brief),
   );
   const picked = templates[(index - 1) % templates.length]!;
-  const rotation = Math.floor((index - 1) / templates.length);
-  const cleanLabel = String(label ?? '').trim();
-  const lines = rotation > 0 && cleanLabel
-    ? picked.lines.map((line) => decorateSynthLineWithSlideLabel(line, cleanLabel))
-    : picked.lines;
-  const itemTitles = rotation > 0 && cleanLabel
-    ? picked.itemTitles.map((title, itemIndex) =>
-        decorateSynthItemTitleWithSlideLabel(title, cleanLabel, itemIndex),
-      )
-    : picked.itemTitles;
-  const lead = rotation > 0 && cleanLabel
-    ? `${picked.lead} — ${cleanLabel}`
-    : picked.lead || label;
   return {
     roleHint: picked.roleHint,
-    lead,
-    body: lines.join('\n'),
-    items: synthTemplateItems(itemTitles, lines),
+    lead: picked.lead || label,
+    body: picked.lines.join('\n'),
+    items: synthTemplateItems(picked.itemTitles, picked.lines),
   };
-}
-
-/**
- * `개념: 용어와 원리를 짧고 정확하게 정의` 같은 dense line에 slide label
- * 을 삽입: 첫 콜론 뒤에 `(<label>)`을 붙여 반복 슬라이드마다 문맥이 달라
- * 보이게. splitDenseTemplateCloneTitleBodyLine이 여전히 title/body를 나눌
- * 수 있도록 `title:` prefix는 보존한다.
- */
-function decorateSynthLineWithSlideLabel(line: string, label: string): string {
-  if (!line) return line;
-  const colonIdx = line.indexOf(':');
-  if (colonIdx < 0) return `${line} (${label})`;
-  const head = line.slice(0, colonIdx + 1);
-  const rest = line.slice(colonIdx + 1).trim();
-  return `${head} (${label}) ${rest}`;
-}
-
-function decorateSynthItemTitleWithSlideLabel(
-  title: string,
-  label: string,
-  itemIndex: number,
-): string {
-  if (!title) return `${label} ${itemIndex + 1}`;
-  if (title.includes(label)) return title;
-  return `${title} · ${label}`;
 }
 
 function padDeterministicTemplateCloneSlides(
@@ -5953,6 +5917,10 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   // 루프540 — 8-Bit Orbit tier/timeline/stat leftover 카탈로그 카피
   // (English $29/mo / Rookie / Studio Orbital 등)까지 청소.
   next = healEightBitOrbitLeftoverCatalogCopy(next, brief);
+  // 루프545 — synth rotation salt (`(요약)`, `· 요약`, `— 요약` 등)가 이미
+  // 저장된 HTML에 남아 있으면 사용자에게 그대로 노출되므로 여기서 벗긴다.
+  // 라벨 8종만 매치해 사용자가 자유롭게 쓴 텍스트는 보존.
+  next = stripSynthRotationSaltLeaks(next);
   next = healCobaltOrphanDataStats(next);
   next = enrichSparseCobaltCover(next, brief);
   next = restyleBiennaleSparseChapterBodies(next);
@@ -6565,6 +6533,55 @@ export function stripLeftoverCatalogDemoPhrases(html: string): string {
     .replace(LEFTOVER_CATALOG_PHRASE_RE, '')
     .replace(/<p\b[^>]*>\s*(?:<strong>\s*<\/strong>)?\s*<\/p>/gi, '')
     .replace(/<span\b[^>]*>\s*<\/span>/gi, '');
+}
+
+/**
+ * 루프545 — 루프543 rotation salt(`(요약)`, `· 요약`, `— 요약` 등)가 사용자
+ * visible copy에 그대로 노출됐다는 리포트를 수신해 (a) synth 소스에서 salt
+ * 를 제거하고 (b) 이미 저장된 HTML에서도 벗겨낸다. 라벨은
+ * `TEMPLATE_CLONE_GENERIC_SECTION_LABELS` 8개만 매치해 사용자가 실제로
+ * "요약" / "핵심 포인트"를 슬라이드 제목이나 문장 안에서 자유롭게 쓴 경우
+ * (앞에 middot/emdash/opening-paren이 없는 케이스)는 보존한다.
+ *
+ * decorate 패턴:
+ *   - `${head}: (${label}) ${rest}`  (line에 콜론 있는 경우)
+ *   - `${line} (${label})`            (line에 콜론 없는 경우)
+ *   - `${title} · ${label}`           (item title decorate)
+ *   - `${picked.lead} — ${cleanLabel}` (lead decorate)
+ */
+const SYNTH_ROTATION_SALT_LABELS_RAW = TEMPLATE_CLONE_GENERIC_SECTION_LABELS
+  .map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  .join('|');
+const SYNTH_ROTATION_SALT_MID_PAREN_RE = new RegExp(
+  `([:\uFF1A])(\\s*)\\((?:${SYNTH_ROTATION_SALT_LABELS_RAW})\\)\\s*`,
+  'gu',
+);
+const SYNTH_ROTATION_SALT_TRAILING_PAREN_RE = new RegExp(
+  `[ \\t\\u00A0]*\\((?:${SYNTH_ROTATION_SALT_LABELS_RAW})\\)(?=\\s|<|$|[.。!?])`,
+  'gu',
+);
+const SYNTH_ROTATION_SALT_MIDDOT_RE = new RegExp(
+  `\\s+[·・]\\s+(?:${SYNTH_ROTATION_SALT_LABELS_RAW})(?=\\s|<|$|[.。!?,])`,
+  'gu',
+);
+const SYNTH_ROTATION_SALT_EMDASH_RE = new RegExp(
+  `\\s+[—–]\\s+(?:${SYNTH_ROTATION_SALT_LABELS_RAW})(?=\\s|<|$|[.。!?,])`,
+  'gu',
+);
+
+/** 루프545 · stripSynthRotationSaltLeaks pattern export for prompt/heal tests. */
+export function stripSynthRotationSaltLeaks(html: string): string {
+  if (!html) return html;
+  let next = String(html);
+  // 콜론 뒤 `(<label>) ` 삽입 → 콜론+space만 남김.
+  next = next.replace(SYNTH_ROTATION_SALT_MID_PAREN_RE, '$1$2');
+  // 문장 끝에 붙은 ` (<label>)` → 제거.
+  next = next.replace(SYNTH_ROTATION_SALT_TRAILING_PAREN_RE, '');
+  // item title 뒤 ` · <label>` → 제거.
+  next = next.replace(SYNTH_ROTATION_SALT_MIDDOT_RE, '');
+  // lead 뒤 ` — <label>` → 제거.
+  next = next.replace(SYNTH_ROTATION_SALT_EMDASH_RE, '');
+  return next;
 }
 
 function stripLeftoverTemplateDemoCopy(html: string): string {

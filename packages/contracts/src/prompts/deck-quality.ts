@@ -56,7 +56,11 @@ export const SLIDE_DECK_UNIQUE_SLOT_COPY_INSTRUCTION =
   "Unique-per-slot copy is REQUIRED: each card / list item / stat / step / quote body must be a DIFFERENT concrete 1–2 sentence line. " +
   "Do not repeat the slide title as its body. Do not stamp the same lead/body across multiple slides — if two slides would end up with identical body strings, rewrite one with a distinct angle. " +
   "Bare one-word labels (핵심, 개념, 요약, 특징, 목표, 방향) as body copy are forbidden — expand to a real sentence about THIS slide's angle. " +
-  "A deck where a majority of body slides share the same body sentence is a failed deliverable.";
+  "A deck where a majority of body slides share the same body sentence is a failed deliverable. " +
+  // 루프545 — Do not route around uniqueness by dropping slides. Model was
+  // shrinking 10-slide seeds to 6-slide fills after we tightened unique-slot
+  // (루프544) and tripped the client `slide-count` regression gate.
+  "Keep the template's slide count — do NOT drop or merge slides to satisfy uniqueness. Preserve every `<section class=\"slide\">` shell shipped in the seed and fill it with a distinct angle instead of shrinking the deck.";
 
 /**
  * 루프544 — Topic-lock: brief 주제 밖 일반론(`개념/구조/영향`, `용어와 원리를 짧고

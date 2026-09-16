@@ -3129,6 +3129,18 @@ export function findClientSlideCountRegression(input: {
   if (!fileName.toLowerCase().endsWith('.html')) return null;
   const priorHtml = input.priorHtml?.trim();
   if (!priorHtml) return null;
+  // 루프545 — Sibling byte-size guard (`findClientArtifactRegression`)
+  // already spares a compact fill when the on-disk prior is
+  // low-substance (line 3081). Slide-count guard historically missed
+  // that bypass, so a fresh block-frame LOOK seed that stripped its
+  // manifest marker (or a same-turn synth-outline prior that hasn't
+  // been touched by real topic copy) would reject the next 6-slide
+  // MiniMax turn as `slide-count` regression even though the "prior"
+  // was catalog leftover + generic outline. Substance-rich prior
+  // (real topic sentences) still gates below.
+  if (isLowSubstanceSlideDeckArtifact(priorHtml, input.healBrief, input.healTitle)) {
+    return null;
+  }
   const priorCount = countDeckSlideSections(priorHtml);
   const newCount = countDeckSlideSections(input.htmlBody);
   if (priorCount < 3 || newCount <= 0) return null;

@@ -118,6 +118,7 @@ import {
   fillAndTrimCardPeers,
   hoistCloneSlidesOutOfFlexTrack,
   resolveTemplateCloneSlotMap,
+  stripSynthRotationSaltLeaks,
 } from '../src/template-clone-fill.js';
 import { pinDeckSlidesToFixedCanvas } from '../src/html/deck-fixed-canvas.js';
 import { hoistDeckHostStylesToHead } from '../src/html/deck-template-look-css.js';
@@ -554,25 +555,66 @@ describe('resolveTemplateCloneSlidesFromBrief', () => {
     expect(jointBody).not.toMatch(/^구조: 구성 요소와 서로 연결되는 방식을 설명$/m);
   });
 
-  it('루프543 — pad 반복 슬라이드는 완전 동일 body가 덱 과반에 반복되지 않는다', () => {
-    // slideCount > templates.length (6)이면 순환. 예전에는 body가 그대로
-    // 복붙됐지만 이제 slide-title salt로 문장이 달라져야 한다.
+  it('루프545 — synth body/items/lead에 rotation salt(요약, 핵심 포인트 등)가 노출되지 않는다', () => {
+    // slideCount > templates.length(6)로 순환을 강제. 루프543이 넣었던
+    // `(요약)` / `· 요약` / `— 요약` salt가 사용자 카피에 노출됐던 회귀를
+    // 방지한다. rotation salt는 이제 완전히 제거.
     const slides = resolveTemplateCloneSlidesForDeterministicFill({
-      userInstruction: '리모트 워크 정착 팁을 정리한 슬라이드 만들어줘',
-      deckTitle: '리모트 워크 정착 팁',
+      userInstruction: '글을 매력적으로 쓰는 팁 정리해줘',
+      deckTitle: '글을 매력적으로 쓰는 팁',
       slideCount: 10,
     });
     expect(slides).toHaveLength(10);
-    const bodySlides = slides.slice(1);
-    const bodyCounts = new Map<string, number>();
-    for (const slide of bodySlides) {
-      const key = (slide.body ?? '').trim();
-      if (!key) continue;
-      bodyCounts.set(key, (bodyCounts.get(key) ?? 0) + 1);
+    const payload = JSON.stringify(slides);
+    // TEMPLATE_CLONE_GENERIC_SECTION_LABELS 8개가 body/items/lead 안의
+    // salt 위치 (괄호·middot·emdash 뒤)에 절대 등장하면 안 된다.
+    const labels = ['개요', '핵심 포인트', '근거와 사례', '실행 방안', '고객 경험', '운영과 보안', '도입 로드맵', '성과 지표', '요약'];
+    for (const label of labels) {
+      // decorateSynthLineWithSlideLabel · 트레일링 (label) 패턴
+      expect(payload).not.toMatch(new RegExp(`\\((?:${label})\\)`));
+      // decorateSynthItemTitleWithSlideLabel · ` · label` 패턴
+      expect(payload).not.toMatch(new RegExp(`\\s·\\s${label}`));
+      // lead ` — label` 패턴
+      expect(payload).not.toMatch(new RegExp(`\\s—\\s${label}(?=\\s|"|$)`));
     }
-    const maxDuplicate = Math.max(0, ...bodyCounts.values());
-    // 같은 body가 body-슬라이드 과반을 넘으면 안 된다.
-    expect(maxDuplicate).toBeLessThanOrEqual(Math.floor(bodySlides.length / 2));
+    // 완전 복붙 방지는 topic이 body에 스며있는 것으로 유지된다는 sanity check.
+    // 반복 자체는 template pool 6개라 순환할 수 있지만, topic이 각 body에
+    // 등장해야 한다 (loop543 pin 유지).
+    for (const slide of slides.slice(1)) {
+      const body = (slide.body ?? '') + JSON.stringify(slide.items ?? []);
+      expect(body).toContain('글을 매력적으로 쓰는 팁');
+    }
+  });
+
+  it('루프545 — stripSynthRotationSaltLeaks가 저장된 salt는 벗기고 진짜 헤딩은 보존한다', () => {
+    // 사용자 리포트 실물 HTML을 재현. 콜론 안쪽 (요약) / trailing (요약) /
+    // ` · 요약` / ` — 요약` 4가지 패턴이 모두 healer로 벗겨져야 한다.
+    const dirty = [
+      '<section class="slide">',
+      '<h2>문제 · 요약</h2>',
+      '<p>Teamver가 풀어야 하는 문제 — 요약</p>',
+      '<ul>',
+      '<li>사용자가 반복해서 겪는 핵심 불편과 전환 비용을 먼저 정의 (요약)</li>',
+      '<li>개념: (요약) 용어와 원리를 짧고 정확하게 정의</li>',
+      '</ul>',
+      '</section>',
+      // 진짜 사용자가 슬라이드 제목을 "요약"으로 쓴 경우는 보존 필수.
+      '<section class="slide"><h2>요약</h2><p>전체 내용을 3줄로 정리한다.</p></section>',
+      // "핵심 포인트" salt도 벗겨져야 하지만 텍스트 안에 자연스럽게 쓴 것은 보존.
+      '<section class="slide"><h2>결론</h2><p>핵심 포인트를 다시 짚는다.</p></section>',
+    ].join('');
+    const healed = stripSynthRotationSaltLeaks(dirty);
+    // salt 4패턴이 사라져야 한다.
+    expect(healed).not.toContain('· 요약');
+    expect(healed).not.toContain(' — 요약');
+    expect(healed).not.toContain('(요약)');
+    // 진짜 h2 "요약"은 그대로.
+    expect(healed).toContain('<h2>요약</h2>');
+    // 텍스트 안에 자연스럽게 쓴 "핵심 포인트를 다시 짚는다"는 보존.
+    expect(healed).toContain('핵심 포인트를 다시 짚는다');
+    // decorate 콜론 안쪽 salt는 콜론+공백만 남기고 벗겨진다.
+    expect(healed).toContain('개념: 용어와 원리');
+    expect(healed).not.toContain('개념: (요약)');
   });
 
   it('루프544 — slideNeedsDeterministicBody 게이트 미변경: items 있는 슬라이드는 synth로 덮이지 않는다', async () => {
