@@ -6437,10 +6437,6 @@ export function ProjectView({
         // what happened + reassures about the preserved deck + names
         // the escape-hatch env var, so users don't stare at a mixed-
         // language "저장을 거부: New artifact body …" reason.
-        surfaceChatVisibleError(
-          formatProjectArtifactRegressionRejectedError(regression.fileName),
-          'artifact_regression',
-        );
         return {
           kind: 'artifact-regression',
           fileName: regression.fileName,
@@ -6482,13 +6478,6 @@ export function ProjectView({
               commentScoped: persistCommentAttachments.length > 0,
               strict: strictSlideCount,
             });
-            surfaceChatVisibleError(
-              formatProjectArtifactRegressionRejectedError(
-                slideRegression.fileName,
-                'slide-count',
-              ),
-              'artifact_regression',
-            );
             return {
               kind: 'artifact-regression',
               fileName: slideRegression.fileName,

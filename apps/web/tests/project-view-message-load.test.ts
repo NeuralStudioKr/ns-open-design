@@ -1144,6 +1144,12 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("blocked placeholder artifact regression before save");
     expect(source).toContain("kind: 'artifact-regression'");
     expect(source).toContain("? 'artifact_regression'");
+    const regressionBlock = source.slice(
+      source.indexOf("const regression = findClientArtifactRegression({"),
+      source.indexOf("const skipDaemonStubGuard = shouldSkipDaemonArtifactStubGuard({"),
+    );
+    expect(regressionBlock).not.toContain("surfaceChatVisibleError(");
+    expect(regressionBlock).toContain("return {\n          kind: 'artifact-regression'");
   });
 
   it("skips low-substance deck artifacts before marking slide generation complete", () => {
