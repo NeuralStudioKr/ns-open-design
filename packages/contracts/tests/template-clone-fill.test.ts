@@ -50,6 +50,7 @@ import {
   healLongTableLeftoverCatalogCopy,
   healStudioLeftoverCatalogCopy,
   healBroadsideLeftoverCatalogCopy,
+  healGroveLeftoverCatalogCopy,
   healCreativeLeftoverCatalogCopy,
   healCobaltOrphanDataStats,
   injectCobaltAbsoluteSlotCss,
@@ -1277,6 +1278,62 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(healed).not.toMatch(/\[Studio\s*X\]\s*Guidelines/i);
     // Broadside footer label wiped.
     expect(healed).not.toMatch(/>Broadside</);
+  });
+
+  it('루프538 — Grove forest kit demo chrome (landscape / grove-stat KPI / sidebar) is scrubbed', async () => {
+    const html = await readFile(
+      new URL(
+        './fixtures/loop538-grove-teamver-leftover.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(officialLookIsGrove(html)).toBe(true);
+    expect(officialLookIsStudio(html)).toBe(false);
+    expect(officialLookIsBroadside(html)).toBe(false);
+    expect(looksLikeLeftoverTemplateDemoDeck(html)).toBe(true);
+    const healed = healGroveLeftoverCatalogCopy(
+      html,
+      TEAMVER_SERVICE_INTRO_BRIEF,
+    );
+    expect(healed).not.toMatch(/The landscape has shifted/);
+    expect(healed).not.toMatch(/The brands that will lead the next decade/);
+    expect(healed).not.toMatch(/Strategy\s*[·•]\s*Presentation/);
+    expect(healed).not.toMatch(/\[Prepared by\]/);
+    expect(healed).not.toMatch(/\[Confidential\]/);
+    expect(healed).not.toMatch(/Of consumers distrust brand-created content/);
+    expect(healed).not.toMatch(/73\s*%/);
+    expect(healed).not.toMatch(/4\.8\s*[×xX]/);
+    expect(healed).not.toMatch(/>#1</);
+    expect(healed).toMatch(/Teamver|팀버|슬라이드/i);
+
+    const topical = [
+      '<!doctype html><html><head><style>:root{--c-bg:#192b1b;--c-accent:#c8524a}</style>',
+      '<link href="https://fonts.googleapis.com/css2?family=Playfair+Display&family=Jost&display=swap" rel="stylesheet">',
+      '</head><body>',
+      '<section class="slide dark slide--cover">',
+      '<div class="grove-sidebar">Teamver</div>',
+      '<h1 class="h1">팀버 소개</h1>',
+      '<p class="lead">로컬 우선 디자인 스튜디오</p>',
+      '</section>',
+      '<section class="slide dark slide--stats">',
+      '<div class="grove-stat"><div class="grove-stat-val">12</div><div class="grove-stat-label">도입 주</div></div>',
+      '<div class="grove-stat"><div class="grove-stat-val">99</div><div class="grove-stat-label">만족도</div></div>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    expect(officialLookIsGrove(topical)).toBe(true);
+    expect(healGroveLeftoverCatalogCopy(topical, TEAMVER_SERVICE_INTRO_BRIEF)).toBe(topical);
+
+    const official = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-grove/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(officialLookIsGrove(official)).toBe(true);
+    expect(healGroveLeftoverCatalogCopy(official)).toBe(official);
   });
 
   it('loop421 — empty-brief padding synthesizes card bodies instead of empty shells', () => {
