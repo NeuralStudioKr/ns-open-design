@@ -463,59 +463,55 @@ describe('templateCloneContentFill', () => {
     );
   });
 
-  it('루프544 — prompt-fill seed에 topic-lock / unique-per-slot 지시가 삽입된다', () => {
+  it('루프546 — prompt-fill seed keeps v1.4.15 stability: no topic/unique penalty text', () => {
     const seed = buildTemplateClonePromptFillSeed({
       userInstruction: '글을 매력적으로 쓰는 팁 정리해줘',
       templateTitle: 'Html Ppt Zhangzara 8-Bit Orbit',
       slideCountHint: '6-8',
     });
-    // topic-lock — 일반론 outline 금지 · 지어낸 수치 금지 · 카탈로그 데모 잔재 금지
-    expect(seed).toMatch(/Topic-lock \(brief-tethered content\)/);
-    expect(seed).toContain('개념 / 구조 / 영향');
-    expect(seed).toContain('용어와 원리를 짧고 정확하게 정의');
-    expect(seed).toContain('배경 / 핵심 질문 / 판단 기준');
-    expect(seed).toMatch(/Do not invent quantitative KPIs, prices/);
-    expect(seed).toContain('Presentation Template');
-    expect(seed).toContain('NEXUS VENTURES');
-    expect(seed).toContain('Studio Orbital');
-    expect(seed).toContain('AGENDA.TXT');
-    expect(seed).toContain('Connecting Founders With Opportunity');
-    // unique-per-slot — 슬롯 유일성 + 반복 금지
-    expect(seed).toMatch(/Unique-per-slot copy is REQUIRED/);
-    expect(seed).toMatch(/DIFFERENT concrete 1–2 sentence line/);
-    expect(seed).toMatch(/Do not repeat the slide title as its body/);
-    expect(seed).toMatch(/Bare one-word labels \(핵심, 개념, 요약/);
-    expect(seed).toMatch(/majority of body slides share the same body sentence is a failed deliverable/);
+    // 루프546 · topic/unique hard bans made models shrink 10-shell seeds to 6
+    // slides. Prompt-fill should keep v1.4.15 behavior and leave this cleanup to
+    // post-fill merge/heal/gates.
+    expect(seed).not.toMatch(/Topic-lock \(brief-tethered content\)/);
+    expect(seed).not.toContain('개념 / 구조 / 영향');
+    expect(seed).not.toMatch(/prefer a distinct angle per slot/);
+    expect(seed).not.toMatch(/Do not repeat the slide title as its body/);
+    expect(seed).not.toMatch(/Bare one-word labels \(핵심, 개념, 요약/);
+    expect(seed).not.toMatch(/failed deliverable/i);
+    expect(seed).not.toMatch(/majority of body slides share the same body sentence/i);
+    expect(seed).toMatch(/Deliver the same number of `<section class="slide">` slides as the seed/);
     // 기존 pin 유지 — CONTENT_EXPANSION은 prompt-fill seed에 노출되지 않음.
     expect(seed).not.toMatch(/Content expansion contract/i);
   });
 
-  it('루프544 — JSON slot-fill hard rules에도 topic-lock / unique-per-slot이 걸린다', () => {
+  it('루프546 — JSON slot-fill hard rules keep count without topic/unique penalty text', () => {
     const rules = templateCloneContentFillHardRules();
     const joined = rules.join('\n');
-    expect(joined).toMatch(/Topic-lock \(brief-tethered content\)/);
-    expect(joined).toMatch(/Unique-per-slot copy is REQUIRED/);
-    expect(joined).toContain('개념 / 구조 / 영향');
-    expect(joined).toContain('Bare one-word labels (핵심, 개념, 요약');
+    expect(joined).not.toMatch(/Topic-lock \(brief-tethered content\)/);
+    expect(joined).not.toMatch(/prefer a distinct angle per slot/);
+    expect(joined).not.toContain('개념 / 구조 / 영향');
+    expect(joined).toMatch(/Deliver the same number of `<section class="slide">` slides as the seed/);
     // JSON slot-fill은 원래대로 CONTENT_EXPANSION도 유지.
     expect(joined).toMatch(/Content expansion contract/i);
+    // unique/topic penalty framing 제거. `Content expansion contract` still
+    // contains its long-standing "Failed deliverables" section for JSON mode.
+    expect(joined).not.toMatch(/majority of body slides share the same body sentence/i);
   });
 
-  it('루프545 — prompt seed / hard rules에 "슬라이드 수를 줄이지 말 것" 지시가 있다', () => {
+  it('루프546 — "장 수 유지"는 별도 상수로 분리되어 prompt seed / hard rules 양쪽에 emit', () => {
+    // penalty framing과 상충 표현이 한 상수 안에 공존하지 않도록 v1.4.15 회귀
+    // 원복 슬라이스에서 분리됨.
     const seed = buildTemplateClonePromptFillSeed({
       userInstruction: '글을 매력적으로 쓰는 팁 정리해줘',
       templateTitle: 'Html Ppt Zhangzara Block Frame',
       slideCountHint: '10',
     });
-    // 유일성을 지키기 위해 슬라이드를 드롭/머지하는 것을 금지 · 템플릿 장 수 유지.
-    expect(seed).toMatch(/Keep the template's slide count/);
-    expect(seed).toMatch(/do NOT drop or merge slides/);
-    expect(seed).toMatch(/Preserve every `<section class="slide">` shell/);
+    expect(seed).toMatch(/Deliver the same number of `<section class="slide">` slides as the seed/);
+    expect(seed).toMatch(/do not merge or drop slides/);
 
-    // JSON slot-fill hard rules도 같은 지시를 공유.
     const rules = templateCloneContentFillHardRules().join('\n');
-    expect(rules).toMatch(/Keep the template's slide count/);
-    expect(rules).toMatch(/do NOT drop or merge slides/);
+    expect(rules).toMatch(/Deliver the same number of `<section class="slide">` slides as the seed/);
+    expect(rules).toMatch(/do not merge or drop slides/);
   });
 
   it('binds website-analysis outline anchors from headings/preview in the brief', () => {

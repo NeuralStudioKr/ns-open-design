@@ -48,19 +48,27 @@ export const SLIDE_DECK_COPY_DENSITY_INSTRUCTION =
 
 /**
  * 루프544 — Prompt-fill / JSON slot-fill hard rules에서 강제하는 슬롯 단위 유일성.
- * 슬롯마다 서로 다른 1~2문장을 요구하고, 한 단어 라벨과 같은 문장의 복붙을 금지한다.
- * 실제 사용자 리포트: "글을 매력적으로 쓰는 팁" 덱에서 카드 body가 여러 슬라이드에
- * `개념/구조/영향`으로 동일하게 반복되고 있었다.
+ * 루프546에서 사용자 리포트("v1.4.15 시점이 오히려 결과물이 좋았다")를 받아
+ * penalty framing(`failed deliverable`, `majority ... share the same body
+ * sentence`) 표현을 제거했다. 이 표현들이 모델을 슬라이드 드롭으로 몰아
+ * client `findClientSlideCountRegression` 가드에 걸려 저장 자체가 실패하고
+ * 있었다. 밀도 지시(구체 문장 · 제목=본문 금지 · 한 단어 라벨 완화)는 유지.
+ * "슬라이드 수 유지"는 별도 상수 `SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION`
+ * 으로 분리해 유일성 지시와 상충 표현이 한 상수 안에 공존하지 않게.
  */
 export const SLIDE_DECK_UNIQUE_SLOT_COPY_INSTRUCTION =
-  "Unique-per-slot copy is REQUIRED: each card / list item / stat / step / quote body must be a DIFFERENT concrete 1–2 sentence line. " +
-  "Do not repeat the slide title as its body. Do not stamp the same lead/body across multiple slides — if two slides would end up with identical body strings, rewrite one with a distinct angle. " +
-  "Bare one-word labels (핵심, 개념, 요약, 특징, 목표, 방향) as body copy are forbidden — expand to a real sentence about THIS slide's angle. " +
-  "A deck where a majority of body slides share the same body sentence is a failed deliverable. " +
-  // 루프545 — Do not route around uniqueness by dropping slides. Model was
-  // shrinking 10-slide seeds to 6-slide fills after we tightened unique-slot
-  // (루프544) and tripped the client `slide-count` regression gate.
-  "Keep the template's slide count — do NOT drop or merge slides to satisfy uniqueness. Preserve every `<section class=\"slide\">` shell shipped in the seed and fill it with a distinct angle instead of shrinking the deck.";
+  "Each card / list item / stat / step / quote body should be a concrete 1–2 sentence line — prefer a distinct angle per slot over stamping the same lead across multiple slots. " +
+  "Do not repeat the slide title as its body. " +
+  "Bare one-word labels (핵심, 개념, 요약, 특징, 목표, 방향) as body copy are too thin — expand to a real sentence about THIS slot's angle.";
+
+/**
+ * 루프546 — Keep the template's slide count. 유일성 지시와 상충 표현이 한
+ * 상수 안에 공존하면 모델 순응이 흔들려 슬라이드를 드롭하는 회귀를 만들었다.
+ * 이 지시는 별도 라인으로 emit해서 "장 수 유지"라는 결정을 다른 밀도·주제
+ * 지시와 명확히 분리한다.
+ */
+export const SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION =
+  "Deliver the same number of `<section class=\"slide\">` slides as the seed. If two slots would repeat, rewrite one with a different angle — do not merge or drop slides.";
 
 /**
  * 루프544 — Topic-lock: brief 주제 밖 일반론(`개념/구조/영향`, `용어와 원리를 짧고
