@@ -7191,12 +7191,17 @@ function biennaleFillLines(input: {
     const split = splitDenseTemplateCloneTitleBodyLine(line);
     out.push(split ? { title: split.title, body: split.body } : { title: line, body: '' });
   }
-  const fallbacks = [
-    { title: `${input.title} 개요`, body: '핵심 메시지와 사용자가 얻는 가치를 먼저 정리합니다.' },
-    { title: '주요 기능', body: '협업, 파일, AI 작업 흐름을 한 화면에서 연결합니다.' },
-    { title: '활용 흐름', body: '요청부터 결과물 공유까지 필요한 단계를 줄입니다.' },
-    { title: '기대 효과', body: '반복 업무를 줄이고 팀의 실행 속도를 높입니다.' },
-    { title: '다음 단계', body: '도입 검토와 실행 계획을 명확하게 제안합니다.' },
+  // 루프543 — 예전에는 fallback body가 Teamver-특화 하드코딩("협업, 파일,
+  // AI 작업 흐름을 한 화면에서 연결합니다")이라서 free-form 주제(예:
+  // 글을 매력적으로 쓰는 팁)에서도 그 문장이 그대로 카드에 등장했다.
+  // topic을 body 문장에 스며들게 해서 최소 주제 명사가 유지되도록 정정.
+  const topic = topicKeywordForSynthBody(input.title || input.lead || input.bodyText || '');
+  const fallbacks: Array<{ title: string; body: string }> = [
+    { title: `${topic} 개요`, body: `${topic}의 핵심 메시지와 청중이 얻는 가치를 먼저 정리합니다.` },
+    { title: '핵심 포인트', body: `${topic}에서 가장 먼저 이해해야 할 개념·근거를 짧게 정리합니다.` },
+    { title: '실행 방법', body: `${topic}을 실제로 적용할 때의 순서와 판단 기준을 제시합니다.` },
+    { title: '기대 효과', body: `${topic}이 성공했을 때 청중·팀·사용자에게 생기는 변화를 정리합니다.` },
+    { title: '다음 단계', body: `${topic}을 이어가기 위한 다음 행동과 필요한 자원을 제안합니다.` },
   ];
   for (const fallback of fallbacks) {
     if (out.length >= minimum) break;
@@ -7222,11 +7227,15 @@ function biennaleFooterRows(input: {
     }));
   if (cards.length >= 2) return cards;
   const lines = compactTextLines(input.lead, input.bodyText);
+  // 루프543 — 이전에는 '핵심 흐름과 사용자 가치 정리' / '팀 단위 실행과
+  // 다음 단계까지 연결' 하드코딩이 사용자 주제(예: 글을 매력적으로 쓰는 팁)와
+  // 무관하게 footer에 그대로 등장했다. topic 명사를 문장에 스며들게 한다.
+  const topic = topicKeywordForSynthBody(input.title || input.lead || input.bodyText || '');
   return [
     { label: input.kicker || '주제', text: input.title },
     { label: '방향', text: lines[0] || input.lead || synthesizeTemplateCloneCoverLead(input.title) },
-    { label: '구성', text: lines[1] || '핵심 흐름과 사용자 가치 정리' },
-    { label: '메모', text: lines[2] || '팀 단위 실행과 다음 단계까지 연결' },
+    { label: '구성', text: lines[1] || `${topic}의 핵심 흐름과 사용자가 얻는 가치를 정리` },
+    { label: '메모', text: lines[2] || `${topic} 실행과 다음 단계까지 이어지는 관점 정리` },
   ];
 }
 

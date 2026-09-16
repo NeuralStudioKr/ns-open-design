@@ -575,6 +575,35 @@ describe('resolveTemplateCloneSlidesFromBrief', () => {
     expect(maxDuplicate).toBeLessThanOrEqual(Math.floor(bodySlides.length / 2));
   });
 
+  it('루프543 — biennaleFillLines fallback도 topic 명사가 스며든다 (Teamver 특화 하드코딩 금지)', async () => {
+    // 8-Bit / Broadside / Block-frame kit-specific fill 함수가 fillLines 부족 시
+    // biennaleFillLines의 fallback을 사용한다. 이전에는 '협업, 파일, AI 작업 흐름을
+    // 한 화면에서 연결합니다' 같은 Teamver 특화 문장이 free-form 주제에도 그대로
+    // 등장했다. 이 회귀 테스트는 fallback 문장에 topic이 들어가는지 검증한다.
+    const { fillEightBitOrbitKitSlide } = await import('../src/template-clone-fill');
+    // fillLines를 비워서 fallback 경로 강제.
+    const body =
+      '<div class="timeline-container">'
+      + '<div class="timeline-event"><span class="date">Q1 2026</span><h4>x</h4><p>y</p></div>'
+      + '<div class="timeline-event"><span class="date">Q2 2026</span><h4>x</h4><p>y</p></div>'
+      + '<div class="timeline-event"><span class="date">Q3 2026</span><h4>x</h4><p>y</p></div>'
+      + '<div class="timeline-event"><span class="date">Q4 2026</span><h4>x</h4><p>y</p></div>'
+      + '</div>';
+    const filled = fillEightBitOrbitKitSlide(body, 'class="slide"', {
+      title: '글을 매력적으로 쓰는 팁',
+      lead: '',
+      bodyText: '',
+      kicker: '',
+      fillLines: [],
+    });
+    // Teamver 특화 하드코딩 문장이 절대 등장하면 안 된다.
+    expect(filled).not.toMatch(/협업.*파일.*AI 작업/);
+    expect(filled).not.toMatch(/반복 업무를 줄이고 팀의 실행 속도/);
+    expect(filled).not.toMatch(/도입 검토와 실행 계획을 명확하게 제안/);
+    // 대신 topic이 body에 스며들어야 한다.
+    expect(filled).toMatch(/글을 매력적으로 쓰는 팁/);
+  });
+
   it('루프543 — synth outline은 없는 KPI 숫자($, %, 억, M/B/조)를 지어내지 않는다', () => {
     const slides = resolveTemplateCloneSlidesForDeterministicFill({
       userInstruction: '팀 협업 도구 도입 가이드 만들어줘',
