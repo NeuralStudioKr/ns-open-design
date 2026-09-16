@@ -45,6 +45,10 @@ import {
   moveDeckSlideByDelta,
   reorderDeckSlideToIndex,
 } from '../artifacts/deck-patch';
+import {
+  reconcileReportedDeckSlideState,
+  type DeckSlideSyncPending,
+} from '../artifacts/deck-slide-sync';
 import { DeckFilmstrip } from './DeckFilmstrip';
 import {
   planCommentRemapAfterSlideDelete,
@@ -6578,10 +6582,22 @@ function HtmlViewer({
   // Slide deck nav state: the iframe posts the active index + total count
   // back to the host every time a slide settles. Host renders prev/next
   // controls in the toolbar and reflects the count beside them.
+  // After duplicate/delete/insert/reorder, ignore iframe reports until the
+  // bridge recounts the new HTML. A pre-mutation report used to yank the
+  // pager and filmstrip off the page the view actually landed on.
+  const deckStructureSyncRef = useRef<DeckSlideSyncPending | null>(null);
+  const deckStructureSyncTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const deckStructureRepostAtRef = useRef(0);
+  const postSlideGoRef = useRef<(index: number) => void>(() => {});
+  const postSlideRef = useRef<(action: 'next' | 'prev' | 'first' | 'last') => void>(() => {});
   const [slideState, setSlideState] = useState<SlideState | null>(
     () => htmlPreviewSlideState.get(previewStateKey) ?? null,
   );
   const [deckStructureBusy, setDeckStructureBusy] = useState(false);
+  // Bump so the preview iframe remounts on the mutated HTML. In-place srcDoc
+  // updates were leaving the old slide list painted while the host already
+  // counted the new page.
+  const [deckStructureEpoch, setDeckStructureEpoch] = useState(0);
   const [deckStructureError, setDeckStructureError] = useState<string | null>(null);
   const [pendingDeleteSlide, setPendingDeleteSlide] = useState<{ active: number; count: number } | null>(null);
   const [deckStructureNotice, setDeckStructureNotice] = useState<{ title: string; message: string } | null>(null);
@@ -7992,19 +8008,33 @@ function HtmlViewer({
           | null;
         if (!data || data.type !== 'od:slide-state') return;
         if (typeof data.active !== 'number' || typeof data.count !== 'number') return;
-        // Prefer host HTML section count when the bridge undercounts (0914-N03)
-        // so the toolbar pager cannot stay at N/N while the filmstrip shows N+1.
-        let count = data.count;
+        // HTML section count is the pager/filmstrip SSOT (0914-N03).
+        // A structure mutation also drops reports from the iframe that still
+        // has the previous page count — those used to reset active and make
+        // < > / filmstrip miss the visible page after duplicate or delete.
         const htmlForCount =
           (typeof sourceRef.current === 'string' && sourceRef.current.trim() && sourceRef.current)
           || (typeof source === 'string' && source.trim() && source)
           || '';
-        if (htmlForCount) {
-          const htmlSlideCount = extractTopLevelSlideSections(htmlForCount).length;
-          if (htmlSlideCount > count) count = htmlSlideCount;
+        const htmlSlideCount = htmlForCount
+          ? extractTopLevelSlideSections(htmlForCount).length
+          : 0;
+        const decision = reconcileReportedDeckSlideState({
+          reportedActive: data.active,
+          reportedCount: data.count,
+          htmlCount: htmlSlideCount,
+          pending: deckStructureSyncRef.current,
+        });
+        if (!decision.accept) {
+          const now = Date.now();
+          if (now - deckStructureRepostAtRef.current > 180) {
+            deckStructureRepostAtRef.current = now;
+            postSlideGoRef.current(decision.active);
+          }
+          return;
         }
-        const active = Math.max(0, Math.min(data.active, Math.max(0, count - 1)));
-        const next = { active, count };
+        if (decision.clearPending) deckStructureSyncRef.current = null;
+        const next = { active: decision.active, count: decision.count };
         setSlideStateCached(previewStateKey, next);
         setSlideState(next);
       });
@@ -8013,9 +8043,13 @@ function HtmlViewer({
     return () => window.removeEventListener('message', onMessage);
   }, [effectiveDeck, isActivePreviewIframeSource, isOurPreviewIframeSource, previewStateKey]);
 
-  // When disk/live HTML gains slides (heal/append) before the iframe recounts,
-  // lift slideState.count to the filmstrip section count so `< >` is not stuck
-  // one page behind the strip (0914-N03).
+  useEffect(() => () => {
+    for (const id of deckStructureSyncTimersRef.current) window.clearTimeout(id);
+  }, []);
+
+  // Keep the pager on the filmstrip section count in both directions.
+  // Raising-only left delete stuck at the old N while the strip already
+  // showed N-1, so < > and chip clicks targeted a page the view no longer had.
   useEffect(() => {
     if (!effectiveDeck) return;
     const html =
@@ -8027,14 +8061,21 @@ function HtmlViewer({
     const htmlCount = extractTopLevelSlideSections(html).length;
     if (htmlCount <= 0) return;
     setSlideState((prev) => {
-      if (prev && prev.count >= htmlCount) return prev;
-      const active = Math.min(prev?.active ?? 0, htmlCount - 1);
+      const pending = deckStructureSyncRef.current;
+      // A partial stream can parse fewer sections than the last stable deck.
+      // Only shrink when a structure mutation is waiting, or when not streaming.
+      if (prev && htmlCount < prev.count && !pending && streaming) return prev;
+      const preferred = pending && pending.count === htmlCount
+        ? pending.active
+        : (prev?.active ?? 0);
+      const active = Math.min(Math.max(0, preferred), htmlCount - 1);
+      if (prev && prev.count === htmlCount && prev.active === active) return prev;
       const next = { active, count: htmlCount };
       setSlideStateCached(previewStateKey, next);
       return next;
     });
-    requestSlideStateFromIframe();
-  }, [effectiveDeck, liveHtml, livePreviewSource, previewStateKey, source]);
+    if (!deckStructureSyncRef.current) requestSlideStateFromIframe();
+  }, [effectiveDeck, liveHtml, livePreviewSource, previewStateKey, source, streaming]);
 
   useEffect(() => {
     if (!deckHostViewportFitActive || mode !== 'preview') return;
@@ -14201,16 +14242,73 @@ function HtmlViewer({
     return targets;
   }
 
-  function postSlide(action: 'next' | 'prev' | 'first' | 'last') {
-    for (const win of slideMessageTargets()) {
-      win.postMessage({ type: 'od:slide', action }, '*');
-    }
+  function retargetPendingDeckSlide(index: number) {
+    const pending = deckStructureSyncRef.current;
+    if (!pending) return;
+    const count = Math.max(1, pending.count);
+    pending.active = Math.max(0, Math.min(index, count - 1));
   }
+
+  function hostSlideCount(): number {
+    const pending = deckStructureSyncRef.current?.count ?? 0;
+    if (pending > 0) return pending;
+    if (slideState && slideState.count > 0) return slideState.count;
+    const html = sourceRef.current ?? source ?? '';
+    return html.trim() ? extractTopLevelSlideSections(html).length : 0;
+  }
+
+  function applyHostSlideIndex(index: number, count: number) {
+    const safeCount = Math.max(1, count);
+    const active = Math.max(0, Math.min(index, safeCount - 1));
+    const next = { active, count: safeCount };
+    setSlideStateCached(previewStateKey, next);
+    setSlideState(next);
+    retargetPendingDeckSlide(active);
+    postSlideGo(active);
+  }
+
+  function postSlide(action: 'next' | 'prev' | 'first' | 'last') {
+    const count = hostSlideCount();
+    if (count <= 0) return;
+    const current = deckStructureSyncRef.current?.active ?? slideState?.active ?? 0;
+    const nextIndex = action === 'next'
+      ? current + 1
+      : action === 'prev'
+        ? current - 1
+        : action === 'first'
+          ? 0
+          : count - 1;
+    // Absolute go — relative next on a pre-mutation iframe no-ops or lands
+    // on a page the filmstrip no longer has.
+    applyHostSlideIndex(nextIndex, count);
+  }
+  postSlideRef.current = postSlide;
 
   function postSlideGo(index: number) {
     for (const win of slideMessageTargets()) {
       win.postMessage({ type: 'od:slide', action: 'go', index }, '*');
     }
+  }
+  postSlideGoRef.current = postSlideGo;
+
+  function clearDeckStructureSyncTimers() {
+    for (const id of deckStructureSyncTimersRef.current) window.clearTimeout(id);
+    deckStructureSyncTimersRef.current = [];
+  }
+
+  function armDeckStructureSlideSync(activeIndex: number, slideCount: number) {
+    clearDeckStructureSyncTimers();
+    const token: DeckSlideSyncPending = { active: activeIndex, count: slideCount };
+    deckStructureSyncRef.current = token;
+    const post = () => {
+      if (deckStructureSyncRef.current !== token) return;
+      postSlideGo(token.active);
+    };
+    queueMicrotask(post);
+    deckStructureSyncTimersRef.current = [240, 700, 1400].map((ms) => window.setTimeout(post, ms));
+    deckStructureSyncTimersRef.current.push(window.setTimeout(() => {
+      if (deckStructureSyncRef.current === token) deckStructureSyncRef.current = null;
+    }, 2500));
   }
 
   async function persistDeckStructureMutation(
@@ -14280,7 +14378,8 @@ function HtmlViewer({
     if (useUrlLoadPreview) {
       setReloadKey((k) => k + 1);
     }
-    queueMicrotask(() => postSlideGo(activeIndex));
+    armDeckStructureSlideSync(activeIndex, slideCount);
+    setDeckStructureEpoch((epoch) => epoch + 1);
     return true;
   }
 
@@ -14513,10 +14612,7 @@ function HtmlViewer({
     if (typeof html !== 'string' || !html.trim()) return;
     const htmlSlideCount = extractTopLevelSlideSections(html).length;
     if (!Number.isInteger(index) || index < 0 || index >= htmlSlideCount) return;
-    const next = { active: index, count: htmlSlideCount };
-    setSlideStateCached(previewStateKey, next);
-    setSlideState(next);
-    postSlideGo(index);
+    applyHostSlideIndex(index, htmlSlideCount);
   }
 
   async function handleReorderSlide(fromIndex: number, toIndex: number) {
@@ -14722,18 +14818,21 @@ function HtmlViewer({
     if (!effectiveDeck || mode !== 'preview' || manualEditMode) return;
     function onKey(e: KeyboardEvent) {
       if (isManualEditKeyboardTextTarget(e.target)) return;
+      // Filmstrip chips already called onGo and preventDefault. Ignore those
+      // so one arrow does not also advance from a stale host index.
+      if (e.defaultPrevented) return;
       if (e.key === 'ArrowRight' || e.key === 'PageDown') {
         e.preventDefault();
-        postSlide('next');
+        postSlideRef.current('next');
       } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
         e.preventDefault();
-        postSlide('prev');
+        postSlideRef.current('prev');
       } else if (e.key === 'Home') {
         e.preventDefault();
-        postSlide('first');
+        postSlideRef.current('first');
       } else if (e.key === 'End') {
         e.preventDefault();
-        postSlide('last');
+        postSlideRef.current('last');
       }
     }
     window.addEventListener('keydown', onKey);
@@ -18011,7 +18110,7 @@ function HtmlViewer({
                         />
                       )}
                       <iframe
-                        key={srcDocPreviewMountKey}
+                        key={`${srcDocPreviewMountKey}:s${deckStructureEpoch}`}
                         ref={srcDocPreviewIframeRef}
                         data-testid={useUrlLoadPreview ? 'artifact-preview-frame-srcdoc' : 'artifact-preview-frame'}
                         data-od-render-mode="srcdoc"
@@ -18077,6 +18176,9 @@ function HtmlViewer({
                           );
                           replayManualEditStylesToIframe(frame);
                           syncCachedSlideStateToIframe(frame);
+                          if (deckStructureSyncRef.current) {
+                            postSlideGoRef.current(deckStructureSyncRef.current.active);
+                          }
                           if (effectiveDeck) {
                             if (needsDeckHostViewportFit) {
                               schedulePostDeckHostViewportUntilSized(
@@ -18356,7 +18458,7 @@ function HtmlViewer({
             />
           ) : (
             <iframe
-              key={`present:${srcDocPreviewMountKey}`}
+              key={`present:${srcDocPreviewMountKey}:s${deckStructureEpoch}`}
               ref={presentIframeRef}
               title="present"
               sandbox="allow-scripts allow-downloads"
