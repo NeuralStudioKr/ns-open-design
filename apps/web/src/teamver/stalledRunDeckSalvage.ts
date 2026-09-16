@@ -53,13 +53,16 @@ export function stalledRunPartialDeckText(input: {
   const text = String(input.streamedText ?? '');
   if (text.length < STALLED_PARTIAL_DECK_MIN_CHARS) return null;
   if (!DECK_DOCUMENT_START_RE.test(text)) return null;
+  // Head/CSS-only dumps are not slides. Salvaging them overwrites LOOK seed
+  // and trains auto-continue to keep writing `<head>`.
+  if (looksLikeHeadOpenedDeckPreamble(text)) return null;
   return text;
 }
 
 export const STALLED_HEAD_PREAMBLE_STATUS_CODE = 'stalled_head_preamble';
 
 export function formatStalledHeadPreambleNotice(): string {
-  return '생성이 표지 HTML 머리글에서 멈춰, 이어서 본문을 작성합니다.';
+  return '생성이 HTML 머리글에서 멈춰, 슬라이드 본문부터 이어서 작성합니다.';
 }
 
 /**

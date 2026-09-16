@@ -257,16 +257,21 @@ export function shouldAbortStreamForMotifSvgDump(options: {
 const FILL_HEAD_KIT_DUMP_MIN_CHARS = 800;
 
 /**
- * MiniMax first-turn hang: intro + `<artifact>` + `<!doctype>`/`<head>` and
- * then silence. Not a titled slide yet — 10-minute deck idle used to sit on
- * `: keepalive` until the user sent a 2nd/3rd request.
+ * MiniMax first-turn hang: intro + `<artifact>` + document chrome (`<!doctype>` /
+ * `<html>` / `<head>` / prelude `<style>`) and then silence. Body-first compact
+ * (`<body>` without `<head>`) is still writing slides — do not treat that as a
+ * head hang. Untitled slide hosts also mean the model left the chrome phase.
  */
 export function looksLikeHeadOpenedDeckPreamble(text: string): boolean {
   const raw = String(text ?? '');
   if (!/<artifact\b|<!doctype\s+html|<html\b/i.test(raw)) return false;
-  if (!/<head\b|<style\b|<!doctype\s+html/i.test(raw)) return false;
   const htmlish = extractStreamedDeckHtml(raw);
-  return !htmlishHasSlideWithHeading(htmlish);
+  if (htmlishHasSlideWithHeading(htmlish)) return false;
+  if (htmlHasDeckSlideHost(htmlish)) return false;
+  if (/<body\b/i.test(htmlish) && !/<head\b/i.test(htmlish)) return false;
+  return /<head\b/i.test(htmlish)
+    || /<!doctype\s+html|<html\b/i.test(htmlish)
+    || (/<style\b/i.test(htmlish) && !/<body\b/i.test(htmlish));
 }
 
 function htmlishHasSlideWithHeading(html: string): boolean {
@@ -327,6 +332,25 @@ export function stripAbandonedHeadKitDumpFromStreamedText(text: string): string 
       : raw.search(/<head\b|<style\b/i);
   if (cut < 0) return raw;
   return `${raw.slice(0, cut)}<!-- head kit dump abandoned -->`;
+}
+
+/**
+ * Preamble stall / auto-continue: drop the opened `<html>`/`<head>` so the
+ * next turn cannot fence CSS. Keeps the spoken intro + `<artifact>` tag.
+ */
+export function stripAbandonedHeadPreambleFromStreamedText(text: string): string {
+  const raw = String(text ?? '');
+  const stripped = stripAbandonedHeadKitDumpFromStreamedText(raw);
+  if (htmlishHasSlideWithHeading(extractStreamedDeckHtml(stripped))) return raw;
+  const artifact = /<artifact\b[^>]*>/i.exec(stripped);
+  if (artifact && artifact.index != null) {
+    return `${stripped.slice(0, artifact.index + artifact[0].length)}\n<!-- head kit dump abandoned -->`;
+  }
+  const doc = /<!doctype\s+html|<html\b/i.exec(stripped);
+  if (doc && doc.index != null) {
+    return `${stripped.slice(0, doc.index)}<!-- head kit dump abandoned -->`;
+  }
+  return stripped;
 }
 
 /** Auto-continue must not fence Motif-SVG-first partials — the model continues the path dump. */
