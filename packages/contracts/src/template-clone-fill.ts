@@ -8895,25 +8895,18 @@ export function neutralizeBlockFrameInventedHeroTitleHighlight(html: string): st
  */
 export function stripInventedBlockFramePlatformCards(html: string): string {
   let out = String(html ?? '');
-  // Drop the wrapper first (contains all invented tiles).
+  // Drop wrappers first (contains all invented tiles). Depth-aware so nested
+  // divs inside a card don't close the wrapper early.
   out = stripClassBlocks(out, 'download-cards');
   out = stripClassBlocks(out, 'platform-cards');
-  // Individual tile shells with `Desktop|Android|iOS|Windows|Mac|Linux|Web` headings
-  // whose body is empty or contains only footer legal info.
-  out = out.replace(
-    /<div\b[^>]*\b(?:download-card|platform-card)\b[^>]*>([\s\S]*?)<\/div>/gi,
-    (full, inner: string) => {
-      const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-      if (!plain) return '';
-      if (/^(?:Desktop|Android|iOS|Windows|Mac|Linux|Web)$/i.test(plain)) return '';
-      // Footer legal info leaked into a platform card body (`사업자등록번호`,
-      // `대표`, `본사`, `주소`, `[본사]`, `[판교 R&D]`).
-      if (/사업자\s*등록|대표\s*[:·]?\s*[가-힣]|본사\s*[:·]?|주소\s*[:·]|판교\s*R&?D|서울\s*[가-힣]+구|경기\s*[가-힣]+시/.test(plain)) {
-        return '';
-      }
-      return full;
-    },
-  );
+  out = stripClassBlocks(out, 'download-card-row');
+  out = stripClassBlocks(out, 'platform-card-row');
+  // Individual tiles: `.download-card` / `.platform-card` never exist on
+  // block-frame slides (kit ships `.hero-frame` + `.intro-card` /
+  // `.feature-card` / `.team-card`). Any surviving download-card is a
+  // MiniMax invention — strip depth-safely.
+  out = stripClassBlocks(out, 'download-card');
+  out = stripClassBlocks(out, 'platform-card');
   return out;
 }
 
