@@ -1406,6 +1406,36 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(out).not.toMatch(/Presentation Template/);
   });
 
+  it('루프539 — extended cross-kit English chrome (AGENDA.TXT, All systems operational, Complex problems, Connecting Founders) is scrubbed', async () => {
+    const { stripLeftoverCatalogDemoPhrases } = await import('../src/template-clone-fill');
+    const html =
+      '<h2>AGENDA.TXT</h2>'
+      + '<span>All systems operational</span>'
+      + '<div>API Calls / Day</div>'
+      + '<div>Avg. Response Time</div>'
+      + '<p>Concept development and prototype validation</p>'
+      + '<p>Full implementation and iterative refinement</p>'
+      + '<p>Expansion and long-term optimization</p>'
+      + '<p>Complex problems deserve simple explanations.</p>'
+      + '<p>Every partnership is built on radical transparency.</p>'
+      + '<h2>Connecting Founders With Opportunity</h2>'
+      + '<span>Advanced Analytics Suite</span>'
+      + '<span>API marketplace</span>';
+    const out = stripLeftoverCatalogDemoPhrases(html);
+    expect(out).not.toMatch(/AGENDA\.TXT/);
+    expect(out).not.toMatch(/All systems operational/);
+    expect(out).not.toMatch(/API Calls/);
+    expect(out).not.toMatch(/Avg\.? Response Time/);
+    expect(out).not.toMatch(/Concept development and prototype validation/);
+    expect(out).not.toMatch(/Full implementation and iterative refinement/);
+    expect(out).not.toMatch(/Expansion and long-term optimization/);
+    expect(out).not.toMatch(/Complex problems deserve simple explanations/);
+    expect(out).not.toMatch(/Every partnership is built on radical transparency/);
+    expect(out).not.toMatch(/Connecting Founders With Opportunity/);
+    expect(out).not.toMatch(/Advanced Analytics Suite/);
+    expect(out).not.toMatch(/API marketplace/);
+  });
+
   it('루프539 — placeholder contact chrome (555 phones, hello@example, HELLO@VENTURE.IO, SEATTLE WA) is scrubbed', async () => {
     const { stripLeftoverCatalogDemoPhrases } = await import('../src/template-clone-fill');
     const html =
