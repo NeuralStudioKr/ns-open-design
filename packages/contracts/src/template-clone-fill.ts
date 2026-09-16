@@ -1311,64 +1311,69 @@ function templatesForSynthTemplateTopic(
     ];
   }
   // Free-form topics: topic-parameterized skeleton only — no domain essays.
+  // 루프543 — 사용자가 "글을 매력적으로 쓰는 팁" 같은 free-form 주제로 create
+  // 하면 pad/synthesize가 이 6개 template를 순환하며 채운다. 이전에는 카드
+  // body가 topic 문자열 없이 `개념/구조/영향`, `용어와 원리를 짧고 정확하게…`
+  // 같은 하드코딩 문장만 나와서 어떤 주제든 같은 덱처럼 보였다. 각 line에
+  // `${topic}`을 삽입해 최소한 주제 명사가 카드마다 스며들도록 정정.
   return [
     {
       roleHint: 'list',
       lead: `왜 ${topic}을 지금 다뤄야 하는가`,
       itemTitles: ['배경', '핵심 질문', '판단 기준'],
       lines: [
-        `${topic}의 배경과 현재 논의가 필요한 이유`,
-        '청중이 이 주제에서 가장 먼저 이해해야 할 핵심 질문',
-        '뒤 슬라이드에서 검증할 개념, 사례, 실행 기준',
+        `${topic}의 배경과 현재 논의가 필요한 이유를 한두 문장으로 정리`,
+        `${topic}에서 청중이 가장 먼저 이해해야 할 핵심 질문을 제시`,
+        `뒤 슬라이드에서 검증할 ${topic}의 개념·사례·실행 기준을 예고`,
       ],
     },
     {
       roleHint: 'cards',
-      lead: '핵심 개념을 세 갈래로 나누기',
+      lead: `${topic}을 세 갈래로 나눠 보기`,
       itemTitles: ['개념', '구조', '영향'],
       lines: [
-        '개념: 용어와 원리를 짧고 정확하게 정의',
-        '구조: 구성 요소와 서로 연결되는 방식을 설명',
-        '영향: 실제 의사결정이나 업무에 생기는 변화를 정리',
+        `개념: ${topic}에서 자주 쓰이는 용어와 원리를 짧고 정확하게 정의`,
+        `구조: ${topic}을 이루는 구성 요소와 서로 연결되는 방식을 설명`,
+        `영향: ${topic}이 실제 의사결정이나 업무에 만드는 변화를 정리`,
       ],
     },
     {
       roleHint: 'process',
-      lead: '이해에서 적용까지의 순서',
+      lead: `${topic}을 이해에서 적용까지 잇는 순서`,
       itemTitles: ['이해', '비교', '적용'],
       lines: [
-        '먼저 전체 지도를 잡고 세부 개념을 위치시킨다',
-        '대안, 사례, 실패 패턴을 비교해 차이를 드러낸다',
-        '실제 상황에 적용할 기준과 다음 행동을 제안한다',
+        `${topic}의 전체 지도를 먼저 그리고 세부 개념을 그 위에 위치시킨다`,
+        `${topic}의 대안·사례·실패 패턴을 비교해 차이를 명확히 드러낸다`,
+        `${topic}을 실제 상황에 적용할 기준과 다음 행동을 한 문장으로 제안`,
       ],
     },
     {
       roleHint: 'cards',
-      lead: '사례로 보는 차이',
+      lead: `사례로 보는 ${topic}의 차이`,
       itemTitles: ['좋은 사례', '주의 사례', '전환점'],
       lines: [
-        '좋은 사례: 핵심 원리가 실제 문제를 줄이는 장면',
-        '주의 사례: 겉보기엔 비슷하지만 성과가 낮은 접근',
-        '전환점: 적용 여부를 결정하는 비용, 리스크, 기대 효과',
+        `좋은 사례: ${topic}의 핵심 원리가 실제 문제를 줄여 준 장면`,
+        `주의 사례: 겉보기엔 ${topic}과 비슷하지만 성과가 낮은 접근`,
+        `전환점: ${topic}을 적용할지 결정하는 비용·리스크·기대 효과`,
       ],
     },
     {
       roleHint: 'list',
-      lead: '실행 체크리스트',
+      lead: `${topic} 실행 체크리스트`,
       itemTitles: ['준비', '운영', '검증'],
       lines: [
-        '필요한 자료, 이해관계자, 현재 상태를 먼저 확인',
-        '작은 범위에서 실행하고 피드백을 빠르게 반영',
-        '성과 지표와 실패 신호를 함께 정의해 다음 단계를 결정',
+        `${topic}에 필요한 자료·이해관계자·현재 상태를 먼저 확인`,
+        `${topic}을 작은 범위에서 실행하고 피드백을 빠르게 반영`,
+        `${topic}의 성과 지표와 실패 신호를 함께 정의해 다음 단계를 결정`,
       ],
     },
     {
       roleHint: 'closing',
-      lead: '정리와 다음 단계',
+      lead: `${topic} 정리와 다음 단계`,
       itemTitles: ['핵심 메시지', '다음 행동'],
       lines: [
-        `${topic}은 한 번에 설명하기보다 배경, 구조, 사례, 실행 기준으로 나누면 이해도가 높아진다`,
-        '다음 단계는 청중 수준에 맞춰 예시와 실습 또는 의사결정 기준을 보강하는 것이다',
+        `${topic}은 한 번에 설명하기보다 배경·구조·사례·실행 기준으로 나누면 이해도가 높아진다`,
+        `다음 단계는 청중 수준에 맞춰 ${topic}의 예시·실습 또는 의사결정 기준을 보강하는 것`,
       ],
     },
   ];
@@ -1506,6 +1511,14 @@ function bindTemplateCloneSynthItemBody(input: {
   return `${topic}의 핵심을 한 문장으로 정리한다.`;
 }
 
+/**
+ * 루프543 — Slide-title / index를 salt로 삼아 같은 template이 두 번 이상
+ * 쓰일 때 각 반복 슬라이드의 body/items에 slide label을 삽입해 완전 복붙을
+ * 억제한다. templates가 6개뿐이라 targetCount > 6이면 순환이 불가피한데,
+ * 예전에는 index만 salt로 썼기 때문에 pad에서 label이 `핵심 7`, `핵심 8`
+ * 순으로 늘어나도 body는 그대로 같은 문장이 반복돼 사용자가 "같은 문장이
+ * 여러 슬라이드에 반복"이라고 리포트했다.
+ */
 function synthesizeTemplateCloneSlideBody(
   cover: string,
   label: string,
@@ -1516,12 +1529,50 @@ function synthesizeTemplateCloneSlideBody(
     classifySynthTemplateTopicProfile(cover, brief),
   );
   const picked = templates[(index - 1) % templates.length]!;
+  const rotation = Math.floor((index - 1) / templates.length);
+  const cleanLabel = String(label ?? '').trim();
+  const lines = rotation > 0 && cleanLabel
+    ? picked.lines.map((line) => decorateSynthLineWithSlideLabel(line, cleanLabel))
+    : picked.lines;
+  const itemTitles = rotation > 0 && cleanLabel
+    ? picked.itemTitles.map((title, itemIndex) =>
+        decorateSynthItemTitleWithSlideLabel(title, cleanLabel, itemIndex),
+      )
+    : picked.itemTitles;
+  const lead = rotation > 0 && cleanLabel
+    ? `${picked.lead} — ${cleanLabel}`
+    : picked.lead || label;
   return {
     roleHint: picked.roleHint,
-    lead: picked.lead || label,
-    body: picked.lines.join('\n'),
-    items: synthTemplateItems(picked.itemTitles, picked.lines),
+    lead,
+    body: lines.join('\n'),
+    items: synthTemplateItems(itemTitles, lines),
   };
+}
+
+/**
+ * `개념: 용어와 원리를 짧고 정확하게 정의` 같은 dense line에 slide label
+ * 을 삽입: 첫 콜론 뒤에 `(<label>)`을 붙여 반복 슬라이드마다 문맥이 달라
+ * 보이게. splitDenseTemplateCloneTitleBodyLine이 여전히 title/body를 나눌
+ * 수 있도록 `title:` prefix는 보존한다.
+ */
+function decorateSynthLineWithSlideLabel(line: string, label: string): string {
+  if (!line) return line;
+  const colonIdx = line.indexOf(':');
+  if (colonIdx < 0) return `${line} (${label})`;
+  const head = line.slice(0, colonIdx + 1);
+  const rest = line.slice(colonIdx + 1).trim();
+  return `${head} (${label}) ${rest}`;
+}
+
+function decorateSynthItemTitleWithSlideLabel(
+  title: string,
+  label: string,
+  itemIndex: number,
+): string {
+  if (!title) return `${label} ${itemIndex + 1}`;
+  if (title.includes(label)) return title;
+  return `${title} · ${label}`;
 }
 
 function padDeterministicTemplateCloneSlides(

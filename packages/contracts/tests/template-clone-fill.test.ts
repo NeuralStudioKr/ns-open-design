@@ -531,6 +531,64 @@ describe('resolveTemplateCloneSlidesFromBrief', () => {
     expect(text).not.toMatch(/파일·대화·템플릿|팀 워크스페이스|핵심 기능과 사용자가 얻는 직접적인 가치/);
   });
 
+  it('루프543 — free-form 주제는 카드 body/lead에 topic 명사가 스며야 한다', () => {
+    // 사용자 리포트: 제목이 "글을 매력적으로 쓰는 팁"이어도 카드 body가
+    // `개념/구조/영향`, `용어와 원리를 짧고 정확하게 정의`만 나옴.
+    // topicKeywordForSynthBody가 "글을 매력적으로 쓰는 팁"을 그대로 반환하므로
+    // 카드 body에 topic이 최소 한 번은 등장해야 한다.
+    const slides = resolveTemplateCloneSlidesForDeterministicFill({
+      userInstruction: '글을 매력적으로 쓰는 팁을 정리한 슬라이드 만들어줘',
+      deckTitle: '글을 매력적으로 쓰는 팁',
+      slideCount: 6,
+    });
+    expect(slides).toHaveLength(6);
+    const bodySlides = slides.slice(1);
+    const bodiesWithTopic = bodySlides.filter((slide) =>
+      /글을 매력적으로 쓰는 팁/.test(slide.body ?? ''),
+    );
+    // 6-body 슬라이드 중 topic이 body에 등장하는 슬라이드가 과반이어야 한다.
+    expect(bodiesWithTopic.length).toBeGreaterThanOrEqual(Math.ceil(bodySlides.length / 2));
+    // 카탈로그 하드코딩 문장이 topic 없이 남으면 안 된다.
+    const jointBody = bodySlides.map((s) => s.body ?? '').join('\n');
+    expect(jointBody).not.toMatch(/^개념: 용어와 원리를 짧고 정확하게 정의$/m);
+    expect(jointBody).not.toMatch(/^구조: 구성 요소와 서로 연결되는 방식을 설명$/m);
+  });
+
+  it('루프543 — pad 반복 슬라이드는 완전 동일 body가 덱 과반에 반복되지 않는다', () => {
+    // slideCount > templates.length (6)이면 순환. 예전에는 body가 그대로
+    // 복붙됐지만 이제 slide-title salt로 문장이 달라져야 한다.
+    const slides = resolveTemplateCloneSlidesForDeterministicFill({
+      userInstruction: '리모트 워크 정착 팁을 정리한 슬라이드 만들어줘',
+      deckTitle: '리모트 워크 정착 팁',
+      slideCount: 10,
+    });
+    expect(slides).toHaveLength(10);
+    const bodySlides = slides.slice(1);
+    const bodyCounts = new Map<string, number>();
+    for (const slide of bodySlides) {
+      const key = (slide.body ?? '').trim();
+      if (!key) continue;
+      bodyCounts.set(key, (bodyCounts.get(key) ?? 0) + 1);
+    }
+    const maxDuplicate = Math.max(0, ...bodyCounts.values());
+    // 같은 body가 body-슬라이드 과반을 넘으면 안 된다.
+    expect(maxDuplicate).toBeLessThanOrEqual(Math.floor(bodySlides.length / 2));
+  });
+
+  it('루프543 — synth outline은 없는 KPI 숫자($, %, 억, M/B/조)를 지어내지 않는다', () => {
+    const slides = resolveTemplateCloneSlidesForDeterministicFill({
+      userInstruction: '팀 협업 도구 도입 가이드 만들어줘',
+      deckTitle: '팀 협업 도구 도입 가이드',
+      slideCount: 8,
+    });
+    const text = JSON.stringify(slides);
+    // 카탈로그 데모 KPI ($3.5B, $29/mo, 40%, 3× 등)가 synth에서 신규 삽입되면 안 된다.
+    expect(text).not.toMatch(/\$\s*\d+(?:\.\d+)?\s*(?:B|M|K|\/mo|\/yr)/);
+    expect(text).not.toMatch(/\d+(?:\.\d+)?\s*(?:억|조)\b/);
+    // ×/x 수치 배수(2×, 3x, 12.4×)도 synth 문장에는 없어야 한다.
+    expect(text).not.toMatch(/\b\d+(?:\.\d+)?\s*[×xX]\b/);
+  });
+
   it('루프479/516 — senior engineering briefs use generic topic skeleton, not monorepo essay', () => {
     const slides = resolveTemplateCloneSlidesForDeterministicFill({
       userInstruction: 'monorepo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨. 8장',
