@@ -39,6 +39,7 @@ import { hasSalvageableDeckSlideContent } from '../artifacts/deck-html-content';
 import {
   deleteDeckSlideAt,
   duplicateDeckSlideAt,
+  extractAppendableSlideSections,
   extractTopLevelSlideSections,
   insertBlankDeckSlideAfter,
   listDeckFilmstripItems,
@@ -8017,7 +8018,7 @@ function HtmlViewer({
           || (typeof source === 'string' && source.trim() && source)
           || '';
         const htmlSlideCount = htmlForCount
-          ? extractTopLevelSlideSections(htmlForCount).length
+          ? extractAppendableSlideSections(htmlForCount).length
           : 0;
         const decision = reconcileReportedDeckSlideState({
           reportedActive: data.active,
@@ -8058,7 +8059,7 @@ function HtmlViewer({
       || (typeof liveHtml === 'string' && liveHtml.trim() && liveHtml)
       || '';
     if (!html) return;
-    const htmlCount = extractTopLevelSlideSections(html).length;
+    const htmlCount = extractAppendableSlideSections(html).length;
     if (htmlCount <= 0) return;
     setSlideState((prev) => {
       const pending = deckStructureSyncRef.current;
@@ -14254,7 +14255,7 @@ function HtmlViewer({
     if (pending > 0) return pending;
     if (slideState && slideState.count > 0) return slideState.count;
     const html = sourceRef.current ?? source ?? '';
-    return html.trim() ? extractTopLevelSlideSections(html).length : 0;
+    return html.trim() ? extractAppendableSlideSections(html).length : 0;
   }
 
   function applyHostSlideIndex(index: number, count: number) {
@@ -14610,7 +14611,7 @@ function HtmlViewer({
     if (!effectiveDeck) return;
     const html = sourceRef.current ?? source ?? liveHtml;
     if (typeof html !== 'string' || !html.trim()) return;
-    const htmlSlideCount = extractTopLevelSlideSections(html).length;
+    const htmlSlideCount = extractAppendableSlideSections(html).length;
     if (!Number.isInteger(index) || index < 0 || index >= htmlSlideCount) return;
     applyHostSlideIndex(index, htmlSlideCount);
   }

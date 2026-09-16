@@ -659,7 +659,10 @@ export function slideFilmstripLabel(slideHtml: string, index: number): string {
 }
 
 export function listDeckFilmstripItems(html: string): Array<{ index: number; label: string }> {
-  return extractTopLevelSlideSections(html).map((slide, index) => ({
+  // Section catalogs stay section-only. Capsule / opacity-stack covers are
+  // `<div class="slide">` — listing only `<section>` dropped the cover chip
+  // while the iframe still painted a later page as index 0.
+  return extractAppendableSlideSections(html).map((slide, index) => ({
     index,
     label: slideFilmstripLabel(slide.outerHtml, index),
   }));
