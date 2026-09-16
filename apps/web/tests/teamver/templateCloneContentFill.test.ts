@@ -463,6 +463,44 @@ describe('templateCloneContentFill', () => {
     );
   });
 
+  it('루프544 — prompt-fill seed에 topic-lock / unique-per-slot 지시가 삽입된다', () => {
+    const seed = buildTemplateClonePromptFillSeed({
+      userInstruction: '글을 매력적으로 쓰는 팁 정리해줘',
+      templateTitle: 'Html Ppt Zhangzara 8-Bit Orbit',
+      slideCountHint: '6-8',
+    });
+    // topic-lock — 일반론 outline 금지 · 지어낸 수치 금지 · 카탈로그 데모 잔재 금지
+    expect(seed).toMatch(/Topic-lock \(brief-tethered content\)/);
+    expect(seed).toContain('개념 / 구조 / 영향');
+    expect(seed).toContain('용어와 원리를 짧고 정확하게 정의');
+    expect(seed).toContain('배경 / 핵심 질문 / 판단 기준');
+    expect(seed).toMatch(/Do not invent quantitative KPIs, prices/);
+    expect(seed).toContain('Presentation Template');
+    expect(seed).toContain('NEXUS VENTURES');
+    expect(seed).toContain('Studio Orbital');
+    expect(seed).toContain('AGENDA.TXT');
+    expect(seed).toContain('Connecting Founders With Opportunity');
+    // unique-per-slot — 슬롯 유일성 + 반복 금지
+    expect(seed).toMatch(/Unique-per-slot copy is REQUIRED/);
+    expect(seed).toMatch(/DIFFERENT concrete 1–2 sentence line/);
+    expect(seed).toMatch(/Do not repeat the slide title as its body/);
+    expect(seed).toMatch(/Bare one-word labels \(핵심, 개념, 요약/);
+    expect(seed).toMatch(/majority of body slides share the same body sentence is a failed deliverable/);
+    // 기존 pin 유지 — CONTENT_EXPANSION은 prompt-fill seed에 노출되지 않음.
+    expect(seed).not.toMatch(/Content expansion contract/i);
+  });
+
+  it('루프544 — JSON slot-fill hard rules에도 topic-lock / unique-per-slot이 걸린다', () => {
+    const rules = templateCloneContentFillHardRules();
+    const joined = rules.join('\n');
+    expect(joined).toMatch(/Topic-lock \(brief-tethered content\)/);
+    expect(joined).toMatch(/Unique-per-slot copy is REQUIRED/);
+    expect(joined).toContain('개념 / 구조 / 영향');
+    expect(joined).toContain('Bare one-word labels (핵심, 개념, 요약');
+    // JSON slot-fill은 원래대로 CONTENT_EXPANSION도 유지.
+    expect(joined).toMatch(/Content expansion contract/i);
+  });
+
   it('binds website-analysis outline anchors from headings/preview in the brief', () => {
     const brief = [
       'User instruction:',

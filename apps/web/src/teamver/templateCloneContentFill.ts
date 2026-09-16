@@ -11,9 +11,15 @@
 import type { ChatAttachment } from '../types';
 import {
   looksLikeTemplateCloneServiceIntroBrief,
+  // 루프544 — CONTENT_EXPANSION은 JSON slot-fill hard rules에만 걸려 있고
+  // prompt-fill seed는 그 문구("Content expansion contract")를 not.toMatch로
+  // pin 중이라 여기서만 유지. TOPIC_LOCK / UNIQUE_SLOT_COPY 신규 상수는 양쪽에
+  // 모두 걸린다.
   SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION,
   SLIDE_DECK_COPY_DENSITY_INSTRUCTION,
   SLIDE_DECK_LAYOUT_VARIETY_INSTRUCTION,
+  SLIDE_DECK_TOPIC_LOCK_INSTRUCTION,
+  SLIDE_DECK_UNIQUE_SLOT_COPY_INSTRUCTION,
 } from '@open-design/contracts';
 import {
   briefLooksLikeAttachedSource,
@@ -734,6 +740,9 @@ export function templateCloneContentFillHardRules(): string[] {
     '- Forbidden output: <!doctype, <html, <head, <style, <section class="slide">, Motif <svg>, full example.html rewrite.',
     `- ${SLIDE_DECK_QUALITY_BAR_INSTRUCTION}`,
     `- ${SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION}`,
+    // 루프544 — JSON slot-fill 턴에도 같은 topic-lock / unique-per-slot 제약 부여.
+    `- ${SLIDE_DECK_TOPIC_LOCK_INSTRUCTION}`,
+    `- ${SLIDE_DECK_UNIQUE_SLOT_COPY_INSTRUCTION}`,
     '- Expand THIS turn\'s brief only. Do not copy host-contract examples or the user instruction onto slides.',
     '- JSON shape: {"title":"...","slides":[{"title":"...","kicker":"...","lead":"...","roleHint":"cover|list|cards|timeline|stat|quote|team|process|closing|body","items":[{"title":"...","body":"..."}]}]}',
     '- Layout variety is mandatory: for 5+ slides use at least 3 distinct body `roleHint` values, and for 8–10 slides use at least 4 when the scaffold map offers them. Do not repeat the same cards/body layout for every page.',
@@ -1021,6 +1030,15 @@ export function buildTemplateClonePromptFillSeed(options: {
     SLIDE_DECK_QUALITY_BAR_INSTRUCTION,
     SLIDE_DECK_LAYOUT_VARIETY_INSTRUCTION,
     SLIDE_DECK_COPY_DENSITY_INSTRUCTION,
+    // 루프544 — prompt-fill 턴에 없던 2개 제약을 host contract에 추가.
+    // (1) topic-lock: brief 주제 밖 일반론 · 지어낸 수치 · 카탈로그 데모 잔재 금지
+    // (2) unique-per-slot: 슬롯마다 서로 다른 1~2문장 · 같은 body 과반 반복 금지
+    // CONTENT_EXPANSION_INSTRUCTION은 기존 pin (Content expansion contract 문구를
+    // prompt-fill seed에는 넣지 않기)을 존중해 여기서는 append하지 않고 JSON
+    // slot-fill hard rules에만 유지. topic-lock이 그 실패 시나리오를 이미 부분
+    // 커버한다.
+    SLIDE_DECK_TOPIC_LOCK_INSTRUCTION,
+    SLIDE_DECK_UNIQUE_SLOT_COPY_INSTRUCTION,
     requestedLine,
     templateClonePromptFillSlideCountInstruction({ slideCountHint, slideCountHintSource }),
     websiteOutline

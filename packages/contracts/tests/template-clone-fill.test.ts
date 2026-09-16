@@ -575,6 +575,31 @@ describe('resolveTemplateCloneSlidesFromBrief', () => {
     expect(maxDuplicate).toBeLessThanOrEqual(Math.floor(bodySlides.length / 2));
   });
 
+  it('루프544 — slideNeedsDeterministicBody 게이트 미변경: items 있는 슬라이드는 synth로 덮이지 않는다', async () => {
+    const { slideNeedsDeterministicBody } = await import('../src/template-clone-fill');
+    // items가 하나라도 있으면 얕은 라벨이든 구체 body든 상관없이 false.
+    // 이 경계를 느슨하게 만들면 모델이 채운 좋은 items도 synth로 덮어쓸 위험이
+    // 있어서 이번 루프544 슬라이스에서는 미변경을 pin한다.
+    expect(slideNeedsDeterministicBody({
+      title: '핵심 포인트',
+      items: [{ title: '핵심', body: '핵심' }],
+    })).toBe(false);
+    expect(slideNeedsDeterministicBody({
+      title: '핵심 포인트',
+      items: [{ title: '자막 배치 3원칙', body: '가독성 · 시선 흐름 · 브랜드 목소리' }],
+    })).toBe(false);
+    // items가 없고 body가 placeholder(…)이면 true — synth로 채워야 한다.
+    expect(slideNeedsDeterministicBody({
+      title: '핵심 포인트',
+      body: '…',
+    })).toBe(true);
+    // items가 없고 body가 구체적이면 false — 모델이 이미 채운 것으로 존중.
+    expect(slideNeedsDeterministicBody({
+      title: '핵심 포인트',
+      body: '초안은 요점만 놓고, 근거·예시·다음 행동을 각 단락으로 분리한다.',
+    })).toBe(false);
+  });
+
   it('루프543 — biennaleFillLines fallback도 topic 명사가 스며든다 (Teamver 특화 하드코딩 금지)', async () => {
     // 8-Bit / Broadside / Block-frame kit-specific fill 함수가 fillLines 부족 시
     // biennaleFillLines의 fallback을 사용한다. 이전에는 '협업, 파일, AI 작업 흐름을

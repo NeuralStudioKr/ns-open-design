@@ -11639,7 +11639,13 @@ export function resolveTemplateCloneSlidesFromBrief(options: {
   });
 }
 
-function slideNeedsDeterministicBody(slide: TemplateCloneSlideContent): boolean {
+/**
+ * 루프544 — 게이트 미변경 pin 목적으로 export. deterministic outline 경로에서
+ * 이미 items가 있거나 body가 non-placeholder인 슬라이드는 synth로 덮어쓰지
+ * 않는다. 이 경계를 느슨하게 만들면 모델이 채운 좋은 items도 함께 잡히므로,
+ * 이번 슬라이스에서는 프롬프트만 강화하고 게이트는 그대로 유지한다.
+ */
+export function slideNeedsDeterministicBody(slide: TemplateCloneSlideContent): boolean {
   if (slide.items && slide.items.length > 0) return false;
   return isPlaceholderCloneBody(slide.body);
 }
