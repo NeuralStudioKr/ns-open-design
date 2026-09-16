@@ -40,6 +40,37 @@ async def commit_usage(*, usage_id: str) -> dict[str, Any]:
     )
 
 
+async def post_presentation_completed(
+    *,
+    workspace_id: str,
+    user_id: str,
+    artifact_id: str,
+    job_id: str | None = None,
+) -> dict[str, Any]:
+    """PPT KPI. Main ``POST /api/app-service/events`` ``presentation.completed``.
+
+    토큰 ``/usage/events`` 와 별개. 크레딧으로 PPT 건수를 세지 않는다.
+    """
+    client = get_teamver_client()
+    app_id = (settings.teamver_registry_app_id or "").strip() or None
+    metadata: dict[str, Any] = {
+        "artifact_id": artifact_id,
+        "workspace_id": workspace_id,
+        "user_id": user_id,
+    }
+    job = (job_id or "").strip()
+    if job:
+        metadata["job_id"] = job
+    return await client.app_service.post_event(
+        workspace_id=workspace_id,
+        event_type="presentation.completed",
+        credentials=_registry_credentials(),
+        app_id=app_id,
+        user_id=user_id,
+        metadata=metadata,
+    )
+
+
 async def refund_usage(*, usage_id: str, reason: str = "design_run_failed") -> dict[str, Any]:
     client = get_teamver_client()
     return await client.billing.refund(
