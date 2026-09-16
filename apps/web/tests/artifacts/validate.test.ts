@@ -31,6 +31,16 @@ describe('validateHtmlArtifact', () => {
     expect(result.ok).toBe(false);
   });
 
+  it('rejects a 32-char self-talk body with the ≥64 length reason', () => {
+    const talk = "I'll generate the slides now!!".padEnd(32, '!');
+    expect(talk.length).toBe(32);
+    const result = validateHtmlArtifact(talk);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe('content too short to be HTML (got 32 chars, need ≥64)');
+    }
+  });
+
   it('classifies empty document shells so callers can skip without a refusal banner', () => {
     const shell = '<html><head></head><body></body></html>';
     expect(shell.length).toBe(39);

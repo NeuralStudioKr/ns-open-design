@@ -9,6 +9,7 @@ import {
   isIncompleteHtmlDocumentShell,
   isIncompleteParsedDeckForBestArtifactRestore,
   isLowSubstanceSlideDeckArtifact,
+  isNotHtmlDeliverableValidationReason,
   validateHtmlArtifact,
 } from '../artifacts/validate';
 import {
@@ -259,10 +260,14 @@ import {
   withoutCanonicalDeckAttachments,
 } from '../teamver/templateCloneContentFill';
 import {
+  classifyTooShortHtmlSnippet,
   isShortResponseAutoRetryPrompt,
+  parseTooShortHtmlCharCount,
   renderShortResponseAutoRetryPrompt,
+  renderTooShortHtmlAutoRetryPrompt,
   shouldAutoRetryShortSlideResponse,
 } from '../teamver/shortResponseAutoRetry';
+import { resolveTooShortHtmlArtifactPersist } from '../teamver/tooShortHtmlPersist';
 import {
   anonymizeArtifactId,
   artifactKindToTracking,
@@ -2961,6 +2966,8 @@ type ArtifactPersistResult =
     producedCount: number;
     expectedCount: number;
     reason?: string;
+    retryKind?: 'slide-count' | 'too-short-html';
+    previousSnippet?: string;
   };
 
 export function shouldFailRunForArtifactPersistResult(
@@ -6242,6 +6249,34 @@ export function ProjectView({
         }
         const validation = validateHtmlArtifact(artifactToPersist.html);
         if (!validation.ok) {
+          const tooShortPersist = await resolveTooShortHtmlArtifactPersist({
+            reason: validation.reason,
+            html: artifactToPersist.html,
+            fileName,
+            artifactType: normalizedArtifactType,
+            scopedEdit:
+              persistCommentAttachments.length > 0
+              || imageAttachmentPathsForSlideEmbed(runAttachmentsRef.current).length > 0,
+            isCreateOrFullFill:
+              runTemplateCloneContentFillRef.current
+              || runTemplateClonePromptFillRef.current,
+            alreadyRetried: runAutoRetryForShortResponseRef.current,
+            readSeedHtml: () => resolveTemplateCloneLookSeedHtml({
+              templateId: firstOfficialDeckTemplateId(
+                resolveDurableDeckTemplatePin({
+                  project: project.metadata,
+                  runRef: runSelectedDeckTemplateIdRef.current,
+                  messages: messagesRef.current,
+                })?.id,
+              ),
+              readProjectHtml,
+            }),
+            readPriorHtml: () => readDiskHtml(fileName),
+            countSeedSlides: (html) => (
+              listTemplateCloneSlideShells(html).length || countDeckSlideSections(html)
+            ),
+          });
+          if (tooShortPersist) return tooShortPersist;
           if (
             htmlArtifactValidationFailureShouldAutoContinue({
               artifactType: normalizedArtifactType,
@@ -11692,10 +11727,17 @@ export function ProjectView({
                   const retryPrompt = [
                     runModelPromptRef.current.trim() || prompt,
                     '',
-                    renderShortResponseAutoRetryPrompt({
-                      returnedCount: persistResult.producedCount,
-                      seedCount: persistResult.expectedCount,
-                    }),
+                    persistResult.retryKind === 'too-short-html'
+                      ? renderTooShortHtmlAutoRetryPrompt({
+                          charCount: parseTooShortHtmlCharCount(persistResult.reason)
+                            || classifyTooShortHtmlSnippet(artifactToPersist?.html ?? '').length,
+                          seedCount: persistResult.expectedCount,
+                          previousSnippet: persistResult.previousSnippet,
+                        })
+                      : renderShortResponseAutoRetryPrompt({
+                          returnedCount: persistResult.producedCount,
+                          seedCount: persistResult.expectedCount,
+                        }),
                   ].join('\n');
                   const scheduledProjectId = project.id;
                   const scheduledConversationId = activeConversationId;
@@ -11746,13 +11788,19 @@ export function ProjectView({
               && (
                 terminalPersistResult?.kind === 'skipped-incomplete'
                 || terminalPersistResult?.kind === 'artifact-regression'
+                || (
+                  terminalPersistResult?.kind === 'rejected'
+                  && isNotHtmlDeliverableValidationReason(terminalPersistResult.reason)
+                )
               )
             ) {
               const failedPersistResult = terminalPersistResult;
               const failedPersistPrefix =
                 failedPersistResult.kind === 'artifact-regression'
                   ? `artifact_regression:${failedPersistResult.bannerKind ?? 'unknown'}`
-                  : `skipped_incomplete:${String(failedPersistResult.reason ?? 'unknown').slice(0, 180)}`;
+                  : failedPersistResult.kind === 'rejected'
+                    ? `rejected:${String(failedPersistResult.reason ?? 'unknown').slice(0, 180)}`
+                    : `skipped_incomplete:${String(failedPersistResult.reason ?? 'unknown').slice(0, 180)}`;
               artifactToPersist = null;
               if (await recoverCloneLookSeedFallback({
                 reason: failedPersistPrefix,
@@ -11776,6 +11824,7 @@ export function ProjectView({
                 && (
                   terminalPersistResult?.kind === 'skipped-incomplete'
                   || terminalPersistResult?.kind === 'artifact-regression'
+                  || terminalPersistResult?.kind === 'rejected'
                   || terminalPersistResult == null
                 )
               ) {
@@ -11786,7 +11835,9 @@ export function ProjectView({
                   reason:
                     failedPersistResult.kind === 'artifact-regression'
                       ? `artifact_regression_retry:${failedPersistResult.bannerKind ?? 'unknown'}`
-                      : `skipped_incomplete_retry:${String(failedPersistResult.reason ?? 'unknown').slice(0, 160)}`,
+                      : failedPersistResult.kind === 'rejected'
+                        ? `rejected_retry:${String(failedPersistResult.reason ?? 'unknown').slice(0, 160)}`
+                        : `skipped_incomplete_retry:${String(failedPersistResult.reason ?? 'unknown').slice(0, 160)}`,
                 })) {
                   runTemplateCloneSlotFillFallbackRef.current = true;
                 } else {

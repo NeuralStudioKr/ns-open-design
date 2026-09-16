@@ -52,7 +52,8 @@ import {
   meetsMinimumDeckDeliverableQuality,
 } from './deck-html-content';
 
-const MIN_HTML_LENGTH = 64;
+export const MIN_HTML_ARTIFACT_LENGTH = 64;
+const MIN_HTML_LENGTH = MIN_HTML_ARTIFACT_LENGTH;
 const STARTS_WITH_DOCUMENT_RE = /^(?:<!doctype\s+html\b|<html\b)/i;
 const RESERVED_PROJECT_PATH_RE = /(?:^|\/|\.\/)(?:\.live-artifacts|\.od|\.tmp)(?=$|[/?#"'`\s>)])/i;
 const URL_SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
@@ -73,8 +74,27 @@ export type HtmlArtifactValidationResult =
   | { ok: true }
   | { ok: false; reason: string };
 
+export function trimHtmlArtifactContent(content: string): string {
+  return content.replace(/^﻿/, '').trim();
+}
+
+export function isTooShortHtmlArtifact(content: string): boolean {
+  const trimmed = trimHtmlArtifactContent(content);
+  return trimmed.length > 0 && trimmed.length < MIN_HTML_LENGTH;
+}
+
+export function isTooShortHtmlValidationReason(reason: string | null | undefined): boolean {
+  return /content too short to be HTML/i.test(String(reason ?? ''));
+}
+
+/** Length / empty / prose-as-HTML refusals — not security path refusals. */
+export function isNotHtmlDeliverableValidationReason(reason: string | null | undefined): boolean {
+  return /^(?:empty content|content too short to be HTML|content does not start with <!doctype html> or <html)/i
+    .test(String(reason ?? ''));
+}
+
 export function validateHtmlArtifact(content: string): HtmlArtifactValidationResult {
-  const trimmed = content.replace(/^﻿/, '').trim();
+  const trimmed = trimHtmlArtifactContent(content);
   if (trimmed.length === 0) {
     return { ok: false, reason: 'empty content' };
   }

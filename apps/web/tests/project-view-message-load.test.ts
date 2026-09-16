@@ -384,7 +384,7 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const persistStart = source.indexOf("const persistArtifact = useCallback");
     expect(persistStart).toBeGreaterThan(0);
-    const persistBlock = source.slice(persistStart, persistStart + 40000);
+    const persistBlock = source.slice(persistStart, persistStart + 48000);
     // Terminal scrub after salvage/repair/stabilize — not 2–4× early passes.
     expect(persistBlock).toContain("htmlBody = sanitizeManualEditFullSource(htmlBody)");
     expect(persistBlock).toContain("mergeOfficialLookCssForTemplate");
@@ -447,7 +447,7 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const persistStart = source.indexOf("const persistArtifact = useCallback");
     expect(persistStart).toBeGreaterThan(0);
-    const persistBlock = source.slice(persistStart, persistStart + 40000);
+    const persistBlock = source.slice(persistStart, persistStart + 48000);
     expect(persistBlock).toContain("htmlBodyBeforeSanitize");
     expect(persistBlock).toContain("scoped edit scrubbed to no-op");
     expect(persistBlock).toContain(
@@ -460,7 +460,7 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const persistStart = source.indexOf("const persistArtifact = useCallback");
     expect(persistStart).toBeGreaterThan(0);
-    const persistBlock = source.slice(persistStart, persistStart + 40000);
+    const persistBlock = source.slice(persistStart, persistStart + 48000);
     expect(persistBlock).toContain("const readDiskHtml = async");
     expect(persistBlock).toContain("diskHtmlForTarget");
     expect(persistBlock).toContain("currentHtml: diskHtmlForTarget");
@@ -602,7 +602,7 @@ describe("ProjectView message loading", () => {
     // readDiskHtml cache + visualMarksAlreadyStabilized + skipped-noop,
     // then 28000 for official template look CSS merge on persist,
     // then 40000 for cover-draft salvage + persistable short-draft trust.
-    const persistBlock = source.slice(persistStart, persistStart + 40000);
+    const persistBlock = source.slice(persistStart, persistStart + 48000);
 
     expect(persistBlock).toContain("Promise<ArtifactPersistResult>");
     expect(persistBlock).toContain("preferDeck: slideOnlyMvp");
@@ -838,7 +838,7 @@ describe("ProjectView message loading", () => {
     // empty element-patch policy.
     const persistStart = source.indexOf("const persistArtifact = useCallback");
     expect(persistStart).toBeGreaterThan(0);
-    const persistBlock = source.slice(persistStart, persistStart + 40000);
+    const persistBlock = source.slice(persistStart, persistStart + 48000);
     expect(persistBlock).toContain(
       "isDeckPatchEmptyBody(art.html ?? '', merged.reason)",
     );
@@ -1150,7 +1150,7 @@ describe("ProjectView message loading", () => {
       source.indexOf("const regression = findClientArtifactRegression({"),
       source.indexOf("const skipDaemonStubGuard = shouldSkipDaemonArtifactStubGuard({"),
     );
-    expect(regressionBlock).not.toContain("surfaceChatVisibleError(");
+    expect(regressionBlock).not.toContain("formatProjectArtifactRejectedError");
     expect(regressionBlock).toContain("return {\n          kind: 'artifact-regression'");
   });
 
@@ -1216,7 +1216,7 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const recoveryStart = source.indexOf("// 루프362/364/365 — Clone first-fill LOOK seed recovery.");
     expect(recoveryStart).toBeGreaterThan(0);
-    const recoveryBlock = source.slice(recoveryStart, recoveryStart + 3600);
+    const recoveryBlock = source.slice(recoveryStart, recoveryStart + 4800);
     expect(recoveryBlock).toContain("terminalPersistResult?.kind === 'skipped-incomplete'");
     expect(recoveryBlock).toContain("terminalPersistResult?.kind === 'artifact-regression'");
     expect(recoveryBlock).toContain("artifactToPersist = null");
@@ -1267,5 +1267,13 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("applyQuantitativeSlideCountInstruction(modelPrompt, seedShellCount)");
     expect(source).toContain("padToSeedSlideCount: true");
     expect(source).toContain("artifact_short_response_persisted");
+  });
+
+  it("루프552 · too-short HTML uses the same retry gate then LOOK seed fallback", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("resolveTooShortHtmlArtifactPersist({");
+    expect(source).toContain("renderTooShortHtmlAutoRetryPrompt({");
+    expect(source).toContain("retryKind === 'too-short-html'");
+    expect(source).toContain("isNotHtmlDeliverableValidationReason(terminalPersistResult.reason)");
   });
 });
