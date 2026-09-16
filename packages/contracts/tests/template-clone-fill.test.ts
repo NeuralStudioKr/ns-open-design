@@ -1685,6 +1685,64 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(fontSizeMatches).toBeLessThanOrEqual(2);
   });
 
+  it('루프542 — KPI 슬롯 정책 pin: 실측 있으면 metric · 없으면 ordinal · 가짜 $/% wipe (8-Bit + Broadside)', async () => {
+    // (1) 8-Bit Orbit .stat-number: data-target/suffix wipe + metric OR ordinal.
+    const { fillEightBitOrbitKitSlide } = await import('../src/template-clone-fill');
+    const eightbitBody =
+      '<div class="stat-block">'
+      + '<div class="stat-number" data-target="847">0</div>'
+      + '<div class="stat-label">Active Worlds</div>'
+      + '</div>'
+      + '<div class="stat-block">'
+      + '<div class="stat-number" data-target="12.4" data-suffix="M">0</div>'
+      + '<div class="stat-label">Pixels Rendered</div>'
+      + '</div>';
+    const filled = fillEightBitOrbitKitSlide(eightbitBody, 'class="slide"', {
+      title: '지표',
+      lead: '',
+      bodyText: '',
+      kicker: '지표',
+      fillLines: [
+        { title: '42%', body: '전환율' },   // metric-like → 유지
+        { title: '가독성', body: '체감 기준' }, // metric 없음 → ordinal
+      ],
+    });
+    // Policy A: metric-like title → keep as .stat-number.
+    expect(filled).toMatch(/>42%</);
+    // Policy B: no metric → ordinal.
+    expect(filled).toMatch(/>02</);
+    // Policy C: data-target/data-suffix 속성 wipe.
+    expect(filled).not.toMatch(/data-target=/);
+    expect(filled).not.toMatch(/data-suffix=/);
+    // Policy D: English label 대체.
+    expect(filled).not.toMatch(/Active Worlds/);
+    expect(filled).not.toMatch(/Pixels Rendered/);
+  });
+
+  it('루프542 — KPI 슬롯 정책 pin: 가짜 $/% pricing (tier-price) leaks 방지 (8-Bit tier-card 전체 strip)', async () => {
+    const { fillEightBitOrbitKitSlide } = await import('../src/template-clone-fill');
+    const tierBody =
+      '<div class="tier-grid">'
+      + '<div class="tier-card"><div class="tier-name">Rookie</div><div class="tier-price">$0<span>/mo</span></div></div>'
+      + '<div class="tier-card featured"><div class="tier-name">Arcade</div><div class="tier-price">$29<span>/mo</span></div></div>'
+      + '<div class="tier-card"><div class="tier-name">Boss</div><div class="tier-price">$79<span>/mo</span></div></div>'
+      + '</div>';
+    const filled = fillEightBitOrbitKitSlide(tierBody, 'class="slide"', {
+      title: '요약',
+      lead: '',
+      bodyText: '',
+      kicker: '',
+      fillLines: [],
+    });
+    // 정책: 주제 무관한 pricing 슬롯 전체 strip. 가짜 $ leak 금지.
+    expect(filled).not.toMatch(/\$\s*0/);
+    expect(filled).not.toMatch(/\$\s*29/);
+    expect(filled).not.toMatch(/\$\s*79/);
+    expect(filled).not.toMatch(/tier-price/);
+    expect(filled).not.toMatch(/tier-card/);
+    expect(filled).not.toMatch(/tier-grid/);
+  });
+
   it('루프539 — persist heal unwraps invented hero shells together', async () => {
     const html = await readFile(
       new URL(
