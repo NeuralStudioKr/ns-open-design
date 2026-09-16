@@ -6,8 +6,9 @@
 ☑ strip invented platform cards + legal dump  
 ☑ English CTA → 한국어  
 ☑ salvage heal wiring + fixed-canvas CSS fallback  
-☑ fixture + unit tests  
-☐ Design staging QA
+☑ fixture + unit tests (`루프539` 5 + Grove `루프538` 1)  
+☑ depth-aware `stripClassBlocks` (중첩 `</div>` 조기 종료 방지)  
+☐ Design staging QA (`c8d16bdabb` 이후 후속 커밋)
 
 ## 다음
 
