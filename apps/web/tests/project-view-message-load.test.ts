@@ -602,7 +602,8 @@ describe("ProjectView message loading", () => {
     // readDiskHtml cache + visualMarksAlreadyStabilized + skipped-noop,
     // then 28000 for official template look CSS merge on persist,
     // then 40000 for cover-draft salvage + persistable short-draft trust.
-    const persistBlock = source.slice(persistStart, persistStart + 48000);
+    // 루프554 — persist 직전 pad 블록이 늘어 persist window를 56000으로 올림.
+    const persistBlock = source.slice(persistStart, persistStart + 56000);
 
     expect(persistBlock).toContain("Promise<ArtifactPersistResult>");
     expect(persistBlock).toContain("preferDeck: slideOnlyMvp");
@@ -645,7 +646,7 @@ describe("ProjectView message loading", () => {
 
     const autoOpenStart = source.indexOf("const scheduleStreamRunHtmlAutoOpen");
     expect(autoOpenStart).toBeGreaterThan(0);
-    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 60000);
+    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 72000);
 
     expect(autoOpenBlock).toContain("const cloneFillSourceText = streamedText || fullText || latestAssistantMsg.content || ''");
     expect(autoOpenBlock).toContain("const rawFinalText = prepareTemplateCloneSlotFillAssistantText(cloneFillSourceText)");
@@ -1269,16 +1270,17 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("artifact_short_response_persisted");
   });
 
-  it("루프553 · slide-count short response is retried or blocked before save", () => {
+  it("루프554 · slide-count short response retries then pads; never warn-saves 2 slides", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const start = source.indexOf("const slideRegression = findClientSlideCountRegression({");
     expect(start).toBeGreaterThan(0);
-    const block = source.slice(start, start + 3200);
+    const block = source.slice(start, start + 4200);
     expect(block).toContain("shouldAutoRetryShortSlideResponse({");
     expect(block).toContain("kind: 'needs-short-response-retry'");
     expect(block).toContain("retryKind: 'slide-count'");
-    expect(block).toContain("kind: 'artifact-regression'");
-    expect(block).not.toContain("formatProjectArtifactShortResponsePersistedNotice");
+    expect(block).toContain("recoverShortDeckByPaddingToSeed({");
+    expect(block).toContain("kind: 'skipped-incomplete'");
+    expect(source).toContain("persist refused");
   });
 
   it("루프552 · too-short HTML uses the same retry gate then LOOK seed fallback", () => {

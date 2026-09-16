@@ -93,6 +93,9 @@ import {
   restoreAtmosphericOverlayPositioning,
   dropStudyNotesChromeOnNonIbKits,
   dropEmptyDeckSlides,
+  inferKitSlideCountFromCss,
+  recoverShortDeckByPaddingToSeed,
+  healBlockFrameGenericKoreanLeftovers,
   pinNeoBrutalEmptyDecoBlocks,
   unwrapStrayBoldShells,
   rejoinPrematureFlexStepRows,
@@ -6891,5 +6894,84 @@ describe('루프547 short-response auto-pad (padToSeedSlideCount)', () => {
     );
     // 1 real slide + 4 padded slides.
     expect((padMatches ?? []).length).toBe(4);
+  });
+});
+
+describe('루프554 Block Frame 2-slide leftover + pad-to-seed', () => {
+  const tenShellSeed = [
+    '<!doctype html><html><head><style>',
+    '.slide-1{} .slide-2{} .slide-3{} .slide-4{} .slide-5{}',
+    '.slide-6{} .slide-7{} .slide-8{} .slide-9{} .slide-10{}',
+    '.nb-heading-xl{} .hero-frame{} .nb-btn{}',
+    '</style></head><body>',
+    '<section class="slide slide-1"><div class="hero-frame"><div class="nb-label hero-label">OVERVIEW</div><h1 class="nb-heading-xl hero-title">Demo Cover</h1><p class="hero-subtitle">Demo lead sentence.</p><a class="nb-btn">Learn More</a></div></section>',
+    '<section class="slide slide-2"><div class="intro-card"><h3>A</h3><p>Demo A body that is a real sentence.</p></div><div class="intro-card"><h3>B</h3><p>Demo B body that is a real sentence.</p></div></section>',
+    '<section class="slide slide-3"><div class="feature-card"><h3>C</h3><p>Demo C body that is a real sentence.</p></div></section>',
+    '<section class="slide slide-4"><div class="chart-frame"><h2>Demo Chart</h2></div></section>',
+    '<section class="slide slide-5"><div class="team-card"><div class="team-name">Demo</div><div class="team-role">Role</div><div class="team-bio">Bio sentence.</div></div></section>',
+    '<section class="slide slide-6"><div class="split-content"><h2>Demo Split</h2><ul class="content-list"><li>Demo A</li><li>Demo B</li><li>Demo C</li></ul><a class="nb-btn">Learn More</a></div></section>',
+    '<section class="slide slide-7"><div class="content-list"><h2>Demo List</h2><ul><li>One</li><li>Two</li></ul></div></section>',
+    '<section class="slide slide-8"><div class="timeline-step"><h2>Demo Step</h2><p>Step body sentence.</p></div></section>',
+    '<section class="slide slide-9"><div class="quote-frame"><h2>Demo Quote</h2><p>Quote body sentence.</p></div></section>',
+    '<section class="slide slide-10"><div class="close-frame"><h2 class="close-title">Demo Close</h2><p class="close-subtitle">Close body sentence.</p><a class="nb-btn close-btn">Next</a></div></section>',
+    '</body></html>',
+  ].join('');
+
+  it('CSS .slide-1…10 infers kit count 10 even when body has 2 sections', async () => {
+    const fixture = await readFile(
+      new URL('./fixtures/loop552-block-frame-two-slide-thin.html', import.meta.url),
+      'utf8',
+    );
+    expect(inferKitSlideCountFromCss(fixture)).toBe(10);
+    expect(listTemplateCloneSlideShells(fixture).length).toBe(2);
+  });
+
+  it('heal/fill 후 개요 반복·자세히 보기 leftover가 덮이고 10장까지 pad', async () => {
+    const fixture = await readFile(
+      new URL('./fixtures/loop552-block-frame-two-slide-thin.html', import.meta.url),
+      'utf8',
+    );
+    const recovered = recoverShortDeckByPaddingToSeed({
+      seedHtml: tenShellSeed,
+      modelHtml: fixture,
+      brief: 'Teamver 소개 슬라이드 만들어줘',
+      deckTitle: 'Teamver',
+    });
+    expect(recovered).not.toBeNull();
+    expect(recovered!.paddedCount).toBe(10);
+    expect(listTemplateCloneSlideShells(recovered!.html).length).toBe(10);
+    expect(recovered!.html).toMatch(/data-teamver-pad="short-response"/);
+    const healed = healBlockFrameGenericKoreanLeftovers(recovered!.html, {
+      title: 'Teamver',
+      lead: '팀이 같은 맥락에서 AI 초안을 만든다',
+      bodyText: 'Teamver 소개',
+    });
+    const heroLabel = healed.match(/hero-label[^>]*>([\s\S]*?)<\//i)?.[1]?.replace(/<[^>]+>/g, '').trim();
+    expect(heroLabel).not.toBe('개요');
+    expect(healed).toMatch(/Teamver/);
+    expect(healed).not.toMatch(/Teamver가 다루는 문제와 제공 가치/);
+    expect(healed).not.toMatch(/>\s*자세히 보기\s*</);
+    expect(healed).toMatch(/Teamver 살펴보기|지금 시작하기/);
+  });
+
+  it('forcePad merges leftover-heavy 2-slide Block Frame instead of keeping 2', async () => {
+    const fixture = await readFile(
+      new URL('./fixtures/loop552-block-frame-two-slide-thin.html', import.meta.url),
+      'utf8',
+    );
+    const skipped = applyTemplateClonePromptFillLookMerge(tenShellSeed, fixture, {
+      brief: 'Teamver 소개',
+      deckTitle: 'Teamver',
+      padToSeedSlideCount: false,
+    });
+    const forced = applyTemplateClonePromptFillLookMerge(tenShellSeed, fixture, {
+      brief: 'Teamver 소개',
+      deckTitle: 'Teamver',
+      padToSeedSlideCount: true,
+      forcePad: true,
+    });
+    expect(skipped == null || listTemplateCloneSlideShells(skipped.html).length === 2).toBe(true);
+    expect(forced).not.toBeNull();
+    expect(listTemplateCloneSlideShells(forced!.html).length).toBe(10);
   });
 });

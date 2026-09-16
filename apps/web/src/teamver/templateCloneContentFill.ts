@@ -748,11 +748,8 @@ export function templateCloneContentFillHardRules(options: {
     '- Forbidden output: <!doctype, <html, <head, <style, <section class="slide">, Motif <svg>, full example.html rewrite.',
     `- ${SLIDE_DECK_QUALITY_BAR_INSTRUCTION}`,
     `- ${SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION}`,
-    // 루프546 — v1.4.15 안정성 복귀. Topic/unique hard bans made models
-    // satisfy quality by shrinking a 10-shell seed to 6 slides, which then
-    // tripped artifact_regression. Keep only the count-preservation rule here;
-    // post-fill heal/gates own leftover/topic-density cleanup.
-    // 루프550 — seedShellCount가 확정되면 정량·강제 문구로 대체해 순응률↑.
+    // 루프546은 전체 원복이 아님. unique-slot/topic-lock은 여기 넣지 않는다.
+    // 루프554 — N이 있으면 짧은 정량 한 줄만 (v1.4.15 길이 + EXACTLY N).
     `- ${slideCountRequirement}`,
     '- Expand THIS turn\'s brief only. Do not copy host-contract examples or the user instruction onto slides.',
     '- JSON shape: {"title":"...","slides":[{"title":"...","kicker":"...","lead":"...","roleHint":"cover|list|cards|timeline|stat|quote|team|process|closing|body","items":[{"title":"...","body":"..."}]}]}',
@@ -1056,11 +1053,10 @@ export function buildTemplateClonePromptFillSeed(options: {
     SLIDE_DECK_QUALITY_BAR_INSTRUCTION,
     SLIDE_DECK_LAYOUT_VARIETY_INSTRUCTION,
     SLIDE_DECK_COPY_DENSITY_INSTRUCTION,
-    // 루프546 — keep v1.4.15 prompt-fill behavior: do not inject topic-lock /
-    // unique-per-slot penalty text into MiniMax HTML fill. It caused slide
-    // shrinkage under strict count guards. Count preservation remains explicit.
-    // 루프550 — seedShellCount가 있으면 정량·강제 문구로 대체 (기본은 상수).
-    slideCountRequirementLine,
+    // 루프546은 전체 원복이 아님. prompt-fill에 unique-slot/topic-lock 없음.
+    // 루프554 — N이 있으면 seed 상단 힌트만 쓰고 여기 장문 요구는 생략.
+    // 중복 "Return EXACTLY N" + quality 장문이 2장 조기 종료를 유도함.
+    seedHeaderHint ? '' : slideCountRequirementLine,
     requestedLine,
     templateClonePromptFillSlideCountInstruction({ slideCountHint, slideCountHintSource }),
     websiteOutline

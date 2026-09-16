@@ -187,7 +187,9 @@ import {
   sanitizePersistedDeckHostLeaks,
   decideTemplateCloneSlotFillTerminal,
   applyTemplateClonePromptFillLookMerge,
+  inferKitSlideCountFromCss,
   listTemplateCloneSlideShells,
+  recoverShortDeckByPaddingToSeed,
   prepareTemplateCloneSlotFillAssistantText,
   type AudioVoiceOption,
   type MemorySystemPromptResponse,
@@ -6397,34 +6399,39 @@ export function ProjectView({
             requestedSlideCount: requestedSpec?.max ?? null,
             requestedSlideCountMin: requestedSpec?.min ?? null,
           });
-          if (slideCountIncomplete) {
+          const seedHtmlForPad = await resolveTemplateCloneLookSeedHtml({
+            templateId: persistTemplateId,
+            readProjectHtml,
+          });
+          const seedCountForPad = Math.max(
+            seedHtmlForPad
+              ? (listTemplateCloneSlideShells(seedHtmlForPad).length
+                || countDeckSlideSections(seedHtmlForPad))
+              : 0,
+            inferKitSlideCountFromCss(seedHtmlForPad ?? '') ?? 0,
+            inferKitSlideCountFromCss(htmlBody) ?? 0,
+          );
+          const producedNow = countDeckSlideSections(htmlBody);
+          const seedShortfall =
+            seedCountForPad >= 5 && producedNow > 0 && producedNow < seedCountForPad;
+          if (slideCountIncomplete || seedShortfall) {
+            const producedCount = slideCountIncomplete?.producedCount ?? producedNow;
+            const expectedCount = Math.max(
+              slideCountIncomplete?.expectedCount ?? 0,
+              seedCountForPad,
+            );
             devLog.warn('[teamver] incomplete template fill detected', {
-              fileName: slideCountIncomplete.fileName,
-              producedCount: slideCountIncomplete.producedCount,
-              expectedCount: slideCountIncomplete.expectedCount,
+              fileName,
+              producedCount,
+              expectedCount,
+              seedShortfall,
             });
-            // 루프548 · short-response 자동 pad recovery.
-            //
-            // MiniMax가 explicit 5+ slide 요청에 1~4장만 반환하면 기존엔
-            // `skipped-incomplete`로 seed를 그대로 두고 사용자에게 `clone_look_
-            // seed_fallback` 배너만 뜨는 dead-end였다. 이 상황에서 1+ slide가
-            // 있으면 루프547 pad 훅을 재사용해 LOOK seed로 부족분을 채운 뒤
-            // 저장하고, 사용자에게 short-response notice를 띄운다.
-            //
-            // producedCount=0 (완전 collapse)만 기존 skip 경로 유지 —
-            // seed로 pad할 substance가 아무것도 없어 결과가 seed 그대로가 됨.
-            const producedCount = slideCountIncomplete.producedCount;
+            // 루프554 — explicit 5+ 뿐 아니라 seed/킷 10 vs body 2도 같은
+            // retry → pad → seed 유지 순서. warn-save로 2장 persist 금지.
             if (producedCount > 0) {
               try {
-                const seedHtml = await resolveTemplateCloneLookSeedHtml({
-                  templateId: persistTemplateId,
-                  readProjectHtml,
-                });
-                const seedCount = seedHtml
-                  ? (listTemplateCloneSlideShells(seedHtml).length
-                    || countDeckSlideSections(seedHtml)
-                    || slideCountIncomplete.expectedCount)
-                  : slideCountIncomplete.expectedCount;
+                const seedHtml = seedHtmlForPad;
+                const seedCount = expectedCount;
                 const runImagePaths = imageAttachmentPathsForSlideEmbed(runAttachmentsRef.current);
                 if (shouldAutoRetryShortSlideResponse({
                   seedCount,
@@ -6432,7 +6439,7 @@ export function ProjectView({
                   requestedSlideCount:
                     requestedSpec?.min
                     ?? requestedSpec?.max
-                    ?? null,
+                    ?? seedCount,
                   alreadyRetried: runAutoRetryForShortResponseRef.current,
                   scopedEdit:
                     persistCommentAttachments.length > 0
@@ -6445,46 +6452,45 @@ export function ProjectView({
                     fileName,
                     producedCount,
                     seedCount,
-                    expected: slideCountIncomplete.expectedCount,
+                    expected: expectedCount,
                   });
                   return {
                     kind: 'needs-short-response-retry',
-                    fileName: slideCountIncomplete.fileName,
+                    fileName,
                     producedCount,
                     expectedCount: seedCount,
-                    reason: slideCountIncomplete.reason,
+                    reason:
+                      slideCountIncomplete?.reason
+                      ?? `template clone fill produced only ${producedCount} slides for a ${seedCount}-slide seed`,
                   };
                 }
-                const padded = seedHtml
-                  ? applyTemplateClonePromptFillLookMerge(seedHtml, htmlBody, {
+                const recovered = seedHtml
+                  ? recoverShortDeckByPaddingToSeed({
+                      seedHtml,
+                      modelHtml: htmlBody,
                       templateId: persistTemplateId,
                       brief: runVisiblePromptRef.current || '',
                       deckTitle: project.name || '슬라이드',
-                      padToSeedSlideCount: true,
                     })
                   : null;
-                const paddedCount = padded?.html ? countDeckSlideSections(padded.html) : 0;
-                if (padded?.html && paddedCount >= slideCountIncomplete.expectedCount) {
+                const paddedCount = recovered?.paddedCount ?? 0;
+                if (recovered?.html && paddedCount >= expectedCount) {
                   devLog.warn('[teamver] incomplete fill recovered via short-response pad', {
                     fileName,
                     producedCount,
                     paddedCount,
-                    expected: slideCountIncomplete.expectedCount,
+                    expected: expectedCount,
                   });
-                  htmlBody = padded.html;
-                  // 이후 line 11305 근처의 prompt-fill LOOK merge가 이미 pad된
-                  // htmlBody 위에서 재실행돼도 idempotent — pad marker는
-                  // stampShortResponsePadMarker에 의해 중복되지 않는다.
+                  htmlBody = recovered.html;
                   runTemplateCloneSlotFillFallbackRef.current = false;
                   surfaceChatVisibleError(
                     formatProjectArtifactShortResponsePersistedNotice(
                       fileName,
-                      slideCountIncomplete.expectedCount,
+                      expectedCount,
                       producedCount,
                     ),
                     'artifact_short_response_persisted',
                   );
-                  // Fall through to normal save flow.
                 } else {
                   devLog.warn('[teamver] pad recovery unavailable; keeping LOOK seed', {
                     fileName,
@@ -6494,23 +6500,29 @@ export function ProjectView({
                   });
                   return {
                     kind: 'skipped-incomplete',
-                    fileName: slideCountIncomplete.fileName,
-                    reason: slideCountIncomplete.reason,
+                    fileName,
+                    reason:
+                      slideCountIncomplete?.reason
+                      ?? `pad failed for ${producedCount}-of-${expectedCount} seed`,
                   };
                 }
               } catch (error) {
                 devLog.warn('[teamver] pad recovery threw; keeping LOOK seed', error);
                 return {
                   kind: 'skipped-incomplete',
-                  fileName: slideCountIncomplete.fileName,
-                  reason: slideCountIncomplete.reason,
+                  fileName,
+                  reason:
+                    slideCountIncomplete?.reason
+                    ?? 'pad recovery threw',
                 };
               }
             } else {
               return {
                 kind: 'skipped-incomplete',
-                fileName: slideCountIncomplete.fileName,
-                reason: slideCountIncomplete.reason,
+                fileName,
+                reason:
+                  slideCountIncomplete?.reason
+                  ?? 'template clone fill produced no slides',
               };
             }
           }
@@ -6725,10 +6737,11 @@ export function ProjectView({
               requestedSpec?.min
               ?? requestedSpec?.max
               ?? null;
+            const warnSeedCount = Math.max(slideRegression.priorCount, requestedSpec?.max ?? 0);
             if (shouldAutoRetryShortSlideResponse({
-              seedCount: Math.max(slideRegression.priorCount, requestedSpec?.max ?? 0),
+              seedCount: warnSeedCount,
               returnedCount: slideRegression.newCount,
-              requestedSlideCount: requestedCount,
+              requestedSlideCount: requestedCount ?? warnSeedCount,
               alreadyRetried: runAutoRetryForShortResponseRef.current,
               scopedEdit: strictSlideCount,
               isCreateOrFullFill:
@@ -6746,20 +6759,86 @@ export function ProjectView({
                 kind: 'needs-short-response-retry',
                 fileName: slideRegression.fileName,
                 producedCount: slideRegression.newCount,
-                expectedCount: Math.max(slideRegression.priorCount, requestedSpec?.max ?? 0),
+                expectedCount: warnSeedCount,
                 reason: slideRegression.reason,
                 retryKind: 'slide-count',
               };
             }
-            return {
-              kind: 'artifact-regression',
-              fileName: slideRegression.fileName,
-              reason: slideRegression.reason,
-              bannerKind: 'slide-count',
-            };
+            // 루프554 — warn-save로 2장 persist 금지. 재시도 후에도 짧으면
+            // seed까지 pad. pad 실패 시에만 LOOK seed 유지.
+            const warnSeedHtml = await resolveTemplateCloneLookSeedHtml({
+              templateId: persistTemplateId,
+              readProjectHtml,
+            });
+            const warnRecovered = warnSeedHtml
+              ? recoverShortDeckByPaddingToSeed({
+                  seedHtml: warnSeedHtml,
+                  modelHtml: htmlBody,
+                  templateId: persistTemplateId,
+                  brief: runVisiblePromptRef.current || '',
+                  deckTitle: project.name || '슬라이드',
+                })
+              : null;
+            if (
+              warnRecovered?.html
+              && warnRecovered.paddedCount >= warnSeedCount
+            ) {
+              htmlBody = warnRecovered.html;
+              surfaceChatVisibleError(
+                formatProjectArtifactShortResponsePersistedNotice(
+                  slideRegression.fileName,
+                  warnSeedCount,
+                  slideRegression.newCount,
+                ),
+                'artifact_short_response_persisted',
+              );
+            } else {
+              return {
+                kind: 'skipped-incomplete',
+                fileName: slideRegression.fileName,
+                reason: slideRegression.reason,
+              };
+            }
           }
         } catch {
           // Soft-fail — missing prior HTML should not block otherwise-valid saves.
+        }
+      }
+      // 루프554 — persist 직전 강제 pad. LOOK seed bypass / merge null
+      // 으로 2장이 여기까지 오면 저장하지 않고 seed까지 채운다.
+      if (ext === '.html') {
+        const lastProduced = countDeckSlideSections(htmlBody);
+        const lastSeedHtml = await resolveTemplateCloneLookSeedHtml({
+          templateId: persistTemplateId,
+          readProjectHtml,
+        });
+        const lastSeedCount = Math.max(
+          lastSeedHtml
+            ? (listTemplateCloneSlideShells(lastSeedHtml).length
+              || countDeckSlideSections(lastSeedHtml))
+            : 0,
+          inferKitSlideCountFromCss(lastSeedHtml ?? '') ?? 0,
+          inferKitSlideCountFromCss(htmlBody) ?? 0,
+        );
+        if (lastSeedCount >= 5 && lastProduced > 0 && lastProduced < lastSeedCount) {
+          const lastRecovered = lastSeedHtml
+            ? recoverShortDeckByPaddingToSeed({
+                seedHtml: lastSeedHtml,
+                modelHtml: htmlBody,
+                templateId: persistTemplateId,
+                brief: runVisiblePromptRef.current || '',
+                deckTitle: project.name || '슬라이드',
+              })
+            : null;
+          if (lastRecovered?.html && lastRecovered.paddedCount >= lastSeedCount) {
+            htmlBody = lastRecovered.html;
+          } else {
+            return {
+              kind: 'skipped-incomplete',
+              fileName,
+              reason: `persist refused ${lastProduced}-of-${lastSeedCount} deck without pad`,
+            };
+          }
         }
       }
       const skipDaemonStubGuard = shouldSkipDaemonArtifactStubGuard({
@@ -11558,6 +11637,18 @@ export function ProjectView({
                 const requestedSlideCountSpec =
                   extractRequestedSlideCountSpecFromMessages(messagesRef.current);
                 const honorCeiling = honorSlideCountCeiling(requestedSlideCountSpec);
+                const modelSlideCount = listTemplateCloneSlideShells(
+                  artifactToPersist.html,
+                ).length;
+                const lookSeedCount = Math.max(
+                  listTemplateCloneSlideShells(seedHtml).length,
+                  inferKitSlideCountFromCss(seedHtml) ?? 0,
+                  inferKitSlideCountFromCss(artifactToPersist.html) ?? 0,
+                );
+                const shortVsSeed =
+                  lookSeedCount >= 5
+                  && modelSlideCount > 0
+                  && modelSlideCount < lookSeedCount;
                 const merged = applyTemplateClonePromptFillLookMerge(
                   seedHtml,
                   artifactToPersist.html,
@@ -11572,7 +11663,11 @@ export function ProjectView({
                       ),
                     brief: runVisiblePromptRef.current || '',
                     deckTitle: project.name || '슬라이드',
-                    ...(honorCeiling != null ? { maxSlides: honorCeiling } : {}),
+                    padToSeedSlideCount: true,
+                    ...(shortVsSeed ? { forcePad: true } : {}),
+                    ...(!shortVsSeed && honorCeiling != null
+                      ? { maxSlides: honorCeiling }
+                      : {}),
                   },
                 );
                 observeTemplateClonePersistQuality({

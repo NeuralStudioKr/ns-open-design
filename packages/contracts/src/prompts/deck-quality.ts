@@ -90,11 +90,10 @@ export function renderSlideCountRequirementInstruction(
     return SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION;
   }
   const n = Math.max(1, Math.floor(seedShellCount));
-  return (
-    `Return EXACTLY ${n} <section class="slide"> elements. `
-    + `Seed contains ${n} slides. `
-    + `If unsure, copy missing slides verbatim from the seed.`
-  );
+  // 루프554 — v1.4.15처럼 짧게. "If unsure, copy missing slides verbatim"
+  // 과 quality 장문이 겹치면 MiniMax가 2장에서 조기 종료하는 관측이 있어
+  // 정량 한 줄만 남긴다. 상단 힌트와 동일 문구.
+  return `Seed contains ${n} slides. Return EXACTLY ${n} <section class="slide"> elements.`;
 }
 
 /**

@@ -880,6 +880,12 @@ export function applyTemplateClonePromptFillLookMerge(
      * (short) merge behavior can pass `false` explicitly.
      */
     padToSeedSlideCount?: boolean;
+    /**
+     * 루프554 — leftover unparsed ≥280자여도 merge를 포기하지 않는다.
+     * 기본 merge는 모델 문장 보존을 위해 null을 반환하고 호출부가 2장
+     * HTML을 그대로 persist했다. seed가 더 길면 pad가 우선이다.
+     */
+    forcePad?: boolean;
   } = {},
 ): { html: string; title: string } | null {
   const seed = String(seedHtml ?? '').trim();
@@ -896,7 +902,12 @@ export function applyTemplateClonePromptFillLookMerge(
     ? 1
     : PROMPT_FILL_LOOK_MERGE_MIN_SLIDES;
   if (outline.slides.length < minOutlineSlides) return null;
-  if (!promptFillOutlineKeepsModelSubstance(outline, model)) return null;
+  if (
+    !options.forcePad
+    && !promptFillOutlineKeepsModelSubstance(outline, model)
+  ) {
+    return null;
+  }
   const title =
     sanitizeTemplateCloneDeckTitle(options.deckTitle)
     || outline.title;
@@ -909,6 +920,60 @@ export function applyTemplateClonePromptFillLookMerge(
   });
   if (!html?.trim()) return null;
   return { html, title };
+}
+
+/**
+ * 루프554 — 킷 CSS `.slide-1`…`.slide-N` 만으로 seed shell 수를 추정.
+ * body section이 2장이어도 스타일 블록이 10장 킷이면 pad 목표를 10으로 둔다.
+ */
+export function inferKitSlideCountFromCss(html: string): number | null {
+  let max = 0;
+  for (const match of String(html ?? '').matchAll(/\.slide-(\d+)\b/gi)) {
+    const n = Number(match[1]);
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+  return max >= 2 ? max : null;
+}
+
+/**
+ * 루프554 — seed/킷 장수보다 짧은 모델 HTML을 pad. merge substance gate가
+ * null을 내도 forcePad로 10장까지 채운다. pad 불가면 null (호출부가 seed 유지).
+ */
+export function recoverShortDeckByPaddingToSeed(input: {
+  seedHtml: string;
+  modelHtml: string;
+  brief?: string | null;
+  deckTitle?: string | null;
+  templateId?: string | null;
+}): { html: string; seedCount: number; producedCount: number; paddedCount: number } | null {
+  const seed = String(input.seedHtml ?? '').trim();
+  const model = String(input.modelHtml ?? '').trim();
+  if (!seed || !model) return null;
+  const seedCount = Math.max(
+    listTemplateCloneSlideShells(seed).length,
+    inferKitSlideCountFromCss(seed) ?? 0,
+    inferKitSlideCountFromCss(model) ?? 0,
+  );
+  const producedCount = listTemplateCloneSlideShells(model).length;
+  if (seedCount < 2 || producedCount <= 0) return null;
+  if (producedCount >= seedCount) {
+    return { html: model, seedCount, producedCount, paddedCount: producedCount };
+  }
+  const merged = applyTemplateClonePromptFillLookMerge(seed, model, {
+    ...(input.templateId != null ? { templateId: input.templateId } : {}),
+    ...(input.brief != null ? { brief: input.brief } : {}),
+    ...(input.deckTitle != null ? { deckTitle: input.deckTitle } : {}),
+    padToSeedSlideCount: true,
+    forcePad: true,
+  });
+  const paddedCount = merged?.html ? listTemplateCloneSlideShells(merged.html).length : 0;
+  if (!merged?.html || paddedCount < seedCount) return null;
+  return {
+    html: merged.html,
+    seedCount,
+    producedCount,
+    paddedCount,
+  };
 }
 
 /**
@@ -9671,15 +9736,105 @@ const BLOCK_FRAME_ENGLISH_CHROME_LABEL_KO: Record<string, string> = {
  * neo chrome (`nb-label` / `hero-label`) must not keep catalog English when the
  * deterministic outline still ships `kicker: 'OVERVIEW'` (루프461/462).
  */
+const GENERIC_BLOCK_FRAME_SECTION_LABEL_RE = /^(?:개요|소개|표지|overview)$/i;
+const GENERIC_SERVICE_VALUE_LEAD_RE =
+  /[가-힣A-Za-z0-9._-]+(?:가|이)? 다루는 문제와 제공 가치/;
+const GENERIC_PROBLEM_USER_CONTEXT_RE =
+  /문제\s*[\/·,]\s*사용자\s*[\/·,]\s*맥락/;
+
+function blockFrameTopicAwareCta(input: {
+  title: string;
+  lead: string;
+  bodyText: string;
+}): string {
+  const blob = `${input.title} ${input.lead} ${input.bodyText}`;
+  if (/(?:시작|도입|문의|데모|상담|지금)/.test(blob)) return '지금 시작하기';
+  const topic = topicKeywordForSynthBody(input.title || input.lead);
+  if (/teamver/i.test(blob) || /teamver/i.test(topic)) return 'Teamver 살펴보기';
+  if (topic && topic.length >= 2 && !GENERIC_BLOCK_FRAME_SECTION_LABEL_RE.test(topic)) {
+    return `${topic} 살펴보기`;
+  }
+  return '지금 시작하기';
+}
+
+function blockFrameTopicAwareLead(input: { title: string; lead: string; bodyText: string }): string {
+  const topic = topicKeywordForSynthBody(input.title || input.lead || input.bodyText);
+  if (/teamver/i.test(topic) || /teamver/i.test(`${input.title} ${input.lead}`)) {
+    return 'Teamver는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.';
+  }
+  return `${topic}이 현장에서 막는 일과 팀이 바로 얻는 결과를 한 문장으로 정리한다.`;
+}
+
 function blockFrameNeoChromeLabel(input: { title: string; kicker: string }): string {
+  const topic = topicKeywordForSynthBody(input.title);
   const kicker = String(input.kicker ?? '').trim();
   if (kicker) {
     const mapped = BLOCK_FRAME_ENGLISH_CHROME_LABEL_KO[kicker.toLowerCase()];
-    if (mapped) return mapped;
+    if (mapped) {
+      if (
+        mapped === '개요'
+        && GENERIC_BLOCK_FRAME_SECTION_LABEL_RE.test(input.title.trim())
+      ) {
+        return topic && !GENERIC_BLOCK_FRAME_SECTION_LABEL_RE.test(topic) ? topic : '표지';
+      }
+      return mapped;
+    }
     if (!BLOCK_FRAME_ENGLISH_CHROME_LABEL_RE.test(kicker)) return kicker;
   }
   const title = String(input.title ?? '').trim();
-  return title || '개요';
+  if (GENERIC_BLOCK_FRAME_SECTION_LABEL_RE.test(title)) {
+    return topic && !GENERIC_BLOCK_FRAME_SECTION_LABEL_RE.test(topic) ? topic : '표지';
+  }
+  return title || topic || '표지';
+}
+
+/**
+ * 루프554 — Block Frame leftover: `개요` 반복, `…문제와 제공 가치`,
+ * `문제/사용자/맥락` 불릿, generic `자세히 보기` CTA를 topic-aware로 덮는다.
+ */
+export function healBlockFrameGenericKoreanLeftovers(
+  html: string,
+  input: {
+    title: string;
+    lead?: string;
+    bodyText?: string;
+    kicker?: string;
+  },
+): string {
+  const title = String(input.title ?? '').trim();
+  const lead = String(input.lead ?? '').trim();
+  const bodyText = String(input.bodyText ?? '').trim();
+  const topicCta = blockFrameTopicAwareCta({ title, lead, bodyText });
+  const topicLead = blockFrameTopicAwareLead({ title, lead, bodyText });
+  const topic = topicKeywordForSynthBody(title || lead);
+  let next = String(html ?? '');
+  next = next.replace(GENERIC_SERVICE_VALUE_LEAD_RE, topicLead);
+  next = next.replace(GENERIC_PROBLEM_USER_CONTEXT_RE, `${topic} 문제 · 쓰는 사람 · 쓰이는 자리`);
+  next = next.replace(
+    /(<(?:div|span|p|h[1-3])\b[^>]*\b(?:hero-label|nb-label|hero-title|hero-subtitle)\b[^>]*>)(\s*개요\s*)(<\/(?:div|span|p|h[1-3])>)/gi,
+    (_m, open: string, _inner: string, close: string) => {
+      const isTitle = /hero-title/i.test(open);
+      const replacement = isTitle
+        ? (topic && !GENERIC_BLOCK_FRAME_SECTION_LABEL_RE.test(topic) ? topic : title || '표지')
+        : blockFrameNeoChromeLabel({ title, kicker: input.kicker ?? '' });
+      return `${open}${escapeHtml(replacement)}${close}`;
+    },
+  );
+  next = next.replace(
+    /(<(?:li|p|span|div)\b[^>]*>)\s*(문제|사용자|맥락)\s*(<\/(?:li|p|span|div)>)/gi,
+    (_m, open: string, label: string, close: string) => {
+      const mapped =
+        label === '문제' ? `${topic}이 반복해서 막는 일`
+          : label === '사용자' ? `${topic}을 쓰는 팀과 역할`
+            : `${topic}이 쓰이는 회의·작업 자리`;
+      return `${open}${escapeHtml(mapped)}${close}`;
+    },
+  );
+  next = next.replace(
+    /(<(?:a|button|div|span)\b[^>]*\b(?:nb-btn|hero-cta|cta-primary)\b[^>]*>)\s*자세히 보기\s*(<\/(?:a|button|div|span)>)/gi,
+    (_m, open: string, close: string) => `${open}${escapeHtml(topicCta)}${close}`,
+  );
+  return next;
 }
 
 function fillBlockFrameNeoSlots(
@@ -9706,7 +9861,8 @@ function fillBlockFrameNeoSlots(
   // Never stamp a fixed product name — deco chrome follows this deck's title/topic.
   next = replaceFirstExactClassText(next, 'deco-yellow-bar', decoBrand);
   next = replaceFirstExactClassText(next, 'visual-label', chromeLabel || input.title);
-  next = replaceFirstExactClassText(next, 'nb-btn', '자세히 보기');
+  const topicCta = blockFrameTopicAwareCta(input);
+  next = replaceFirstExactClassText(next, 'nb-btn', topicCta);
   next = replaceFirstExactClassText(next, 'close-btn', '다음 단계');
 
   if (/\bclose-frame\b/i.test(next)) {
@@ -9719,11 +9875,9 @@ function fillBlockFrameNeoSlots(
     next = replaceFirstExactClassText(next, 'close-btn', '무료로 시작하기');
   }
   if (/\bnb-btn\b/i.test(next)) {
-    const buttonText = /(?:시작|도입|문의|데모|상담|지금)/.test(input.title + input.bodyText)
-      ? '무료로 시작하기'
-      : '자세히 보기';
-    next = replaceFirstExactClassText(next, 'nb-btn', buttonText);
+    next = replaceFirstExactClassText(next, 'nb-btn', topicCta);
   }
+  next = healBlockFrameGenericKoreanLeftovers(next, input);
 
   if (/\bvisual-box\b/i.test(next)) {
     next = replaceExactClassBlocksBySequence(next, 'visual-box', [lines[0] ?? { title: input.title, body: input.lead }], (block) => {
@@ -9778,6 +9932,7 @@ function fillBlockFrameNeoSlots(
   next = neutralizeBlockFrameInventedHeroTitleHighlight(next);
   next = stripInventedBlockFramePlatformCards(next);
   next = neutralizeBlockFrameEnglishHeroCta(next);
+  next = healBlockFrameGenericKoreanLeftovers(next, input);
 
   return next;
 }
@@ -9940,7 +10095,7 @@ function equalizeBlockFrameChartBars(svgInner: string): string {
  * "Performance Data") leaving a floating colored chip. Refill from title.
  */
 function refillEmptyBlockFrameNeoLabels(html: string, chromeLabel: string): string {
-  const label = String(chromeLabel ?? '').trim() || '개요';
+  const label = String(chromeLabel ?? '').trim() || '표지';
   return String(html ?? '').replace(
     /(<(?:div|span)\b[^>]*\bnb-label\b[^>]*>)\s*(<\/(?:div|span)>)/gi,
     (_m, open: string, close: string) => `${open}${escapeHtml(label)}${close}`,
