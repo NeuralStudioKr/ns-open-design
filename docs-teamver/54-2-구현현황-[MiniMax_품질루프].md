@@ -38,6 +38,10 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프539 — Block Frame 발명 hero 셸
+
+표지 `.hero-title-highlight` 클립 · 빈 platform 카드 · `Enterprise 데모`. [0916-N03-1](./0916-N03-1-상위설계-[Block_frame_발명_hero_셸].md).
+
 ### 루프479 — 공식 look 대비·flow inset·잔여 텍스트 품질 가드
 
 체감: slide count와 template clone은 통과해도, light-paper 템플릿에서 본문·카드가 거의 보이지 않거나 내용이 한쪽으로 밀리는 결과가 남았다. 예: Biennale Yellow 화면에서 `실제 팀이 쓰는 방법` 카드는 `rgba(255,255,255,0.05)` glass + light blue copy라 paper 위에서 비어 보였고, host padding과 flow padding이 겹치면 1920×1080 안의 usable area가 과도하게 줄었다.

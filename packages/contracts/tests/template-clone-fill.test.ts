@@ -52,6 +52,10 @@ import {
   healBroadsideLeftoverCatalogCopy,
   healGroveLeftoverCatalogCopy,
   healCreativeLeftoverCatalogCopy,
+  neutralizeBlockFrameInventedHeroTitleHighlight,
+  stripInventedBlockFramePlatformCards,
+  neutralizeBlockFrameEnglishHeroCta,
+  healBlockFrameInventedHeroShells,
   healCobaltOrphanDataStats,
   injectCobaltAbsoluteSlotCss,
   officialLookIsCobaltGrid,
@@ -1334,6 +1338,68 @@ describe('루프419 Capsule deterministic quality gate', () => {
     );
     expect(officialLookIsGrove(official)).toBe(true);
     expect(healGroveLeftoverCatalogCopy(official)).toBe(official);
+  });
+
+  it('루프539 — Block-frame invented hero-title-highlight span is unwrapped', () => {
+    const html =
+      '<h1 class="nb-heading-xl hero-title">팀의 AI 업무 공간을 <span class="hero-title-highlight">지금 시작</span> 하세요.</h1>';
+    const out = neutralizeBlockFrameInventedHeroTitleHighlight(html);
+    expect(out).not.toMatch(/hero-title-highlight/);
+    expect(out).toMatch(/팀의 AI 업무 공간을 지금 시작 하세요\./);
+  });
+
+  it('루프539 invented Desktop / Android / iOS platform cards are stripped', async () => {
+    const html = await readFile(
+      new URL(
+        './fixtures/loop538-block-frame-invented-hero-shells.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const out = stripInventedBlockFramePlatformCards(html);
+    expect(out).not.toMatch(/download-cards/);
+    expect(out).not.toMatch(/>🖥️ Desktop</);
+    expect(out).not.toMatch(/>🤖 Android</);
+    // iOS card that only carried legal footer info is also dropped.
+    expect(out).not.toMatch(/사업자등록번호\s*699-86-03820/);
+    expect(out).not.toMatch(/판교\s*R&D/);
+  });
+
+  it('루프539 generic English "Enterprise 데모" / "Get Started" CTAs get Korean rewrite', () => {
+    const html =
+      '<a class="nb-btn hero-cta cta-secondary">Enterprise 데모</a>'
+      + '<a class="nb-btn hero-cta cta-primary">Get Started</a>';
+    const out = neutralizeBlockFrameEnglishHeroCta(html);
+    // Pure or template-generic Enterprise/데모 button → "기업 도입 문의".
+    expect(out).toMatch(/기업 도입 문의/);
+    // Pure English generic CTA → replaced with 자세히 보기.
+    expect(out).toMatch(/자세히 보기/);
+    expect(out).not.toMatch(/>Enterprise 데모</);
+    expect(out).not.toMatch(/>Get Started</);
+  });
+
+  it('루프539 mixed-sentence "Enterprise 고객 상담" swaps just the English word', () => {
+    const html = '<a class="nb-btn hero-cta cta-secondary">Enterprise 고객 상담</a>';
+    const out = neutralizeBlockFrameEnglishHeroCta(html);
+    // Not template-generic — mixed KR body, just swap the English word.
+    expect(out).toMatch(/기업 고객 상담/);
+    expect(out).not.toMatch(/\bEnterprise\b/);
+  });
+
+  it('루프539 — persist heal unwraps invented hero shells together', async () => {
+    const html = await readFile(
+      new URL(
+        './fixtures/loop538-block-frame-invented-hero-shells.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const healed = healBlockFrameInventedHeroShells(html);
+    expect(healed).not.toMatch(/hero-title-highlight/);
+    expect(healed).not.toMatch(/download-cards/);
+    expect(healed).not.toMatch(/사업자등록번호/);
+    expect(healed).toMatch(/기업 도입 문의/);
+    expect(healed).toMatch(/팀의 AI 업무 공간을 지금 시작/);
   });
 
   it('loop421 — empty-brief padding synthesizes card bodies instead of empty shells', () => {

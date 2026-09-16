@@ -153,6 +153,27 @@ article[data-screen-label] {
   flex: 1 1 auto !important;
   min-height: 0 !important;
 }
+/* 루프539 — MiniMax invents block-frame classes that the kit never declared
+ * (.hero-title-highlight, .download-card / .platform-card, .hero-cta
+ * pair with "Enterprise 데모"). fillBlockFrameNeoSlots unwraps most of them
+ * on the server, but defensive CSS is still needed:
+ * (1) Invented .hero-title-highlight span survives → make it flow inline
+ *     with a proper multi-line highlight box (box-decoration-break) so
+ *     wrapped characters do not clip out of a fixed-width rectangle.
+ * (2) Invented empty .download-card / .platform-card shells slip past
+ *     the strip → hide when the card only carries a heading (no body text). */
+.slide .hero-title-highlight {
+  display: inline !important;
+  padding: 0.08em 0.12em !important;
+  -webkit-box-decoration-break: clone !important;
+  box-decoration-break: clone !important;
+}
+.slide .download-card:empty,
+.slide .platform-card:empty,
+.slide .download-card:not(:has(> p, > ul, > ol, > span:not(:empty), > div:not(:empty))),
+.slide .platform-card:not(:has(> p, > ul, > ol, > span:not(:empty), > div:not(:empty))) {
+  display: none !important;
+}
 /* Compact/stacked 16:9 only — keep catalog presenter paper untouched. */
 html:has(body > .slide) .slide > [data-od-slide-flow]:has(.slide-inner),
 html:has(#od-stacked-deck-stage) .slide > [data-od-slide-flow]:has(.slide-inner) {

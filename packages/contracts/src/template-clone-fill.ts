@@ -5898,6 +5898,7 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = healBroadsideLeftoverCatalogCopy(next, brief);
   next = healGroveLeftoverCatalogCopy(next, brief);
   next = healCreativeLeftoverCatalogCopy(next, brief);
+  next = healBlockFrameInventedHeroShells(next);
   next = healCobaltOrphanDataStats(next);
   next = enrichSparseCobaltCover(next, brief);
   next = restyleBiennaleSparseChapterBodies(next);
@@ -8852,7 +8853,102 @@ function fillBlockFrameNeoSlots(
     },
   );
 
+  // 루프539 — MiniMax invents block-frame 슬라이드에 없는 클래스 (`hero-title-highlight`
+  // span, `download-card`/`platform-card` platform tiles, "Enterprise 데모" CTA 등).
+  // 킷 CSS가 없어서 하이라이트가 잘리고 카드는 비어 있고 영어 chrome이 한국어 덱에 섞인다.
+  // 사용자 리포트 2026-09-16: 타이틀 pink 하이라이트 밖 글자 튀어나옴 + Desktop/Android/iOS
+  // 빈 카드 + iOS 카드에 회사 법적 고지가 본문처럼 들어감.
+  next = neutralizeBlockFrameInventedHeroTitleHighlight(next);
+  next = stripInventedBlockFramePlatformCards(next);
+  next = neutralizeBlockFrameEnglishHeroCta(next);
+
   return next;
+}
+
+/**
+ * 루프539 — MiniMax invents `<span class="hero-title-highlight">지금 시작</span>`
+ * inside `.hero-title`. Kit CSS has no such rule so the span renders with
+ * ad-hoc background paint that clips wrapped characters. Unwrap the span —
+ * keep text, let the natural line-break flow.
+ */
+export function neutralizeBlockFrameInventedHeroTitleHighlight(html: string): string {
+  return String(html ?? '').replace(
+    /(<h[1-3]\b[^>]*\bhero-title\b[^>]*>)([\s\S]*?)(<\/h[1-3]>)/gi,
+    (_m, open: string, inner: string, close: string) => {
+      const rewritten = String(inner).replace(
+        /<span\b[^>]*\bhero-title-highlight\b[^>]*>([\s\S]*?)<\/span>/gi,
+        (_full, text: string) => String(text),
+      );
+      return `${open}${rewritten}${close}`;
+    },
+  );
+}
+
+/**
+ * 루프539 — MiniMax often invents platform-download shells for the hero
+ * slide (`.download-card` / `.platform-card` / `.download-cards`) that the
+ * block-frame kit never declared. The shells lack kit CSS so they render
+ * as blank cards, and MiniMax typically leaves them empty or dumps the
+ * deck footer legal-info into a single card. Strip the invented shells
+ * altogether so the hero slide falls back to the authored `.hero-frame`
+ * layout — content is never lost, only the empty invented wrapper is dropped.
+ */
+export function stripInventedBlockFramePlatformCards(html: string): string {
+  let out = String(html ?? '');
+  // Drop the wrapper first (contains all invented tiles).
+  out = stripClassBlocks(out, 'download-cards');
+  out = stripClassBlocks(out, 'platform-cards');
+  // Individual tile shells with `Desktop|Android|iOS|Windows|Mac|Linux|Web` headings
+  // whose body is empty or contains only footer legal info.
+  out = out.replace(
+    /<div\b[^>]*\b(?:download-card|platform-card)\b[^>]*>([\s\S]*?)<\/div>/gi,
+    (full, inner: string) => {
+      const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!plain) return '';
+      if (/^(?:Desktop|Android|iOS|Windows|Mac|Linux|Web)$/i.test(plain)) return '';
+      // Footer legal info leaked into a platform card body (`사업자등록번호`,
+      // `대표`, `본사`, `주소`, `[본사]`, `[판교 R&D]`).
+      if (/사업자\s*등록|대표\s*[:·]?\s*[가-힣]|본사\s*[:·]?|주소\s*[:·]|판교\s*R&?D|서울\s*[가-힣]+구|경기\s*[가-힣]+시/.test(plain)) {
+        return '';
+      }
+      return full;
+    },
+  );
+  return out;
+}
+
+/**
+ * 루프539 — Block-frame kit only ships one CTA slot (`.nb-btn` / `.deco-yellow-bar`).
+ * MiniMax often adds a hero-cta pair ("무료로 시작하기 / Enterprise 데모").
+ * The English "Enterprise" reads as broken chrome on a Korean deck. Rewrite
+ * to Korean, or wipe if the whole button is generic English.
+ */
+export function neutralizeBlockFrameEnglishHeroCta(html: string): string {
+  return String(html ?? '').replace(
+    /(<(?:a|button|div|span)\b[^>]*\b(?:hero-cta|cta-primary|cta-secondary|nb-btn-cta|nb-btn-secondary)\b[^>]*>)([\s\S]*?)(<\/(?:a|button|div|span)>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!plain) return full;
+      if (/^Enterprise(?:\s*(?:데모|demo|Demo|DEMO))?$/i.test(plain)) {
+        return `${open}기업 도입 문의${close}`;
+      }
+      if (/^(?:Get Started|Start Free|Start Now|Try Free|Free Trial|Contact Sales|Book Demo)$/i.test(plain)) {
+        return `${open}자세히 보기${close}`;
+      }
+      // Mixed KR + English marketing chrome ("Enterprise 데모" 문자 그대로).
+      if (/\bEnterprise\b/i.test(plain) && /[가-힣]/.test(plain)) {
+        return `${open}${escapeHtml(plain.replace(/\bEnterprise\b/gi, '기업').trim())}${close}`;
+      }
+      return full;
+    },
+  );
+}
+
+/** Persist/preview heal: invented Block Frame hero chrome (루프539). */
+export function healBlockFrameInventedHeroShells(html: string): string {
+  let next = neutralizeBlockFrameInventedHeroTitleHighlight(html);
+  next = stripInventedBlockFramePlatformCards(next);
+  return neutralizeBlockFrameEnglishHeroCta(next);
 }
 
 /** Keep chart-svg flex sibling; blank demo number / month glyphs inside. */
