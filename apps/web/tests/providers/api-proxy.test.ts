@@ -1215,6 +1215,23 @@ describe('streamProxyEndpoint idle-timeout stall (AGENT_EXECUTION_STALLED)', () 
         { minOutputTokens: 16_000 },
       ),
     ).toBe(PROXY_STREAM_IDLE_TIMEOUT_DECK_MS);
+    expect(
+      resolveAdaptiveProxyStreamIdleTimeoutMs(
+        [
+          '작성 중입니다.',
+          '<artifact type="deck" identifier="deck">',
+          '<!doctype html>',
+          '<html lang="ko">',
+        ].join('\n'),
+        { minOutputTokens: 16_000 },
+      ),
+    ).toBe(PROXY_STREAM_HEAD_PREAMBLE_IDLE_MS);
+    expect(
+      resolveAdaptiveProxyStreamIdleTimeoutMs(
+        '<artifact type="deck"><!doctype html><html lang="ko"><body><section class="slide">',
+        { minOutputTokens: 16_000 },
+      ),
+    ).toBe(PROXY_STREAM_IDLE_TIMEOUT_DECK_MS);
   });
 
   it('surfaces AGENT_EXECUTION_STALLED as non-retryable after a substantive delta', async () => {

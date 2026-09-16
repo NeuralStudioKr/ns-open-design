@@ -78,6 +78,7 @@ import {
   shouldAbortStreamForHeadOnlyKitDump,
   shouldAbortStreamForMotifSvgDump,
   stripAbandonedHeadKitDumpFromStreamedText,
+  stripAbandonedHeadPreambleFromStreamedText,
   stripAbandonedMotifSvgDumpFromStreamedText,
 } from '../artifacts/deck-html-content';
 import {
@@ -12834,6 +12835,14 @@ export function ProjectView({
             ? stalledRunHeadPreambleText(stallStreamInput)
             : null;
           if (stalledPartialDeck || stalledHeadPreamble) {
+            const finalizeText = stalledPartialDeck
+              ?? stripAbandonedHeadPreambleFromStreamedText(stalledHeadPreamble ?? '');
+            // Always replay the stripped snapshot. Leaving `<html>`/`<head>` in
+            // the live parser lets persist invent a last-resort cover over LOOK.
+            if (stalledHeadPreamble && finalizeText) {
+              streamedText = finalizeText;
+              rewriteLiveContent(finalizeText);
+            }
             updateAssistant((prev) => ({
               ...appendWarningStatusEvent(
                 prev,
@@ -12863,7 +12872,7 @@ export function ProjectView({
                 active: false,
               });
             }
-            scheduleStreamRunHtmlAutoOpen(stalledPartialDeck ?? stalledHeadPreamble ?? '');
+            scheduleStreamRunHtmlAutoOpen(finalizeText);
             onProjectsRefresh();
             releaseOwnedDaemonRun();
             return;

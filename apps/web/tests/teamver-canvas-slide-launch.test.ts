@@ -799,6 +799,11 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).toContain("shouldAbortStreamForMotifSvgDump");
     expect(projectView).toContain("shouldAbortStreamForHeadOnlyKitDump");
     expect(projectView).toContain("stalledRunHeadPreambleText(");
+    expect(projectView).toContain("stripAbandonedHeadPreambleFromStreamedText(");
+    expect(projectView).toMatch(
+      /stalledHeadPreamble && finalizeText[\s\S]{0,180}rewriteLiveContent\(finalizeText\)/,
+    );
+    expect(projectView).not.toContain("finalizeText !== (latestAssistantMsg.content || '')");
     expect(projectView).toContain("templateCloneContentFill: isCloneHostFillTurn");
     expect(projectView).toContain("FILL_MOTIF_SVG_DUMP_STOP_REASON");
     expect(projectView).toContain("FILL_HEAD_KIT_DUMP_STOP_REASON");

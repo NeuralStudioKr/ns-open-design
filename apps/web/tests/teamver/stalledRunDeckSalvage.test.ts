@@ -10,7 +10,16 @@ import {
   stalledRunPartialDeckText,
 } from '../../src/teamver/stalledRunDeckSalvage';
 
-const partialDeck = `작성 중입니다.\n<artifact type="deck" identifier="deck">\n<!doctype html>\n<html lang="ko"><head><style>${'a'.repeat(600)}</style></head>`;
+const headOnlyCssDump = `작성 중입니다.\n<artifact type="deck" identifier="deck">\n<!doctype html>\n<html lang="ko"><head><style>${'a'.repeat(600)}</style></head>`;
+const partialDeck = [
+  '작성 중입니다.',
+  '<artifact type="deck" identifier="deck">',
+  '<!doctype html>',
+  '<html lang="ko"><body>',
+  '<section class="slide"><h1>분기 전략</h1><p>한 분기를 한 문장으로 정리합니다.</p></section>',
+  '</body></html>',
+  '<!-- pad -->'.repeat(30),
+].join('\n');
 
 describe('루프477 stalled deck salvage eligibility', () => {
   it('salvages a stalled slide run that already streamed deck html', () => {
@@ -75,6 +84,23 @@ describe('루프477 stalled deck salvage eligibility', () => {
     expect(STALLED_PARTIAL_DECK_MIN_CHARS).toBeGreaterThan(0);
   });
 
+  it('루프541 does not salvage a head/CSS dump as a saved deck', () => {
+    expect(
+      stalledRunPartialDeckText({
+        errorCode: 'AGENT_EXECUTION_STALLED',
+        slideOnlyMvp: true,
+        streamedText: headOnlyCssDump,
+      }),
+    ).toBeNull();
+    expect(
+      stalledRunHeadPreambleText({
+        errorCode: 'AGENT_EXECUTION_STALLED',
+        slideOnlyMvp: true,
+        streamedText: headOnlyCssDump,
+      }),
+    ).toBe(headOnlyCssDump);
+  });
+
   it('루프540 hands a head preamble stub to finalize/auto-continue', () => {
     const stub = [
       'Teamver 서비스 소개 슬라이드를 C Cobalt Grid 템플릿 비주얼로 작성 중입니다.',
@@ -108,6 +134,46 @@ describe('루프477 stalled deck salvage eligibility', () => {
         errorCode: 'AGENT_EXECUTION_STALLED',
         slideOnlyMvp: true,
         streamedText: withSlide,
+      }),
+    ).toBeNull();
+  });
+
+  it('루프541 treats an opened html shell without <head> as a preamble', () => {
+    const htmlOnly = [
+      '작성 중입니다.',
+      '<artifact type="deck" identifier="deck">',
+      '<!doctype html>',
+      '<html lang="ko">',
+    ].join('\n');
+    expect(
+      stalledRunPartialDeckText({
+        errorCode: 'AGENT_EXECUTION_STALLED',
+        slideOnlyMvp: true,
+        streamedText: htmlOnly,
+      }),
+    ).toBeNull();
+    expect(
+      stalledRunHeadPreambleText({
+        errorCode: 'AGENT_EXECUTION_STALLED',
+        slideOnlyMvp: true,
+        streamedText: htmlOnly,
+      }),
+    ).toBe(htmlOnly);
+  });
+
+  it('루프541 still salvages a titled partial deck after a long head', () => {
+    expect(
+      stalledRunPartialDeckText({
+        errorCode: 'AGENT_EXECUTION_STALLED',
+        slideOnlyMvp: true,
+        streamedText: partialDeck,
+      }),
+    ).toBe(partialDeck);
+    expect(
+      stalledRunHeadPreambleText({
+        errorCode: 'AGENT_EXECUTION_STALLED',
+        slideOnlyMvp: true,
+        streamedText: partialDeck,
       }),
     ).toBeNull();
   });
