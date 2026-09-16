@@ -268,6 +268,13 @@ import {
   artifactKindToTracking,
 } from '@open-design/contracts/analytics';
 import { projectListTrackingKind } from '../teamver/projectListCardCategory';
+import {
+  claimCreateAutoSend,
+  createAutoSendClaimHeld,
+  releaseCreateAutoSendClaim,
+  shouldRearmCreateAutoSend,
+  shouldRetryFailedCreateAutoSend,
+} from '../teamver/createAutoSendLatch';
 import type {
   TrackingArtifactKind,
   TrackingDesignSystemApplyTargetKind,
@@ -4564,8 +4571,19 @@ export function ProjectView({
         }
         throw lastError;
       };
-      if (freshAutoSend) {
+      if (
+        freshAutoSend
+        && messagesRef.current.length === 0
+        && !createAutoSendClaimHeld(project.id)
+      ) {
         setMessages([]);
+        setMessagesInitialized(true);
+        messagesConversationIdRef.current = activeConversationId;
+        setMessagesConversationId(activeConversationId);
+        setFailedMessagesConversationId(null);
+      } else if (freshAutoSend) {
+        // A create send already pushed the user bubble. Wiping it here used
+        // to look like a second empty conversation and re-armed auto-send.
         setMessagesInitialized(true);
         messagesConversationIdRef.current = activeConversationId;
         setMessagesConversationId(activeConversationId);
@@ -15833,6 +15851,7 @@ export function ProjectView({
   // immediately after the first dispatch.
   useEffect(() => {
     if (autoSentRef.current || autoSendInFlightRef.current) return;
+    if (createAutoSendClaimHeld(project.id)) return;
     if (!activeConversationId) return;
     // Wait for the initial listMessages DB read to land. Without this gate
     // the auto-send fires before the in-flight DB response, which then
@@ -15911,8 +15930,13 @@ export function ProjectView({
     // Cross-remount lock (StrictMode): clear the session flag early, but do
     // NOT set autoSentRef until handleSend succeeds — otherwise a false
     // return after waitPendingTemplateClone permanently skips the first stream.
+    // Claim before the async gap. Cleanup must not restore the flag once
+    // handleSend has been entered — abortRef is still empty until much later,
+    // and restoring the flag there sends the same user bubble twice.
+    if (!claimCreateAutoSend(project.id)) return;
     autoSendInFlightRef.current = true;
     clearAutoSendSession(project.id);
+    let autoSendDispatched = false;
     if (isDesignSystemWorkspaceMetadata(project.metadata)) {
       markDesignSystemAuditAutoRepairEligible(project.id);
     }
@@ -15936,6 +15960,8 @@ export function ProjectView({
         messagesConversationIdRef.current = conversationIdAtStart;
         setMessagesConversationId(conversationIdAtStart);
       }
+      if (cancelled) return;
+      autoSendDispatched = true;
       const ok = await handleSend(seed, attachments, [], {
         entryFrom: 'new_project',
         skipDiscoveryBrief:
@@ -15986,37 +16012,44 @@ export function ProjectView({
         }
         return;
       }
+      const retryFailedCreate = shouldRetryFailedCreateAutoSend({
+        messageCount: messagesRef.current.length,
+        abortActive: Boolean(abortRef.current),
+        streamingThisConversation: Boolean(streamingConversationIdRef.current)
+          && streamingConversationIdRef.current === conversationIdAtStart,
+        embedSubmitDisabled,
+        retryCount: autoSendRetryNonce,
+        maxRetries: MAX_CREATE_AUTO_SEND_RETRIES,
+      });
+      if (!retryFailedCreate) {
+        // A visible user row, a live stream, or a hard block means the
+        // request already left or must not leave again. Do not restore
+        // od:auto-send-first — that flag survives reload, the claim does not.
+        autoSentRef.current = true;
+        autoSendInFlightRef.current = false;
+        clearAutoSendSession(project.id);
+        clearTemplateCloneContentFillQueue(project.id);
+        return;
+      }
       if (cancelled) {
+        autoSendInFlightRef.current = false;
+        releaseCreateAutoSendClaim(project.id);
+        try {
+          window.sessionStorage.setItem(autoSendFirstMessageKey(project.id), '1');
+          if (attachments.length > 0) {
+            window.sessionStorage.setItem(
+              autoSendAttachmentsKey(project.id),
+              JSON.stringify(attachments),
+            );
+          }
+        } catch {
+          /* ignore */
+        }
+        setAutoSendRetryNonce((value) => value + 1);
         return;
       }
       autoSendInFlightRef.current = false;
-      // embed blocked permanently — do not restore flag / spin.
-      if (embedSubmitDisabled) {
-        autoSentRef.current = true;
-        clearAutoSendSession(project.id);
-        clearTemplateCloneContentFillQueue(project.id);
-        return;
-      }
-      // A live stream already owns this conversation (first StrictMode send
-      // won the race). Latch — do not retry into a duplicate stream.
-      if (
-        abortRef.current
-        || (
-          Boolean(streamingConversationIdRef.current)
-          && streamingConversationIdRef.current === conversationIdAtStart
-        )
-      ) {
-        autoSentRef.current = true;
-        clearAutoSendSession(project.id);
-        clearTemplateCloneContentFillQueue(project.id);
-        return;
-      }
-      if (autoSendRetryNonce >= MAX_CREATE_AUTO_SEND_RETRIES) {
-        autoSentRef.current = true;
-        clearAutoSendSession(project.id);
-        clearTemplateCloneContentFillQueue(project.id);
-        return;
-      }
+      releaseCreateAutoSendClaim(project.id);
       try {
         window.sessionStorage.setItem(autoSendFirstMessageKey(project.id), '1');
         if (attachments.length > 0) {
@@ -16048,40 +16081,42 @@ export function ProjectView({
     })();
     return () => {
       cancelled = true;
-      // StrictMode remount: release in-flight + restore flag so the second
-      // effect can dispatch — unless handleSend already owns a live abort
-      // (restoring would double the first stream). Completed sends latch
-      // autoSentRef even when cancelled.
-      if (!autoSentRef.current && autoSendInFlightRef.current) {
-        autoSendInFlightRef.current = false;
-        if (abortRef.current) {
-          return;
+      // Restore the session flag only when handleSend has not started.
+      // abortRef is set long after the user bubble is pushed, so using it
+      // alone re-arms a second identical create send.
+      if (!shouldRearmCreateAutoSend({
+        autoSent: autoSentRef.current,
+        dispatched: autoSendDispatched,
+        abortActive: Boolean(abortRef.current),
+      })) {
+        return;
+      }
+      autoSendInFlightRef.current = false;
+      releaseCreateAutoSendClaim(project.id);
+      try {
+        window.sessionStorage.setItem(autoSendFirstMessageKey(project.id), '1');
+        if (attachments.length > 0) {
+          window.sessionStorage.setItem(
+            autoSendAttachmentsKey(project.id),
+            JSON.stringify(attachments),
+          );
         }
-        try {
-          window.sessionStorage.setItem(autoSendFirstMessageKey(project.id), '1');
-          if (attachments.length > 0) {
-            window.sessionStorage.setItem(
-              autoSendAttachmentsKey(project.id),
-              JSON.stringify(attachments),
-            );
-          }
-        } catch {
-          /* ignore */
-        }
-        if (fillQueued && seed && !shouldUseDeterministicTemplateCloneFill()) {
-          if (isTemplateCloneContentFillPrompt(seed) || shouldUseJsonTemplateCloneFill()) {
-            queueTemplateCloneContentFill({
-              projectId: project.id,
-              seed,
-              attachments,
-            });
-          } else if (isTemplateClonePromptFillPrompt(seed)) {
-            queueTemplateClonePromptFill({
-              projectId: project.id,
-              seed,
-              attachments,
-            });
-          }
+      } catch {
+        /* ignore */
+      }
+      if (fillQueued && seed && !shouldUseDeterministicTemplateCloneFill()) {
+        if (isTemplateCloneContentFillPrompt(seed) || shouldUseJsonTemplateCloneFill()) {
+          queueTemplateCloneContentFill({
+            projectId: project.id,
+            seed,
+            attachments,
+          });
+        } else if (isTemplateClonePromptFillPrompt(seed)) {
+          queueTemplateClonePromptFill({
+            projectId: project.id,
+            seed,
+            attachments,
+          });
         }
       }
     };
