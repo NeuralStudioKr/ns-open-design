@@ -452,6 +452,140 @@ describe('buildTemplateClonedDeckHtml', () => {
     expect(cloned).toContain('class="item"');
     expect(cloned).toContain('<em>항목</em>');
   });
+
+  // 루프549 — v1.4.15 대비 결과물 품질 회귀의 근본 원인 3종을 격리한다.
+  // 사용자 리포트 HTML(2026-09-17)에서 관찰된 회귀 3종:
+  //  (a) MiniMax가 리터럴 "주제 [가/는/을/를/의/…]" placeholder 문구를 슬라이드
+  //     제목/lead로 그대로 뱉음 — "주제가 해결하는 문제", "주제의 쓰임과 근거",
+  //     "주제를 쓰는 순서" 등. `rewriteInstructionParrotingSlideTitles`가 이걸
+  //     실패 제목으로 판정하지 못해 그대로 슬라이드에 랜딩.
+  //  (b) 인접 phrase 반복 — "쓰는 순서를 쓰는 순서", "다음 단계 다음 단계"
+  //     (MiniMax 토큰 loop). heal이 축약해야 한다.
+  //  (c) 8-shell 템플릿에 10-outline 오버플로우 시 shell 재사용으로 slide 10 =
+  //     slide 4 완전 중복. Non-unique-role kit은 outline을 seed에 맞춰야 한다.
+  it('루프549 (a) — outline title이 "주제 [particle] X" placeholder이면 실패 제목으로 판정해 교체한다', () => {
+    // MiniMax가 slide.title = "주제가 해결하는 문제" / "주제의 쓰임과 근거"
+    // 를 뱉으면 `sanitizeTemplateCloneDeckTitle`가 정상 문자열로 인정해
+    // 슬라이드에 그대로 랜딩했다. 이 경우 rewrite로 fallback 제목을 써야 한다.
+    const shell = `<!doctype html><html><body>
+<section class="slide"><h1>Cover</h1></section>
+<section class="slide"><h2>Slot A</h2></section>
+<section class="slide"><h2>Slot B</h2></section>
+<section class="slide"><h2>Slot C</h2></section>
+</body></html>`;
+    const cloned = buildTemplateClonedDeckHtml(
+      shell,
+      [
+        { title: 'Teamver 소개' },
+        { title: '주제가 해결하는 문제' },
+        { title: '주제의 쓰임과 근거' },
+        { title: '주제를 쓰는 순서' },
+      ],
+      { title: 'Teamver 소개', brief: 'Teamver 소개' },
+    );
+    expect(cloned).toBeTruthy();
+    // 리터럴 "주제 X" placeholder가 슬라이드 제목/본문에 남지 않아야 한다.
+    expect(cloned!).not.toContain('주제가 해결하는 문제');
+    expect(cloned!).not.toContain('주제의 쓰임과 근거');
+    expect(cloned!).not.toContain('주제를 쓰는 순서');
+    // 제거된 제목 자리에는 fallback cover 파생 라벨이 들어와야 한다.
+    expect(cloned!).toMatch(/Teamver 소개/);
+  });
+
+  it('루프549 (b) — 인접 phrase 반복 "X를 Y를 Y" / "X Y Y"가 heal에서 축약된다', () => {
+    // MiniMax repetition-loop 실물. slot swap 후에도 "쓰는 방법을 쓰는 방법"
+    // / "다음 단계 다음 단계" doubled phrase가 h1/h2에 그대로 남는다.
+    // (주 목적: 주제 placeholder 이외에도 doubled phrase 축약이 동작하는지
+    // pin. `주제를 X`는 fix (a) 경로가 대신 fallback 라벨로 교체하므로 여기서는
+    // 사용자 topic에 뿌리를 둔 non-placeholder doubled title 두 개로 격리.)
+    const shell = `<!doctype html><html><body>
+<section class="slide"><h1>Old cover title</h1></section>
+<section class="slide"><h2>Body slot A</h2></section>
+<section class="slide"><h2>Body slot B</h2></section>
+</body></html>`;
+    const cloned = buildTemplateClonedDeckHtml(
+      shell,
+      [
+        { title: 'Teamver 소개' },
+        { title: '쓰는 방법을 쓰는 방법' },
+        { title: '다음 단계 다음 단계' },
+      ],
+    );
+    expect(cloned).toBeTruthy();
+    // Both duplicated phrases must have been collapsed.
+    expect(cloned!).not.toContain('쓰는 방법을 쓰는 방법');
+    expect(cloned!).not.toContain('다음 단계 다음 단계');
+    // 축약 결과는 원본 phrase만 남는다 (particle 보존).
+    expect(cloned!).toMatch(/쓰는 방법을/);
+    expect(cloned!).toMatch(/다음 단계/);
+  });
+
+  it('루프549 (d) — `{brief} 2` shape parrot도 실패 제목으로 판정한다', () => {
+    // MiniMax는 product-launch example.html의 슬라이드 2 슬롯(`Halo v2`)에
+    // 종종 브리프 원문 뒤에 숫자만 붙인 제목을 그대로 심는다 (예: 2026-09-17
+    // 사용자 리포트의 슬라이드 2 h1 = "Teamver 소개 2"). instruction-copy
+    // 브리프가 아니어도 이 shape는 실패 제목으로 잡아 fallback으로 교체한다.
+    const shell = `<!doctype html><html><body>
+<section class="slide"><h1>Cover</h1></section>
+<section class="slide"><h2>Slot A</h2></section>
+</body></html>`;
+    const cloned = buildTemplateClonedDeckHtml(
+      shell,
+      [
+        { title: 'Teamver 소개' },
+        { title: 'Teamver 소개 2' },
+      ],
+      { title: 'Teamver 소개', brief: 'Teamver 소개' },
+    );
+    expect(cloned).toBeTruthy();
+    // 리터럴 "Teamver 소개 2" (숫자 파롯)이 슬라이드 본문에 남지 않아야 한다.
+    // Fallback은 middle-dot `Teamver 소개 · 2` 형태로 대체된다.
+    expect(cloned!).not.toMatch(/>Teamver 소개 2</);
+  });
+
+  it('루프549 (c) — 동일 outline title이 두 슬롯에 오면 두 번째는 indexed fallback으로 대체된다', () => {
+    // 2026-09-17 사용자 리포트 재현. MiniMax가 outline에 `주제의 쓰임과 근거`
+    // 를 두 번 뱉으면 (product-launch 8-shell + 10-outline) 재사용된 Fit shell
+    // 에 두 개의 near-identical Fit 슬라이드(slide 3 · slide 9)가 랜딩한다.
+    // Non-unique-role kit도 shell 재사용은 허용되지만, 재사용되는 outline title
+    // 이 완전히 같아지는 것은 막아야 한다.
+    const eightShellDeck = `<!doctype html><html><body>
+<section class="slide"><h1>Cover</h1></section>
+<section class="slide"><h2>Intro</h2></section>
+<section class="slide"><h2>A</h2></section>
+<section class="slide"><h2>B</h2></section>
+<section class="slide"><h2>C</h2></section>
+<section class="slide"><h2>D</h2></section>
+<section class="slide"><h2>E</h2></section>
+<section class="slide"><h2>F</h2></section>
+</body></html>`;
+    // 4번째와 10번째 슬롯이 동일 title. 이는 MiniMax가 placeholder-shape 두 개
+    // 를 다른 slot으로 먼저 내보내지 않아도, "일반 topic 문구" 재사용으로 흔히
+    // 발생한다.
+    const outline = [
+      { title: 'Teamver 소개' },
+      { title: '문제 정의' },
+      { title: '고유 가치' },
+      { title: '고객 여정' },
+      { title: '핵심 기능' },
+      { title: '도입 로드맵' },
+      { title: '성과 지표' },
+      { title: '레퍼런스' },
+      { title: '다음 액션' },
+      { title: '고객 여정' }, // ← duplicate of slot 4
+    ];
+    const cloned = buildTemplateClonedDeckHtml(eightShellDeck, outline, {
+      title: 'Teamver 소개',
+      maxSlides: 10,
+    });
+    expect(cloned).toBeTruthy();
+    // 첫 등장은 유지되고 뒤에 오는 동일 title은 fallback 라벨로 교체돼야 한다.
+    const duplicatedTitleMatches = cloned!.match(/고객 여정/g) ?? [];
+    expect(duplicatedTitleMatches.length).toBeLessThanOrEqual(1);
+    // 나머지 outline title은 그대로 등장한다.
+    expect(cloned!).toContain('문제 정의');
+    expect(cloned!).toContain('고유 가치');
+  });
 });
 
 describe('resolveTemplateCloneSlideCountHint', () => {
