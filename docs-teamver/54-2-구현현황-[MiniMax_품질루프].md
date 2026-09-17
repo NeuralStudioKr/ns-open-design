@@ -38,6 +38,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프555 — MiniMax outline placeholder / 반복 / 파롯 회귀 (v1.4.15 대비)
+
+체감: 2026-09-17 사용자 리포트 실물 — `주제가 해결하는 문제` / `쓰는 순서를 쓰는 순서` / 동일 Fit 슬라이드 중복 / `Teamver 소개 2`.
+
+원인: sanitize가 리터럴 `주제 [particle] X`를 정상 제목으로 인정. phrase 반복 축약 없음. 동일 outline title이 reused shell에 그대로 심김. 브리프+숫자 파롯을 instruction-copy에서만 잡음.
+
+수정: placeholder 실패 제목 판정 · particle-aware phrase 축약 · identical outline title dedupe · 브리프+숫자 파롯 감지.
+
+검증: contracts template-clone-fill 루프555 (a)(b)(c)(d).
+
 ### 루프539 — Block Frame 발명 hero 셸
 
 표지 `.hero-title-highlight` 클립 · 빈 platform 카드 · `Enterprise 데모`. [0916-N03-1](./0916-N03-1-상위설계-[Block_frame_발명_hero_셸].md).
