@@ -242,9 +242,13 @@ export function buildSparseContentTopUpPrompt(
 ): string {
   const lines = evidence.map((item) => {
     const where = `data-slide-index="${item.slideIndex}"`;
-    return item.reason === "heading_count_shortfall"
-      ? `- ${where} (slide ${item.slideIndex + 1}): the heading promised more items than were emitted — ${item.detail}. Write the missing item(s) with the same card markup as its peers.`
-      : `- ${where} (slide ${item.slideIndex + 1}): a card carries a title with no body — ${item.detail}. Write its 1–2 sentence body.`;
+    if (item.reason === "heading_count_shortfall") {
+      return `- ${where} (slide ${item.slideIndex + 1}): the heading promised more items than were emitted — ${item.detail}. Write the missing item(s) with the same card markup as its peers.`;
+    }
+    if (item.reason === "low_density_card_row") {
+      return `- ${where} (slide ${item.slideIndex + 1}): the card row is only demo-caption density — ${item.detail}. Expand EVERY card with specific evidence, mechanism, example, or outcome. Give each card 35–90 visible characters while preserving the existing card count and layout.`;
+    }
+    return `- ${where} (slide ${item.slideIndex + 1}): a card carries a title with no body — ${item.detail}. Write its 1–2 sentence body.`;
   });
   const indexes = evidence.map((item) => item.slideIndex).join(", ");
   return [

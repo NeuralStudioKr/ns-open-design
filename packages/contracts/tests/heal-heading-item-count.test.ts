@@ -115,10 +115,21 @@ describe('루프480 sparse content evidence', () => {
 
   it('stays quiet on a complete deck', () => {
     const html = slide('3가지 핵심 기능', [
-      card('A', '충분한 본문이 있습니다.'),
-      card('B', '충분한 본문이 있습니다.'),
-      card('C', '충분한 본문이 있습니다.'),
+      card('A', '고객 입력을 구조화하고 핵심 요구사항을 우선순위에 따라 정리합니다.'),
+      card('B', '팀의 검토 이력을 보존해 의사결정 근거와 변경 사항을 추적합니다.'),
+      card('C', '완료 기준을 자동 점검하고 누락된 실행 항목을 담당자에게 연결합니다.'),
     ]);
     expect(findDeckSparseContentEvidence(html)).toEqual([]);
+  });
+
+  it('reports a full-looking row whose cards contain only demo-caption copy', () => {
+    const html = slide('핵심 주제의 쓰임과 근거', [
+      card('탐색', '문제와 환경을 이해'),
+      card('실행', '주요 기능을 경험'),
+      card('확장', '운영 시나리오로 확장'),
+    ]);
+    expect(findDeckSparseContentEvidence(html)).toEqual([
+      expect.objectContaining({ reason: 'low_density_card_row', slideIndex: 0 }),
+    ]);
   });
 });

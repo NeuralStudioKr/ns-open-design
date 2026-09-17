@@ -694,6 +694,20 @@ describe("slideCountTopUp", () => {
     expect(countSparseContentTopUpAttemptsInConversation(messages)).toBe(1);
   });
 
+  it("asks for substantive copy on demo-caption density card rows (루프555)", () => {
+    const prompt = buildSparseContentTopUpPrompt([
+      {
+        slideIndex: 1,
+        reason: "low_density_card_row",
+        detail: "3 cards / 31 body chars: 탐색, 실행, 확장",
+      },
+    ]);
+    expect(prompt).toMatch(/card row is only demo-caption density/);
+    expect(prompt).toMatch(/Expand EVERY card/);
+    expect(prompt).toMatch(/35–90 visible characters/);
+    expect(prompt).toMatch(/data-slide-index="1"/);
+  });
+
   it("treats sparse repair as soft-improvement; slide-count top-up failure is real (루프503)", () => {
     expect(isSoftImprovementAutomationEntryFrom(SLIDE_COUNT_TOP_UP_ENTRY_FROM)).toBe(false);
     expect(isSoftImprovementAutomationEntryFrom(SPARSE_CONTENT_TOP_UP_ENTRY_FROM)).toBe(true);

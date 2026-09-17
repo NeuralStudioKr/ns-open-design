@@ -46,6 +46,9 @@ const MIN_PROMISE = 2;
 const MAX_PROMISE = 12;
 /** Below this a card body reads as "the model never wrote it". */
 const MIN_CARD_BODY_CHARS = 6;
+/** A row of one-line demo captions is still a template shell, not deck copy. */
+const MIN_DENSE_CARD_BODY_CHARS = 32;
+const MIN_DENSE_CARD_ROW_BODY_CHARS = 96;
 
 const SLIDE_SECTION_RE = /<section\b[^>]*>[\s\S]*?<\/section>/gi;
 const HEADING_RE = /<h([1-3])\b([^>]*)>([\s\S]*?)<\/h\1>/i;
@@ -243,7 +246,7 @@ export function reconcileHeadingItemCounts(html: string): string {
 }
 
 export type DeckSparseContentEvidence = {
-  reason: 'heading_count_shortfall' | 'title_only_card';
+  reason: 'heading_count_shortfall' | 'title_only_card' | 'low_density_card_row';
   detail: string;
   slideIndex: number;
 };
@@ -275,6 +278,7 @@ export function findDeckSparseContentEvidence(
     }
     const row = findItemRow(slide);
     if (!row) return;
+    const cardBodies: Array<{ title: string; body: string }> = [];
     for (const child of row.children) {
       const text = visibleText(child);
       if (!text) continue;
@@ -305,6 +309,7 @@ export function findDeckSparseContentEvidence(
         continue;
       }
       const bodyText = text.slice(titleText.length).trim();
+      cardBodies.push({ title: titleText, body: bodyText });
       if (bodyText.length >= MIN_CARD_BODY_CHARS) continue;
       evidence.push({
         reason: 'title_only_card',
@@ -312,6 +317,25 @@ export function findDeckSparseContentEvidence(
         slideIndex: index,
       });
       break;
+    }
+    if (evidence.some((item) => item.slideIndex === index)) return;
+    if (cardBodies.length < 3 || cardBodies.length > 6) return;
+    const thinBodies = cardBodies.filter(
+      (item) => item.body.length < MIN_DENSE_CARD_BODY_CHARS,
+    ).length;
+    const totalBodyChars = cardBodies.reduce((sum, item) => sum + item.body.length, 0);
+    if (
+      thinBodies >= Math.ceil(cardBodies.length * 0.67)
+      || totalBodyChars < MIN_DENSE_CARD_ROW_BODY_CHARS
+    ) {
+      evidence.push({
+        reason: 'low_density_card_row',
+        detail: `${cardBodies.length} cards / ${totalBodyChars} body chars: ${cardBodies
+          .map((item) => item.title)
+          .slice(0, 4)
+          .join(', ')}`,
+        slideIndex: index,
+      });
     }
   });
 

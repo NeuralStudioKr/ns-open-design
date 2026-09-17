@@ -11,7 +11,10 @@
  */
 
 import { attrsLookLikeDeckOrTemplateSlideHost } from './deck-slide-class.js';
-import { conformInlinePaletteToOfficialLook } from './heal-official-look-contrast.js';
+import {
+  conformInlinePaletteToOfficialLook,
+  repairLowContrastDeckHeadings,
+} from './heal-official-look-contrast.js';
 import { reconcileHeadingItemCounts } from './heal-heading-item-count.js';
 import {
   catalogExampleShouldBeScrubbed,
@@ -5301,6 +5304,9 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // cream-on-cream. Judge inline colors against their effective background
   // after every structural heal so the luminance we measure is the final one.
   out = conformInlinePaletteToOfficialLook(out);
+  // 루프555 — Freeform decks do not always carry official-look metadata.
+  // Repair unreadable h1-h3 against their final slide background as a last pass.
+  out = repairLowContrastDeckHeadings(out);
   return out;
 }
 
