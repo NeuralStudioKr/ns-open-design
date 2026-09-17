@@ -27,6 +27,8 @@ export type SeedTemplateClonedDeckResult =
       preservedFilled?: boolean;
       /** Server already slot-filled the LOOK seed — FE must not auto-send MiniMax. */
       contentFilled?: boolean;
+      /** LOOK/layout is ready, but generic synthesized copy needs an AI outline. */
+      needsAiContentFill?: boolean;
     }
   | {
       ok: false;
@@ -84,6 +86,7 @@ export async function recoverExistingTemplateClonedDeck(
         metadata?: {
           templateClonedDeckSeeded?: unknown;
           templateCloneContentFilled?: unknown;
+          templateCloneContentFillPending?: unknown;
           selectedDeckTemplateId?: unknown;
         };
       };
@@ -99,6 +102,19 @@ export async function recoverExistingTemplateClonedDeck(
           recoveredExisting: true,
           preservedFilled: true,
           contentFilled: true,
+        };
+      }
+      if (json?.metadata?.templateCloneContentFillPending === true) {
+        return {
+          ok: true,
+          fileName: 'deck.html',
+          slideCount: 1,
+          templateId: asSeededTemplateId(
+            json.metadata?.selectedDeckTemplateId,
+            json.sourceSkillId,
+          ),
+          recoveredExisting: true,
+          needsAiContentFill: true,
         };
       }
       if (json?.metadata?.templateClonedDeckSeeded === true) {
@@ -124,6 +140,7 @@ export async function recoverExistingTemplateClonedDeck(
       | {
           templateClonedDeckSeeded?: unknown;
           templateCloneContentFilled?: unknown;
+          templateCloneContentFillPending?: unknown;
           selectedDeckTemplateId?: unknown;
         }
       | undefined;
@@ -136,6 +153,16 @@ export async function recoverExistingTemplateClonedDeck(
         recoveredExisting: true,
         preservedFilled: true,
         contentFilled: true,
+      };
+    }
+    if (meta?.templateCloneContentFillPending === true) {
+      return {
+        ok: true,
+        fileName: 'deck.html',
+        slideCount: 1,
+        templateId: asSeededTemplateId(meta.selectedDeckTemplateId),
+        recoveredExisting: true,
+        needsAiContentFill: true,
       };
     }
     if (meta?.templateClonedDeckSeeded === true) {
@@ -191,7 +218,7 @@ export function cloneResultSuppressesAiFill(
   return Boolean(
     result
     && result.ok
-    && (result.contentFilled === true || result.preservedFilled === true || result.recoveredExisting === true),
+    && (result.contentFilled === true || result.preservedFilled === true),
   );
 }
 
@@ -260,6 +287,7 @@ export async function seedTemplateClonedDeck(options: {
       templateId?: string;
       preservedFilled?: boolean;
       contentFilled?: boolean;
+      needsAiContentFill?: boolean;
     };
     if (!json?.ok || json.fileName !== 'deck.html') {
       return {
@@ -275,6 +303,7 @@ export async function seedTemplateClonedDeck(options: {
       templateId: typeof json.templateId === 'string' ? json.templateId : pluginId,
       ...(json.preservedFilled === true ? { preservedFilled: true } : {}),
       ...(json.contentFilled === true ? { contentFilled: true } : {}),
+      ...(json.needsAiContentFill === true ? { needsAiContentFill: true } : {}),
     };
   };
 
@@ -376,6 +405,7 @@ export async function fillTemplateClonedDeckDeterministically(options: {
       templateId?: string;
       preservedFilled?: boolean;
       contentFilled?: boolean;
+      needsAiContentFill?: boolean;
     };
     if (!json?.ok || json.fileName !== 'deck.html') {
       return {
@@ -391,6 +421,7 @@ export async function fillTemplateClonedDeckDeterministically(options: {
       templateId: typeof json.templateId === 'string' ? json.templateId : pluginId,
       ...(json.preservedFilled === true ? { preservedFilled: true } : {}),
       ...(json.contentFilled === true ? { contentFilled: true } : {}),
+      ...(json.needsAiContentFill === true ? { needsAiContentFill: true } : {}),
     };
   };
 

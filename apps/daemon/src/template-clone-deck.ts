@@ -17,7 +17,7 @@ import {
   looksLikeTemplateCloneServiceIntroBrief,
   pickPluginPreviewHtmlPath,
   resolveTemplateCloneSlideCountHint,
-  resolveTemplateCloneSlidesForDeterministicFill,
+  resolveTemplateCloneSlidesForDeterministicFillWithProvenance,
   sanitizeTemplateCloneDeckTitle,
   TEMPLATE_CLONE_SERVICE_INTRO_DEFAULT_SLIDES,
 } from '@open-design/contracts';
@@ -39,6 +39,8 @@ export type TemplateCloneDeckResult =
       preservedFilled?: boolean;
       /** True when the clone endpoint also marked content fill as complete. */
       contentFilled?: boolean;
+      /** LOOK/layout is ready, but generic synthesized copy still needs AI content. */
+      needsAiContentFill?: boolean;
     }
   | {
       ok: false;
@@ -227,6 +229,7 @@ function buildDeckArtifactManifest(input: {
   templateTitle: string;
   deckTitle?: string | null;
   contentFillMode?: TemplateCloneDeckContentFillMode;
+  needsAiContentFill?: boolean;
 }): Record<string, unknown> {
   const now = new Date().toISOString();
   return {
@@ -247,8 +250,8 @@ function buildDeckArtifactManifest(input: {
       templateClonedDeckSeeded: true,
       ...(input.contentFillMode === 'deterministic-fill'
         ? {
-            templateCloneContentFilled: true,
-            templateCloneContentFillPending: false,
+            templateCloneContentFilled: input.needsAiContentFill !== true,
+            templateCloneContentFillPending: input.needsAiContentFill === true,
             templateCloneFillMode: 'deterministic',
           }
         : {}),
@@ -258,6 +261,16 @@ function buildDeckArtifactManifest(input: {
         : {}),
     },
   };
+}
+
+function looksLikeGenericDeterministicFallbackDeck(html: string): boolean {
+  const markers = [
+    /핵심 주제/g,
+    /의미와 적용 기준을 한 문장으로 정리한다/g,
+    /반복 작업을 줄이고 결과물 완성도를 높이는 방식/g,
+    />핵심\s+\d+\s*</g,
+  ];
+  return markers.reduce((count, pattern) => count + (html.match(pattern)?.length ?? 0), 0) >= 2;
 }
 
 export type SeedTemplateClonedDeckOnServerDeps = {
@@ -394,10 +407,13 @@ export async function seedTemplateClonedDeckOnServer(
     ?? (looksLikeTemplateCloneServiceIntroBrief(briefText)
       ? TEMPLATE_CLONE_SERVICE_INTRO_DEFAULT_SLIDES
       : null);
-  const slides = resolveTemplateCloneSlidesForDeterministicFill({
+  const resolution = resolveTemplateCloneSlidesForDeterministicFillWithProvenance({
     ...briefOpts,
     ...(honorCount != null ? { slideCount: honorCount } : {}),
   });
+  const slides = resolution.slides;
+  const needsAiContentFill =
+    contentFillMode === 'deterministic-fill' && resolution.needsAiContentFill;
   const honorSlides = honorCount != null && honorCount <= 10 && slides.length > honorCount
     ? slides.slice(0, honorCount)
     : slides;
@@ -442,15 +458,21 @@ export async function seedTemplateClonedDeckOnServer(
       artifactManifest = undefined;
     }
     if (shouldPreserveFilledDeckOverCloneReseed(existing, cloned, deps.metadata, artifactManifest)) {
+      const manifestMetadata = artifactManifest && typeof artifactManifest === 'object'
+        ? (artifactManifest as { metadata?: { templateCloneContentFillPending?: unknown } }).metadata
+        : undefined;
+      const preservedNeedsAiContentFill =
+        manifestMetadata?.templateCloneContentFillPending === true
+        || looksLikeGenericDeterministicFallbackDeck(existing);
       return {
         ok: true,
         fileName: 'deck.html',
         slideCount: countSlides(existing),
         templateId: loaded.templateId,
         previewPath: loaded.previewPath,
-        preservedFilled: true,
-        // 루프421 — kept deck is the deliverable. FE must never MiniMax-overwrite.
-        contentFilled: true,
+        ...(preservedNeedsAiContentFill
+          ? { needsAiContentFill: true }
+          : { preservedFilled: true, contentFilled: true }),
       };
     }
   } catch {
@@ -475,6 +497,7 @@ export async function seedTemplateClonedDeckOnServer(
           templateTitle,
           deckTitle,
           contentFillMode,
+          needsAiContentFill,
         }),
       },
       deps.metadata,
@@ -529,6 +552,10 @@ export async function seedTemplateClonedDeckOnServer(
     slideCount: countSlides(cloned),
     templateId: loaded.templateId,
     previewPath: loaded.previewPath,
-    ...(contentFillMode === 'deterministic-fill' ? { contentFilled: true } : {}),
+    ...(contentFillMode === 'deterministic-fill'
+      ? needsAiContentFill
+        ? { needsAiContentFill: true }
+        : { contentFilled: true }
+      : {}),
   };
 }

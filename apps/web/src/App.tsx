@@ -145,6 +145,7 @@ import {
 import { rememberTeamverProjectConversation } from './teamver/teamverProjectConversationMemory';
 import {
   autoSendSeedStorageKey,
+  buildTemplateCloneContentFillSeed,
   buildTemplateCloneFillSeedForCurrentMode,
   clearTemplateCloneContentFillQueue,
   isGenericTemplateCloneTopicBrief,
@@ -2930,18 +2931,50 @@ function AppInner() {
                 if (seeded.ok) {
                   seededDeckFileName = seeded.fileName;
                   preservedFilledDeck = cloneResultSuppressesAiFill(seeded);
-                  usedDeterministicCloneFill = true;
                   deterministicSlideCount = seeded.slideCount ?? null;
+                  if (!preservedFilledDeck) {
+                    queuedFillSeed = buildTemplateCloneContentFillSeed({
+                      userInstruction: userFacingRequest || null,
+                      sourceBrief,
+                      pendingPrompt: derivedPendingPrompt ?? null,
+                      templateTitle: templateTitle || selectedDeckTemplateId,
+                      hasSourceMaterial: true,
+                      slideCountHint: slideCountHintFromInputs,
+                      seedShellCount: seeded.slideCount,
+                    });
+                    queueTemplateCloneContentFill({
+                      projectId: result.project.id,
+                      seed: queuedFillSeed,
+                      attachments: firstMessageAttachments,
+                    });
+                  } else {
+                    usedDeterministicCloneFill = true;
+                  }
                   return seeded;
                 }
                 const look = await seedTemplateClonedDeck(cloneRequest);
                 if (look.ok) {
                   seededDeckFileName = look.fileName;
                   preservedFilledDeck = cloneResultSuppressesAiFill(look);
-                  // 루프421 — a LOOK/filled deck is the deliverable. never MiniMax
-                  // HTML rewrite — it overwrites Capsule and fails AGENT_EXECUTION_FAILED.
-                  usedDeterministicCloneFill = true;
                   deterministicSlideCount = look.slideCount ?? null;
+                  if (preservedFilledDeck) {
+                    usedDeterministicCloneFill = true;
+                  } else {
+                    queuedFillSeed = buildTemplateCloneContentFillSeed({
+                      userInstruction: userFacingRequest || null,
+                      sourceBrief,
+                      pendingPrompt: derivedPendingPrompt ?? null,
+                      templateTitle: templateTitle || selectedDeckTemplateId,
+                      hasSourceMaterial: true,
+                      slideCountHint: slideCountHintFromInputs,
+                      seedShellCount: look.slideCount,
+                    });
+                    queueTemplateCloneContentFill({
+                      projectId: result.project.id,
+                      seed: queuedFillSeed,
+                      attachments: firstMessageAttachments,
+                    });
+                  }
                   return look;
                 }
                 devLog.warn(
@@ -3105,17 +3138,50 @@ function AppInner() {
             if (seeded.ok) {
               seededDeckFileName = seeded.fileName;
               preservedFilledDeck = cloneResultSuppressesAiFill(seeded);
-              usedDeterministicCloneFill = true;
               deterministicSlideCount = seeded.slideCount ?? null;
+              if (!preservedFilledDeck) {
+                queuedFillSeed = buildTemplateCloneContentFillSeed({
+                  userInstruction: userFacingRequest || null,
+                  sourceBrief,
+                  pendingPrompt: derivedPendingPrompt ?? null,
+                  templateTitle: templateTitle || selectedDeckTemplateId,
+                  hasSourceMaterial,
+                  slideCountHint: slideCountHintFromInputs,
+                  seedShellCount: seeded.slideCount,
+                });
+                queueTemplateCloneContentFill({
+                  projectId: result.project.id,
+                  seed: queuedFillSeed,
+                  attachments: firstMessageAttachments,
+                });
+              } else {
+                usedDeterministicCloneFill = true;
+              }
               return seeded;
             }
             const look = await seedTemplateClonedDeck(cloneRequest);
             if (look.ok) {
               seededDeckFileName = look.fileName;
               preservedFilledDeck = cloneResultSuppressesAiFill(look);
-              // 루프421 — LOOK/filled deck is the deliverable. never MiniMax overwrite.
-              usedDeterministicCloneFill = true;
               deterministicSlideCount = look.slideCount ?? null;
+              if (preservedFilledDeck) {
+                usedDeterministicCloneFill = true;
+              } else {
+                queuedFillSeed = buildTemplateCloneContentFillSeed({
+                  userInstruction: userFacingRequest || null,
+                  sourceBrief,
+                  pendingPrompt: derivedPendingPrompt ?? null,
+                  templateTitle: templateTitle || selectedDeckTemplateId,
+                  hasSourceMaterial,
+                  slideCountHint: slideCountHintFromInputs,
+                  seedShellCount: look.slideCount,
+                });
+                queueTemplateCloneContentFill({
+                  projectId: result.project.id,
+                  seed: queuedFillSeed,
+                  attachments: firstMessageAttachments,
+                });
+              }
               return look;
             }
             devLog.warn(

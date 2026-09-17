@@ -175,5 +175,24 @@ Staging example · production example · 로컬 staging env는 루프463 기준 
 ## 10. Non-goals (이 문서)
 
 - deterministic 서버 fill 코드 삭제 (opt-in QA용 유지)
+
+## 2026-09-17 보정 — deterministic LOOK + 조건부 JSON 본문
+
+`deterministic`을 다시 기본 배포 모드로 사용하되, 서버 합성 문구를 완성본으로
+오인하던 경계를 제거했다.
+
+- daemon은 아웃라인 출처를 `resolved / densified / synthetic`으로 분류한다.
+- `핵심 주제`, `핵심 N`, `의미와 적용 기준을 한 문장으로 정리한다`처럼 일반
+  합성 문구가 남으면 `contentFilled` 대신 `needsAiContentFill`과
+  `templateCloneContentFillPending`을 기록한다.
+- 웹은 이 경우 템플릿 HTML을 모델에 다시 쓰게 하지 않고 JSON 아웃라인만
+  생성해 기존 LOOK seed의 슬롯에 적용한다. SVG, CSS, 도형, 레이아웃은 daemon
+  clone 결과가 계속 소유한다.
+- 실제 콘텐츠가 이미 채워진 덱만 `contentFilled / preservedFilled`로 자동 전송을
+  생략한다. 네트워크 응답 유실 뒤 단순 LOOK seed를 복구한 경우도 더 이상
+  완성본으로 간주하지 않는다.
+- staging/production 환경은 `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=deterministic`로
+  고정한다. 롤백은 이 값을 `prompt`, `json`, `pure-prompt` 중 하나로 바꾸는 기존
+  스위치를 그대로 사용한다.
 - MiniMax 없는 “완벽한” 서버-only 본문 품질을 기본으로 재승격
 - 하이브리드(즉시 미리보기 + 백그라운드 AI) 구현 — 별도 실행계획 필요 시 `0907-N02-2`로 분기

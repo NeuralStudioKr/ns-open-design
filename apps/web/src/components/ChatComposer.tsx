@@ -110,6 +110,7 @@ import {
   seedTemplateClonedDeck,
 } from '../teamver/seedTemplateClonedDeck';
 import {
+  buildTemplateCloneContentFillSeed,
   buildTemplateCloneFillSeedForCurrentMode,
   shouldSkipTemplateCloneSeed,
   shouldUseDeterministicTemplateCloneFill,
@@ -2286,7 +2287,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             const deterministicFill = shouldUseDeterministicTemplateCloneFill(
               hasExplicitCanvasTemplate,
             );
-            const jsonFill = shouldUseJsonTemplateCloneFill();
+            const jsonFill = deterministicFill || shouldUseJsonTemplateCloneFill();
             const seeded = deterministicFill
               ? await fillTemplateClonedDeckDeterministically(cloneRequest)
               : await seedTemplateClonedDeck(cloneRequest);
@@ -2299,7 +2300,12 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             setCanvasSlideLaunchError(null);
             setCanvasSlideUserPrompt('');
             setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
-            if (deterministicFill && seeded.ok) {
+            let fillSeedShellCount = seeded.ok ? seeded.slideCount : null;
+            if (
+              deterministicFill
+              && seeded.ok
+              && (seeded.contentFilled === true || seeded.preservedFilled === true)
+            ) {
               void patchProject(id, {
                 metadata: {
                   ...(projectMetadata ?? {}),
@@ -2311,28 +2317,29 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               return;
             }
             if (deterministicFill && !seeded.ok) {
-              // 루프421 — LOOK seed is enough. never MiniMax HTML rewrite —
-              // it overwrites the kit and fails AGENT_EXECUTION_FAILED.
               const look = await seedTemplateClonedDeck(cloneRequest);
               if (look.ok) {
+                fillSeedShellCount = look.slideCount;
                 onProjectFilesMaybeChanged?.();
                 onRequestOpenFile?.(look.fileName);
-                void patchProject(id, {
-                  metadata: {
-                    ...(projectMetadata ?? {}),
-                    ...templateBinding.projectMetadata,
-                    templateClonedDeckSeeded: true,
-                    ...deterministicCloneFilledMetadataFields(),
-                  },
-                });
-                return;
+                if (look.contentFilled === true || look.preservedFilled === true) {
+                  void patchProject(id, {
+                    metadata: {
+                      ...(projectMetadata ?? {}),
+                      ...templateBinding.projectMetadata,
+                      templateClonedDeckSeeded: true,
+                      ...deterministicCloneFilledMetadataFields(),
+                    },
+                  });
+                  return;
+                }
               }
             }
             // Clone LOOK seed is optional. Fill always runs as compact CREATE
             // so a clone miss cannot fall through to Neutral / instruction dump.
             // Do NOT attach deck.html (truncated mid-CSS anchors a max_tokens hang).
             // Preview still opens via onRequestOpenFile when clone succeeded.
-            const fillSeed = buildTemplateCloneFillSeedForCurrentMode({
+            const fillSeedOptions = {
               userInstruction: promptForRun,
               sourceBrief,
               templateTitle: selectedCanvasSlideTemplate.title,
@@ -2340,7 +2347,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               slideCountHint: canvasSlideQuickLengthToSlideCount(
                 canvasSlideQuickSettings.length,
               ),
-            }).seed;
+              seedShellCount: fillSeedShellCount,
+            };
+            const fillSeed = jsonFill
+              ? buildTemplateCloneContentFillSeed(fillSeedOptions)
+              : buildTemplateCloneFillSeedForCurrentMode(fillSeedOptions).seed;
             const baseMeta = currentRunContextMeta();
             const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
               designSystemId: designSystemIdForRun,
@@ -2557,7 +2568,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           const deterministicFill = shouldUseDeterministicTemplateCloneFill(
             hasExplicitDriveTemplate,
           );
-          const jsonFill = shouldUseJsonTemplateCloneFill();
+          const jsonFill = deterministicFill || shouldUseJsonTemplateCloneFill();
           const seeded = deterministicFill
             ? await fillTemplateClonedDeckDeterministically(cloneRequest)
             : await seedTemplateClonedDeck(cloneRequest);
@@ -2570,7 +2581,12 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           setCanvasSlideLaunchError(null);
           setCanvasSlideUserPrompt('');
           setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
-          if (deterministicFill && seeded.ok) {
+          let fillSeedShellCount = seeded.ok ? seeded.slideCount : null;
+          if (
+            deterministicFill
+            && seeded.ok
+            && (seeded.contentFilled === true || seeded.preservedFilled === true)
+          ) {
             void patchProject(id, {
               metadata: {
                 ...(projectMetadata ?? {}),
@@ -2582,25 +2598,27 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             return;
           }
           if (deterministicFill && !seeded.ok) {
-            // 루프421 — LOOK seed is enough. never MiniMax HTML rewrite.
             const look = await seedTemplateClonedDeck(cloneRequest);
             if (look.ok) {
+              fillSeedShellCount = look.slideCount;
               onProjectFilesMaybeChanged?.();
               onRequestOpenFile?.(look.fileName);
-              void patchProject(id, {
-                metadata: {
-                  ...(projectMetadata ?? {}),
-                  ...templateBinding.projectMetadata,
-                  templateClonedDeckSeeded: true,
-                  ...deterministicCloneFilledMetadataFields(),
-                },
-              });
-              return;
+              if (look.contentFilled === true || look.preservedFilled === true) {
+                void patchProject(id, {
+                  metadata: {
+                    ...(projectMetadata ?? {}),
+                    ...templateBinding.projectMetadata,
+                    templateClonedDeckSeeded: true,
+                    ...deterministicCloneFilledMetadataFields(),
+                  },
+                });
+                return;
+              }
             }
           }
           // Clone LOOK seed is optional. Fill always runs as compact CREATE
           // so a clone miss cannot fall through to Neutral / instruction dump.
-          const fillSeed = buildTemplateCloneFillSeedForCurrentMode({
+          const fillSeedOptions = {
             userInstruction: promptForRun,
             sourceBrief,
             templateTitle: selectedCanvasSlideTemplate.title,
@@ -2608,7 +2626,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             slideCountHint: canvasSlideQuickLengthToSlideCount(
               canvasSlideQuickSettings.length,
             ),
-          }).seed;
+            seedShellCount: fillSeedShellCount,
+          };
+          const fillSeed = jsonFill
+            ? buildTemplateCloneContentFillSeed(fillSeedOptions)
+            : buildTemplateCloneFillSeedForCurrentMode(fillSeedOptions).seed;
           const baseMeta = currentRunContextMeta();
           const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
             designSystemId: designSystemIdForRun,

@@ -66,9 +66,9 @@ export const CLONE_SLOT_FILL_REPAIR_ENTRY_FROM = 'clone_slot_fill_json_repair';
  *     Loop532 briefly defaulted to `deterministic` (no MiniMax) — that made
  *     Home create finish immediately with thin synth copy. Restored here.
  *
- *   `deterministic`: daemon seeds LOOK and fills shells on the server.
- *     Home skips MiniMax — fast, but outline/slot copy is thin (loop421).
- *     Explicit opt-in only.
+ *   `deterministic`: daemon owns LOOK/layout assembly. Concrete source copy
+ *     completes immediately; generic synthesized copy queues a JSON outline
+ *     so the model improves content without rewriting template HTML.
  *
  *   `json`: LOOK seed + AI dense JSON outline (opt-in only — MiniMax
  *     JSON-only turns often fail AGENT_EXECUTION_FAILED).
@@ -204,6 +204,7 @@ export function shouldSkipCreateAutoSendForDeterministicClone(input: {
     ? (input.metadata as Record<string, unknown>)
     : null;
   if (rec?.templateCloneContentFilled === true) return true;
+  if (rec?.templateCloneContentFillPending === true) return false;
   if (shouldUseDeterministicTemplateCloneFill() && isTemplateCloneHostFillPrompt(input.seed)) {
     return true;
   }

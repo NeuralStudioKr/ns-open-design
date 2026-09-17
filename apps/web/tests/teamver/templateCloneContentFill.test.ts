@@ -218,14 +218,14 @@ describe('templateCloneContentFill', () => {
       new URL('../../../../deploy/teamver/.env.staging.example', import.meta.url),
       'utf8',
     );
-    expect(stagingEnv).toMatch(/^VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=prompt$/m);
+    expect(stagingEnv).toMatch(/^VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=deterministic$/m);
     expect(stagingEnv).not.toMatch(/VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=pure-prompt/);
     const composer = readFileSync(
       new URL('../../src/components/ChatComposer.tsx', import.meta.url),
       'utf8',
     );
-    expect(composer).toContain('LOOK seed is enough');
-    expect(composer).toContain('never MiniMax');
+    expect(composer).toContain('seeded.contentFilled === true');
+    expect(composer).toContain('buildTemplateCloneContentFillSeed');
     const projectView = readFileSync(
       new URL('../../src/components/ProjectView.tsx', import.meta.url),
       'utf8',
@@ -234,7 +234,7 @@ describe('templateCloneContentFill', () => {
     expect(projectView).toContain('isTemplateCloneHostFillQueued');
     expect(projectView).toContain('queueTemplateClonePromptFill');
     expect(app).toContain('cloneResultSuppressesAiFill');
-    expect(app).toContain('never MiniMax');
+    expect(app).toContain('queueTemplateCloneContentFill');
     expect(app).toContain('deterministicCloneFilledMetadataFields');
     expect(composer).toContain('deterministicCloneFilledMetadataFields');
     expect(projectView).toContain('shouldExplainGenericBriefOnLookSeedFallback');
@@ -284,7 +284,15 @@ describe('templateCloneContentFill', () => {
       slideCount: 1,
       templateId: 'html-ppt-zhangzara-capsule',
       recoveredExisting: true,
-    })).toBe(true);
+    })).toBe(false);
+    expect(cloneResultSuppressesAiFill({
+      ok: true,
+      fileName: 'deck.html',
+      slideCount: 1,
+      templateId: 'html-ppt-zhangzara-capsule',
+      recoveredExisting: true,
+      needsAiContentFill: true,
+    })).toBe(false);
     expect(cloneResultSuppressesAiFill({
       ok: true,
       fileName: 'deck.html',
@@ -334,6 +342,13 @@ describe('templateCloneContentFill', () => {
         fillQueued: true,
       }),
     ).toBe(true);
+    expect(
+      shouldSkipCreateAutoSendForDeterministicClone({
+        metadata: { templateCloneContentFillPending: true },
+        seed: `${TEMPLATE_CLONE_CONTENT_FILL_MARKER}\nJSON only`,
+        fillQueued: true,
+      }),
+    ).toBe(false);
   });
 
   it('does not treat Canvas boilerplate as the visible request', () => {

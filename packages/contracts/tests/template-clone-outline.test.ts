@@ -15,6 +15,7 @@ import {
   parseTemplateCloneDeckOutline,
   recoverPartialTemplateCloneOutline,
   resolveTemplateCloneSlidesForDeterministicFill,
+  resolveTemplateCloneSlidesForDeterministicFillWithProvenance,
   stripTemplateCloneOutlineNoise,
   synthesizeTemplateCloneOutlineFromBrief,
   synthesizeTemplateCloneCoverLead,
@@ -476,6 +477,18 @@ describe('루프373 synthesizeTemplateCloneOutlineFromBrief', () => {
 });
 
 describe('루프419 resolveTemplateCloneSlidesForDeterministicFill', () => {
+  it('marks generic synthesis as a LOOK preview that still needs real content', () => {
+    const resolution = resolveTemplateCloneSlidesForDeterministicFillWithProvenance({
+      userInstruction: 'Teamver 소개 슬라이드를 만들어줘. 8~10장',
+      deckTitle: 'Teamver 소개',
+      slideCount: 10,
+    });
+
+    expect(['synthetic', 'densified']).toContain(resolution.source);
+    expect(resolution.needsAiContentFill).toBe(true);
+    expect(resolution.slides).toHaveLength(10);
+  });
+
   it('turns a short URL brief + 8-10 hint into a dense 10-slide outline', () => {
     const slides = resolveTemplateCloneSlidesForDeterministicFill({
       userInstruction: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장',

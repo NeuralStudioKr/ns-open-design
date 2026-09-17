@@ -466,9 +466,10 @@ describe('seedTemplateClonedDeckOnServer', () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.contentFilled).toBe(true);
-    expect(manifest?.metadata?.templateCloneContentFilled).toBe(true);
-    expect(manifest?.metadata?.templateCloneContentFillPending).toBe(false);
+    expect(result.contentFilled).toBeUndefined();
+    expect(result.needsAiContentFill).toBe(true);
+    expect(manifest?.metadata?.templateCloneContentFilled).toBe(false);
+    expect(manifest?.metadata?.templateCloneContentFillPending).toBe(true);
     expect(manifest?.metadata?.templateCloneFillMode).toBe('deterministic');
     expect(marked[0]?.contentFillMode).toBe('deterministic-fill');
   });
@@ -558,7 +559,8 @@ describe('seedTemplateClonedDeckOnServer', () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.contentFilled).toBe(true);
+    expect(result.contentFilled).toBeUndefined();
+    expect(result.needsAiContentFill).toBe(true);
     expect(result.slideCount).toBe(10);
     const deck = written.get('deck.html') ?? '';
     expect(deck).toContain('--coral');
@@ -1247,7 +1249,9 @@ describe('루프450/459 Zhangzara 서버 fill 스모크', () => {
 
       expect(result.ok, `[루프450:${spec.name}] server fill failed`).toBe(true);
       if (!result.ok) return;
-      expect(result.contentFilled, `[루프450:${spec.name}] contentFilled`).toBe(true);
+      expect(result.contentFilled, `[루프450:${spec.name}] contentFilled`).toBeUndefined();
+      expect(result.needsAiContentFill, `[루프450:${spec.name}] needsAiContentFill`)
+        .toBe(true);
       expect(result.slideCount, `[루프450:${spec.name}] slideCount`)
         .toBe(spec.expectedSlideCount);
 
