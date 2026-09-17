@@ -559,6 +559,7 @@ import {
   countHeadPreambleContinueAttempts,
   decideHeadPreambleRecovery,
   isHeadPreambleContinuePrompt,
+  looksLikeAbandonedHeadPreambleStub,
   shouldEmitHeadPreambleBanner,
 } from '../teamver/headPreambleContinue';
 import { resolvePersistDeckDisplayTitle } from '../teamver/persistDeckDisplayTitle';
@@ -10719,7 +10720,17 @@ export function ProjectView({
       runAutoRetryForShortResponseRef.current =
         meta?.autoRetryForShortResponse === true
         || isShortResponseAutoRetryPrompt(prompt);
-      runHeadPreambleContinueRef.current = isHeadPreambleContinuePrompt(prompt);
+      runHeadPreambleContinueRef.current = isHeadPreambleContinuePrompt(prompt)
+        || (
+          isAutoContinueSend
+          && (
+            countHeadPreambleContinueAttempts(historyBase) > 0
+            || historyBase.some((message) => (
+              message.role === 'assistant'
+              && looksLikeAbandonedHeadPreambleStub(message.content)
+            ))
+          )
+        );
       const fillSlideCountHint =
         extractTemplateCloneFillSlideCountHintFromPrompt(
           retryTarget ? retryTarget.userMsg.content || prompt : prompt,

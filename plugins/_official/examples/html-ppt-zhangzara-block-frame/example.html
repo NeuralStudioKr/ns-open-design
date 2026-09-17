@@ -209,6 +209,24 @@
       letter-spacing: 0.02em;
     }
 
+    /* Hangul: tracking + uppercase on Inter visually breaks syllables. */
+    html:lang(ko) .nb-label,
+    html:lang(ko) .nb-heading-xl,
+    html:lang(ko) .nb-heading-lg,
+    html:lang(ko) .nb-heading-md,
+    html:lang(ko) .step-title,
+    html:lang(ko) .intro-card h3,
+    html:lang(ko) .feature-card h3,
+    html:lang(ko) .quote-text,
+    html:lang(ko) .quote-author,
+    html:lang(ko) .data-label,
+    html:lang(ko) .stat-label,
+    html:lang(ko) .team-name,
+    html:lang(ko) .team-role {
+      letter-spacing: 0;
+      text-transform: none;
+    }
+
     /* Decorative elements */
     .deco-circle {
       border-radius: 50%;

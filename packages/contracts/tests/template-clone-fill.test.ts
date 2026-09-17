@@ -66,9 +66,12 @@ import {
   RAW_GRID_PITCH_KIT_KEY,
   RAW_GRID_PITCH_SLOT_MAP,
   healProductLaunchLeftoverCatalogCopy,
+  healBlockFrameLeftoverCatalogCopy,
   attachKoreanJosa,
   officialLookIsProductLaunchHalo,
+  officialLookIsNeoBrutalBlockFrame,
   PRODUCT_LAUNCH_HALO_KIT_KEY,
+  BLOCK_FRAME_NEO_KIT_KEY,
   PRODUCT_LAUNCH_SLOT_MAP,
   resolveTemplateCloneKitKey,
   scrubRawGridFinancialClicheText,
@@ -1761,6 +1764,35 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(healed).not.toMatch(/Halo v2|\$179|\$279|\$399/i);
     expect(healed).not.toMatch(/>\s*Pricing\s*</);
     expect(healed).toMatch(/Teamver 시작하기|지금 시작하기/);
+  });
+
+  it('루프555 — Block Frame leftover heal restores glued Korean and drops role templates', async () => {
+    const html = await readFile(
+      new URL('./fixtures/loop555-block-frame-broken-ko.html', import.meta.url),
+      'utf8',
+    );
+    expect(officialLookIsNeoBrutalBlockFrame(html)).toBe(true);
+    const emptySynth = synthesizeTemplateCloneSlideBody(
+      'Teamver 소개',
+      '근거와 사례',
+      4,
+      'www.teamver.com 서비스 소개',
+      BLOCK_FRAME_NEO_KIT_KEY,
+    );
+    expect(emptySynth.items).toEqual([]);
+    expect(JSON.stringify(emptySynth)).not.toMatch(/실무자|리더|운영자/);
+
+    const healed = salvageMalformedMiniMaxSlideMarkup(html, 'Teamver 소개');
+    expect(healed).toMatch(/고객 경험/);
+    expect(healed).not.toMatch(/고객경험/);
+    expect(healed).toMatch(/근거와 사례/);
+    expect(healed).not.toMatch(/근거와사례/);
+    expect(healed).not.toMatch(/실무자|리더|운영자/);
+    expect(healed).not.toMatch(/파일떴|희대다|정척적/);
+    expect(healed).not.toMatch(/고 객 경 험|근 거 와 사 례|실 무 자/);
+    expect(healed).toMatch(/letter-spacing:\s*0\s*!important/);
+    expect(healed).toMatch(/text-transform:\s*none\s*!important/);
+    expect(healBlockFrameLeftoverCatalogCopy(html, 'Teamver 소개')).toMatch(/고객 경험/);
   });
 
   it('루프538 — Grove forest kit demo chrome (landscape / grove-stat KPI / sidebar) is scrubbed', async () => {

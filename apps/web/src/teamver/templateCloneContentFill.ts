@@ -1044,7 +1044,7 @@ export function buildTemplateClonePromptFillSeed(options: {
     'Every KPI/stat cell must be a complete card (number + label inside one bordered shell). Do not leave bare .stat-number/.stat-label siblings or empty .stat-card shells.',
     'Neo / Block Frame cards (`.nb-card`, `.intro-card`, `.feature-card`): put title AND body text INSIDE the same card element. Never leave description divs as grid siblings of `.nb-card` — that breaks the 3-column layout.',
     'Diagram grids (`1fr auto 1fr`): keep left cluster + arrow + right result only. Put checklists BELOW the diagram grid, not as a fourth grid child.',
-    'Keep kit CSS variables by including the template look (:root --pink/--blue/…). Never emit var(--pink) without defining tokens.',
+    'Reuse LOOK seed :root tokens already on disk. Do not re-emit full kit CSS in <head>. Never emit var(--pink) without defining tokens.',
     'If the kit is neo-brutal Block Frame (hero-frame, .slide-1…N, --pink/--cream), keep that DOM. Do not emit IB magazine chrome (mast, ribbon, h1.display, cover-meta, foot, or 학습 노트).',
     'Cover title must be a product/brand name derived from the brief or URL host (keep Latin host spelling; do not phonetic-Hangulize). Never leave a raw URL or truncated host crumb like "www.example.com 사이".',
     hasAttachedSource

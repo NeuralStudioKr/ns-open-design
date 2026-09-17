@@ -1760,7 +1760,7 @@ export function synthesizeTemplateCloneSlideBody(
   brief?: string | null,
   kitKey?: string | null,
 ): Pick<TemplateCloneSlideContent, 'body' | 'roleHint' | 'items' | 'lead'> {
-  if (kitKey === PRODUCT_LAUNCH_HALO_KIT_KEY) {
+  if (kitKey === PRODUCT_LAUNCH_HALO_KIT_KEY || kitKey === BLOCK_FRAME_NEO_KIT_KEY) {
     const briefLine = String(brief ?? '').replace(/\s+/g, ' ').trim();
     const oneLiner = briefLine.length >= 4
       && briefLine.length <= 80
@@ -2865,6 +2865,9 @@ export function officialLookIsProductLaunchHalo(html: string): boolean {
 /** Stable kit key for Product Launch Halo catalog (resolver + heal). */
 export const PRODUCT_LAUNCH_HALO_KIT_KEY = 'product-launch-halo' as const;
 
+/** Stable kit key for Zhangzara Block Frame / neo-brutal. */
+export const BLOCK_FRAME_NEO_KIT_KEY = 'block-frame-neo' as const;
+
 /**
  * 루프550 — look HTML → kit key. Raw Grid is first so its `s1`/`s8`
  * chrome does not fall through to Creative / other numeric-sN kits.
@@ -2875,6 +2878,7 @@ export function resolveTemplateCloneKitKey(html: string): string | null {
   if (!source.trim()) return null;
   if (officialLookIsRawGridPitch(source)) return RAW_GRID_PITCH_KIT_KEY;
   if (officialLookIsProductLaunchHalo(source)) return PRODUCT_LAUNCH_HALO_KIT_KEY;
+  if (officialLookIsNeoBrutalBlockFrame(source)) return BLOCK_FRAME_NEO_KIT_KEY;
   return null;
 }
 
@@ -3206,19 +3210,25 @@ function rewriteUrlTitlesInFragment(
  * 루프387 — Zhangzara Block Frame / neo-brutal look (or Motif deco sheet).
  * IB magazine chrome must not be stamped onto these kits.
  */
-function officialLookIsNeoBrutalBlockFrame(html: string): boolean {
+export function officialLookIsNeoBrutalBlockFrame(html: string): boolean {
   const source = String(html ?? '');
   // Capsule / Playful / Coral share slide-1/slide-10 hosts — their chrome wins there.
   if (officialLookIsCapsule(source)) return false;
   if (officialLookIsPlayful(source)) return false;
   if (officialLookIsCoral(source)) return false;
   const css = lookCssWithoutNeutralize(source);
-  if (css.trim()) {
-    if (/\.slide-1\s+\.hero-frame\b/i.test(css)) return true;
-    if (/--pink\s*:\s*#FE90E8/i.test(css) && /\.nb-heading-(?:xl|lg)\b/i.test(css)) {
-      return true;
-    }
-    if (/--pink\s*:\s*#FE90E8/i.test(css) && /\.feature-card\b/i.test(css)) return true;
+  const hay = `${css}\n${source}`;
+  if (/\.slide-1\s+\.hero-frame\b/i.test(hay)) return true;
+  if (/--pink\s*:\s*#FE90E8/i.test(hay) && /\.nb-heading-(?:xl|lg)\b/i.test(hay)) {
+    return true;
+  }
+  if (/--pink\s*:\s*#FE90E8/i.test(hay) && /\.feature-card\b/i.test(hay)) return true;
+  if (
+    /#FE90E8|--pink\s*:\s*#FE90E8/i.test(hay)
+    && /\bhero-frame\b|\.hero-frame\b/i.test(hay)
+    && /\b(?:timeline-step|intro-card|nb-heading-lg|nb-label)\b/i.test(hay)
+  ) {
+    return true;
   }
   const deco = [...source.matchAll(
     /<style\b[^>]*\bdata-od-official-motif-deco-css\b[^>]*>([\s\S]*?)<\/style>/gi,
@@ -6289,6 +6299,7 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = healGroveLeftoverCatalogCopy(next, brief);
   next = healCreativeLeftoverCatalogCopy(next, brief);
   next = healBlockFrameInventedHeroShells(next);
+  next = healBlockFrameLeftoverCatalogCopy(next, brief);
   // 루프540 — 8-Bit Orbit tier/timeline/stat leftover 카탈로그 카피
   // (English $29/mo / Rookie / Studio Orbital 등)까지 청소.
   next = healEightBitOrbitLeftoverCatalogCopy(next, brief);
@@ -10280,6 +10291,212 @@ export function healBlockFrameGenericKoreanLeftovers(
   return next;
 }
 
+const BLOCK_FRAME_KEEPABLE_KO_MIN = 20;
+
+const BLOCK_FRAME_ROLE_TITLE_RE = /^(?:실무자|리더|운영자)$/;
+
+const BLOCK_FRAME_BROKEN_TOKEN_MAP: Record<string, string> = {
+  파일떴: '파일럿',
+  희대다: '확대',
+  정척적: '정착',
+};
+
+const BLOCK_FRAME_GLUED_TITLE_PAIRS: ReadonlyArray<readonly [string, string]> = [
+  ['근거와사례', '근거와 사례'],
+  ['고객경험', '고객 경험'],
+  ['실행방안', '실행 방안'],
+  ['도입로드맵', '도입 로드맵'],
+  ['성과지표', '성과 지표'],
+  ['핵심포인트', '핵심 포인트'],
+  ['운영과보안', '운영과 보안'],
+];
+
+const BLOCK_FRAME_ROLE_BODY_RE =
+  /반복 작업을 줄이고 결과물 완성도|팀 속도,\s*품질,\s*비용|권한,\s*저장,\s*(?:감사,\s*)?보안 요구|작은 팀이나 단일 업무에서 빠르게 파일럿/;
+
+const BLOCK_FRAME_SEED_CARD_TITLES = ['Strategy First', 'Design System', 'Launch Ready'] as const;
+const BLOCK_FRAME_SEED_STEP_TITLES = ['Research', 'Concept', 'Build', 'Launch'] as const;
+
+const BLOCK_FRAME_HANGUL_TYPE_ATTR = 'data-od-block-frame-hangul-type';
+const BLOCK_FRAME_HANGUL_TYPE_MARK = 'data-od-block-frame-hangul-type-css';
+
+const BLOCK_FRAME_HANGUL_TYPE_CSS = `
+html:lang(ko) .nb-label,
+html[lang="ko"] .nb-label,
+html:lang(ko) .nb-heading-xl,
+html:lang(ko) .nb-heading-lg,
+html:lang(ko) .nb-heading-md,
+html:lang(ko) .step-title,
+html:lang(ko) .intro-card h3,
+html:lang(ko) .feature-card h3,
+html:lang(ko) .quote-text,
+html:lang(ko) .quote-author,
+html:lang(ko) .data-label,
+html:lang(ko) .stat-label,
+html:lang(ko) .team-name,
+html:lang(ko) .team-role,
+[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .nb-label,
+[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .nb-heading-xl,
+[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .nb-heading-lg,
+[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .nb-heading-md,
+[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .step-title,
+[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .intro-card h3,
+[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .feature-card h3,
+[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .quote-text,
+[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .quote-author,
+[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .data-label,
+[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .stat-label,
+[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .team-name,
+[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .team-role {
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+`.trim();
+
+function blockFrameVisibleCopy(html: string): string {
+  return String(html ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function restoreBlockFrameGluedKoreanTitle(text: string): string {
+  let next = String(text ?? '');
+  for (const [glued, spaced] of BLOCK_FRAME_GLUED_TITLE_PAIRS) {
+    if (next.includes(glued)) next = next.split(glued).join(spaced);
+  }
+  return next;
+}
+
+function restoreBlockFrameBrokenTokens(text: string): string {
+  let next = String(text ?? '');
+  for (const [broken, fixed] of Object.entries(BLOCK_FRAME_BROKEN_TOKEN_MAP)) {
+    if (next.includes(broken)) next = next.split(broken).join(fixed);
+  }
+  return next;
+}
+
+function blockFrameCopyIsKeepable(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (value.length < BLOCK_FRAME_KEEPABLE_KO_MIN) return false;
+  if (!/[가-힣]/.test(value)) return false;
+  if (BLOCK_FRAME_ROLE_BODY_RE.test(value)) return false;
+  if (BLOCK_FRAME_ROLE_TITLE_RE.test(value)) return false;
+  if (Object.keys(BLOCK_FRAME_BROKEN_TOKEN_MAP).some((token) => value.includes(token))) {
+    return false;
+  }
+  return true;
+}
+
+function rewriteBlockFrameHeadingCopy(
+  raw: string,
+  kind: 'card' | 'step' | 'title',
+  index: number,
+): string {
+  let text = restoreBlockFrameBrokenTokens(restoreBlockFrameGluedKoreanTitle(raw)).replace(/\s+/g, ' ').trim();
+  if (BLOCK_FRAME_ROLE_TITLE_RE.test(text)) {
+    if (kind === 'step') return BLOCK_FRAME_SEED_STEP_TITLES[index] ?? text;
+    if (kind === 'card') return BLOCK_FRAME_SEED_CARD_TITLES[index] ?? text;
+    return '';
+  }
+  return text;
+}
+
+/**
+ * 루프555 / N28 — Block Frame leftover-only heal.
+ * Product Launch 역할 템플릿과 붙여쓴 한글 제목만 정리. 한국어 ≥20은 유지.
+ * letter-spacing/uppercase 는 한글 덱에서 끈다. 음절 사이 공백은 넣지 않는다.
+ */
+export function healBlockFrameLeftoverCatalogCopy(
+  html: string,
+  _brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsNeoBrutalBlockFrame(dest)) return dest;
+  const hasHangul = ((dest.match(/[가-힣]/g) ?? []).length >= 2);
+  let out = dest;
+  if (hasHangul) {
+    out = out.replace(
+      /<html\b([^>]*)>/i,
+      (_full, attrs: string) => {
+        let next = String(attrs ?? '');
+        if (!/\blang\s*=/i.test(next)) next += ' lang="ko"';
+        else next = next.replace(/\blang\s*=\s*(["']).*?\1/i, 'lang="ko"');
+        if (!new RegExp(`\\b${BLOCK_FRAME_HANGUL_TYPE_ATTR}\\b`).test(next)) {
+          next += ` ${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"`;
+        }
+        return `<html${next}>`;
+      },
+    );
+    out = injectStyleMark(out, BLOCK_FRAME_HANGUL_TYPE_MARK, BLOCK_FRAME_HANGUL_TYPE_CSS);
+  }
+
+  const rewriteLeaf = (
+    full: string,
+    open: string,
+    inner: string,
+    close: string,
+    kind: 'card' | 'step' | 'title',
+    index: number,
+  ): string => {
+    const plain = blockFrameVisibleCopy(inner);
+    if (!plain) return full;
+    if (blockFrameCopyIsKeepable(plain) && !BLOCK_FRAME_ROLE_TITLE_RE.test(plain)) {
+      const restored = restoreBlockFrameGluedKoreanTitle(inner);
+      return restored === inner ? full : `${open}${restored}${close}`;
+    }
+    if (BLOCK_FRAME_ROLE_BODY_RE.test(plain)) {
+      return `${open}${close}`;
+    }
+    const next = rewriteBlockFrameHeadingCopy(plain, kind, index);
+    if (!next || next === plain) {
+      const restored = restoreBlockFrameBrokenTokens(restoreBlockFrameGluedKoreanTitle(inner));
+      return restored === inner ? full : `${open}${restored}${close}`;
+    }
+    return `${open}${escapeHtml(next)}${close}`;
+  };
+
+  let cardIndex = 0;
+  out = out.replace(
+    /(<(?:h[1-4])\b[^>]*>)([\s\S]*?)(<\/h[1-4]>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const kind = /intro-card|feature-card|team-card|nb-card/i.test(full)
+        || /<(?:h3|h4)\b/i.test(open)
+        ? 'card'
+        : 'title';
+      const index = kind === 'card' ? cardIndex++ : 0;
+      return rewriteLeaf(full, open, inner, close, kind, index);
+    },
+  );
+
+  let stepIndex = 0;
+  out = out.replace(
+    /(<(?:div|span|p)\b[^>]*\bstep-title\b[^>]*>)([\s\S]*?)(<\/(?:div|span|p)>)/gi,
+    (full, open: string, inner: string, close: string) => (
+      rewriteLeaf(full, open, inner, close, 'step', stepIndex++)
+    ),
+  );
+
+  out = out.replace(
+    /(<(?:p|div|span)\b[^>]*(?:\bstep-desc\b|\bnb-body\b)[^>]*>)([\s\S]*?)(<\/(?:p|div|span)>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const plain = blockFrameVisibleCopy(inner);
+      if (!plain) return full;
+      if (blockFrameCopyIsKeepable(plain)) return full;
+      if (BLOCK_FRAME_ROLE_BODY_RE.test(plain)) return `${open}${close}`;
+      const restored = restoreBlockFrameBrokenTokens(inner);
+      return restored === inner ? full : `${open}${restored}${close}`;
+    },
+  );
+
+  out = out.replace(
+    /(<(?:div|span|p|h[1-3])\b[^>]*(?:\bnb-heading|\bhero-title|\bnb-label)[^>]*>)([\s\S]*?)(<\/(?:div|span|p|h[1-3])>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const restored = restoreBlockFrameBrokenTokens(restoreBlockFrameGluedKoreanTitle(inner));
+      return restored === inner ? full : `${open}${restored}${close}`;
+    },
+  );
+
+  return out;
+}
+
 function fillBlockFrameNeoSlots(
   body: string,
   input: {
@@ -11673,6 +11890,7 @@ function enrichSparseSlideForShell(
   deckTitle: string,
   brief: string | null | undefined,
   slotMap: TemplateCloneSlotMap | null | undefined,
+  kitKey?: string | null,
 ): TemplateCloneSlideContent {
   if (index === 0) return slide;
   if (slide.roleHint === 'cover' || slide.roleHint === 'closing') return slide;
@@ -11691,9 +11909,13 @@ function enrichSparseSlideForShell(
     slide.title,
     Math.max(1, index),
     brief,
-    officialLookIsRawGridPitch(shell.body) || officialLookIsRawGridPitch(String(brief ?? ''))
-      ? RAW_GRID_PITCH_KIT_KEY
-      : null,
+    kitKey
+      ?? (officialLookIsRawGridPitch(shell.body) || officialLookIsRawGridPitch(String(brief ?? ''))
+        ? RAW_GRID_PITCH_KIT_KEY
+        : officialLookIsNeoBrutalBlockFrame(shell.body)
+          || officialLookIsNeoBrutalBlockFrame(`${shell.attrs}\n${shell.body}`)
+          ? BLOCK_FRAME_NEO_KIT_KEY
+          : null),
   );
 
   // Loop517 — Prompt-fill often extracts title-only cards. Keep those titles
@@ -11904,7 +12126,7 @@ export function buildTemplateClonedDeckHtml(
     ) {
       padStartIndex = workingSlides.length;
       while (workingSlides.length < hint) {
-        if (officialLookIsProductLaunchHalo(source)) {
+        if (officialLookIsProductLaunchHalo(source) || officialLookIsNeoBrutalBlockFrame(source)) {
           const briefLine = String(options.brief ?? '').replace(/\s+/g, ' ').trim();
           const oneLiner = briefLine.length >= 4
             && briefLine.length <= 80
@@ -11926,6 +12148,7 @@ export function buildTemplateClonedDeckHtml(
               label,
               Math.max(1, n - 1),
               options.brief,
+              resolveTemplateCloneKitKey(source),
             ),
           });
         }
@@ -11972,7 +12195,13 @@ export function buildTemplateClonedDeckHtml(
       }
       return {
         title: label,
-        ...synthesizeTemplateCloneSlideBody(deckTitle, label, index, options.brief),
+        ...synthesizeTemplateCloneSlideBody(
+          deckTitle,
+          label,
+          index,
+          options.brief,
+          resolveTemplateCloneKitKey(source),
+        ),
       };
     });
   }
@@ -11985,6 +12214,7 @@ export function buildTemplateClonedDeckHtml(
     deckTitle,
     options.brief ?? null,
     slotMap,
+    resolveTemplateCloneKitKey(source),
   ));
   const filled = picked.map((shell, index) => {
     const content = enrichedSlides[index] ?? {

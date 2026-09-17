@@ -14,13 +14,51 @@ export function isHeadPreambleContinuePrompt(content: string | null | undefined)
   return String(content ?? '').includes(HEAD_PREAMBLE_CONTINUE_SENTINEL);
 }
 
+export function looksLikeAbandonedHeadPreambleStub(text: string | null | undefined): boolean {
+  const raw = String(text ?? '');
+  if (!raw.trim()) return false;
+  if (looksLikeHeadOpenedDeckPreamble(raw)) return true;
+  return /head kit dump abandoned/i.test(raw)
+    && !/<section\b[^>]*class=["'][^"']*\bslide\b/i.test(raw);
+}
+
+function assistantLooksLikeHeadPreambleSignal(
+  message: { role?: string; content?: string | null; events?: readonly { code?: string | null }[] | null },
+): boolean {
+  if (message.role !== 'assistant') return false;
+  if (looksLikeAbandonedHeadPreambleStub(message.content)) return true;
+  return (message.events ?? []).some(
+    (event) => event.code === STALLED_HEAD_PREAMBLE_STATUS_CODE,
+  );
+}
+
+/**
+ * Count head-preamble continues. Generic auto-continue after a head stall
+ * counts too — otherwise api-proxy idle / stalledRun strip the head and
+ * bypass the 1-continue guard via `<!--od:auto_continue_incomplete_output-->`.
+ */
 export function countHeadPreambleContinueAttempts(
-  messages: readonly { role?: string; content?: string | null }[],
+  messages: readonly {
+    role?: string;
+    content?: string | null;
+    events?: readonly { code?: string | null }[] | null;
+  }[],
 ): number {
-  return messages.reduce((count, message) => {
-    if (message.role !== 'user') return count;
-    return isHeadPreambleContinuePrompt(message.content) ? count + 1 : count;
-  }, 0);
+  let headSeen = false;
+  let count = 0;
+  for (const message of messages) {
+    if (assistantLooksLikeHeadPreambleSignal(message)) headSeen = true;
+    if (message.role !== 'user') continue;
+    if (isHeadPreambleContinuePrompt(message.content)) {
+      count += 1;
+      headSeen = true;
+      continue;
+    }
+    if (headSeen && String(message.content ?? '').includes(AUTO_CONTINUE_PROMPT_SENTINEL)) {
+      count += 1;
+    }
+  }
+  return count;
 }
 
 export function countHeadPreambleBannerEmits(
@@ -34,15 +72,19 @@ export function countHeadPreambleBannerEmits(
   }, 0);
 }
 
-export function shouldEmitHeadPreambleBanner(priorEmits: number): boolean {
-  return priorEmits < HEAD_PREAMBLE_CONTINUE_MAX;
+/** N28 — never show the Korean head-stall banner. Continue still runs silently. */
+export function shouldEmitHeadPreambleBanner(_priorEmits?: number): boolean {
+  return false;
 }
 
 export function decideHeadPreambleRecovery(input: {
   streamedText: string;
   priorHeadPreambleContinues: number;
+  treatAsHeadPreamble?: boolean;
 }): 'continue' | 'fallback' | 'none' {
-  if (!looksLikeHeadOpenedDeckPreamble(input.streamedText)) return 'none';
+  const headLike = looksLikeAbandonedHeadPreambleStub(input.streamedText)
+    || input.treatAsHeadPreamble === true;
+  if (!headLike) return 'none';
   if (input.priorHeadPreambleContinues >= HEAD_PREAMBLE_CONTINUE_MAX) return 'fallback';
   return 'continue';
 }

@@ -91,8 +91,8 @@ describe('0917-N25 head preamble continue', () => {
     })).toBe('none');
   });
 
-  it('배너 문구는 한 run에 한 번만 emit', () => {
-    expect(shouldEmitHeadPreambleBanner(0)).toBe(true);
+  it('배너 문구는 같은 생성에서 0회', () => {
+    expect(shouldEmitHeadPreambleBanner(0)).toBe(false);
     expect(shouldEmitHeadPreambleBanner(1)).toBe(false);
     expect(countHeadPreambleBannerEmits([
       { events: [{ code: STALLED_HEAD_PREAMBLE_STATUS_CODE }] },
@@ -103,6 +103,25 @@ describe('0917-N25 head preamble continue', () => {
         { events: [{ code: STALLED_HEAD_PREAMBLE_STATUS_CODE }] },
       ]),
     )).toBe(false);
+  });
+
+  it('generic auto-continue after a head stall counts as the one continue', () => {
+    expect(countHeadPreambleContinueAttempts([
+      { role: 'assistant', content: headOnly },
+      { role: 'user', content: '<!--od:auto_continue_incomplete_output-->\n이어서' },
+    ])).toBe(1);
+    expect(decideHeadPreambleRecovery({
+      streamedText: headOnly,
+      priorHeadPreambleContinues: 1,
+    })).toBe('fallback');
+    expect(decideHeadPreambleRecovery({
+      streamedText: '작성 중입니다.\n<artifact type="deck">\n<!-- head kit dump abandoned -->',
+      priorHeadPreambleContinues: 0,
+    })).toBe('continue');
+    expect(decideHeadPreambleRecovery({
+      streamedText: '작성 중입니다.\n<artifact type="deck">\n<!-- head kit dump abandoned -->',
+      priorHeadPreambleContinues: 1,
+    })).toBe('fallback');
   });
 
   it('head-only → continue → 2 slides persist pads to seed 10 with pad marker', () => {
