@@ -38,6 +38,16 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프556 — Block Frame 운영차트·역할 leftover·한글 tracking (lang=en)
+
+체감: 555 이후에도 `운영과보안` + Q1–Q5 데모 막대 + `전환율`/`활성`/`품질` + `실무자`/`리더`/`운영자`. [0917-N29-1](./0917-N29-1-상위설계-[block_frame_ops_chart_leftover].md).
+
+원인: leftover heal이 chart neutralize 미호출. var() fill 막대 미균등. leftover 본문/지표 선택자 누락. tracking이 `:lang(ko)` 만.
+
+수정: persist leftover heal에서 chart wipe · 역할/지표 leftover · `data-od-hangul` tracking.
+
+검증: contracts `loop556-block-frame-ops-chart.html`.
+
 ### 루프555 — MiniMax outline placeholder / 반복 / 파롯 회귀 (v1.4.15 대비)
 
 체감: 2026-09-17 사용자 리포트 실물 — `주제가 해결하는 문제` / `쓰는 순서를 쓰는 순서` / 동일 Fit 슬라이드 중복 / `Teamver 소개 2`.

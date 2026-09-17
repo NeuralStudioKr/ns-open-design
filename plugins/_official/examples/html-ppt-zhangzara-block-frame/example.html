@@ -209,20 +209,37 @@
       letter-spacing: 0.02em;
     }
 
-    /* Hangul: tracking + uppercase on Inter visually breaks syllables. */
+    /* Hangul: tracking + uppercase on Inter visually breaks syllables.
+       Do not rely on :lang(ko) alone — MiniMax often emits html[lang=en]. */
     html:lang(ko) .nb-label,
     html:lang(ko) .nb-heading-xl,
     html:lang(ko) .nb-heading-lg,
     html:lang(ko) .nb-heading-md,
+    html:lang(ko) .nb-mono,
     html:lang(ko) .step-title,
     html:lang(ko) .intro-card h3,
+    html:lang(ko) .intro-card p,
     html:lang(ko) .feature-card h3,
+    html:lang(ko) .nb-card h3,
+    html:lang(ko) .card h3,
     html:lang(ko) .quote-text,
     html:lang(ko) .quote-author,
     html:lang(ko) .data-label,
+    html:lang(ko) .data-num,
     html:lang(ko) .stat-label,
+    html:lang(ko) .legend-item,
     html:lang(ko) .team-name,
-    html:lang(ko) .team-role {
+    html:lang(ko) .team-role,
+    [data-od-block-frame-hangul-type="1"] .nb-label,
+    [data-od-block-frame-hangul-type="1"] .nb-heading-xl,
+    [data-od-block-frame-hangul-type="1"] .nb-heading-lg,
+    [data-od-block-frame-hangul-type="1"] .nb-heading-md,
+    [data-od-block-frame-hangul-type="1"] .nb-mono,
+    [data-od-block-frame-hangul-type="1"] .step-title,
+    [data-od-block-frame-hangul-type="1"] .intro-card h3,
+    [data-od-block-frame-hangul-type="1"] .data-label,
+    [data-od-block-frame-hangul-type="1"] .legend-item,
+    [data-od-hangul="1"] {
       letter-spacing: 0;
       text-transform: none;
     }

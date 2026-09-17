@@ -10294,6 +10294,7 @@ export function healBlockFrameGenericKoreanLeftovers(
 const BLOCK_FRAME_KEEPABLE_KO_MIN = 20;
 
 const BLOCK_FRAME_ROLE_TITLE_RE = /^(?:실무자|리더|운영자)$/;
+const BLOCK_FRAME_METRIC_LABEL_RE = /^(?:전환율|전환|활성|품질)$/;
 
 const BLOCK_FRAME_BROKEN_TOKEN_MAP: Record<string, string> = {
   파일떴: '파일럿',
@@ -10312,46 +10313,51 @@ const BLOCK_FRAME_GLUED_TITLE_PAIRS: ReadonlyArray<readonly [string, string]> = 
 ];
 
 const BLOCK_FRAME_ROLE_BODY_RE =
-  /반복 작업을 줄이고 결과물 완성도|팀 속도,\s*품질,\s*비용|권한,\s*저장,\s*(?:감사,\s*)?보안 요구|작은 팀이나 단일 업무에서 빠르게 파일럿/;
+  /반복 작업을 줄이고 결과물 완성도|팀 속도,\s*품질,\s*비용|권한,\s*저장,\s*(?:감사,\s*)?보안 요구|작은 팀이나 단일 업무에서 빠르게 파일럿|방문에서 문의[·,]\s*가입까지 이어지는 전환율|핵심 기능 반복 사용,\s*팀 초대|결과물 완성도,\s*수정 횟수/;
 
 const BLOCK_FRAME_SEED_CARD_TITLES = ['Strategy First', 'Design System', 'Launch Ready'] as const;
 const BLOCK_FRAME_SEED_STEP_TITLES = ['Research', 'Concept', 'Build', 'Launch'] as const;
 
 const BLOCK_FRAME_HANGUL_TYPE_ATTR = 'data-od-block-frame-hangul-type';
+const BLOCK_FRAME_HANGUL_ELEM_ATTR = 'data-od-hangul';
 const BLOCK_FRAME_HANGUL_TYPE_MARK = 'data-od-block-frame-hangul-type-css';
 
-const BLOCK_FRAME_HANGUL_TYPE_CSS = `
-html:lang(ko) .nb-label,
-html[lang="ko"] .nb-label,
-html:lang(ko) .nb-heading-xl,
-html:lang(ko) .nb-heading-lg,
-html:lang(ko) .nb-heading-md,
-html:lang(ko) .step-title,
-html:lang(ko) .intro-card h3,
-html:lang(ko) .feature-card h3,
-html:lang(ko) .quote-text,
-html:lang(ko) .quote-author,
-html:lang(ko) .data-label,
-html:lang(ko) .stat-label,
-html:lang(ko) .team-name,
-html:lang(ko) .team-role,
-[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .nb-label,
-[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .nb-heading-xl,
-[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .nb-heading-lg,
-[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .nb-heading-md,
-[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .step-title,
-[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .intro-card h3,
-[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .feature-card h3,
-[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .quote-text,
-[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .quote-author,
-[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .data-label,
-[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .stat-label,
-[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .team-name,
-[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] .team-role {
+const BLOCK_FRAME_HANGUL_TRACKING_SELECTORS = [
+  '.nb-label',
+  '.nb-heading-xl',
+  '.nb-heading-lg',
+  '.nb-heading-md',
+  '.nb-mono',
+  '.step-title',
+  '.intro-card h3',
+  '.intro-card p',
+  '.feature-card h3',
+  '.feature-card p',
+  '.nb-card h3',
+  '.nb-card h4',
+  '.card h3',
+  '.card h4',
+  '.quote-text',
+  '.quote-author',
+  '.data-label',
+  '.data-num',
+  '.stat-label',
+  '.legend-item',
+  '.team-name',
+  '.team-role',
+] as const;
+
+const BLOCK_FRAME_HANGUL_TYPE_CSS = [
+  ...BLOCK_FRAME_HANGUL_TRACKING_SELECTORS.flatMap((sel) => [
+    `html:lang(ko) ${sel}`,
+    `html[lang="ko"] ${sel}`,
+    `[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] ${sel}`,
+  ]),
+  `[${BLOCK_FRAME_HANGUL_ELEM_ATTR}="1"]`,
+].join(',\n') + ` {
   letter-spacing: 0 !important;
   text-transform: none !important;
-}
-`.trim();
+}`;
 
 function blockFrameVisibleCopy(html: string): string {
   return String(html ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -10379,37 +10385,69 @@ function blockFrameCopyIsKeepable(text: string): boolean {
   if (!/[가-힣]/.test(value)) return false;
   if (BLOCK_FRAME_ROLE_BODY_RE.test(value)) return false;
   if (BLOCK_FRAME_ROLE_TITLE_RE.test(value)) return false;
+  if (BLOCK_FRAME_METRIC_LABEL_RE.test(value)) return false;
   if (Object.keys(BLOCK_FRAME_BROKEN_TOKEN_MAP).some((token) => value.includes(token))) {
     return false;
   }
   return true;
 }
 
+function blockFrameTopicAwareMetricLabel(label: string, topic: string): string {
+  const noun = String(topic ?? '').replace(/\s+/g, ' ').trim();
+  const usable = noun && !isGenericSynthTopicNoun(noun) ? noun : '';
+  if (label === '전환율' || label === '전환') return usable ? `${usable} 전환` : '전환';
+  if (label === '활성') return usable ? `${usable} 활성` : '활성 사용';
+  if (label === '품질') return usable ? `${usable} 품질` : '결과 품질';
+  return label;
+}
+
 function rewriteBlockFrameHeadingCopy(
   raw: string,
-  kind: 'card' | 'step' | 'title',
+  kind: 'card' | 'step' | 'title' | 'metric',
   index: number,
+  topic = '',
 ): string {
-  let text = restoreBlockFrameBrokenTokens(restoreBlockFrameGluedKoreanTitle(raw)).replace(/\s+/g, ' ').trim();
+  const text = restoreBlockFrameBrokenTokens(restoreBlockFrameGluedKoreanTitle(raw)).replace(/\s+/g, ' ').trim();
   if (BLOCK_FRAME_ROLE_TITLE_RE.test(text)) {
-    if (kind === 'step') return BLOCK_FRAME_SEED_STEP_TITLES[index] ?? text;
-    if (kind === 'card') return BLOCK_FRAME_SEED_CARD_TITLES[index] ?? text;
+    if (kind === 'step') return BLOCK_FRAME_SEED_STEP_TITLES[index] ?? '';
+    if (kind === 'card' || kind === 'metric') return BLOCK_FRAME_SEED_CARD_TITLES[index] ?? '';
     return '';
+  }
+  if (BLOCK_FRAME_METRIC_LABEL_RE.test(text)) {
+    return blockFrameTopicAwareMetricLabel(text, topic);
   }
   return text;
 }
 
+function blockFrameLeftoverHealShouldRun(html: string): boolean {
+  if (officialLookIsNeoBrutalBlockFrame(html)) return true;
+  return /\b(?:chart-frame|intro-card|feature-card|nb-heading|data-box|nb-label|nb-card)\b/i.test(html)
+    && ((html.match(/[가-힣]/g) ?? []).length >= 2);
+}
+
+function markBlockFrameHangulElements(html: string): string {
+  return String(html ?? '').replace(
+    /<(h[1-6]|p|span|div|li|figcaption)\b([^>]*)>([^<]*[가-힣][^<]*)</gi,
+    (full, tag: string, attrs: string, text: string) => {
+      if (new RegExp(`\\b${BLOCK_FRAME_HANGUL_ELEM_ATTR}\\b`).test(attrs)) return full;
+      return `<${tag}${attrs} ${BLOCK_FRAME_HANGUL_ELEM_ATTR}="1">${text}<`;
+    },
+  );
+}
+
 /**
  * 루프555 / N28 — Block Frame leftover-only heal.
- * Product Launch 역할 템플릿과 붙여쓴 한글 제목만 정리. 한국어 ≥20은 유지.
- * letter-spacing/uppercase 는 한글 덱에서 끈다. 음절 사이 공백은 넣지 않는다.
+ * 루프556 / N29 — persist 경로에서도 chart 데모 wipe, 역할/지표 leftover,
+ * lang=en 한글 tracking. Product Launch 역할 템플릿과 붙여쓴 한글 제목만 정리.
+ * 한국어 ≥20은 유지. letter-spacing/uppercase 는 한글 음절 요소에서 끈다.
  */
 export function healBlockFrameLeftoverCatalogCopy(
   html: string,
-  _brief?: string | null,
+  brief?: string | null,
 ): string {
   const dest = String(html ?? '');
-  if (!dest.trim() || !officialLookIsNeoBrutalBlockFrame(dest)) return dest;
+  if (!dest.trim() || !blockFrameLeftoverHealShouldRun(dest)) return dest;
+  const topic = topicKeywordForSynthBody(String(brief ?? ''));
   const hasHangul = ((dest.match(/[가-힣]/g) ?? []).length >= 2);
   let out = dest;
   if (hasHangul) {
@@ -10418,7 +10456,6 @@ export function healBlockFrameLeftoverCatalogCopy(
       (_full, attrs: string) => {
         let next = String(attrs ?? '');
         if (!/\blang\s*=/i.test(next)) next += ' lang="ko"';
-        else next = next.replace(/\blang\s*=\s*(["']).*?\1/i, 'lang="ko"');
         if (!new RegExp(`\\b${BLOCK_FRAME_HANGUL_TYPE_ATTR}\\b`).test(next)) {
           next += ` ${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"`;
         }
@@ -10433,7 +10470,7 @@ export function healBlockFrameLeftoverCatalogCopy(
     open: string,
     inner: string,
     close: string,
-    kind: 'card' | 'step' | 'title',
+    kind: 'card' | 'step' | 'title' | 'metric',
     index: number,
   ): string => {
     const plain = blockFrameVisibleCopy(inner);
@@ -10445,7 +10482,7 @@ export function healBlockFrameLeftoverCatalogCopy(
     if (BLOCK_FRAME_ROLE_BODY_RE.test(plain)) {
       return `${open}${close}`;
     }
-    const next = rewriteBlockFrameHeadingCopy(plain, kind, index);
+    const next = rewriteBlockFrameHeadingCopy(plain, kind, index, topic);
     if (!next || next === plain) {
       const restored = restoreBlockFrameBrokenTokens(restoreBlockFrameGluedKoreanTitle(inner));
       return restored === inner ? full : `${open}${restored}${close}`;
@@ -10457,7 +10494,7 @@ export function healBlockFrameLeftoverCatalogCopy(
   out = out.replace(
     /(<(?:h[1-4])\b[^>]*>)([\s\S]*?)(<\/h[1-4]>)/gi,
     (full, open: string, inner: string, close: string) => {
-      const kind = /intro-card|feature-card|team-card|nb-card/i.test(full)
+      const kind = /intro-card|feature-card|team-card|nb-card|(?:^|[^-])\bcard\b/i.test(full)
         || /<(?:h3|h4)\b/i.test(open)
         ? 'card'
         : 'title';
@@ -10474,6 +10511,15 @@ export function healBlockFrameLeftoverCatalogCopy(
     ),
   );
 
+  let headingSlotIndex = 0;
+  out = out.replace(
+    /(<(?:div|span|p)\b[^>]*(?:\bnb-heading|\bcard-title|\bdata-label|\bdata-num|\bstat-label)[^>]*>)([\s\S]*?)(<\/(?:div|span|p)>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const kind = /\bdata-(?:num|label)\b|\bstat-label\b/i.test(open) ? 'metric' : 'card';
+      return rewriteLeaf(full, open, inner, close, kind, headingSlotIndex++);
+    },
+  );
+
   out = out.replace(
     /(<(?:p|div|span)\b[^>]*(?:\bstep-desc\b|\bnb-body\b)[^>]*>)([\s\S]*?)(<\/(?:p|div|span)>)/gi,
     (full, open: string, inner: string, close: string) => {
@@ -10487,6 +10533,16 @@ export function healBlockFrameLeftoverCatalogCopy(
   );
 
   out = out.replace(
+    /(<(?:p|span)\b[^>]*>)([\s\S]*?)(<\/(?:p|span)>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const plain = blockFrameVisibleCopy(inner);
+      if (!plain || BLOCK_FRAME_ROLE_TITLE_RE.test(plain)) return full;
+      if (BLOCK_FRAME_ROLE_BODY_RE.test(plain)) return `${open}${close}`;
+      return full;
+    },
+  );
+
+  out = out.replace(
     /(<(?:div|span|p|h[1-3])\b[^>]*(?:\bnb-heading|\bhero-title|\bnb-label)[^>]*>)([\s\S]*?)(<\/(?:div|span|p|h[1-3])>)/gi,
     (full, open: string, inner: string, close: string) => {
       const restored = restoreBlockFrameBrokenTokens(restoreBlockFrameGluedKoreanTitle(inner));
@@ -10494,6 +10550,10 @@ export function healBlockFrameLeftoverCatalogCopy(
     },
   );
 
+  out = neutralizeBlockFrameChartSvgDemoMetrics(out);
+  if (hasHangul) {
+    out = markBlockFrameHangulElements(out);
+  }
   return out;
 }
 
@@ -10686,23 +10746,36 @@ export function healBlockFrameInventedHeroShells(html: string): string {
  * 회귀를 잡기 위한 확장. `chart-svg` shell은 그대로 유지하고, 축 라벨과
  * 막대의 데모 시멘틱만 wipe한다.
  */
+function cleanBlockFrameChartSvgInner(inner: string): string {
+  const cleaned = String(inner)
+    .replace(/>(\s*\+?\d+(?:\.\d+)?%?\s*)</g, '><')
+    .replace(/>(\s*\d+(?:\.\d+)?[MBK]\s*)</gi, '><')
+    .replace(
+      />(\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s*)</gi,
+      '><',
+    )
+    // 루프547 — Q1..Q9 (optionally followed by an FY year "Q1 2026")
+    // are demo axis labels; they never correspond to a Korean deck
+    // topic. Blank them so only the axis shell remains.
+    .replace(/>(\s*Q[1-9](?:\s*20\d{2})?\s*)</gi, '><');
+  return equalizeBlockFrameChartBars(cleaned);
+}
+
+function svgLooksLikeBlockFrameDemoChart(open: string, inner: string): boolean {
+  if (/\bchart-svg\b/i.test(open)) return true;
+  if (/>(\s*Q[1-9](?:\s*20\d{2})?\s*)</i.test(inner)) return true;
+  if (/fill\s*=\s*(["'])(?:#FE90E8|#C0F7FE|#99E885|var\(--(?:pink|blue|green)\))\1/i.test(inner)) {
+    return true;
+  }
+  return false;
+}
+
 export function neutralizeBlockFrameChartSvgDemoMetrics(html: string): string {
   return String(html ?? '').replace(
-    /(<svg\b[^>]*\bclass\s*=\s*["'][^"']*\bchart-svg\b[^"']*["'][^>]*>)([\s\S]*?)(<\/svg>)/gi,
-    (_m, open: string, inner: string, close: string) => {
-      let cleaned = String(inner)
-        .replace(/>(\s*\+?\d+(?:\.\d+)?%?\s*)</g, '><')
-        .replace(/>(\s*\d+(?:\.\d+)?[MBK]\s*)</gi, '><')
-        .replace(
-          />(\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s*)</gi,
-          '><',
-        )
-        // 루프547 — Q1..Q9 (optionally followed by an FY year "Q1 2026")
-        // are demo axis labels; they never correspond to a Korean deck
-        // topic. Blank them so only the axis shell remains.
-        .replace(/>(\s*Q[1-9](?:\s*20\d{2})?\s*)</gi, '><');
-      cleaned = equalizeBlockFrameChartBars(cleaned);
-      return `${open}${cleaned}${close}`;
+    /(<svg\b[^>]*>)([\s\S]*?)(<\/svg>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      if (!svgLooksLikeBlockFrameDemoChart(open, inner)) return full;
+      return `${open}${cleanBlockFrameChartSvgInner(inner)}${close}`;
     },
   );
 }
@@ -10715,7 +10788,7 @@ export function neutralizeBlockFrameChartSvgDemoMetrics(html: string): string {
  * `<line>` elements and are untouched.
  */
 function equalizeBlockFrameChartBars(svgInner: string): string {
-  const barRe = /<rect\b[^>]*\bfill\s*=\s*(["'])#[0-9A-Fa-f]{3,8}\1[^>]*\/?>/g;
+  const barRe = /<rect\b[^>]*\bfill\s*=\s*(["'])(?:#[0-9A-Fa-f]{3,8}|var\(--(?:pink|blue|green|cream|yellow)\))\1[^>]*\/?>/gi;
   const matches = Array.from(svgInner.matchAll(barRe));
   if (matches.length < 2) return svgInner;
   const infos = matches
@@ -10743,6 +10816,7 @@ function equalizeBlockFrameChartBars(svgInner: string): string {
     Math.round(infos.reduce((sum, i) => sum + i.h, 0) / infos.length),
   );
   const newY = baseline - meanH;
+  barRe.lastIndex = 0;
   return svgInner.replace(barRe, (tag) => (
     tag
       .replace(/\by\s*=\s*(["'])-?\d+(?:\.\d+)?\1/, `y="${newY}"`)

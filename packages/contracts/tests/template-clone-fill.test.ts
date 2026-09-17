@@ -1795,6 +1795,46 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(healBlockFrameLeftoverCatalogCopy(html, 'Teamver 소개')).toMatch(/고객 경험/);
   });
 
+  it('루프556 — Block Frame ops chart + role leftover + hangul tracking on lang=en', async () => {
+    const html = await readFile(
+      new URL('./fixtures/loop556-block-frame-ops-chart.html', import.meta.url),
+      'utf8',
+    );
+    expect(officialLookIsNeoBrutalBlockFrame(html)).toBe(true);
+    expect(html).toMatch(/lang="en"/);
+    expect(html).toMatch(/운영과보안/);
+    expect(html).toMatch(/<h3>\s*실무자\s*<\/h3>/);
+    expect(html).toMatch(/반복 작업을 줄이고 결과물 완성도를/);
+    expect(html).toMatch(/>Q1</);
+
+    const leftoverOnly = healBlockFrameLeftoverCatalogCopy(html, 'Teamver 소개');
+    expect(leftoverOnly).not.toMatch(/운영과보안/);
+    expect(leftoverOnly).toMatch(/운영과 보안/);
+    expect(leftoverOnly).not.toMatch(/<(?:h3|h4)[^>]*>\s*(?:실무자|리더|운영자)\s*</);
+    expect(leftoverOnly).not.toMatch(/반복 작업을 줄이고 결과물 완성도를/);
+    expect(leftoverOnly).not.toMatch(/>Q[1-9](?:\s*20\d{2})?</);
+    expect(leftoverOnly).toMatch(/class="chart-svg"/);
+    expect(leftoverOnly).toMatch(/lang="en"/);
+    expect(leftoverOnly).toMatch(/data-od-block-frame-hangul-type="1"/);
+    expect(leftoverOnly).toMatch(/data-od-hangul="1"/);
+    expect(leftoverOnly).toMatch(/\[data-od-hangul="1"\]/);
+    expect(leftoverOnly).toMatch(/\[data-od-block-frame-hangul-type="1"\] \.nb-mono/);
+    expect(leftoverOnly).toMatch(/\[data-od-block-frame-hangul-type="1"\] \.legend-item/);
+    expect(leftoverOnly).toMatch(/letter-spacing:\s*0\s*!important/);
+    expect(leftoverOnly).toMatch(/운영 권한과 저장 정책을 한 화면에서 검토하고 배포 전에 확인한다/);
+    expect(leftoverOnly).not.toMatch(/방문에서 문의·가입까지 이어지는 전환율/);
+    expect(leftoverOnly).not.toMatch(/>\s*전환율\s*</);
+
+    const healed = salvageMalformedMiniMaxSlideMarkup(html, 'Teamver 소개');
+    expect(healed).not.toMatch(/운영과보안/);
+    expect(healed).toMatch(/운영과 보안/);
+    expect(healed).not.toMatch(/<(?:h3|h4)[^>]*>\s*(?:실무자|리더|운영자)\s*</);
+    expect(healed).not.toMatch(/반복 작업을 줄이고 결과물 완성도를/);
+    expect(healed).not.toMatch(/>Q[1-9](?:\s*20\d{2})?</);
+    expect(healed).toMatch(/class="chart-svg"/);
+    expect(healed).toMatch(/\[data-od-hangul="1"\]/);
+  });
+
   it('루프538 — Grove forest kit demo chrome (landscape / grove-stat KPI / sidebar) is scrubbed', async () => {
     const html = await readFile(
       new URL(
