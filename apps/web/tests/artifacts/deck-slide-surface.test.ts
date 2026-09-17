@@ -313,6 +313,31 @@ html, body { background: var(--cream); color: var(--text-dark); }
     expect(repaired).toContain('background:#E10600');
   });
 
+  it('루프556 paints transparent white base slides without overriding dark variants', () => {
+    const html = `<!doctype html><html><head><style>
+:root{--bg:#ffffff;--text-1:#111216}
+html,body{background:var(--bg);color:var(--text-1)}
+.slide{position:relative;width:1920px;height:1080px}
+.tpl-product-launch .slide.dark{background:#0a0a12;color:#f5f5f7}
+.tpl-product-launch .slide.dark .h1{color:#fff}
+/* Letterbox paper is data-od-slide-surface-bleed on html/body. */
+</style></head><body class="tpl-product-launch">
+<section class="slide"><h1 class="h1" style="color:#111111!important">핵심 주제 한눈에</h1></section>
+<section class="slide dark"><h1 class="h1">Dark cover</h1></section>
+</body></html>`;
+    expect(inferDeckSlidePaperSurface(html)).toEqual({
+      background: '#ffffff',
+      color: 'var(--text-1)',
+    });
+    const repaired = repairDeckSlideSurfaceBleed(html);
+    expect(repaired).toContain('data-od-slide-surface-bleed');
+    expect(repaired).toMatch(
+      /:where\([^}]*\.slide[^}]*\)\s*\{\s*background:\s*#ffffff;\s*color:\s*var\(--text-1\);/i,
+    );
+    expect(repaired).toContain('.tpl-product-launch .slide.dark{background:#0a0a12');
+    expect(repairDeckSlideSurfaceBleed(repaired)).toBe(repaired);
+  });
+
   it('does not flatten Bold Poster .slide-red against --bg paper', () => {
     const html = `<!doctype html><html><head><style>
 :root{--bg:#F4EFE6;--red:#E10600;--dark:#111}

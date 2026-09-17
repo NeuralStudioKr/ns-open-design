@@ -263,11 +263,22 @@ function surfaceBleedSelectors(preserveSlidePaint: boolean): string {
 }
 
 function renderSurfaceBleedStyle(paper: DeckSlidePaperSurface, preserveSlidePaint: boolean): string {
-  return [
+  const rules = [
     `<style ${SURFACE_STYLE_ATTR}>`,
     `${surfaceBleedSelectors(preserveSlidePaint)} { background: ${paper.background} !important; color: ${paper.color} !important; }`,
-    '</style>',
-  ].join('');
+  ];
+  if (preserveSlidePaint) {
+    // 루프556 — Mixed light/dark decks often leave the base `.slide`
+    // transparent and paint only `.slide.dark`. In the standalone document the
+    // white body shows through, but stacked preview mounts each slide over the
+    // dark app stage. Give transparent base slides a zero-specificity paper;
+    // role/variant selectors and inline backgrounds still win naturally.
+    rules.push(
+      `:where(.slide, section.slide, [data-screen-label], .deck-slide, .ppt-slide) { background: ${paper.background}; color: ${paper.color}; }`,
+    );
+  }
+  rules.push('</style>');
+  return rules.join('');
 }
 
 function bleedStyleTargetsSlides(html: string): boolean {
@@ -540,7 +551,12 @@ export function inferDeckSlidePaperSurface(html: string): DeckSlidePaperSurface 
     ?? slideInlineBg
     ?? extractInnerPaperBackground(source)
     ?? solidPaperFromBackground(extractBodyBackground(source));
-  if (!background || isWhiteOrEmptyBackground(background)) return null;
+  // White is a real paper surface. Treating it as "missing" leaves transparent
+  // slides black in the app's stacked preview when only `.slide.dark` variants
+  // carry explicit paint.
+  if (!background || /^(?:transparent|inherit|initial|unset)$/i.test(background.trim())) {
+    return null;
+  }
 
   const color =
     pickPreferredInkFromVars(vars)
@@ -626,7 +642,11 @@ export function repairDeckSlideSurfaceBleed(html: string): string {
       isDecorativeBackground(slideBackground, officialLook)
       || deckHasPerSlideSurfacePaint(source)
     );
-  const hasBleed = new RegExp(`\\b${SURFACE_STYLE_ATTR}\\b`, 'i').test(source);
+  // 루프556 — fixed-canvas CSS comments mention the attribute by name.
+  // A loose substring check therefore claimed the repair already existed and
+  // returned early while the slides were still transparent. Require the real
+  // tagged style block.
+  const hasBleed = SURFACE_STYLE_RE.test(source);
 
   if (hasBleed) {
     if (paper && preserveSlidePaint && bleedStyleTargetsSlides(source)) {
