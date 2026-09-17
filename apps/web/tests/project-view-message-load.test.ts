@@ -1274,13 +1274,24 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const start = source.indexOf("const slideRegression = findClientSlideCountRegression({");
     expect(start).toBeGreaterThan(0);
-    const block = source.slice(start, start + 4200);
+    const block = source.slice(start, start + 6200);
     expect(block).toContain("shouldAutoRetryShortSlideResponse({");
     expect(block).toContain("kind: 'needs-short-response-retry'");
     expect(block).toContain("retryKind: 'slide-count'");
     expect(block).toContain("recoverShortDeckByPaddingToSeed({");
+    expect(block).toContain("forcePad: true");
     expect(block).toContain("kind: 'skipped-incomplete'");
     expect(source).toContain("persist refused");
+  });
+
+  it("0917-N25 · head-preamble continue skips short-response retry and force-pads", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("runHeadPreambleContinueRef.current");
+    expect(source).toContain("!runHeadPreambleContinueRef.current");
+    expect(source).toContain("buildHeadPreambleContinuePrompt()");
+    expect(source).toContain("forcePad: true");
+    expect(source).toContain("paddedCount");
+    expect(source).toContain("shouldEmitHeadPreambleBanner");
   });
 
   it("루프552 · too-short HTML uses the same retry gate then LOOK seed fallback", () => {

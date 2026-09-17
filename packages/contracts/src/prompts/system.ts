@@ -856,7 +856,7 @@ const TEAMVER_API_DECK_FRAMEWORK_OVERRIDE = `
 
 The deck framework workflow above assumes TodoWrite and filesystem copies. **In this API run, override it:**
 
-- Stream promptly: optional tiny status sentence, then open \`<artifact type="deck">\` early and write filled slides. Do **not** wait until a private full draft is finished before opening the artifact.
+- Stream promptly: optional tiny status sentence, then open \`<artifact type="deck">\` early and write filled slides. Emit slides immediately; do not stop after \`</head>\`. Do **not** wait until a private full draft is finished before opening the artifact.
 - Still close \`</html></artifact>\` in this same turn — truncated head-only shells are always rejected.
 - Do NOT paste the long canonical skeleton / scale-to-fit JS / print CSS. Prefer visible \`<body><section class="slide">...\` content first. When a Selected deck template kit requires fonts, emit the kit \`<link rel="stylesheet" href="…fonts.googleapis.com…">\` after \`<body>\` (or after slide 1) — never Google Fonts as \`@import\` inside Motif \`<style>\` (css2 \`;\` truncation breaks Motif CSS). A short body \`<style>\` for kit tokens/Motif/Layout after slide 1 is OK.
 - Your response should contain exactly ONE \`<artifact type="deck" identifier="deck">...</artifact>\` block with every \`<section class="slide">\` filled with real copy (never \`<!-- SLOT: ... -->\` placeholders).

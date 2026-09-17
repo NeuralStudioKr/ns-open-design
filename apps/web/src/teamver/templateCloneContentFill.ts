@@ -1033,6 +1033,7 @@ export function buildTemplateClonePromptFillSeed(options: {
     TEMPLATE_CLONE_PROMPT_FILL_MARKER,
     seedHeaderHint ?? '',
     'A visual deck template was selected. Create ONE complete final deck artifact now.',
+    'Emit slides immediately; do not stop after </head>.',
     'Emit `<artifact type="deck" identifier="deck">` with a complete HTML document and filled slides. Do not emit JSON outline.',
     'Never emit `<artifact type="deck-patch">` on this create turn — this is a first fill, not a surgical edit. Emit ONE full `<artifact type="deck">` only.',
     'Use the selected template kit in the system prompt as visual authority: palette, typography, motif, layout rhythm, and slide chrome.',

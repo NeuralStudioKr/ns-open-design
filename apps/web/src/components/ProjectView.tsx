@@ -551,6 +551,14 @@ import {
   stalledRunHeadPreambleText,
   stalledRunPartialDeckText,
 } from '../teamver/stalledRunDeckSalvage';
+import {
+  buildHeadPreambleContinuePrompt,
+  countHeadPreambleBannerEmits,
+  countHeadPreambleContinueAttempts,
+  decideHeadPreambleRecovery,
+  isHeadPreambleContinuePrompt,
+  shouldEmitHeadPreambleBanner,
+} from '../teamver/headPreambleContinue';
 import { resolvePersistDeckDisplayTitle } from '../teamver/persistDeckDisplayTitle';
 import { subscribeTeamverWorkspaceChanged } from '../teamver/teamverWorkspaceEvents';
 import { shouldSkipWorkspaceSwitchSideEffects } from '../teamver/workspaceSwitchGuards';
@@ -3783,6 +3791,8 @@ export function ProjectView({
   const runTemplateCloneSlotFillFallbackRef = useRef(false);
   /** 루프550 — 이 턴이 짧은 응답 자동 재시도인지. persist가 pad 대신 재시도를 막을 때 사용. */
   const runAutoRetryForShortResponseRef = useRef(false);
+  /** 0917-N25 — head-preamble continue 턴. persist는 retry 대신 즉시 forcePad. */
+  const runHeadPreambleContinueRef = useRef(false);
   /** 루프550 — 모델에 보낸 원본 fill prompt. 재시도 때 뒤에 정량 문구를 붙인다. */
   const runModelPromptRef = useRef('');
   /** Hidden / user slide-count append — persist merges new sections onto disk. */
@@ -4850,6 +4860,11 @@ export function ProjectView({
               return;
             }
             if (!incompleteAssistant) return;
+            const recoveryHeadDecision = decideHeadPreambleRecovery({
+              streamedText: incompleteAssistant.content ?? '',
+              priorHeadPreambleContinues: countHeadPreambleContinueAttempts(mergedMessages),
+            });
+            if (recoveryHeadDecision === 'fallback') return;
             conversationAutoContinueCountRef.current.set(
               activeConversationId,
               autoContinueCount + 1,
@@ -4954,7 +4969,9 @@ export function ProjectView({
                 autoContinueCommentAttachments,
               );
               const autoContinueFill = templateCloneAutoContinueFlags(autoContinueOriginUser);
-              const autoContinuePromptRaw = resolveAutoContinuePrompt({
+              const autoContinuePromptRaw = recoveryHeadDecision === 'continue'
+                ? buildHeadPreambleContinuePrompt()
+                : resolveAutoContinuePrompt({
                 commentAttachmentCount: autoContinueCommentAttachments.length,
                 visualMarkOnly: autoContinueVisualFlags.visualMarkOnly,
                 visualAnnotationEdit: autoContinueVisualFlags.visualAnnotationEdit,
@@ -6433,7 +6450,9 @@ export function ProjectView({
                 const seedHtml = seedHtmlForPad;
                 const seedCount = expectedCount;
                 const runImagePaths = imageAttachmentPathsForSlideEmbed(runAttachmentsRef.current);
-                if (shouldAutoRetryShortSlideResponse({
+                if (
+                  !runHeadPreambleContinueRef.current
+                  && shouldAutoRetryShortSlideResponse({
                   seedCount,
                   returnedCount: producedCount,
                   requestedSlideCount:
@@ -6447,7 +6466,8 @@ export function ProjectView({
                   isCreateOrFullFill:
                     runTemplateCloneContentFillRef.current
                     || runTemplateClonePromptFillRef.current,
-                })) {
+                })
+                ) {
                   devLog.warn('[teamver] short-response auto-retry armed', {
                     fileName,
                     producedCount,
@@ -6471,6 +6491,7 @@ export function ProjectView({
                       templateId: persistTemplateId,
                       brief: runVisiblePromptRef.current || '',
                       deckTitle: project.name || '슬라이드',
+                      forcePad: true,
                     })
                   : null;
                 const paddedCount = recovered?.paddedCount ?? 0;
@@ -6488,6 +6509,7 @@ export function ProjectView({
                       fileName,
                       expectedCount,
                       producedCount,
+                      { paddedCount },
                     ),
                     'artifact_short_response_persisted',
                   );
@@ -6738,7 +6760,9 @@ export function ProjectView({
               ?? requestedSpec?.max
               ?? null;
             const warnSeedCount = Math.max(slideRegression.priorCount, requestedSpec?.max ?? 0);
-            if (shouldAutoRetryShortSlideResponse({
+            if (
+              !runHeadPreambleContinueRef.current
+              && shouldAutoRetryShortSlideResponse({
               seedCount: warnSeedCount,
               returnedCount: slideRegression.newCount,
               requestedSlideCount: requestedCount ?? warnSeedCount,
@@ -6748,7 +6772,8 @@ export function ProjectView({
                 runTemplateCloneContentFillRef.current
                 || runTemplateClonePromptFillRef.current
                 || slideOnlyMvp,
-            })) {
+            })
+            ) {
               devLog.warn('[teamver] slide-count short response auto-retry armed', {
                 fileName: slideRegression.fileName,
                 priorCount: slideRegression.priorCount,
@@ -6777,6 +6802,7 @@ export function ProjectView({
                   templateId: persistTemplateId,
                   brief: runVisiblePromptRef.current || '',
                   deckTitle: project.name || '슬라이드',
+                  forcePad: true,
                 })
               : null;
             if (
@@ -6789,6 +6815,7 @@ export function ProjectView({
                   slideRegression.fileName,
                   warnSeedCount,
                   slideRegression.newCount,
+                  { paddedCount: warnRecovered.paddedCount },
                 ),
                 'artifact_short_response_persisted',
               );
@@ -6828,10 +6855,20 @@ export function ProjectView({
                 templateId: persistTemplateId,
                 brief: runVisiblePromptRef.current || '',
                 deckTitle: project.name || '슬라이드',
+                forcePad: true,
               })
             : null;
           if (lastRecovered?.html && lastRecovered.paddedCount >= lastSeedCount) {
             htmlBody = lastRecovered.html;
+            surfaceChatVisibleError(
+              formatProjectArtifactShortResponsePersistedNotice(
+                fileName,
+                lastSeedCount,
+                lastProduced,
+                { paddedCount: lastRecovered.paddedCount },
+              ),
+              'artifact_short_response_persisted',
+            );
           } else {
             return {
               kind: 'skipped-incomplete',
@@ -10650,6 +10687,7 @@ export function ProjectView({
       runAutoRetryForShortResponseRef.current =
         meta?.autoRetryForShortResponse === true
         || isShortResponseAutoRetryPrompt(prompt);
+      runHeadPreambleContinueRef.current = isHeadPreambleContinuePrompt(prompt);
       const fillSlideCountHint =
         extractTemplateCloneFillSlideCountHintFromPrompt(
           retryTarget ? retryTarget.userMsg.content || prompt : prompt,
@@ -11692,6 +11730,33 @@ export function ProjectView({
                     html: merged.html,
                   };
                 }
+                const mergedSlideCount = listTemplateCloneSlideShells(
+                  artifactToPersist.html,
+                ).length;
+                if (shortVsSeed && mergedSlideCount < lookSeedCount) {
+                  const paddedAfterMerge = recoverShortDeckByPaddingToSeed({
+                    seedHtml,
+                    modelHtml: artifactToPersist.html,
+                    templateId: firstOfficialDeckTemplateId(
+                      resolveDurableDeckTemplatePin({
+                        project: project.metadata,
+                        runRef: runSelectedDeckTemplateIdRef.current,
+                        messages: messagesRef.current,
+                      })?.id,
+                    ),
+                    brief: runVisiblePromptRef.current || '',
+                    deckTitle: project.name || '슬라이드',
+                    forcePad: true,
+                  });
+                  if (paddedAfterMerge?.html && paddedAfterMerge.paddedCount >= lookSeedCount) {
+                    artifactToPersist = {
+                      identifier: 'deck',
+                      artifactType: 'deck',
+                      title: artifactToPersist.title,
+                      html: paddedAfterMerge.html,
+                    };
+                  }
+                }
               } catch (error) {
                 devLog.warn(
                   '[teamver] template clone prompt-fill look merge failed; keeping model HTML',
@@ -12188,7 +12253,12 @@ export function ProjectView({
               const terminalAutoContinueVisualFlags = visualAnnotationAutoContinueFlags(
                 terminalAutoContinueCommentAttachments,
               );
-              const canAutoContinue = shouldAutoContinueForIncompleteOutput({
+              const terminalHeadDecision = decideHeadPreambleRecovery({
+                streamedText: rawFinalText || latestAssistantMsg.content || '',
+                priorHeadPreambleContinues: countHeadPreambleContinueAttempts(messagesRef.current),
+              });
+              const canAutoContinue = terminalHeadDecision !== 'fallback'
+                && shouldAutoContinueForIncompleteOutput({
                 runIsVisible: runIsVisible(),
                 autoContinueCount,
                 scopedCommentAttachmentCount: terminalAutoContinueCommentAttachments.length,
@@ -12506,7 +12576,9 @@ export function ProjectView({
                     autoContinueCommentAttachments,
                   );
                   const autoContinueFill = templateCloneAutoContinueFlags(originatingUserMsg);
-                  const autoContinuePromptRaw = resolveAutoContinuePrompt({
+                  const autoContinuePromptRaw = terminalHeadDecision === 'continue'
+                    ? buildHeadPreambleContinuePrompt()
+                    : resolveAutoContinuePrompt({
                     commentAttachmentCount: autoContinueCommentAttachments.length,
                     visualMarkOnly: autoContinueVisualFlags.visualMarkOnly,
                     visualAnnotationEdit: autoContinueVisualFlags.visualAnnotationEdit,
@@ -13250,15 +13322,25 @@ export function ProjectView({
               streamedText = finalizeText;
               rewriteLiveContent(finalizeText);
             }
+            const priorHeadPreambleBanners = countHeadPreambleBannerEmits(
+              messagesRef.current,
+            );
+            const emitHeadPreambleBanner =
+              Boolean(stalledHeadPreamble)
+              && shouldEmitHeadPreambleBanner(priorHeadPreambleBanners);
             updateAssistant((prev) => ({
               ...appendWarningStatusEvent(
                 prev,
                 stalledPartialDeck
                   ? formatStalledPartialDeckNotice()
-                  : formatStalledHeadPreambleNotice(),
+                  : emitHeadPreambleBanner
+                    ? formatStalledHeadPreambleNotice()
+                    : '',
                 stalledPartialDeck
                   ? STALLED_PARTIAL_DECK_STATUS_CODE
-                  : STALLED_HEAD_PREAMBLE_STATUS_CODE,
+                  : emitHeadPreambleBanner
+                    ? STALLED_HEAD_PREAMBLE_STATUS_CODE
+                    : undefined,
               ),
               resumable: true,
             }));

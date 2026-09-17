@@ -141,8 +141,20 @@ export function formatProjectArtifactShortResponsePersistedNotice(
   _fileName: string,
   priorCount: number,
   newCount: number,
+  options?: { paddedCount?: number },
 ): string {
   const embed = isTeamverEmbedMode();
+  const paddedCount = options?.paddedCount;
+  if (
+    typeof paddedCount === 'number'
+    && Number.isFinite(paddedCount)
+    && paddedCount > newCount
+    && paddedCount >= priorCount
+  ) {
+    return embed
+      ? `AI가 이번 응답에서 ${priorCount}장 중 ${newCount}장만 작성했습니다. 부족한 장은 초안으로 채워 ${paddedCount}장으로 저장했습니다.`
+      : `The AI returned ${newCount} of ${priorCount} slides. Missing slides were filled from the draft so ${paddedCount} slides were saved.`;
+  }
   return embed
     ? `AI가 이번 응답에서 슬라이드 수를 ${priorCount} → ${newCount}장으로 줄여 반환했습니다. 결과는 저장했지만, 부족한 슬라이드가 있다면 "다시 시도"로 재요청할 수 있어요.`
     : `The AI returned ${newCount} slides instead of ${priorCount}. The result was saved; if you need the full deck, please try again.`;

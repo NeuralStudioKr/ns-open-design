@@ -945,6 +945,8 @@ export function recoverShortDeckByPaddingToSeed(input: {
   brief?: string | null;
   deckTitle?: string | null;
   templateId?: string | null;
+  /** Persist 직전 강제 pad. 기본 true — continue 경로가 빼면 10→2가 다시 샌다. */
+  forcePad?: boolean;
 }): { html: string; seedCount: number; producedCount: number; paddedCount: number } | null {
   const seed = String(input.seedHtml ?? '').trim();
   const model = String(input.modelHtml ?? '').trim();
@@ -964,7 +966,7 @@ export function recoverShortDeckByPaddingToSeed(input: {
     ...(input.brief != null ? { brief: input.brief } : {}),
     ...(input.deckTitle != null ? { deckTitle: input.deckTitle } : {}),
     padToSeedSlideCount: true,
-    forcePad: true,
+    forcePad: input.forcePad !== false,
   });
   const paddedCount = merged?.html ? listTemplateCloneSlideShells(merged.html).length : 0;
   if (!merged?.html || paddedCount < seedCount) return null;
