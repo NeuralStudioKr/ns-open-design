@@ -468,6 +468,111 @@ describe('buildTemplateClonedDeckHtml', () => {
     expect(cloned).toContain('class="item"');
     expect(cloned).toContain('<em>항목</em>');
   });
+
+  // 루프555 — v1.4.15 대비 결과물 품질 회귀의 근본 원인 3종을 격리한다.
+  // 사용자 리포트 HTML(2026-09-17)에서 관찰된 회귀:
+  //  (a) MiniMax가 리터럴 "주제 [가/는/을/를/의/…]" placeholder 문구를 슬라이드
+  //     제목/lead로 그대로 뱉음 — "주제가 해결하는 문제", "주제의 쓰임과 근거",
+  //     "주제를 쓰는 순서" 등.
+  //  (b) 인접 phrase 반복 — "쓰는 방법을 쓰는 방법", "다음 단계 다음 단계"
+  //  (c) 동일 outline title이 두 슬롯에 오면 reused Fit shell이 near-identical
+  //     중복 슬라이드를 만듦.
+  //  (d) `{brief} 2` 숫자 파롯 (product-launch `Halo v2` 슬롯).
+  it('루프555 (a) — outline title이 "주제 [particle] X" placeholder이면 실패 제목으로 판정해 교체한다', () => {
+    const shell = `<!doctype html><html><body>
+<section class="slide"><h1>Cover</h1></section>
+<section class="slide"><h2>Slot A</h2></section>
+<section class="slide"><h2>Slot B</h2></section>
+<section class="slide"><h2>Slot C</h2></section>
+</body></html>`;
+    const cloned = buildTemplateClonedDeckHtml(
+      shell,
+      [
+        { title: 'Teamver 소개' },
+        { title: '주제가 해결하는 문제' },
+        { title: '주제의 쓰임과 근거' },
+        { title: '주제를 쓰는 순서' },
+      ],
+      { title: 'Teamver 소개', brief: 'Teamver 소개' },
+    );
+    expect(cloned).toBeTruthy();
+    expect(cloned!).not.toContain('주제가 해결하는 문제');
+    expect(cloned!).not.toContain('주제의 쓰임과 근거');
+    expect(cloned!).not.toContain('주제를 쓰는 순서');
+    expect(cloned!).toMatch(/Teamver 소개/);
+  });
+
+  it('루프555 (b) — 인접 phrase 반복 "X를 Y를 Y" / "X Y Y"가 heal에서 축약된다', () => {
+    const shell = `<!doctype html><html><body>
+<section class="slide"><h1>Old cover title</h1></section>
+<section class="slide"><h2>Body slot A</h2></section>
+<section class="slide"><h2>Body slot B</h2></section>
+</body></html>`;
+    const cloned = buildTemplateClonedDeckHtml(
+      shell,
+      [
+        { title: 'Teamver 소개' },
+        { title: '쓰는 방법을 쓰는 방법' },
+        { title: '다음 단계 다음 단계' },
+      ],
+    );
+    expect(cloned).toBeTruthy();
+    expect(cloned!).not.toContain('쓰는 방법을 쓰는 방법');
+    expect(cloned!).not.toContain('다음 단계 다음 단계');
+    expect(cloned!).toMatch(/쓰는 방법을/);
+    expect(cloned!).toMatch(/다음 단계/);
+  });
+
+  it('루프555 (c) — 동일 outline title이 두 슬롯에 오면 두 번째는 indexed fallback으로 대체된다', () => {
+    const eightShellDeck = `<!doctype html><html><body>
+<section class="slide"><h1>Cover</h1></section>
+<section class="slide"><h2>Intro</h2></section>
+<section class="slide"><h2>A</h2></section>
+<section class="slide"><h2>B</h2></section>
+<section class="slide"><h2>C</h2></section>
+<section class="slide"><h2>D</h2></section>
+<section class="slide"><h2>E</h2></section>
+<section class="slide"><h2>F</h2></section>
+</body></html>`;
+    const outline = [
+      { title: 'Teamver 소개' },
+      { title: '문제 정의' },
+      { title: '고유 가치' },
+      { title: '고객 여정' },
+      { title: '핵심 기능' },
+      { title: '도입 로드맵' },
+      { title: '성과 지표' },
+      { title: '레퍼런스' },
+      { title: '다음 액션' },
+      { title: '고객 여정' },
+    ];
+    const cloned = buildTemplateClonedDeckHtml(eightShellDeck, outline, {
+      title: 'Teamver 소개',
+      maxSlides: 10,
+    });
+    expect(cloned).toBeTruthy();
+    const duplicatedTitleMatches = cloned!.match(/고객 여정/g) ?? [];
+    expect(duplicatedTitleMatches.length).toBeLessThanOrEqual(1);
+    expect(cloned!).toContain('문제 정의');
+    expect(cloned!).toContain('고유 가치');
+  });
+
+  it('루프555 (d) — `{brief} 2` shape parrot도 실패 제목으로 판정한다', () => {
+    const shell = `<!doctype html><html><body>
+<section class="slide"><h1>Cover</h1></section>
+<section class="slide"><h2>Slot A</h2></section>
+</body></html>`;
+    const cloned = buildTemplateClonedDeckHtml(
+      shell,
+      [
+        { title: 'Teamver 소개' },
+        { title: 'Teamver 소개 2' },
+      ],
+      { title: 'Teamver 소개', brief: 'Teamver 소개' },
+    );
+    expect(cloned).toBeTruthy();
+    expect(cloned!).not.toMatch(/>Teamver 소개 2</);
+  });
 });
 
 describe('resolveTemplateCloneSlideCountHint', () => {

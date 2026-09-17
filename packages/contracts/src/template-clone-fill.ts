@@ -11945,6 +11945,17 @@ export function buildTemplateClonedDeckHtml(
     ) {
       workingSlides = workingSlides.slice(0, shells.length);
     }
+    // 루프555 — Overflow safety for shell reuse. Non-unique-role kits
+    // (product-launch / pitch / most Zhangzara) reuse shells to reach the
+    // requested slide count. That is intentional (Mat/Pink Script/Vellum
+    // ship 7–9 shells but the deterministic quality gate expects 10 slides).
+    // What we DO block is *identical outline titles* being placed on reused
+    // shells — the 2026-09-17 user report had slide 3 and slide 9 both
+    // carrying `주제의 쓰임과 근거`, producing near-duplicate Fit slides.
+    // `dedupeIdenticalOutlineTitles` keeps the first occurrence and rewrites
+    // later duplicates to indexed fallback labels so the reused shell gets
+    // distinct copy.
+    workingSlides = dedupeIdenticalOutlineTitles(workingSlides, deckTitle);
   } else {
     // Empty brief: short starter deck with role-diverse shells — not all
     // template demo pages in demo order.
@@ -12042,8 +12053,28 @@ export function buildTemplateClonedDeckHtml(
   out = stripStudioCreativeCatalogDemoCopy(out);
   out = stripProductLaunchCatalogDemoCopy(out);
   out = stripLeftoverCatalogDemoPhrases(out);
+  // 루프555 — MiniMax token-loop 반복(예: `다음 단계 다음 단계`) 축약.
+  // Outline title은 rewriteInstructionParrotingSlideTitles에서 축약됐지만
+  // body/lead 문장에 남아있는 doubled phrase는 여기서 정리한다.
+  out = collapseAdjacentDuplicatedPhrasesInDeckText(out);
   out = renumberBiennalePagenums(out, filled.length);
   return out.trim() || null;
+}
+
+/**
+ * 루프555 — Apply `collapseAdjacentDuplicatedPhraseInText` inside heading /
+ * paragraph / list text content of the deck. HTML attributes and tag names
+ * are left untouched.
+ */
+function collapseAdjacentDuplicatedPhrasesInDeckText(html: string): string {
+  const source = String(html ?? '');
+  if (!source) return source;
+  // Walk `>text<` runs so tag markup is not altered.
+  return source.replace(/>([^<]{4,})</g, (_m, chunk: string) => {
+    if (!/[가-힣]/u.test(chunk)) return `>${chunk}<`;
+    const collapsed = collapseAdjacentDuplicatedPhraseInText(chunk);
+    return `>${collapsed}<`;
+  });
 }
 
 /**
@@ -12601,7 +12632,86 @@ function slideTitleParrotsBriefFragment(title: string, brief?: string | null): b
   if (b.startsWith(t)) return true;
   if (t.startsWith(b.slice(0, Math.min(b.length, t.length))) && looksLikeInstructionCopy(b)) return true;
   if (/^www\.[a-z0-9.-]+\b/i.test(t) && looksLikeInstructionCopy(b)) return true;
+  // 루프555 — MiniMax는 두 번째 슬라이드에 종종 `{brief} 2`, `{brief} · 2`,
+  // `{brief} 시리즈 2`처럼 브리프에 단순 번호/카운터만 붙인 제목을 뱉는다.
+  // 예: brief="Teamver 소개" → title="Teamver 소개 2" (product-launch
+  // example.html 슬라이드 2의 `Halo v2` 슬롯). instruction-copy 브리프가
+  // 아니어도 브리프 원문을 그대로 파롯한 뒤 번호만 더한 shape면 실패 제목.
+  if (t.length > b.length && t.startsWith(b)) {
+    const tail = t.slice(b.length).trim();
+    if (/^(?:[·•\-–—:/]|v)?\s*\d{1,3}$/u.test(tail)) return true;
+  }
   return false;
+}
+
+/**
+ * 루프555 — MiniMax often emits Korean placeholder-shaped titles when the
+ * brief is thin, e.g. `주제가 해결하는 문제`, `주제의 쓰임과 근거`,
+ * `주제를 쓰는 순서`, `주제 다음 단계`. `sanitizeTemplateCloneDeckTitle`
+ * treats these as valid because they are grammatical strings, so
+ * `rewriteInstructionParrotingSlideTitles` leaves them untouched. Result:
+ * user-facing decks with "주제" (Korean word for "topic") plastered across
+ * every heading (2026-09-17 사용자 리포트).
+ *
+ * Trigger only when the *bare* Korean placeholder word ("주제", "제목",
+ * "내용", "본문") starts the title AND is followed by a particle/verb/noun
+ * that shows it was written as a scaffold, not as a real subject reference.
+ * Real titles never lead with the standalone word "주제 " — users say
+ * "AI 주제", "환경 주제", etc.
+ */
+const KOREAN_PLACEHOLDER_TITLE_RE =
+  /^\s*(?:주제|제목|본문|내용|예시)(?:[가는을를의이에과와으로])?\s/u;
+
+function slideTitleLooksLikeKoreanPlaceholder(title: string): boolean {
+  const t = String(title ?? '').trim();
+  if (!t || t.length < 4) return false;
+  return KOREAN_PLACEHOLDER_TITLE_RE.test(t);
+}
+
+/**
+ * 루프555 — MiniMax token-loop repetition. When the model gets stuck it
+ * emits doubled phrases: `다음 단계 다음 단계`, `쓰는 순서를 쓰는 순서`,
+ * `주제를 쓰는 순서를 쓰는 순서`. Collapse them to the first occurrence,
+ * preserving the trailing Korean particle.
+ *
+ * Case 1: `X X` — same 1-3 Hangul phrase twice, separated by a space.
+ * Case 2: `X<particle> X` — first occurrence carries a Korean particle;
+ *         second is bare. Preserve the first (with particle) and drop the
+ *         tail.
+ *
+ * Only fires between full-width word boundaries so real sentences like
+ * "빠른 개발 방법론 개발" are safe (the two "개발" tokens are not identical
+ * phrases with the required separator shape).
+ */
+const KOREAN_PARTICLE_CLASS = '(?:을|를|의|이|가|과|와|으로|은|는|도|만|에|께|서|부터)';
+
+function collapseAdjacentDuplicatedPhraseInText(text: string): string {
+  let out = String(text ?? '');
+  if (!out || out.length < 6) return out;
+  for (let pass = 0; pass < 3; pass += 1) {
+    const before = out;
+    // Case 2 first — `X<particle> X` where second copy drops the particle.
+    // Bound on Hangul so English/CJK non-Korean tokens are not merged.
+    out = out.replace(
+      new RegExp(
+        `([가-힣]{1,4}(?: [가-힣]{1,4}){0,2})${KOREAN_PARTICLE_CLASS}\\s+\\1(?![가-힣])`,
+        'gu',
+      ),
+      (match, phrase: string) => {
+        // Preserve the first phrase + its particle. Match includes both
+        // copies; slice off the second copy so grammar is preserved.
+        const cutAt = match.length - phrase.length;
+        return match.slice(0, cutAt).trimEnd();
+      },
+    );
+    // Case 1 — exact `X X` doubling with no particle in between.
+    out = out.replace(
+      /(?<![가-힣])([가-힣]{1,4}(?: [가-힣]{1,4}){0,2})\s+\1(?![가-힣])/gu,
+      '$1',
+    );
+    if (out === before) break;
+  }
+  return out;
 }
 
 function synthesizeCardsBodyFromBrief(brief: string, slideTitle: string): string | undefined {
@@ -12625,13 +12735,17 @@ function rewriteInstructionParrotingSlideTitles(
     ? deriveDeckCoverTitleFromBrief(brief, options.deckTitle)
     : sanitizeTemplateCloneDeckTitle(options.deckTitle ?? '') ?? '슬라이드';
   return slides.map((slide, index) => {
-    const sanitized = sanitizeTemplateCloneDeckTitle(slide.title);
-    const parrotsBrief = slideTitleParrotsBriefFragment(slide.title, brief);
+    // 루프555 — 먼저 MiniMax token-loop 반복(`X를 X`, `X X`)을 축약한다.
+    // Sanitize / parrot 판정을 축약 이후에 돌려야 dedupe 결과가 실제 슬라이드에 반영.
+    const collapsedTitle = collapseAdjacentDuplicatedPhraseInText(slide.title ?? '');
+    const sanitized = sanitizeTemplateCloneDeckTitle(collapsedTitle);
+    const parrotsBrief = slideTitleParrotsBriefFragment(collapsedTitle, brief);
+    const koreanPlaceholder = slideTitleLooksLikeKoreanPlaceholder(collapsedTitle);
     const instructionBody = slide.body != null && looksLikeInstructionCopy(slide.body);
-    const needsTitleRewrite = !sanitized || parrotsBrief;
+    const needsTitleRewrite = !sanitized || parrotsBrief || koreanPlaceholder;
     const title = needsTitleRewrite
       ? (index === 0 ? fallbackCover : `${fallbackCover} · ${index + 1}`)
-      : slide.title;
+      : collapsedTitle;
     let body = slide.body;
     if (instructionBody && brief) {
       if (slide.roleHint === 'cards') {
@@ -12656,6 +12770,37 @@ function rewriteInstructionParrotingSlideTitles(
       if (next.lead && looksLikeInstructionCopy(next.lead)) delete next.lead;
     }
     return next;
+  });
+}
+
+/**
+ * 루프555 — Rewrite any later slide whose title exactly matches an earlier
+ * slide's title to an indexed fallback label. Non-unique-role kits reuse
+ * shells to reach the requested slide count and, when the outline itself
+ * carries duplicate titles (MiniMax often does this after
+ * `rewriteInstructionParrotingSlideTitles` funnels multiple
+ * placeholder-shaped slides through the same fallback shape), the reused
+ * shell renders two near-identical Fit/Body slides in the same deck
+ * (2026-09-17 사용자 리포트: slide 3 · slide 9 both `주제의 쓰임과 근거`).
+ * Keeping the first occurrence and appending ` · N` to later duplicates
+ * preserves the outline order while making each slide's headline distinct.
+ */
+function dedupeIdenticalOutlineTitles(
+  slides: TemplateCloneSlideContent[],
+  deckTitle: string,
+): TemplateCloneSlideContent[] {
+  if (slides.length <= 1) return slides;
+  const seen = new Map<string, number>();
+  const cover = sanitizeTemplateCloneDeckTitle(deckTitle) ?? '슬라이드';
+  return slides.map((slide, index) => {
+    const raw = String(slide.title ?? '').trim();
+    if (!raw) return slide;
+    const priorIndex = seen.get(raw);
+    if (priorIndex === undefined) {
+      seen.set(raw, index);
+      return slide;
+    }
+    return { ...slide, title: `${cover} · ${index + 1}` };
   });
 }
 
