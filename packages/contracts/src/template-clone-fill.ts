@@ -13188,17 +13188,43 @@ export function slideNeedsDeterministicBody(slide: TemplateCloneSlideContent): b
   return isPlaceholderCloneBody(slide.body);
 }
 
+export type TemplateCloneDeterministicFillSource = 'resolved' | 'densified' | 'synthetic';
+
+export type TemplateCloneDeterministicFillResolution = {
+  slides: TemplateCloneSlideContent[];
+  source: TemplateCloneDeterministicFillSource;
+  needsAiContentFill: boolean;
+};
+
+const GENERIC_DETERMINISTIC_FILL_COPY_RE =
+  /핵심\s*주제|의미와 적용 기준을 한 문장으로|반복 작업을 줄이고 결과물 완성도|핵심\s+\d+/;
+
+function outlineNeedsAiContentFill(slides: readonly TemplateCloneSlideContent[]): boolean {
+  if (slides.length === 0) return true;
+  const text = slides.map((slide) => {
+    const items = (slide.items ?? [])
+      .map((item) => `${item.title ?? ''} ${item.body ?? ''}`)
+      .join('\n');
+    return `${slide.title ?? ''}\n${slide.body ?? ''}\n${slide.lead ?? ''}\n${items}`;
+  }).join('\n');
+  if (GENERIC_DETERMINISTIC_FILL_COPY_RE.test(text)) return true;
+  return slides.every((slide) => slideNeedsDeterministicBody(slide));
+}
+
 /**
  * 루프419 — Deterministic Home fill must not leave `…` placeholders.
  * Prefer a dense topical outline (kicker/lead/items) so cards and stats
  * get title+body in one server pass.
+ *
+ * Provenance tells the daemon whether that outline is still generic synth
+ * copy (`needsAiContentFill`) or already concrete enough to skip AI fill.
  */
-export function resolveTemplateCloneSlidesForDeterministicFill(options: {
+export function resolveTemplateCloneSlidesForDeterministicFillWithProvenance(options: {
   sourceBrief?: string | null;
   userInstruction?: string | null;
   deckTitle?: string | null;
   slideCount?: number | null;
-}): TemplateCloneSlideContent[] {
+}): TemplateCloneDeterministicFillResolution {
   const brief = [options.sourceBrief ?? '', options.userInstruction ?? '']
     .filter(Boolean)
     .join('\n\n')
@@ -13215,18 +13241,28 @@ export function resolveTemplateCloneSlidesForDeterministicFill(options: {
       index === 0
       || /^(?:개요|핵심 포인트|다음 단계|핵심 \d+)$/.test(slide.title)
     ));
+  const finish = (
+    slides: TemplateCloneSlideContent[],
+    source: TemplateCloneDeterministicFillSource,
+  ): TemplateCloneDeterministicFillResolution => ({
+    slides,
+    source,
+    needsAiContentFill: outlineNeedsAiContentFill(slides),
+  });
   if (resolved.length === 0 || ellipsisStarter) {
     const synth = synthesizeTemplateCloneOutlineFromBrief({
       userBrief: brief || options.deckTitle || '',
       deckTitle: options.deckTitle ?? resolved[0]?.title ?? null,
       slideCount,
     });
-    if (synth) return synth.slides;
+    if (synth) return finish(synth.slides, 'synthetic');
   }
-  if (resolved.length === 0) return [];
+  if (resolved.length === 0) return finish([], 'resolved');
   const cover = resolved[0]?.title ?? options.deckTitle ?? '슬라이드';
+  let densifiedAny = false;
   const densified = resolved.map((slide, index) => {
     if (!slideNeedsDeterministicBody(slide)) return slide;
+    densifiedAny = true;
     if (index === 0) {
       const next: TemplateCloneSlideContent = {
         title: slide.title,
@@ -13242,7 +13278,18 @@ export function resolveTemplateCloneSlidesForDeterministicFill(options: {
       ...synthesizeTemplateCloneSlideBody(cover, slide.title, index, brief),
     };
   });
-  return slideCount != null
+  const slides = slideCount != null
     ? padDeterministicTemplateCloneSlides(densified, cover, slideCount, brief)
     : densified;
+  const padded = slides.length > densified.length;
+  return finish(slides, densifiedAny || padded ? 'densified' : 'resolved');
+}
+
+export function resolveTemplateCloneSlidesForDeterministicFill(options: {
+  sourceBrief?: string | null;
+  userInstruction?: string | null;
+  deckTitle?: string | null;
+  slideCount?: number | null;
+}): TemplateCloneSlideContent[] {
+  return resolveTemplateCloneSlidesForDeterministicFillWithProvenance(options).slides;
 }

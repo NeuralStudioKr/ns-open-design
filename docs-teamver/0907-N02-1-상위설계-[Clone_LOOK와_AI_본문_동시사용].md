@@ -181,7 +181,7 @@ Staging example · production example · 로컬 staging env는 루프463 기준 
 `deterministic`을 다시 기본 배포 모드로 사용하되, 서버 합성 문구를 완성본으로
 오인하던 경계를 제거했다.
 
-- daemon은 아웃라인 출처를 `resolved / densified / synthetic`으로 분류한다.
+- daemon은 아웃라인 출처를 `resolved / densified / synthetic`으로 분류한다. 분류 함수는 `resolveTemplateCloneSlidesForDeterministicFillWithProvenance` (`@open-design/contracts`).
 - `핵심 주제`, `핵심 N`, `의미와 적용 기준을 한 문장으로 정리한다`처럼 일반
   합성 문구가 남으면 `contentFilled` 대신 `needsAiContentFill`과
   `templateCloneContentFillPending`을 기록한다.
