@@ -6300,6 +6300,11 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = healCreativeLeftoverCatalogCopy(next, brief);
   next = healBlockFrameInventedHeroShells(next);
   next = healBlockFrameLeftoverCatalogCopy(next, brief);
+  // 루프557 — Structural repairs for Block Frame slides that ship without
+  // a proper 2-col split or with a decorative fake chart-svg squeezing the
+  // real .data-column. See the two exported functions' docstrings.
+  next = wrapBlockFrameOrphanTwoColumnHeader(next);
+  next = stripBlockFrameNonMetricChartFrame(next);
   // 루프540 — 8-Bit Orbit tier/timeline/stat leftover 카탈로그 카피
   // (English $29/mo / Rookie / Studio Orbital 등)까지 청소.
   next = healEightBitOrbitLeftoverCatalogCopy(next, brief);
@@ -10436,6 +10441,69 @@ function markBlockFrameHangulElements(html: string): string {
 }
 
 /**
+ * 루프557 — Compute the [start, end) ranges of Block Frame *native card*
+ * shells inside the given HTML.
+ *
+ * The healer's role-title / role-body wipe is designed to catch
+ * *Product Launch* demo copy that leaks onto a Block Frame kit. When
+ * the copy sits inside a Block Frame native card structure, it is the
+ * user's actual deck content (many Korean team-collab briefs legitimately
+ * name roles as `실무자` / `리더` / `운영자` with those exact descriptions),
+ * so we must preserve it.
+ *
+ * We consider a shell "native" when either of the following holds:
+ *
+ *   1. The shell's own class list includes `.intro-card`, `.nb-card`,
+ *      `.feature-card`, `.team-card`, `.stat-card`, or `.timeline-step`
+ *      (all Block Frame kit-owned card tokens).
+ *   2. The shell is a `<div class="card">` that lives as a direct child
+ *      of a Block Frame native container (`.col-right`, `.cards-row`,
+ *      `.stats-grid`, `.team-grid`, `.stats-row`, `.timeline`). A bare
+ *      `.card` peer next to `.intro-card` / `.nb-card` peers is the
+ *      user's third role card, not a Product Launch leak.
+ */
+function computeBlockFrameNativeCardRanges(html: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  const shellRe =
+    /<(article|div|section|li)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:intro-card|nb-card|feature-card|team-card|stat-card|timeline-step)\b[^"']*["'][^>]*>[\s\S]*?<\/\1>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = shellRe.exec(html)) !== null) {
+    ranges.push([match.index, match.index + match[0].length]);
+  }
+  // Also treat every direct-child `.card` inside a Block Frame native
+  // container (`.col-right`, `.cards-row`, etc.) as a native peer.
+  const containerRe =
+    /<div\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:col-right|col-left|cards-row|stats-grid|team-grid|stats-row)\b[^"']*["'][^>]*>/gi;
+  let containerMatch: RegExpExecArray | null;
+  while ((containerMatch = containerRe.exec(html)) !== null) {
+    const bodyStart = containerMatch.index + containerMatch[0].length;
+    const containerEnd = findMatchingCloseForBlockFrame(html, bodyStart, 'div');
+    if (containerEnd < 0) continue;
+    const inner = html.slice(bodyStart, containerEnd - '</div>'.length);
+    const cardRe = /<div\b[^>]*\bclass\s*=\s*["'][^"']*\bcard\b[^"']*["'][^>]*>/gi;
+    let cardMatch: RegExpExecArray | null;
+    while ((cardMatch = cardRe.exec(inner)) !== null) {
+      const cardAbsStart = bodyStart + cardMatch.index;
+      const cardBodyStart = cardAbsStart + cardMatch[0].length;
+      const cardEnd = findMatchingCloseForBlockFrame(html, cardBodyStart, 'div');
+      if (cardEnd < 0) continue;
+      ranges.push([cardAbsStart, cardEnd]);
+    }
+  }
+  return ranges;
+}
+
+function offsetFallsInsideRange(
+  ranges: ReadonlyArray<readonly [number, number]>,
+  offset: number,
+): boolean {
+  for (const [start, end] of ranges) {
+    if (offset >= start && offset < end) return true;
+  }
+  return false;
+}
+
+/**
  * 루프555 / N28 — Block Frame leftover-only heal.
  * 루프556 / N29 — persist 경로에서도 chart 데모 wipe, 역할/지표 leftover,
  * lang=en 한글 tracking. Product Launch 역할 템플릿과 붙여쓴 한글 제목만 정리.
@@ -10490,10 +10558,32 @@ export function healBlockFrameLeftoverCatalogCopy(
     return `${open}${escapeHtml(next)}${close}`;
   };
 
+  // 루프557 — Native card ranges: role labels + role bodies inside
+  // `.intro-card` / `.nb-card` are the user's real deck content, not a
+  // Product Launch demo leak. Preserve them (with only gentle glued /
+  // broken-token restoration) instead of rewriting to English seed titles.
+  let nativeCardRanges = computeBlockFrameNativeCardRanges(out);
+  const preserveKoreanRoles = (
+    full: string,
+    open: string,
+    inner: string,
+    close: string,
+  ): string => {
+    const restored = restoreBlockFrameBrokenTokens(
+      restoreBlockFrameGluedKoreanTitle(inner),
+    );
+    return restored === inner ? full : `${open}${restored}${close}`;
+  };
+
   let cardIndex = 0;
   out = out.replace(
     /(<(?:h[1-4])\b[^>]*>)([\s\S]*?)(<\/h[1-4]>)/gi,
-    (full, open: string, inner: string, close: string) => {
+    (full, open: string, inner: string, close: string, offset: number) => {
+      if (offsetFallsInsideRange(nativeCardRanges, offset)) {
+        // 루프557 — On a Block Frame native card shell, preserve Korean
+        // role labels verbatim rather than swapping in English seed.
+        return preserveKoreanRoles(full, open, inner, close);
+      }
       const kind = /intro-card|feature-card|team-card|nb-card|(?:^|[^-])\bcard\b/i.test(full)
         || /<(?:h3|h4)\b/i.test(open)
         ? 'card'
@@ -10503,40 +10593,56 @@ export function healBlockFrameLeftoverCatalogCopy(
     },
   );
 
+  nativeCardRanges = computeBlockFrameNativeCardRanges(out);
   let stepIndex = 0;
   out = out.replace(
     /(<(?:div|span|p)\b[^>]*\bstep-title\b[^>]*>)([\s\S]*?)(<\/(?:div|span|p)>)/gi,
-    (full, open: string, inner: string, close: string) => (
-      rewriteLeaf(full, open, inner, close, 'step', stepIndex++)
-    ),
+    (full, open: string, inner: string, close: string, offset: number) => {
+      if (offsetFallsInsideRange(nativeCardRanges, offset)) {
+        return preserveKoreanRoles(full, open, inner, close);
+      }
+      return rewriteLeaf(full, open, inner, close, 'step', stepIndex++);
+    },
   );
 
+  nativeCardRanges = computeBlockFrameNativeCardRanges(out);
   let headingSlotIndex = 0;
   out = out.replace(
     /(<(?:div|span|p)\b[^>]*(?:\bnb-heading|\bcard-title|\bdata-label|\bdata-num|\bstat-label)[^>]*>)([\s\S]*?)(<\/(?:div|span|p)>)/gi,
-    (full, open: string, inner: string, close: string) => {
+    (full, open: string, inner: string, close: string, offset: number) => {
+      if (offsetFallsInsideRange(nativeCardRanges, offset)) {
+        return preserveKoreanRoles(full, open, inner, close);
+      }
       const kind = /\bdata-(?:num|label)\b|\bstat-label\b/i.test(open) ? 'metric' : 'card';
       return rewriteLeaf(full, open, inner, close, kind, headingSlotIndex++);
     },
   );
 
+  nativeCardRanges = computeBlockFrameNativeCardRanges(out);
   out = out.replace(
     /(<(?:p|div|span)\b[^>]*(?:\bstep-desc\b|\bnb-body\b)[^>]*>)([\s\S]*?)(<\/(?:p|div|span)>)/gi,
-    (full, open: string, inner: string, close: string) => {
+    (full, open: string, inner: string, close: string, offset: number) => {
       const plain = blockFrameVisibleCopy(inner);
       if (!plain) return full;
       if (blockFrameCopyIsKeepable(plain)) return full;
+      if (offsetFallsInsideRange(nativeCardRanges, offset)) {
+        return preserveKoreanRoles(full, open, inner, close);
+      }
       if (BLOCK_FRAME_ROLE_BODY_RE.test(plain)) return `${open}${close}`;
       const restored = restoreBlockFrameBrokenTokens(inner);
       return restored === inner ? full : `${open}${restored}${close}`;
     },
   );
 
+  nativeCardRanges = computeBlockFrameNativeCardRanges(out);
   out = out.replace(
     /(<(?:p|span)\b[^>]*>)([\s\S]*?)(<\/(?:p|span)>)/gi,
-    (full, open: string, inner: string, close: string) => {
+    (full, open: string, inner: string, close: string, offset: number) => {
       const plain = blockFrameVisibleCopy(inner);
       if (!plain || BLOCK_FRAME_ROLE_TITLE_RE.test(plain)) return full;
+      if (offsetFallsInsideRange(nativeCardRanges, offset)) {
+        return preserveKoreanRoles(full, open, inner, close);
+      }
       if (BLOCK_FRAME_ROLE_BODY_RE.test(plain)) return `${open}${close}`;
       return full;
     },
@@ -10822,6 +10928,207 @@ function equalizeBlockFrameChartBars(svgInner: string): string {
       .replace(/\by\s*=\s*(["'])-?\d+(?:\.\d+)?\1/, `y="${newY}"`)
       .replace(/\bheight\s*=\s*(["'])-?\d+(?:\.\d+)?\1/, `height="${meanH}"`)
   ));
+}
+
+/**
+ * 루프557 — When a Block Frame `.chart-frame` has a `chart-svg` shell
+ * but its `.data-column` carries NO real metric value (every `.data-num`
+ * is a Korean word rather than `%` / number / `Nx`), the chart is a
+ * decorative demo placeholder that squeezes the `.data-column` into a
+ * ~240px right rail and wastes half the slide on meaningless bars.
+ *
+ * Strip the `chart-svg` entirely so the kit's
+ * `.chart-body:not(:has(.chart-svg))` fallback rules stretch
+ * `.data-column` to full width, and stamp inline `flex-direction: row`
+ * on `.data-column` so its 3 `.data-box` peers spread horizontally
+ * (matching the user's actual outline shape: 3 stat cards, no chart).
+ */
+export function stripBlockFrameNonMetricChartFrame(html: string): string {
+  const source = String(html ?? '');
+  if (!source) return source;
+  if (!/\bchart-frame\b/i.test(source)) return source;
+  const openRe = /<div\b([^>]*\bchart-frame\b[^>]*)>/gi;
+  let out = source;
+  // Walk right-to-left so brace-matched replacements don't invalidate
+  // earlier indices.
+  const opens: Array<{ start: number; openLen: number; attrs: string }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = openRe.exec(out)) !== null) {
+    opens.push({ start: m.index, openLen: m[0].length, attrs: m[1] ?? '' });
+  }
+  for (let i = opens.length - 1; i >= 0; i -= 1) {
+    const entry = opens[i]!;
+    const bodyStart = entry.start + entry.openLen;
+    const closeEnd = findMatchingCloseForBlockFrame(out, bodyStart, 'div');
+    if (closeEnd < 0) continue;
+    // closeEnd is the position AFTER the closing `</div>`.
+    const closeTag = '</div>';
+    const closeStart = closeEnd - closeTag.length;
+    const body = out.slice(bodyStart, closeStart);
+    if (!/\bchart-svg\b/i.test(body)) continue;
+    if (!/\bdata-column\b/i.test(body)) continue;
+    const dataBoxes = body.match(
+      /<div\b[^>]*\bdata-box\b[^>]*>[\s\S]*?<\/div>/gi,
+    );
+    if (!dataBoxes || dataBoxes.length === 0) continue;
+    // If ANY data-box carries a real metric glyph (`%`, `Nx`, `+N`,
+    // bare number, `M/B/K` suffix), the chart-svg is a real data-viz
+    // for the deck and must stay. We only strip when every leading
+    // slot on every data-box is a non-numeric label.
+    const hasRealMetric = dataBoxes.some((box) => {
+      const numMatch = /<span\b[^>]*\bdata-num\b[^>]*>([\s\S]*?)<\/span>/i.exec(box);
+      if (!numMatch) return false;
+      const text = String(numMatch[1] ?? '').replace(/<[^>]+>/g, ' ').trim();
+      if (!text) return false;
+      return /(?:%|[+\-−]?\d|\d+[MBKmbk×xX]|\d+\s*(?:배|명|건|회|일|시간|점))/.test(text);
+    });
+    if (hasRealMetric) continue;
+    // Strip chart-svg + chart-legend (they're kit demo furniture that
+    // becomes meaningless without a real dataset), and rewrite
+    // .data-column so its data-box peers stretch horizontally.
+    let nextBody = body.replace(
+      /<svg\b[^>]*\bclass\s*=\s*["'][^"']*\bchart-svg\b[^"']*["'][^>]*>[\s\S]*?<\/svg>/gi,
+      '',
+    );
+    nextBody = nextBody.replace(
+      /<div\b[^>]*\bclass\s*=\s*["'][^"']*\bchart-legend\b[^"']*["'][^>]*>[\s\S]*?<\/div>/gi,
+      '',
+    );
+    nextBody = layoutBlockFrameDataColumnAsHorizontalRow(nextBody);
+    out = `${out.slice(0, bodyStart)}${nextBody}${out.slice(closeStart)}`;
+  }
+  return out;
+}
+
+/**
+ * 루프557 — Stamp inline `display:flex; flex-direction:row; width:100%`
+ * on `.data-column` hosts so `.data-box` peers spread horizontally when
+ * the fake chart-svg beside them has been stripped. Kit CSS ships
+ * `.slide-4 .data-column { flex-direction: column }` scoped to slide-4,
+ * so an inline override is the only reliable way to reflow (shell picker
+ * may reuse the data-column outside slide-4).
+ */
+function layoutBlockFrameDataColumnAsHorizontalRow(html: string): string {
+  return String(html ?? '').replace(
+    /(<div\b)([^>]*\bclass\s*=\s*(["'])[^"']*\bdata-column\b[^"']*\3)([^>]*)>/gi,
+    (
+      _full,
+      openHead: string,
+      classAttrChunk: string,
+      _quote: string,
+      tail: string,
+    ) => {
+      const rest = String(tail ?? '');
+      if (/\bstyle\s*=\s*["'][^"']*flex-direction\s*:\s*row/i.test(rest)) {
+        return `${openHead}${classAttrChunk}${rest}>`;
+      }
+      const inlineStyle =
+        'display:flex;flex-direction:row;gap:24px;width:100%;flex:1 1 auto;align-items:stretch';
+      if (/\bstyle\s*=\s*(["'])([^"']*)\1/i.test(rest)) {
+        const merged = rest.replace(
+          /\bstyle\s*=\s*(["'])([^"']*)\1/i,
+          (_m, q: string, existing: string) =>
+            `style=${q}${existing.replace(/;?\s*$/, '')};${inlineStyle}${q}`,
+        );
+        return `${openHead}${classAttrChunk}${merged}>`;
+      }
+      return `${openHead}${classAttrChunk}${rest} style="${inlineStyle}">`;
+    },
+  );
+}
+
+/**
+ * 루프557 — MiniMax often emits a `.slide-2` (the Block Frame 2-column
+ * intro shell) with the header nodes (`nb-label`, `nb-heading-*`,
+ * `nb-body`, `stat-pill`) as DIRECT children of `<section>` alongside
+ * a `.col-right` but no `.col-left`. Kit CSS `.slide-2 { flex-direction: row }`
+ * then paints the orphan header as inline row siblings and the cards
+ * cluster in the right column, leaving a huge empty middle band.
+ *
+ * Wrap the orphan header nodes into a synthesized `<div class="col-left">`
+ * so the 2-col layout restores its symmetric split. Any trailing
+ * `<p class="nb-body">` / `<span class="stat-pill">` after `.col-right`
+ * is also absorbed into `.col-left` (they belong on the left column per
+ * the kit's canonical slide-2).
+ */
+export function wrapBlockFrameOrphanTwoColumnHeader(html: string): string {
+  const source = String(html ?? '');
+  if (!source) return source;
+  if (!/\bcol-right\b/i.test(source)) return source;
+  return source.replace(
+    /(<section\b[^>]*\bslide(?:-\d+)?\b[^>]*>)([\s\S]*?)(<\/section>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      // Only fire when the shell has a col-right but no col-left.
+      if (!/\bcol-right\b/i.test(inner)) return full;
+      if (/\bcol-left\b/i.test(inner)) return full;
+      // The shell must be Block Frame native (either explicit `.slide-2`
+      // class or an intro-family fingerprint like `.nb-heading-lg` +
+      // `.intro-card`).
+      const isBlockFrameTwoCol =
+        /\bslide-2\b/i.test(open)
+        || /\bnb-heading-(?:lg|xl)\b/i.test(inner)
+        || /\bintro-card\b/i.test(inner);
+      if (!isBlockFrameTwoCol) return full;
+
+      // Split inner into: [leading nodes before col-right], [col-right block],
+      // [trailing nodes after col-right].
+      const colRightMatch = /<div\b[^>]*\bclass\s*=\s*(["'])[^"']*\bcol-right\b[^"']*\1[^>]*>/i.exec(inner);
+      if (!colRightMatch) return full;
+      const colRightOpenStart = colRightMatch.index;
+      const colRightOpenEnd = colRightOpenStart + colRightMatch[0].length;
+      const colRightClose = findMatchingCloseForBlockFrame(
+        inner,
+        colRightOpenEnd,
+        'div',
+      );
+      if (colRightClose < 0) return full;
+      const leading = inner.slice(0, colRightOpenStart);
+      const colRightBlock = inner.slice(colRightOpenStart, colRightClose);
+      const trailing = inner.slice(colRightClose);
+
+      // Header nodes we absorb: nb-label / heading / nb-body / stat-pill /
+      // stat-pill row (`<div style="display: flex; gap: 12px..."`).
+      // We keep semantically-empty whitespace runs where they are.
+      const HEADER_NODE_RE = /<(?:div\b[^>]*\bnb-label\b|h[1-6]\b|p\b[^>]*\bnb-body\b|span\b[^>]*\bstat-pill\b|div\b[^>]*\bstat-pills\b)[^>]*>[\s\S]*?<\/(?:div|h[1-6]|p|span)>/gi;
+      const leadingHeader = leading.match(HEADER_NODE_RE) ?? [];
+      const trailingHeader = trailing.match(HEADER_NODE_RE) ?? [];
+      if (leadingHeader.length === 0 && trailingHeader.length === 0) return full;
+
+      const leadingRest = leading.replace(HEADER_NODE_RE, '').trim();
+      const trailingRest = trailing.replace(HEADER_NODE_RE, '');
+      const colLeftInner = [...leadingHeader, ...trailingHeader]
+        .join('\n      ')
+        .trim();
+      const colLeft = `<div class="col-left">\n      ${colLeftInner}\n    </div>`;
+      return `${open}\n      ${leadingRest ? `${leadingRest}\n      ` : ''}${colLeft}\n      ${colRightBlock.trim()}${trailingRest.trim() ? `\n      ${trailingRest.trim()}` : ''}\n    ${close}`;
+    },
+  );
+}
+
+/** Local helper: find matching `</tag>` position from `from` inside `html`. */
+function findMatchingCloseForBlockFrame(
+  html: string,
+  from: number,
+  tag: string,
+): number {
+  const safe = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const token = new RegExp(
+    `<(?:(/)\\s*)?${safe}\\b(?:[^>"']|"[^"]*"|'[^']*')*>`,
+    'gi',
+  );
+  token.lastIndex = from;
+  let depth = 1;
+  let match: RegExpExecArray | null;
+  while ((match = token.exec(html)) !== null) {
+    const isClose = Boolean(match[1]);
+    if (isClose) {
+      depth -= 1;
+      if (depth === 0) return match.index + match[0].length;
+    } else if (!/\/\s*>$/.test(match[0])) {
+      depth += 1;
+    }
+  }
+  return -1;
 }
 
 /**

@@ -1787,7 +1787,14 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(healed).not.toMatch(/고객경험/);
     expect(healed).toMatch(/근거와 사례/);
     expect(healed).not.toMatch(/근거와사례/);
-    expect(healed).not.toMatch(/실무자|리더|운영자/);
+    // 루프557 — 실무자 / 리더 / 운영자 that appear inside Block Frame
+    // native `.intro-card` shells are the user's legitimate deck content
+    // (Korean team-collab briefs use exactly these role names), not a
+    // Product Launch demo leak. Preserve them verbatim.
+    expect(healed).toMatch(/<h3[^>]*>\s*실무자\s*<\/h3>/);
+    expect(healed).toMatch(/<h3[^>]*>\s*리더\s*<\/h3>/);
+    expect(healed).toMatch(/<h3[^>]*>\s*운영자\s*<\/h3>/);
+    expect(healed).toMatch(/반복 작업을 줄이고 결과물 완성도를 높이는 방식/);
     expect(healed).not.toMatch(/파일떴|희대다|정척적/);
     expect(healed).not.toMatch(/고 객 경 험|근 거 와 사 례|실 무 자/);
     expect(healed).toMatch(/letter-spacing:\s*0\s*!important/);
@@ -1810,9 +1817,17 @@ describe('루프419 Capsule deterministic quality gate', () => {
     const leftoverOnly = healBlockFrameLeftoverCatalogCopy(html, 'Teamver 소개');
     expect(leftoverOnly).not.toMatch(/운영과보안/);
     expect(leftoverOnly).toMatch(/운영과 보안/);
-    expect(leftoverOnly).not.toMatch(/<(?:h3|h4)[^>]*>\s*(?:실무자|리더|운영자)\s*</);
-    expect(leftoverOnly).not.toMatch(/반복 작업을 줄이고 결과물 완성도를/);
+    // 루프557 — Role labels + role bodies survive when they sit inside
+    // Block Frame native `.intro-card` / `.nb-card` shells; only the
+    // bare `<div class="card">` (the 3rd peer with `<h4>` — Product Launch
+    // demo shape) still gets treated as leftover.
+    expect(leftoverOnly).toMatch(/<h3[^>]*>\s*실무자\s*<\/h3>/);
+    expect(leftoverOnly).toMatch(/<h3[^>]*>\s*리더\s*<\/h3>/);
+    expect(leftoverOnly).toMatch(/반복 작업을 줄이고 결과물 완성도를/);
+    expect(leftoverOnly).toMatch(/팀 속도, 품질, 비용을 함께 관리할 수 있는 기준/);
     expect(leftoverOnly).not.toMatch(/>Q[1-9](?:\s*20\d{2})?</);
+    // The healer itself keeps chart-svg (it just wipes demo glyphs); the
+    // structural strip happens later in `salvageMalformedMiniMaxSlideMarkup`.
     expect(leftoverOnly).toMatch(/class="chart-svg"/);
     expect(leftoverOnly).toMatch(/lang="en"/);
     expect(leftoverOnly).toMatch(/data-od-block-frame-hangul-type="1"/);
@@ -1822,17 +1837,146 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(leftoverOnly).toMatch(/\[data-od-block-frame-hangul-type="1"\] \.legend-item/);
     expect(leftoverOnly).toMatch(/letter-spacing:\s*0\s*!important/);
     expect(leftoverOnly).toMatch(/운영 권한과 저장 정책을 한 화면에서 검토하고 배포 전에 확인한다/);
+    // The 방문에서 문의·가입까지 이어지는 전환율 body sits inside a `.data-box`
+    // (chart-frame descendant), which is not a native intro-card / nb-card
+    // shell. It still gets wiped by the metric leftover rules.
     expect(leftoverOnly).not.toMatch(/방문에서 문의·가입까지 이어지는 전환율/);
-    expect(leftoverOnly).not.toMatch(/>\s*전환율\s*</);
 
     const healed = salvageMalformedMiniMaxSlideMarkup(html, 'Teamver 소개');
     expect(healed).not.toMatch(/운영과보안/);
     expect(healed).toMatch(/운영과 보안/);
-    expect(healed).not.toMatch(/<(?:h3|h4)[^>]*>\s*(?:실무자|리더|운영자)\s*</);
-    expect(healed).not.toMatch(/반복 작업을 줄이고 결과물 완성도를/);
+    // 루프557 — When the Korean role labels appear inside a Block Frame
+    // native `.intro-card` or `.nb-card` shell, they are the user's actual
+    // deck content (not a Product Launch demo leak), so preserve them and
+    // the surrounding descriptions. Only shells without a Block Frame
+    // native card class (bare `<div class="card">`, `<div class="feature-card">`,
+    // or role-body copy that lives *outside* any native card) still get wiped.
+    expect(healed).toMatch(/<h3[^>]*>\s*실무자\s*<\/h3>/);
+    expect(healed).toMatch(/<h3[^>]*>\s*리더\s*<\/h3>/);
+    expect(healed).toMatch(/반복 작업을 줄이고 결과물 완성도를/);
+    expect(healed).toMatch(/팀 속도, 품질, 비용을 함께 관리할 수 있는 기준/);
     expect(healed).not.toMatch(/>Q[1-9](?:\s*20\d{2})?</);
-    expect(healed).toMatch(/class="chart-svg"/);
+    // 루프557 — non-metric chart-svg (Q1..Qn axis + colored bars with no
+    // real metric numbers in the data-column) is removed entirely, so the
+    // `.data-column` can stretch to full width instead of being squeezed
+    // to a ~240px right rail.
+    expect(healed).not.toMatch(/class="chart-svg"/);
     expect(healed).toMatch(/\[data-od-hangul="1"\]/);
+  });
+
+  it('루프557 — Block Frame slide-2 orphan header (nb-label / h2 / nb-body direct-child of .slide with .col-right, no .col-left) is rewrapped into .col-left', async () => {
+    const html = await readFile(
+      new URL('./fixtures/loop556-block-frame-ops-chart.html', import.meta.url),
+      'utf8',
+    );
+    // Fixture baseline: slide-2 has direct-child `nb-label`, `h2.nb-heading-lg`,
+    // and `p.nb-body` alongside `.col-right`, but NO `.col-left`. The kit's
+    // `.slide-2 { flex-direction: row }` scoped CSS then paints an empty left
+    // half + a squeezed right column, matching the user's screenshot.
+    expect(html).toMatch(
+      /<section\b[^>]*\bslide-2\b[^>]*>[\s\S]*?<div\s+class="nb-label[^"]*">[\s\S]*?<h2\s+class="nb-heading-lg"[^>]*>[\s\S]*?<div\s+class="col-right"/,
+    );
+    expect(html).not.toMatch(/<div\s+class="col-left"/);
+
+    const healed = salvageMalformedMiniMaxSlideMarkup(html, 'Teamver 소개');
+    // After the reshape the header content (nb-label + h2 + trailing nb-body)
+    // must sit inside a synthesized `.col-left` sibling to `.col-right`.
+    const slide2 = healed.match(/<section\b[^>]*\bslide-2\b[^>]*>[\s\S]*?<\/section>/);
+    expect(slide2).not.toBeNull();
+    const slide2Html = slide2![0];
+    expect(slide2Html).toMatch(/<div\s+class="col-left"[^>]*>/);
+    expect(slide2Html).toMatch(/<div\s+class="col-right"[^>]*>/);
+    // Ordering: col-left must appear before col-right so the flex-row layout
+    // paints the header on the left.
+    const colLeftIdx = slide2Html.indexOf('class="col-left"');
+    const colRightIdx = slide2Html.indexOf('class="col-right"');
+    expect(colLeftIdx).toBeGreaterThan(-1);
+    expect(colRightIdx).toBeGreaterThan(colLeftIdx);
+    // nb-label + h2 header stack must be *inside* col-left.
+    expect(slide2Html).toMatch(
+      /<div\s+class="col-left"[^>]*>[\s\S]*?<div\s+class="nb-label[^"]*"[^>]*>[\s\S]*?<h2\s+class="nb-heading-lg"/,
+    );
+    // Trailing nb-body must be absorbed into col-left (not orphaned after
+    // col-right).
+    expect(slide2Html).toMatch(
+      /<div\s+class="col-left"[^>]*>[\s\S]*?운영 권한과 저장 정책을 한 화면에서 검토하고[\s\S]*?<\/div>/,
+    );
+    // The intro-card / nb-card contents in col-right survive the reshape.
+    expect(slide2Html).toMatch(/<div\s+class="intro-card"[^>]*>[\s\S]*?실무자/);
+    expect(slide2Html).toMatch(/<div\s+class="nb-card"[^>]*>[\s\S]*?리더/);
+  });
+
+  it('루프557 — Block Frame chart-frame with non-metric data-column drops chart-svg and lays data-column horizontally', async () => {
+    const html = await readFile(
+      new URL('./fixtures/loop556-block-frame-ops-chart.html', import.meta.url),
+      'utf8',
+    );
+    // Baseline: the fixture ships a full demo `<svg class="chart-svg">` with
+    // Q1..Q5 axis labels + colored bars, alongside a `.data-column` where
+    // every `.data-num` is a Korean word (`전환율`, `활성`, `품질`) rather than
+    // a numeric metric.
+    expect(html).toMatch(/<svg\s+class="chart-svg"/);
+    expect(html).toMatch(/>Q[1-5]</);
+    expect(html).toMatch(/<span\s+class="data-num">\s*전환율\s*<\/span>/);
+
+    const healed = salvageMalformedMiniMaxSlideMarkup(html, 'Teamver 소개');
+    const slide4 = healed.match(/<section\b[^>]*\bslide-4\b[^>]*>[\s\S]*?<\/section>/);
+    expect(slide4).not.toBeNull();
+    const slide4Html = slide4![0];
+
+    // Fake `chart-svg` shell removed so kit CSS `.chart-body:not(:has(.chart-svg))`
+    // fallback can stretch `.data-column` to full width.
+    expect(slide4Html).not.toMatch(/class="chart-svg"/);
+    expect(slide4Html).not.toMatch(/>Q[1-9](?:\s*20\d{2})?</);
+    // chart-frame + chart-body + data-column must survive the strip.
+    expect(slide4Html).toMatch(/class="chart-frame"/);
+    expect(slide4Html).toMatch(/class="chart-body"/);
+    expect(slide4Html).toMatch(/class="data-column"/);
+    // data-column receives inline `flex-direction: row` so its data-box
+    // children spread horizontally instead of stacking vertically.
+    expect(slide4Html).toMatch(
+      /<div\s+class="data-column"[^>]*style="[^"]*flex-direction\s*:\s*row/,
+    );
+    expect(slide4Html).toMatch(
+      /<div\s+class="data-column"[^>]*style="[^"]*width\s*:\s*100%/,
+    );
+  });
+
+  it('루프557 — Korean role labels + role bodies inside .intro-card / .nb-card native shells are preserved (not overwritten by BLOCK_FRAME_SEED_CARD_TITLES)', async () => {
+    const shellHtml = [
+      '<!doctype html>',
+      '<html lang="ko" data-od-block-frame-hangul-type="1">',
+      '<head><style>.slide{}</style></head>',
+      '<body>',
+      '<section class="slide slide-2">',
+      '<div class="col-left">',
+      '<div class="nb-label nb-label-yellow">근거와 사례</div>',
+      '<h2 class="nb-heading-lg">근거와 사례</h2>',
+      '</div>',
+      '<div class="col-right">',
+      '<div class="intro-card">',
+      '<h3>실무자</h3>',
+      '<p>반복 작업을 줄이고 결과물 완성도를 높이는 방식</p>',
+      '</div>',
+      '<div class="nb-card">',
+      '<h3>리더</h3>',
+      '<p>팀 속도, 품질, 비용을 함께 관리할 수 있는 기준</p>',
+      '</div>',
+      '</div>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const healed = healBlockFrameLeftoverCatalogCopy(shellHtml, 'Teamver 소개');
+    // Native shells `.intro-card` / `.nb-card` keep the user's Korean role
+    // labels and descriptions verbatim; they never get swapped for the
+    // English seed strings from BLOCK_FRAME_SEED_CARD_TITLES.
+    expect(healed).toMatch(/<h3[^>]*>\s*실무자\s*<\/h3>/);
+    expect(healed).toMatch(/<h3[^>]*>\s*리더\s*<\/h3>/);
+    expect(healed).not.toMatch(/Strategy First/);
+    expect(healed).not.toMatch(/Design System/);
+    expect(healed).not.toMatch(/Launch Ready/);
+    expect(healed).toMatch(/반복 작업을 줄이고 결과물 완성도를 높이는 방식/);
+    expect(healed).toMatch(/팀 속도, 품질, 비용을 함께 관리할 수 있는 기준/);
   });
 
   it('루프538 — Grove forest kit demo chrome (landscape / grove-stat KPI / sidebar) is scrubbed', async () => {

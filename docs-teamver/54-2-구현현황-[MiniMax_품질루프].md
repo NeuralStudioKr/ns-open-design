@@ -38,6 +38,22 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프557 — Block Frame 2-col orphan header + non-metric chart-svg + 한글 역할 유지
+
+체감: 2026-09-17 사용자 리포트 실물 스크린샷 2장. (1) `근거와 사례` cyan 슬라이드 — 상단 절반 빈 공간 + 3개 카드가 우하단 구석. (2) `운영과 보안` green 슬라이드 — 가짜 pink/cyan 막대 chart-svg + 우측 25% 좁은 data-column. 헤더 loop(555·556) 이후에도 "요소 배치·내용 구성 품질이 v1.4.15보다 떨어진다"는 재보고.
+
+원인 (3가지 독립 이슈가 한 슬라이드 배치를 동시에 망가뜨림):
+- **A. slide-2 orphan header** — MiniMax가 `.slide-2` (Block Frame 2-col intro shell) 안에 `nb-label` / `nb-heading-lg` / `nb-body`를 `<section>` 직속으로 두고 `.col-right`만 붙임. Kit CSS `.slide-2 { flex-direction: row }`이 그대로 걸려서 orphan 헤더가 row-item으로 흩어지고 카드는 우측 column에만 몰림.
+- **B. Decorative chart-svg on non-metric slide** — 루프547이 `chart-svg`를 flex-spacer로 유지하고 데모 Q1..Qn 라벨만 blank/균등화. 하지만 `.data-column`의 `.data-num`이 전부 한글 라벨(`전환율`/`활성`/`품질`)이면 실제 데이터가 없으므로 색막대 배열이 fake 데이터로 남고 kit `.slide-4 .data-column { flex: 0 0 240px }`가 3개 stat 카드를 240px 우측 레일로 짜부라뜨림.
+- **C. 한글 역할 leftover heal 과잉치환** — 루프555·556이 `실무자`/`리더`/`운영자`와 그 설명 문구를 Product Launch demo leak으로 간주해 `BLOCK_FRAME_SEED_CARD_TITLES` (Strategy First / Design System / Launch Ready)로 덮고 본문을 wipe. 사용자의 Korean team-collab 브리프는 정확히 그 용어를 실제 컨텐츠로 쓴다.
+
+수정:
+- `wrapBlockFrameOrphanTwoColumnHeader` — `.slide-2` (또는 nb-heading-lg/intro-card 지문) shell에 `.col-right`만 있고 `.col-left`가 없으면 orphan header (nb-label / heading / nb-body / stat-pill/stat-pills)를 새 `<div class="col-left">`로 감싼다. col-right 이전에 배치해 2-col row 레이아웃이 재구성됨.
+- `stripBlockFrameNonMetricChartFrame` — `.chart-frame` 안에 `.chart-svg`와 `.data-column`이 공존하면 `.data-num` 텍스트를 검사해 `%`/`Nx`/`+N`/한자·한글 수량 단위 등 실제 지표 글리프가 하나도 없으면 chart-svg + chart-legend를 통째로 제거하고 `layoutBlockFrameDataColumnAsHorizontalRow`가 `.data-column`에 인라인 `display:flex; flex-direction:row; width:100%; flex:1 1 auto`를 스탬프. Kit CSS의 slide-4-scoped column 규칙을 인라인 specificity로 눌러 3개 data-box가 전폭 가로 배치됨.
+- `computeBlockFrameNativeCardRanges` — `.intro-card` / `.nb-card` / `.feature-card` / `.team-card` / `.stat-card` / `.timeline-step` 을 native shell 로 간주. `.col-right` / `.cards-row` / `.stats-grid` / `.team-grid` / `.stats-row` 내부의 bare `.card` 도 native peer로 포함. Native 범위 안에 있는 h1–h4 / step-title / nb-heading / card-title / data-* / stat-label / step-desc / nb-body 는 `preserveKoreanRoles` (glued/broken token restore만) 통과시켜 seed replace / role-body wipe 를 건너뜀. Chart-frame 안 `.data-box` 는 native가 아니므로 metric leftover 규칙 그대로 유지.
+
+검증: contracts `template-clone-fill` 루프557 (a) slide-2 orphan header 재구성 · (b) chart-svg 스트립 + horizontal data-column · (c) native shell 한글 역할 유지. 루프555·556 assertion 을 신규 정책(한글 역할 유지)에 맞춰 업데이트. 3232 passed · 사전 존재 실패 3건은 무관 (deck-framework-compact / deck-quality-slide-count / system-prompt-api-mode). 헤드리스 chrome 렌더 before/after 비교로 시각 확인.
+
 ### 루프556 — Block Frame 운영차트·역할 leftover·한글 tracking (lang=en)
 
 체감: 555 이후에도 `운영과보안` + Q1–Q5 데모 막대 + `전환율`/`활성`/`품질` + `실무자`/`리더`/`운영자`. [0917-N29-1](./0917-N29-1-상위설계-[block_frame_ops_chart_leftover].md).
