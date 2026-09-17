@@ -337,11 +337,55 @@ export function patchInFlightAssistantForActiveRun(
   });
 }
 
+function createUserFingerprint(content: string | null | undefined): string {
+  return String(content ?? '').trim().replace(/\s+/g, ' ').slice(0, 500);
+}
+
+/**
+ * Home create used to persist the same user prompt twice within a few seconds.
+ * Drop the later user row and the assistant shell that belongs to that duplicate
+ * turn. A later distinct user follow-up is kept.
+ */
+export function collapseDuplicateCreateTurns(
+  messages: readonly ChatMessage[],
+  windowMs = 90_000,
+): ChatMessage[] {
+  const out: ChatMessage[] = [];
+  let lastKeptUser: ChatMessage | null = null;
+  let droppingDuplicateTurn = false;
+  for (const message of messages) {
+    if (message.role === 'user') {
+      const fingerprint = createUserFingerprint(message.content);
+      const previous = lastKeptUser;
+      const gap = previous
+        ? Math.abs((message.createdAt ?? 0) - (previous.createdAt ?? 0))
+        : Number.POSITIVE_INFINITY;
+      if (
+        previous
+        && fingerprint.length > 0
+        && fingerprint === createUserFingerprint(previous.content)
+        && gap < windowMs
+      ) {
+        droppingDuplicateTurn = true;
+        continue;
+      }
+      droppingDuplicateTurn = false;
+      lastKeptUser = message;
+      out.push(message);
+      continue;
+    }
+    if (droppingDuplicateTurn && message.role === 'assistant') continue;
+    out.push(message);
+  }
+  return out;
+}
+
 /** Full pipeline applied after server/active-run merges. */
 export function dedupeConversationAssistantRows(
   messages: readonly ChatMessage[],
 ): ChatMessage[] {
-  const byRunId = dedupeAssistantMessagesByRunId(messages);
+  const collapsedTurns = collapseDuplicateCreateTurns(messages);
+  const byRunId = dedupeAssistantMessagesByRunId(collapsedTurns);
   const collapsed = collapseEmptyAssistantShellsBeforeSuccessor(byRunId);
   if (
     collapsed.length === messages.length

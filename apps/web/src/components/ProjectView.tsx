@@ -276,6 +276,8 @@ import {
 } from '@open-design/contracts/analytics';
 import { projectListTrackingKind } from '../teamver/projectListCardCategory';
 import {
+  beginFirstConversationTurn,
+  releaseFirstConversationTurn,
   claimCreateAutoSend,
   createAutoSendClaimHeld,
   releaseCreateAutoSendClaim,
@@ -10498,6 +10500,16 @@ export function ProjectView({
       }
       if (!activeConversationId) return false;
       if (messagesConversationIdRef.current !== activeConversationId) return false;
+      const localUserCount = messagesRef.current.filter((message) => message.role === 'user').length;
+      if (!beginFirstConversationTurn({
+        projectId: project.id,
+        entryFrom: meta?.entryFrom ?? null,
+        localUserCount,
+      })) {
+        // Already started this create turn. Return true so auto-send latches
+        // and does not restore the session flag into a second stream.
+        return true;
+      }
       const runSessionMode = meta?.sessionMode ?? activeSessionMode;
       const retryTarget = meta?.retryOfAssistantId
         ? resolveRetryTarget(messages, meta.retryOfAssistantId)
@@ -11281,7 +11293,9 @@ export function ProjectView({
       const nextVisibleMessages = retryTarget
         ? [...nextHistory, ...retryTarget.preservedAttempts, assistantMsg]
         : [...nextHistory, assistantMsg];
-      setMessages(dedupeConversationAssistantRows(nextVisibleMessages));
+      const visibleAfterSend = dedupeConversationAssistantRows(nextVisibleMessages);
+      messagesRef.current = visibleAfterSend;
+      setMessages(visibleAfterSend);
       markStreamingConversation(runConversationId);
       if (config.mode === 'api') {
         dispatchTeamverBackgroundChat({
@@ -16244,6 +16258,12 @@ export function ProjectView({
       });
       // Latch success even if StrictMode cleanup set cancelled — otherwise
       // remount restores the flag and fires a second first stream.
+      if (ok === false) {
+        // Failed before a user row. Drop the create-turn lock so the retry
+        // path below can start one stream. A duplicate in-flight call returns
+        // true and must not reach here.
+        releaseFirstConversationTurn(project.id);
+      }
       if (ok !== false) {
         autoSentRef.current = true;
         autoSendInFlightRef.current = false;

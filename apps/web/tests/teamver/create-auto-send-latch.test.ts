@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
+  beginFirstConversationTurn,
   claimCreateAutoSend,
   createAutoSendClaimHeld,
   releaseCreateAutoSendClaim,
@@ -48,6 +49,40 @@ describe('create auto-send latch', () => {
       dispatched: false,
       abortActive: true,
     })).toBe(false);
+  });
+
+  it('blocks a second create turn even when the effect re-enters handleSend', () => {
+    const startedAt = new Map<string, number>();
+    expect(beginFirstConversationTurn({
+      projectId: 'p1',
+      entryFrom: 'new_project',
+      localUserCount: 0,
+      now: 1_000,
+    }, startedAt)).toBe(true);
+    expect(beginFirstConversationTurn({
+      projectId: 'p1',
+      entryFrom: 'new_project',
+      localUserCount: 0,
+      now: 1_500,
+    }, startedAt)).toBe(false);
+    expect(beginFirstConversationTurn({
+      projectId: 'p1',
+      entryFrom: 'auto_continue',
+      localUserCount: 0,
+      now: 1_500,
+    }, startedAt)).toBe(true);
+    expect(beginFirstConversationTurn({
+      projectId: 'p1',
+      entryFrom: null,
+      localUserCount: 0,
+      now: 1_500,
+    }, startedAt)).toBe(true);
+    expect(beginFirstConversationTurn({
+      projectId: 'p1',
+      entryFrom: 'new_project',
+      localUserCount: 1,
+      now: 2_000,
+    }, startedAt)).toBe(false);
   });
 
   it('does not retry a failed create send once a user row is visible', () => {
@@ -104,6 +139,7 @@ describe('create auto-send latch', () => {
     expect(dispatchAt).toBeLessThan(sendAt);
     expect(effect).toContain('shouldRearmCreateAutoSend({');
     expect(effect).toContain('shouldRetryFailedCreateAutoSend({');
+    expect(source).toContain('beginFirstConversationTurn({');
     expect(effect).not.toContain('if (!autoSentRef.current && autoSendInFlightRef.current)');
   });
 });

@@ -12,6 +12,7 @@
  */
 
 const claimedProjectIds = new Set<string>();
+const firstTurnStartedAt = new Map<string, number>();
 
 export function createAutoSendClaimHeld(
   projectId: string,
@@ -41,6 +42,39 @@ export function releaseCreateAutoSendClaim(
  * Cleanup may restore the session flag only when this effect never entered
  * handleSend. A dispatched send must stay latched until it fails cleanly.
  */
+/**
+ * Second line of defense inside handleSend. Effect cleanup can release the
+ * session flag before abortRef exists; this lock is set synchronously on the
+ * first create turn and is not released by that cleanup.
+ *
+ * Returns false when this project already started a create turn in the window.
+ */
+export function releaseFirstConversationTurn(
+  projectId: string,
+  startedAt: Map<string, number> = firstTurnStartedAt,
+): void {
+  startedAt.delete(projectId);
+}
+
+export function beginFirstConversationTurn(input: {
+  projectId: string;
+  entryFrom?: string | null;
+  localUserCount: number;
+  now?: number;
+  windowMs?: number;
+}, startedAt: Map<string, number> = firstTurnStartedAt): boolean {
+  // Composer follow-ups and auto-continue have no create entry. Do not
+  // hold them behind the home-create window.
+  if (input.entryFrom !== 'new_project') return true;
+  if (input.localUserCount > 0) return false;
+  const now = input.now ?? Date.now();
+  const windowMs = input.windowMs ?? 90_000;
+  const started = startedAt.get(input.projectId);
+  if (started != null && now - started < windowMs) return false;
+  startedAt.set(input.projectId, now);
+  return true;
+}
+
 export function shouldRearmCreateAutoSend(input: {
   autoSent: boolean;
   dispatched: boolean;
