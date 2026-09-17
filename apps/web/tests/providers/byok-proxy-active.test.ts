@@ -68,6 +68,8 @@ describe('listActiveByokProxyStreams', () => {
       '/api/proxy/active?projectId=project-1',
       { teamverProjectId: 'project-1', skipEmbedAuthRecovery: true },
     );
+    await listActiveByokProxyStreams('project-1');
+    expect(fetchTeamverDaemon).toHaveBeenCalledTimes(1);
   });
 
   it('keeps 404 compatible with daemons that do not expose the endpoint', async () => {

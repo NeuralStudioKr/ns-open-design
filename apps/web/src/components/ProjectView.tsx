@@ -1018,7 +1018,10 @@ export function mergeMissingActiveRunAssistantMessages(
   }[],
 ): ChatMessage[] {
   if (runs.length === 0) return messages;
-  let working = [...messages];
+  // Copy only after a real mutation. A no-op copy used to retrigger the
+  // proxy/active probe and loop the GET.
+  let working = messages;
+  let changed = false;
   const seen = new Set(working.map((message) => message.id));
   const recovered: ChatMessage[] = [];
   for (const run of runs) {
@@ -1044,6 +1047,7 @@ export function mergeMissingActiveRunAssistantMessages(
     const patched = patchInFlightAssistantForActiveRun(working, run, runs);
     if (patched) {
       working = patched;
+      changed = true;
       seen.clear();
       for (const message of working) seen.add(message.id);
       continue;
@@ -1053,6 +1057,7 @@ export function mergeMissingActiveRunAssistantMessages(
     seen.add(assistantMessageId);
     recovered.push(message);
   }
+  if (!changed && recovered.length === 0) return messages;
   const merged =
     recovered.length > 0 ? [...working, ...recovered] : working;
   return dedupeConversationAssistantRows(merged);
@@ -9607,8 +9612,10 @@ export function ProjectView({
 
   useEffect(() => {
     if (config.mode !== 'api' || !daemonLive || !activeConversationId) return;
+    if (!messagesInitialized || messagesConversationId !== activeConversationId) return;
     if (streaming && abortRef.current) return;
-    if (findInFlightAssistantMessages(messages).length > 0) return;
+    const snapshot = messagesRef.current;
+    if (findInFlightAssistantMessages(snapshot).length > 0) return;
     let cancelled = false;
     let retryTimer: number | null = null;
     const recoveryConversationId = activeConversationId;
@@ -9651,13 +9658,13 @@ export function ProjectView({
           return false;
         }
         if (assistantMessageId) {
-          const existing = messages.find((message) => message.id === assistantMessageId);
+          const existing = snapshot.find((message) => message.id === assistantMessageId);
           if (existing && isLocallyTerminalAssistantMessage(existing)) return false;
         }
         return true;
       });
       const nextMessages = mergeMissingActiveRunAssistantMessages(
-        messages,
+        snapshot,
         matchingStreams.map((stream) => ({
           id: null,
           assistantMessageId: stream.assistantMessageId,
@@ -9665,7 +9672,7 @@ export function ProjectView({
           createdAt: stream.registeredAt,
         })),
       );
-      if (nextMessages === messages) return;
+      if (nextMessages === snapshot) return;
       setMessages(nextMessages);
       for (const message of findInFlightAssistantMessages(nextMessages)) {
         dispatchTeamverBackgroundChat({
@@ -9686,7 +9693,8 @@ export function ProjectView({
     activeConversationId,
     streaming,
     inFlightAssistantSignature,
-    messages,
+    messagesInitialized,
+    messagesConversationId,
     project.id,
     reattachNonce,
   ]);
@@ -9719,6 +9727,7 @@ export function ProjectView({
     let cancelled = false;
     let pollTimer: number | null = null;
     let idlePollsWithoutProxy = 0;
+    let idlePollsWithStaleProxy = 0;
     let recoveryStreamingArmed = false;
     const recoveryConversationId = activeConversationId;
     const trackedAssistantIds = new Set(initialInflightMessages.map((message) => message.id));
@@ -10159,6 +10168,17 @@ export function ProjectView({
       if (trackedAssistantIds.size === 0 && !proxyStillActive) {
         finishRecovery();
         return;
+      }
+      if (!stillInflight && proxyStillActive) {
+        // Daemon still lists a stream, but this conversation has no in-flight
+        // assistant. Do not keep GET /api/proxy/active alive for that leak.
+        idlePollsWithStaleProxy += 1;
+        if (idlePollsWithStaleProxy >= 3) {
+          finishRecovery();
+          return;
+        }
+      } else if (stillInflight) {
+        idlePollsWithStaleProxy = 0;
       }
       if (!proxyStillActive && stillInflight) {
         idlePollsWithoutProxy += 1;
@@ -14281,7 +14301,7 @@ export function ProjectView({
       // Streams missing a conversationId (legacy or race) are skipped —
       // they'll drain naturally per the "page exit → background" policy.
       const conversationForStop = activeConversationId;
-      void listActiveByokProxyStreams(project.id)
+      void listActiveByokProxyStreams(project.id, { bypassCache: true })
         .then((streams) => {
           for (const stream of streams) {
             if (!conversationForStop) continue;

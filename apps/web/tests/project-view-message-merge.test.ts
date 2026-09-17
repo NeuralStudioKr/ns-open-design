@@ -1285,7 +1285,8 @@ describe("mergeMissingActiveRunAssistantMessages", () => {
       runStatus: "running",
     };
 
-    const merged = mergeMissingActiveRunAssistantMessages([assistant], [
+    const messages = [assistant];
+    const merged = mergeMissingActiveRunAssistantMessages(messages, [
       {
         id: "run-1",
         assistantMessageId: "a1",
@@ -1294,6 +1295,7 @@ describe("mergeMissingActiveRunAssistantMessages", () => {
       },
     ]);
 
+    expect(merged).toBe(messages);
     expect(merged).toEqual([assistant]);
   });
 
