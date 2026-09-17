@@ -1314,6 +1314,76 @@ function topicKeywordForSynthBody(title: string): string {
     || '핵심 주제';
 }
 
+const GENERIC_SYNTH_TOPIC_NOUN_RE =
+  /^(?:핵심 주제|주제|개요|핵심(?:\s*\d+)?|핵심 포인트|근거와 사례|실행 방안|고객 경험|운영과 보안|도입 로드맵|성과 지표|요약|슬라이드|표지|커버|소개|overview)$/i;
+
+function isGenericSynthTopicNoun(topic: string): boolean {
+  const text = String(topic ?? '').replace(/\s+/g, ' ').trim();
+  if (!text) return true;
+  if (GENERIC_SYNTH_TOPIC_NOUN_RE.test(text)) return true;
+  if (/핵심\s+주제/.test(text)) return true;
+  if (/^핵심\s+\d+/.test(text)) return true;
+  return false;
+}
+
+function hangulSyllableHasBatchim(ch: string): boolean {
+  const code = ch.charCodeAt(0);
+  if (code < 0xac00 || code > 0xd7a3) return false;
+  return (code - 0xac00) % 28 !== 0;
+}
+
+function lastHangulSyllable(text: string): string | null {
+  const chars = [...String(text ?? '')];
+  for (let i = chars.length - 1; i >= 0; i -= 1) {
+    if (/[가-힣]/.test(chars[i]!)) return chars[i]!;
+  }
+  return null;
+}
+
+/**
+ * 루프553 — 받침 있으면 이/을/은, 없으면 가/를/는.
+ * Latin-only 브랜드(Teamver)는 한글 받침이 없어 가/를/는.
+ */
+export function attachKoreanJosa(
+  noun: string,
+  pair: '이/가' | '을/를' | '은/는',
+): string {
+  const topic = String(noun ?? '').replace(/\s+/g, ' ').trim();
+  if (!topic) return topic;
+  const [withBatchim, without] = pair.split('/') as [string, string];
+  const last = lastHangulSyllable(topic);
+  const particle = last && hangulSyllableHasBatchim(last) ? withBatchim : without;
+  return `${topic}${particle}`;
+}
+
+function resolveLockedTopicNoun(
+  ...candidates: Array<string | null | undefined>
+): string {
+  for (const raw of candidates) {
+    const text = String(raw ?? '').trim();
+    if (!text) continue;
+    if (
+      /첨부(?:한|된)?\s*(?:자료|파일)|(?:만들|작성|생성)(?:어|해|하여)?\s*(?:줘|주세요|달라)|슬라이드\s*덱/i.test(text)
+      && !/(?:https?:\/\/|www\.)[a-z0-9.-]+/i.test(text)
+    ) {
+      continue;
+    }
+    const derived = text.length > 48
+      ? topicKeywordForSynthBody(deriveDeckCoverTitleFromBrief(text, null))
+      : topicKeywordForSynthBody(text);
+    if (
+      derived
+      && !isGenericSynthTopicNoun(derived)
+      && derived.length <= 32
+      && !looksLikeTemplateMarketingTitle(derived)
+      && !/html-ppt|zhangzara|daisy days/i.test(derived)
+    ) {
+      return derived;
+    }
+  }
+  return '주제';
+}
+
 type SynthTemplateTopicPreset =
   | 'service-intro'
   | 'generic';
@@ -1340,7 +1410,7 @@ function classifySynthTemplateTopicProfile(
   cover: string,
   brief?: string | null,
 ): SynthTemplateTopicProfile {
-  const topic = topicKeywordForSynthBody(cover);
+  const topic = resolveLockedTopicNoun(cover, brief);
   if (looksLikeServiceIntroCoverLeadContext(cover, brief)) {
     return { topic, preset: 'service-intro' };
   }
@@ -1369,7 +1439,7 @@ function templatesForSynthTemplateTopic(
     return [
       {
         roleHint: 'list',
-        lead: `${topic}가 풀어야 하는 문제`,
+        lead: `${attachKoreanJosa(topic, '이/가')} 풀어야 하는 문제`,
         itemTitles: ['문제', '사용자', '맥락'],
         lines: [
           '사용자가 반복해서 겪는 핵심 불편과 전환 비용을 먼저 정의',
@@ -1457,7 +1527,7 @@ function templatesForSynthTemplateTopic(
   return [
     {
       roleHint: 'list',
-      lead: `왜 ${topic}을 지금 다뤄야 하는가`,
+      lead: `왜 ${attachKoreanJosa(topic, '을/를')} 지금 다뤄야 하는가`,
       itemTitles: ['배경', '핵심 질문', '판단 기준'],
       lines: [
         `${topic}의 배경과 현재 논의가 필요한 이유를 한두 문장으로 정리`,
@@ -1471,18 +1541,18 @@ function templatesForSynthTemplateTopic(
       itemTitles: ['개념', '구조', '영향'],
       lines: [
         `개념: ${topic}에서 자주 쓰이는 용어와 원리를 짧고 정확하게 정의`,
-        `구조: ${topic}을 이루는 구성 요소와 서로 연결되는 방식을 설명`,
-        `영향: ${topic}이 실제 의사결정이나 업무에 만드는 변화를 정리`,
+        `구조: ${attachKoreanJosa(topic, '을/를')} 이루는 구성 요소와 서로 연결되는 방식을 설명`,
+        `영향: ${attachKoreanJosa(topic, '이/가')} 실제 의사결정이나 업무에 만드는 변화를 정리`,
       ],
     },
     {
       roleHint: 'process',
-      lead: `${topic}을 이해에서 적용까지 잇는 순서`,
+      lead: `${attachKoreanJosa(topic, '을/를')} 이해에서 적용까지 잇는 순서`,
       itemTitles: ['이해', '비교', '적용'],
       lines: [
         `${topic}의 전체 지도를 먼저 그리고 세부 개념을 그 위에 위치시킨다`,
         `${topic}의 대안·사례·실패 패턴을 비교해 차이를 명확히 드러낸다`,
-        `${topic}을 실제 상황에 적용할 기준과 다음 행동을 한 문장으로 제안`,
+        `${attachKoreanJosa(topic, '을/를')} 실제 상황에 적용할 기준과 다음 행동을 한 문장으로 제안`,
       ],
     },
     {
@@ -1492,7 +1562,7 @@ function templatesForSynthTemplateTopic(
       lines: [
         `좋은 사례: ${topic}의 핵심 원리가 실제 문제를 줄여 준 장면`,
         `주의 사례: 겉보기엔 ${topic}과 비슷하지만 성과가 낮은 접근`,
-        `전환점: ${topic}을 적용할지 결정하는 비용·리스크·기대 효과`,
+        `전환점: ${attachKoreanJosa(topic, '을/를')} 적용할지 결정하는 비용·리스크·기대 효과`,
       ],
     },
     {
@@ -1501,7 +1571,7 @@ function templatesForSynthTemplateTopic(
       itemTitles: ['준비', '운영', '검증'],
       lines: [
         `${topic}에 필요한 자료·이해관계자·현재 상태를 먼저 확인`,
-        `${topic}을 작은 범위에서 실행하고 피드백을 빠르게 반영`,
+        `${attachKoreanJosa(topic, '을/를')} 작은 범위에서 실행하고 피드백을 빠르게 반영`,
         `${topic}의 성과 지표와 실패 신호를 함께 정의해 다음 단계를 결정`,
       ],
     },
@@ -1510,7 +1580,7 @@ function templatesForSynthTemplateTopic(
       lead: `${topic} 정리와 다음 단계`,
       itemTitles: ['핵심 메시지', '다음 행동'],
       lines: [
-        `${topic}은 한 번에 설명하기보다 배경·구조·사례·실행 기준으로 나누면 이해도가 높아진다`,
+        `${attachKoreanJosa(topic, '은/는')} 한 번에 설명하기보다 배경·구조·사례·실행 기준으로 나누면 이해도가 높아진다`,
         `다음 단계는 청중 수준에 맞춰 ${topic}의 예시·실습 또는 의사결정 기준을 보강하는 것`,
       ],
     },
@@ -1617,14 +1687,14 @@ export function synthesizeTemplateCloneCoverLead(
   cover: string,
   brief?: string | null,
 ): string {
-  const topic = topicKeywordForSynthBody(cover);
+  const topic = resolveLockedTopicNoun(cover, brief);
   if (looksLikeServiceIntroCoverLeadContext(cover, brief)) {
     const fromSource = extractServiceIntroCoverLeadFromBrief(
       String(brief ?? cover),
       topic,
     );
     if (fromSource) return fromSource;
-    return `${topic}가 다루는 문제와 제공 가치`;
+    return `${attachKoreanJosa(topic, '이/가')} 다루는 문제와 제공 가치`;
   }
   return `${topic} — 핵심 맥락과 다음 단계를 정리합니다`;
 }
@@ -6873,6 +6943,13 @@ const SYNTH_ROTATION_SALT_EMDASH_RE = new RegExp(
 );
 
 /** 루프545 · stripSynthRotationSaltLeaks pattern export for prompt/heal tests. */
+const SYNTH_ROTATION_SALT_CORE_N_PAREN_RE =
+  /[ \t\u00A0]*\(\s*핵심\s+\d+\s*\)(?=\s|<|$|[.。!?])/gu;
+const SYNTH_ROTATION_SALT_CORE_N_MIDDOT_RE =
+  /\s+[·・]\s+핵심\s+\d+(?=\s|<|$|[.。!?,])/gu;
+const SYNTH_ROTATION_SALT_CORE_N_EMDASH_RE =
+  /\s+[—–]\s+핵심\s+\d+(?=\s|<|$|[.。!?,])/gu;
+
 export function stripSynthRotationSaltLeaks(html: string): string {
   if (!html) return html;
   let next = String(html);
@@ -6884,6 +6961,10 @@ export function stripSynthRotationSaltLeaks(html: string): string {
   next = next.replace(SYNTH_ROTATION_SALT_MIDDOT_RE, '');
   // lead 뒤 ` — <label>` → 제거.
   next = next.replace(SYNTH_ROTATION_SALT_EMDASH_RE, '');
+  // 루프553 — pad 라벨 `핵심 N` salt 누수.
+  next = next.replace(SYNTH_ROTATION_SALT_CORE_N_PAREN_RE, '');
+  next = next.replace(SYNTH_ROTATION_SALT_CORE_N_MIDDOT_RE, '');
+  next = next.replace(SYNTH_ROTATION_SALT_CORE_N_EMDASH_RE, '');
   return next;
 }
 
@@ -8449,6 +8530,7 @@ type StudioCreativeFillInput = {
   bodyText: string;
   kicker: string;
   fillLines: TemplateCloneCardFillLine[];
+  topic?: string;
 };
 
 function fillStudioKitSlide(
@@ -9178,20 +9260,23 @@ const PRODUCT_LAUNCH_LEFTOVER_BODY_RE =
   /Halo v2|halo\.audio|Studio-grade spatial|Four years of research|Marques Lin|Pre-order Halo|Pick your Halo|◎\s*Halo|\$179|\$279|\$399|AAC \+ SBC|Hi-Res Lossless/i;
 
 const PRODUCT_LAUNCH_GENERIC_HEADING_RE =
-  /^(?:개요|핵심 포인트|근거와 사례|실행 방안|고객 경험|도입 로드맵|성과 지표|요약)$/;
+  /^(?:개요|핵심 포인트|근거와 사례|실행 방안|고객 경험|도입 로드맵|성과 지표|요약|핵심 주제|핵심\s+\d+)$/;
 
 const PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE =
   /^(?:핵심 가치|사용 장면|차별점|탐색|실행|확장|실무자|리더|운영자)$/;
 
 const PRODUCT_LAUNCH_GENERIC_CARD_BODY_RE =
-  /사용자가 즉시 얻는 시간 절감|도입 전 탐색, 팀 협업|기존 대안 대비 더 적은 단계|첫 방문에서 문제와 해결|주요 기능을 체험하거나 문의|팀 규모, 권한, 반복 작업|반복 작업을 줄이고 결과물|팀 속도, 품질, 비용|권한, 저장, 감사, 보안/;
+  /사용자가 즉시 얻는 시간 절감|도입 전 탐색, 팀 협업|기존 대안 대비 더 적은 단계|첫 방문에서 문제와 해결|주요 기능을 체험하거나 문의|팀 규모, 권한, 반복 작업/;
+
+const PRODUCT_LAUNCH_BROKEN_COPY_RE =
+  /주제이|주제을|핵심\s+주제|핵심\s+\d+|—\s*,|의미와 적용 기준을 한 문장으로/;
 
 const PRODUCT_LAUNCH_GENERIC_TITLE_MAP: Record<string, (topic: string) => string> = {
   개요: (topic) => `${topic} 한눈에`,
-  '핵심 포인트': (topic) => `${topic}이 해결하는 문제`,
+  '핵심 포인트': (topic) => `${attachKoreanJosa(topic, '이/가')} 해결하는 문제`,
   '근거와 사례': (topic) => `${topic}의 쓰임과 근거`,
-  '실행 방안': (topic) => `${topic}을 쓰는 순서`,
-  '고객 경험': (topic) => `${topic}을 쓰는 사람들`,
+  '실행 방안': (topic) => `${attachKoreanJosa(topic, '을/를')} 쓰는 순서`,
+  '고객 경험': (topic) => `${attachKoreanJosa(topic, '을/를')} 쓰는 사람들`,
   '도입 로드맵': (topic) => `${topic} 도입 경로`,
   '성과 지표': (topic) => `${topic}에서 확인할 성과`,
   요약: (topic) => `${topic} 정리와 다음 단계`,
@@ -9209,12 +9294,82 @@ const PRODUCT_LAUNCH_GENERIC_CARD_TITLE_MAP: Record<string, (topic: string) => s
   운영자: (topic) => `${topic} 운영`,
 };
 
+const PRODUCT_LAUNCH_PRICE_PLAN_TITLES = ['실무', '리더', '운영'] as const;
+const PRODUCT_LAUNCH_PRICE_PLAN_BULLETS: readonly string[][] = [
+  [
+    '반복 작업을 한 화면에서 끝내고 초안을 바로 공유한다',
+    '리뷰·권한 요청을 같은 워크스페이스에서 처리한다',
+    '결과물 완성도를 기능 나열보다 먼저 본다',
+  ],
+  [
+    '팀 속도와 품질, 비용을 한 기준으로 맞춘다',
+    '역할별 권한과 책임을 첫 화면에서 보여 준다',
+    '반복 손실을 줄이는 쪽으로 도입 범위를 정한다',
+  ],
+  [
+    '권한·저장·감사 로그를 기본 운영으로 둔다',
+    '게스트와 조직 확장을 같은 정책으로 받는다',
+    '보안·개인정보 요구를 도입 체크리스트에 남긴다',
+  ],
+];
+
 function productLaunchShortBrand(brief?: string | null, topic?: string | null): string {
   const fromTopic = String(topic ?? '').replace(/\s+/g, ' ').trim();
-  if (fromTopic && fromTopic !== '핵심 주제' && fromTopic.length <= 16) return fromTopic;
-  const fromBrief = topicKeywordForSynthBody(String(brief ?? ''));
-  if (fromBrief && fromBrief !== '핵심 주제') return fromBrief.slice(0, 16);
+  if (fromTopic && !isGenericSynthTopicNoun(fromTopic) && fromTopic.length <= 16) return fromTopic;
+  const fromBrief = resolveLockedTopicNoun(brief, topic);
+  if (fromBrief && !isGenericSynthTopicNoun(fromBrief)) return fromBrief.slice(0, 16);
   return '';
+}
+
+function productLaunchRoleAwareTitle(
+  attrs: string | undefined,
+  topic: string,
+  fallbackLabel: string,
+  kicker?: string,
+): string {
+  const role = /\bdata-title\s*=\s*["']([^"']+)["']/i.exec(attrs ?? '')?.[1]?.trim() ?? '';
+  const label = String(fallbackLabel ?? '').replace(/\s+/g, ' ').trim();
+  const kickerText = String(kicker ?? '').replace(/\s+/g, ' ').trim();
+  if (role === 'Cover') return topic;
+  if (role === 'Introducing') {
+    if (/다음/.test(label) || /다음/.test(kickerText) || /^핵심\s+9$/.test(label)) {
+      return `${topic} 다음 단계`;
+    }
+    return `${topic} 한눈에`;
+  }
+  if (role === 'Sound') return `${attachKoreanJosa(topic, '이/가')} 해결하는 문제`;
+  if (role === 'Fit') return `${topic}의 쓰임과 근거`;
+  if (role === 'Intelligence') return `${topic} 도입 경로`;
+  if (role === 'Pricing') return `${attachKoreanJosa(topic, '을/를')} 쓰는 순서`;
+  if (role === 'Ship') return `${topic} 정리와 다음 단계`;
+  if (PRODUCT_LAUNCH_GENERIC_TITLE_MAP[label]) return PRODUCT_LAUNCH_GENERIC_TITLE_MAP[label]!(topic);
+  if (/^핵심\s+\d+$/.test(label) || label === '핵심 주제' || label === '개요') {
+    return `${topic} 한눈에`;
+  }
+  return PRODUCT_LAUNCH_GENERIC_TITLE_MAP['개요']!(topic);
+}
+
+function rewriteProductLaunchLeakedHeading(
+  rawTitle: string,
+  topic: string,
+  attrs?: string,
+  kicker?: string,
+): string {
+  const title = String(rawTitle ?? '').replace(/\s+/g, ' ').trim();
+  if (/^핵심\s+\d+$/.test(title) || title === '핵심 주제' || PRODUCT_LAUNCH_GENERIC_HEADING_RE.test(title)) {
+    return productLaunchRoleAwareTitle(attrs, topic, title, kicker);
+  }
+  if (/핵심\s+주제/.test(title) || /주제이|주제을/.test(title) || /^실행 방안[이가을를은는]/.test(title)) {
+    if (/해결하는 문제/.test(title)) return `${attachKoreanJosa(topic, '이/가')} 해결하는 문제`;
+    if (/쓰는 사람들/.test(title)) return `${attachKoreanJosa(topic, '을/를')} 쓰는 사람들`;
+    if (/쓰는 순서/.test(title)) return `${attachKoreanJosa(topic, '을/를')} 쓰는 순서`;
+    if (/쓰임과 근거/.test(title)) return `${topic}의 쓰임과 근거`;
+    if (/한눈에/.test(title)) return `${topic} 한눈에`;
+    if (/도입 경로/.test(title)) return `${topic} 도입 경로`;
+    if (/정리와 다음/.test(title)) return `${topic} 정리와 다음 단계`;
+    return productLaunchRoleAwareTitle(attrs, topic, title, kicker);
+  }
+  return productLaunchKitAwareTitle(title, topic);
 }
 
 function productLaunchKitAwareTitle(rawTitle: string, topic: string): string {
@@ -9228,36 +9383,74 @@ function productLaunchKitAwareTitle(rawTitle: string, topic: string): string {
   return title;
 }
 
+function productLaunchSlotNeedsRefill(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!value) return true;
+  if (PRODUCT_LAUNCH_BROKEN_COPY_RE.test(value)) return true;
+  if (/^실행 방안(?:\s*(?:실무|리더|운영)|[이가을를은는])/.test(value)) return true;
+  if (PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(value)) return true;
+  if (PRODUCT_LAUNCH_GENERIC_CARD_BODY_RE.test(value)) return true;
+  if (PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(value)) return true;
+  if (PRODUCT_LAUNCH_DEMO_COPY_RE.test(value)) {
+    PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+    return true;
+  }
+  PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+  return false;
+}
+
 function productLaunchKitAwareCardTitle(rawTitle: string, topic: string, index: number): string {
   const title = String(rawTitle ?? '').replace(/\s+/g, ' ').trim();
+  const plan = /실행 방안\s*(실무|리더|운영)/.exec(title)?.[1];
+  if (plan) return `${topic} ${plan}`;
+  if (/핵심\s+주제|주제이|주제을/.test(title)) {
+    if (/핵심$/.test(title)) return `${topic} 핵심`;
+    if (/장면$/.test(title)) return `${topic} 장면`;
+    if (/차이$/.test(title)) return `${topic} 차이`;
+  }
   if (PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(title)) {
     return (PRODUCT_LAUNCH_GENERIC_CARD_TITLE_MAP[title] ?? ((value: string) => `${value} ${index + 1}`))(topic);
   }
-  if (!title || PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(title) || PRODUCT_LAUNCH_DEMO_COPY_RE.test(title)) {
-    PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
-    return `${topic} ${index + 1}`;
+  if (!title || productLaunchSlotNeedsRefill(title)) {
+    return `${topic} ${PRODUCT_LAUNCH_PRICE_PLAN_TITLES[index] ?? index + 1}`;
   }
-  PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
   return title;
+}
+
+function productLaunchConcreteCardBody(cardTitle: string, topic: string, index: number): string {
+  if (/실무/.test(cardTitle)) {
+    return '반복 작업을 줄이고 결과물 완성도를 한 화면에서 높인다.';
+  }
+  if (/리더/.test(cardTitle)) {
+    return '팀 속도, 품질, 비용을 같은 기준으로 맞춘다.';
+  }
+  if (/운영/.test(cardTitle)) {
+    return '권한, 저장, 감사, 보안 요구를 운영 기본값으로 둔다.';
+  }
+  if (/핵심$/.test(cardTitle)) {
+    return `${topic}에서 바로 얻는 시간 절감과 의사결정 기준을 한 문장으로 말한다.`;
+  }
+  if (/장면$/.test(cardTitle)) {
+    return '탐색, 협업, 결과물, 운영이 같은 워크스페이스에서 이어진다.';
+  }
+  if (/차이$/.test(cardTitle)) {
+    return '기존 도구를 오가는 단계 없이 같은 결과를 만든다.';
+  }
+  const bullets = PRODUCT_LAUNCH_PRICE_PLAN_BULLETS[index] ?? PRODUCT_LAUNCH_PRICE_PLAN_BULLETS[0]!;
+  return bullets[0] ?? `${topic}의 핵심을 한 문장으로 정리한다.`;
 }
 
 function productLaunchKitAwareCardBody(
   cardTitle: string,
   rawBody: string,
   topic: string,
+  index = 0,
 ): string {
   const body = String(rawBody ?? '').replace(/\s+/g, ' ').trim();
-  if (
-    !body
-    || PRODUCT_LAUNCH_GENERIC_CARD_BODY_RE.test(body)
-    || PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(body)
-    || PRODUCT_LAUNCH_DEMO_COPY_RE.test(body)
-  ) {
-    PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
-    return `${cardTitle} — ${topic}에서 의미와 적용 기준을 한 문장으로 정리한다.`;
+  if (!productLaunchSlotNeedsRefill(body) && !/의미와 적용 기준을 한 문장으로/.test(body)) {
+    return body;
   }
-  PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
-  return body;
+  return productLaunchConcreteCardBody(cardTitle, topic, index);
 }
 
 function slideLooksLikeProductLaunchKit(attrs: string, body: string): boolean {
@@ -9291,33 +9484,141 @@ function replaceProductLaunchHeroShotCssBrand(html: string, brand: string): stri
   return String(html ?? '').replace(/content\s*:\s*(["'])Halo v2\1/gi, `content:${next}`);
 }
 
+function productLaunchDistinctLede(
+  topic: string,
+  kicker: string,
+  brief?: string | null,
+): string {
+  const primary = synthesizeTemplateCloneCoverLead(topic, brief);
+  if (primary && primary !== kicker) return primary;
+  return `${attachKoreanJosa(topic, '은/는')} 워크스페이스·권한·반복 작업을 한곳에서 다루는 협업 도구다.`;
+}
+
+function ensureProductLaunchCenterLede(
+  body: string,
+  attrs: string,
+  topic: string,
+  lead: string,
+  kicker: string,
+): string {
+  if (!/\bcenter\b/i.test(attrs)) return body;
+  const existing = visibleDeckCopy(
+    /<[^>]*\blede\b[^>]*>([\s\S]*?)<\//i.exec(body)?.[1] ?? '',
+  );
+  const sentence = lead && lead !== kicker && !productLaunchSlotNeedsRefill(lead)
+    ? lead
+    : productLaunchDistinctLede(topic, kicker);
+  if (existing) {
+    if (productLaunchSlotNeedsRefill(existing) || existing === kicker) {
+      return replaceFirstExactClassText(body, 'lede', sentence);
+    }
+    return body;
+  }
+  if (!/<h1\b/i.test(body)) return body;
+  return body.replace(
+    /(<\/h1>)/i,
+    `$1<p class="lede">${escapeHtml(sentence)}</p>`,
+  );
+}
+
+function restoreProductLaunchShipLayout(body: string, topic: string): string {
+  let next = body.replace(
+    /<p\b[^>]*>\s*(?:—|&mdash;|–|-)\s*,\s*<\/p>/gi,
+    '',
+  );
+  if (!/\btestimonial\b/i.test(next) && !/\bcta-btn\b/i.test(next)) return next;
+  if (/\bcta-btn\b/i.test(next)) return next;
+  const cta = `<div class="ship-cta"><p class="dim">지금 시작</p><a class="cta-btn" href="#">${escapeHtml(`${topic} 시작하기`)}</a></div>`;
+  const row = firstExactClassRange(next, 'row');
+  if (row) {
+    const block = next.slice(row.start, row.end);
+    const filled = block.replace(/<\/div>\s*$/i, `${cta}</div>`);
+    return `${next.slice(0, row.start)}${filled}${next.slice(row.end)}`;
+  }
+  return `${next}${cta}`;
+}
+
+function productLaunchSlideNeedsHeal(body: string, attrs: string): boolean {
+  const heading = visibleDeckCopy(
+    body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
+  );
+  const kicker = visibleDeckCopy(
+    /<[^>]*\bkicker\b[^>]*>([\s\S]*?)<\//i.exec(body)?.[1] ?? '',
+  );
+  const lede = visibleDeckCopy(
+    /<[^>]*\blede\b[^>]*>([\s\S]*?)<\//i.exec(body)?.[1] ?? '',
+  );
+  if (PRODUCT_LAUNCH_BROKEN_COPY_RE.test(body)) return true;
+  if (PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(body)) return true;
+  if (PRODUCT_LAUNCH_DEMO_COPY_RE.test(body)) {
+    PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+    return true;
+  }
+  PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+  if (PRODUCT_LAUNCH_GENERIC_HEADING_RE.test(heading)) return true;
+  if (PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(visibleDeckCopy(body))) return true;
+  if (kicker && lede && kicker === lede) return true;
+  if (/\bcenter\b/i.test(attrs) && !lede) return true;
+  if (/\btestimonial\b/i.test(body) && (/—\s*,/.test(body) || !/\bcta-btn\b/i.test(body))) {
+    return true;
+  }
+  return false;
+}
+
 function fillProductLaunchKitSlide(
   body: string,
   input: StudioCreativeFillInput,
+  attrs = '',
 ): string {
   let next = body;
-  const topic = topicKeywordForSynthBody(input.title || input.lead || input.kicker || '');
-  const resolvedTitle = productLaunchKitAwareTitle(input.title, topic);
+  const topic = resolveLockedTopicNoun(
+    input.topic,
+    input.title,
+    input.lead,
+    input.kicker,
+  );
+  const heading = visibleDeckCopy(
+    next.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
+  );
+  const kickerText = visibleDeckCopy(
+    /<[^>]*\bkicker\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? input.kicker ?? '',
+  );
+  const resolvedTitle = rewriteProductLaunchLeakedHeading(
+    heading || input.title,
+    topic,
+    attrs,
+    kickerText,
+  );
   const lines = biennaleFillLines({ ...input, title: resolvedTitle }, 6)
     .map((line, index) => {
       const title = productLaunchKitAwareCardTitle(line.title, topic, index);
       return {
         title,
-        body: productLaunchKitAwareCardBody(title, line.body, topic),
+        body: productLaunchKitAwareCardBody(title, line.body, topic, index),
       };
     });
-  const heading = visibleDeckCopy(
-    next.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
-  );
   if (
     heading
     && (
-      PRODUCT_LAUNCH_GENERIC_HEADING_RE.test(heading)
+      productLaunchSlotNeedsRefill(heading)
+      || PRODUCT_LAUNCH_GENERIC_HEADING_RE.test(heading)
       || PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(heading)
       || /Halo|Pick your Halo|Meet Halo/i.test(heading)
     )
   ) {
     next = replaceFirstHeadingText(next, resolvedTitle);
+  }
+  if (/\bkicker\b/i.test(next) && /\blede\b/i.test(next)) {
+    const lede = visibleDeckCopy(
+      /<[^>]*\blede\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (kickerText && lede && kickerText === lede) {
+      next = replaceFirstExactClassText(
+        next,
+        'lede',
+        productLaunchDistinctLede(topic, kickerText),
+      );
+    }
   }
   if (/\blede\b/i.test(next)) {
     const lede = visibleDeckCopy(
@@ -9325,65 +9626,124 @@ function fillProductLaunchKitSlide(
     );
     if (
       !lede
+      || productLaunchSlotNeedsRefill(lede)
       || PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(lede)
       || PRODUCT_LAUNCH_DEMO_COPY_RE.test(lede)
-      || PRODUCT_LAUNCH_GENERIC_CARD_BODY_RE.test(lede)
     ) {
       PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
-      next = replaceFirstExactClassText(
-        next,
-        'lede',
-        input.lead || synthesizeTemplateCloneCoverLead(resolvedTitle),
-      );
+      const nextLede = input.lead && input.lead !== kickerText
+        ? input.lead
+        : productLaunchDistinctLede(topic, kickerText);
+      next = replaceFirstExactClassText(next, 'lede', nextLede);
     }
     PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
   }
+  next = ensureProductLaunchCenterLede(
+    next,
+    attrs,
+    topic,
+    input.lead,
+    kickerText,
+  );
   if (/\bfeature-card\b/i.test(next)) {
     next = replaceExactClassBlocksBySequence(next, 'feature-card', lines, (block, line) => {
+      const existingTitle = visibleDeckCopy(
+        block.match(/<h[3-5]\b[^>]*>([\s\S]*?)<\/h[3-5]>/i)?.[1] ?? '',
+      );
+      const existingBody = visibleDeckCopy(
+        /<[^>]*\bdim\b[^>]*>([\s\S]*?)<\//i.exec(block)?.[1] ?? '',
+      );
+      if (!productLaunchSlotNeedsRefill(existingTitle) && !productLaunchSlotNeedsRefill(existingBody)) {
+        return block;
+      }
       const resolved = resolveTemplateCloneCardFill(line);
-      let filled = block.replace(
-        /(<h[3-5]\b[^>]*>)([\s\S]*?)(<\/h[3-5]>)/i,
-        `$1${escapeHtml(resolved.title)}$3`,
-      );
-      filled = replaceFirstExactClassText(
-        filled,
-        'dim',
-        resolved.body || resolved.title,
-      );
+      let filled = block;
+      if (productLaunchSlotNeedsRefill(existingTitle)) {
+        filled = filled.replace(
+          /(<h[3-5]\b[^>]*>)([\s\S]*?)(<\/h[3-5]>)/i,
+          `$1${escapeHtml(resolved.title)}$3`,
+        );
+      }
+      if (productLaunchSlotNeedsRefill(existingBody)) {
+        filled = replaceFirstExactClassText(
+          filled,
+          'dim',
+          resolved.body || resolved.title,
+        );
+      }
       if (filled === block) filled = fillOneCardPeer(block, resolved);
       return filled;
     });
   }
   if (/\bprice-card\b/i.test(next)) {
     next = replaceExactClassBlocksBySequence(next, 'price-card', lines, (block, line, index) => {
-      const resolved = resolveTemplateCloneCardFill(line);
-      let filled = block.replace(
-        /(<h[3-5]\b[^>]*>)([\s\S]*?)(<\/h[3-5]>)/i,
-        `$1${escapeHtml(resolved.title)}$3`,
+      const existingTitle = visibleDeckCopy(
+        block.match(/<h[3-5]\b[^>]*>([\s\S]*?)<\/h[3-5]>/i)?.[1] ?? '',
       );
+      const existingBody = visibleDeckCopy(
+        /<[^>]*\bdim\b[^>]*>([\s\S]*?)<\//i.exec(block)?.[1] ?? '',
+      );
+      const listText = visibleDeckCopy(
+        /<[uo]l\b[^>]*>([\s\S]*?)<\/[uo]l>/i.exec(block)?.[1] ?? '',
+      );
+      const resolvedTitle = productLaunchSlotNeedsRefill(existingTitle)
+        ? `${topic} ${PRODUCT_LAUNCH_PRICE_PLAN_TITLES[index] ?? index + 1}`
+        : existingTitle;
+      let filled = block;
+      if (productLaunchSlotNeedsRefill(existingTitle)) {
+        filled = filled.replace(
+          /(<h[3-5]\b[^>]*>)([\s\S]*?)(<\/h[3-5]>)/i,
+          `$1${escapeHtml(resolvedTitle)}$3`,
+        );
+      }
       filled = wipeProductLaunchDemoAmounts(
         filled,
         String(index + 1).padStart(2, '0'),
       );
-      if (/<[uo]l\b/i.test(filled)) {
-        const bullets = compactTextLines(resolved.body, resolved.title).slice(0, 3);
-        filled = replaceListItems(filled, bullets.length > 0 ? bullets : [resolved.title]);
+      if (productLaunchSlotNeedsRefill(existingBody)) {
+        filled = replaceFirstExactClassText(
+          filled,
+          'dim',
+          productLaunchConcreteCardBody(resolvedTitle, topic, index),
+        );
+      }
+      if (/<[uo]l\b/i.test(filled) && productLaunchSlotNeedsRefill(listText)) {
+        const bullets = PRODUCT_LAUNCH_PRICE_PLAN_BULLETS[index]
+          ?? compactTextLines(
+            typeof line === 'string' ? line : line.body,
+            resolvedTitle,
+          ).slice(0, 3);
+        filled = replaceListItems(filled, [...bullets]);
       }
       return filled;
     });
   }
   if (/\bstep\b/i.test(next) && /<div\b[^>]*\bstep\b/i.test(next)) {
     next = replaceExactClassBlocksBySequence(next, 'step', lines, (block, line) => {
+      const existingTitle = visibleDeckCopy(
+        block.match(/<h[3-5]\b[^>]*>([\s\S]*?)<\/h[3-5]>/i)?.[1] ?? '',
+      );
+      const existingBody = visibleDeckCopy(
+        /<[^>]*\bdim\b[^>]*>([\s\S]*?)<\//i.exec(block)?.[1] ?? '',
+      );
+      if (!productLaunchSlotNeedsRefill(existingTitle) && !productLaunchSlotNeedsRefill(existingBody)) {
+        return block;
+      }
       const resolved = resolveTemplateCloneCardFill(line);
-      let filled = block.replace(
-        /(<h[3-5]\b[^>]*>)([\s\S]*?)(<\/h[3-5]>)/i,
-        `$1${escapeHtml(resolved.title)}$3`,
-      );
-      filled = replaceFirstExactClassText(
-        filled,
-        'dim',
-        resolved.body || resolved.title,
-      );
+      let filled = block;
+      if (productLaunchSlotNeedsRefill(existingTitle)) {
+        filled = filled.replace(
+          /(<h[3-5]\b[^>]*>)([\s\S]*?)(<\/h[3-5]>)/i,
+          `$1${escapeHtml(resolved.title)}$3`,
+        );
+      }
+      if (productLaunchSlotNeedsRefill(existingBody)) {
+        filled = replaceFirstExactClassText(
+          filled,
+          'dim',
+          resolved.body || resolved.title,
+        );
+      }
       return filled;
     });
   }
@@ -9391,16 +9751,23 @@ function fillProductLaunchKitSlide(
     const quote = visibleDeckCopy(
       /<[^>]*\btestimonial\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
     );
-    if (!quote || PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(quote) || PRODUCT_LAUNCH_DEMO_COPY_RE.test(quote)) {
+    if (
+      !quote
+      || productLaunchSlotNeedsRefill(quote)
+      || PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(quote)
+      || PRODUCT_LAUNCH_DEMO_COPY_RE.test(quote)
+      || /운영과 보안/.test(quote)
+    ) {
       PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
       next = replaceFirstExactClassText(
         next,
         'testimonial',
-        `${topic}을 쓰기 시작한 뒤, 작업이 한곳으로 모이기 시작했다.`,
+        `${attachKoreanJosa(topic, '을/를')} 쓰기 시작한 뒤, 작업이 한곳으로 모이기 시작했다.`,
       );
     }
     PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
   }
+  next = restoreProductLaunchShipLayout(next, topic);
   if (/\bbrand\b/i.test(next)) {
     const brand = visibleDeckCopy(
       /<[^>]*\bbrand\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
@@ -9437,11 +9804,11 @@ export function stripProductLaunchCatalogDemoCopy(html: string): string {
 }
 
 /**
- * 루프551 — Product Launch Halo leftover heal. Fires only on the
- * product-launch fingerprint. Walks slide hosts; leftover Halo copy or
- * generic Korean section labels are refilled via `fillProductLaunchKitSlide`
- * then stripped. `.hero-shot` / `.price-card` / `.feature-card` shells stay.
- * Never invents dollar KPIs.
+ * 루프551/553 — Product Launch leftover heal. Fires only on the
+ * product-launch fingerprint. Walks slide hosts; leftover Halo copy,
+ * broken 조사, leaked `핵심 N` labels, or empty Ship/center slots are
+ * refilled via `fillProductLaunchKitSlide` then stripped.
+ * Dense user copy (Fit workspace/권한) is kept. Never invents dollar KPIs.
  */
 export function healProductLaunchLeftoverCatalogCopy(
   html: string,
@@ -9449,9 +9816,9 @@ export function healProductLaunchLeftoverCatalogCopy(
 ): string {
   const dest = String(html ?? '');
   if (!dest.trim() || !officialLookIsProductLaunchHalo(dest)) return dest;
-  const topic = topicKeywordForSynthBody(
-    deriveDeckCoverTitleFromBrief(String(brief ?? ''), null)
-    || String(brief ?? ''),
+  const topic = resolveLockedTopicNoun(
+    deriveDeckCoverTitleFromBrief(String(brief ?? ''), null),
+    brief,
   );
   const brand = productLaunchShortBrand(brief, topic);
   let out = replaceProductLaunchHeroShotCssBrand(dest, brand);
@@ -9465,39 +9832,51 @@ export function healProductLaunchLeftoverCatalogCopy(
     .filter((text) => (
       !PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(text)
       && !PRODUCT_LAUNCH_GENERIC_HEADING_RE.test(text)
+      && !PRODUCT_LAUNCH_BROKEN_COPY_RE.test(text)
+      && !isGenericSynthTopicNoun(text)
     ));
   const outline = resolveTemplateCloneSlidesForDeterministicFill({
     userInstruction: brief || harvested.join('\n') || '',
-    deckTitle: harvested[0] ?? null,
+    deckTitle: harvested[0] ?? topic,
     slideCount: spans.length,
   });
   for (let i = spans.length - 1; i >= 0; i -= 1) {
     const span = spans[i]!;
     const body = out.slice(span.bodyStart, span.bodyEnd);
-    if (!slideLooksLikeProductLaunchKit(span.attrs, body) && !PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(body)
-      && !PRODUCT_LAUNCH_GENERIC_HEADING_RE.test(visibleDeckCopy(
-        body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
-      ))) {
+    if (
+      !slideLooksLikeProductLaunchKit(span.attrs, body)
+      && !productLaunchSlideNeedsHeal(body, span.attrs)
+    ) {
       continue;
     }
-    const hasLeftover = PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(body)
-      || PRODUCT_LAUNCH_DEMO_COPY_RE.test(body)
-      || PRODUCT_LAUNCH_GENERIC_HEADING_RE.test(visibleDeckCopy(
-        body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
-      ))
-      || PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(visibleDeckCopy(body));
+    if (!productLaunchSlideNeedsHeal(body, span.attrs)
+      && !PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(body)
+      && !PRODUCT_LAUNCH_DEMO_COPY_RE.test(body)) {
+      PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+      continue;
+    }
     PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
-    if (!hasLeftover) continue;
     const slide = outline[i] ?? outline[Math.min(i, outline.length - 1)];
-    const rawTitle = slide?.title || harvested[i] || harvested[0] || topic || '슬라이드';
-    const title = productLaunchKitAwareTitle(rawTitle, topic || rawTitle);
+    const heading = visibleDeckCopy(
+      body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
+    );
+    const kicker = visibleDeckCopy(
+      /<[^>]*\bkicker\b[^>]*>([\s\S]*?)<\//i.exec(body)?.[1] ?? slide?.kicker ?? '',
+    );
+    const title = rewriteProductLaunchLeakedHeading(
+      heading || slide?.title || harvested[i] || topic,
+      topic,
+      span.attrs,
+      kicker,
+    );
     const nextBody = fillProductLaunchKitSlide(body, {
       title,
-      lead: slide?.lead ?? synthesizeTemplateCloneCoverLead(title, brief),
+      lead: slide?.lead ?? synthesizeTemplateCloneCoverLead(topic, brief),
       bodyText: slide?.body ?? '',
-      kicker: slide?.kicker ?? '',
+      kicker: slide?.kicker ?? kicker,
       fillLines: templateCloneSlideFillLines(slide ?? { title }),
-    });
+      topic,
+    }, span.attrs);
     const scrubbed = stripProductLaunchCatalogDemoCopy(nextBody);
     if (scrubbed === body) continue;
     out = `${out.slice(0, span.bodyStart)}${scrubbed}${out.slice(span.bodyEnd)}`;
@@ -11077,7 +11456,7 @@ function fillSlideShell(
   // 루프540 — 8-Bit Orbit tier/timeline/stat/quote/badge slots.
   body = fillEightBitOrbitKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
   if (slideLooksLikeProductLaunchKit(shell.attrs, body)) {
-    body = fillProductLaunchKitSlide(body, { title, lead, bodyText, kicker, fillLines });
+    body = fillProductLaunchKitSlide(body, { title, lead, bodyText, kicker, fillLines }, shell.attrs);
   }
   body = stripCapsuleCatalogDemoCopy(body);
   body = stripBlockFrameNeoCatalogDemoCopy(body);

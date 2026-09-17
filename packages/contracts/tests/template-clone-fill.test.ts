@@ -66,6 +66,7 @@ import {
   RAW_GRID_PITCH_KIT_KEY,
   RAW_GRID_PITCH_SLOT_MAP,
   healProductLaunchLeftoverCatalogCopy,
+  attachKoreanJosa,
   officialLookIsProductLaunchHalo,
   PRODUCT_LAUNCH_HALO_KIT_KEY,
   PRODUCT_LAUNCH_SLOT_MAP,
@@ -1588,6 +1589,50 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(officialLookIsProductLaunchHalo(broadside)).toBe(false);
     expect(healProductLaunchLeftoverCatalogCopy(broadside, TEAMVER_SERVICE_INTRO_BRIEF)).toBe(broadside);
     expect(broadside).toMatch(/\$3\.5B/);
+  });
+
+  it('루프553 — Product Launch 조사·라벨 누수와 빈 슬라이드를 고친다', async () => {
+    expect(attachKoreanJosa('핵심 주제', '이/가')).toBe('핵심 주제가');
+    expect(attachKoreanJosa('핵심 주제', '을/를')).toBe('핵심 주제를');
+    expect(attachKoreanJosa('Teamver', '이/가')).toBe('Teamver가');
+
+    const html = await readFile(
+      new URL('./fixtures/loop553-product-launch-broken-josa.html', import.meta.url),
+      'utf8',
+    );
+    expect(officialLookIsProductLaunchHalo(html)).toBe(true);
+    const healed = healProductLaunchLeftoverCatalogCopy(html, 'Teamver 소개');
+
+    expect(healed).not.toMatch(/주제이/);
+    expect(healed).not.toMatch(/주제을/);
+    expect(healed).not.toMatch(/핵심 9/);
+    expect(healed).not.toMatch(/핵심 10/);
+    expect(healed).not.toMatch(/—\s*,/);
+    expect(healed).not.toMatch(/의미와 적용 기준을 한 문장으로/);
+    expect(healed).not.toMatch(/Halo v2|\$179|\$279|\$399/i);
+
+    const cover = /<section\b[^>]*data-title="Cover"[^>]*>[\s\S]*?<\/section>/i.exec(healed)?.[0] ?? '';
+    const coverKicker = /<p class="kicker">([^<]*)<\/p>/.exec(cover)?.[1] ?? '';
+    const coverLede = /<p class="lede[^"]*">([^<]*)<\/p>/.exec(cover)?.[1] ?? '';
+    expect(coverKicker.length).toBeGreaterThan(0);
+    expect(coverLede.length).toBeGreaterThan(0);
+    expect(coverKicker).not.toBe(coverLede);
+
+    const ship = /<section\b[^>]*data-title="Ship"[^>]*>[\s\S]*?<\/section>/i.exec(healed)?.[0] ?? '';
+    expect(ship).not.toMatch(/—\s*,/);
+    expect(ship).toMatch(/testimonial|cta-btn/);
+    expect(ship).toMatch(/Teamver|지금 시작|쓰기 시작한/);
+    expect(healed).toContain('워크스페이스 구조와 권한');
+    expect(healed).toContain('price-card');
+    expect(healed).toMatch(/Teamver 실무|Teamver 리더|Teamver 운영/);
+
+    const intro = [...healed.matchAll(/<section\b[^>]*data-title="Introducing"[^>]*>[\s\S]*?<\/section>/gi)]
+      .map((match) => match[0] ?? '');
+    expect(intro.length).toBeGreaterThanOrEqual(2);
+    for (const section of intro) {
+      expect(section).toMatch(/<p class="lede/);
+      expect(section).not.toMatch(/핵심 주제 한눈에|핵심 9/);
+    }
   });
 
   it('루프538 — Grove forest kit demo chrome (landscape / grove-stat KPI / sidebar) is scrubbed', async () => {
