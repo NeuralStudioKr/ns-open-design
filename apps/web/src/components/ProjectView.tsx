@@ -3499,6 +3499,12 @@ export function ProjectView({
   const [conversationLoadRetryNonce, setConversationLoadRetryNonce] = useState(0);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const messagesRef = useRef<ChatMessage[]>([]);
+  const apiRecoveryPollGuardRef = useRef({
+    key: '',
+    polls: 0,
+    lastAt: 0,
+    stopped: false,
+  });
   messagesRef.current = messages;
   const [forkingMessageId, setForkingMessageId] = useState<string | null>(null);
   const [activePluginActionPaths, setActivePluginActionPaths] = useState<Set<string>>(() => new Set());
@@ -9689,11 +9695,13 @@ export function ProjectView({
       if (retryTimer !== null) window.clearTimeout(retryTimer);
     };
   }, [
+    // Do not depend on inFlightAssistantSignature. Recovery's server refresh
+    // can drop a synthesized stub; re-probing on that change re-inserts it
+    // and loops GET /files + /messages.
     config.mode,
     daemonLive,
     activeConversationId,
     streaming,
-    inFlightAssistantSignature,
     messagesInitialized,
     messagesConversationId,
     project.id,
@@ -9731,6 +9739,16 @@ export function ProjectView({
     let idlePollsWithStaleProxy = 0;
     let recoveryStreamingArmed = false;
     const recoveryConversationId = activeConversationId;
+    const recoveryKey = `${project.id}:${recoveryConversationId}:${initialInflightMessages[0]?.id ?? ''}`;
+    if (apiRecoveryPollGuardRef.current.key !== recoveryKey) {
+      apiRecoveryPollGuardRef.current = {
+        key: recoveryKey,
+        polls: 0,
+        lastAt: 0,
+        stopped: false,
+      };
+    }
+    if (apiRecoveryPollGuardRef.current.stopped) return;
     const trackedAssistantIds = new Set(initialInflightMessages.map((message) => message.id));
     const activatedAssistantIds = new Set<string>();
     apiRecoveryBannerRef.current = {
@@ -9801,6 +9819,7 @@ export function ProjectView({
     };
 
     const finishRecovery = () => {
+      apiRecoveryPollGuardRef.current.stopped = true;
       apiBackgroundRecoveryRef.current = false;
       if (abortRef.current && cancelRef.current) {
         clearCurrentRunStreamingMarker(
@@ -9824,6 +9843,22 @@ export function ProjectView({
 
     const pollRecovery = async () => {
       if (cancelled) return;
+      const guard = apiRecoveryPollGuardRef.current;
+      const now = Date.now();
+      // Effect restarts (project identity, callback identity) must not
+      // immediately re-hit files + messages. A leaked in-flight row used to
+      // reset the idle counter on every restart and never stop.
+      if (guard.polls > 0 && now - guard.lastAt < 8_000) {
+        scheduleNextPoll(8_000 - (now - guard.lastAt));
+        return;
+      }
+      if (guard.polls >= 8) {
+        guard.stopped = true;
+        finishRecovery();
+        return;
+      }
+      guard.lastAt = now;
+      guard.polls += 1;
       // Soft/hard sticky / BYOK auth backoff: do not keep hitting proxy/active
       // + listMessages while C1 owns recovery.
       if (isDesignAuthRefreshDeclined() || shouldSkipByokProxyActivePoll()) {
