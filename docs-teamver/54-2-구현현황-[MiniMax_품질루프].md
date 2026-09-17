@@ -38,6 +38,29 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프549 — MiniMax outline placeholder / 반복 / 파롯 회귀 3종 (v1.4.15 대비)
+
+체감: v1.4.15 대비 체감 품질이 크게 떨어짐. 2026-09-17 사용자 리포트 실물 실행 결과:
+
+- 슬라이드 3·4·6·9·10 h2 = `주제가 해결하는 문제` / `주제의 쓰임과 근거` / `주제를 쓰는 순서를 쓰는 순서` / `주제 다음 단계 다음 단계` — MiniMax가 실제 topic을 못 채우고 리터럴 "주제" placeholder를 뱉음
+- 슬라이드 6 h2 `주제를 쓰는 순서를 쓰는 순서` · 슬라이드 9 h1 `주제 다음 단계 다음 단계` — MiniMax token-loop repetition
+- 슬라이드 10 = 슬라이드 4 동일 Fit shell + 동일 title "주제의 쓰임과 근거" 근접 중복 (product-launch 8-shell + 10-outline)
+- 슬라이드 2 h1 `Teamver 소개 2` — 브리프 원문 + 숫자 파롯 (product-launch example.html `Halo v2` 슬롯)
+
+원인:
+1. `sanitizeTemplateCloneDeckTitle` / `slideTitleParrotsBriefFragment`가 리터럴 `주제 [가/는/을/를/의/…]` 형태를 문법상 정상 문자열로 인정해 rewrite 대상에서 놓쳤다.
+2. 기존 `dedupeAdjacentSentencePunctuation`은 문장부호 축약이지 phrase 반복 축약이 아니다. `X<particle> X` / `X X` doubled Korean phrase는 축약되지 않고 슬라이드에 남았다.
+3. Non-unique-role kit(product-launch 등)은 shell을 재사용해 outline 수만큼 slot을 채운다. 이 자체는 옳지만 outline이 동일 title을 두 번 넘기면 reused shell에 두 개의 near-identical Fit/Body 슬라이드가 랜딩했다.
+4. `slideTitleParrotsBriefFragment`는 `instruction-copy` 브리프에서만 전방 파롯을 잡아, 브리프 원문 + 숫자만 붙인 shape(`Teamver 소개 2`)을 놓쳤다.
+
+수정:
+1. `KOREAN_PLACEHOLDER_TITLE_RE` + `slideTitleLooksLikeKoreanPlaceholder` — 리터럴 `주제 [particle] X` shape를 실패 제목으로 판정해 `rewriteInstructionParrotingSlideTitles`가 `${fallbackCover} · ${index+1}`로 교체.
+2. `collapseAdjacentDuplicatedPhraseInText` / `collapseAdjacentDuplicatedPhrasesInDeckText` — Korean particle-aware doubled phrase 축약. outline title에서 rewrite 전에 한 번, 전체 deck HTML text run에 한 번 적용.
+3. `dedupeIdenticalOutlineTitles` — 두 번째 이후 동일 outline title은 indexed fallback 라벨로 교체. shell 재사용 자체는 허용(Mat/Pink Script/Vellum 처럼 shell < 요청 slide 수 케이스는 유지)하되 outline title의 identical 재사용은 차단.
+4. `slideTitleParrotsBriefFragment` — 브리프 원문 뒤에 `[·•\-–—:/|v]?<digit>` shape 만 붙은 경우도 실패 제목으로 판정 (`Teamver 소개 2`, `Teamver 소개 · 2`, `Teamver 소개 v2` 등).
+
+검증: contracts template-clone-fill 루프549 (a)(b)(c)(d) + 전체 3210 tests + build passed.
+
 ### 루프539 — Block Frame 발명 hero 셸
 
 표지 `.hero-title-highlight` 클립 · 빈 platform 카드 · `Enterprise 데모`. [0916-N03-1](./0916-N03-1-상위설계-[Block_frame_발명_hero_셸].md).
