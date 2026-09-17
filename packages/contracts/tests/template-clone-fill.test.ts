@@ -1615,8 +1615,8 @@ describe('루프419 Capsule deterministic quality gate', () => {
     const coverKicker = /<p class="kicker">([^<]*)<\/p>/.exec(cover)?.[1] ?? '';
     const coverLede = /<p class="lede[^"]*">([^<]*)<\/p>/.exec(cover)?.[1] ?? '';
     expect(coverKicker.length).toBeGreaterThan(0);
-    expect(coverLede.length).toBeGreaterThan(0);
-    expect(coverKicker).not.toBe(coverLede);
+    expect(coverLede).not.toMatch(/핵심 맥락과 다음 단계/);
+    if (coverLede) expect(coverKicker).not.toBe(coverLede);
 
     const ship = /<section\b[^>]*data-title="Ship"[^>]*>[\s\S]*?<\/section>/i.exec(healed)?.[0] ?? '';
     expect(ship).not.toMatch(/—\s*,/);
@@ -1624,15 +1624,38 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(ship).toMatch(/Teamver|지금 시작|쓰기 시작한/);
     expect(healed).toContain('워크스페이스 구조와 권한');
     expect(healed).toContain('price-card');
-    expect(healed).toMatch(/Teamver 실무|Teamver 리더|Teamver 운영/);
+    expect(healed).toMatch(/실무|리더|운영/);
 
     const intro = [...healed.matchAll(/<section\b[^>]*data-title="Introducing"[^>]*>[\s\S]*?<\/section>/gi)]
       .map((match) => match[0] ?? '');
     expect(intro.length).toBeGreaterThanOrEqual(2);
     for (const section of intro) {
-      expect(section).toMatch(/<p class="lede/);
       expect(section).not.toMatch(/핵심 주제 한눈에|핵심 9/);
     }
+  });
+
+  it('루프554 — Product Launch healer가 MiniMax 문장을 주제-템플릿으로 덮지 않는다', async () => {
+    const html = await readFile(
+      new URL('./fixtures/loop554-product-launch-healer-overwrite.html', import.meta.url),
+      'utf8',
+    );
+    expect(officialLookIsProductLaunchHalo(html)).toBe(true);
+    const healed = healProductLaunchLeftoverCatalogCopy(html, 'Teamver 소개');
+
+    expect(healed).not.toMatch(/소개\s+2/);
+    expect(healed).not.toMatch(/쓰는 순서를 쓰는 순서/);
+    expect(healed).not.toMatch(/다음 단계 다음 단계/);
+    expect(healed).not.toMatch(/주제가 해결/);
+    expect(healed).not.toMatch(/◎/);
+    expect(healed).not.toMatch(/Teamver을/);
+    expect(healed).not.toMatch(/핵심 맥락과 다음 단계/);
+    expect(healed).toContain('첫 7일');
+    expect(healed).toContain(
+      '팀이 분산된 메모와 문서를 하나의 워크스페이스로 옮겨오는 첫 단계에서, 사용 흐름을 끊지 않고 같은 화면에서 정렬한다',
+    );
+    expect(healed).not.toMatch(/Halo v2|\$179|\$279|\$399/i);
+    expect(healed).not.toMatch(/>\s*Pricing\s*</);
+    expect(healed).toMatch(/Teamver 시작하기|지금 시작하기/);
   });
 
   it('루프538 — Grove forest kit demo chrome (landscape / grove-stat KPI / sidebar) is scrubbed', async () => {
