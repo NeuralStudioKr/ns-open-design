@@ -1302,6 +1302,16 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("shouldEmitHeadPreambleBanner");
   });
 
+  it("0918-N03 · prompt rollback always rebuilds model HTML through official seed shells", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const start = source.indexOf("const merged = applyTemplateClonePromptFillLookMerge(");
+    expect(start).toBeGreaterThan(0);
+    const block = source.slice(start, start + 2600);
+    expect(block).toContain("padToSeedSlideCount: true");
+    expect(block).toContain("forcePad: true");
+    expect(block).not.toContain("shortVsSeed ? { forcePad: true }");
+  });
+
   it("루프552 · too-short HTML uses the same retry gate then LOOK seed fallback", () => {
     const source = readSource("src/components/ProjectView.tsx");
     expect(source).toContain("resolveTooShortHtmlArtifactPersist({");

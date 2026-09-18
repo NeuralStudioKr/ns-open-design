@@ -8501,37 +8501,42 @@ function healCobaltGridTable(
   const dataRows = exactClassBlocks(next, 'row').filter((span) => !/\bheadrow\b/i.test(span.html));
   if (dataRows.length > 0) {
     let dataIndex = 0;
-    next = replaceExactClassBlocksBySequence(next, 'row', pack.table.rows, (block) => {
-      if (/\bheadrow\b/i.test(block)) return block;
-      const index = dataIndex++;
-      const existingName = visibleDeckCopy(
-        /<[^>]*\bnm\b[^>]*>([\s\S]*?)<\//i.exec(block)?.[1] ?? '',
-      );
-      const existingDesc = visibleDeckCopy(
-        /<[^>]*\bdesc\b[^>]*>([\s\S]*?)<\//i.exec(block)?.[1] ?? '',
-      );
-      const row = pack.table.rows[index] ?? pack.table.rows[index % pack.table.rows.length]!;
-      let filled = replaceFirstExactClassText(block, 'num-tag', `${String(index + 1).padStart(2, '0')}.`);
-      if (!existingName || looksLikeCobaltBlockedServiceIntroCopy(existingName)) {
-        filled = replaceFirstExactClassText(filled, 'nm', row.name);
-      }
-      if (!cobaltGridCopyIsKeepable(existingDesc)) {
-        filled = replaceFirstExactClassText(filled, 'desc', row.desc);
-      }
-      const mood = visibleDeckCopy(
-        /<[^>]*\bmood-tag\b[^>]*>([\s\S]*?)<\//i.exec(filled)?.[1] ?? '',
-      );
-      if (!mood || looksLikeCobaltBlockedServiceIntroCopy(mood)) {
-        filled = replaceFirstExactClassText(filled, 'mood-tag', row.mood);
-      }
-      const delta = visibleDeckCopy(
-        /<[^>]*\bdelta-tag\b[^>]*>([\s\S]*?)<\//i.exec(filled)?.[1] ?? '',
-      );
-      if (!delta || /^\d{2}\s*\/\s*\d+$/.test(delta)) {
-        filled = replaceFirstExactClassText(filled, 'delta-tag', '');
-      }
-      return filled;
-    });
+    next = replaceExactClassBlocksBySequence(
+      next,
+      'row',
+      pack.table.rows.map((row) => ({ title: row.name, body: row.desc })),
+      (block) => {
+        if (/\bheadrow\b/i.test(block)) return block;
+        const index = dataIndex++;
+        const existingName = visibleDeckCopy(
+          /<[^>]*\bnm\b[^>]*>([\s\S]*?)<\//i.exec(block)?.[1] ?? '',
+        );
+        const existingDesc = visibleDeckCopy(
+          /<[^>]*\bdesc\b[^>]*>([\s\S]*?)<\//i.exec(block)?.[1] ?? '',
+        );
+        const row = pack.table.rows[index] ?? pack.table.rows[index % pack.table.rows.length]!;
+        let filled = replaceFirstExactClassText(block, 'num-tag', `${String(index + 1).padStart(2, '0')}.`);
+        if (!existingName || looksLikeCobaltBlockedServiceIntroCopy(existingName)) {
+          filled = replaceFirstExactClassText(filled, 'nm', row.name);
+        }
+        if (!cobaltGridCopyIsKeepable(existingDesc)) {
+          filled = replaceFirstExactClassText(filled, 'desc', row.desc);
+        }
+        const mood = visibleDeckCopy(
+          /<[^>]*\bmood-tag\b[^>]*>([\s\S]*?)<\//i.exec(filled)?.[1] ?? '',
+        );
+        if (!mood || looksLikeCobaltBlockedServiceIntroCopy(mood)) {
+          filled = replaceFirstExactClassText(filled, 'mood-tag', row.mood);
+        }
+        const delta = visibleDeckCopy(
+          /<[^>]*\bdelta-tag\b[^>]*>([\s\S]*?)<\//i.exec(filled)?.[1] ?? '',
+        );
+        if (!delta || /^\d{2}\s*\/\s*\d+$/.test(delta)) {
+          filled = replaceFirstExactClassText(filled, 'delta-tag', '');
+        }
+        return filled;
+      },
+    );
   }
   next = rewriteCobaltGridTextSlot(next, 'h', pack.table.heading);
   next = rewriteCobaltGridTextSlot(next, 'lab-tag', pack.table.heading);
@@ -11216,7 +11221,44 @@ const BLOCK_FRAME_HANGUL_TYPE_CSS = [
 ].join(',\n') + ` {
   letter-spacing: 0 !important;
   text-transform: none !important;
+}
+/* 0918-N03 — The kit was authored with 14–15px Latin demo copy on a
+ * 1920x1080 canvas. Korean body copy became unreadably small in preview and
+ * left oversized cards visually empty. Keep headings expressive while giving
+ * actual explanatory copy a presentation-safe floor. */
+html:lang(ko) :is(.intro-card p, .feature-card p, .nb-card p, .card p, .step-desc, .team-bio, .nb-body),
+html[lang="ko"] :is(.intro-card p, .feature-card p, .nb-card p, .card p, .step-desc, .team-bio, .nb-body),
+[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] :is(.intro-card p, .feature-card p, .nb-card p, .card p, .step-desc, .team-bio, .nb-body) {
+  font-size: 18px !important;
+  line-height: 1.48 !important;
+}
+html:lang(ko) :is(.intro-card h3, .feature-card h3, .nb-card h3, .card h3, .step-title),
+html[lang="ko"] :is(.intro-card h3, .feature-card h3, .nb-card h3, .card h3, .step-title),
+[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] :is(.intro-card h3, .feature-card h3, .nb-card h3, .card h3, .step-title) {
+  font-size: 24px !important;
+  line-height: 1.28 !important;
 }`;
+
+function injectBlockFrameHangulTypography(
+  html: string,
+  options: { markElements?: boolean } = {},
+): string {
+  const source = String(html ?? '');
+  if ((source.match(/[가-힣]/g) ?? []).length < 2) return source;
+  let out = source.replace(
+    /<html\b([^>]*)>/i,
+    (_full, attrs: string) => {
+      let next = String(attrs ?? '');
+      if (!/\blang\s*=/i.test(next)) next += ' lang="ko"';
+      if (!new RegExp(`\\b${BLOCK_FRAME_HANGUL_TYPE_ATTR}\\b`).test(next)) {
+        next += ` ${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"`;
+      }
+      return `<html${next}>`;
+    },
+  );
+  out = injectStyleMark(out, BLOCK_FRAME_HANGUL_TYPE_MARK, BLOCK_FRAME_HANGUL_TYPE_CSS);
+  return options.markElements === false ? out : markBlockFrameHangulElements(out);
+}
 
 function blockFrameVisibleCopy(html: string): string {
   return String(html ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -11372,20 +11414,6 @@ export function healBlockFrameLeftoverCatalogCopy(
   const topic = topicKeywordForSynthBody(String(brief ?? ''));
   const hasHangul = ((dest.match(/[가-힣]/g) ?? []).length >= 2);
   let out = dest;
-  if (hasHangul) {
-    out = out.replace(
-      /<html\b([^>]*)>/i,
-      (_full, attrs: string) => {
-        let next = String(attrs ?? '');
-        if (!/\blang\s*=/i.test(next)) next += ' lang="ko"';
-        if (!new RegExp(`\\b${BLOCK_FRAME_HANGUL_TYPE_ATTR}\\b`).test(next)) {
-          next += ` ${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"`;
-        }
-        return `<html${next}>`;
-      },
-    );
-    out = injectStyleMark(out, BLOCK_FRAME_HANGUL_TYPE_MARK, BLOCK_FRAME_HANGUL_TYPE_CSS);
-  }
 
   const rewriteLeaf = (
     full: string,
@@ -11511,8 +11539,26 @@ export function healBlockFrameLeftoverCatalogCopy(
   );
 
   out = neutralizeBlockFrameChartSvgDemoMetrics(out);
+  // 0918-N03 — A sparse prompt response often leaves the cover with only a
+  // label and H1. Preserve the authored hero shell, but restore its semantic
+  // subtitle slot so the cover communicates scope instead of looking empty.
+  if (/\bhero-frame\b/i.test(out) && !/\bhero-subtitle\b/i.test(out)) {
+    const heroTitleMatch = out.match(
+      /<h[1-3]\b[^>]*\bhero-title\b[^>]*>([\s\S]*?)<\/h[1-3]>/i,
+    );
+    const heroTitle = blockFrameVisibleCopy(heroTitleMatch?.[1] ?? '') || topic;
+    const subtitle = blockFrameTopicAwareLead({
+      title: heroTitle,
+      lead: String(brief ?? ''),
+      bodyText: '',
+    });
+    out = out.replace(
+      /(<h[1-3]\b[^>]*\bhero-title\b[^>]*>[\s\S]*?<\/h[1-3]>)/i,
+      `$1<p class="hero-subtitle" ${BLOCK_FRAME_HANGUL_ELEM_ATTR}="1">${escapeHtml(subtitle)}</p>`,
+    );
+  }
   if (hasHangul) {
-    out = markBlockFrameHangulElements(out);
+    out = injectBlockFrameHangulTypography(out);
   }
   return out;
 }
@@ -13525,6 +13571,13 @@ export function buildTemplateClonedDeckHtml(
   out = stripStudioCreativeCatalogDemoCopy(out);
   out = stripProductLaunchCatalogDemoCopy(out);
   out = stripLeftoverCatalogDemoPhrases(out);
+  // 0918-N03 — JSON slot-fill is the primary path. Apply only the
+  // non-destructive Hangul typography layer here. Catalog/structure healing
+  // remains in persist salvage; running it here can erase legitimate roadmap
+  // descriptions that happen to resemble old demo labels.
+  if (officialLookIsNeoBrutalBlockFrame(out)) {
+    out = injectBlockFrameHangulTypography(out, { markElements: false });
+  }
   // 루프555 — MiniMax token-loop 반복(예: `다음 단계 다음 단계`) 축약.
   // Outline title은 rewriteInstructionParrotingSlideTitles에서 축약됐지만
   // body/lead 문장에 남아있는 doubled phrase는 여기서 정리한다.

@@ -80,12 +80,13 @@ export const CLONE_SLOT_FILL_REPAIR_ENTRY_FROM = 'clone_slot_fill_json_repair';
 export type TemplateCloneFillMode = 'json' | 'prompt' | 'deterministic' | 'pure-prompt';
 
 /**
- * 루프535 — Content must go through MiniMax after LOOK seed.
- * Deterministic slot-fill alone finishes in ~1s with synth copy and no
- * stream — users report "started then immediately ended".
- * Roll back to `deterministic` only via explicit env / localStorage.
+ * 0918-N03 — AI writes a structured content outline; the host deterministically
+ * renders it into official template shells. A missing build-time env must
+ * never route the clone through free-form HTML or thin rule-based copy.
+ * `deterministic` remains an emergency no-model fallback and `prompt` remains
+ * an explicit legacy comparison path.
  */
-export const TEMPLATE_CLONE_FILL_DEFAULT_MODE: TemplateCloneFillMode = 'prompt';
+export const TEMPLATE_CLONE_FILL_DEFAULT_MODE: TemplateCloneFillMode = 'json';
 
 export function normalizeTemplateCloneFillMode(value: unknown): TemplateCloneFillMode {
   const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -135,8 +136,8 @@ export function isTemplateClonePromptFillPrompt(text: unknown): boolean {
 export function getTemplateCloneFillMode(): TemplateCloneFillMode {
   const fromEnv = readTeamverViteEnv('VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE');
   if (fromEnv) return normalizeTemplateCloneFillMode(fromEnv);
-  // 루프420 — Teamver embed: ignore leftover localStorage from deterministic
-  // experiments so staging QA cannot silently skip MiniMax auto-send.
+  // Teamver embed follows the deployment policy. Local experiments must not
+  // silently switch a production embed back to free-form prompt fill.
   if (typeof window !== 'undefined' && !isTeamverEmbedMode()) {
     try {
       const stored = window.localStorage.getItem('od:template-clone-fill-mode');
@@ -176,7 +177,7 @@ export function deterministicCloneFilledMetadataFields(): {
   };
 }
 
-/** LOOK seed + AI JSON outline. Explicit `json` only — not the default. */
+/** AI JSON content outline + deterministic LOOK shell rendering (default). */
 export function shouldUseJsonTemplateCloneFill(): boolean {
   return getTemplateCloneFillMode() === 'json';
 }
@@ -756,9 +757,9 @@ export function templateCloneContentFillHardRules(options: {
     '- JSON shape: {"title":"...","slides":[{"title":"...","kicker":"...","lead":"...","roleHint":"cover|list|cards|timeline|stat|quote|team|process|closing|body","items":[{"title":"...","body":"..."}]}]}',
     '- Layout variety is mandatory: for 5+ slides use at least 3 distinct body `roleHint` values, and for 8–10 slides use at least 4 when the scaffold map offers them. Do not repeat the same cards/body layout for every page.',
     '- Pick `roleHint` from the Template scaffold map roles: cover once, then mix list/cards/stat/timeline/quote/process/body/closing according to the brief. Preserve semantic fit, but avoid one-layout decks.',
-    '- Copy density mirrors the template preview: every non-cover, non-closing slide needs a full-sentence `lead` and each `items[]` entry needs a 1-sentence `body` (~12–28 Korean chars or 6–16 English words). Bare labels (`핵심`, `개념`, `요약`) and title-only cards fail. `stat` slides excepted (metric title + short label body).',
+    '- Copy density must fill the chosen layout without becoming a label grid: every non-cover, non-closing slide needs a specific 25–60 Korean-character (12–30 English-word) `lead`; each `items[]` entry needs a concrete 25–60 Korean-character (12–30 English-word) `body`. Bare labels (`핵심`, `개념`, `요약`) and title-only cards fail. `stat` slides are excepted only when the metric is sourced and its label explains what the number measures.',
     '- Brand spelling: keep Latin product/brand spellings from the brief or URL (host-derived; do not phonetic-Hangulize proper nouns).',
-    '- Cards / list / stat / process slides MUST use items[] with 2–4 {title, body} slots. lead = section subtitle, not a card. Do not emit title-only cards.',
+    '- Cards / list / stat / process slides MUST use items[] with 2–4 {title, body} slots. lead = section subtitle, not a card. Every item body must state an actor/action, mechanism, trade-off, example, or observable result; do not emit title-only cards.',
     `- ${FIRST_FILL_SLIDE_COUNT_GUIDANCE} Outline length = requested count this turn (8-10 → 8–10, hard cap 10, never 15/20). Hidden top-up only when the user asked for ${FIRST_FILL_TOP_UP_FROM}+.`,
     '- Treat the daemon Clone seed as the visual baseline the host will keep. You only supply titles/bodies/roleHint.',
     `- If the brief is only a topic, use a default ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}-slide outline (cover, why it matters, key concepts, evidence, next steps, close). Adapt labels to the topic and audience.`,
@@ -767,7 +768,7 @@ export function templateCloneContentFillHardRules(options: {
     '- REPLACE every example.html proper noun, table, and metric in your outline text. Hartfield / NorthPeak / Project Atlas / WACC / EBITDA / "Demo-data notice" are forbidden unless the user brief names them.',
     '- Prefer a closed valid JSON outline this turn over Motif/HTML fidelity experiments.',
     '- Honor stated audience/level (e.g. 시니어 개발자 = architecture/internals/trade-offs, not a beginner intro).',
-    '- Each body slide needs a real title plus 2–4 concrete bullet lines or a real paragraph in `body`. No "핵심 메시지를 정리합니다" filler.',
+    '- Each body slide needs a real title plus 2–4 concrete bullet lines or a real paragraph in `body`. Across the deck include problem/context, how it works, concrete workflow/example, constraints or trade-offs, and next action. No "핵심 메시지를 정리합니다" filler.',
   ];
 }
 

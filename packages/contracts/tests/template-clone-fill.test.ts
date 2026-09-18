@@ -1801,7 +1801,26 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(healed).not.toMatch(/고 객 경 험|근 거 와 사 례|실 무 자/);
     expect(healed).toMatch(/letter-spacing:\s*0\s*!important/);
     expect(healed).toMatch(/text-transform:\s*none\s*!important/);
+    expect(healed).toMatch(/font-size:\s*18px\s*!important/);
+    expect(healed).toMatch(/font-size:\s*24px\s*!important/);
     expect(healBlockFrameLeftoverCatalogCopy(html, 'Teamver 소개')).toMatch(/고객 경험/);
+  });
+
+  it('0918-N03 — sparse Block Frame cover restores a topical subtitle', () => {
+    const html = [
+      '<!doctype html><html lang="ko"><head><style>',
+      ':root{--pink:#FE90E8}.slide-1 .hero-frame{border:6px solid #000}.nb-heading-xl{}',
+      '</style></head><body>',
+      '<section class="slide slide-1"><div class="hero-frame">',
+      '<div class="nb-label hero-label">표지</div>',
+      '<h1 class="nb-heading-xl hero-title">업무와 AI를 하나의 공간에서</h1>',
+      '</div></section></body></html>',
+    ].join('');
+    const healed = healBlockFrameLeftoverCatalogCopy(html, 'Teamver 서비스 소개');
+    expect(healed).toContain('class="hero-subtitle"');
+    expect(healed).toContain('Teamver는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.');
+    expect(healBlockFrameLeftoverCatalogCopy(healed, 'Teamver 서비스 소개'))
+      .toBe(healed);
   });
 
   it('루프556 — Block Frame ops chart + role leftover + hangul tracking on lang=en', async () => {
@@ -7504,6 +7523,33 @@ describe('루프554 Block Frame 2-slide leftover + pad-to-seed', () => {
     expect(skipped == null || listTemplateCloneSlideShells(skipped.html).length === 2).toBe(true);
     expect(forced).not.toBeNull();
     expect(listTemplateCloneSlideShells(forced!.html).length).toBe(10);
+  });
+
+  it('0918-N03 — same-count free-form HTML is rebuilt through Block Frame shells', () => {
+    const modelSlides = Array.from({ length: 10 }, (_, index) => [
+      `<section class="slide custom-layout-${index + 1}">`,
+      `<h${index === 0 ? 1 : 2}>Teamver ${index === 0 ? '업무 공간' : `핵심 장면 ${index + 1}`}</h${index === 0 ? 1 : 2}>`,
+      '<div class="oversized-empty-card">',
+      `<h3>실행 포인트 ${index + 1}</h3>`,
+      `<p>팀이 같은 맥락에서 자료를 읽고 초안을 만든 뒤 리뷰와 실행을 연결하는 구체적인 작업 흐름 ${index + 1}을 설명한다.</p>`,
+      '</div></section>',
+    ].join('')).join('');
+    const model = `<!doctype html><html><body>${modelSlides}</body></html>`;
+    expect(listTemplateCloneSlideShells(model)).toHaveLength(10);
+
+    const merged = applyTemplateClonePromptFillLookMerge(tenShellSeed, model, {
+      templateId: 'html-ppt-zhangzara-block-frame',
+      brief: 'Teamver 서비스 소개',
+      deckTitle: 'Teamver',
+      padToSeedSlideCount: true,
+      forcePad: true,
+    });
+    expect(merged).not.toBeNull();
+    expect(listTemplateCloneSlideShells(merged!.html)).toHaveLength(10);
+    expect(merged!.html).not.toMatch(/custom-layout-|oversized-empty-card/);
+    expect(merged!.html).toMatch(/hero-frame/);
+    expect(merged!.html).toMatch(/intro-card|feature-card|team-card|timeline-step/);
+    expect(merged!.html).toContain('팀이 같은 맥락에서');
   });
 
   it('forcePad persists a complete seed when the model HTML is head-only (0 slides)', () => {

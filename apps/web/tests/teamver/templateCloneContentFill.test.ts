@@ -75,15 +75,15 @@ afterEach(() => {
 });
 
 describe('templateCloneContentFill', () => {
-  it('loop535 — defaults to LOOK seed + MiniMax prompt-fill; deterministic is opt-in', () => {
-    expect(normalizeTemplateCloneFillMode(undefined)).toBe('prompt');
-    expect(normalizeTemplateCloneFillMode('')).toBe('prompt');
-    expect(normalizeTemplateCloneFillMode('nonsense')).toBe('prompt');
-    expect(getTemplateCloneFillMode()).toBe('prompt');
+  it('0918-N03 — defaults to AI JSON content + deterministic host layout', () => {
+    expect(normalizeTemplateCloneFillMode(undefined)).toBe('json');
+    expect(normalizeTemplateCloneFillMode('')).toBe('json');
+    expect(normalizeTemplateCloneFillMode('nonsense')).toBe('json');
+    expect(getTemplateCloneFillMode()).toBe('json');
     expect(shouldSkipTemplateCloneSeed()).toBe(false);
-    expect(shouldUseJsonTemplateCloneFill()).toBe(false);
+    expect(shouldUseJsonTemplateCloneFill()).toBe(true);
     expect(shouldQueueAiTemplateCloneFill()).toBe(true);
-    expect(shouldUsePromptTemplateCloneFill()).toBe(true);
+    expect(shouldUsePromptTemplateCloneFill()).toBe(false);
     expect(shouldUseDeterministicTemplateCloneFill()).toBe(false);
 
     // Existing env tokens stay on HTML rewrite — remapping them to JSON
@@ -122,7 +122,7 @@ describe('templateCloneContentFill', () => {
   });
 
   it('accepts the loop401 `pure-prompt` rollback mode via env and multiple aliases', () => {
-    expect(getTemplateCloneFillMode()).toBe('prompt');
+    expect(getTemplateCloneFillMode()).toBe('json');
     expect(shouldSkipTemplateCloneSeed()).toBe(false);
     expect(normalizeTemplateCloneFillMode('pure-prompt')).toBe('pure-prompt');
     expect(normalizeTemplateCloneFillMode('no-seed')).toBe('pure-prompt');
@@ -163,9 +163,10 @@ describe('templateCloneContentFill', () => {
     };
     try {
       process.env.VITE_TEAMVER_EMBED = '1';
-      expect(getTemplateCloneFillMode()).toBe('prompt');
+      expect(getTemplateCloneFillMode()).toBe('json');
       expect(shouldSkipTemplateCloneSeed()).toBe(false);
       expect(shouldUseDeterministicTemplateCloneFill()).toBe(false);
+      expect(shouldUseJsonTemplateCloneFill()).toBe(true);
       expect(shouldQueueAiTemplateCloneFill()).toBe(true);
 
       process.env.VITE_TEAMVER_EMBED = '0';
@@ -218,7 +219,7 @@ describe('templateCloneContentFill', () => {
       new URL('../../../../deploy/teamver/.env.staging.example', import.meta.url),
       'utf8',
     );
-    expect(stagingEnv).toMatch(/^VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=deterministic$/m);
+    expect(stagingEnv).toMatch(/^VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=json$/m);
     expect(stagingEnv).not.toMatch(/VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=pure-prompt/);
     const composer = readFileSync(
       new URL('../../src/components/ChatComposer.tsx', import.meta.url),
@@ -385,9 +386,9 @@ describe('templateCloneContentFill', () => {
     expect(seed).toMatch(/roleHint/i);
     expect(seed).toMatch(/Layout variety is mandatory/i);
     expect(seed).toMatch(/at least 3 distinct body `roleHint` values/i);
-    expect(seed).toMatch(/Copy density mirrors the template preview/i);
+    expect(seed).toMatch(/Copy density must fill the chosen layout/i);
     expect(seed).toMatch(/Brand spelling: keep Latin product\/brand spellings/i);
-    expect(seed).toMatch(/full-sentence `lead`/i);
+    expect(seed).toMatch(/25–60 Korean-character/i);
     expect(seed).toMatch(/items\[\] with 2–4 \{title, body\}/);
     expect(seed).toMatch(/Slide count THIS TURN/i);
     expect(seed).toMatch(/default 6-slide outline/i);

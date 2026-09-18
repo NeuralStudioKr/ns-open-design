@@ -11820,7 +11820,12 @@ export function ProjectView({
                     brief: runVisiblePromptRef.current || '',
                     deckTitle: project.name || '슬라이드',
                     padToSeedSlideCount: true,
-                    ...(shortVsSeed ? { forcePad: true } : {}),
+                    // 0918-N03 — Prompt mode is an explicit rollback path, but
+                    // its free-form HTML must still be treated as content only.
+                    // Always rebuild through official seed shells; otherwise a
+                    // leftover-heavy or malformed 10-slide response bypasses
+                    // the merge and is persisted verbatim.
+                    forcePad: true,
                     ...(!shortVsSeed && honorCeiling != null
                       ? { maxSlides: honorCeiling }
                       : {}),
@@ -11877,7 +11882,7 @@ export function ProjectView({
                 }
               } catch (error) {
                 devLog.warn(
-                  '[teamver] template clone prompt-fill look merge failed; keeping model HTML',
+                  '[teamver] template clone prompt-fill look merge failed',
                   error,
                 );
               }

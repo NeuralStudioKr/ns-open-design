@@ -153,18 +153,25 @@ article[data-screen-label] {
   flex: 1 1 auto !important;
   min-height: 0 !important;
 }
-/* 루프541 — 컴팩트 rewrap 시 킷별 primary content wrapper (.slide-content,
- * .hero-frame)도 stretch가 필요하다. 8-Bit Orbit .slide-content는 원본
+/* 루프541 — 컴팩트 rewrap 시 킷별 primary content wrapper
+ * (.slide-content)는 stretch가 필요하다. 8-Bit Orbit .slide-content는 원본
  * example.html에서 부모 .slide flex-column의 자식으로 flex:1 없이 그저
  * justify-content:center로 배치돼 컨텐츠 intrinsic height만큼만 잡히다가
- * data-od-slide-flow 래퍼 하에서 상단에 붙어버린다. Block Frame의
- * .hero-frame도 slide-1 cover에서 같은 회귀. .slide-body와 동일한
- * stretch 규칙을 추가해 정렬을 유지한다. */
+ * data-od-slide-flow 래퍼 하에서 상단에 붙어버린다. */
 .slide > [data-od-slide-flow] > .slide-content,
-.slide > [data-od-slide-flow] > .slide-chrome + .slide-content,
+.slide > [data-od-slide-flow] > .slide-chrome + .slide-content {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+/* 0918-N03 — Block Frame's hero is a bordered content panel, not a full
+ * canvas body. Stretching it to flex:1 produced a tall portrait-like white
+ * slab with the headline stranded at the top. Let the authored width/padding
+ * define an intrinsic panel and center that panel via the wrapper above. */
 .slide > [data-od-slide-flow] > .hero-frame,
 .slide > [data-od-slide-flow] > .slide-chrome + .hero-frame {
-  flex: 1 1 auto !important;
+  flex: 0 1 auto !important;
+  height: auto !important;
+  max-height: 100% !important;
   min-height: 0 !important;
 }
 /* 루프539 — MiniMax invents block-frame classes that the kit never declared
