@@ -1992,6 +1992,51 @@ export function synthesizeTemplateCloneSlideBody(
       items: picked.items,
     }, cover, picked.heading || label, brief);
   }
+  if (kitKey === DAISY_DAYS_KIT_KEY) {
+    const topic = resolveLockedTopicNoun(cover, brief, label);
+    const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
+    const pack = daisyDaysSlideCopyPack(brand);
+    const role = DAISY_SLIDE_ROLES[Math.max(0, index - 1) % DAISY_SLIDE_ROLES.length]!;
+    const picked = pack[role];
+    return sanitizeServiceIntroSynthResult({
+      roleHint: role === 'timeline' || role === 'process' ? 'process' : role === 'quote' ? 'quote' : 'cards',
+      lead: picked.lead,
+      body: picked.items.length > 0
+        ? picked.items.map((item) => `${item.title}: ${item.body}`).join('\n')
+        : picked.lead,
+      items: picked.items,
+    }, cover, picked.heading || label, brief);
+  }
+  if (kitKey === BROADSIDE_KIT_KEY) {
+    const topic = resolveLockedTopicNoun(cover, brief, label);
+    const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
+    const pack = broadsideSlideCopyPack(brand);
+    const role = BROADSIDE_SLIDE_ROLES[Math.max(0, index - 1) % BROADSIDE_SLIDE_ROLES.length]!;
+    const picked = pack[role];
+    return sanitizeServiceIntroSynthResult({
+      roleHint: role === 'list' || role === 'compare' ? 'list' : role === 'quote' ? 'quote' : 'cards',
+      lead: picked.lead,
+      body: picked.items.length > 0
+        ? picked.items.map((item) => `${item.title}: ${item.body}`).join('\n')
+        : picked.lead,
+      items: picked.items,
+    }, cover, picked.heading || label, brief);
+  }
+  if (kitKey === PLAYFUL_KIT_KEY) {
+    const topic = resolveLockedTopicNoun(cover, brief, label);
+    const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
+    const pack = playfulSlideCopyPack(brand);
+    const role = PLAYFUL_SLIDE_ROLES[Math.max(0, index - 1) % PLAYFUL_SLIDE_ROLES.length]!;
+    const picked = pack[role];
+    return sanitizeServiceIntroSynthResult({
+      roleHint: role === 'timeline' ? 'process' : role === 'toc' ? 'list' : 'cards',
+      lead: picked.lead,
+      body: picked.items.length > 0
+        ? picked.items.map((item) => `${item.title}: ${item.body}`).join('\n')
+        : picked.lead,
+      items: picked.items,
+    }, cover, picked.heading || label, brief);
+  }
   if (kitKey === PRODUCT_LAUNCH_HALO_KIT_KEY) {
     // These kits previously returned an almost empty slide to avoid
     // inventing product metrics/personas. During short-response padding that
@@ -3142,6 +3187,15 @@ export const EIGHTBIT_ORBIT_KIT_KEY = 'eightbit-orbit' as const;
 /** Stable kit key for Zhangzara Capsule (Bodoni + coral pills). */
 export const CAPSULE_KIT_KEY = 'capsule' as const;
 
+/** Stable kit key for Zhangzara Daisy Days (Fredoka + cream paper). */
+export const DAISY_DAYS_KIT_KEY = 'daisy-days' as const;
+
+/** Stable kit key for Zhangzara Broadside (orange protest poster). */
+export const BROADSIDE_KIT_KEY = 'broadside' as const;
+
+/** Stable kit key for Zhangzara Playful (Syne + peach doodle). */
+export const PLAYFUL_KIT_KEY = 'playful' as const;
+
 const GROVE_STUDIO_SLIDE_ROLES = [
   'cover',
   'chapter',
@@ -3203,6 +3257,9 @@ export function resolveTemplateCloneKitKey(html: string): string | null {
   if (officialLookIsStudio(source)) return STUDIO_KIT_KEY;
   if (officialLookIsEightBitOrbit(source)) return EIGHTBIT_ORBIT_KIT_KEY;
   if (officialLookIsCapsule(source)) return CAPSULE_KIT_KEY;
+  if (officialLookIsDaisyDays(source)) return DAISY_DAYS_KIT_KEY;
+  if (officialLookIsBroadside(source)) return BROADSIDE_KIT_KEY;
+  if (officialLookIsPlayful(source)) return PLAYFUL_KIT_KEY;
   return null;
 }
 
@@ -6609,6 +6666,8 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   // shapes from painting into the dark letterbox between slides.
   next = reparentEscapedDecoIntoSlideFlow(next);
   next = healOrphanRadialCircles(next);
+  next = healDaisyDaysLeftoverCatalogCopy(next, brief);
+  next = healPlayfulLeftoverCatalogCopy(next, brief);
   next = dropEmptyDeckSlides(next);
   next = restyleForeignIbMagazineCover(next);
   next = scrubGenericTitlePills(next);
@@ -10568,22 +10627,39 @@ export function healBroadsideLeftoverCatalogCopy(
       continue;
     }
     const body = out.slice(span.bodyStart, span.bodyEnd);
-    if (!looksLikeLeftoverTemplateDemoDeck(body) && !BROADSIDE_LEFTOVER_BODY_RE.test(body)) {
+    const heading = visibleDeckCopy(
+      body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
+    );
+    if (!broadsideSlideNeedsHeal(body, heading)) {
       continue;
     }
     const slide = outline[i] ?? outline[Math.min(i, outline.length - 1)];
-    const title = slide?.title || harvested[i] || harvested[0] || '슬라이드';
-    const nextBody = fillStudioKitSlide(body, span.attrs, {
+    const topic = resolveLockedTopicNoun(brief, harvested[0], slide?.title);
+    const pack = broadsideSlideCopyPack(topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver');
+    const role = broadsidePackForBody(body, span.attrs, pack);
+    const title = rewriteLeftoverKitSlideTitle(
+      slide?.title || harvested[i] || harvested[0] || '',
+      role.heading,
+    );
+    const nextBody = fillBroadsideKitSlide(body, span.attrs, {
       title,
-      lead: slide?.lead ?? '',
-      bodyText: slide?.body ?? '',
+      lead: looksLikeDaisyPlayfulLeftoverCopy(slide?.lead ?? '')
+        || looksLikeEightBitCapsuleLeftoverCopy(slide?.lead ?? '')
+        ? role.lead
+        : (slide?.lead || role.lead),
+      bodyText: slide?.body && !looksLikeEightBitCapsuleLeftoverCopy(slide.body)
+        ? slide.body
+        : role.lead,
       kicker: slide?.kicker ?? '',
-      fillLines: templateCloneSlideFillLines(slide ?? { title }),
+      fillLines: role.items.length > 0 ? role.items : templateCloneSlideFillLines(slide ?? { title }),
+      topic,
     });
     if (nextBody === body) continue;
     out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
   }
-  return stripStudioCreativeCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out));
+  return wipeEightBitCapsuleLeftoverPhrases(
+    stripStudioCreativeCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out)),
+  );
 }
 
 /**
@@ -11811,6 +11887,946 @@ function wipeEightBitCapsuleLeftoverPhrases(html: string): string {
     .replace(/확대\s*[:—\-]\s*반복 사용 패턴을 기준으로 템플릿과 권한 정책을 확장/g, '')
     .replace(/정착\s*[:—\-]\s*성과 지표와 운영 책임을 정해 조직 표준으로 정착/g, '')
     .replace(/파일럿/g, '');
+}
+
+const DAISY_SLIDE_ROLES = [
+  'cover',
+  'welcome',
+  'weekly',
+  'timeline',
+  'chart',
+  'cards',
+  'quote',
+  'team',
+  'process',
+  'donut',
+] as const;
+
+type DaisySlideRole = (typeof DAISY_SLIDE_ROLES)[number];
+type DaisyRoleCopy = EightBitRoleCopy;
+type DaisyCopyPack = Record<DaisySlideRole, DaisyRoleCopy>;
+
+const BROADSIDE_SLIDE_ROLES = [
+  'cover',
+  'chapter',
+  'statement',
+  'split',
+  'stats',
+  'fadelist',
+  'list',
+  'quote',
+  'compare',
+  'chart',
+  'diagram',
+  'pie',
+  'end',
+] as const;
+
+type BroadsideSlideRole = (typeof BROADSIDE_SLIDE_ROLES)[number];
+type BroadsideRoleCopy = EightBitRoleCopy;
+type BroadsideCopyPack = Record<BroadsideSlideRole, BroadsideRoleCopy>;
+
+const PLAYFUL_SLIDE_ROLES = [
+  'cover',
+  'toc',
+  'statement',
+  'chart',
+  'team',
+  'services',
+  'timeline',
+  'stats',
+  'gallery',
+  'close',
+] as const;
+
+type PlayfulSlideRole = (typeof PLAYFUL_SLIDE_ROLES)[number];
+type PlayfulRoleCopy = EightBitRoleCopy;
+type PlayfulCopyPack = Record<PlayfulSlideRole, PlayfulRoleCopy>;
+
+const DAISY_CATALOG_DEMO_COPY_RE =
+  /Daisy Days|A cheerful presentation template for bright moments|Welcome to Today|Review the materials on your desk|Prepare your notes and supplies|Take a moment to settle in comfortably|Reach out if you need any assistance|A Look at the Week|Today'?s Schedule|Morning Gathering|Welcome circle and daily intentions|Learning Block|Core concepts and guided practice|Creative Time|Hands-on projects and exploration|Refreshments and outdoor play|Share learnings and closing circle|Activity Breakdown|Key Focus Areas|Creative Expression|Explore imagination through hands-on|Critical Thinking|Develop problem-solving skills|Build teamwork through group activities|Curiosity\s*(?:&|&amp;)\s*Wonder|Nurture a love of learning|Every day is a fresh beginning|A Wise Educator|Our Team|Alex Rivera|Sam Chen|Jordan Park|Taylor Kim|Lead Guide|Co-Teacher|How It Works|Explore new topics through guided introductions|Apply concepts with hands-on activities|Share insights and celebrate progress|Topic Distribution|Literacy\s*-\s*33%|Numeracy\s*-\s*27%|Science\s*-\s*20%|Arts\s*-\s*13%|Movement\s*-\s*7%/gi;
+
+const DAISY_CATALOG_DEMO_METRIC_RE =
+  /\b(?:100%|33%|27%|20%|13%|7%|Literacy|Numeracy)\b/g;
+
+const PLAYFUL_CATALOG_DEMO_COPY_RE =
+  /Creative Direction\s*(?:&|&amp;)\s*Visual Systems|A template presentation for bold ideas|unfiltered storytelling|Built with expressive typography|SCROLL DOWN|What We Will Cover Today|Vision\s*(?:&|&amp;)\s*Mission Statement|Market Analysis\s*(?:&|&amp;)\s*Data Insights|Team Structure\s*(?:&|&amp;)\s*Leadership|Core Services\s*(?:&|&amp;)\s*Offerings|Process\s*(?:&|&amp;)\s*Workflow Timeline|Results,\s*Metrics\s*(?:&|&amp;)\s*Impact|We believe in raw expression over polished perfection|Our approach combines strategic thinking|Founded in 2019|Growth Metrics Over Four Quarters|The Collective|Four perspectives, one shared obsession|Alex Chen|Mira Okafor|Jonas Weber|Suki Tanaka|Creative Director|Strategy Lead|Visual Designer|Motion Artist|What We Do Best|Brand Identity|Visual systems that capture essence|Art Direction|Creative vision for campaigns|Motion Design|Animation and kinetic identity|Digital Experiences|Websites and interactive platforms|Custom letterforms and type systems|Our Process in Five Steps|Research, interviews, and competitive landscape|Strategic positioning and core narrative|Visual exploration, prototyping|Production, asset creation|Launch support and ongoing performance|Impact by the Numbers|Projects delivered across three continents|Industry awards and recognitions|Client retention rate with ongoing partnerships|Selected Works|A glimpse into recent collaborations|Thank You|Let Us Talk|hello@example\.studio|\+1\s*\(555\)\s*000 1234|www\.example\.studio/gi;
+
+const PLAYFUL_CATALOG_DEMO_METRIC_RE = /\b(?:47|12|98%)\b/g;
+
+function daisyDaysSlideCopyPack(topic: string): DaisyCopyPack {
+  const brand = topic || 'Teamver';
+  return {
+    cover: eightBitRoleCopy('표지', `${brand}는 초안과 수정을 같은 보드에서 끝낸다.`),
+    welcome: eightBitRoleCopy(
+      `${brand}가 묶는 일`,
+      `${brand}는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.`,
+      [
+        { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
+        { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+        { title: '이어서 고치기', body: `${brand}에서는 보낸 뒤에도 같은 화면에서 문장을 고친다.` },
+        { title: '같은 맥락', body: `${brand}에서 파일과 대화가 한 화면으로 열린다.` },
+      ],
+    ),
+    weekly: eightBitRoleCopy(`${brand} 한 주의 일`, `${brand}에서 보드를 열고 권한을 나눈 뒤 이력을 남긴다.`, [
+      { title: '연다', body: `흩어진 메모를 ${brand} 보드로 옮긴다.` },
+      { title: '나눈다', body: `${brand}에서 보기와 고치기를 정한다.` },
+      { title: '남긴다', body: `${brand} 보드에 바꾼 시점을 고정한다.` },
+      { title: '본다', body: `${brand}에서 댓글과 버전을 연다.` },
+      { title: '보낸다', body: `${brand}에서 필요한 사람만 초대한다.` },
+    ]),
+    timeline: eightBitRoleCopy('도입 단계', `한 팀 보드를 ${brand}로 옮긴 뒤 리뷰 습관과 조직 기준을 고정한다.`, [
+      { title: '한 팀 보드', body: `기존 문서를 ${brand} 보드로 옮기고 보기·고치기 권한을 나눈다.` },
+      { title: '리뷰 습관', body: `${brand}에서 댓글과 버전을 같은 화면에서 고정한다.` },
+      { title: '조직 기준', body: `${brand} 워크스페이스 기본값으로 감사와 보내기 규칙을 둔다.` },
+      { title: '이어서 쓰기', body: `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.` },
+      { title: '같은 화면', body: `${brand}에서 초안과 리뷰가 한 보드에 남는다.` },
+    ]),
+    chart: eightBitRoleCopy(`${brand} 작업 흐름`, `${brand}에서 보드를 열고 권한을 나눈 뒤 이력을 남긴다.`, [
+      { title: '보드를 연다', body: `흩어진 메모를 ${brand} 워크스페이스로 옮긴다.` },
+      { title: '권한을 나눈다', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '이력을 남긴다', body: `${brand} 보드에 바꾼 사람과 시점을 고정한다.` },
+      { title: '리뷰한다', body: `${brand}에서 댓글과 버전을 같은 화면에서 본다.` },
+      { title: '보낸다', body: `${brand}에서 필요한 사람만 초대해 결과를 넘긴다.` },
+      { title: '이어 쓴다', body: `${brand}에서 다음 보드를 같은 맥락으로 연다.` },
+    ]),
+    cards: eightBitRoleCopy(`${brand}에서 바로 쓰는 것`, `${brand}에서 초안·수정·공유가 한 흐름이다.`, [
+      { title: '초안', body: `${brand} 보드에 바로 붙일 수 있는 초안이 열린다.` },
+      { title: '수정', body: `${brand}에서는 보낸 뒤에도 같은 화면에서 문장과 레이아웃을 고친다.` },
+      { title: '공유', body: `${brand}에 필요한 사람만 초대해 보기와 고치기를 나눈다.` },
+      { title: '이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+    ]),
+    quote: eightBitRoleCopy(
+      '보드에서',
+      `${brand}에서는 초안을 보낸 뒤에도 같은 화면에서 고칠 수 있어야 일이 끝난다.`,
+    ),
+    team: eightBitRoleCopy(`${brand}를 쓰는 자리`, `${brand}에서 실무는 초안을 붙이고 리뷰는 권한을 나눈다.`, [
+      { title: '혼자 시작', body: `${brand}에서 한 보드를 열고 초안을 붙인다.` },
+      { title: '팀과 고치기', body: `${brand}에서 보기와 고치기를 나눠 같이 고친다.` },
+      { title: '리뷰', body: `${brand}에서 댓글과 버전을 같은 화면에서 본다.` },
+      { title: '조직으로', body: `${brand} 워크스페이스 기준으로 이력과 보내기를 고정한다.` },
+    ]),
+    process: eightBitRoleCopy(`${brand} 흐름`, `${brand}에서 초안을 붙이고 권한을 나눈 뒤 이력을 남긴다.`, [
+      { title: '붙인다', body: `${brand} 보드에 초안을 바로 연다.` },
+      { title: '나눈다', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '남긴다', body: `${brand}에서 바꾼 기록을 같은 화면에 둔다.` },
+    ]),
+    donut: eightBitRoleCopy(`${brand} 운영`, `${brand}가 한 화면에서 남기는 네 가지.`, [
+      { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
+      { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+      { title: '같은 맥락', body: `${brand}에서 파일과 대화가 한 화면으로 열린다.` },
+      { title: '보내기', body: `${brand}에서 필요한 사람만 초대한다.` },
+    ]),
+  };
+}
+
+function broadsideSlideCopyPack(topic: string): BroadsideCopyPack {
+  const brand = topic || 'Teamver';
+  return {
+    cover: eightBitRoleCopy('표지', `${brand}는 초안과 수정을 같은 보드에서 끝낸다.`),
+    chapter: eightBitRoleCopy(
+      `${brand}가 묶는 일`,
+      `${brand}는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.`,
+    ),
+    statement: eightBitRoleCopy(
+      '보드에서',
+      `${brand}에서는 초안을 보낸 뒤에도 같은 화면에서 고칠 수 있어야 일이 끝난다.`,
+    ),
+    split: eightBitRoleCopy(
+      `${brand}가 남기는 증거`,
+      `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.`,
+      [
+        { title: '같은 보드', body: `${brand}에서 파일과 대화를 한 맥락으로 연다.` },
+        { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+        { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+      ],
+    ),
+    stats: eightBitRoleCopy(`${brand} 운영`, `${brand}가 한 화면에서 남기는 세 가지.`, [
+      { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
+      { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+    ]),
+    fadelist: eightBitRoleCopy(`${brand}에서 바로 쓰는 것`, `${brand}에서 초안·수정·공유가 한 흐름이다.`, [
+      { title: '초안', body: `${brand} 보드에 바로 붙일 수 있는 초안이 열린다.` },
+      { title: '수정', body: `${brand}에서는 보낸 뒤에도 같은 화면에서 문장과 레이아웃을 고친다.` },
+      { title: '공유', body: `${brand}에 필요한 사람만 초대해 보기와 고치기를 나눈다.` },
+    ]),
+    list: eightBitRoleCopy(`${brand}에서 지키는 규칙`, `${brand}에서 보드를 열고 권한을 나눈 뒤 이력을 남긴다.`, [
+      { title: '보드를 연다', body: `흩어진 메모를 ${brand} 워크스페이스로 옮긴다.` },
+      { title: '권한을 나눈다', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '이력을 남긴다', body: `${brand} 보드에 바꾼 사람과 시점을 고정한다.` },
+      { title: '보낸다', body: `${brand}에서 필요한 사람만 초대해 결과를 넘긴다.` },
+    ]),
+    quote: eightBitRoleCopy(
+      '이어서 고치기',
+      `${brand}에서는 초안을 보낸 뒤에도 같은 화면에서 고칠 수 있어야 일이 끝난다.`,
+    ),
+    compare: eightBitRoleCopy(`${brand} 전후`, `${brand}로 옮기면 파일 밖으로 흩어지던 수정이 한 보드에 남는다.`, [
+      { title: '흩어진 파일', body: `초안과 피드백이 메일과 폴더로 갈라져 ${brand} 밖을 떠돈다.` },
+      { title: '같은 보드', body: `${brand}에서 초안·댓글·버전이 한 화면으로 열린다.` },
+    ]),
+    chart: eightBitRoleCopy(`${brand} 작업 흐름`, `${brand}에서 보드를 열고 권한을 나눈 뒤 이력을 남긴다.`, [
+      { title: '연다', body: `흩어진 메모를 ${brand}로 옮긴다.` },
+      { title: '나눈다', body: `${brand}에서 보기와 고치기를 정한다.` },
+      { title: '남긴다', body: `${brand} 보드에 바꾼 시점을 고정한다.` },
+      { title: '보낸다', body: `${brand}에서 필요한 사람만 초대한다.` },
+    ]),
+    diagram: eightBitRoleCopy(`${brand} 흐름`, `${brand}에서 초안을 붙이고 권한을 나눈 뒤 이력을 남긴다.`, [
+      { title: '붙인다', body: `${brand} 보드에 초안을 바로 연다.` },
+      { title: '나눈다', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '남긴다', body: `${brand}에서 바꾼 기록을 같은 화면에 둔다.` },
+      { title: '보낸다', body: `${brand}에서 필요한 사람만 초대한다.` },
+    ]),
+    pie: eightBitRoleCopy(`${brand}가 남기는 칸`, `${brand}에서 초안과 권한이 한 화면으로 모인다.`, [
+      { title: '초안', body: `${brand} 보드에 바로 붙일 수 있는 초안이 열린다.` },
+      { title: '권한', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '이력', body: `${brand}에서 누가 언제 바꿨는지 남긴다.` },
+      { title: '보내기', body: `${brand}에서 필요한 사람만 초대한다.` },
+    ]),
+    end: eightBitRoleCopy(
+      '보드에서 이어 쓰기',
+      `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.`,
+    ),
+  };
+}
+
+function playfulSlideCopyPack(topic: string): PlayfulCopyPack {
+  const brand = topic || 'Teamver';
+  return {
+    cover: eightBitRoleCopy('표지', `${brand}는 초안과 수정을 같은 보드에서 끝낸다.`),
+    toc: eightBitRoleCopy(`${brand}가 다루는 칸`, `${brand}에서 보드·권한·이력·보내기를 한 흐름으로 본다.`, [
+      { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
+      { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+      { title: '같은 맥락', body: `${brand}에서 파일과 대화가 한 화면으로 열린다.` },
+      { title: '작업 흐름', body: `${brand}에서 보드를 열고 권한을 나눈 뒤 이력을 남긴다.` },
+      { title: '이어서 쓰기', body: `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.` },
+    ]),
+    statement: eightBitRoleCopy(
+      `${brand}가 묶는 일`,
+      `${brand}는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.`,
+    ),
+    chart: eightBitRoleCopy(`${brand} 작업 흐름`, `${brand}에서 보드를 열고 권한을 나눈 뒤 이력을 남긴다.`, [
+      { title: '연다', body: `흩어진 메모를 ${brand}로 옮긴다.` },
+      { title: '나눈다', body: `${brand}에서 보기와 고치기를 정한다.` },
+      { title: '남긴다', body: `${brand} 보드에 바꾼 시점을 고정한다.` },
+      { title: '본다', body: `${brand}에서 댓글과 버전을 연다.` },
+      { title: '보낸다', body: `${brand}에서 필요한 사람만 초대한다.` },
+    ]),
+    team: eightBitRoleCopy(`${brand}를 쓰는 자리`, `${brand}에서 실무는 초안을 붙이고 리뷰는 권한을 나눈다.`, [
+      { title: '혼자 시작', body: `${brand}에서 한 보드를 열고 초안을 붙인다.` },
+      { title: '팀과 고치기', body: `${brand}에서 보기와 고치기를 나눠 같이 고친다.` },
+      { title: '리뷰', body: `${brand}에서 댓글과 버전을 같은 화면에서 본다.` },
+      { title: '조직으로', body: `${brand} 워크스페이스 기준으로 이력과 보내기를 고정한다.` },
+    ]),
+    services: eightBitRoleCopy(`${brand}에서 바로 쓰는 것`, `${brand}에서 초안·수정·공유가 한 흐름이다.`, [
+      { title: '초안', body: `${brand} 보드에 바로 붙일 수 있는 초안이 열린다.` },
+      { title: '수정', body: `${brand}에서는 보낸 뒤에도 같은 화면에서 문장과 레이아웃을 고친다.` },
+      { title: '공유', body: `${brand}에 필요한 사람만 초대해 보기와 고치기를 나눈다.` },
+      { title: '이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+      { title: '권한', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+    ]),
+    timeline: eightBitRoleCopy('도입 단계', `한 팀 보드를 ${brand}로 옮긴 뒤 리뷰 습관과 조직 기준을 고정한다.`, [
+      { title: '한 팀 보드', body: `기존 문서를 ${brand} 보드로 옮기고 보기·고치기 권한을 나눈다.` },
+      { title: '리뷰 습관', body: `${brand}에서 댓글과 버전을 같은 화면에서 고정한다.` },
+      { title: '조직 기준', body: `${brand} 워크스페이스 기본값으로 감사와 보내기 규칙을 둔다.` },
+      { title: '이어서 쓰기', body: `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.` },
+      { title: '같은 화면', body: `${brand}에서 초안과 리뷰가 한 보드에 남는다.` },
+    ]),
+    stats: eightBitRoleCopy(`${brand} 운영`, `${brand}가 한 화면에서 남기는 세 가지.`, [
+      { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
+      { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+    ]),
+    gallery: eightBitRoleCopy(
+      `${brand}가 남기는 증거`,
+      `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.`,
+      [
+        { title: '같은 보드', body: `${brand}에서 파일과 대화를 한 맥락으로 연다.` },
+        { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+        { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+        { title: '보내기', body: `${brand}에서 필요한 사람만 초대한다.` },
+      ],
+    ),
+    close: eightBitRoleCopy(
+      '보드에서 이어 쓰기',
+      `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.`,
+    ),
+  };
+}
+
+function looksLikeDaisyPlayfulLeftoverCopy(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!value) return false;
+  if (looksLikeEightBitCapsuleLeftoverCopy(value)) return true;
+  if (DAISY_CATALOG_DEMO_COPY_RE.test(value) || PLAYFUL_CATALOG_DEMO_COPY_RE.test(value)) {
+    DAISY_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+    PLAYFUL_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+    return true;
+  }
+  DAISY_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+  PLAYFUL_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+  return /Overview|What We Will Cover Today|Daisy Days|Creative Direction/i.test(value);
+}
+
+function daisyDaysKeepable(text: string): boolean {
+  return eightBitCapsuleCopyIsKeepable(text) && !looksLikeDaisyPlayfulLeftoverCopy(text);
+}
+
+function replaceKeepableLeaf(
+  full: string,
+  open: string,
+  inner: string,
+  close: string,
+  next: string,
+): string {
+  const plain = visibleDeckCopy(inner);
+  if (daisyDaysKeepable(plain)) return full;
+  if (!next) return full;
+  return `${open}${escapeHtml(next)}${close}`;
+}
+
+function daisyPackForBody(body: string, attrs: string, pack: DaisyCopyPack): DaisyRoleCopy {
+  if (/\bslide-title\b|\btitle-box\b/i.test(`${attrs}\n${body}`)) return pack.cover;
+  if (/\bslide-welcome\b|\bwelcome-frame\b/i.test(`${attrs}\n${body}`)) return pack.welcome;
+  if (/\bslide-weekly\b|\bday-card\b/i.test(`${attrs}\n${body}`)) return pack.weekly;
+  if (/\bslide-timeline\b|\btimeline-row\b/i.test(`${attrs}\n${body}`)) return pack.timeline;
+  if (/\bslide-chart-bar\b|\bchart-legend\b/i.test(`${attrs}\n${body}`)) return pack.chart;
+  if (/\bslide-cards\b|\binfo-card\b/i.test(`${attrs}\n${body}`)) return pack.cards;
+  if (/\bslide-quote\b|\bquote-box\b/i.test(`${attrs}\n${body}`)) return pack.quote;
+  if (/\bslide-team\b|\bteam-member\b/i.test(`${attrs}\n${body}`)) return pack.team;
+  if (/\bslide-process\b|\bprocess-step\b/i.test(`${attrs}\n${body}`)) return pack.process;
+  if (/\bslide-donut\b|\bdonut-legend-side\b/i.test(`${attrs}\n${body}`)) return pack.donut;
+  return pack.welcome;
+}
+
+function playfulPackForBody(body: string, attrs: string, pack: PlayfulCopyPack): PlayfulRoleCopy {
+  if (/\bslide-1\b|\btitle-main\b/i.test(`${attrs}\n${body}`)) return pack.cover;
+  if (/\bslide-10\b|\bclosing-big\b/i.test(`${attrs}\n${body}`)) return pack.close;
+  if (/\bslide-2\b|\btoc-grid\b/i.test(`${attrs}\n${body}`)) return pack.toc;
+  if (/\bslide-3\b|\bbig-statement\b/i.test(`${attrs}\n${body}`)) return pack.statement;
+  if (/\bslide-4\b|\bchart-bars\b/i.test(`${attrs}\n${body}`)) return pack.chart;
+  if (/\bslide-5\b|\bteam-card\b/i.test(`${attrs}\n${body}`)) return pack.team;
+  if (/\bslide-6\b|\bservice-block\b/i.test(`${attrs}\n${body}`)) return pack.services;
+  if (/\bslide-7\b|\btimeline-track\b/i.test(`${attrs}\n${body}`)) return pack.timeline;
+  if (/\bslide-8\b|\bstat-item\b/i.test(`${attrs}\n${body}`)) return pack.stats;
+  if (/\bslide-9\b|\bgallery-collage\b/i.test(`${attrs}\n${body}`)) return pack.gallery;
+  return pack.statement;
+}
+
+function broadsidePackForBody(body: string, attrs: string, pack: BroadsideCopyPack): BroadsideRoleCopy {
+  if (/\bslide--cover\b/i.test(attrs)) return pack.cover;
+  if (/\bslide--chapter\b/i.test(attrs)) return pack.chapter;
+  if (/\bslide--statement\b/i.test(attrs)) return pack.statement;
+  if (/\bslide--split\b/i.test(attrs)) return pack.split;
+  if (/\bslide--stats\b/i.test(attrs)) return pack.stats;
+  if (/\bslide--fadelist\b/i.test(attrs)) return pack.fadelist;
+  if (/\bslide--list\b/i.test(attrs)) return pack.list;
+  if (/\bslide--quote\b/i.test(attrs)) return pack.quote;
+  if (/\bslide--compare\b/i.test(attrs)) return pack.compare;
+  if (/\bslide--chart\b/i.test(attrs)) return pack.chart;
+  if (/\bslide--diagram\b/i.test(attrs)) return pack.diagram;
+  if (/\bslide--pie\b/i.test(attrs)) return pack.pie;
+  if (/\bslide--end\b/i.test(attrs)) return pack.end;
+  if (/\bslide--(?:pyramid|vtimeline|cycle)\b/i.test(attrs)) return pack.list;
+  return pack.statement;
+}
+
+function daisyDaysSlideHasKitChrome(html: string): boolean {
+  return /\b(?:deco-daisy|title-box|welcome-frame|day-card|donut-legend-side|slide-welcome|slide-weekly|slide-chart-bar|slide-donut)\b/i.test(html);
+}
+
+function playfulSlideHasKitChrome(html: string, attrs = ''): boolean {
+  const hay = `${attrs}\n${html}`;
+  return /\b(?:title-main|doodle-blob|doodle-frame|toc-grid|big-statement|chart-bars|team-card|service-block|timeline-track|stat-item|gallery-collage|closing-big)\b/i.test(hay)
+    || (/\bslide-(?:[1-9]|10)\b/i.test(hay) && /\bdoodle\b/i.test(hay));
+}
+
+function broadsideSlideHasKitChrome(html: string): boolean {
+  return /\b(?:broadside-num|cover-body|slide--fadelist|slide--pie|slide--diagram|--c-bg-orange)\b/i.test(html)
+    || /\bslide--(?:cover|chapter|split|stats|list|quote|compare|statement|chart|end)\b/i.test(html);
+}
+
+function daisyDaysSlideNeedsHeal(body: string, heading: string): boolean {
+  if (!visibleDeckCopy(body).trim()) return true;
+  if (looksLikeLeftoverTemplateDemoDeck(body)) return true;
+  if (DAISY_CATALOG_DEMO_COPY_RE.test(body) || DAISY_CATALOG_DEMO_METRIC_RE.test(body)) {
+    DAISY_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+    DAISY_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+    return true;
+  }
+  DAISY_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+  DAISY_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+  if (looksLikeDaisyPlayfulLeftoverCopy(heading) || looksLikeBlockedOverviewOrTrioTitle(heading)) {
+    return true;
+  }
+  const visible = visibleDeckCopy(body);
+  if (SERVICE_INTRO_LEFTOVER_BODY_RE.test(visible)) return true;
+  if (/(?<![가-힣])개요(?![가-힣])|핵심\s*포인트|파일럿/.test(visible)) return true;
+  return false;
+}
+
+function playfulSlideNeedsHeal(body: string, heading: string): boolean {
+  if (!visibleDeckCopy(body).trim()) return true;
+  if (looksLikeLeftoverTemplateDemoDeck(body)) return true;
+  if (PLAYFUL_CATALOG_DEMO_COPY_RE.test(body) || PLAYFUL_CATALOG_DEMO_METRIC_RE.test(body)) {
+    PLAYFUL_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+    PLAYFUL_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+    return true;
+  }
+  PLAYFUL_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+  PLAYFUL_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+  if (looksLikeDaisyPlayfulLeftoverCopy(heading) || looksLikeBlockedOverviewOrTrioTitle(heading)) {
+    return true;
+  }
+  const visible = visibleDeckCopy(body);
+  if (SERVICE_INTRO_LEFTOVER_BODY_RE.test(visible)) return true;
+  if (/(?<![가-힣])개요(?![가-힣])|핵심\s*포인트|파일럿|Overview/.test(visible)) return true;
+  return false;
+}
+
+function broadsideSlideNeedsHeal(body: string, heading: string): boolean {
+  if (looksLikeLeftoverTemplateDemoDeck(body)) return true;
+  if (BROADSIDE_LEFTOVER_BODY_RE.test(body)) return true;
+  if (looksLikeServiceIntroLeftoverTitle(heading) || looksLikeBlockedOverviewOrTrioTitle(heading)) {
+    return true;
+  }
+  const visible = visibleDeckCopy(body);
+  if (SERVICE_INTRO_LEFTOVER_BODY_RE.test(visible)) return true;
+  if (/(?<![가-힣])개요(?![가-힣])|핵심\s*포인트|파일럿|\$3\.5B|\b3\s*[×xX]\b/.test(visible)) return true;
+  return false;
+}
+
+function stripDaisyDaysCatalogDemoCopy(html: string): string {
+  return String(html ?? '')
+    .replace(DAISY_CATALOG_DEMO_COPY_RE, '')
+    .replace(DAISY_CATALOG_DEMO_METRIC_RE, '');
+}
+
+function stripPlayfulCatalogDemoCopy(html: string): string {
+  return String(html ?? '')
+    .replace(PLAYFUL_CATALOG_DEMO_COPY_RE, '')
+    .replace(PLAYFUL_CATALOG_DEMO_METRIC_RE, '');
+}
+
+function seedKitSlideInput(
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    kicker: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+  role: EightBitRoleCopy,
+): {
+  title: string;
+  lead: string;
+  bodyText: string;
+  kicker: string;
+  fillLines: TemplateCloneCardFillLine[];
+} {
+  const heading = rewriteLeftoverKitSlideTitle(input.title, role.heading);
+  const leftoverLines = (input.fillLines ?? []).some((line) => {
+    const resolved = resolveTemplateCloneCardFill(line);
+    return looksLikeEightBitCapsuleLeftoverCopy(resolved.title)
+      || looksLikeEightBitCapsuleLeftoverCopy(resolved.body)
+      || looksLikeDaisyPlayfulLeftoverCopy(resolved.title);
+  });
+  const leftoverInput = leftoverLines
+    || looksLikeDaisyPlayfulLeftoverCopy(input.title)
+    || looksLikeDaisyPlayfulLeftoverCopy(input.kicker || '')
+    || looksLikeDaisyPlayfulLeftoverCopy(input.lead)
+    || looksLikeDaisyPlayfulLeftoverCopy(input.bodyText)
+    || looksLikeEightBitCapsuleLeftoverCopy(input.title)
+    || looksLikeEightBitCapsuleLeftoverCopy(input.lead)
+    || looksLikeEightBitCapsuleLeftoverCopy(input.bodyText);
+  const lead = leftoverInput || looksLikeEightBitCapsuleLeftoverCopy(input.lead)
+    ? role.lead
+    : (daisyDaysKeepable(input.lead) ? input.lead : (input.lead || role.lead));
+  const bodyText = leftoverInput || looksLikeEightBitCapsuleLeftoverCopy(input.bodyText)
+    ? role.lead
+    : (daisyDaysKeepable(input.bodyText) ? input.bodyText : (input.bodyText || role.lead));
+  return {
+    ...input,
+    title: heading,
+    lead,
+    bodyText,
+    fillLines: leftoverInput && role.items.length > 0 ? role.items : input.fillLines,
+  };
+}
+
+export function fillDaisyDaysKitSlide(
+  body: string,
+  attrs: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    kicker: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  const src = String(body ?? '');
+  if (!daisyDaysSlideHasKitChrome(src)) return src;
+  const topic = resolveLockedTopicNoun(input.title, input.lead, input.bodyText, input.kicker);
+  const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
+  const pack = daisyDaysSlideCopyPack(brand);
+  const role = daisyPackForBody(src, attrs, pack);
+  const seeded = seedKitSlideInput(input, role);
+  const lines = biennaleFillLines(seeded, 6);
+  let next = src;
+
+  if (/\btitle-box\b/i.test(next)) {
+    const h1 = visibleDeckCopy(next.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '');
+    if (!h1 || looksLikeDaisyPlayfulLeftoverCopy(h1) || !daisyDaysKeepable(h1)) {
+      next = next.replace(
+        /(<h1\b[^>]*>)([\s\S]*?)(<\/h1>)/i,
+        (full, open: string, inner: string, close: string) => (
+          replaceKeepableLeaf(full, open, inner, close, seeded.title)
+        ),
+      );
+    }
+    next = replaceFirstExactClassText(next, 'subtitle', seeded.lead);
+  }
+
+  const visibleHeading = visibleDeckCopy(next.match(/<h2\b[^>]*>([\s\S]*?)<\/h2>/i)?.[1] ?? '');
+  if (
+    visibleHeading
+    && (
+      looksLikeDaisyPlayfulLeftoverCopy(visibleHeading)
+      || looksLikeBlockedOverviewOrTrioTitle(visibleHeading)
+      || SERVICE_INTRO_LEFTOVER_BODY_RE.test(visibleHeading)
+    )
+  ) {
+    next = next.replace(
+      /(<h2\b[^>]*>)([\s\S]*?)(<\/h2>)/i,
+      (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(seeded.title)}${close}`,
+    );
+  }
+
+  if (/\bwelcome-list\b/i.test(next)) {
+    next = replaceListItems(next, lines.map((line) => line.body || line.title).filter(Boolean));
+  }
+
+  if (/\bday-card\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'day-card', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = block.replace(
+        /(<(?:div|span)\b[^>]*\bday-header\b[^>]*>)([\s\S]*?)(<\/(?:div|span)>)/i,
+        (full, open: string, inner: string, close: string) => (
+          replaceKeepableLeaf(full, open, inner, close, resolved.title)
+        ),
+      );
+      return replaceListItems(filled, [resolved.body || resolved.title]);
+    });
+  }
+
+  if (/\btimeline-card\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'timeline-card', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = block.replace(
+        /(<h4\b[^>]*>)([\s\S]*?)(<\/h4>)/i,
+        (full, open: string, inner: string, close: string) => (
+          replaceKeepableLeaf(full, open, inner, close, resolved.title)
+        ),
+      );
+      return filled.replace(
+        /(<p\b[^>]*>)([\s\S]*?)(<\/p>)/i,
+        (full, open: string, inner: string, close: string) => (
+          replaceKeepableLeaf(full, open, inner, close, resolved.body || resolved.title)
+        ),
+      );
+    });
+  }
+
+  if (/\blegend-item\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'legend-item', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      const plain = visibleDeckCopy(block);
+      if (daisyDaysKeepable(plain) && !/Reading|Writing|Science|Art|Music|Games/i.test(plain)) {
+        return block;
+      }
+      return block.replace(
+        /(>)([^<]*)(<\/)/,
+        (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(resolved.title)}${close}`,
+      );
+    });
+  }
+
+  if (/\binfo-card\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'info-card', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = block.replace(
+        /(<h4\b[^>]*>)([\s\S]*?)(<\/h4>)/i,
+        (full, open: string, inner: string, close: string) => (
+          replaceKeepableLeaf(full, open, inner, close, resolved.title)
+        ),
+      );
+      return filled.replace(
+        /(<p\b[^>]*>)([\s\S]*?)(<\/p>)/i,
+        (full, open: string, inner: string, close: string) => (
+          replaceKeepableLeaf(full, open, inner, close, resolved.body || resolved.title)
+        ),
+      );
+    });
+  }
+
+  if (/\bquote-text\b/i.test(next)) {
+    next = replaceFirstExactClassText(next, 'quote-text', seeded.lead);
+    next = replaceFirstExactClassText(next, 'quote-author', '');
+  }
+
+  if (/\bteam-member\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'team-member', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = replaceFirstExactClassText(block, 'team-name', resolved.title);
+      return replaceFirstExactClassText(filled, 'team-role', resolved.body || resolved.title);
+    });
+  }
+
+  if (/\bprocess-step\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'process-step', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = replaceFirstExactClassText(block, 'step-title', resolved.title);
+      return replaceFirstExactClassText(filled, 'step-desc', resolved.body || resolved.title);
+    });
+  }
+
+  if (/\bd-legend-item\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'd-legend-item', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      return block.replace(
+        /(>)([^<]*?)(<\/)/,
+        (full, open: string, inner: string, close: string) => {
+          const plain = String(inner).replace(/\s+/g, ' ').trim();
+          if (daisyDaysKeepable(plain)) return full;
+          return `${open}${escapeHtml(resolved.title)}${close}`;
+        },
+      );
+    });
+    next = next.replace(
+      /(<h3\b[^>]*>)([\s\S]*?)(<\/h3>)/i,
+      (full, open: string, inner: string, close: string) => (
+        replaceKeepableLeaf(full, open, inner, close, seeded.title)
+      ),
+    );
+  }
+
+  return wipeEightBitCapsuleLeftoverPhrases(stripDaisyDaysCatalogDemoCopy(next));
+}
+
+export function fillPlayfulKitSlide(
+  body: string,
+  attrs: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    kicker: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  const src = String(body ?? '');
+  if (!playfulSlideHasKitChrome(src, attrs)) return src;
+  const topic = resolveLockedTopicNoun(input.title, input.lead, input.bodyText, input.kicker);
+  const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
+  const pack = playfulSlideCopyPack(brand);
+  const role = playfulPackForBody(src, attrs, pack);
+  const seeded = seedKitSlideInput(input, role);
+  const lines = biennaleFillLines(seeded, 6);
+  let next = src;
+
+  if (/\btitle-main\b/i.test(next)) {
+    const main = visibleDeckCopy(
+      /<(?:h1|div|p)\b[^>]*\btitle-main\b[^>]*>([\s\S]*?)<\/(?:h1|div|p)>/i.exec(next)?.[1] ?? '',
+    );
+    if (!main || looksLikeDaisyPlayfulLeftoverCopy(main) || !daisyDaysKeepable(main)) {
+      next = replaceFirstExactClassText(next, 'title-main', seeded.title);
+    }
+    next = replaceFirstExactClassText(next, 'subtitle', seeded.lead);
+    const vertical = visibleDeckCopy(
+      /<(?:div|span|p)\b[^>]*\bvertical-text\b[^>]*>([\s\S]*?)<\/(?:div|span|p)>/i.exec(next)?.[1] ?? '',
+    );
+    if (!vertical || looksLikeDaisyPlayfulLeftoverCopy(vertical)) {
+      next = replaceFirstExactClassText(next, 'vertical-text', seeded.title);
+    }
+  }
+
+  if (/\bsection-label\b/i.test(next)) {
+    const label = visibleDeckCopy(
+      /<(?:div|span|p)\b[^>]*\bsection-label\b[^>]*>([\s\S]*?)<\/(?:div|span|p)>/i.exec(next)?.[1] ?? '',
+    );
+    if (!label || looksLikeDaisyPlayfulLeftoverCopy(label) || /Overview/i.test(label)) {
+      next = replaceFirstExactClassText(next, 'section-label', seeded.title);
+    }
+  }
+
+  const visibleHeading = visibleDeckCopy(
+    next.match(/<(?:h[12]|div)\b[^>]*\b(?:toc-title|chart-title|team-title|services-title|timeline-title|stats-title|gallery-title|closing-big)\b[^>]*>([\s\S]*?)<\//i)?.[1]
+    ?? next.match(/<h2\b[^>]*>([\s\S]*?)<\/h2>/i)?.[1]
+    ?? '',
+  );
+  if (visibleHeading && (looksLikeDaisyPlayfulLeftoverCopy(visibleHeading) || looksLikeBlockedOverviewOrTrioTitle(visibleHeading))) {
+    for (const cls of ['toc-title', 'chart-title', 'team-title', 'services-title', 'timeline-title', 'stats-title', 'gallery-title', 'closing-big']) {
+      if (new RegExp(`\\b${cls}\\b`, 'i').test(next)) {
+        next = replaceFirstExactClassText(next, cls, seeded.title);
+        break;
+      }
+    }
+  }
+
+  if (/\btoc-item\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'toc-item', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      return replaceFirstExactClassText(block, 'toc-title', resolved.title);
+    });
+  }
+
+  if (/\bbig-statement\b/i.test(next)) {
+    next = replaceFirstExactClassText(next, 'big-statement', seeded.lead);
+  }
+  if (/\bbody-text\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(
+      next,
+      'body-text',
+      lines.length > 0 ? lines : [{ title: seeded.lead, body: seeded.bodyText }],
+      (block, line) => {
+        const resolved = resolveTemplateCloneCardFill(line);
+        const plain = visibleDeckCopy(block);
+        if (daisyDaysKeepable(plain)) return block;
+        return block.replace(
+          /(>)([\s\S]*?)(<\/)/,
+          `$1${escapeHtml(resolved.body || resolved.title)}$3`,
+        );
+      },
+    );
+  }
+
+  if (/\bbar-label\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'bar-label', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      const plain = visibleDeckCopy(block);
+      if (daisyDaysKeepable(plain)) return block;
+      return replaceFirstExactClassText(block, 'bar-label', resolved.title);
+    });
+  }
+
+  if (/\bteam-card\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'team-card', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = replaceFirstExactClassText(block, 'name', resolved.title);
+      return replaceFirstExactClassText(filled, 'role', resolved.body || resolved.title);
+    });
+    if (/\bteam-sub\b/i.test(next)) {
+      next = replaceFirstExactClassText(next, 'team-sub', seeded.lead);
+    }
+  }
+
+  if (/\bservice-block\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'service-block', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = replaceFirstExactClassText(block, 'block-title', resolved.title);
+      return replaceFirstExactClassText(filled, 'block-desc', resolved.body || resolved.title);
+    });
+  }
+
+  if (/\btimeline-step\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'timeline-step', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = replaceFirstExactClassText(block, 'step-title', resolved.title);
+      return replaceFirstExactClassText(filled, 'step-desc', resolved.body || resolved.title);
+    });
+  }
+
+  if (/\bstat-item\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'stat-item', lines, (block, line, index) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      const ordinal = String(index + 1).padStart(2, '0');
+      let filled = block.replace(
+        /(<(?:div|span)\b[^>]*\bstat-num\b[^>]*>)([\s\S]*?)(<\/(?:div|span)>)/i,
+        (full, open: string, inner: string, close: string) => {
+          const plain = visibleDeckCopy(inner);
+          if (titleLooksLikeMetric(resolved.title) || titleLooksLikeMetric(resolved.body)) {
+            return `${open}${escapeHtml(resolved.title || resolved.body)}${close}`;
+          }
+          if (!plain || PLAYFUL_CATALOG_DEMO_METRIC_RE.test(plain) || titleLooksLikeMetric(plain)) {
+            PLAYFUL_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+            return `${open}${escapeHtml(ordinal)}${close}`;
+          }
+          return full;
+        },
+      );
+      return replaceFirstExactClassText(filled, 'stat-label', resolved.title || resolved.body);
+    });
+  }
+
+  if (/\bgallery-item\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'gallery-item', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      return replaceFirstExactClassText(block, 'gallery-tag', resolved.title);
+    });
+    if (/\bgallery-sub\b/i.test(next)) {
+      next = replaceFirstExactClassText(next, 'gallery-sub', seeded.lead);
+    }
+  }
+
+  if (/\bclosing-sub\b/i.test(next)) {
+    next = replaceFirstExactClassText(next, 'closing-sub', seeded.lead);
+  }
+  if (!/\bbig-statement\b/i.test(next) && (/\bslide-3\b/i.test(attrs) || !visibleDeckCopy(next).trim())) {
+    next = `${next}<p class="big-statement">${escapeHtml(seeded.lead)}</p>`;
+  }
+
+  if (/\bcontact-line\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(
+      next,
+      'contact-line',
+      [{ title: seeded.lead, body: seeded.lead }],
+      (block) => {
+        const plain = visibleDeckCopy(block);
+        if (daisyDaysKeepable(plain)) return block;
+        return block.replace(
+          /(>)([^<]*)(<\/)/,
+          `$1${escapeHtml(seeded.lead)}$3`,
+        );
+      },
+    );
+  }
+
+  return wipeEightBitCapsuleLeftoverPhrases(stripPlayfulCatalogDemoCopy(next));
+}
+
+export function fillBroadsideKitSlide(
+  body: string,
+  attrs: string,
+  input: StudioCreativeFillInput,
+): string {
+  const src = String(body ?? '');
+  if (!broadsideSlideHasKitChrome(`${attrs}\n${src}`)) return src;
+  const topic = resolveLockedTopicNoun(input.topic, input.title, input.lead, input.bodyText);
+  const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
+  const pack = broadsideSlideCopyPack(brand);
+  const role = broadsidePackForBody(src, attrs, pack);
+  const seeded = seedKitSlideInput({
+    title: input.title,
+    lead: input.lead,
+    bodyText: input.bodyText,
+    kicker: input.kicker,
+    fillLines: input.fillLines,
+  }, role);
+  return wipeEightBitCapsuleLeftoverPhrases(fillStudioKitSlide(src, attrs, {
+    ...input,
+    title: seeded.title,
+    lead: seeded.lead,
+    bodyText: seeded.bodyText,
+    fillLines: seeded.fillLines,
+    topic: brand,
+  }));
+}
+
+export function healDaisyDaysLeftoverCatalogCopy(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsDaisyDays(dest)) return dest;
+  const briefText = String(brief ?? '');
+  if (!/[가-힣]/.test(visibleDeckCopy(dest)) && !/[가-힣]/.test(briefText) && !briefText.trim()) {
+    return dest;
+  }
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) {
+    return stripDaisyDaysCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(dest));
+  }
+  const harvested = [...dest.matchAll(/<(?:h[1-3]|div)\b[^>]*>([\s\S]*?)<\/(?:h[1-3]|div)>/gi)]
+    .map((match) => visibleDeckCopy(match[1] ?? ''))
+    .filter((text) => text.length >= 2 && text.length <= 40 && !DAISY_CATALOG_DEMO_COPY_RE.test(text));
+  DAISY_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+  const outline = resolveTemplateCloneSlidesForDeterministicFill({
+    userInstruction: briefText || harvested.join('\n') || '',
+    deckTitle: harvested[0] ?? null,
+    slideCount: spans.length,
+  });
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    if (!daisyDaysSlideHasKitChrome(body)) continue;
+    const heading = visibleDeckCopy(body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '');
+    if (!daisyDaysSlideNeedsHeal(body, heading)) continue;
+    const slide = outline[i] ?? outline[Math.min(i, outline.length - 1)];
+    const topic = resolveLockedTopicNoun(briefText, harvested[0], slide?.title);
+    const pack = daisyDaysSlideCopyPack(topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver');
+    const role = daisyPackForBody(body, span.attrs, pack);
+    const title = rewriteLeftoverKitSlideTitle(slide?.title || harvested[i] || harvested[0] || '', role.heading);
+    const nextBody = fillDaisyDaysKitSlide(body, span.attrs, {
+      title,
+      lead: looksLikeDaisyPlayfulLeftoverCopy(slide?.lead ?? '') ? role.lead : (slide?.lead || role.lead),
+      bodyText: slide?.body && !looksLikeDaisyPlayfulLeftoverCopy(slide.body) ? slide.body : role.lead,
+      kicker: slide?.kicker ?? '',
+      fillLines: role.items.length > 0 ? role.items : templateCloneSlideFillLines(slide ?? { title }),
+    });
+    if (nextBody === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
+  }
+  return wipeEightBitCapsuleLeftoverPhrases(
+    stripDaisyDaysCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out)),
+  );
+}
+
+export function healPlayfulLeftoverCatalogCopy(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsPlayful(dest)) return dest;
+  const briefText = String(brief ?? '');
+  if (!/[가-힣]/.test(visibleDeckCopy(dest)) && !/[가-힣]/.test(briefText) && !briefText.trim()) {
+    return dest;
+  }
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) {
+    return stripPlayfulCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(dest));
+  }
+  const harvested = [...dest.matchAll(/<(?:h[1-3]|div)\b[^>]*>([\s\S]*?)<\/(?:h[1-3]|div)>/gi)]
+    .map((match) => visibleDeckCopy(match[1] ?? ''))
+    .filter((text) => text.length >= 2 && text.length <= 40 && !PLAYFUL_CATALOG_DEMO_COPY_RE.test(text));
+  PLAYFUL_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+  const outline = resolveTemplateCloneSlidesForDeterministicFill({
+    userInstruction: briefText || harvested.join('\n') || '',
+    deckTitle: harvested[0] ?? null,
+    slideCount: spans.length,
+  });
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    if (!playfulSlideHasKitChrome(body, span.attrs)) continue;
+    const heading = visibleDeckCopy(
+      body.match(/<(?:h[12]|div)\b[^>]*\b(?:title-main|section-label|closing-big)\b[^>]*>([\s\S]*?)<\//i)?.[1]
+      ?? body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1]
+      ?? '',
+    );
+    if (!playfulSlideNeedsHeal(body, heading)) continue;
+    const slide = outline[i] ?? outline[Math.min(i, outline.length - 1)];
+    const topic = resolveLockedTopicNoun(briefText, harvested[0], slide?.title);
+    const pack = playfulSlideCopyPack(topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver');
+    const role = playfulPackForBody(body, span.attrs, pack);
+    const title = rewriteLeftoverKitSlideTitle(slide?.title || harvested[i] || harvested[0] || '', role.heading);
+    const nextBody = fillPlayfulKitSlide(body, span.attrs, {
+      title,
+      lead: looksLikeDaisyPlayfulLeftoverCopy(slide?.lead ?? '') ? role.lead : (slide?.lead || role.lead),
+      bodyText: slide?.body && !looksLikeDaisyPlayfulLeftoverCopy(slide.body) ? slide.body : role.lead,
+      kicker: slide?.kicker ?? '',
+      fillLines: role.items.length > 0 ? role.items : templateCloneSlideFillLines(slide ?? { title }),
+    });
+    if (nextBody === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
+  }
+  return wipeEightBitCapsuleLeftoverPhrases(
+    stripPlayfulCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out)),
+  );
 }
 
 function groveStudioPackForRole(
@@ -14523,11 +15539,41 @@ function fillSlideShell(
   if (slideLooksLikeLongTableKit(shell.attrs, body)) {
     body = fillLongTableKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
   }
-  if (/\bslide--(?:cover|chapter|split|stats|list|quote|compare|statement|chart|end)\b/i.test(shell.attrs)) {
+  if (
+    /\bslide--(?:cover|chapter|split|stats|list|quote|compare|statement|chart|end|diagram|pie|fadelist|pyramid|vtimeline|cycle)\b/i
+      .test(shell.attrs)
+    && (
+      officialLookIsBroadside(`${shell.attrs}\n${body}`)
+      || /\bbroadside-(?:num|top-chrome)\b/i.test(body)
+      || /--c-bg-orange/.test(body)
+    )
+  ) {
+    body = fillBroadsideKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
+  } else if (/\bslide--(?:cover|chapter|split|stats|list|quote|compare|statement|chart|end)\b/i.test(shell.attrs)) {
     body = officialLookIsGrove(`${shell.attrs}\n${body}`)
       || /\bgrove-(?:sidebar|num|stat)\b/i.test(body)
       ? fillGroveLeftoverKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines })
       : fillStudioKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
+  }
+  body = fillDaisyDaysKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
+  body = fillPlayfulKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
+  if (playfulSlideHasKitChrome(body, shell.attrs) && !/[가-힣]/.test(visibleDeckCopy(stripPlayfulCatalogDemoCopy(body)))) {
+    body = fillPlayfulKitSlide(stripPlayfulCatalogDemoCopy(body), shell.attrs, {
+      title,
+      lead,
+      bodyText,
+      kicker,
+      fillLines,
+    });
+  }
+  if (daisyDaysSlideHasKitChrome(body) && !/[가-힣]/.test(visibleDeckCopy(stripDaisyDaysCatalogDemoCopy(body)))) {
+    body = fillDaisyDaysKitSlide(stripDaisyDaysCatalogDemoCopy(body), shell.attrs, {
+      title,
+      lead,
+      bodyText,
+      kicker,
+      fillLines,
+    });
   }
   if (/\bs[1-8]\b/i.test(shell.attrs)) {
     body = fillCreativeModeKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
@@ -14553,6 +15599,8 @@ function fillSlideShell(
   body = stripCapsuleCatalogDemoCopy(body);
   body = stripBlockFrameNeoCatalogDemoCopy(body);
   body = stripEightBitOrbitCatalogDemoCopy(body);
+  body = stripDaisyDaysCatalogDemoCopy(body);
+  body = stripPlayfulCatalogDemoCopy(body);
   // 루프534 — Demo-copy strip may empty nb-label chips; refill from title.
   // 0918-N03 — leftover 개요/핵심 포인트 를 chrome 으로 되넣지 않는다.
   const blockFrameChrome = looksLikeServiceIntroLeftoverTitle(title)
