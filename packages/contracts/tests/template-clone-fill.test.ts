@@ -1052,8 +1052,8 @@ describe('루프419 Capsule deterministic quality gate', () => {
     const capsuleSpec = ZHANGZARA_QUALITY_GATE_SPECS.find((s) => s.name === 'Capsule');
     expect(capsuleSpec).toBeTruthy();
     const cloned = await runDeterministicTemplateQualityGate(capsuleSpec!);
-    expect(cloned).toContain('핵심 가치');
-    expect(cloned).toContain('파일럿');
+    expect(cloned).toMatch(/같은 보드|초안|권한/);
+    expect(cloned).not.toContain('파일럿');
     expect(cloned).not.toContain('핵심 기능과 사용자가 얻는 직접적인 가치');
   });
 
