@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  classifyIncompleteHtmlDocumentShell,
+  isCompleteCollapseHtmlDocumentShell,
   isIncompleteHtmlDocumentShell,
   isIncompleteParsedDeckForBestArtifactRestore,
   isLowSubstanceSlideDeckArtifact,
@@ -39,6 +41,44 @@ describe('validateHtmlArtifact', () => {
     if (!result.ok) {
       expect(result.reason).toBe('content too short to be HTML (got 32 chars, need ≥64)');
     }
+  });
+
+  it('classifies incomplete-html-document-shell reasons for persist recovery', () => {
+    const emptyClosed = '<html><head></head><body></body></html>';
+    expect(emptyClosed.length).toBeLessThan(64);
+    expect(classifyIncompleteHtmlDocumentShell(emptyClosed)).toBe('too-short-document');
+    expect(isCompleteCollapseHtmlDocumentShell(emptyClosed)).toBe(true);
+
+    const headOnly = [
+      '<!doctype html><html lang="ko"><head><meta charset="utf-8">',
+      `<style>${'.slide{padding:1rem;}'.repeat(8)}</style></head>`,
+    ].join('');
+    expect(headOnly.length).toBeGreaterThanOrEqual(64);
+    expect(headOnly).not.toMatch(/<body\b/i);
+    expect(classifyIncompleteHtmlDocumentShell(headOnly)).toMatch(
+      /^(?:missing-html-close|head-only-no-body)$/,
+    );
+    expect(isIncompleteHtmlDocumentShell(headOnly)).toBe(true);
+
+    const unclosedStyle = [
+      '<!doctype html><html><head><meta charset="utf-8"></head><body>',
+      `<style>${'.kit{color:#111;}'.repeat(20)}`,
+    ].join('');
+    expect(unclosedStyle.length).toBeGreaterThan(128);
+    expect(classifyIncompleteHtmlDocumentShell(unclosedStyle)).toMatch(
+      /^(?:missing-html-close|unclosed-style)$/,
+    );
+
+    const tenSlides = [
+      '<!doctype html><html><head><meta charset="utf-8"></head><body>',
+      ...Array.from({ length: 10 }, (_, index) => (
+        `<section class="slide slide-${index + 1}"><h2>Slide ${index + 1}</h2>`
+        + `<p>Real deck copy for slide ${index + 1} with enough text.</p></section>`
+      )),
+      '</body></html>',
+    ].join('');
+    expect(classifyIncompleteHtmlDocumentShell(tenSlides)).toBeNull();
+    expect(isIncompleteHtmlDocumentShell(tenSlides)).toBe(false);
   });
 
   it('classifies empty document shells so callers can skip without a refusal banner', () => {

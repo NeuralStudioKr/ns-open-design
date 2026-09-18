@@ -270,6 +270,7 @@ import {
   shouldAutoRetryShortSlideResponse,
 } from '../teamver/shortResponseAutoRetry';
 import { resolveTooShortHtmlArtifactPersist } from '../teamver/tooShortHtmlPersist';
+import { resolveIncompleteHtmlShellPersist } from '../teamver/incompleteHtmlShellPersist';
 import {
   anonymizeArtifactId,
   artifactKindToTracking,
@@ -2984,7 +2985,7 @@ type ArtifactPersistResult =
     producedCount: number;
     expectedCount: number;
     reason?: string;
-    retryKind?: 'slide-count' | 'too-short-html';
+    retryKind?: 'slide-count' | 'too-short-html' | 'head-preamble';
     previousSnippet?: string;
   };
 
@@ -6146,6 +6147,7 @@ export function ProjectView({
         };
         const persistHealBrief = runVisiblePromptRef.current || '';
         const persistHealTitle = project.name || '슬라이드';
+        let incompleteShellPaddedToSeed = false;
         // Truncation salvage can close a CSS-only / unclosed-`<style>` dump
         // and still look like an incomplete shell. Kit CSS in `<body>` also
         // blocks cover draft (text looks salvageable). Replace those with a
@@ -6188,8 +6190,8 @@ export function ProjectView({
             persistHealTitle,
           );
         // Empty scaffolds can pass the 64-char length gate once a charset
-        // meta is present — still skip silently so we never write phantoms
-        // or flash 「저장을 거부했습니다」 during deck generation.
+        // meta is present. Create/full fill + LOOK seed must continue or
+        // forcePad before skipped_incomplete_retry — 32자/빈 셸만 seed skip.
         if (
           !trustSoftTruncationSalvage
           && isIncompleteHtmlDocumentShell(
@@ -6198,16 +6200,49 @@ export function ProjectView({
             persistHealTitle,
           )
         ) {
-          // Quiet skip — do NOT setError here. The terminal auto-open path
-          // owns user-facing messaging (deliverable-missing banner and/or
-          // the automatic-continue notice). Flashing 「저장을 거부했습니다:
-          // incomplete HTML document shell」 mid/end-turn contradicted the
-          // auto-continue banner and looked like a product failure during demos.
-          return {
-            kind: 'skipped-incomplete',
+          const persistTemplateIdForShell = firstOfficialDeckTemplateId(
+            resolveDurableDeckTemplatePin({
+              project: project.metadata,
+              runRef: runSelectedDeckTemplateIdRef.current,
+              messages: messagesRef.current,
+            })?.id,
+          );
+          const shellPersist = await resolveIncompleteHtmlShellPersist({
+            html: artifactToPersist.html,
             fileName,
-            reason: 'incomplete-html-document-shell',
-          };
+            brief: persistHealBrief,
+            deckTitle: persistHealTitle,
+            scopedEdit:
+              persistCommentAttachments.length > 0
+              || imageAttachmentPathsForSlideEmbed(runAttachmentsRef.current).length > 0,
+            isCreateOrFullFill:
+              runTemplateCloneContentFillRef.current
+              || runTemplateClonePromptFillRef.current,
+            alreadyHeadPreambleContinue: runHeadPreambleContinueRef.current,
+            priorHeadPreambleContinues: countHeadPreambleContinueAttempts(
+              messagesRef.current,
+            ),
+            templateId: persistTemplateIdForShell,
+            readSeedHtml: () => resolveTemplateCloneLookSeedHtml({
+              templateId: persistTemplateIdForShell,
+              readProjectHtml,
+            }),
+          });
+          if (shellPersist?.kind === 'needs-short-response-retry') {
+            return shellPersist;
+          }
+          if (shellPersist?.kind === 'padded' && shellPersist.html) {
+            artifactToPersist = { ...artifactToPersist, html: shellPersist.html };
+            incompleteShellPaddedToSeed = true;
+          } else {
+            // Quiet skip — pad/continue already failed. Seed fallback owns
+            // the Retry dock. Do not flash 「저장을 거부했습니다」.
+            return {
+              kind: 'skipped-incomplete',
+              fileName,
+              reason: 'incomplete-html-document-shell',
+            };
+          }
         }
         const persistDisplayTitle = resolvePersistDeckDisplayTitle(
           art,
@@ -6259,6 +6294,8 @@ export function ProjectView({
           }
         }
         if (
+          !incompleteShellPaddedToSeed
+          && (
           motifSvgDump
           || failedGenerateHeadings
           || leftoverCatalogExample
@@ -6270,6 +6307,7 @@ export function ProjectView({
               persistHealBrief,
               persistHealTitle,
             )
+          )
           )
         ) {
           return {
@@ -11989,7 +12027,9 @@ export function ProjectView({
                 terminalPersistResult = persistResult;
                 nextFiles = await refreshProjectFiles();
                 if (persistResult?.kind === 'needs-short-response-retry') {
-                  const retryPrompt = [
+                  const retryPrompt = persistResult.retryKind === 'head-preamble'
+                    ? buildHeadPreambleContinuePrompt()
+                    : [
                     runModelPromptRef.current.trim() || prompt,
                     '',
                     persistResult.retryKind === 'too-short-html'
@@ -12007,7 +12047,9 @@ export function ProjectView({
                   const scheduledProjectId = project.id;
                   const scheduledConversationId = activeConversationId;
                   const fillMeta = {
-                    autoRetryForShortResponse: true as const,
+                    ...(persistResult.retryKind === 'head-preamble'
+                      ? {}
+                      : { autoRetryForShortResponse: true as const }),
                     ...(runTemplateCloneContentFillRef.current
                       ? { templateCloneContentFill: true as const }
                       : {}),

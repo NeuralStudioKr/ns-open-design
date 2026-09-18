@@ -639,10 +639,18 @@ describe("ProjectView message loading", () => {
       persistStart,
     );
     expect(shellStart).toBeGreaterThan(persistStart);
-    const shellBlock = source.slice(shellStart, shellStart + 900);
+    const shellBlock = source.slice(shellStart, shellStart + 2200);
+    expect(shellBlock).toContain("resolveIncompleteHtmlShellPersist({");
+    expect(shellBlock).toContain("needs-short-response-retry");
+    expect(shellBlock).toContain("incompleteShellPaddedToSeed");
     expect(shellBlock).toContain("kind: 'skipped-incomplete'");
     expect(shellBlock).not.toContain("setError(");
     expect(shellBlock).not.toContain("formatProjectArtifactRejectedError(");
+    expect(source).toContain("retryKind === 'head-preamble'");
+    expect(source).toContain("buildHeadPreambleContinuePrompt()");
+    expect(source.indexOf("resolveIncompleteHtmlShellPersist({")).toBeLessThan(
+      source.indexOf("`skipped_incomplete_retry:${String(failedPersistResult.reason"),
+    );
 
     const autoOpenStart = source.indexOf("const scheduleStreamRunHtmlAutoOpen");
     expect(autoOpenStart).toBeGreaterThan(0);

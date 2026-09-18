@@ -54,7 +54,7 @@ import {
 
 export const MIN_HTML_ARTIFACT_LENGTH = 64;
 const MIN_HTML_LENGTH = MIN_HTML_ARTIFACT_LENGTH;
-const STARTS_WITH_DOCUMENT_RE = /^(?:<!doctype\s+html\b|<html\b)/i;
+const STARTS_WITH_DOCUMENT_RE = /^(?:<!doctype(?:\s+html)?\b|<html\b)/i;
 const RESERVED_PROJECT_PATH_RE = /(?:^|\/|\.\/)(?:\.live-artifacts|\.od|\.tmp)(?=$|[/?#"'`\s>)])/i;
 const URL_SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
 const URL_ATTRIBUTE_RE =
@@ -142,27 +142,57 @@ const HAS_HTML_CLOSE_RE = /<\/html\s*>/i;
  *      bodies — previously skipped the emptiness check above 2KB and
  *      persisted as a "successful" blank white deck.
  */
+export type IncompleteHtmlDocumentShellReason =
+  | 'too-short-document'
+  | 'missing-html-close'
+  | 'head-only-no-body'
+  | 'unclosed-style'
+  | 'empty-or-slot-body';
+
+const HAS_UNCLOSED_STYLE_RE = /<style\b(?![^>]*\/>)[^>]*>(?![\s\S]*<\/style>)/i;
+
+/**
+ * Why persist would treat HTML as an incomplete document shell.
+ * Null = not a document-shaped shell (prose, empty, or a real deck).
+ */
+export function classifyIncompleteHtmlDocumentShell(
+  content: string,
+  brief?: string | null,
+  deckTitle?: string | null,
+): IncompleteHtmlDocumentShellReason | null {
+  const trimmed = content.replace(/^﻿/, '').trim();
+  if (trimmed.length === 0) return null;
+  if (!STARTS_WITH_DOCUMENT_RE.test(trimmed)) return null;
+  if (trimmed.length < MIN_HTML_LENGTH) return 'too-short-document';
+  if (
+    trimmed.length >= STRUCTURAL_CLOSURE_CHECK_MIN
+    && !HAS_HTML_CLOSE_RE.test(trimmed)
+  ) {
+    return 'missing-html-close';
+  }
+  if (!/<body\b/i.test(trimmed) && /<head\b|<style\b/i.test(trimmed)) {
+    return 'head-only-no-body';
+  }
+  if (HAS_UNCLOSED_STYLE_RE.test(trimmed) && !hasSalvageableDeckSlideContent(trimmed)) {
+    return 'unclosed-style';
+  }
+  if (isEffectivelyEmptyHtmlBody(trimmed, brief, deckTitle)) {
+    return 'empty-or-slot-body';
+  }
+  return null;
+}
+
 export function isIncompleteHtmlDocumentShell(
   content: string,
   brief?: string | null,
   deckTitle?: string | null,
 ): boolean {
-  const trimmed = content.replace(/^﻿/, '').trim();
-  if (trimmed.length === 0) return false;
-  if (!STARTS_WITH_DOCUMENT_RE.test(trimmed)) return false;
-  if (trimmed.length < MIN_HTML_LENGTH) return true;
-  // Truncation gate: any doctype-anchored artifact large enough to be a
-  // real deliverable must carry `</html>`. Missing closer = mid-stream
-  // truncation, regardless of how much prose/CSS the head accumulated.
-  if (
-    trimmed.length >= STRUCTURAL_CLOSURE_CHECK_MIN
-    && !HAS_HTML_CLOSE_RE.test(trimmed)
-  ) {
-    return true;
-  }
-  // Always run the emptiness / SLOT check — size alone never proves the
-  // body has previewable content (large CSS + empty slides was a demo bug).
-  return isEffectivelyEmptyHtmlBody(trimmed, brief, deckTitle);
+  return classifyIncompleteHtmlDocumentShell(content, brief, deckTitle) != null;
+}
+
+/** Empty / `<64` document-shaped collapse — never write as deck.html. */
+export function isCompleteCollapseHtmlDocumentShell(content: string): boolean {
+  return classifyIncompleteHtmlDocumentShell(content) === 'too-short-document';
 }
 
 /**

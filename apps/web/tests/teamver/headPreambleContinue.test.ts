@@ -124,6 +124,22 @@ describe('0917-N25 head preamble continue', () => {
     })).toBe('fallback');
   });
 
+  it('head-only (0 slides) forcePad persists the complete seed document', () => {
+    const recovered = persistPadShortDeckToSeed({
+      seedHtml: tenShellSeed(),
+      modelHtml: [
+        '<!doctype html><html lang="ko"><head><meta charset="utf-8">',
+        `<style>${'.slide-1{} .slide-10{}'.repeat(12)}</style></head>`,
+      ].join(''),
+      brief: 'Teamver 소개 슬라이드 만들어줘',
+      deckTitle: 'Teamver',
+    });
+    expect(recovered).not.toBeNull();
+    expect(recovered!.producedCount).toBe(0);
+    expect(listTemplateCloneSlideShells(recovered!.html).length).toBe(10);
+    expect(recovered!.html).toMatch(/<\/html\s*>/i);
+  });
+
   it('head-only → continue → 2 slides persist pads to seed 10 with pad marker', () => {
     expect(decideHeadPreambleRecovery({
       streamedText: headOnly,
