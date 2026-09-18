@@ -31,9 +31,27 @@ Cobalt Grid(`s-cover`, `s-manifesto`, `s-index`, `s-data`, `s-chapter`, `s-quote
 | `.qr-block` 비어 있음 | 장식 `px` 패턴 유지. 빈 그리드가 레이아웃을 깨지 않게 |
 | table headrow에 caption 셀이 본문과 섞임 | head는 역할 셀만. 본문 클래스 셀은 분리/제거 |
 
+## 내용 구성 (후속)
+
+leftover strip만 하면 빈 슬롯이 다시 `개요`/`핵심 포인트`/`탐색·실행·확장` 공통 아웃라인으로 채워져 미리보기(LOOK seed 매거진 구성)가 붕괴한다.
+
+| 슬라이드 | 채움 (brief `Teamver 소개` → topic Teamver) |
+|---|---|
+| cover | 제품명 + 한 줄 가치. kicker ≠ footer. `문제와 제공 가치` 반복 금지 |
+| manifesto | 한 문장 선언. `소개 2` 금지 |
+| index | 킷 list 슬롯 수만큼. 워크스페이스/권한/협업/산출물/감사/온보딩. 탐색·실행·확장 루프 금지 |
+| data | 빈 vbig에 가짜 % 금지. lab2/desc는 Teamver 운영 문장 (전환/활성/품질 금지) |
+| chapter / quote | 서로 다른 문장. qbody는 한 인용 |
+| table | 한국어 헤더. 도입 단계 행은 서로 다른 문장. `파일럿` leftover 금지 |
+| colophon | 닫는 메시지 + 다음 행동. 전환/활성/품질 금지 |
+
+빈 제목/본문을 **같은 service-intro 아웃라인으로 다시 채우지 말 것.**  
+`synthesizeTemplateCloneSlideBody` / biennale service-intro 라인이 Cobalt에 주입되면 가드로 차단.
+
 ## 정책 (루프554)
 
 - catalog leftover만 strip. 한국어 ≥20자 **구체** 문장은 유지.
+- leftover를 지운 뒤 빈 칸은 **역할별 Teamver 문장**으로만 채움. 공통 아웃라인 재주입 금지.
 - topic fallback을 `주제` / `핵심 주제`로 쓰지 말 것. brief `Teamver 소개` → **Teamver**.
 - `소개 N` 숫자 접미 금지.
 - persist / pad / continue 손대지 말 것.
@@ -64,7 +82,11 @@ heal 후:
 - `No.` / `YoY` 없음
 - `파일럿` head 누수 없음
 - cfooter 고아 ` · ` 없음
-- `개요` / `핵심 포인트`가 h 제목으로 없음(또는 Teamver 역할 제목)
+- `개요` / `핵심 포인트`가 h 제목으로 없음
+- `탐색`+`실행`+`확장` 트리오가 제목으로 없음
+- cover kicker ≠ footer
+- manifesto ≠ `소개 2`
+- 서로 다른 index h3 3개 이상
 - 기존 Halo / Block Frame 테스트 green
 - 공식 English `example.html` no-op (한글 leftover 없음)
 - Product Launch / Block Frame fixture에 발동하지 않음
@@ -77,4 +99,5 @@ heal 후:
 
 ## 변경 이력
 
+| 2026-09-18 11:45 | leftover strip 후 역할별 Teamver 문장으로 내용 구성을 올리는 후속. |
 | 2026-09-18 11:40 | Cobalt Grid leftover·cover/table kit healer 상위설계 (루프557). |

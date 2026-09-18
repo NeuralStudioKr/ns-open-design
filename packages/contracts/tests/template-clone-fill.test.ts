@@ -46,6 +46,8 @@ import {
   restyleForeignIbMagazineCover,
   enrichSparseCobaltCover,
   healCobaltLeftoverCatalogCopy,
+  healCobaltGridLeftoverCatalogCopy,
+  COBALT_GRID_KIT_KEY,
   healSakuraLeftoverCatalogCopy,
   healLongTableLeftoverCatalogCopy,
   healStudioLeftoverCatalogCopy,
@@ -1977,6 +1979,98 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(healed).not.toMatch(/Launch Ready/);
     expect(healed).toMatch(/반복 작업을 줄이고 결과물 완성도를 높이는 방식/);
     expect(healed).toMatch(/팀 속도, 품질, 비용을 함께 관리할 수 있는 기준/);
+  });
+
+  it('루프557 — Cobalt Grid leftover heal repairs copy and cover/table layout with role-specific Teamver sentences', async () => {
+    const html = await readFile(
+      new URL('./fixtures/loop557-cobalt-grid-teamver.html', import.meta.url),
+      'utf8',
+    );
+    expect(officialLookIsCobaltGrid(html)).toBe(true);
+    expect(resolveTemplateCloneKitKey(html)).toBe(COBALT_GRID_KIT_KEY);
+
+    const healed = salvageMalformedMiniMaxSlideMarkup(html, 'Teamver 소개');
+    expect(healCobaltGridLeftoverCatalogCopy(html, 'Teamver 소개')).toBeTruthy();
+
+    expect(healed).not.toMatch(/소개\s+2/);
+    expect(healed).not.toMatch(/>\s*No\.\s*</);
+    expect(healed).not.toMatch(/>\s*YoY\s*</);
+    expect(healed).not.toMatch(/파일럿/);
+    expect(healed).not.toMatch(/<\/div>\s*·\s*</);
+    expect(healed).not.toMatch(/<h[1-4][^>]*>\s*(?:개요|핵심 포인트)\s*</);
+    expect(healed).not.toMatch(/<(?:div|h[1-4])[^>]*>\s*개요\s*</);
+    expect(healed).not.toMatch(/<(?:div|h[1-4])[^>]*>\s*핵심 포인트\s*</);
+
+    const index = /<section\b[^>]*\bs-index\b[^>]*>[\s\S]*?<\/section>/i.exec(healed)?.[0] ?? '';
+    const indexTitles = [...index.matchAll(/<h3\b[^>]*>([\s\S]*?)<\/h3>/gi)]
+      .map((match) => String(match[1] ?? '').replace(/<[^>]+>/g, '').trim())
+      .filter(Boolean);
+    expect(indexTitles).not.toEqual(expect.arrayContaining(['탐색', '실행', '확장']));
+    expect(new Set(indexTitles).size).toBeGreaterThanOrEqual(3);
+    expect(index).toContain('팀이 분산된 메모와 문서를 하나의 워크스페이스로');
+
+    const cover = /<section\b[^>]*\bs-cover\b[^>]*>[\s\S]*?<\/section>/i.exec(healed)?.[0] ?? '';
+    const coverKicker = /<[^>]*\bl\b[^>]*>([\s\S]*?)<\//i.exec(cover)?.[1]?.replace(/<[^>]+>/g, '').trim() ?? '';
+    const footerTags = [...cover.matchAll(/<[^>]*\bftag\b[^>]*>([\s\S]*?)<\//gi)]
+      .map((match) => String(match[1] ?? '').replace(/<[^>]+>/g, '').trim());
+    expect(coverKicker.length).toBeGreaterThan(0);
+    expect(footerTags.length).toBeGreaterThanOrEqual(2);
+    expect(footerTags).not.toContain(coverKicker);
+    expect(cover).toMatch(/<div class="cfooter">[\s\S]*<div class="colf">/);
+    expect(cover).toMatch(/<div class="v-row[^"]*">\s*\S/);
+
+    const manifesto = /<section\b[^>]*\bs-manifesto\b[^>]*>[\s\S]*?<\/section>/i.exec(healed)?.[0] ?? '';
+    expect(manifesto).not.toMatch(/소개\s+2/);
+    expect(manifesto).toMatch(/보드/);
+
+    const data = /<section\b[^>]*\bs-data\b[^>]*>[\s\S]*?<\/section>/i.exec(healed)?.[0] ?? '';
+    expect(data).not.toMatch(/<div class="vbig"><\/div>/);
+    expect(data).not.toMatch(/%/);
+    expect(data).not.toMatch(/>\s*(?:전환|활성|품질)\s*</);
+    expect(data).toMatch(/class="(?:bars|stack|cell)/);
+
+    const quote = /<section\b[^>]*\bs-quote\b[^>]*>[\s\S]*?<\/section>/i.exec(healed)?.[0] ?? '';
+    const qbody = /<[^>]*\bqbody\b[^>]*>([\s\S]*?)<\//i.exec(quote)?.[1] ?? '';
+    expect(qbody).not.toMatch(/\n/);
+    expect(qbody.replace(/<[^>]+>/g, '').trim().length).toBeGreaterThan(10);
+
+    const table = /<section\b[^>]*\bs-table\b[^>]*>[\s\S]*?<\/section>/i.exec(healed)?.[0] ?? '';
+    expect(table).toMatch(/>\s*번호\s*</);
+    expect(table).toMatch(/>\s*항목\s*</);
+    expect(table).not.toMatch(/02\s*\/\s*2/);
+
+    const chapter = /<section\b[^>]*\bs-chapter\b[^>]*>[\s\S]*?<\/section>/i.exec(healed)?.[0] ?? '';
+    expect(chapter).not.toMatch(/대상 고객별 메시지/);
+    const chapterLede = /<[^>]*\blede\b[^>]*>([\s\S]*?)<\//i.exec(chapter)?.[1]?.replace(/<[^>]+>/g, '').trim() ?? '';
+    const quoteBody = qbody.replace(/<[^>]+>/g, '').trim();
+    expect(chapterLede).not.toBe(quoteBody);
+
+    expect(healed).toMatch(/class="qr-block"[^>]*>\s*<span class="px/);
+  });
+
+  it('루프557 — Cobalt Grid healer는 Product Launch / Block Frame에 발동하지 않고 official example은 no-op', async () => {
+    const halo = await readFile(
+      new URL('./fixtures/loop554-product-launch-healer-overwrite.html', import.meta.url),
+      'utf8',
+    );
+    expect(healCobaltGridLeftoverCatalogCopy(halo, 'Teamver 소개')).toBe(halo);
+
+    const block = await readFile(
+      new URL('./fixtures/loop555-block-frame-broken-ko.html', import.meta.url),
+      'utf8',
+    );
+    expect(healCobaltGridLeftoverCatalogCopy(block, 'Teamver 소개')).toBe(block);
+
+    const official = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-cobalt-grid/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(healCobaltGridLeftoverCatalogCopy(official)).toBe(official);
+    expect(synthesizeTemplateCloneSlideBody('Teamver 소개', '개요', 1, 'Teamver 소개', COBALT_GRID_KIT_KEY).lead)
+      .not.toMatch(/개요|핵심 포인트|탐색/);
   });
 
   it('루프538 — Grove forest kit demo chrome (landscape / grove-stat KPI / sidebar) is scrubbed', async () => {

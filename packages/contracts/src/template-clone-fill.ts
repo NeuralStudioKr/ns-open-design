@@ -1806,6 +1806,40 @@ export function synthesizeTemplateCloneSlideBody(
   brief?: string | null,
   kitKey?: string | null,
 ): Pick<TemplateCloneSlideContent, 'body' | 'roleHint' | 'items' | 'lead'> {
+  if (kitKey === COBALT_GRID_KIT_KEY) {
+    // 루프557 — never inject service-intro biennale outline
+    // (개요 / 핵심 포인트 / 탐색·실행·확장) into Cobalt Grid.
+    const topic = resolveCobaltGridTopicNoun(cover, brief);
+    const pack = cobaltGridSlideCopyPack(topic);
+    const roles = [
+      'cover', 'manifesto', 'index', 'chapter', 'data', 'quote', 'table', 'colophon',
+    ] as const;
+    const role = roles[Math.max(0, index - 1) % roles.length]!;
+    const items =
+      role === 'index' ? pack.index.items
+        : role === 'table'
+          ? pack.table.rows.map((row) => ({ title: row.name, body: row.desc }))
+          : role === 'data'
+            ? pack.data.stats.map((stat) => ({ title: stat.lab, body: stat.desc }))
+            : [];
+    const lead =
+      role === 'cover' ? pack.cover.value
+        : role === 'manifesto' ? pack.manifesto.stmt
+          : role === 'index' ? pack.index.heading
+            : role === 'chapter' ? pack.chapter.lede
+              : role === 'data' ? pack.data.heading
+                : role === 'quote' ? pack.quote.body
+                  : role === 'table' ? pack.table.heading
+                    : pack.colophon.title;
+    return {
+      roleHint: role === 'index' || role === 'table' ? 'list' : 'cards',
+      lead,
+      body: items.length > 0
+        ? items.map((item) => `${item.title}: ${item.body}`).join('\n')
+        : lead,
+      items,
+    };
+  }
   if (kitKey === PRODUCT_LAUNCH_HALO_KIT_KEY || kitKey === BLOCK_FRAME_NEO_KIT_KEY) {
     // These kits previously returned an almost empty slide to avoid
     // inventing product metrics/personas. During short-response padding that
@@ -2940,6 +2974,29 @@ export const PRODUCT_LAUNCH_HALO_KIT_KEY = 'product-launch-halo' as const;
 /** Stable kit key for Zhangzara Block Frame / neo-brutal. */
 export const BLOCK_FRAME_NEO_KIT_KEY = 'block-frame-neo' as const;
 
+/** Stable kit key for Zhangzara Cobalt Grid (Field Office Quarterly). */
+export const COBALT_GRID_KIT_KEY = 'cobalt-grid' as const;
+
+/**
+ * 루프557 — Cobalt Grid leftover heal gate.
+ * `.s-cover` + `.s-colophon` or `pixel-glitch` + `.pagenum`.
+ * Deny Sakura / Long Table / Biennale / Product Launch / Block Frame.
+ */
+export function cobaltGridLeftoverHealShouldRun(html: string): boolean {
+  const source = String(html ?? '');
+  if (!source.trim()) return false;
+  if (officialLookIsSakuraChroma(source)) return false;
+  if (officialLookIsLongTable(source)) return false;
+  if (officialLookIsProductLaunchHalo(source)) return false;
+  if (officialLookIsNeoBrutalBlockFrame(source)) return false;
+  if (officialLookIsBiennaleYellow(source)) return false;
+  if (/\bsunglow\b/i.test(source)) return false;
+  if (/\bs-catalogue\b/i.test(source)) return false;
+  const hasCoverColophon = /\bs-cover\b/i.test(source) && /\bs-colophon\b/i.test(source);
+  const hasGlitchPagenum = /\bpixel-glitch\b/i.test(source) && /\bpagenum\b/i.test(source);
+  return hasCoverColophon || hasGlitchPagenum || officialLookIsCobaltGrid(source);
+}
+
 /**
  * 루프550 — look HTML → kit key. Raw Grid is first so its `s1`/`s8`
  * chrome does not fall through to Creative / other numeric-sN kits.
@@ -2951,6 +3008,7 @@ export function resolveTemplateCloneKitKey(html: string): string | null {
   if (officialLookIsRawGridPitch(source)) return RAW_GRID_PITCH_KIT_KEY;
   if (officialLookIsProductLaunchHalo(source)) return PRODUCT_LAUNCH_HALO_KIT_KEY;
   if (officialLookIsNeoBrutalBlockFrame(source)) return BLOCK_FRAME_NEO_KIT_KEY;
+  if (cobaltGridLeftoverHealShouldRun(source)) return COBALT_GRID_KIT_KEY;
   return null;
 }
 
@@ -6397,6 +6455,9 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   // 라벨 8종만 매치해 사용자가 자유롭게 쓴 텍스트는 보존.
   next = stripSynthRotationSaltLeaks(next);
   next = healCobaltOrphanDataStats(next);
+  // 루프557 — after orphan reparent so pixel-stack chart does not block
+  // `.col-a` + sibling `.stat` absorption.
+  next = healCobaltGridLeftoverCatalogCopy(next, brief);
   next = enrichSparseCobaltCover(next, brief);
   next = restyleBiennaleSparseChapterBodies(next);
   next = restyleBiennaleSparseDataBodies(next);
@@ -7914,7 +7975,13 @@ function fillCobaltRowPeers(
       filled = replaceFirstExactClassText(filled, 'nm', resolved.title);
       filled = replaceFirstExactClassText(filled, 'desc', resolved.body || resolved.title);
       filled = replaceFirstExactClassText(filled, 'mood-tag', input.title);
-      filled = replaceFirstExactClassText(filled, 'delta-tag', `${String(index + 1).padStart(2, '0')} / ${rows.length}`);
+      // 루프557 — never stamp pagenum-shaped deltas (`02 / 2`).
+      const existingDelta = visibleDeckCopy(
+        /<[^>]*\bdelta-tag\b[^>]*>([\s\S]*?)<\//i.exec(filled)?.[1] ?? '',
+      );
+      if (!existingDelta || /^\d{2}\s*\/\s*\d+$/.test(existingDelta)) {
+        filled = replaceFirstExactClassText(filled, 'delta-tag', '');
+      }
     }
     return filled;
   });
@@ -8008,6 +8075,721 @@ export function healCobaltLeftoverCatalogCopy(
     out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
   }
   return stripLeftoverCatalogDemoPhrases(out);
+}
+
+const COBALT_GRID_GENERIC_HEADING_RE =
+  /^(?:개요|핵심 포인트|근거와 사례|실행 방안|고객 경험|운영과 보안|도입 로드맵|성과 지표|요약|핵심 주제|핵심\s+\d+|대상 고객별 메시지|서비스 가치 제안|사용 흐름|신뢰를 만드는 증거|측정해야 할 지표|다음 액션)$/;
+
+const COBALT_GRID_GENERIC_CARD_TITLE_RE =
+  /^(?:핵심 가치|사용 장면|차별점|탐색|실행|확장|전환|활성|품질|전환율|문제|사용자|맥락|실무자|리더|운영자|파일럿|확대|정착|제품|사례|운영)$/;
+
+const COBALT_GRID_LEFTOVER_BODY_RE =
+  /사용자가 즉시 얻는 시간 절감|첫 방문에서 문제와 해결|방문에서 문의[·,]?\s*가입까지|도입 전 탐색,\s*팀 협업|기존 대안 대비 더 적은 단계|주요 기능을 체험하거나 문의|팀 규모,\s*권한,\s*반복 작업|시간 절감,\s*품질 개선|다루는 문제와 제공 가치|핵심 맥락과 다음 단계|핵심 메시지와 청중이 얻는 가치|가장 먼저 이해해야 할 개념·근거|의미와 적용 기준을 한 문장으로|반복해서 겪는 핵심 불편|방문자가 처음 보는 순간|사이트에서 확인되는 메시지|결과물 완성도,\s*수정 횟수|핵심 기능 반복 사용|화면,\s*워크플로우,\s*결과물 예시|고객 유형별 문제 해결 사례|지원,\s*보안,\s*개인정보,\s*도입 프로세스|작은 팀이나 단일 업무에서 빠르게 파일럿|반복 사용 패턴을 기준으로 템플릿과 권한|성과 지표와 운영 책임을 정해/;
+
+const COBALT_GRID_ENGLISH_HEAD_RE = /^(?:No\.?|Trend|Reading|Mood|YoY)$/i;
+
+const COBALT_GRID_KEEPABLE_KO_MIN = 20;
+
+const COBALT_QR_PIXELS = [
+  '10110101',
+  '01101010',
+  '10010111',
+  '11101101',
+  '01010010',
+  '10111101',
+  '11001011',
+  '10110110',
+].flatMap((row) => [...row].map((bit) => (
+  `<span class="px${bit === '1' ? ' on' : ''}"></span>`
+))).join('');
+
+const COBALT_PIXEL_STACK_CHART = `<div class="chart"><div class="bars">${
+  [4, 5, 5, 6, 7, 7, 8, 6].map((on) => {
+    const cells = Array.from({ length: 10 }, (_, index) => (
+      `<div class="cell${index < on ? ' on' : ''}"></div>`
+    )).join('');
+    return `<div class="stack">${cells}</div>`;
+  }).join('')
+}</div></div>`;
+
+function resolveCobaltGridTopicNoun(
+  ...candidates: Array<string | null | undefined>
+): string {
+  for (const raw of candidates) {
+    let text = String(raw ?? '').replace(/\s+/g, ' ').trim();
+    if (!text) continue;
+    text = text.replace(/\s*소개\s+\d+\s*$/u, '').trim();
+    if (/teamver/i.test(text)) {
+      const derived = topicKeywordForSynthBody(text);
+      if (
+        derived
+        && !isGenericSynthTopicNoun(derived)
+        && derived !== '주제'
+        && derived !== '핵심 주제'
+      ) {
+        return /teamver/i.test(derived) ? 'Teamver' : derived;
+      }
+      return 'Teamver';
+    }
+    const derived = topicKeywordForSynthBody(text);
+    if (
+      derived
+      && !isGenericSynthTopicNoun(derived)
+      && derived !== '주제'
+      && derived !== '핵심 주제'
+      && derived.length <= 32
+    ) {
+      return derived;
+    }
+  }
+  return '';
+}
+
+function looksLikeCobaltBlockedServiceIntroCopy(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!value) return false;
+  if (COBALT_GRID_GENERIC_HEADING_RE.test(value)) return true;
+  if (COBALT_GRID_GENERIC_CARD_TITLE_RE.test(value)) return true;
+  if (COBALT_GRID_LEFTOVER_BODY_RE.test(value)) return true;
+  if (/소개\s+\d+\s*$/u.test(value)) return true;
+  if (/^대상 고객별 메시지/.test(value)) return true;
+  return false;
+}
+
+function cobaltGridCopyIsKeepable(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (value.length < COBALT_GRID_KEEPABLE_KO_MIN) return false;
+  if (!/[가-힣]/.test(value)) return false;
+  if (looksLikeCobaltBlockedServiceIntroCopy(value)) return false;
+  return true;
+}
+
+function stripCobaltGridIntroNumberSuffix(text: string): string {
+  return String(text ?? '')
+    .replace(/\s*소개\s+\d+\s*$/u, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function cobaltGridSlideCopyPack(topic: string): {
+  brand: string;
+  cover: {
+    title: string;
+    kicker: string;
+    value: string;
+    footerTag: string;
+    footerText: string;
+    footerTag2: string;
+    footerText2: string;
+    vrows: [string, string, string];
+  };
+  manifesto: { stmt: string; who: string; meta: string };
+  index: { heading: string; items: Array<{ title: string; body: string }> };
+  chapter: { tag: string; title: string; lede: string };
+  data: { heading: string; stats: Array<{ lab: string; desc: string }> };
+  quote: { kicker: string; body: string; who: string; role: string };
+  table: {
+    heading: string;
+    heads: string[];
+    rows: Array<{ name: string; desc: string; mood: string }>;
+  };
+  colophon: { ktag: string; title: string; cells: Array<{ tag: string; text: string }> };
+} {
+  const brand = topic || 'Teamver';
+  return {
+    brand,
+    cover: {
+      title: brand,
+      kicker: '팀 작업공간',
+      value: `${brand}는 초안과 수정을 같은 보드에서 끝낸다.`,
+      footerTag: '쓰는 법',
+      footerText: '보드를 열고 초안을 붙인 뒤 권한을 나눈다.',
+      footerTag2: '다음',
+      footerText2: '한 팀을 초대해 첫 보드를 공유한다.',
+      vrows: [brand, '워크스페이스', '보드'],
+    },
+    manifesto: {
+      stmt: `흩어진 메모가 ${brand} 보드에 모이면, 고치는 속도가 회의보다 빨라진다.`,
+      who: brand,
+      meta: '선언',
+    },
+    index: {
+      heading: `${brand}가 묶는 작업`,
+      items: [
+        { title: '워크스페이스', body: '파일과 대화를 한 보드에 두고 같은 맥락으로 연다.' },
+        { title: '권한', body: '누가 보고 고칠 수 있는지 보드와 슬라이드마다 정한다.' },
+        { title: '협업', body: '댓글과 수정이 같은 화면에서 끊기지 않고 이어진다.' },
+        { title: '산출물', body: '초안·버전·보내기 이력을 찾아 헤매지 않게 한곳에 둔다.' },
+        { title: '감사', body: '누가 언제 바꿨는지 남기고 필요하면 되돌린다.' },
+        { title: '온보딩', body: '첫 방문에 빈 화면이 아니라 바로 쓸 수 있는 방이 열린다.' },
+      ],
+    },
+    chapter: {
+      tag: '쓰는 자리',
+      title: '회의가 아니라 보드 위에서 고친다',
+      lede: '실무는 초안을 붙이고, 리더는 권한을 나누며, 운영은 이력을 남긴다.',
+    },
+    data: {
+      heading: `${brand} 운영`,
+      stats: [
+        { lab: '같은 보드', desc: '초안과 피드백이 파일 밖으로 흩어지지 않는다.' },
+        { lab: '권한 경계', desc: '보기·고치기·보내기를 역할마다 나눈다.' },
+      ],
+    },
+    quote: {
+      kicker: '보드에서',
+      body: '초안을 보낸 뒤에도 같은 화면에서 고칠 수 있어야 일이 끝난다.',
+      who: brand,
+      role: '쓰는 사람',
+    },
+    table: {
+      heading: '도입 단계',
+      heads: ['번호', '항목', '설명', '상태'],
+      rows: [
+        { name: '한 팀 보드', desc: '기존 문서를 옮기고 보기·고치기 권한을 나눈다.', mood: '시작' },
+        { name: '리뷰 습관', desc: '댓글과 버전을 같은 화면에서 고정한다.', mood: '정착' },
+        { name: '조직 기준', desc: '감사와 보내기 규칙을 워크스페이스 기본값으로 둔다.', mood: '표준' },
+        { name: '초대', desc: '첫 보드에 필요한 사람만 불러 맥락을 공유한다.', mood: '공유' },
+        { name: '이력', desc: '바꾼 사람과 시점을 남겨 되돌릴 수 있게 한다.', mood: '기록' },
+        { name: '기본값', desc: '새 보드가 열릴 때 권한과 감사 규칙을 따라가게 한다.', mood: '유지' },
+      ],
+    },
+    colophon: {
+      ktag: brand,
+      title: '보드에서 이어 쓰기',
+      cells: [
+        { tag: '닫기', text: '초안·권한·이력이 한 워크스페이스에 남는다.' },
+        { tag: '다음', text: '쓸 방을 열고 첫 보드에 팀을 초대한다.' },
+        { tag: '남기는 것', text: '버전과 보낸 기록을 보드에서 다시 연다.' },
+        { tag: '약속', text: `${brand}는 회의록이 아니라 고칠 수 있는 보드를 남긴다.` },
+      ],
+    },
+  };
+}
+
+function cobaltGridRoleFromAttrs(attrs: string, body: string):
+  | 'cover' | 'manifesto' | 'index' | 'chapter' | 'data' | 'quote' | 'table' | 'colophon'
+  | null {
+  const hay = `${attrs}\n${body}`;
+  if (/\bs-cover\b/i.test(hay)) return 'cover';
+  if (/\bs-manifesto\b/i.test(hay)) return 'manifesto';
+  if (/\bs-index\b/i.test(hay)) return 'index';
+  if (/\bs-chapter\b/i.test(hay)) return 'chapter';
+  if (/\bs-data\b/i.test(hay)) return 'data';
+  if (/\bs-quote\b/i.test(hay)) return 'quote';
+  if (/\bs-table\b/i.test(hay)) return 'table';
+  if (/\bs-colophon\b/i.test(hay)) return 'colophon';
+  return null;
+}
+
+function rewriteCobaltGridTextSlot(
+  html: string,
+  className: string,
+  nextText: string,
+  force = false,
+): string {
+  const span = firstExactClassRange(html, className);
+  if (!span) return html;
+  const block = html.slice(span.start, span.end);
+  const existing = visibleDeckCopy(block);
+  if (!force && existing && cobaltGridCopyIsKeepable(existing) && !/소개\s+\d+/.test(existing)) {
+    return html;
+  }
+  if (
+    !force
+    && existing
+    && !looksLikeCobaltBlockedServiceIntroCopy(existing)
+    && !/소개\s+\d+/.test(existing)
+    && existing.length >= 2
+    && className !== 'qbody'
+  ) {
+    return html;
+  }
+  return replaceFirstExactClassText(html, className, nextText);
+}
+
+function rebuildCobaltCoverCfooter(
+  body: string,
+  pack: ReturnType<typeof cobaltGridSlideCopyPack>,
+): string {
+  if (!/\b(?:cfooter|colf)\b/i.test(body)) return body;
+  const colfs = exactClassBlocks(body, 'colf');
+  const kept: Array<{ tag: string; text: string }> = [];
+  for (const colf of colfs) {
+    const tag = visibleDeckCopy(
+      /<[^>]*\bftag\b[^>]*>([\s\S]*?)<\//i.exec(colf.html)?.[1] ?? '',
+    );
+    const text = visibleDeckCopy(
+      colf.html.replace(/<[^>]*\bftag\b[^>]*>[\s\S]*?<\/[^>]+>/i, ''),
+    );
+    kept.push({
+      tag: tag && !looksLikeCobaltBlockedServiceIntroCopy(tag) && !/edited by|distributed/i.test(tag)
+        ? tag
+        : '',
+      text: cobaltGridCopyIsKeepable(text) ? text : '',
+    });
+  }
+  const rows = [
+    {
+      tag: kept[0]?.tag || pack.cover.footerTag,
+      text: kept[0]?.text || pack.cover.footerText,
+    },
+    {
+      tag: kept[1]?.tag || pack.cover.footerTag2,
+      text: kept[1]?.text || pack.cover.footerText2,
+    },
+  ];
+  if (rows[0]!.tag === pack.cover.kicker) rows[0]!.tag = pack.cover.footerTag;
+  if (rows[1]!.tag === pack.cover.kicker) rows[1]!.tag = pack.cover.footerTag2;
+  if (rows[0]!.text === pack.cover.value) rows[0]!.text = pack.cover.footerText;
+  const rebuilt = `<div class="cfooter">${rows.map((row) => (
+    `<div class="colf"><div class="ftag caption">${escapeHtml(row.tag)}</div>`
+    + `<div>${escapeHtml(row.text)}</div></div>`
+  )).join('')}</div>`;
+  let next = body;
+  const allColfs = exactClassBlocks(next, 'colf');
+  for (let i = allColfs.length - 1; i >= 0; i -= 1) {
+    const colf = allColfs[i]!;
+    next = `${next.slice(0, colf.start)}${next.slice(colf.end)}`;
+  }
+  const cfooter = findFirstClassDiv(next, 'cfooter');
+  if (cfooter) {
+    next = `${next.slice(0, cfooter.start)}${rebuilt}${next.slice(cfooter.start + cfooter.block.length)}`;
+  } else if (/\bpagenum\b/i.test(next)) {
+    next = next.replace(/(<div\b[^>]*\bpagenum\b)/i, `${rebuilt}$1`);
+  } else {
+    next += rebuilt;
+  }
+  return next
+    .replace(/(<\/div>)\s*[·•]+\s*(<(?:div|section))/g, '$1$2')
+    .replace(/(<\/div>)\s*[·•]+\s*$/g, '$1');
+}
+
+function fillCobaltGridEmptyVrows(
+  body: string,
+  pack: ReturnType<typeof cobaltGridSlideCopyPack>,
+): string {
+  let index = 0;
+  return body.replace(
+    /(<div\b[^>]*\bv-row\b[^>]*>)([\s\S]*?)(<\/div>)/gi,
+    (_full, open: string, inner: string, close: string) => {
+      const plain = visibleDeckCopy(inner);
+      const next = pack.cover.vrows[index] ?? '';
+      index += 1;
+      if (plain && !/issue\.|spring\s+20|field-office|개요|핵심 포인트/i.test(plain)
+        && !looksLikeCobaltBlockedServiceIntroCopy(plain)) {
+        return `${open}${inner}${close}`;
+      }
+      return `${open}${escapeHtml(next)}${close}`;
+    },
+  );
+}
+
+function healCobaltGridQuoteQbody(
+  body: string,
+  pack: ReturnType<typeof cobaltGridSlideCopyPack>,
+): string {
+  const span = firstExactClassRange(body, 'qbody');
+  if (!span) return body;
+  const block = body.slice(span.start, span.end);
+  const open = /^<[^>]+>/.exec(block)?.[0];
+  if (!open) return body;
+  const inner = block.slice(open.length).replace(/<\/(?:p|div|span)\s*>$/i, '');
+  const close = /<\/(?:p|div|span)\s*>$/i.exec(block)?.[0] ?? '';
+  const raw = String(inner).replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '');
+  const sentences = raw
+    .split(/\n+/)
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  const first = sentences[0] ?? '';
+  const rest = sentences.slice(1);
+  const quote = looksLikeCobaltBlockedServiceIntroCopy(first) || !first
+    ? pack.quote.body
+    : first;
+  let next = `${body.slice(0, span.start)}${open}${escapeHtml(quote)}${close}${body.slice(span.end)}`;
+  const restKeep = rest.filter((line) => cobaltGridCopyIsKeepable(line));
+  const compact = restKeep.length > 0
+    ? (restKeep.join(' ').length > 120 ? restKeep.join(' · ') : restKeep.join(' '))
+    : '';
+  if (compact) {
+    if (/\brole-meta\b/i.test(next)) {
+      const existing = visibleDeckCopy(
+        /<[^>]*\brole-meta\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+      );
+      if (!existing || looksLikeCobaltBlockedServiceIntroCopy(existing)) {
+        next = replaceFirstExactClassText(next, 'role-meta', compact);
+      }
+    } else if (/\bqattr\b/i.test(next)) {
+      next = next.replace(
+        /(<div\b[^>]*\bqattr\b[^>]*>)/i,
+        `$1<div class="role-meta caption">${escapeHtml(compact)}</div>`,
+      );
+    }
+  } else {
+    next = rewriteCobaltGridTextSlot(next, 'role-meta', pack.quote.role, true);
+  }
+  next = rewriteCobaltGridTextSlot(next, 'qkicker', pack.quote.kicker);
+  next = rewriteCobaltGridTextSlot(next, 'who-tag', pack.quote.who);
+  return next;
+}
+
+function rewriteCobaltGridHeadrow(block: string): string {
+  const open = /^<div\b[^>]*>/.exec(block)?.[0] ?? '';
+  const close = /<\/div\s*>$/i.exec(block)?.[0] ?? '</div>';
+  if (!open) return block;
+  const innerStart = open.length;
+  const innerEnd = block.length - close.length;
+  const children = listDirectChildRanges(block, innerStart, innerEnd);
+  const roleOrder = ['번호', '항목', '설명', '상태'];
+  const cells: string[] = [];
+  let roleIndex = 0;
+  for (const range of children) {
+    const html = block.slice(range.start, range.end);
+    const tag = /^<div\b[^>]*>/.exec(html)?.[0] ?? '';
+    const plain = visibleDeckCopy(html);
+    if (
+      openHasClass(tag, 'desc')
+      || openHasClass(tag, 'nm')
+      || openHasClass(tag, 'mood-tag')
+      || openHasClass(tag, 'delta-tag')
+      || openHasClass(tag, 'num-tag')
+    ) {
+      continue;
+    }
+    if (COBALT_GRID_ENGLISH_HEAD_RE.test(plain)) {
+      const key = plain.toLowerCase().replace(/\s+/g, '');
+      const mapped = key === 'no' || key === 'no.' ? '번호'
+        : key === 'trend' ? '항목'
+          : key === 'reading' ? '설명'
+            : key === 'mood' ? '상태'
+              : '';
+      if (mapped) {
+        cells.push(`<div class="caption">${escapeHtml(mapped)}</div>`);
+        roleIndex += 1;
+      }
+      continue;
+    }
+    if (!plain || looksLikeCobaltBlockedServiceIntroCopy(plain)) {
+      const label = roleOrder[roleIndex] ?? '';
+      if (label) cells.push(`<div class="caption">${escapeHtml(label)}</div>`);
+      roleIndex += 1;
+      continue;
+    }
+    cells.push(html);
+    roleIndex += 1;
+  }
+  if (cells.length === 0) {
+    for (const label of roleOrder) {
+      cells.push(`<div class="caption">${escapeHtml(label)}</div>`);
+    }
+  }
+  return `${open}${cells.join('')}${close}`;
+}
+
+function healCobaltGridTable(
+  body: string,
+  pack: ReturnType<typeof cobaltGridSlideCopyPack>,
+): string {
+  let next = body
+    .replace(/(<div\b[^>]*\bledger\b[^>]*>)\s*파일럿\s*/gi, '$1')
+    .replace(/(<\/div>)\s*파일럿\s*(<div\b[^>]*\brow\b)/gi, '$1$2');
+  const heads = exactClassBlocks(next, 'headrow');
+  for (let i = heads.length - 1; i >= 0; i -= 1) {
+    const block = heads[i]!;
+    next = `${next.slice(0, block.start)}${rewriteCobaltGridHeadrow(block.html)}${next.slice(block.end)}`;
+  }
+  const dataRows = exactClassBlocks(next, 'row').filter((span) => !/\bheadrow\b/i.test(span.html));
+  if (dataRows.length > 0) {
+    let dataIndex = 0;
+    next = replaceExactClassBlocksBySequence(next, 'row', pack.table.rows, (block) => {
+      if (/\bheadrow\b/i.test(block)) return block;
+      const index = dataIndex++;
+      const existingName = visibleDeckCopy(
+        /<[^>]*\bnm\b[^>]*>([\s\S]*?)<\//i.exec(block)?.[1] ?? '',
+      );
+      const existingDesc = visibleDeckCopy(
+        /<[^>]*\bdesc\b[^>]*>([\s\S]*?)<\//i.exec(block)?.[1] ?? '',
+      );
+      const row = pack.table.rows[index] ?? pack.table.rows[index % pack.table.rows.length]!;
+      let filled = replaceFirstExactClassText(block, 'num-tag', `${String(index + 1).padStart(2, '0')}.`);
+      if (!existingName || looksLikeCobaltBlockedServiceIntroCopy(existingName)) {
+        filled = replaceFirstExactClassText(filled, 'nm', row.name);
+      }
+      if (!cobaltGridCopyIsKeepable(existingDesc)) {
+        filled = replaceFirstExactClassText(filled, 'desc', row.desc);
+      }
+      const mood = visibleDeckCopy(
+        /<[^>]*\bmood-tag\b[^>]*>([\s\S]*?)<\//i.exec(filled)?.[1] ?? '',
+      );
+      if (!mood || looksLikeCobaltBlockedServiceIntroCopy(mood)) {
+        filled = replaceFirstExactClassText(filled, 'mood-tag', row.mood);
+      }
+      const delta = visibleDeckCopy(
+        /<[^>]*\bdelta-tag\b[^>]*>([\s\S]*?)<\//i.exec(filled)?.[1] ?? '',
+      );
+      if (!delta || /^\d{2}\s*\/\s*\d+$/.test(delta)) {
+        filled = replaceFirstExactClassText(filled, 'delta-tag', '');
+      }
+      return filled;
+    });
+  }
+  next = rewriteCobaltGridTextSlot(next, 'h', pack.table.heading);
+  next = rewriteCobaltGridTextSlot(next, 'lab-tag', pack.table.heading);
+  return next.replace(
+    /(<(?:div|span)\b[^>]*\bdelta-tag\b[^>]*>)([\s\S]*?)(<\/(?:div|span)>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const plain = visibleDeckCopy(inner);
+      if (/^\d{2}\s*\/\s*\d+$/.test(plain)) return `${open}${close}`;
+      return full;
+    },
+  );
+}
+
+function ensureCobaltGridPixelStackChart(body: string): string {
+  if (/\b(?:bars|stack)\b/i.test(body) && /\bcell\b/i.test(body)) return body;
+  const bodySlot = findFirstClassDiv(body, 'body');
+  if (!bodySlot) return body;
+  const chart = findFirstClassDiv(bodySlot.block, 'chart');
+  if (chart) {
+    const nextBlock = (
+      `${bodySlot.block.slice(0, chart.start)}${COBALT_PIXEL_STACK_CHART}`
+      + `${bodySlot.block.slice(chart.start + chart.block.length)}`
+    );
+    return `${body.slice(0, bodySlot.start)}${nextBlock}${body.slice(bodySlot.start + bodySlot.block.length)}`;
+  }
+  const open = /^<div\b[^>]*>/.exec(bodySlot.block)?.[0] ?? '';
+  const closeMatch = /<\/div\s*>$/i.exec(bodySlot.block);
+  if (!open || !closeMatch) return body;
+  const inner = bodySlot.block.slice(open.length, bodySlot.block.length - closeMatch[0].length);
+  const nextBlock = `${open}${inner}${COBALT_PIXEL_STACK_CHART}</div>`;
+  return `${body.slice(0, bodySlot.start)}${nextBlock}${body.slice(bodySlot.start + bodySlot.block.length)}`;
+}
+
+function ensureCobaltGridQrBlock(body: string): string {
+  return body.replace(
+    /(<div\b[^>]*\bqr-block\b[^>]*>)([\s\S]*?)(<\/div>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      if (/\bpx\b/i.test(inner)) return full;
+      return `${open}${COBALT_QR_PIXELS}${close}`;
+    },
+  );
+}
+
+function fillCobaltGridKitSlide(
+  body: string,
+  pack: ReturnType<typeof cobaltGridSlideCopyPack>,
+  attrs: string,
+): string {
+  const role = cobaltGridRoleFromAttrs(attrs, body);
+  let next = body;
+  next = next.replace(
+    /(<(?:h[12])\b[^>]*>)([\s\S]*?)(<\/h[12]>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const plain = visibleDeckCopy(inner);
+      if (!plain) return full;
+      if (cobaltGridCopyIsKeepable(plain) && !/소개\s+\d+/.test(plain)) return full;
+      if (!looksLikeCobaltBlockedServiceIntroCopy(plain) && !/소개\s+\d+/.test(plain)) {
+        return full;
+      }
+      const replacement =
+        role === 'cover' ? pack.cover.title
+          : role === 'manifesto' ? pack.manifesto.stmt
+            : role === 'index' ? pack.index.heading
+              : role === 'chapter' ? pack.chapter.title
+                : role === 'data' ? pack.data.heading
+                  : role === 'table' ? pack.table.heading
+                    : role === 'colophon' ? pack.colophon.title
+                      : pack.brand;
+      return `${open}${escapeHtml(/소개\s+\d+/.test(plain) ? pack.cover.title : replacement)}${close}`;
+    },
+  );
+
+  if (role === 'cover' || /\b(?:cfooter|colf|v-row|subkicker)\b/i.test(next)) {
+    next = rewriteCobaltGridTextSlot(next, 'l', pack.cover.kicker);
+    next = rewriteCobaltGridTextSlot(next, 'ed', pack.cover.value);
+    next = rebuildCobaltCoverCfooter(next, pack);
+    next = fillCobaltGridEmptyVrows(next, pack);
+    const titlePlain = visibleDeckCopy(
+      next.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '',
+    );
+    if (!titlePlain || /소개\s+\d+/.test(titlePlain) || looksLikeCobaltBlockedServiceIntroCopy(titlePlain)) {
+      next = replaceCobaltTitleHeading(next, pack.cover.title);
+    }
+  }
+
+  if (role === 'manifesto' || /\bstmt\b/i.test(next)) {
+    const stmt = visibleDeckCopy(
+      /<[^>]*\bstmt\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (!stmt || looksLikeCobaltBlockedServiceIntroCopy(stmt) || /소개\s+\d+/.test(stmt)) {
+      next = next.replace(
+        /(<p\b[^>]*\bclass\s*=\s*["'][^"']*\bstmt\b[^"']*["'][^>]*>)[\s\S]*?(<\/p>)/i,
+        (_m, open: string, close: string) => `${open}${escapeHtml(pack.manifesto.stmt)}${close}`,
+      );
+    }
+    next = rewriteCobaltGridTextSlot(next, 'who', pack.manifesto.who);
+    next = rewriteCobaltGridTextSlot(next, 'meta-tag', pack.manifesto.meta);
+  }
+
+  if (role === 'index' || (/\blist\b/i.test(next) && /\brow\b/i.test(next) && /\bnum-tag\b/i.test(next))) {
+    next = rewriteCobaltGridTextSlot(next, 'h', pack.index.heading);
+    next = rewriteCobaltGridTextSlot(next, 'lab-tag', pack.brand);
+    if (exactClassBlocks(next, 'row').some((span) => !/\bheadrow\b/i.test(span.html))) {
+      next = replaceExactClassBlocksBySequence(next, 'row', pack.index.items, (block, line, index) => {
+        if (/\bheadrow\b/i.test(block)) return block;
+        const existingTitle = visibleDeckCopy(
+          block.match(/<h[1-4]\b[^>]*>([\s\S]*?)<\/h[1-4]>/i)?.[1] ?? '',
+        );
+        const existingBody = visibleDeckCopy(
+          block.match(/<p\b[^>]*>([\s\S]*?)<\/p>/i)?.[1] ?? '',
+        );
+        const item = pack.index.items[index] ?? pack.index.items[index % pack.index.items.length]!;
+        let filled = replaceFirstExactClassText(
+          block,
+          'num-tag',
+          `${String(index + 1).padStart(2, '0')}.`,
+        );
+        if (!existingTitle || looksLikeCobaltBlockedServiceIntroCopy(existingTitle)) {
+          filled = replaceFirstHeadingText(filled, item.title);
+        }
+        if (!cobaltGridCopyIsKeepable(existingBody)) {
+          filled = replaceFirstTagText(filled, 'p', item.body);
+        }
+        return filled;
+      });
+    }
+  }
+
+  if (role === 'chapter' || /\bnm-tag\b/i.test(next)) {
+    const tag = visibleDeckCopy(
+      /<[^>]*\bnm-tag\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    const lede = visibleDeckCopy(
+      /<[^>]*\blede\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (!tag || looksLikeCobaltBlockedServiceIntroCopy(tag) || tag === lede) {
+      next = replaceFirstExactClassText(next, 'nm-tag', pack.chapter.tag);
+    }
+    const ttl = visibleDeckCopy(
+      /<[^>]*\bttl\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (!ttl || looksLikeCobaltBlockedServiceIntroCopy(ttl) || /소개\s+\d+/.test(ttl)) {
+      next = replaceFirstExactClassText(next, 'ttl', pack.chapter.title);
+    }
+    if (!lede || looksLikeCobaltBlockedServiceIntroCopy(lede) || tag === lede) {
+      next = replaceFirstExactClassText(next, 'lede', pack.chapter.lede);
+    }
+  }
+
+  if (role === 'data' || /\bvbig\b/i.test(next)) {
+    next = rewriteCobaltGridTextSlot(next, 'h', pack.data.heading);
+    let ordinal = 1;
+    next = next.replace(
+      /(<div\b[^>]*\bvbig\b[^>]*>)([\s\S]*?)(<\/div>)/gi,
+      (full, open: string, inner: string, close: string) => {
+        const plain = visibleDeckCopy(inner);
+        if (plain) return full;
+        return `${open}${escapeHtml(String(ordinal++).padStart(2, '0'))}${close}`;
+      },
+    );
+    const stats = pack.data.stats;
+    let labIndex = 0;
+    next = next.replace(
+      /(<div\b[^>]*\blab2\b[^>]*>)([\s\S]*?)(<\/div>)/gi,
+      (full, open: string, inner: string, close: string) => {
+        const plain = visibleDeckCopy(inner);
+        const stat = stats[labIndex] ?? stats[labIndex % stats.length]!;
+        labIndex += 1;
+        if (plain && !looksLikeCobaltBlockedServiceIntroCopy(plain) && cobaltGridCopyIsKeepable(plain)) {
+          return full;
+        }
+        return `${open}${escapeHtml(stat.lab)}${close}`;
+      },
+    );
+    let descIndex = 0;
+    next = next.replace(
+      /(<div\b[^>]*\bdesc\b[^>]*>)([\s\S]*?)(<\/div>)/gi,
+      (full, open: string, inner: string, close: string) => {
+        const plain = visibleDeckCopy(inner);
+        const stat = stats[descIndex] ?? stats[descIndex % stats.length]!;
+        descIndex += 1;
+        if (cobaltGridCopyIsKeepable(plain)) return full;
+        return `${open}${escapeHtml(stat.desc)}${close}`;
+      },
+    );
+    next = ensureCobaltGridPixelStackChart(next);
+  }
+
+  if (role === 'quote' || /\bqbody\b/i.test(next)) {
+    next = healCobaltGridQuoteQbody(next, pack);
+  }
+
+  if (role === 'table' || /\bheadrow\b|\bledger\b/i.test(next)) {
+    next = healCobaltGridTable(next, pack);
+  }
+
+  if (role === 'colophon' || /\bcol-footer\b|\bktag\b/i.test(next)) {
+    next = rewriteCobaltGridTextSlot(next, 'ktag', pack.colophon.ktag);
+    next = rewriteCobaltGridTextSlot(next, 'ttl', pack.colophon.title);
+    if (/\bftag\b/i.test(next)) {
+      const tags = pack.colophon.cells.map((cell) => cell.tag);
+      const texts = pack.colophon.cells.map((cell) => cell.text);
+      next = replaceClassTextBySequence(next, 'ftag', tags);
+      next = replaceClassTextBySequence(next, 'ftxt', texts);
+    }
+  }
+
+  if (/\bqr-block\b/i.test(next)) {
+    next = ensureCobaltGridQrBlock(next);
+  }
+  return next;
+}
+
+/**
+ * 루프557 — Cobalt Grid leftover + cover/table layout + role-specific
+ * Teamver copy. Catalog leftover only is stripped; empty slots are filled
+ * from the kit role pack, never the shared service-intro outline.
+ * Official English example.html without Hangul is a no-op.
+ */
+export function healCobaltGridLeftoverCatalogCopy(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !cobaltGridLeftoverHealShouldRun(dest)) return dest;
+  if (!/[가-힣]/.test(visibleDeckCopy(dest)) && !/[가-힣]/.test(String(brief ?? ''))) {
+    return dest;
+  }
+  const topic = resolveCobaltGridTopicNoun(
+    deriveDeckCoverTitleFromBrief(String(brief ?? ''), null),
+    brief,
+    visibleDeckCopy(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(dest)?.[1] ?? ''),
+    visibleDeckCopy(/<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(dest)?.[1] ?? ''),
+  );
+  const pack = cobaltGridSlideCopyPack(topic);
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) {
+    return fillCobaltGridKitSlide(dest, pack, '');
+  }
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    const nextBody = fillCobaltGridKitSlide(body, pack, span.attrs);
+    if (nextBody === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
+  }
+  out = out.replace(
+    /(<title\b[^>]*>)([\s\S]*?)(<\/title>)/i,
+    (full, open: string, inner: string, close: string) => {
+      const plain = visibleDeckCopy(inner);
+      if (!/소개\s+\d+/.test(plain) && !looksLikeCobaltBlockedServiceIntroCopy(plain)) {
+        return full;
+      }
+      return `${open}${escapeHtml(stripCobaltGridIntroNumberSuffix(plain) || pack.brand)}${close}`;
+    },
+  );
+  return out;
 }
 
 /** 루프459 — Cobalt Grid `.s-colophon .col-footer` cells (4 flat divs). */

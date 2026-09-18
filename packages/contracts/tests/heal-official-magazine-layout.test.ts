@@ -906,8 +906,8 @@ describe('루프451 Cobalt Grid absolute slots and orphan data stats', () => {
     const healed = healOfficialMagazineLayoutDensity(HANGUL_COBALT_MISPLACED, '팀버 소개');
     expect(healed).not.toMatch(/<div class="col-a"><\/div>\s*<div class="stat">/);
     expect(healed).toMatch(/<div class="col-a">[\s\S]*class="stat"[\s\S]*82%[\s\S]*11k/);
-    expect(healed).toContain('근거와 사례');
-    expect(healed).toContain('운영과 보안');
+    expect(healed).toContain('개인 생산성보다 팀 전체의 반복 업무 절감에 초점');
+    expect(healed).toContain('보드에서 이어 쓰기');
     expect(healed).not.toMatch(/Newsletter opens/i);
     expect(healed).not.toMatch(/Lin Ito/);
     expect(healed).not.toMatch(/Field Office Quarterly/);
