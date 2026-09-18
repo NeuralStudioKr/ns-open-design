@@ -548,7 +548,13 @@ export function parseTemplateCloneDeckOutline(
 export function applyTemplateCloneSlotFill(
   seedHtml: string,
   rawOutline: unknown,
-  options: { templateId?: string | null; brief?: string | null; maxSlides?: number } = {},
+  options: {
+    templateId?: string | null;
+    brief?: string | null;
+    maxSlides?: number;
+    /** Keep the LOOK seed page count when a provider returns a short outline. */
+    padToSeedSlideCount?: boolean;
+  } = {},
 ): { html: string; title: string } | null {
   const outline = parseTemplateCloneDeckOutline(rawOutline);
   if (!outline) return null;
@@ -557,6 +563,7 @@ export function applyTemplateCloneSlotFill(
     ...(options.templateId != null ? { templateId: options.templateId } : {}),
     ...(options.brief != null ? { brief: options.brief } : {}),
     ...(options.maxSlides != null ? { maxSlides: options.maxSlides } : {}),
+    padToSeedSlideCount: options.padToSeedSlideCount !== false,
   });
   if (!html?.trim()) return null;
   return { html, title: outline.title };
@@ -957,7 +964,29 @@ export function recoverShortDeckByPaddingToSeed(input: {
     inferKitSlideCountFromCss(model) ?? 0,
   );
   const producedCount = listTemplateCloneSlideShells(model).length;
-  if (seedCount < 2 || producedCount <= 0) return null;
+  if (seedCount < 2) return null;
+  // Head-only / incomplete shell: forcePad may persist the complete seed
+  // document. Refuse empty/32-char collapse (`<64`) so garbage never lands
+  // on deck.html — callers keep LOOK seed via fallback instead.
+  if (producedCount <= 0) {
+    const forcePad = input.forcePad !== false;
+    const documentShaped = /^(?:<!doctype\s+html\b|<html\b)/i.test(model);
+    if (
+      forcePad
+      && documentShaped
+      && model.length >= 64
+      && /<\/html\s*>/i.test(seed)
+      && listTemplateCloneSlideShells(seed).length >= 2
+    ) {
+      return {
+        html: seed,
+        seedCount,
+        producedCount: 0,
+        paddedCount: seedCount,
+      };
+    }
+    return null;
+  }
   if (producedCount >= seedCount) {
     return { html: model, seedCount, producedCount, paddedCount: producedCount };
   }
@@ -965,6 +994,9 @@ export function recoverShortDeckByPaddingToSeed(input: {
     ...(input.templateId != null ? { templateId: input.templateId } : {}),
     ...(input.brief != null ? { brief: input.brief } : {}),
     ...(input.deckTitle != null ? { deckTitle: input.deckTitle } : {}),
+    // The only disk fallback can itself be the provider's short deck: two
+    // section shells may still carry the original 10-layout kit CSS.
+    maxSlides: seedCount,
     padToSeedSlideCount: true,
     forcePad: input.forcePad !== false,
   });
@@ -1912,6 +1944,7 @@ export function decideTemplateCloneSlotFillTerminal(input: {
       ? { brief: input.userBrief }
       : {}),
     ...(honorCeiling != null ? { maxSlides: honorCeiling } : {}),
+    padToSeedSlideCount: true,
   };
   const filled = applyTemplateCloneSlotFill(seed, raw, templateOpts);
   if (filled) return { kind: 'slot-fill', html: filled.html, title: filled.title };
@@ -12463,10 +12496,14 @@ export function buildTemplateClonedDeckHtml(
   // 루프547 — Short-response auto-pad. When the caller opted in and
   // outline length falls below seed shell count, treat seed shell count as
   // the implicit hint. Preserves explicit `maxSlides` when higher/lower.
+  const seedTargetSlideCount = Math.max(
+    shells.length,
+    inferKitSlideCountFromCss(source) ?? 0,
+  );
   const effectiveMaxSlides = options.padToSeedSlideCount === true
     && options.maxSlides == null
-    && shells.length > 0
-    ? shells.length
+    && seedTargetSlideCount > 0
+    ? seedTargetSlideCount
     : options.maxSlides;
   const hint = effectiveMaxSlides != null
     ? Math.min(20, Math.max(1, effectiveMaxSlides))

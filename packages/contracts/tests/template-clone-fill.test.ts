@@ -7315,6 +7315,46 @@ describe('루프554 Block Frame 2-slide leftover + pad-to-seed', () => {
     expect(listTemplateCloneSlideShells(fixture).length).toBe(2);
   });
 
+  it('deterministic JSON fill pads a degraded 2-section / 10-layout seed to 10', async () => {
+    const degradedSeed = await readFile(
+      new URL('./fixtures/loop552-block-frame-two-slide-thin.html', import.meta.url),
+      'utf8',
+    );
+    const filled = applyTemplateCloneSlotFill(
+      degradedSeed,
+      JSON.stringify({
+        title: 'Teamver',
+        slides: [
+          { title: 'Teamver', roleHint: 'cover', lead: '팀의 업무 맥락을 연결합니다.' },
+          { title: '핵심 가치', body: '공유 맥락\n빠른 초안\n일관된 실행' },
+        ],
+      }),
+      { brief: 'Teamver 소개 슬라이드 만들어줘' },
+    );
+
+    expect(filled).not.toBeNull();
+    expect(listTemplateCloneSlideShells(filled!.html).length).toBe(10);
+    expect(filled!.html).toMatch(/data-teamver-pad="short-response"/);
+  });
+
+  it('persist recovery pads when the only available seed is already the short deck', async () => {
+    const degradedSeed = await readFile(
+      new URL('./fixtures/loop552-block-frame-two-slide-thin.html', import.meta.url),
+      'utf8',
+    );
+    const recovered = recoverShortDeckByPaddingToSeed({
+      seedHtml: degradedSeed,
+      modelHtml: degradedSeed,
+      brief: 'Teamver 소개 슬라이드 만들어줘',
+      deckTitle: 'Teamver',
+    });
+
+    expect(recovered).not.toBeNull();
+    expect(recovered!.seedCount).toBe(10);
+    expect(recovered!.producedCount).toBe(2);
+    expect(recovered!.paddedCount).toBe(10);
+  });
+
   it('heal/fill 후 개요 반복·자세히 보기 leftover가 덮이고 10장까지 pad', async () => {
     const fixture = await readFile(
       new URL('./fixtures/loop552-block-frame-two-slide-thin.html', import.meta.url),
