@@ -232,6 +232,16 @@ class Settings(BaseModel):
                 f"TEAMVER_REGISTRY_* credentials or TEAMVER_BILLING_DISABLED=1 "
                 f"are required in {deploy_env}"
             )
+        # 0918-N07 — when billing is ON, require a priced meter path or flat
+        # reserve so estimate-reserve / BYOK meter do not silently skip charge.
+        if registry_configured and not self.teamver_billing_disabled:
+            has_prices = bool((self.design_model_prices_json or "").strip())
+            has_flat = self.teamver_billing_reserve_amount > 0
+            if not has_prices and not has_flat:
+                raise ValueError(
+                    f"DESIGN_MODEL_PRICES_JSON or TEAMVER_BILLING_RESERVE_AMOUNT>0 "
+                    f"is required in {deploy_env} when TEAMVER_BILLING_DISABLED is off"
+                )
         return self
 
     @property

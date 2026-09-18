@@ -25,6 +25,8 @@ def hosted_settings(**overrides: object) -> Settings:
         "teamver_registry_app_id": "ai-design",
         "teamver_registry_key_id": "registry-key",
         "teamver_registry_access_key": "registry-secret",
+        "teamver_billing_disabled": False,
+        "teamver_billing_reserve_amount": 100,
     }
     values.update(overrides)
     return Settings(**values)
@@ -81,7 +83,26 @@ def test_staging_requires_registry_credentials_or_explicit_kill_switch() -> None
     assert hosted_settings(**missing, teamver_billing_disabled=True).teamver_billing_disabled
 
 
-def test_production_accepts_kill_switch_without_registry() -> None:
+def test_staging_billing_on_requires_prices_or_flat_amount() -> None:
+    with pytest.raises(ValidationError, match="DESIGN_MODEL_PRICES_JSON or TEAMVER_BILLING_RESERVE_AMOUNT"):
+        hosted_settings(teamver_billing_reserve_amount=0, design_model_prices_json="")
+
+    assert (
+        hosted_settings(
+            teamver_billing_reserve_amount=0,
+            design_model_prices_json='{"MiniMax-M3":{"input_per_1k_t":1,"output_per_1k_t":4}}',
+        ).design_model_prices_json
+    )
+    assert hosted_settings(teamver_billing_reserve_amount=50).teamver_billing_reserve_amount == 50
+
+
+def test_staging_billing_off_allows_missing_prices() -> None:
+    assert hosted_settings(
+        teamver_billing_disabled=True,
+        teamver_billing_reserve_amount=0,
+        design_model_prices_json="",
+    ).teamver_billing_disabled
+
     missing = {
         "deploy_env": "production",
         "teamver_jwks_url": "https://api.teamver.com/.well-known/jwks.json",

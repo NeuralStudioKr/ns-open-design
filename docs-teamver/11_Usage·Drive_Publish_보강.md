@@ -707,8 +707,9 @@ void (async () => {
 
 ### 4.9 후속 구현 체크리스트 (권장 순서)
 
-> **⏸ 2026-06-26 — 실제 크레딧 차감·Registry commit amount는 CTO 회의 후 착수.**  
-> infra probe(loop 425–426)는 merge 가능 — `TEAMVER_BILLING_DISABLED=1` 기본 유지.
+> **2026-09-18 — 0918-N07:** 크레딧 차감 활성화는 브랜치 `feat/design-credit-deduction` +
+> kill switch `TEAMVER_BILLING_DISABLED`로 진행. merge 후에도 기본 OFF.
+> staging E2E(DISABLED=0) 후 production 적용. 상세: `0918-N07-1-상위설계-[Design_크레딧_차감_활성화].md`.
 
 ```text
 [x] 0a. ledger race-safe merge: billing-finalize stub + no committed downgrade (loop 380)
@@ -718,12 +719,13 @@ void (async () => {
 [x] 0e. FE drop 관측 — teamver_usage_5xx JSON 마커 + reportedRunIds 1024 cap (loop 380)
 [x] 0f. amount=0/no-fallback reserve skip — Registry 0 amount 호출 차단 (loop 382)
 [x] 1. credit_meter.py + DESIGN_MODEL_PRICES_JSON + unit tests (loop 405)
-[ ] 2. §4.4 전략 확정 (A/B/C) — PM·Main BE 합의
+[x] 2. §4.4 전략 — managed=A(estimate) · BYOK=B(meter→reserve→commit) · C 후속 (0918-N07)
 [x] 3. daemon reserve: estimate-reserve endpoint + run-start lookup (loop 423 · Strategy A partial)
 [x] 4. embed BYOK billing (U-G6) — message.id run 키 + post-run reserve/commit (FE-only hook + BFF finalize, loop 430)
 [x] 4b. embed BYOK billing **daemon-side finalize** (U-G11) — message PUT hook + internal M2M, FE hook no-op (§4.11)
+[x] 4c. env 롤아웃·기동 가드 (0918-N07) — DISABLED 기본 1 · ON 시 prices/flat 필수
 [ ] 5. billing_status=not_metered / flat_fallback 관측 + CW 대시보드
-[ ] 6. staging E2E: reserve amount == metered (또는 cap) + commit + ledger row 일치
+[ ] 6. staging E2E: DISABLED=0 · reserve amount == metered (또는 cap) + commit + ledger row 일치
 [ ] 7. (선택) Main BE metered commit API — 전략 C
 [ ] 8. CW alarm filter — `metric:"teamver_usage_5xx" stage:usage.events_client_drop` (FE drop 누적)
 ```
