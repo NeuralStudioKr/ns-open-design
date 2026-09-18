@@ -970,7 +970,7 @@ export function recoverShortDeckByPaddingToSeed(input: {
   // on deck.html — callers keep LOOK seed via fallback instead.
   if (producedCount <= 0) {
     const forcePad = input.forcePad !== false;
-    const documentShaped = /^(?:<!doctype\s+html\b|<html\b)/i.test(model);
+    const documentShaped = /^(?:<!doctype(?:\s+html)?\b|<html\b)/i.test(model);
     if (
       forcePad
       && documentShaped
@@ -1793,16 +1793,41 @@ export function synthesizeTemplateCloneSlideBody(
   kitKey?: string | null,
 ): Pick<TemplateCloneSlideContent, 'body' | 'roleHint' | 'items' | 'lead'> {
   if (kitKey === PRODUCT_LAUNCH_HALO_KIT_KEY || kitKey === BLOCK_FRAME_NEO_KIT_KEY) {
-    const briefLine = String(brief ?? '').replace(/\s+/g, ' ').trim();
-    const oneLiner = briefLine.length >= 4
-      && briefLine.length <= 80
-      && !/만들어\s*(?:줘|주세요)/.test(briefLine)
-      ? briefLine
-      : '';
+    // These kits previously returned an almost empty slide to avoid
+    // inventing product metrics/personas. During short-response padding that
+    // degraded into visible "Slide 3" pages. Keep the no-invention policy,
+    // but provide topic-bound decision copy that can safely fill list/card
+    // shells without fabricated facts.
+    const topic = resolveLockedTopicNoun(cover, brief);
+    const roles: TemplateCloneShellRole[] = ['list', 'cards', 'process', 'timeline'];
+    const roleHint = roles[Math.max(0, index - 1) % roles.length]!;
+    const topicObject = attachKoreanJosa(topic, '을/를');
+    const linesByRole: Record<'list' | 'cards' | 'process' | 'timeline', string[]> = {
+      list: [
+        `${topic}의 ${label} 범위와 현재 상태를 먼저 정의한다`,
+        `${label}에서 우선순위를 가르는 판단 기준을 정리한다`,
+        `${topicObject} 검증할 질문과 필요한 근거를 연결한다`,
+      ],
+      cards: [
+        `${topic}의 ${label}에서 관찰한 사실을 구분한다`,
+        `대안별 차이를 같은 기준으로 비교한다`,
+        `비교 결과가 ${topic}의 다음 결정에 주는 의미를 정리한다`,
+      ],
+      process: [
+        `${topicObject} 실행하기 전에 필요한 입력과 책임을 확인한다`,
+        `${label}을 작은 범위에서 적용하고 피드백을 수집한다`,
+        `결과를 검증해 유지·수정·확대 여부를 결정한다`,
+      ],
+      timeline: [
+        `${topic}의 현재 상태와 해결해야 할 간극을 기록한다`,
+        `${label}의 다음 단계와 완료 조건을 합의한다`,
+        `실행 이후 변화와 후속 과제를 같은 지표로 점검한다`,
+      ],
+    };
     return {
-      roleHint: 'cards',
-      lead: oneLiner,
-      body: '',
+      roleHint,
+      lead: `${topicObject} ${label} 관점에서 점검합니다`,
+      body: linesByRole[roleHint].join('\n'),
       items: [],
     };
   }
@@ -12545,16 +12570,19 @@ export function buildTemplateClonedDeckHtml(
       padStartIndex = workingSlides.length;
       while (workingSlides.length < hint) {
         if (officialLookIsProductLaunchHalo(source) || officialLookIsNeoBrutalBlockFrame(source)) {
-          const briefLine = String(options.brief ?? '').replace(/\s+/g, ' ').trim();
-          const oneLiner = briefLine.length >= 4
-            && briefLine.length <= 80
-            && !/만들어\s*(?:줘|주세요)/.test(briefLine)
-            ? briefLine
-            : '';
+          const n = workingSlides.length + 1;
+          const label = TEMPLATE_CLONE_GENERIC_SECTION_LABELS[
+            Math.min(TEMPLATE_CLONE_GENERIC_SECTION_LABELS.length - 1, Math.max(0, n - 2))
+          ] ?? `핵심 ${n - 1}`;
           workingSlides.push({
-            title: '',
-            lead: oneLiner,
-            body: '',
+            title: label,
+            ...synthesizeTemplateCloneSlideBody(
+              deckTitle,
+              label,
+              Math.max(1, n - 1),
+              options.brief,
+              resolveTemplateCloneKitKey(source),
+            ),
           });
         } else {
           const n = workingSlides.length + 1;

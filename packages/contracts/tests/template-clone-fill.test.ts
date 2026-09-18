@@ -7333,8 +7333,16 @@ describe('루프554 Block Frame 2-slide leftover + pad-to-seed', () => {
     );
 
     expect(filled).not.toBeNull();
-    expect(listTemplateCloneSlideShells(filled!.html).length).toBe(10);
+    const filledShells = listTemplateCloneSlideShells(filled!.html);
+    expect(filledShells.length).toBe(10);
     expect(filled!.html).toMatch(/data-teamver-pad="short-response"/);
+    expect(filled!.html).not.toMatch(/>\s*Slide\s+[3-9]\s*</i);
+    expect(filled!.html).not.toContain('Teamver을');
+    for (const shell of filledShells.slice(2)) {
+      const visible = shell.full.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      expect(visible.length).toBeGreaterThan(36);
+      expect(visible).toMatch(/Teamver/);
+    }
   });
 
   it('persist recovery pads when the only available seed is already the short deck', async () => {
@@ -7402,5 +7410,35 @@ describe('루프554 Block Frame 2-slide leftover + pad-to-seed', () => {
     expect(skipped == null || listTemplateCloneSlideShells(skipped.html).length === 2).toBe(true);
     expect(forced).not.toBeNull();
     expect(listTemplateCloneSlideShells(forced!.html).length).toBe(10);
+  });
+
+  it('forcePad persists a complete seed when the model HTML is head-only (0 slides)', () => {
+    const headOnly = [
+      '<!doctype html><html lang="ko"><head><meta charset="utf-8">',
+      `<style>${'.slide-1{} .slide-10{}'.repeat(12)}</style></head>`,
+    ].join('');
+    expect(headOnly.length).toBeGreaterThanOrEqual(64);
+    expect(listTemplateCloneSlideShells(headOnly).length).toBe(0);
+    const recovered = recoverShortDeckByPaddingToSeed({
+      seedHtml: tenShellSeed,
+      modelHtml: headOnly,
+      forcePad: true,
+    });
+    expect(recovered).not.toBeNull();
+    expect(recovered!.producedCount).toBe(0);
+    expect(recovered!.paddedCount).toBe(10);
+    expect(listTemplateCloneSlideShells(recovered!.html).length).toBe(10);
+    expect(recovered!.html).toMatch(/<\/html\s*>/i);
+  });
+
+  it('does not persist a 32-char collapse as deck.html even with forcePad', () => {
+    const collapse = "I'll generate the slides now!!";
+    expect(collapse.length).toBeLessThan(64);
+    const recovered = recoverShortDeckByPaddingToSeed({
+      seedHtml: tenShellSeed,
+      modelHtml: collapse,
+      forcePad: true,
+    });
+    expect(recovered).toBeNull();
   });
 });
