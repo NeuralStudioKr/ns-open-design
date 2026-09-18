@@ -2092,6 +2092,160 @@ describe('루프419 Capsule deterministic quality gate', () => {
       .not.toMatch(/개요|핵심 포인트|탐색/);
   });
 
+  // 루프558 — Cover slide user report 2026-09-17: MiniMax ships a title-only
+  // cover, the pipeline strips the template's own visual chrome (hero-frame
+  // brackets, deco squares, yellow tab, hero-subtitle placeholder), and the
+  // cover renders as a giant blank frame with only the h1 + a small pink
+  // label. Root cause is three collaborating over-strippers plus a missing
+  // subtitle synthesis step. These red specs pin each contributing behavior
+  // so a future refactor cannot re-break the cover.
+  it('루프558 (a) — stripNonSlotWrappers keeps kit-owned chrome (hero-label / deco-yellow-bar / corner-bracket / nb-label) even when their prose is short template stub copy', () => {
+    // Before the fix, `<div class="nb-label hero-label">Presentation Template</div>`
+    // and `<div class="deco-yellow-bar">Get Started</div>` were treated as
+    // "wrappers whose visible prose doesn't own a fill slot" and dropped
+    // wholesale — even though the kit-specific refill pass wants to swap
+    // topic-aware copy into those exact slots on the next stage.
+    const html = [
+      '<div class="hero-frame">',
+      '<div class="corner-bracket tl"></div>',
+      '<div class="corner-bracket tr"></div>',
+      '<div class="nb-label hero-label">Presentation Template</div>',
+      '<h1 class="nb-heading-xl hero-title">Cover</h1>',
+      '<div class="deco-pink-rect"></div>',
+      '<div class="deco-green-circle"></div>',
+      '<div class="deco-yellow-bar">Get Started</div>',
+      '</div>',
+    ].join('');
+    const next = stripNonSlotWrappers(html);
+    expect(next).toContain('hero-frame');
+    expect(next).toContain('corner-bracket tl');
+    expect(next).toContain('corner-bracket tr');
+    expect(next).toContain('nb-label hero-label');
+    expect(next).toContain('deco-pink-rect');
+    expect(next).toContain('deco-green-circle');
+    expect(next).toContain('deco-yellow-bar');
+    // The h1 is a real slot; it always survived. Verify it is still present.
+    expect(next).toMatch(/<h1[^>]*hero-title[^>]*>\s*Cover\s*<\/h1>/);
+  });
+
+  it('루프558 (b) — Block Frame cover slide from a title-only outline keeps deco-dots / hero-frame corner-brackets / deco-pink-rect / deco-green-circle / deco-yellow-bar end-to-end through buildTemplateClonedDeckHtml + salvageMalformedMiniMaxSlideMarkup', async () => {
+    // End-to-end pin: the visible cover chrome must survive the full clone +
+    // salvage pipeline. `stripInertLeftoverDecoBlocks` (called through
+    // `unwrapSlideOnlyContainer`) previously ran on the entire slide
+    // container inner and stripped legitimate deco squares inside `.slide-1`
+    // because their empty-div signature matched the "inert deco" regex.
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-block-frame/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const outline = [
+      { title: '업무와 AI를 하나의 공간에서', roleHint: 'cover' as const },
+      { title: '두 번째 슬라이드', body: '내용' },
+      { title: '세 번째 슬라이드', body: '내용' },
+    ];
+    const brief = '업무와 AI를 하나의 공간에서 관리하는 협업 도구를 소개하는 프리젠테이션';
+    const cloned = buildTemplateClonedDeckHtml(html, outline, {
+      title: '업무와 AI를 하나의 공간에서',
+      templateId: 'html-ppt-zhangzara-block-frame',
+      maxSlides: 3,
+      brief,
+    });
+    expect(cloned).toBeTruthy();
+    const salvaged = salvageMalformedMiniMaxSlideMarkup(cloned || '', brief);
+    const healed = healAiGeneratedDeckMarkup(salvaged, brief);
+    const slide1 = healed.match(
+      /<section[^>]*class="[^"]*\bslide\s+slide-1\b[^"]*"[^>]*>[\s\S]*?<\/section>/i,
+    )?.[0] || '';
+    expect(slide1).toBeTruthy();
+    expect(slide1).toContain('deco-dots');
+    expect(slide1).toContain('hero-frame');
+    expect(slide1).toMatch(/corner-bracket\s+tl/);
+    expect(slide1).toMatch(/corner-bracket\s+tr/);
+    expect(slide1).toMatch(/corner-bracket\s+bl/);
+    expect(slide1).toMatch(/corner-bracket\s+br/);
+    expect(slide1).toContain('deco-pink-rect');
+    expect(slide1).toContain('deco-green-circle');
+    expect(slide1).toContain('deco-yellow-bar');
+  });
+
+  it('루프558 (c) — Block Frame cover slide from a title-only outline synthesizes a non-empty hero-subtitle (never ships title-only)', async () => {
+    // Cover subtitle synthesis: when the outline has only a title (no lead,
+    // no body), the cover shell's `<p class="hero-subtitle"></p>` was left
+    // empty and then dropped by the leaf-empty-paragraph strip, so the
+    // rendered cover was h1-only.
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-block-frame/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const brief = '업무와 AI를 하나의 공간에서 관리하는 협업 도구';
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      [{ title: '업무와 AI를 하나의 공간에서', roleHint: 'cover' as const }],
+      { title: '업무와 AI를 하나의 공간에서', templateId: 'html-ppt-zhangzara-block-frame', maxSlides: 1, brief },
+    );
+    expect(cloned).toBeTruthy();
+    const salvaged = salvageMalformedMiniMaxSlideMarkup(cloned || '', brief);
+    const slide1 = salvaged.match(
+      /<section[^>]*class="[^"]*\bslide\s+slide-1\b[^"]*"[^>]*>[\s\S]*?<\/section>/i,
+    )?.[0] || '';
+    expect(slide1).toBeTruthy();
+    // A `<p class="hero-subtitle">…</p>` element MUST exist and MUST contain
+    // non-whitespace visible text.
+    const subMatch = slide1.match(
+      /<p[^>]*\bclass\s*=\s*["'][^"']*\bhero-subtitle\b[^"']*["'][^>]*>([\s\S]*?)<\/p>/i,
+    );
+    expect(subMatch).not.toBeNull();
+    const visible = String(subMatch?.[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
+    expect(visible.length).toBeGreaterThan(0);
+    // Cover subtitle should reference the deck's actual title/topic — not
+    // an unrelated hardcoded English template fallback.
+    expect(visible).toContain('업무와 AI');
+  });
+
+  it('루프558 (d) — Block Frame cover slide uses a short role label ("표지") for hero-label instead of duplicating the full deck title', async () => {
+    // Duplicate-title anti-pattern: the hero-label pink pill previously
+    // received the full deck title, which duplicated the h1 immediately
+    // below it and stretched the chip across the whole cover frame.
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-block-frame/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const deckTitle = '업무와 AI를 하나의 공간에서';
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      [{ title: deckTitle, roleHint: 'cover' as const }],
+      { title: deckTitle, templateId: 'html-ppt-zhangzara-block-frame', maxSlides: 1, brief: deckTitle },
+    );
+    expect(cloned).toBeTruthy();
+    const salvaged = salvageMalformedMiniMaxSlideMarkup(cloned || '', deckTitle);
+    const slide1 = salvaged.match(
+      /<section[^>]*class="[^"]*\bslide\s+slide-1\b[^"]*"[^>]*>[\s\S]*?<\/section>/i,
+    )?.[0] || '';
+    expect(slide1).toBeTruthy();
+    const labelMatch = slide1.match(
+      /<div[^>]*\bclass\s*=\s*["'][^"']*\bhero-label\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
+    );
+    expect(labelMatch).not.toBeNull();
+    const labelVisible = String(labelMatch?.[1] ?? '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    // Short role pill, not the full deck title.
+    expect(labelVisible).not.toBe(deckTitle);
+    expect(labelVisible.length).toBeLessThanOrEqual(8);
+    expect(labelVisible).toMatch(/표지|개요|커버|Cover/i);
+  });
+
   it('루프538 — Grove forest kit demo chrome (landscape / grove-stat KPI / sidebar) is scrubbed', async () => {
     const html = await readFile(
       new URL(

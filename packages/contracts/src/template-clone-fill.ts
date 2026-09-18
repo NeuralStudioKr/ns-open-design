@@ -6989,6 +6989,85 @@ const NON_SLOT_WRAPPER_TAGS =
   'div|span|p|header|footer|small|blockquote|figure|figcaption|aside|table|section|article|dl|dt|dd|ul|ol|pre|code';
 
 /**
+ * 루프558 — Kit-owned chrome / deco slot allowlist. These class names identify
+ * template-owned visual chrome (Block Frame hero/close/deco shells, Neo cards,
+ * corner brackets, chart axes, stat pills, official Motif deco layers).
+ *
+ * When a slide's model output is title-only, the placeholder branch previously
+ * ran `stripLeftoverTemplateDemoCopy` → `stripNonSlotWrappers`, which treated
+ * `<div class="nb-label hero-label">Presentation Template</div>` and
+ * `<div class="deco-yellow-bar">Get Started</div>` as "wrappers whose visible
+ * prose doesn't own a fill slot" and dropped them entirely — even though the
+ * kit's own `fillBlockFrameNeoSlots` refill pass (which runs AFTER strip) is
+ * specifically meant to swap chrome text into those slots. The refill then
+ * finds nothing to replace and the cover ships as label-less, subtitle-less,
+ * CTA-less blank frame with only the h1 remaining (user report 2026-09-17).
+ *
+ * Treat any wrapper whose `class=` contains one of these tokens as a kit slot
+ * that MUST survive `stripNonSlotWrappers`, regardless of visible prose.
+ */
+const KIT_OWNED_CHROME_SLOT_TOKENS: readonly string[] = [
+  'hero-frame',
+  'hero-label',
+  'hero-title',
+  'hero-subtitle',
+  'hero-tagline',
+  'hero-badge',
+  'hero-badges',
+  'hero-title-group',
+  'hero-meta',
+  'nb-label',
+  'nb-btn',
+  'nb-body',
+  'close-frame',
+  'close-title',
+  'close-subtitle',
+  'close-btn',
+  'corner-bracket',
+  'deco-pink-rect',
+  'deco-green-circle',
+  'deco-yellow-bar',
+  'deco-dots',
+  'deco-dots-bottom',
+  'deco-star',
+  'title-pill',
+  'main-title',
+  'stat-pill',
+  'stat-pills',
+  'pixel-hero-text',
+  'pixel-label',
+  'pixel-btn',
+  'pixel-particles',
+  'starfield',
+  'scanlines',
+  'grain',
+  'crt-glow',
+  'slide-content',
+  'chart-svg',
+  'chart-legend',
+  'card-deco',
+] as const;
+
+const KIT_OWNED_CHROME_SLOT_RE = new RegExp(
+  `\\bclass\\s*=\\s*["'][^"']*\\b(?:${KIT_OWNED_CHROME_SLOT_TOKENS.join('|')})\\b[^"']*["']`,
+  'i',
+);
+
+/**
+ * 루프558 — True when the wrapper's open tag carries a class token that is a
+ * template-kit chrome or deco slot. Those slots are the templates' own visual
+ * identity (Block Frame `hero-frame` + brackets + deco squares + yellow bar)
+ * and must survive `stripNonSlotWrappers` so `fillBlockFrameNeoSlots` /
+ * `fillEightBitOrbitKitSlide` / `restyleForeignIbMagazineCover` can refill
+ * them with topic-aware copy on a later pass.
+ */
+function wrapperIsKitOwnedChromeSlot(html: string): boolean {
+  const openMatch = /^<[^>]+>/.exec(String(html ?? ''));
+  if (!openMatch) return false;
+  return KIT_OWNED_CHROME_SLOT_RE.test(openMatch[0]);
+}
+
+/**
  * Drop block wrappers that do not own a fill slot. Slots and their
  * ancestors stay so `.slide-inner` / `.body` layout around a title
  * survives; sibling demo cards (`alts-grid`, unknown `.weird-grid`, …)
@@ -7005,7 +7084,13 @@ export function stripNonSlotWrappers(html: string): string {
       const rel = spanRelation(wrap, slot);
       return rel === 'same' || rel === 'ancestor' || rel === 'descendant';
     });
-    if (!keep && wrapperLooksLikeLeftoverContent(source.slice(wrap.start, wrap.end))) {
+    if (keep) continue;
+    const wrapHtml = source.slice(wrap.start, wrap.end);
+    // 루프558 — Kit-owned chrome / deco slots are refill targets, not
+    // wrapper leftovers. Preserve them so the kit-specific fill pass can
+    // rewrite them with topic-aware copy instead of losing them entirely.
+    if (wrapperIsKitOwnedChromeSlot(wrapHtml)) continue;
+    if (wrapperLooksLikeLeftoverContent(wrapHtml)) {
       drop.push(wrap);
     }
   }
@@ -11107,6 +11192,29 @@ function blockFrameNeoChromeLabel(input: { title: string; kicker: string }): str
 }
 
 /**
+ * 루프558 — Cover-specific role label for the block-frame `.hero-label`
+ * pill above the h1. The original template ships a short role like
+ * "Presentation Template" (a short brand-role chrome word, uppercase pink
+ * chip). Copying the full deck title into the pill duplicates the h1 and
+ * stretches the pink chip across the frame; user reports show a short
+ * "표지" reads cleaner. Prefer an explicit kicker (short role) → mapped
+ * English chrome word → "표지" fallback. This is intentionally NOT
+ * `blockFrameNeoChromeLabel`, which is optimized for section headers that
+ * want the topic reflected.
+ */
+function blockFrameNeoCoverRoleLabel(input: { title: string; kicker: string }): string {
+  const kicker = String(input.kicker ?? '').replace(/\s+/g, ' ').trim();
+  if (kicker) {
+    const mapped = BLOCK_FRAME_ENGLISH_CHROME_LABEL_KO[kicker.toLowerCase()];
+    if (mapped) return mapped;
+    if (!BLOCK_FRAME_ENGLISH_CHROME_LABEL_RE.test(kicker) && kicker.length <= 28) {
+      return kicker;
+    }
+  }
+  return '표지';
+}
+
+/**
  * 루프554 — Block Frame leftover: `개요` 반복, `…문제와 제공 가치`,
  * `문제/사용자/맥락` 불릿, generic `자세히 보기` CTA를 topic-aware로 덮는다.
  */
@@ -11577,17 +11685,33 @@ function fillBlockFrameNeoSlots(
     return body;
   }
   const lines = biennaleFillLines(input, 4);
-  const chromeLabel = blockFrameNeoChromeLabel(input);
-  const decoBrand =
-    topicKeywordForSynthBody(input.title).slice(0, 24)
-    || chromeLabel
-    || 'Brand';
+  // 루프558 — Block Frame slide-1 (`.hero-frame`) is the cover shell. Its
+  // `.hero-label` slot is a small pink pill above the title — the template
+  // originally shows "Presentation Template" (a short role label), NOT the
+  // deck title. Stamping the full deck title in the pill duplicates the h1
+  // and makes the pink chip stretch across the frame. Prefer a short role
+  // label ("표지") for Korean decks and let non-cover slides keep the
+  // topic-aware chrome label.
+  const isCoverShell = /\bhero-frame\b/i.test(body);
+  const chromeLabel = isCoverShell
+    ? blockFrameNeoCoverRoleLabel(input)
+    : blockFrameNeoChromeLabel(input);
+  const topicCta = blockFrameTopicAwareCta(input);
+  // 루프558 — `.deco-yellow-bar` is the block-frame kit's bottom-tab CTA
+  // (template ships "Get Started"). Use a short CTA on covers instead of
+  // reflecting the whole deck title back into the tab. Non-cover slides
+  // keep the topic-shortened brand keyword for continuity with the
+  // template's original shape.
+  const decoBrand = isCoverShell
+    ? topicCta.slice(0, 24)
+    : (topicKeywordForSynthBody(input.title).slice(0, 24)
+      || chromeLabel
+      || 'Brand');
   let next = body;
   next = replaceFirstExactClassText(next, 'hero-label', chromeLabel);
   // Never stamp a fixed product name — deco chrome follows this deck's title/topic.
   next = replaceFirstExactClassText(next, 'deco-yellow-bar', decoBrand);
   next = replaceFirstExactClassText(next, 'visual-label', chromeLabel || input.title);
-  const topicCta = blockFrameTopicAwareCta(input);
   next = replaceFirstExactClassText(next, 'nb-btn', topicCta);
   next = replaceFirstExactClassText(next, 'close-btn', '다음 단계');
 
@@ -12041,6 +12165,45 @@ function refillEmptyBlockFrameNeoLabels(html: string, chromeLabel: string): stri
     /(<(?:div|span)\b[^>]*\bnb-label\b[^>]*>)\s*(<\/(?:div|span)>)/gi,
     (_m, open: string, close: string) => `${open}${escapeHtml(label)}${close}`,
   );
+}
+
+/**
+ * 루프558 — Cover slot classes across kits that carry the deck's short lede
+ * beneath the hero title. Block Frame uses `.hero-subtitle`, Capsule uses
+ * `.subtitle`, 8-Bit Orbit uses `.hero-tagline`, Studio uses `.subhead`.
+ * When a title-only outline lands on a cover shell, `fillSlideShell`'s
+ * placeholder branch empties these `<p>` elements; if we do nothing more,
+ * the follow-on `stripEightBitOrbitCatalogDemoCopy` drops the whole `<p>`,
+ * leaving the cover as h1-only. Synthesize a short cover lede into ANY of
+ * these slots that is still empty so the cover ships with real chrome.
+ */
+const COVER_SUBTITLE_SLOT_CLASSES: readonly string[] = [
+  'hero-subtitle',
+  'hero-tagline',
+  'subtitle',
+  'subhead',
+  'cover-subhead',
+  'close-subtitle',
+] as const;
+
+function fillCoverSubtitleSlotsIfEmpty(html: string, lead: string): string {
+  const source = String(html ?? '');
+  if (!source) return source;
+  const value = String(lead ?? '').replace(/\s+/g, ' ').trim();
+  if (!value) return source;
+  let next = source;
+  for (const className of COVER_SUBTITLE_SLOT_CLASSES) {
+    const re = new RegExp(
+      `(<(?:p|div|span)\\b[^>]*\\bclass\\s*=\\s*["'][^"']*\\b${className}\\b[^"']*["'][^>]*>)([\\s\\S]*?)(<\\/(?:p|div|span)>)`,
+      'gi',
+    );
+    next = next.replace(re, (full, open: string, inner: string, close: string) => {
+      const visible = String(inner).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim();
+      if (visible.length > 0) return full;
+      return `${open}${escapeHtml(value)}${close}`;
+    });
+  }
+  return next;
 }
 
 /**
@@ -13021,6 +13184,17 @@ function fillSlideShell(
   if (slideLooksLikeProductLaunchKit(shell.attrs, body)) {
     body = fillProductLaunchKitSlide(body, { title, lead, bodyText, kicker, fillLines }, shell.attrs);
   }
+  // 루프558 — Cover slide (index 0) with empty subtitle slots must get a
+  // synthesized lead BEFORE `stripEightBitOrbitCatalogDemoCopy` drops empty
+  // `<p>` elements. Otherwise a title-only cover ships as a giant blank frame
+  // with only the h1 (user report 2026-09-17). Preserve any model-provided
+  // lead; only fill when the slot is empty.
+  if (index === 0 && (content.roleHint === 'cover' || !content.roleHint)) {
+    body = fillCoverSubtitleSlotsIfEmpty(
+      body,
+      lead || bodyText || synthesizeTemplateCloneCoverLead(title),
+    );
+  }
   body = stripCapsuleCatalogDemoCopy(body);
   body = stripBlockFrameNeoCatalogDemoCopy(body);
   body = stripEightBitOrbitCatalogDemoCopy(body);
@@ -13738,22 +13912,96 @@ function unwrapSlideOnlyContainer(source: string, wrapperOpenRe: RegExp, tag: st
   if (closeStart < 0) return source;
 
   const inner = source.slice(openEnd, closeStart);
-  const slideBlocks = collectSlideHostBlocks(inner);
+  const slideBlocks = collectSlideHostBlockRanges(inner);
   if (slideBlocks.length < 2) return source;
 
-  // Ignore native prev/next/counter chrome wrappers when deciding whether
-  // the container is "slide-only" — those are dead links after
-  // `stripScriptsAndNav`. Depth-strip them so we don't leak the raw counter
-  // text or the button HTML into `<body>` after unwrap.
-  const chromeStripped = stripInertLeftoverDecoBlocks(stripSlideNavChromeBlocks(inner));
-  let residue = chromeStripped;
-  for (const block of collectSlideHostBlocks(chromeStripped)) {
+  // 루프558 — Chrome / inert-deco stripping must apply ONLY to the
+  // container-level content that sits BETWEEN slide sections (prev/next
+  // buttons, slide-counter, page-dot chrome). The prior implementation ran
+  // strip over the whole `inner`, which ate slide-internal deco elements
+  // (`.deco-dots`, `.deco-pink-rect`, `.deco-green-circle` on Block Frame
+  // slide-1) because their empty-div signature matches the "inert deco"
+  // regex. Slice out slide sections first, chrome-strip the gaps only,
+  // then reassemble with the ORIGINAL slide-section HTML intact.
+  const gapChromeStripped = stripInterSlideChromeGaps(inner, slideBlocks);
+  let residue = gapChromeStripped;
+  for (const block of collectSlideHostBlocks(gapChromeStripped)) {
     residue = residue.replace(block, '');
   }
   residue = residue.replace(/<!--[\s\S]*?-->/g, '');
   if (/<[a-zA-Z]/.test(residue)) return source;
 
-  return `${source.slice(0, openStart)}${chromeStripped}${source.slice(closeEnd)}`;
+  return `${source.slice(0, openStart)}${gapChromeStripped}${source.slice(closeEnd)}`;
+}
+
+/**
+ * 루프558 — Apply `stripInertLeftoverDecoBlocks` + `stripSlideNavChromeBlocks`
+ * to the between-slide gaps of a slide-container's inner content while
+ * leaving every slide section byte-identical. Slide sections' own visual
+ * chrome (Block Frame `.hero-frame` deco squares, 8-Bit `.starfield`, …)
+ * must survive so kit fill / heal passes can still reason about them.
+ */
+function stripInterSlideChromeGaps(
+  inner: string,
+  slideBlocks: Array<{ start: number; end: number }>,
+): string {
+  if (slideBlocks.length === 0) {
+    return stripInertLeftoverDecoBlocks(stripSlideNavChromeBlocks(inner));
+  }
+  const chunks: string[] = [];
+  let cursor = 0;
+  for (const block of slideBlocks) {
+    if (block.start > cursor) {
+      const gap = inner.slice(cursor, block.start);
+      chunks.push(stripInertLeftoverDecoBlocks(stripSlideNavChromeBlocks(gap)));
+    }
+    chunks.push(inner.slice(block.start, block.end));
+    cursor = block.end;
+  }
+  if (cursor < inner.length) {
+    const tail = inner.slice(cursor);
+    chunks.push(stripInertLeftoverDecoBlocks(stripSlideNavChromeBlocks(tail)));
+  }
+  return chunks.join('');
+}
+
+/**
+ * 루프558 — Range-aware variant of `collectSlideHostBlocks` used by
+ * `stripInterSlideChromeGaps` to slice inter-slide gaps without re-parsing
+ * strings. Returns [start, end) offsets into the input.
+ */
+function collectSlideHostBlockRanges(
+  html: string,
+): Array<{ start: number; end: number }> {
+  const ranges: Array<{ start: number; end: number }> = [];
+  const openRe =
+    /<(section|div|article|main)\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b[^"']*["'][^>]*>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = openRe.exec(html)) !== null) {
+    const tag = m[1] ?? 'section';
+    const start = m.index;
+    const openEnd = start + m[0].length;
+    const tagRe = new RegExp(`</?${tag}\\b[^>]*>`, 'gi');
+    tagRe.lastIndex = openEnd;
+    let depth = 1;
+    let closeEnd = -1;
+    let tm: RegExpExecArray | null;
+    while ((tm = tagRe.exec(html)) !== null) {
+      if (tm[0]!.startsWith('</')) {
+        depth -= 1;
+        if (depth === 0) {
+          closeEnd = tm.index + tm[0]!.length;
+          break;
+        }
+      } else if (!tm[0]!.endsWith('/>')) {
+        depth += 1;
+      }
+    }
+    if (closeEnd < 0) break;
+    ranges.push({ start, end: closeEnd });
+    openRe.lastIndex = closeEnd;
+  }
+  return ranges;
 }
 
 function collectSlideHostBlocks(html: string): string[] {
