@@ -1437,7 +1437,9 @@ function sanitizeServiceIntroSynthResult(
   const remapTrio = itemTitlesLookLikeProcessTrio(rawTitles);
   const items = rawItems.map((item, itemIndex) => {
     const title = String(item.title ?? '').replace(/\s+/g, ' ').trim();
-    const nextTitle = remapTrio || looksLikeBlockedOverviewOrTrioTitle(title)
+    const nextTitle = remapTrio
+      || looksLikeBlockedOverviewOrTrioTitle(title)
+      || /^(?:실무자|리더|운영자)$/.test(title)
       ? serviceIntroSynthTitleFallback(noun, itemIndex)
       : title;
     const body = String(item.body ?? '').replace(/\s+/g, ' ').trim();
@@ -1941,6 +1943,24 @@ export function synthesizeTemplateCloneSlideBody(
         : picked.lead,
       items: picked.items,
     }, cover, label, brief);
+  }
+  if (kitKey === GROVE_KIT_KEY || kitKey === STUDIO_KIT_KEY) {
+    const topic = resolveLockedTopicNoun(cover, brief, label);
+    const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
+    const pack = kitKey === GROVE_KIT_KEY
+      ? groveSlideCopyPack(brand)
+      : studioSlideCopyPack(brand);
+    const roles = GROVE_STUDIO_SLIDE_ROLES;
+    const role = roles[Math.max(0, index - 1) % roles.length]!;
+    const picked = pack[role];
+    return sanitizeServiceIntroSynthResult({
+      roleHint: role === 'list' || role === 'compare' ? 'list' : 'cards',
+      lead: picked.lead,
+      body: picked.items.length > 0
+        ? picked.items.map((item) => `${item.title}: ${item.body}`).join('\n')
+        : picked.lead,
+      items: picked.items,
+    }, cover, picked.heading || label, brief);
   }
   if (kitKey === PRODUCT_LAUNCH_HALO_KIT_KEY) {
     // These kits previously returned an almost empty slide to avoid
@@ -3080,6 +3100,37 @@ export const BLOCK_FRAME_NEO_KIT_KEY = 'block-frame-neo' as const;
 /** Stable kit key for Zhangzara Cobalt Grid (Field Office Quarterly). */
 export const COBALT_GRID_KIT_KEY = 'cobalt-grid' as const;
 
+/** Stable kit key for Zhangzara Grove forest editorial. */
+export const GROVE_KIT_KEY = 'grove' as const;
+
+/** Stable kit key for Zhangzara Studio acid-yellow poster. */
+export const STUDIO_KIT_KEY = 'studio' as const;
+
+const GROVE_STUDIO_SLIDE_ROLES = [
+  'cover',
+  'chapter',
+  'statement',
+  'split',
+  'stats',
+  'list',
+  'quote',
+  'compare',
+  'chapter2',
+  'statement2',
+  'chart',
+  'end',
+] as const;
+
+type GroveStudioSlideRole = (typeof GROVE_STUDIO_SLIDE_ROLES)[number];
+
+type GroveStudioRoleCopy = {
+  heading: string;
+  lead: string;
+  items: Array<{ title: string; body: string }>;
+};
+
+type GroveStudioCopyPack = Record<GroveStudioSlideRole, GroveStudioRoleCopy>;
+
 /**
  * 루프557 — Cobalt Grid leftover heal gate.
  * `.s-cover` + `.s-colophon` or `pixel-glitch` + `.pagenum`.
@@ -3112,6 +3163,8 @@ export function resolveTemplateCloneKitKey(html: string): string | null {
   if (officialLookIsProductLaunchHalo(source)) return PRODUCT_LAUNCH_HALO_KIT_KEY;
   if (officialLookIsNeoBrutalBlockFrame(source)) return BLOCK_FRAME_NEO_KIT_KEY;
   if (cobaltGridLeftoverHealShouldRun(source)) return COBALT_GRID_KIT_KEY;
+  if (officialLookIsGrove(source)) return GROVE_KIT_KEY;
+  if (officialLookIsStudio(source)) return STUDIO_KIT_KEY;
   return null;
 }
 
@@ -9591,7 +9644,7 @@ const GROVE_STAT_VALUE_DEMO_RE = /^(?:73\s*%|4\.8\s*[×xX]|#1)$/i;
  * global phrase strip — other kits use real percentages.
  */
 const GROVE_LEFTOVER_BODY_RE =
-  /The landscape has shifted|The brands that will lead the next decade|Strategy\s*[·•]\s*Presentation|Three numbers that define the|Of consumers distrust brand-created content|Higher engagement for community-driven campaigns|The most radical thing a brand can do|\[Prepared by\]|\[Confidential\]|\[IMAGE PLACEHOLDER\]|Grove Presentation|A \[type of work\] for \[audience|73\s*%[\s\S]{0,240}?4\.8\s*[×xX]|Brand as broadcaster|\[Presentation Title Goes/i;
+  /The landscape has shifted|The brands that will lead the next decade|Strategy\s*[·•]\s*Presentation|Three numbers that define the|Of consumers distrust brand-created content|Higher engagement for community-driven campaigns|The most radical thing a brand can do|\[Prepared by\]|\[Confidential\]|\[IMAGE PLACEHOLDER\]|Grove Presentation|A \[type of work\] for \[audience|73\s*%[\s\S]{0,240}?4\.8\s*[×xX]|Brand as broadcaster|\[Presentation Title Goes|The Thesis|The Argument|Core Insight|What We Found|The Path Forward|Market\s*[·•]\s*Metrics|Consumer trust by category|An honest assessment of where the market|Stop managing perception|The work begins when the presentation/i;
 
 const GROVE_SIDEBAR_LEFTOVER_RE =
   /Strategy\s*[·•]\s*Presentation|The Thesis|The Evidence|By The Numbers|Our Approach|Before\s*\/\s*After|The Recommendation/i;
@@ -9824,6 +9877,17 @@ function fillStudioKitSlide(
       },
     );
   }
+  const visibleHeading = visibleDeckCopy(
+    next.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
+  );
+  if (visibleHeading && (
+    looksLikeServiceIntroLeftoverTitle(visibleHeading)
+    || STUDIO_LEFTOVER_BODY_RE.test(visibleHeading)
+    || GROVE_LEFTOVER_BODY_RE.test(visibleHeading)
+  )) {
+    next = replaceFirstHeadingText(next, input.title);
+  }
+  next = fillGroveStudioChartBars(next, lines);
   return next;
 }
 
@@ -9991,25 +10055,39 @@ export function healStudioLeftoverCatalogCopy(
       continue;
     }
     const body = out.slice(span.bodyStart, span.bodyEnd);
-    if (
-      !looksLikeLeftoverTemplateDemoDeck(body)
-      && !STUDIO_LEFTOVER_BODY_RE.test(body)
-    ) {
+    const heading = visibleDeckCopy(
+      body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
+    );
+    if (!groveStudioSlideNeedsHeal(body, heading)) {
       continue;
     }
     const slide = outline[i] ?? outline[Math.min(i, outline.length - 1)];
-    const title = slide?.title || harvested[i] || harvested[0] || '슬라이드';
+    const topic = resolveLockedTopicNoun(brief, harvested[0], slide?.title);
+    const pack = studioSlideCopyPack(topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver');
+    const role = groveStudioPackForRole(pack, span.attrs, i);
+    const title = rewriteLeftoverKitSlideTitle(
+      slide?.title || harvested[i] || harvested[0] || '',
+      role.heading,
+    );
     const nextBody = fillStudioKitSlide(body, span.attrs, {
       title,
-      lead: slide?.lead ?? '',
-      bodyText: slide?.body ?? '',
+      lead: looksLikeServiceIntroLeftoverTitle(slide?.lead ?? '')
+        || SERVICE_INTRO_LEFTOVER_BODY_RE.test(slide?.lead ?? '')
+        ? role.lead
+        : (slide?.lead || role.lead),
+      bodyText: slide?.body && !SERVICE_INTRO_LEFTOVER_BODY_RE.test(slide.body)
+        ? slide.body
+        : role.lead,
       kicker: slide?.kicker ?? '',
-      fillLines: templateCloneSlideFillLines(slide ?? { title }),
+      fillLines: role.items.length > 0 ? role.items : templateCloneSlideFillLines(slide ?? { title }),
+      topic,
     });
     if (nextBody === body) continue;
     out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
   }
-  return stripStudioCreativeCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out));
+  return wipeGroveStudioLeftoverPhrases(
+    stripStudioCreativeCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out)),
+  );
 }
 
 const RETRO_WINDOWS_DEMO_QUARTERS = ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'] as const;
@@ -11007,6 +11085,185 @@ export function healProductLaunchLeftoverCatalogCopy(
     .replace(/Teamver을/g, 'Teamver를');
 }
 
+function groveStudioRoleCopy(
+  heading: string,
+  lead: string,
+  items: Array<{ title: string; body: string }> = [],
+): GroveStudioRoleCopy {
+  return { heading, lead, items };
+}
+
+function groveSlideCopyPack(topic: string): GroveStudioCopyPack {
+  const brand = topic || 'Teamver';
+  return {
+    cover: groveStudioRoleCopy('표지', `${brand}는 초안과 수정을 같은 보드에서 끝낸다.`),
+    chapter: groveStudioRoleCopy(
+      `${brand}가 묶는 일`,
+      `${brand}는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.`,
+    ),
+    statement: groveStudioRoleCopy(
+      '보드 위에서 고친다',
+      `흩어진 메모가 ${brand} 보드에 모이면, 고치는 속도가 회의보다 빨라진다.`,
+    ),
+    split: groveStudioRoleCopy(`${brand}가 남기는 증거`, `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.`, [
+      { title: '같은 보드', body: `${brand}에서 파일과 대화를 한 맥락으로 연다.` },
+      { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+    ]),
+    stats: groveStudioRoleCopy(`${brand} 운영`, `${brand}가 한 화면에서 남기는 세 가지.`, [
+      { title: '같은 화면', body: `${brand}에서 초안과 리뷰가 한 보드에 남는다.` },
+      { title: '나뉜 권한', body: `${brand}에서 누가 고칠 수 있는지 분명하다.` },
+      { title: '되돌리기', body: `${brand}에서 바꾼 기록을 열어 이전으로 돌린다.` },
+    ]),
+    list: groveStudioRoleCopy(`${brand}에서 바로 쓰는 것`, `${brand} 보드에 초안을 붙이고 같은 화면에서 고친다.`, [
+      { title: '초안', body: `${brand} 보드에 바로 붙일 수 있는 초안이 열린다.` },
+      { title: '수정', body: `${brand}에서는 보낸 뒤에도 같은 화면에서 문장과 레이아웃을 고친다.` },
+      { title: '공유', body: `${brand}에 필요한 사람만 초대해 보기와 고치기를 나눈다.` },
+    ]),
+    quote: groveStudioRoleCopy(
+      '보드에서',
+      `${brand}에서는 초안을 보낸 뒤에도 같은 화면에서 고칠 수 있어야 일이 끝난다.`,
+    ),
+    compare: groveStudioRoleCopy('바꾸기 전과 후', `${brand}로 옮기면 파일이 흩어지지 않는다.`, [
+      { title: '흩어진 파일', body: '초안과 댓글이 메일과 폴더로 갈라진다.' },
+      { title: '같은 보드', body: `${brand}에서 초안·권한·이력이 한 화면에 남는다.` },
+    ]),
+    chapter2: groveStudioRoleCopy(
+      '도입 단계',
+      `한 팀 보드를 ${brand}로 옮긴 뒤 리뷰 습관과 조직 기준을 고정한다.`,
+    ),
+    statement2: groveStudioRoleCopy(
+      '다음으로',
+      `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.`,
+    ),
+    chart: groveStudioRoleCopy(`${brand} 작업 흐름`, `${brand}에서 보드를 열고 권한을 나눈 뒤 이력을 남긴다.`, [
+      { title: '보드를 연다', body: `흩어진 메모를 ${brand} 워크스페이스로 옮긴다.` },
+      { title: '권한을 나눈다', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '이력을 남긴다', body: `${brand} 보드에 바꾼 사람과 시점을 고정한다.` },
+      { title: '리뷰한다', body: `${brand}에서 댓글과 버전을 같은 화면에서 본다.` },
+      { title: '보낸다', body: `${brand}에서 필요한 사람만 초대해 결과를 넘긴다.` },
+    ]),
+    end: groveStudioRoleCopy(
+      '보드에서 이어 쓰기',
+      `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.`,
+    ),
+  };
+}
+
+function studioSlideCopyPack(topic: string): GroveStudioCopyPack {
+  const brand = topic || 'Teamver';
+  return {
+    cover: groveStudioRoleCopy(brand, `${brand}는 초안과 수정을 같은 보드에서 끝낸다.`),
+    chapter: groveStudioRoleCopy(
+      `${brand}가 하는 일`,
+      `${brand}는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.`,
+    ),
+    statement: groveStudioRoleCopy(
+      '회의가 아니라 보드에서',
+      `흩어진 메모가 ${brand} 보드에 모이면 고치는 속도가 회의보다 빨라진다.`,
+    ),
+    split: groveStudioRoleCopy('작업 방식', `${brand}에서 초안을 붙이고 권한을 나눈다.`, [
+      { title: '붙인다', body: `${brand} 보드에 초안을 바로 연다.` },
+      { title: '나눈다', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '남긴다', body: `${brand}에서 바꾼 기록을 같은 화면에 둔다.` },
+    ]),
+    stats: groveStudioRoleCopy(`${brand}가 남기는 것`, `${brand}에서 초안과 리뷰가 한 보드에 남는다.`, [
+      { title: '같은 화면', body: `${brand}에서 초안과 리뷰가 흩어지지 않는다.` },
+      { title: '나뉜 권한', body: `${brand}에서 누가 고칠 수 있는지 분명하다.` },
+      { title: '되돌리기', body: `${brand}에서 이전 버전을 다시 연다.` },
+    ]),
+    list: groveStudioRoleCopy('바로 쓰는 세 가지', `${brand}에서 초안·수정·공유가 한 흐름이다.`, [
+      { title: '초안', body: `${brand} 보드에 바로 붙일 수 있는 초안이 열린다.` },
+      { title: '수정', body: `${brand}에서는 보낸 뒤에도 같은 화면에서 고친다.` },
+      { title: '공유', body: `${brand}에 필요한 사람만 초대해 보기와 고치기를 나눈다.` },
+    ]),
+    quote: groveStudioRoleCopy(
+      '한 줄',
+      `${brand}에서는 초안을 보낸 뒤에도 같은 화면에서 고칠 수 있어야 일이 끝난다.`,
+    ),
+    compare: groveStudioRoleCopy('전과 후', `${brand}로 옮기면 파일이 한곳에 모인다.`, [
+      { title: '이전', body: '초안과 댓글이 메일과 폴더로 갈라진다.' },
+      { title: '이후', body: `${brand}에서 초안·권한·이력이 한 화면에 남는다.` },
+    ]),
+    chapter2: groveStudioRoleCopy('쓰는 자리', `${brand}에서 실무는 초안을 붙이고 리더는 권한을 나눈다.`),
+    statement2: groveStudioRoleCopy(
+      '이어서 고친다',
+      `${brand}에서 댓글과 수정이 같은 화면에서 끊기지 않는다.`,
+    ),
+    chart: groveStudioRoleCopy('한 해의 작업', `${brand}에서 보드를 열고 권한을 나눈 뒤 이력을 남긴다.`, [
+      { title: '연다', body: `흩어진 메모를 ${brand}로 옮긴다.` },
+      { title: '나눈다', body: `${brand}에서 보기와 고치기를 정한다.` },
+      { title: '남긴다', body: `${brand} 보드에 바꾼 시점을 고정한다.` },
+      { title: '본다', body: `${brand}에서 댓글과 버전을 연다.` },
+      { title: '보낸다', body: `${brand}에서 필요한 사람만 초대한다.` },
+    ]),
+    end: groveStudioRoleCopy('다음에', `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.`),
+  };
+}
+
+function groveStudioPackForRole(
+  pack: GroveStudioCopyPack,
+  attrs: string,
+  index = 0,
+): GroveStudioRoleCopy {
+  if (/\bslide--cover\b/i.test(attrs)) return pack.cover;
+  if (/\bslide--stats\b/i.test(attrs)) return pack.stats;
+  if (/\bslide--split\b/i.test(attrs)) return pack.split;
+  if (/\bslide--list\b/i.test(attrs)) return pack.list;
+  if (/\bslide--quote\b/i.test(attrs)) return pack.quote;
+  if (/\bslide--compare\b/i.test(attrs)) return pack.compare;
+  if (/\bslide--chart\b/i.test(attrs)) return pack.chart;
+  if (/\bslide--end\b/i.test(attrs)) return pack.end;
+  if (/\bslide--chapter\b/i.test(attrs)) return index >= 8 ? pack.chapter2 : pack.chapter;
+  if (/\bslide--statement\b/i.test(attrs)) return index >= 8 ? pack.statement2 : pack.statement;
+  const role = GROVE_STUDIO_SLIDE_ROLES[Math.max(0, index) % GROVE_STUDIO_SLIDE_ROLES.length]!;
+  return pack[role];
+}
+
+function rewriteLeftoverKitSlideTitle(title: string, fallback: string): string {
+  const text = String(title ?? '').replace(/\s+/g, ' ').trim();
+  if (!text || looksLikeServiceIntroLeftoverTitle(text) || looksLikeBlockedOverviewOrTrioTitle(text)) {
+    return fallback;
+  }
+  return text;
+}
+
+function groveStudioSlideNeedsHeal(body: string, heading: string): boolean {
+  if (looksLikeLeftoverTemplateDemoDeck(body)) return true;
+  if (GROVE_LEFTOVER_BODY_RE.test(body) || STUDIO_LEFTOVER_BODY_RE.test(body)) return true;
+  if (GROVE_SIDEBAR_LEFTOVER_RE.test(body)) return true;
+  if (looksLikeServiceIntroLeftoverTitle(heading)) return true;
+  const visible = visibleDeckCopy(body);
+  if (SERVICE_INTRO_LEFTOVER_BODY_RE.test(visible)) return true;
+  if (SERVICE_INTRO_LEFTOVER_CARD_TITLE_RE.test(heading)) return true;
+  if (/파일럿|확대 —|정착 —|핵심 포인트/.test(visible)) return true;
+  if (/\b(?:Market\s*[·•]\s*Metrics|The Argument|The Thesis|Core Insight|What We Found)\b/i.test(visible)) {
+    return true;
+  }
+  return false;
+}
+
+function fillGroveStudioChartBars(
+  body: string,
+  lines: Array<{ title: string; body: string }>,
+): string {
+  if (!/\bbar-col\b/i.test(body)) return body;
+  return replaceExactClassBlocksBySequence(body, 'bar-col', lines, (block, line, index) => {
+    const resolved = resolveTemplateCloneCardFill(line);
+    let filled = replaceFirstExactClassText(
+      block,
+      'bar-x-label',
+      resolved.title || resolved.body || String(index + 1).padStart(2, '0'),
+    );
+    const metricSource = titleLooksLikeMetric(resolved.title)
+      ? resolved.title
+      : titleLooksLikeMetric(resolved.body)
+        ? resolved.body
+        : String(index + 1).padStart(2, '0');
+    return replaceFirstExactClassText(filled, 'bar-val', metricSource);
+  });
+}
+
 function replaceGroveStatValue(block: string, text: string): string {
   return block.replace(
     /(<[^>]*\bgrove-stat-val\b[^>]*>)([\s\S]*?)(<\/[^>]+>)/i,
@@ -11019,8 +11276,22 @@ function fillGroveLeftoverKitSlide(
   attrs: string,
   input: StudioCreativeFillInput,
 ): string {
-  let next = fillStudioKitSlide(body, attrs, input);
-  const lines = biennaleFillLines(input, 6);
+  const topic = resolveLockedTopicNoun(input.topic, input.title, input.lead, input.bodyText);
+  const pack = groveSlideCopyPack(topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver');
+  const role = groveStudioPackForRole(pack, attrs);
+  const heading = rewriteLeftoverKitSlideTitle(input.title, role.heading);
+  const seeded: StudioCreativeFillInput = {
+    ...input,
+    title: heading,
+    lead: looksLikeServiceIntroLeftoverTitle(input.lead) || SERVICE_INTRO_LEFTOVER_BODY_RE.test(input.lead)
+      ? role.lead
+      : (input.lead || role.lead),
+    bodyText: SERVICE_INTRO_LEFTOVER_BODY_RE.test(input.bodyText) ? role.lead : (input.bodyText || role.lead),
+    fillLines: role.items.length > 0 ? role.items : input.fillLines,
+    topic,
+  };
+  let next = fillStudioKitSlide(body, attrs, seeded);
+  const lines = biennaleFillLines(seeded, 6);
   if (/\bgrove-stat\b/i.test(next)) {
     next = replaceExactClassBlocksBySequence(next, 'grove-stat', lines, (block, line, index) => {
       const resolved = resolveTemplateCloneCardFill(line);
@@ -11054,15 +11325,15 @@ function fillGroveLeftoverKitSlide(
       next = replaceFirstExactClassText(
         next,
         'grove-sidebar',
-        input.kicker || input.title,
+        seeded.kicker || seeded.title,
       );
     }
   }
-  const heading = visibleDeckCopy(
+  const visibleHeading = visibleDeckCopy(
     next.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
   );
-  if (heading && GROVE_LEFTOVER_BODY_RE.test(heading)) {
-    next = replaceFirstHeadingText(next, input.title);
+  if (visibleHeading && (GROVE_LEFTOVER_BODY_RE.test(visibleHeading) || looksLikeServiceIntroLeftoverTitle(visibleHeading))) {
+    next = replaceFirstHeadingText(next, seeded.title);
   }
   const kicker = visibleDeckCopy(
     /<[^>]*\bkicker\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
@@ -11073,14 +11344,27 @@ function fillGroveLeftoverKitSlide(
   const lead = visibleDeckCopy(
     /<[^>]*\blead\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
   );
-  if (lead && GROVE_LEFTOVER_BODY_RE.test(lead)) {
+  if (lead && (GROVE_LEFTOVER_BODY_RE.test(lead) || SERVICE_INTRO_LEFTOVER_BODY_RE.test(lead))) {
     next = replaceFirstExactClassText(
       next,
       'lead',
-      input.lead || input.bodyText || input.title,
+      seeded.lead || seeded.bodyText || seeded.title,
     );
   }
-  return next;
+  next = fillGroveStudioChartBars(next, role.items.length > 0 ? role.items : lines);
+  return wipeGroveStudioLeftoverPhrases(next);
+}
+
+function wipeGroveStudioLeftoverPhrases(html: string): string {
+  return String(html ?? '')
+    .replace(GROVE_LEFTOVER_BODY_RE, '')
+    .replace(SERVICE_INTRO_LEFTOVER_BODY_RE, '')
+    .replace(/파일럿\s*—\s*작은 팀이나 단일 업무에서 빠르게 파일럿을 시작/g, '')
+    .replace(/확대\s*—\s*반복 사용 패턴을 기준으로 템플릿과 권한 정책을 확장/g, '')
+    .replace(/정착\s*—\s*성과 지표와 운영 책임을 정해 조직 표준으로 정착/g, '')
+    .replace(/Market\s*[·•]\s*Metrics/gi, '')
+    .replace(/The Argument|The Thesis|Core Insight|What We Found|The Path Forward/gi, '')
+    .replace(/<(p|span|div|h[1-3])\b[^>]*>\s*<\/\1>/gi, '');
 }
 
 /**
@@ -11125,22 +11409,39 @@ export function healGroveLeftoverCatalogCopy(
       continue;
     }
     const body = out.slice(span.bodyStart, span.bodyEnd);
-    if (!looksLikeLeftoverTemplateDemoDeck(body) && !GROVE_LEFTOVER_BODY_RE.test(body)) {
+    const heading = visibleDeckCopy(
+      body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
+    );
+    if (!groveStudioSlideNeedsHeal(body, heading)) {
       continue;
     }
     const slide = outline[i] ?? outline[Math.min(i, outline.length - 1)];
-    const title = slide?.title || harvested[i] || harvested[0] || '슬라이드';
+    const topic = resolveLockedTopicNoun(briefText, harvested[0], slide?.title);
+    const pack = groveSlideCopyPack(topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver');
+    const role = groveStudioPackForRole(pack, span.attrs, i);
+    const title = rewriteLeftoverKitSlideTitle(
+      slide?.title || harvested[i] || harvested[0] || '',
+      role.heading,
+    );
     const nextBody = fillGroveLeftoverKitSlide(body, span.attrs, {
       title,
-      lead: slide?.lead ?? '',
-      bodyText: slide?.body ?? '',
+      lead: looksLikeServiceIntroLeftoverTitle(slide?.lead ?? '')
+        || SERVICE_INTRO_LEFTOVER_BODY_RE.test(slide?.lead ?? '')
+        ? role.lead
+        : (slide?.lead || role.lead),
+      bodyText: slide?.body && !SERVICE_INTRO_LEFTOVER_BODY_RE.test(slide.body)
+        ? slide.body
+        : role.lead,
       kicker: slide?.kicker ?? '',
-      fillLines: templateCloneSlideFillLines(slide ?? { title }),
+      fillLines: role.items.length > 0 ? role.items : templateCloneSlideFillLines(slide ?? { title }),
+      topic,
     });
     if (nextBody === body) continue;
     out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
   }
-  return stripStudioCreativeCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out));
+  return wipeGroveStudioLeftoverPhrases(
+    stripStudioCreativeCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out)),
+  );
 }
 
 /**
@@ -11307,7 +11608,7 @@ function blockFrameNeoCoverRoleLabel(input: { title: string; kicker: string }): 
   const kicker = String(input.kicker ?? '').replace(/\s+/g, ' ').trim();
   if (kicker) {
     const mapped = BLOCK_FRAME_ENGLISH_CHROME_LABEL_KO[kicker.toLowerCase()];
-    if (mapped) return mapped;
+    if (mapped) return mapped === '개요' ? '표지' : mapped;
     if (!BLOCK_FRAME_ENGLISH_CHROME_LABEL_RE.test(kicker) && kicker.length <= 28) {
       return kicker;
     }
@@ -13338,8 +13639,17 @@ function fillSlideShell(
   slotMap?: TemplateCloneSlotMap | null,
 ): string {
   let body = shell.body;
-  const title = content.title.trim()
+  const rawTitle = content.title.trim()
     || (slideLooksLikeProductLaunchKit(shell.attrs, body) ? '' : `Slide ${index + 1}`);
+  const kitShell = /\b(?:hero-frame|feature-card|timeline-step|data-box|nb-heading|slide--cover|slide--chapter|slide--stats|slide--list|slide--quote|slide--compare|slide--chart|slide--end|slide--split|slide--statement|intro-card|grove-stat|cover-meta)\b/i
+    .test(`${shell.attrs}\n${body}`);
+  const topicNoun = resolveLockedTopicNoun(rawTitle, content.lead, content.body);
+  const title = kitShell
+    ? rewriteLeftoverKitSlideTitle(
+      rawTitle,
+      serviceIntroSynthTitleFallback(topicNoun, Math.max(0, index - 1)),
+    )
+    : rawTitle;
   const bodyText = content.body?.trim() ?? '';
   const rawLead = content.lead?.trim() ?? '';
   const lead = rawLead && !isPlaceholderCloneBody(rawLead) ? rawLead : '';
@@ -13516,7 +13826,10 @@ function fillSlideShell(
     body = fillLongTableKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
   }
   if (/\bslide--(?:cover|chapter|split|stats|list|quote|compare|statement|chart|end)\b/i.test(shell.attrs)) {
-    body = fillStudioKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
+    body = officialLookIsGrove(`${shell.attrs}\n${body}`)
+      || /\bgrove-(?:sidebar|num|stat)\b/i.test(body)
+      ? fillGroveLeftoverKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines })
+      : fillStudioKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
   }
   if (/\bs[1-8]\b/i.test(shell.attrs)) {
     body = fillCreativeModeKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });

@@ -1,0 +1,1431 @@
+<!DOCTYPE html>
+<html lang="en" data-od-block-frame-hangul-type="1">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Teamver 소개</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+    :root {
+      --pink: #FE90E8;
+      --blue: #C0F7FE;
+      --green: #99E885;
+      --yellow: #F7CB46;
+      --cream: #FFDC8B;
+      --black: #000000;
+      --white: #FFFFFF;
+      --offwhite: #FFFDF5;
+      --border: 4px solid var(--black);
+      --shadow: 8px 8px 0px var(--black);
+      --shadow-sm: 4px 4px 0px var(--black);
+      --radius: 0px;
+      --radius-sm: 4px;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Inter', sans-serif;
+      background: var(--offwhite);
+      color: var(--black);
+    }
+
+    /* Slide container */
+    .slides-container {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+    }
+
+    .slide {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 1920px;
+      height: 1080px;
+      display: none;
+      padding: 60px;
+      overflow: hidden;
+    }
+
+    .slide.active {
+      display: flex;
+    }
+
+    /* Dot grid background pattern */
+    .dot-grid {
+      background-image: radial-gradient(circle, var(--black) 1.2px, transparent 1.2px);
+      background-size: 24px 24px;
+    }
+
+    /* Navigation */
+    .nav-controls {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      display: flex;
+      gap: 12px;
+      z-index: 1000;
+    }
+
+    .nav-btn {
+      width: 48px;
+      height: 48px;
+      border: 3px solid var(--black);
+      background: var(--white);
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      font-weight: 700;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .nav-btn:hover {
+      transform: translate(-2px, -2px);
+      box-shadow: 6px 6px 0px var(--black);
+    }
+
+    .nav-btn:active {
+      transform: translate(2px, 2px);
+      box-shadow: 2px 2px 0px var(--black);
+    }
+
+    .slide-counter {
+      position: fixed;
+      bottom: 24px;
+      left: 24px;
+      z-index: 1000;
+      font-family: 'Space Grotesk', monospace;
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      border: 3px solid var(--black);
+      background: var(--white);
+      padding: 10px 18px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* ============ UTILITY COMPONENTS ============ */
+
+    .nb-card {
+      border: var(--border);
+      background: var(--white);
+      box-shadow: var(--shadow);
+    }
+
+    .nb-card-flat {
+      border: var(--border);
+      background: var(--white);
+    }
+
+    .nb-label {
+      display: inline-block;
+      border: 3px solid var(--black);
+      padding: 6px 16px;
+      font-family: 'Space Grotesk', monospace;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: var(--white);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .nb-label-pink { background: var(--pink); }
+    .nb-label-blue { background: var(--blue); }
+    .nb-label-green { background: var(--green); }
+    .nb-label-yellow { background: var(--yellow); }
+    .nb-label-cream { background: var(--cream); }
+
+    .nb-btn {
+      display: inline-block;
+      border: 3px solid var(--black);
+      padding: 14px 32px;
+      font-family: 'Inter', sans-serif;
+      font-weight: 700;
+      font-size: 16px;
+      text-decoration: none;
+      color: var(--black);
+      background: var(--yellow);
+      box-shadow: var(--shadow-sm);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .nb-btn:hover {
+      transform: translate(-2px, -2px);
+      box-shadow: 6px 6px 0px var(--black);
+    }
+
+    .nb-heading-xl {
+      font-family: 'Inter', sans-serif;
+      font-weight: 900;
+      font-size: clamp(48px, 115.2px, 96px);
+      line-height: 0.95;
+      letter-spacing: -0.03em;
+      text-transform: uppercase;
+    }
+
+    .nb-heading-lg {
+      font-family: 'Inter', sans-serif;
+      font-weight: 800;
+      font-size: clamp(32px, 76.8px, 64px);
+      line-height: 1.0;
+      letter-spacing: -0.02em;
+      text-transform: uppercase;
+    }
+
+    .nb-heading-md {
+      font-family: 'Inter', sans-serif;
+      font-weight: 700;
+      font-size: clamp(24px, 48px, 40px);
+      line-height: 1.1;
+      letter-spacing: -0.01em;
+    }
+
+    .nb-body {
+      font-family: 'Inter', sans-serif;
+      font-size: clamp(16px, 23.04px, 20px);
+      line-height: 1.6;
+      font-weight: 500;
+    }
+
+    .nb-mono {
+      font-family: 'Space Grotesk', monospace;
+      font-weight: 500;
+      font-size: 15px;
+      letter-spacing: 0.02em;
+    }
+
+    /* Hangul: tracking + uppercase on Inter visually breaks syllables.
+       Do not rely on :lang(ko) alone — MiniMax often emits html[lang=en]. */
+    html:lang(ko) .nb-label,
+    html:lang(ko) .nb-heading-xl,
+    html:lang(ko) .nb-heading-lg,
+    html:lang(ko) .nb-heading-md,
+    html:lang(ko) .nb-mono,
+    html:lang(ko) .step-title,
+    html:lang(ko) .intro-card h3,
+    html:lang(ko) .intro-card p,
+    html:lang(ko) .feature-card h3,
+    html:lang(ko) .nb-card h3,
+    html:lang(ko) .card h3,
+    html:lang(ko) .quote-text,
+    html:lang(ko) .quote-author,
+    html:lang(ko) .data-label,
+    html:lang(ko) .data-num,
+    html:lang(ko) .stat-label,
+    html:lang(ko) .legend-item,
+    html:lang(ko) .team-name,
+    html:lang(ko) .team-role,
+    [data-od-block-frame-hangul-type="1"] .nb-label,
+    [data-od-block-frame-hangul-type="1"] .nb-heading-xl,
+    [data-od-block-frame-hangul-type="1"] .nb-heading-lg,
+    [data-od-block-frame-hangul-type="1"] .nb-heading-md,
+    [data-od-block-frame-hangul-type="1"] .nb-mono,
+    [data-od-block-frame-hangul-type="1"] .step-title,
+    [data-od-block-frame-hangul-type="1"] .intro-card h3,
+    [data-od-block-frame-hangul-type="1"] .data-label,
+    [data-od-block-frame-hangul-type="1"] .legend-item,
+    [data-od-hangul="1"] {
+      letter-spacing: 0;
+      text-transform: none;
+    }
+
+    /* Decorative elements */
+    .deco-circle {
+      border-radius: 50%;
+      border: var(--border);
+    }
+
+    .deco-square {
+      border: var(--border);
+    }
+
+    .tilt-left { transform: rotate(-8deg); }
+    .tilt-right { transform: rotate(8deg); }
+
+    .corner-bracket {
+      position: absolute;
+      width: 24px;
+      height: 24px;
+      border: 3px solid var(--black);
+    }
+    .corner-bracket.tl { border-right: none; border-bottom: none; top: 0; left: 0; }
+    .corner-bracket.tr { border-left: none; border-bottom: none; top: 0; right: 0; }
+    .corner-bracket.bl { border-right: none; border-top: none; bottom: 0; left: 0; }
+    .corner-bracket.br { border-left: none; border-top: none; bottom: 0; right: 0; }
+
+    /* ============ SLIDE 1: TITLE HERO ============ */
+    .slide-1 {
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: var(--cream);
+      position: relative;
+    }
+
+    .slide-1 .hero-frame {
+      position: relative;
+      width: 100%;
+      max-width: 900px;
+      border: var(--border);
+      background: var(--offwhite);
+      padding: 60px;
+      box-shadow: var(--shadow);
+    }
+
+    .slide-1 .hero-label {
+      margin-bottom: 24px;
+    }
+
+    .slide-1 .hero-title {
+      margin-bottom: 32px;
+    }
+
+    .slide-1 .hero-subtitle {
+      font-family: 'Space Grotesk', monospace;
+      font-size: 18px;
+      font-weight: 500;
+      max-width: 500px;
+    }
+
+    .slide-1 .deco-pink-rect {
+      position: absolute;
+      top: -30px;
+      right: 80px;
+      width: 100px;
+      height: 100px;
+      background: var(--pink);
+      border: var(--border);
+      box-shadow: var(--shadow-sm);
+      transform: rotate(12deg);
+    }
+
+    .slide-1 .deco-green-circle {
+      position: absolute;
+      bottom: 60px;
+      right: 120px;
+      width: 60px;
+      height: 60px;
+      background: var(--green);
+      border: var(--border);
+      border-radius: 50%;
+    }
+
+    .slide-1 .deco-yellow-bar {
+      /* Sits as a tab on the bottom edge of the hero-frame, OUTSIDE
+         the content area so it never collides with the subtitle. */
+      position: absolute;
+      bottom: -18px;
+      left: 80px;
+      width: 140px;
+      height: 36px;
+      background: var(--yellow);
+      border: var(--border);
+      box-shadow: var(--shadow-sm);
+      transform: rotate(-3deg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Space Grotesk', monospace;
+      font-size: 13px;
+      font-weight: 600;
+      z-index: 5;
+    }
+
+    .slide-1 .deco-dots {
+      position: absolute;
+      top: 60px;
+      left: 60px;
+      width: 120px;
+      height: 80px;
+      background-image: radial-gradient(circle, var(--black) 2px, transparent 2px);
+      background-size: 20px 20px;
+      opacity: 0.4;
+    }
+
+    /* ============ SLIDE 2: TWO COLUMN INTRO ============ */
+    .slide-2 {
+      background: var(--blue);
+      flex-direction: row;
+      gap: 48px;
+      align-items: center;
+    }
+
+    .slide-2 .col-left {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .slide-2 .col-right {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .slide-2 .intro-card {
+      border: var(--border);
+      background: var(--white);
+      padding: 28px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .slide-2 .intro-card h3 {
+      font-family: 'Inter', sans-serif;
+      font-weight: 700;
+      font-size: 20px;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+
+    .slide-2 .intro-card p {
+      font-size: 15px;
+      line-height: 1.6;
+      font-weight: 500;
+    }
+
+    .slide-2 .stat-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 3px solid var(--black);
+      padding: 10px 20px;
+      background: var(--yellow);
+      font-family: 'Space Grotesk', monospace;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    /* ============ SLIDE 3: THREE FEATURE CARDS ============ */
+    .slide-3 {
+      background: var(--offwhite);
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .slide-3 .slide-header {
+      margin-bottom: 48px;
+    }
+
+    .slide-3 .cards-row {
+      display: flex;
+      gap: 32px;
+      width: 100%;
+    }
+
+    .slide-3 .feature-card {
+      flex: 1;
+      border: var(--border);
+      background: var(--white);
+      padding: 36px;
+      box-shadow: var(--shadow);
+      position: relative;
+    }
+
+    .slide-3 .feature-icon {
+      width: 64px;
+      height: 64px;
+      border: 3px solid var(--black);
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      font-weight: 700;
+    }
+
+    .slide-3 .icon-pink { background: var(--pink); }
+    .slide-3 .icon-blue { background: var(--blue); }
+    .slide-3 .icon-green { background: var(--green); }
+
+    .slide-3 .feature-card h3 {
+      font-family: 'Inter', sans-serif;
+      font-weight: 700;
+      font-size: 22px;
+      margin-bottom: 14px;
+      text-transform: uppercase;
+    }
+
+    .slide-3 .feature-card p {
+      font-size: 15px;
+      line-height: 1.6;
+      font-weight: 500;
+    }
+
+    .slide-3 .card-deco {
+      position: absolute;
+      top: -12px;
+      right: 24px;
+      width: 48px;
+      height: 48px;
+      border: 3px solid var(--black);
+      background: var(--yellow);
+    }
+
+    /* ============ SLIDE 4: CHART / DATA ============ */
+    .slide-4 {
+      background: var(--green);
+      flex-direction: column;
+      justify-content: center;
+      /* Reserve space for the shadow + the bottom-fixed nav chrome
+         so the chart-frame never butts up against the slide edge. */
+      padding-bottom: 110px;
+    }
+
+    .slide-4 .chart-frame {
+      border: var(--border);
+      background: var(--white);
+      box-shadow: var(--shadow);
+      padding: 32px 40px;
+      width: calc(100% - 16px);
+      max-width: 1200px;
+      margin: 0 auto;
+      /* Cap the frame so it always fits inside the slide content area
+         (slide is 1080px - 60 top - 110 bottom = ~756px available). */
+      max-height: 756px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      overflow: hidden;
+    }
+
+    .slide-4 .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-shrink: 0;
+    }
+
+    .slide-4 .chart-legend {
+      display: flex;
+      gap: 16px;
+    }
+
+    .slide-4 .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'Space Grotesk', monospace;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .slide-4 .legend-swatch {
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--black);
+    }
+
+    /* Chart body — chart on the left, stat boxes stacked on the right.
+       This is a flex row that fills the remaining space below the header. */
+    .slide-4 .chart-body {
+      display: flex;
+      gap: 32px;
+      flex: 1 1 auto;
+      min-height: 0;
+      align-items: stretch;
+      width: 100%;
+    }
+
+    /* SVG Chart — fills the left side of chart-body. Width auto-derives
+       from viewBox aspect; flex-1 lets it claim available width. */
+    .chart-svg {
+      display: block;
+      flex: 1 1 auto;
+      min-width: 0;
+      min-height: 0;
+      width: 100%;
+      height: 100%;
+      max-width: 100%;
+      max-height: 100%;
+    }
+
+    /* Data column — vertical stack of stat boxes on the right. */
+    .slide-4 .data-column {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      flex: 0 0 240px;
+      width: 240px;
+      min-width: 0;
+    }
+
+    .slide-4 .data-box {
+      flex: 1 1 0;
+      min-height: 0;
+      border: 3px solid var(--black);
+      background: var(--cream);
+      padding: 18px 20px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    /* 루프534 — If chart-svg is missing, data-column alone must not collapse
+       (flex:1 + min-height:0 children overlap into an unreadable pile). */
+    .slide-4 .chart-body:not(:has(.chart-svg)) {
+      min-height: 420px;
+    }
+    .slide-4 .chart-body:not(:has(.chart-svg)) .data-column {
+      flex: 1 1 auto;
+      width: auto;
+      max-width: 100%;
+    }
+    .slide-4 .chart-body:not(:has(.chart-svg)) .data-box {
+      flex: 0 0 auto;
+      min-height: 96px;
+    }
+
+    .slide-4 .data-box .data-num {
+      font-family: 'Inter', sans-serif;
+      font-weight: 900;
+      font-size: 36px;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .slide-4 .data-box .data-label {
+      font-family: 'Space Grotesk', monospace;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    /* ============ SLIDE 5: BIG STATEMENT / QUOTE ============ */
+    .slide-5 {
+      background: var(--pink);
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      position: relative;
+    }
+
+    .slide-5 .quote-frame {
+      border: var(--border);
+      background: var(--white);
+      padding: 60px 80px;
+      box-shadow: var(--shadow);
+      max-width: 1000px;
+      position: relative;
+    }
+
+    .slide-5 .quote-text {
+      font-family: 'Inter', sans-serif;
+      font-weight: 900;
+      font-size: clamp(28px, 67.2px, 52px);
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      text-transform: uppercase;
+      margin-bottom: 32px;
+    }
+
+    .slide-5 .quote-author {
+      font-family: 'Space Grotesk', monospace;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .slide-5 .deco-quote-marks {
+      position: absolute;
+      top: -30px;
+      left: 40px;
+      font-size: 120px;
+      font-weight: 900;
+      line-height: 1;
+      color: var(--yellow);
+      -webkit-text-stroke: 3px var(--black);
+    }
+
+    .slide-5 .deco-stripes {
+      position: absolute;
+      bottom: 60px;
+      right: 60px;
+      width: 80px;
+      height: 80px;
+      background: repeating-linear-gradient(
+        45deg,
+        var(--black),
+        var(--black) 4px,
+        var(--green) 4px,
+        var(--green) 12px
+      );
+      border: 3px solid var(--black);
+    }
+
+    /* ============ SLIDE 6: SPLIT IMAGE + TEXT ============ */
+    .slide-6 {
+      background: var(--yellow);
+      flex-direction: row;
+      gap: 0;
+      padding: 0;
+    }
+
+    .slide-6 .split-visual {
+      flex: 1;
+      background: var(--black);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .slide-6 .split-visual .visual-box {
+      width: 100%;
+      max-width: 400px;
+      aspect-ratio: 1;
+      border: 4px solid var(--white);
+      background: var(--pink);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .slide-6 .split-visual .visual-box::after {
+      content: '';
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      width: 100%;
+      height: 100%;
+      background: var(--blue);
+      border: 4px solid var(--white);
+      z-index: -1;
+    }
+
+    .slide-6 .split-visual .visual-label {
+      /* Top-right of the dark panel so it never collides with the
+         fixed slide-counter pill at bottom-left of the viewport. */
+      position: absolute;
+      top: 40px;
+      right: 40px;
+      border: 3px solid var(--white);
+      background: var(--green);
+      color: var(--black);
+      padding: 8px 16px;
+      font-family: 'Space Grotesk', monospace;
+      font-size: 13px;
+      font-weight: 600;
+      transform: rotate(-4deg);
+    }
+
+    .slide-6 .split-content {
+      flex: 1;
+      padding: 60px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 28px;
+      background: var(--offwhite);
+      border-left: var(--border);
+    }
+
+    .slide-6 .content-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .slide-6 .content-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      font-size: 16px;
+      line-height: 1.5;
+      font-weight: 500;
+    }
+
+    .slide-6 .content-list .list-num {
+      flex-shrink: 0;
+      width: 36px;
+      height: 36px;
+      border: 3px solid var(--black);
+      background: var(--yellow);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Space Grotesk', monospace;
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    /* ============ SLIDE 7: TIMELINE / PROCESS ============ */
+    .slide-7 {
+      background: var(--offwhite);
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .slide-7 .slide-header {
+      margin-bottom: 48px;
+    }
+
+    .slide-7 .timeline {
+      display: flex;
+      gap: 0;
+      width: 100%;
+    }
+
+    .slide-7 .timeline-step {
+      flex: 1;
+      border: var(--border);
+      background: var(--white);
+      padding: 32px;
+      box-shadow: var(--shadow-sm);
+      position: relative;
+      margin-right: -4px;
+    }
+
+    .slide-7 .timeline-step:first-child {
+      background: var(--blue);
+    }
+
+    .slide-7 .timeline-step:nth-child(2) {
+      background: var(--pink);
+    }
+
+    .slide-7 .timeline-step:nth-child(3) {
+      background: var(--green);
+    }
+
+    .slide-7 .timeline-step:nth-child(4) {
+      background: var(--yellow);
+      margin-right: 0;
+    }
+
+    .slide-7 .step-num {
+      font-family: 'Inter', sans-serif;
+      font-weight: 900;
+      font-size: 48px;
+      line-height: 1;
+      margin-bottom: 16px;
+      opacity: 0.6;
+    }
+
+    .slide-7 .step-title {
+      font-family: 'Inter', sans-serif;
+      font-weight: 700;
+      font-size: 20px;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .slide-7 .step-desc {
+      font-size: 14px;
+      line-height: 1.5;
+      font-weight: 500;
+    }
+
+    .slide-7 .step-connector {
+      position: absolute;
+      top: 50%;
+      right: -28px;
+      width: 28px;
+      height: 4px;
+      background: var(--black);
+      z-index: 10;
+      transform: translateY(-50%);
+    }
+
+    /* ============ SLIDE 8: STATISTICS / NUMBERS ============ */
+    .slide-8 {
+      background: var(--blue);
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .slide-8 .slide-header {
+      margin-bottom: 48px;
+    }
+
+    .slide-8 .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 24px;
+      width: 100%;
+    }
+
+    .slide-8 .stat-card {
+      border: var(--border);
+      background: var(--white);
+      padding: 32px;
+      box-shadow: var(--shadow-sm);
+      text-align: center;
+      position: relative;
+    }
+
+    .slide-8 .stat-card:nth-child(odd) {
+      transform: rotate(-2deg);
+    }
+
+    .slide-8 .stat-card:nth-child(even) {
+      transform: rotate(2deg);
+    }
+
+    .slide-8 .stat-number {
+      font-family: 'Inter', sans-serif;
+      font-weight: 900;
+      font-size: clamp(36px, 76.8px, 64px);
+      line-height: 1;
+      margin-bottom: 12px;
+    }
+
+    .slide-8 .stat-label {
+      font-family: 'Space Grotesk', monospace;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .slide-8 .stat-deco {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 2px solid var(--black);
+    }
+
+    /* ============ SLIDE 9: TEAM / GRID ============ */
+    .slide-9 {
+      background: var(--cream);
+      flex-direction: column;
+      justify-content: center;
+      /* Extra bottom padding so the second card row clears the fixed
+         slide-counter (bottom-left) and nav-controls (bottom-right). */
+      padding-bottom: 110px;
+    }
+
+    .slide-9 .slide-header {
+      margin-bottom: 32px;
+    }
+
+    .slide-9 .team-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      width: 100%;
+    }
+
+    .slide-9 .team-card {
+      border: var(--border);
+      background: var(--white);
+      padding: 22px;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .slide-9 .team-avatar {
+      width: 72px;
+      height: 72px;
+      border: 3px solid var(--black);
+      background: var(--pink);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Inter', sans-serif;
+      font-weight: 900;
+      font-size: 28px;
+      text-transform: uppercase;
+    }
+
+    .slide-9 .team-card:nth-child(2) .team-avatar { background: var(--blue); }
+    .slide-9 .team-card:nth-child(3) .team-avatar { background: var(--green); }
+    .slide-9 .team-card:nth-child(4) .team-avatar { background: var(--yellow); }
+    .slide-9 .team-card:nth-child(5) .team-avatar { background: var(--pink); }
+    .slide-9 .team-card:nth-child(6) .team-avatar { background: var(--blue); }
+
+    .slide-9 .team-name {
+      font-family: 'Inter', sans-serif;
+      font-weight: 700;
+      font-size: 20px;
+      text-transform: uppercase;
+    }
+
+    .slide-9 .team-role {
+      font-family: 'Space Grotesk', monospace;
+      font-size: 14px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .slide-9 .team-bio {
+      font-size: 13px;
+      line-height: 1.45;
+      font-weight: 500;
+    }
+
+    /* ============ SLIDE 10: CLOSING ============ */
+    .slide-10 {
+      background: var(--black);
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      color: var(--white);
+    }
+
+    .slide-10 .close-frame {
+      border: 4px solid var(--white);
+      background: var(--black);
+      padding: 60px 80px;
+      box-shadow: 12px 12px 0px var(--yellow);
+      position: relative;
+    }
+
+    .slide-10 .close-title {
+      font-family: 'Inter', sans-serif;
+      font-weight: 900;
+      font-size: clamp(40px, 96px, 80px);
+      line-height: 0.95;
+      letter-spacing: -0.03em;
+      text-transform: uppercase;
+      color: var(--white);
+      margin-bottom: 24px;
+    }
+
+    .slide-10 .close-subtitle {
+      font-family: 'Space Grotesk', monospace;
+      font-size: 18px;
+      font-weight: 500;
+      color: var(--cream);
+      margin-bottom: 40px;
+    }
+
+    .slide-10 .close-btn {
+      display: inline-block;
+      border: 3px solid var(--white);
+      padding: 16px 40px;
+      font-family: 'Inter', sans-serif;
+      font-weight: 700;
+      font-size: 16px;
+      text-decoration: none;
+      color: var(--black);
+      background: var(--yellow);
+      box-shadow: 6px 6px 0px var(--white);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .slide-10 .close-btn:hover {
+      transform: translate(-2px, -2px);
+      box-shadow: 8px 8px 0px var(--white);
+    }
+
+    .slide-10 .deco-star {
+      position: absolute;
+      top: -20px;
+      right: 60px;
+      width: 50px;
+      height: 50px;
+      background: var(--pink);
+      border: 3px solid var(--white);
+      clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+    }
+
+    .slide-10 .deco-dots-bottom {
+      position: absolute;
+      bottom: 40px;
+      left: 40px;
+      width: 100px;
+      height: 100px;
+      background-image: radial-gradient(circle, var(--white) 2px, transparent 2px);
+      background-size: 16px 16px;
+      opacity: 0.3;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 1024px) {
+      .slide {
+        padding: 40px;
+      }
+      .slide-2 {
+        flex-direction: column;
+      }
+      .slide-6 {
+        flex-direction: column;
+      }
+      .slide-6 .split-content {
+        border-left: none;
+        border-top: var(--border);
+      }
+      .slide-3 .cards-row {
+        flex-direction: column;
+      }
+      .slide-7 .timeline {
+        flex-direction: column;
+      }
+      .slide-7 .timeline-step {
+        margin-right: 0;
+        margin-bottom: -4px;
+      }
+      .slide-7 .step-connector {
+        display: none;
+      }
+      .slide-8 .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .slide-9 .team-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 640px) {
+      .slide-8 .stats-grid {
+        grid-template-columns: 1fr;
+      }
+      .slide-9 .team-grid {
+        grid-template-columns: 1fr;
+      }
+      .slide-1 .hero-frame {
+        padding: 32px;
+      }
+      .slide-5 .quote-frame {
+        padding: 32px;
+      }
+    }
+  </style>
+<style data-teamver-template-clone-size>html,body{margin:0;padding:0;overflow:auto}.slides-container{width:auto;height:auto;overflow:visible;scroll-snap-type:none}.slide{width:1920px;height:1080px;min-height:1080px;max-height:1080px;box-sizing:border-box;scroll-snap-align:none}.nav-dots,.slide-counter,.nav-dot{display:none!important}</style><style data-od-block-frame-hangul-type-css>html:lang(ko) .nb-label,
+html[lang="ko"] .nb-label,
+[data-od-block-frame-hangul-type="1"] .nb-label,
+html:lang(ko) .nb-heading-xl,
+html[lang="ko"] .nb-heading-xl,
+[data-od-block-frame-hangul-type="1"] .nb-heading-xl,
+html:lang(ko) .nb-heading-lg,
+html[lang="ko"] .nb-heading-lg,
+[data-od-block-frame-hangul-type="1"] .nb-heading-lg,
+html:lang(ko) .nb-heading-md,
+html[lang="ko"] .nb-heading-md,
+[data-od-block-frame-hangul-type="1"] .nb-heading-md,
+html:lang(ko) .nb-mono,
+html[lang="ko"] .nb-mono,
+[data-od-block-frame-hangul-type="1"] .nb-mono,
+html:lang(ko) .step-title,
+html[lang="ko"] .step-title,
+[data-od-block-frame-hangul-type="1"] .step-title,
+html:lang(ko) .intro-card h3,
+html[lang="ko"] .intro-card h3,
+[data-od-block-frame-hangul-type="1"] .intro-card h3,
+html:lang(ko) .intro-card p,
+html[lang="ko"] .intro-card p,
+[data-od-block-frame-hangul-type="1"] .intro-card p,
+html:lang(ko) .feature-card h3,
+html[lang="ko"] .feature-card h3,
+[data-od-block-frame-hangul-type="1"] .feature-card h3,
+html:lang(ko) .feature-card p,
+html[lang="ko"] .feature-card p,
+[data-od-block-frame-hangul-type="1"] .feature-card p,
+html:lang(ko) .nb-card h3,
+html[lang="ko"] .nb-card h3,
+[data-od-block-frame-hangul-type="1"] .nb-card h3,
+html:lang(ko) .nb-card h4,
+html[lang="ko"] .nb-card h4,
+[data-od-block-frame-hangul-type="1"] .nb-card h4,
+html:lang(ko) .card h3,
+html[lang="ko"] .card h3,
+[data-od-block-frame-hangul-type="1"] .card h3,
+html:lang(ko) .card h4,
+html[lang="ko"] .card h4,
+[data-od-block-frame-hangul-type="1"] .card h4,
+html:lang(ko) .quote-text,
+html[lang="ko"] .quote-text,
+[data-od-block-frame-hangul-type="1"] .quote-text,
+html:lang(ko) .quote-author,
+html[lang="ko"] .quote-author,
+[data-od-block-frame-hangul-type="1"] .quote-author,
+html:lang(ko) .data-label,
+html[lang="ko"] .data-label,
+[data-od-block-frame-hangul-type="1"] .data-label,
+html:lang(ko) .data-num,
+html[lang="ko"] .data-num,
+[data-od-block-frame-hangul-type="1"] .data-num,
+html:lang(ko) .stat-label,
+html[lang="ko"] .stat-label,
+[data-od-block-frame-hangul-type="1"] .stat-label,
+html:lang(ko) .legend-item,
+html[lang="ko"] .legend-item,
+[data-od-block-frame-hangul-type="1"] .legend-item,
+html:lang(ko) .team-name,
+html[lang="ko"] .team-name,
+[data-od-block-frame-hangul-type="1"] .team-name,
+html:lang(ko) .team-role,
+html[lang="ko"] .team-role,
+[data-od-block-frame-hangul-type="1"] .team-role,
+[data-od-hangul="1"] {
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+/* 0918-N03 — The kit was authored with 14–15px Latin demo copy on a
+ * 1920x1080 canvas. Korean body copy became unreadably small in preview and
+ * left oversized cards visually empty. Keep headings expressive while giving
+ * actual explanatory copy a presentation-safe floor. */
+html:lang(ko) :is(.intro-card p, .feature-card p, .nb-card p, .card p, .step-desc, .team-bio, .nb-body),
+html[lang="ko"] :is(.intro-card p, .feature-card p, .nb-card p, .card p, .step-desc, .team-bio, .nb-body),
+[data-od-block-frame-hangul-type="1"] :is(.intro-card p, .feature-card p, .nb-card p, .card p, .step-desc, .team-bio, .nb-body) {
+  font-size: 18px !important;
+  line-height: 1.48 !important;
+}
+html:lang(ko) :is(.intro-card h3, .feature-card h3, .nb-card h3, .card h3, .step-title),
+html[lang="ko"] :is(.intro-card h3, .feature-card h3, .nb-card h3, .card h3, .step-title),
+[data-od-block-frame-hangul-type="1"] :is(.intro-card h3, .feature-card h3, .nb-card h3, .card h3, .step-title) {
+  font-size: 24px !important;
+  line-height: 1.28 !important;
+}</style><style data-od-official-poster-layout>.slide-1 .hero-title,.slide-1 .hero-subtitle,.slide-10 .close-title,.slide-10 .close-subtitle{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}.slide-10 .close-title{font-size:clamp(48px,min(7vw,12vh),120px);max-width:90%;line-height:1.05}</style></head>
+<body>
+
+  
+
+  <div class="nav-controls">
+    <button class="nav-btn" onclick="prevSlide()">&#8592;</button>
+    <button class="nav-btn" onclick="nextSlide()">&#8594;</button>
+  </div>
+
+  
+
+    <!-- SLIDE 1: Title Hero -->
+    <section class="slide slide-1 active" style="width:1920px;height:1080px;box-sizing:border-box">
+      <div class="deco-dots"></div>
+      <div class="hero-frame">
+        <div class="corner-bracket tl"></div>
+        <div class="corner-bracket tr"></div>
+        <div class="corner-bracket bl"></div>
+        <div class="corner-bracket br"></div>
+        <div class="nb-label hero-label" data-od-hangul="1">표지</div>
+        <h1 class="nb-heading-xl hero-title">NEO- BRUTALISM STYLE</h1>
+        <p class="hero-subtitle">A bold, high-contrast template designed for maximum visual impact and uncompromising clarity.</p>
+        <div class="deco-pink-rect"></div>
+        <div class="deco-green-circle"></div>
+        <div class="deco-yellow-bar" data-od-hangul="1">NEO- BRUTALISM STYLE 살펴보</div>
+      </div>
+    </section>
+
+<section class="slide slide-8" style="width:1920px;height:1080px;box-sizing:border-box">
+      <div class="slide-header">
+        <div class="nb-label nb-label-green">How We Structure Every Project</div>
+        <h2 class="nb-heading-lg" style="margin-top: 16px;">How We Structure Every Project</h2>
+      </div>
+      <div class="stats-grid"><div class="stat-card">
+          <div class="stat-deco" style="background: var(--pink);"></div>
+          <div class="stat-number">01 Discovery phase to map stakeholder ne</div>
+          <div class="stat-label">01 Discovery phase to map stakeholder needs and technical constraints before any visual work begins.</div>
+        </div><div class="stat-card">
+          <div class="stat-deco" style="background: var(--blue);"></div>
+          <div class="stat-number">02 Iterative wireframing with rapid feed</div>
+          <div class="stat-label">02 Iterative wireframing with rapid feedback loops to validate information architecture early.</div>
+        </div><div class="stat-card">
+          <div class="stat-deco" style="background: var(--green);"></div>
+          <div class="stat-number">03 High-fidelity prototyping with real c</div>
+          <div class="stat-label">03 High-fidelity prototyping with real content to test readability and visual hierarchy.</div>
+        </div><div class="stat-card">
+          <div class="stat-deco" style="background: var(--yellow);"></div>
+          <div class="stat-number">04 Production handoff with annotated spe</div>
+          <div class="stat-label">04 Production handoff with annotated specifications and a living style guide.</div>
+        </div></div>
+    </section>
+
+<section class="slide slide-7" style="width:1920px;height:1080px;box-sizing:border-box">
+      <div class="slide-header">
+        <div class="nb-label nb-label-cream">Project Timeline</div>
+        <h2 class="nb-heading-lg" style="margin-top: 16px;">Project Timeline</h2>
+      </div>
+      <div class="timeline"><div class="timeline-step">
+          <div class="step-connector"></div>
+          <div class="step-num">01</div>
+          <div class="step-title">Market analysis, user interviews, and co</div>
+          <div class="step-desc">Market analysis, user interviews, and competitive audits to establish a foundation.</div>
+        </div><div class="timeline-step">
+          <div class="step-connector"></div>
+          <div class="step-num">02</div>
+          <div class="step-title">Mood boards, sketches, and directional e</div>
+          <div class="step-desc">Mood boards, sketches, and directional explorations to define the visual language.</div>
+        </div><div class="timeline-step">
+          <div class="step-connector"></div>
+          <div class="step-num">03</div>
+          <div class="step-title">Detailed execution with weekly reviews a</div>
+          <div class="step-desc">Detailed execution with weekly reviews and continuous stakeholder alignment.</div>
+        </div><div class="timeline-step">
+          <div class="step-num">04</div>
+          <div class="step-title">Deployment support, performance monitori</div>
+          <div class="step-desc">Deployment support, performance monitoring, and post-launch optimization.</div>
+        </div></div>
+    </section>
+
+<section class="slide slide-10" style="width:1920px;height:1080px;box-sizing:border-box">
+      <div class="deco-dots-bottom"></div>
+      <div class="close-frame">
+        <div class="deco-star"></div>
+        <h2 class="close-title">Impact at a Glance</h2>
+        <p class="close-subtitle" data-od-hangul="1">Impact at a Glance에서 쓸 방을 열고 첫 보드에 팀을 초대한다.</p>
+        <a class="close-btn" href="#">무료로 시작하기</a>
+      </div>
+    </section>
+
+<section class="slide slide-9" style="width:1920px;height:1080px;box-sizing:border-box">
+      <div class="slide-header">
+        <div class="nb-label nb-label-pink">Meet the Crew</div>
+        <h2 class="nb-heading-lg" style="margin-top: 16px;">Meet the Crew</h2>
+      </div>
+      <div class="team-grid"><div class="team-card">
+          <div class="team-avatar">J</div>
+          <div class="team-name">JD</div>
+          <div class="team-role" style="font-size:22px;line-height:1.25;word-break:keep-all;overflow-wrap:break-word">JD</div>
+          <div class="team-bio" style="font-size:21px;line-height:1.35;word-break:keep-all;overflow-wrap:break-word" data-od-hangul="1">JD: Meet the Crew 관점에서 이 항목이 왜 중요한지와 어떻게 판단할지 정리한다.</div>
+        </div><div class="team-card">
+          <div class="team-avatar">A</div>
+          <div class="team-name">AS</div>
+          <div class="team-role" style="font-size:22px;line-height:1.25;word-break:keep-all;overflow-wrap:break-word">AS</div>
+          <div class="team-bio" style="font-size:21px;line-height:1.35;word-break:keep-all;overflow-wrap:break-word" data-od-hangul="1">AS: Meet the Crew 관점에서 이 항목이 왜 중요한지와 어떻게 판단할지 정리한다.</div>
+        </div><div class="team-card">
+          <div class="team-avatar">M</div>
+          <div class="team-name">MK</div>
+          <div class="team-role" style="font-size:22px;line-height:1.25;word-break:keep-all;overflow-wrap:break-word">MK</div>
+          <div class="team-bio" style="font-size:21px;line-height:1.35;word-break:keep-all;overflow-wrap:break-word" data-od-hangul="1">MK: Meet the Crew 관점에서 이 항목이 왜 중요한지와 어떻게 판단할지 정리한다.</div>
+        </div><div class="team-card">
+          <div class="team-avatar">R</div>
+          <div class="team-name">RL</div>
+          <div class="team-role" style="font-size:22px;line-height:1.25;word-break:keep-all;overflow-wrap:break-word">RL</div>
+          <div class="team-bio" style="font-size:21px;line-height:1.35;word-break:keep-all;overflow-wrap:break-word" data-od-hangul="1">RL: Meet the Crew 관점에서 이 항목이 왜 중요한지와 어떻게 판단할지 정리한다.</div>
+        </div><div class="team-card">
+          <div class="team-avatar">T</div>
+          <div class="team-name">TP</div>
+          <div class="team-role" style="font-size:22px;line-height:1.25;word-break:keep-all;overflow-wrap:break-word">TP</div>
+          <div class="team-bio" style="font-size:21px;line-height:1.35;word-break:keep-all;overflow-wrap:break-word" data-od-hangul="1">TP: Meet the Crew 관점에서 이 항목이 왜 중요한지와 어떻게 판단할지 정리한다.</div>
+        </div><div class="team-card">
+          <div class="team-avatar">S</div>
+          <div class="team-name">SC</div>
+          <div class="team-role" style="font-size:22px;line-height:1.25;word-break:keep-all;overflow-wrap:break-word">SC</div>
+          <div class="team-bio" style="font-size:21px;line-height:1.35;word-break:keep-all;overflow-wrap:break-word" data-od-hangul="1">SC: Meet the Crew 관점에서 이 항목이 왜 중요한지와 어떻게 판단할지 정리한다.</div>
+        </div></div>
+    </section>
+
+<section class="slide slide-2" style="width:1920px;height:1080px;box-sizing:border-box">
+      <div class="col-left">
+        <div class="nb-label nb-label-yellow">Let's Build Something Bold</div>
+        <h2 class="nb-heading-lg">Let's Build Something Bold</h2>
+        
+        <div style="display: flex; gap: 12px; flex-wrap: wrap;"></div>
+      </div>
+      <div class="col-right"></div>
+    </section>
+
+<section data-teamver-pad="short-response" class="slide slide-3" style="width:1920px;height:1080px;box-sizing:border-box">
+      <div class="slide-header">
+        <div class="nb-label nb-label-pink" data-od-hangul="1">Teamver 작업 흐름 판단</div>
+      </div>
+      <div class="cards-row"><div class="feature-card">
+          <div class="card-deco"></div>
+          <div class="feature-icon icon-pink">A</div>
+          <h3 style="font-size:36px;line-height:1.08;word-break:keep-all;overflow-wrap:break-word" data-od-hangul="1">보드를 연다</h3>
+          <p style="font-size:24px;line-height:1.34;word-break:keep-all;overflow-wrap:break-word" data-od-hangul="1">흩어진 메모를 Teamver 워크스페이스로 옮긴다.</p>
+        </div><div class="feature-card">
+          <div class="card-deco"></div>
+          <div class="feature-icon icon-blue">B</div>
+          <h3 style="font-size:36px;line-height:1.08;word-break:keep-all;overflow-wrap:break-word" data-od-hangul="1">권한을 나눈다</h3>
+          <p style="font-size:24px;line-height:1.34;word-break:keep-all;overflow-wrap:break-word" data-od-hangul="1">Teamver에서 보기와 고치기를 슬라이드마다 정한다.</p>
+        </div><div class="feature-card">
+          <div class="card-deco"></div>
+          <div class="feature-icon icon-green">C</div>
+          <h3 style="font-size:36px;line-height:1.08;word-break:keep-all;overflow-wrap:break-word" data-od-hangul="1">이력을 남긴다</h3>
+          <p style="font-size:24px;line-height:1.34;word-break:keep-all;overflow-wrap:break-word" data-od-hangul="1">Teamver 보드에 바꾼 사람과 시점을 고정한다.</p>
+        </div></div>
+    </section>
+
+<section data-teamver-pad="short-response" class="slide slide-6" style="width:1920px;height:1080px;box-sizing:border-box">
+      <div class="split-visual">
+        <div class="visual-box">
+          <span style="color: var(--black); font-family: Inter, sans-serif; font-weight: 700; font-size: 22px; text-transform: uppercase; letter-spacing: 0.06em; text-align: center; padding: 0 24px;" data-od-hangul="1">Teamver 도입 단계</span>
+        </div>
+        <div class="visual-label" data-od-hangul="1">Teamver 도입 단계 쓰는 길</div>
+      </div>
+      <div class="split-content">
+        <div class="nb-label nb-label-green" data-od-hangul="1">Teamver 도입 단계 쓰는 길</div>
+        <h2 class="nb-heading-md" data-od-hangul="1">Teamver 도입 단계 쓰는 길</h2>
+        <ul class="content-list"><li><span class="list-num">01</span><span data-od-hangul="1">한 팀 보드 — 기존 문서를 Teamver 보드로 옮기고 보기·고치기 권한을 나눈다.</span></li><li><span class="list-num">02</span><span data-od-hangul="1">리뷰 습관 — Teamver에서 댓글과 버전을 같은 화면에서 고정한다.</span></li><li><span class="list-num">03</span><span data-od-hangul="1">조직 기준 — Teamver 워크스페이스 기본값으로 감사와 보내기 규칙을 둔다.</span></li></ul>
+        <div><a class="nb-btn" href="#">지금 시작하기</a></div>
+      </div>
+    </section>
+
+<section data-teamver-pad="short-response" class="slide slide-4" style="width:1920px;height:1080px;box-sizing:border-box">
+      <div class="slide-header">
+        <div class="nb-label nb-label-blue" data-od-hangul="1">Teamver가 남기는 것 다음</div>
+      </div>
+      <div class="chart-frame">
+        <div class="chart-header">
+          <h2 class="nb-heading-md" data-od-hangul="1">Teamver가 남기는 것 다음</h2>
+          
+        </div>
+        <div class="chart-body">
+        
+        <div class="data-column" style="display:flex;flex-direction:row;gap:24px;width:100%;flex:1 1 auto;align-items:stretch"><div class="data-box">
+            <span class="data-num" data-od-hangul="1">같은 화면</span>
+            <span class="data-label" data-od-hangul="1">Teamver에서 초안과 리뷰가 한 보드에 남는다.</span>
+          </div><div class="data-box">
+            <span class="data-num" data-od-hangul="1">나뉜 권한</span>
+            <span class="data-label" data-od-hangul="1">Teamver에서 누가 고칠 수 있는지 분명하다.</span>
+          </div><div class="data-box">
+            <span class="data-num" data-od-hangul="1">되돌리기</span>
+            <span class="data-label" data-od-hangul="1">Teamver에서 바꾼 기록을 열어 이전으로 돌린다.</span>
+          </div></div>
+        </div>
+      </div>
+    </section>
+
+<section data-teamver-pad="short-response" class="slide slide-3" style="width:1920px;height:1080px;box-sizing:border-box">
+      <div class="slide-header">
+        <div class="nb-label nb-label-pink" data-od-hangul="1">Teamver를 쓰는 자리 범위</div>
+      </div>
+      <div class="cards-row"><div class="feature-card">
+          <div class="card-deco"></div>
+          <div class="feature-icon icon-pink">A</div>
+          <h3 style="font-size:36px;line-height:1.08;word-break:keep-all;overflow-wrap:break-word" data-od-hangul="1">보드에서 쓰기</h3>
+          <p style="font-size:24px;line-height:1.34;word-break:keep-all;overflow-wrap:break-word" data-od-hangul="1">Teamver에서 실무는 초안을 붙이고 같은 맥락에서 고친다.</p>
+        </div><div class="feature-card">
+          <div class="card-deco"></div>
+          <div class="feature-icon icon-blue">B</div>
+          <h3 style="font-size:36px;line-height:1.08;word-break:keep-all;overflow-wrap:break-word" data-od-hangul="1">권한 나누기</h3>
+          <p style="font-size:24px;line-height:1.34;word-break:keep-all;overflow-wrap:break-word" data-od-hangul="1">Teamver에서 리더는 보기와 보내기 경계를 보드에 둔다.</p>
+        </div><div class="feature-card">
+          <div class="card-deco"></div>
+          <div class="feature-icon icon-green">C</div>
+          <h3 style="font-size:36px;line-height:1.08;word-break:keep-all;overflow-wrap:break-word" data-od-hangul="1">이력 남기기</h3>
+          <p style="font-size:24px;line-height:1.34;word-break:keep-all;overflow-wrap:break-word" data-od-hangul="1">Teamver에서 운영은 감사와 저장 규칙을 기본값으로 둔다.</p>
+        </div></div>
+    </section>
+
+  
+
+  
+
+</body>
+</html>
