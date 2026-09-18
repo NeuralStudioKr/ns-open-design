@@ -2798,6 +2798,53 @@ export function pickTemplateShellsForContent(
       const unused = bodyPool.find((candidate) => (usage.get(candidate) ?? 0) === 0);
       if (unused) shell = unused;
     }
+    // 루프559 — Full-coverage no-duplicate rule for PROSE-FRIENDLY outline
+    // slots. When the outline fits inside the template
+    // (`slides.length <= shells.length`) AND we are about to stamp a
+    // shell that has already been used AND the outline slot's role is a
+    // prose-friendly role (body / list / cards) whose content renders on
+    // any prose-capable shell, prefer a prose-friendly unused body-pool
+    // shell over doubling up — even at usage=1, not only at the earlier
+    // `>= 2` fallback.
+    //
+    // Structural outline roles (timeline / stat / team / process) are
+    // deliberately EXCLUDED because their content only renders correctly
+    // on structurally matched shells. Pushing a timeline outline onto a
+    // body/diagram shell loses the `<h4>`/`<p>` step rendering entirely,
+    // which is worse than a duplicated timeline layout with distinct
+    // content on each slide (루프450 Capsule quality gate 참고).
+    //
+    // The `VARIETY_SAFE_ROLE_PREFERENCE` order skips 'cover' and
+    // 'closing'/thanks shells (they carry unhealed English demo copy
+    // that no body fill will fix). Prose-friendly roles win over
+    // structured ones to stay consistent with 루프480 Block Frame KPI
+    // decision.
+    //
+    // 2026-09-18 user report: `data-slide=9` shipped TWICE as two
+    // title-only "chapter" slides with the second one carrying a
+    // MiniMax "brief + N" parrot title. Both were 'list' outline slots
+    // (개요 · 고객 경험), so this rule catches them and pulls unused
+    // body shells (5, 10) into rotation.
+    const PROSE_FRIENDLY_OUTLINE_ROLES: readonly TemplateCloneShellRole[] = [
+      'body',
+      'list',
+      'cards',
+    ];
+    if (
+      (usage.get(shell) ?? 0) > 0
+      && slides.length <= shells.length
+      && PROSE_FRIENDLY_OUTLINE_ROLES.includes(role)
+    ) {
+      let varietyPick: SlideShell | null = null;
+      for (const preferredRole of VARIETY_SAFE_ROLE_PREFERENCE) {
+        const pool = byRole.get(preferredRole) ?? [];
+        varietyPick = pool.find(
+          (candidate) => candidate !== cover && (usage.get(candidate) ?? 0) === 0,
+        ) ?? null;
+        if (varietyPick) break;
+      }
+      if (varietyPick) shell = varietyPick;
+    }
     // Layout-variety recovery — when the current shell is already stamped ≥ 2
     // times AND the template has many distinct body-role shells lying idle,
     // borrow the next-preferred idle body-safe shell instead of stamping the
@@ -10711,14 +10758,24 @@ export function healEightBitOrbitLeftoverCatalogCopy(
     const span = spans[i]!;
     const body = out.slice(span.bodyStart, span.bodyEnd);
     if (
-      !/\b(?:tier-card|timeline-event|stat-block|quote-author|hero-badge|hero-subtitle|pixel-label|pixel-btn|cta-content|split-layout|feature-card)\b/i.test(body)
+      !/\b(?:tier-card|timeline-event|stat-block|quote-author|hero-badge|hero-subtitle|pixel-label|pixel-btn|cta-content|split-layout|feature-card|chart-bar-group|chart-bar-label|hbar-row|hbar-label)\b/i.test(body)
     ) {
       continue;
     }
     const visible = visibleDeckCopy(body);
     const leftoverTitle = looksLikeEightBitCapsuleLeftoverCopy(visible)
       || /(?<![가-힣])개요(?![가-힣])/.test(visible);
-    if (!EIGHTBIT_DEMO_COPY_RE.test(body) && !/\btier-card\b/i.test(body) && !leftoverTitle) {
+    // 루프559 — Chart shells (`.pixel-bar-chart` / `.pixel-hbar-chart`) never
+    // match `EIGHTBIT_DEMO_COPY_RE` because their demo copy is Greek-letter
+    // labels + numeric data-values only. Recognise chart-bar-group / hbar-row
+    // as a demo fingerprint so the healer runs `neutralizeEightBitOrbit…
+    // ChartDemoMetrics` on them.
+    if (
+      !EIGHTBIT_DEMO_COPY_RE.test(body)
+      && !/\btier-card\b/i.test(body)
+      && !/\bchart-bar-group\b|\bhbar-row\b/i.test(body)
+      && !leftoverTitle
+    ) {
       EIGHTBIT_DEMO_COPY_RE.lastIndex = 0;
       continue;
     }
@@ -14493,6 +14550,166 @@ function fillCoverSubtitleSlotsIfEmpty(html: string, lead: string): string {
  * 있는 슬라이드에만 fire한다. slot이 채워지지 못하면 English literal이
  * 남는 대신 아예 wipe → stripEightBitOrbitCatalogDemoCopy가 청소.
  */
+
+/**
+ * 루프559 — Shorten a Korean-or-Latin phrase to fit inside a hero-badge
+ * pill (≤ 12 code-points) WITHOUT cutting mid-word. `slice(0, N)` used to
+ * produce mid-syllable stubs like "Teamver는 초안과" (a Korean particle
+ * left dangling with no verb). This helper:
+ *   1. If the whole string already fits, return as-is.
+ *   2. Try the first delimiter-separated segment (·, ,, 、, ;, |, /, -/–/—, :).
+ *   3. Try progressive whitespace-token accumulation up to the budget.
+ *   4. Otherwise return '' → caller falls back to an ordinal chrome label.
+ * A returned value never ends in a Korean particle (과/와/의/를/을/은/는/
+ * 이/가/에/에서/으로), which is a strong signal of a mid-word cut.
+ */
+const BADGE_LABEL_MAX_CHARS = 12;
+const BADGE_TRAILING_PARTICLE_RE = /(?:과|와|의|를|을|은|는|이|가|에|에서|으로)$/;
+
+function shortenEightBitOrbitBadgeLabel(raw: string): string {
+  const source = normalizeTemplateCloneInlineText(String(raw ?? ''));
+  if (!source) return '';
+  const codepoints = Array.from(source);
+  if (codepoints.length <= BADGE_LABEL_MAX_CHARS && !BADGE_TRAILING_PARTICLE_RE.test(source)) {
+    return source;
+  }
+  const delimiterParts = source
+    .split(/\s*(?:[,，、;；:：|/·]|[—–-])\s*/g)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  for (const part of delimiterParts) {
+    const partLen = Array.from(part).length;
+    if (
+      partLen > 0
+      && partLen <= BADGE_LABEL_MAX_CHARS
+      && !BADGE_TRAILING_PARTICLE_RE.test(part)
+    ) {
+      return part;
+    }
+  }
+  const tokens = source.split(/\s+/g).filter(Boolean);
+  const picked: string[] = [];
+  for (const token of tokens) {
+    const candidate = picked.length === 0 ? token : `${picked.join(' ')} ${token}`;
+    if (Array.from(candidate).length > BADGE_LABEL_MAX_CHARS) break;
+    picked.push(token);
+  }
+  if (picked.length > 0) {
+    const joined = picked.join(' ');
+    if (!BADGE_TRAILING_PARTICLE_RE.test(joined)) return joined;
+    // Drop the trailing particle-ending token: never ship a badge that ends
+    // with a Korean particle (mid-phrase cut).
+    if (picked.length >= 2) {
+      const shorter = picked.slice(0, -1).join(' ');
+      if (shorter && !BADGE_TRAILING_PARTICLE_RE.test(shorter)) return shorter;
+    }
+  }
+  return '';
+}
+
+/**
+ * 루프559 — Recognise a chart-bar-label as English demo copy that must be
+ * swapped for a numeric ordinal. Fires on Greek letters (Alpha…Omega), the
+ * kit's original series names (Sector/Series/Segment/Tier + roman numeral or
+ * digit), Q1..Q5 quarter labels, and any single-token Latin word on a slide
+ * whose siblings are all also single-token Latin words (a "the whole row is
+ * placeholder" heuristic).
+ */
+const EIGHTBIT_CHART_DEMO_LABEL_RE =
+  /^(?:Alpha|Beta|Gamma|Delta|Epsilon|Zeta|Eta|Theta|Iota|Kappa|Lambda|Mu|Nu|Xi|Omicron|Pi|Rho|Sigma|Tau|Upsilon|Phi|Chi|Psi|Omega|Rookie|Arcade|Boss|Sector\s+[A-Z0-9]+|Series\s+(?:One|Two|Three|Four|Five|[A-Z0-9]+)|Segment\s+[A-Z0-9]+|Tier\s+[A-Z0-9]+|Q[1-5](?:\s*\d{2,4})?|FY\d{2,4})$/i;
+
+/**
+ * 루프559 — Wipe demo metrics on the vertical `.pixel-bar-chart` shell.
+ * The kit ships fixed English chart-bar-labels and hard-coded `data-value`
+ * integers that render as demo bar heights + demo numeric callouts. For a
+ * Korean service-intro deck we have no way to synthesize real metric
+ * numbers, so:
+ *   - `.chart-bar-label` demo tokens → Korean numeric ordinal ("01"…"NN").
+ *   - `.chart-value` visible text → "0" (kit CSS animates height off
+ *     `data-height`, but headless preview shows the literal text).
+ *   - `.chart-bar` inline `height: N%` / `data-height` → 0.
+ *   - `.chart-bar` `data-value` demo integer → removed.
+ * Structure (chart-bar-group wrappers, .pixel-bar-chart container, colored
+ * `.chart-bar.alt` variants) stays intact so the slide still lays out.
+ */
+function neutralizeEightBitOrbitBarChartDemoMetrics(html: string): string {
+  const source = String(html ?? '');
+  if (!source || !/\bpixel-bar-chart\b|\bchart-bar-group\b/i.test(source)) return source;
+  // Collect chart-bar-label text tokens; if they are ALL Latin single-tokens
+  // on a Korean deck, treat them as demo and rewrite to numeric ordinals.
+  let labelIndex = 0;
+  let next = source.replace(
+    /(<div\b[^>]*\bchart-bar-label\b[^>]*>)([\s\S]*?)(<\/div>)/gi,
+    (_m, open: string, inner: string, close: string) => {
+      const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      labelIndex += 1;
+      if (!plain) return `${open}${String(labelIndex).padStart(2, '0')}${close}`;
+      if (EIGHTBIT_CHART_DEMO_LABEL_RE.test(plain)) {
+        return `${open}${String(labelIndex).padStart(2, '0')}${close}`;
+      }
+      return `${open}${inner}${close}`;
+    },
+  );
+  // Zero out demo bar heights + values.
+  next = next.replace(
+    /(<div\b[^>]*\bchart-bar\b[^>]*)>/gi,
+    (_m, open: string) => {
+      const cleaned = open
+        .replace(/\sdata-height\s*=\s*(["'])[^"']*\1/gi, ' data-height="0"')
+        .replace(/\sdata-value\s*=\s*(["'])[^"']*\1/gi, '')
+        .replace(/(style\s*=\s*["'][^"']*?)\bheight\s*:\s*[^;"']+;?/gi, '$1height:0%;');
+      return `${cleaned}>`;
+    },
+  );
+  // Zero out sibling `.chart-value` numeric callouts.
+  next = next.replace(
+    /(<div\b[^>]*\bchart-value\b[^>]*)(>)([\s\S]*?)(<\/div>)/gi,
+    (_m, open: string, gt: string, _inner: string, close: string) => {
+      const cleaned = open
+        .replace(/\sdata-value\s*=\s*(["'])[^"']*\1/gi, '')
+        .replace(/\sdata-target\s*=\s*(["'])[^"']*\1/gi, '');
+      return `${cleaned}${gt}0${close}`;
+    },
+  );
+  return next;
+}
+
+/**
+ * 루프559 — Same neutralisation for the horizontal `.pixel-hbar-chart`
+ * shell (slide 5 in the 8-Bit Orbit template).
+ */
+function neutralizeEightBitOrbitHBarChartDemoMetrics(html: string): string {
+  const source = String(html ?? '');
+  if (!source || !/\bpixel-hbar-chart\b|\bhbar-row\b/i.test(source)) return source;
+  let labelIndex = 0;
+  let next = source.replace(
+    /(<div\b[^>]*\bhbar-label\b[^>]*>)([\s\S]*?)(<\/div>)/gi,
+    (_m, open: string, inner: string, close: string) => {
+      const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      labelIndex += 1;
+      if (!plain) return `${open}${String(labelIndex).padStart(2, '0')}${close}`;
+      if (EIGHTBIT_CHART_DEMO_LABEL_RE.test(plain)) {
+        return `${open}${String(labelIndex).padStart(2, '0')}${close}`;
+      }
+      return `${open}${inner}${close}`;
+    },
+  );
+  next = next.replace(
+    /(<div\b[^>]*\bhbar-fill\b[^>]*)>/gi,
+    (_m, open: string) => {
+      const cleaned = open
+        .replace(/\sdata-width\s*=\s*(["'])[^"']*\1/gi, ' data-width="0"')
+        .replace(/(style\s*=\s*["'][^"']*?)\bwidth\s*:\s*[^;"']+;?/gi, '$1width:0%;');
+      return `${cleaned}>`;
+    },
+  );
+  next = next.replace(
+    /(<div\b[^>]*\bhbar-value\b[^>]*)(>)([\s\S]*?)(<\/div>)/gi,
+    (_m, open: string, gt: string, _inner: string, close: string) => `${open}${gt}0${close}`,
+  );
+  return next;
+}
+
 export function fillEightBitOrbitKitSlide(
   body: string,
   attrs: string,
@@ -14549,10 +14766,18 @@ export function fillEightBitOrbitKitSlide(
     next = replaceFirstExactClassText(next, 'hero-subtitle', heroSub);
     // hero-badge triplet: use topic-derived short labels from lines[0..2]. If
     // fewer lines exist, fall back to the chromeLabel / ordinal.
+    //
+    // 루프559 — `slice(0, 12)` cut mid-Korean-word ("Teamver는 초안과").
+    // Use word-boundary aware shortening: prefer whole space-separated
+    // tokens whose joined length fits the badge budget, then a delimiter
+    // slice, then a full-line short candidate, otherwise fall back to an
+    // ordinal chrome label instead of shipping a truncated stub.
     const badgeLabels = [0, 1, 2].map((i) => {
       const line = lines[i];
       const t = normalizeTemplateCloneInlineText(line?.title ?? '');
-      return t ? t.slice(0, 12) : `${String(i + 1).padStart(2, '0')} · ${chromeLabel.slice(0, 8)}`;
+      const short = t ? shortenEightBitOrbitBadgeLabel(t) : '';
+      if (short) return short;
+      return `${String(i + 1).padStart(2, '0')} · ${shortenEightBitOrbitBadgeLabel(chromeLabel) || chromeLabel.slice(0, 8)}`;
     });
     // `.hero-badge` is a <span> in the kit example — `exactClassBlocks` only
     // walks div|section|article|aside|li|tr, so use a direct regex sequence
@@ -14577,7 +14802,7 @@ export function fillEightBitOrbitKitSlide(
         const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
         if (!plain) return `${open}${escapeHtml(chromeLabel)}${close}`;
         // English demo chrome literals — always rewrite.
-        if (/^(?:Mission\s+Brief|Core\s+Systems|Chronology|Live\s+Telemetry|Access\s+Tiers|Loadout|Roadmap|Vision)$/i.test(plain)) {
+        if (/^(?:Mission\s+Brief|Core\s+Systems|Chronology|Live\s+Telemetry|Access\s+Tiers|Loadout|Roadmap|Vision|Analytics\s+Core|Performance\s+Metrics|Quarterly\s+Growth|Team\s+Roster|Community\s+Voice)$/i.test(plain)) {
           return `${open}${escapeHtml(chromeLabel)}${close}`;
         }
         if (
@@ -14612,6 +14837,28 @@ export function fillEightBitOrbitKitSlide(
       );
       return filled;
     });
+  }
+
+  // 루프559 — Chart shell (`.pixel-bar-chart` / `.pixel-hbar-chart`) ships
+  // English Greek-letter chart-bar-labels (Alpha, Beta, Gamma, Delta,
+  // Epsilon), hard-coded demo `data-value` integers (78, 92, 64, 85, 56)
+  // and a demo `chart-value` "0" placeholder. Fill pipeline has NO way to
+  // synthesize real metric numbers, so:
+  //   1. Rewrite chart-bar-label English demo tokens (Greek letters,
+  //      Sector A/B/C, Series One/Two/Three, Q1..Q5, Rookie/Arcade/Boss,
+  //      Alpha/Beta/…, or a single Latin token on a Korean deck) to a
+  //      Korean ordinal ("01"..."NN"). NEVER invent Korean nouns for demo
+  //      slots — a numeric ordinal is honest.
+  //   2. Zero out demo `data-value="\d+"` on `.chart-bar` and its sibling
+  //      `.chart-value` text so a headless render doesn't show demo
+  //      heights or numbers.
+  // Preserve the chart geometry / structure so the slide layout stays
+  // intact even when the deck has no real metrics.
+  if (/\bchart-bar-label\b/i.test(next) || /\bchart-bar-group\b/i.test(next)) {
+    next = neutralizeEightBitOrbitBarChartDemoMetrics(next);
+  }
+  if (/\bhbar-label\b/i.test(next) || /\bhbar-row\b/i.test(next)) {
+    next = neutralizeEightBitOrbitHBarChartDemoMetrics(next);
   }
 
   // Timeline (slide 6): .timeline-event × N → fill .date/h4/p from lines.
@@ -14754,7 +15001,7 @@ const EIGHTBIT_DEMO_HEADING_RE =
   /Rewiring How We Share Ideas|Four Engines Running|Quarterly Growth Metrics|Resource Allocation|Development Roadmap|Platform Vitals|Choose Your Loadout|Ready Player/i;
 
 const EIGHTBIT_DEMO_COPY_RE =
-  /Pixel Perfect Presentation System|Rewiring How We Share Ideas|Four Engines Running|Quarterly Growth Metrics|Resource Allocation|Access Tiers|Live Telemetry|Chronology|Mission Brief|Core Systems|Loadout|Ready Player(?:<br\s*\/?>|\s)+One\?|Deploy your first 8-BIT ORBIT deck[\s\S]{0,120}?power\.?|Initialize Deck|View Documentation|Wireframes,\s*palette selection[\s\S]{0,120}?established\.?|Pixel components, iconography[\s\S]{0,120}?coded\.?|Charting engine, animated counters[\s\S]{0,120}?binding\.?|Public release with full documentation[\s\S]{0,120}?support\.?|Real-time aggregate figures from active deployments|Active Worlds|Pixels Rendered|Uptime Score|Max Resolution|Concept\s*(?:&(?:amp;)?)?\s*Architecture|Asset Generation|Data Integration|Global Launch|The best presentations do not merely inform[\s\S]{0,240}?unlocked\.?|Lead Creative Technologist,\s*Studio Orbital|Studio Orbital|10\s*Slides|CSS Native|Zero Dependencies|Rookie|Arcade\b(?!\s*[가-힣])|\bBoss\b(?=\s*(?:$|<|\s*<))|\$\s*0\s*\/\s*mo|\$\s*29\s*\/\s*mo|\$\s*79\s*\/\s*mo|For solo explorers testing the waters\.?|Serious builders need serious tooling\.?|Enterprise-grade control and compliance\.?|5\s*slide\s*maximum|Standard grid themes|Community support|Static export only|Unlimited slides|All atmospheric packs|Live data binding|Priority rendering|Custom cursor sets|Everything in Arcade|White-label export|SSO\s*(?:&(?:amp;)?)?\s*audit logs|Dedicated pipeline|No canvas limits\.\s*No cookie-cutter layouts\.[\s\S]{0,140}?architecture[\s\S]{0,80}?compromise\.?|Development Roadmap|Platform Vitals|Choose Your Loadout|8-BIT(?:<br\s*\/?>|\s)+ORBIT/gi;
+  /Pixel Perfect Presentation System|Rewiring How We Share Ideas|Four Engines Running|Quarterly Growth Metrics|Resource Allocation|Access Tiers|Live Telemetry|Chronology|Mission Brief|Core Systems|Loadout|Ready Player(?:<br\s*\/?>|\s)+One\?|Deploy your first 8-BIT ORBIT deck[\s\S]{0,120}?power\.?|Initialize Deck|View Documentation|Wireframes,\s*palette selection[\s\S]{0,120}?established\.?|Pixel components, iconography[\s\S]{0,120}?coded\.?|Charting engine, animated counters[\s\S]{0,120}?binding\.?|Public release with full documentation[\s\S]{0,120}?support\.?|Real-time aggregate figures from active deployments|Active Worlds|Pixels Rendered|Uptime Score|Max Resolution|Concept\s*(?:&(?:amp;)?)?\s*Architecture|Asset Generation|Data Integration|Global Launch|The best presentations do not merely inform[\s\S]{0,240}?unlocked\.?|Lead Creative Technologist,\s*Studio Orbital|Studio Orbital|10\s*Slides|CSS Native|Zero Dependencies|Rookie|Arcade\b(?!\s*[가-힣])|\bBoss\b(?=\s*(?:$|<|\s*<))|\$\s*0\s*\/\s*mo|\$\s*29\s*\/\s*mo|\$\s*79\s*\/\s*mo|For solo explorers testing the waters\.?|Serious builders need serious tooling\.?|Enterprise-grade control and compliance\.?|5\s*slide\s*maximum|Standard grid themes|Community support|Static export only|Unlimited slides|All atmospheric packs|Live data binding|Priority rendering|Custom cursor sets|Everything in Arcade|White-label export|SSO\s*(?:&(?:amp;)?)?\s*audit logs|Dedicated pipeline|No canvas limits\.\s*No cookie-cutter layouts\.[^<]{0,300}?(?:compromise\.?|glowing grids\.?)|Analytics\s+Core|Performance\s+Metrics|Development Roadmap|Platform Vitals|Choose Your Loadout|8-BIT(?:<br\s*\/?>|\s)+ORBIT/gi;
 
 export function stripEightBitOrbitCatalogDemoCopy(html: string): string {
   return String(html ?? '')
@@ -16813,7 +17060,7 @@ export function titleIsUrlOnlyOrUrlFragment(title: string): boolean {
 }
 
 /** Slide title that mirrors the start of a user brief / URL instruction fragment. */
-function slideTitleParrotsBriefFragment(title: string, brief?: string | null): boolean {
+export function slideTitleParrotsBriefFragment(title: string, brief?: string | null): boolean {
   const t = String(title ?? '').trim();
   const b = String(brief ?? '').trim();
   if (!t || !b || t.length < 6) return false;
@@ -16850,7 +17097,7 @@ function slideTitleParrotsBriefFragment(title: string, brief?: string | null): b
 const KOREAN_PLACEHOLDER_TITLE_RE =
   /^\s*(?:주제|제목|본문|내용|예시)(?:[가는을를의이에과와으로])?\s/u;
 
-function slideTitleLooksLikeKoreanPlaceholder(title: string): boolean {
+export function slideTitleLooksLikeKoreanPlaceholder(title: string): boolean {
   const t = String(title ?? '').trim();
   if (!t || t.length < 4) return false;
   return KOREAN_PLACEHOLDER_TITLE_RE.test(t);

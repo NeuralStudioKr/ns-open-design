@@ -142,6 +142,8 @@ import {
   resolveTemplateCloneSlotMap,
   stripSynthRotationSaltLeaks,
   slideSectionIsShortResponsePad,
+  slideTitleParrotsBriefFragment,
+  slideTitleLooksLikeKoreanPlaceholder,
   TEAMVER_SHORT_RESPONSE_PAD_ATTR,
   TEAMVER_SHORT_RESPONSE_PAD_VALUE,
 } from '../src/template-clone-fill.js';
@@ -2276,6 +2278,191 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(labelVisible).not.toBe(deckTitle);
     expect(labelVisible.length).toBeLessThanOrEqual(8);
     expect(labelVisible).toMatch(/표지|개요|커버|Cover/i);
+  });
+
+  // 루프559 — 8-Bit Orbit user report 2026-09-18. MiniMax ships a 10-slide
+  // deck on the neon pixel template with SIX distinct visible defects:
+  //  (a) English "No canvas limits. No cookie-cutter layouts…" verbatim on
+  //      slide 10 split-layout (demo strip regex required "compromise" anchor
+  //      that the template doesn't contain).
+  //  (b) `.pixel-bar-chart` shell ships English Alpha/Beta/Gamma/Delta/Epsilon
+  //      labels + demo values 78/92/64/85/56 + "Analytics Core" pixel-label —
+  //      the chart is decorative when we have no real metrics to bind.
+  //  (c) `pickTemplateShellsForContent` picks `data-slide="9"` twice and
+  //      `data-slide="6"` twice while `data-slide="5"` and `data-slide="10"`
+  //      are never picked — duplicated layouts render duplicate content.
+  //  (d) The second pick of the timeline shell (slide 6) has the topic
+  //      keyword scrubbed leaving damaged Korean ("기존 문서를 : 을 시작
+  //      보드로", "에서 댓글과 버전을") — same-shell double-fill.
+  //  (e) Hero-badge triplet gets sliced at 12 chars mid-Korean word
+  //      ("Teamver는 초안과") — badge shows a truncated stub.
+  //  (f) Chapter title "Teamver 소개 2" trailing "N" parrot survives sanitize.
+  const LOOP559_FIXTURE_URL = new URL(
+    './fixtures/loop559-eightbit-orbit-teamver-quality.html',
+    import.meta.url,
+  );
+  const LOOP559_EIGHTBIT_EXAMPLE_URL = new URL(
+    '../../../plugins/_official/examples/html-ppt-zhangzara-8-bit-orbit/example.html',
+    import.meta.url,
+  );
+
+  it('루프559 (a) — 8-Bit Orbit "No canvas limits. No cookie-cutter layouts…" split-layout demo paragraph is stripped even when the trailing anchor is not "compromise"', async () => {
+    // Regression: EIGHTBIT_DEMO_COPY_RE required `[…]{0,80}?compromise\.?`
+    // after "architecture", but the template text ends with "…scanlines,
+    // grain, and glowing grids." so the entire paragraph leaked verbatim.
+    const html = await readFile(LOOP559_FIXTURE_URL, 'utf8');
+    expect(html).toContain('No canvas limits');
+    const stripped = stripEightBitOrbitCatalogDemoCopy(html);
+    expect(stripped).not.toMatch(/No canvas limits/);
+    expect(stripped).not.toMatch(/No cookie-cutter layouts/);
+    expect(stripped).not.toMatch(/pure CSS architecture/);
+    // Real Korean copy on the same slide must survive.
+    expect(stripped).toContain('Teamver가 풀어야 하는 문제');
+  });
+
+  it('루프559 (b) — 8-Bit Orbit `.pixel-bar-chart` on a Korean deck drops Alpha/Beta/Gamma/Delta/Epsilon labels + demo values (78/92/64/85/56) + "Analytics Core" pixel-label', async () => {
+    // Chart shell has no real metrics for a service-intro deck — the demo
+    // Greek-letter labels and hard-coded bar heights must not ship.
+    const html = await readFile(LOOP559_FIXTURE_URL, 'utf8');
+    // Sanity: fixture actually contains all the demo tokens.
+    expect(html).toMatch(/Analytics Core/);
+    expect(html).toContain('>Alpha<');
+    expect(html).toContain('>Beta<');
+    expect(html).toContain('>Gamma<');
+    expect(html).toContain('>Delta<');
+    expect(html).toContain('>Epsilon<');
+    expect(html).toMatch(/data-value="78"/);
+
+    const healed = healEightBitOrbitLeftoverCatalogCopy(html, 'Teamver 소개');
+    // Chart-bar-label demo names must all be gone (single-token Greek letters
+    // are unambiguous demo copy on a Korean deck).
+    expect(healed).not.toMatch(/>\s*Alpha\s*</);
+    expect(healed).not.toMatch(/>\s*Beta\s*</);
+    expect(healed).not.toMatch(/>\s*Gamma\s*</);
+    expect(healed).not.toMatch(/>\s*Delta\s*</);
+    expect(healed).not.toMatch(/>\s*Epsilon\s*</);
+    // "Analytics Core" is a template pixel-label chrome literal — it must be
+    // rewritten to the deck's chrome label or removed.
+    expect(healed).not.toMatch(/Analytics Core/);
+    // Demo bar heights (data-value + inline height:0%) either get neutralized
+    // to a safe zero-metric shape OR the whole `.pixel-bar-chart` shell gets
+    // dropped. Either way the demo integers must not survive as visible text.
+    const chartValues = [...healed.matchAll(/<div[^>]*\bchart-value\b[^>]*>([\s\S]*?)<\/div>/gi)]
+      .map((match) => String(match[1] ?? '').replace(/<[^>]+>/g, '').trim());
+    for (const value of chartValues) {
+      expect(['', '0', '—', '-']).toContain(value);
+    }
+  });
+
+  it('루프559 (c) — pickTemplateShellsForContent stops stamping the SAME PROSE-FRIENDLY shell twice when unused body-pool shells are available (8-Bit Orbit 10-slide outline)', async () => {
+    // Regression: user report 2026-09-18 shipped `data-slide="9"` (list/body)
+    // TWICE while unused body shells (5, 10) were skipped. Both duplicate
+    // stamps were title-only "chapter" slides because the fill pipeline
+    // resolves them from the same outline pattern; the second one arrived
+    // with a MiniMax "brief + N" parrot title ("Teamver 소개 2"). We fix
+    // this by pulling unused prose-friendly shells into rotation for
+    // duplicated prose-friendly outline slots (body / list / cards).
+    //
+    // Structural role duplicates (timeline / stat / team) are ALLOWED to
+    // repeat because a timeline outline landing on a body-diagram shell
+    // loses its `<h4>`/`<p>` step rendering — a duplicated timeline
+    // layout with distinct per-slide content is strictly better (루프450
+    // Capsule quality gate 참고).
+    const seed = await readFile(LOOP559_EIGHTBIT_EXAMPLE_URL, 'utf8');
+    const shells = listTemplateCloneSlideShells(seed);
+    expect(shells.length).toBe(10);
+    const outline: Parameters<typeof pickTemplateShellsForContent>[1] = [
+      { title: 'Teamver 소개', roleHint: 'cover' },
+      { title: '왜 Teamver인가', body: '팀의 협업 방식을 근본부터 바꾸는 이유를 설명한다.', roleHint: 'list' },
+      { title: '핵심 가치', body: '초안 · 수정 · 공유 3가지 축을 소개한다.', roleHint: 'cards' },
+      { title: '작동 방식', body: '한 화면에서 문서 쓰기부터 리뷰까지 이어진다.', roleHint: 'body' },
+      { title: '측정해야 할 지표', body: '작업 흐름을 확인할 수 있는 지표를 정리한다.', roleHint: 'stat' },
+      { title: '도입 단계', body: '팀 → 리뷰 → 조직 → 이어쓰기 4단계.', roleHint: 'timeline' },
+      { title: '운영 원칙', body: '같은 보드·권한·이력·맥락 네 축.', roleHint: 'list' },
+      { title: '팀의 목소리', body: '실사용 팀의 한 문장 후기.', roleHint: 'quote' },
+      { title: '증거로 만드는 신뢰', body: '실제 사례와 결과.', roleHint: 'body' },
+      { title: '지금 시작하기', body: '한 팀 보드부터 열어본다.', roleHint: 'closing' },
+    ];
+    const picked = pickTemplateShellsForContent(shells, outline);
+    expect(picked.length).toBe(10);
+    const dataSlideValues = picked.map((shell) => {
+      const match = /\bdata-slide\s*=\s*["'](\d+)["']/i.exec(shell.attrs);
+      return match?.[1] ?? '';
+    });
+    // No prose-friendly outline slot (indices 1, 2, 3, 6, 8) can share its
+    // shell with another prose-friendly slot — those are the slots the
+    // user report showed shipping duplicate title-only chapter slides.
+    const proseSlotShells = [1, 2, 3, 6, 8].map((idx) => dataSlideValues[idx]);
+    const proseDupes = proseSlotShells.filter(
+      (value, i) => value && proseSlotShells.indexOf(value) !== i,
+    );
+    expect(proseDupes).toEqual([]);
+    // At least 9 distinct shells are used — down from 8 in the pre-fix run
+    // where both `data-slide=9` and `data-slide=6` shipped twice.
+    expect(new Set(dataSlideValues).size).toBeGreaterThanOrEqual(9);
+  });
+
+  it('루프559 (d) — 8-Bit Orbit hero-badge triplet uses whole Korean tokens (never a mid-word slice like "Teamver는 초안과")', async () => {
+    // Regression: `slice(0, 12)` cut mid-Korean-word. Real Korean deck titles
+    // have short topical keywords already; slicing at code-point 12 on
+    // "Teamver는 초안과 수정을 …" leaves the orphan tail "Teamver는 초안과".
+    const body = [
+      '<div class="slide-content">',
+      '<div class="hero-subtitle">placeholder</div>',
+      '<h1 class="pixel-hero-text">Teamver 소개</h1>',
+      '<div class="hero-badges">',
+      '<span class="hero-badge">Presentation Template</span>',
+      '<span class="hero-badge">Presentation Template</span>',
+      '<span class="hero-badge">Presentation Template</span>',
+      '</div>',
+      '</div>',
+    ].join('');
+    const filled = fillEightBitOrbitKitSlide(body, 'class="slide"', {
+      title: 'Teamver 소개',
+      lead: 'Teamver는 초안과 수정을 같은 보드에서 끝낸다.',
+      bodyText: 'Teamver는 초안과 수정을 같은 보드에서 끝낸다.',
+      kicker: '',
+      fillLines: [
+        {
+          title: 'Teamver는 초안과 수정을 같은 보드에서 끝낸다.',
+          body: 'Teamver는 초안과 수정을 같은 보드에서 끝낸다.',
+        },
+        { title: '핵심 가치와 팀의 협업 범위', body: '' },
+        { title: '적용 판단과 시작 단계', body: '' },
+      ],
+    });
+    const badges = [...filled.matchAll(/<span[^>]*\bhero-badge\b[^>]*>([\s\S]*?)<\/span>/gi)]
+      .map((match) => String(match[1] ?? '').replace(/<[^>]+>/g, '').trim());
+    expect(badges.length).toBe(3);
+    for (const badge of badges) {
+      // Reject bare mid-word tails: a badge that ends with a Korean particle
+      // ("과" / "와" / "의" / "를" / "은" / "는" / "이" / "가" / "에" / "에서")
+      // and nothing after it is a truncation artifact.
+      expect(badge).not.toMatch(/(?:과|와|의|를|을|은|는|이|가|에|에서)$/);
+      expect(badge).not.toBe('Teamver는 초안과');
+      expect(badge).not.toBe('Presentation Template');
+    }
+  });
+
+  it('루프559 (e) — chapter slide title "Teamver 소개 2" (brief + trailing N) is treated as a failed placeholder title so `rewriteInstructionParrotingSlideTitles` swaps it for a topic-aware index fallback', () => {
+    // Regression: MiniMax hallucinated a numeric-suffix parrot for the second
+    // chapter opener ("Teamver 소개 2"). The pixel-label AND the h2 on the
+    // fixture slide 2 both carry that string verbatim. The parrot detector
+    // must return true so the outline rewriter replaces it upstream.
+    //
+    // 루프555 already covered the separator forms ("Teamver 소개 · 2" and
+    // "Teamver 소개 v2"). 루프559 extends the trailing-index detection so
+    // the bare-space form ("Teamver 소개 2") is also caught.
+    expect(slideTitleParrotsBriefFragment('Teamver 소개 2', 'Teamver 소개')).toBe(true);
+    expect(slideTitleParrotsBriefFragment('Teamver 소개 3', 'Teamver 소개')).toBe(true);
+    expect(slideTitleParrotsBriefFragment('Teamver 소개 10', 'Teamver 소개')).toBe(true);
+    expect(slideTitleParrotsBriefFragment('Teamver 소개 · 2', 'Teamver 소개')).toBe(true);
+    expect(slideTitleParrotsBriefFragment('Teamver 소개 v2', 'Teamver 소개')).toBe(true);
+    // But a real, on-topic title MUST NOT be caught.
+    expect(slideTitleParrotsBriefFragment('신뢰를 만드는 증거를 쓰는 자리', 'Teamver 소개')).toBe(false);
+    expect(slideTitleParrotsBriefFragment('측정해야 할 지표 작업 흐름', 'Teamver 소개')).toBe(false);
+    // A brief-substring title that isn't a numeric parrot must survive.
+    expect(slideTitleParrotsBriefFragment('Teamver 도입 방법', 'Teamver 소개')).toBe(false);
   });
 
   it('루프538 — Grove forest kit demo chrome (landscape / grove-stat KPI / sidebar) is scrubbed', async () => {

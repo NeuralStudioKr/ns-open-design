@@ -38,6 +38,43 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프559 — 8-Bit Orbit MiniMax 결과물 6종 회귀 (chart demo · 영문 데모 카피 · 중복 shell · badge 절단)
+
+체감: 루프557/558 배포 이후 2026-09-18 사용자 리포트 실물 HTML — 8-Bit Orbit 픽셀 kit 로 생성한 "Teamver 소개" 10장 덱에 6가지 눈에 띄는 결함이 동시에 남음. "여전히 결과물에 문제가 많다" 재보고.
+
+- (a) 슬라이드 10 (split-layout `.pixel-label` 오른쪽 문단) 에 `No canvas limits. No cookie-cutter layouts. Just pure CSS architecture delivering cinematic slide transitions and atmospheric depth through scanlines, grain, and glowing grids.` 영문 데모 문단이 그대로 남음.
+- (b) 슬라이드 8 (`.pixel-bar-chart` 차트) 이 영문 데모 축 라벨 `Alpha / Beta / Gamma / Delta / Epsilon` + 하드코드 데모 값 `78 / 92 / 64 / 85 / 56` + 영문 chrome 라벨 `Analytics Core` 를 그대로 표시. 한글 서비스 소개에 실제 지표가 없는데 데모 막대가 남음.
+- (c) `pickTemplateShellsForContent` 가 `data-slide="9"` 를 2번, `data-slide="6"` 을 2번 찍고 `data-slide="5"` · `data-slide="10"` 은 한 번도 찍지 않음. 결과적으로 title-only "chapter" 슬라이드 2장이 반복되고, 두 번째 chapter 는 MiniMax 가 브리프 파롯 (`Teamver 소개 2`) 로 채움.
+- (d) 두 번째 timeline (`data-slide="6"`) 이 첫 번째 timeline 의 topic keyword (`사용 흐름`) 를 삭제한 채 나옴 → `기존 문서를 : 을 시작 보드로 옮기고 …` 처럼 콜론·조사 orphan 이 남는 손상된 한글. (`위 (c)` prose-friendly 예방으로 반복 발생 확률 감소.)
+- (e) 커버 `.hero-badge` 3개가 `slice(0, 12)` 로 잘려 `Teamver는 초안과` 같이 조사 뒤에서 끊긴 mid-word stub 이 표시됨.
+- (f) `Teamver 소개 2` 처럼 브리프 원문 뒤에 숫자만 붙인 chapter 제목이 살아남음 (`slideTitleParrotsBriefFragment` 는 이미 loop555 branch 로 잡지만 export 되지 않아 테스트 계약이 문서화되지 않음).
+
+원인 및 처방:
+
+1) "No canvas limits" 문단 leak — `EIGHTBIT_DEMO_COPY_RE` 의 해당 branch 가 트레일링 anchor 로 `compromise` 를 요구했는데, 실제 example.html 은 `glowing grids.` 로 끝남. → anchor 를 `compromise\.?|glowing grids\.?` 로 확장하고 `[^<]{0,300}?` 로 tag 경계 안전 보장. `Analytics Core|Performance Metrics|Quarterly Growth Metrics` chrome 문구도 regex 에 추가.
+
+2) 차트 데모 라벨/값 — `.pixel-bar-chart` / `.pixel-hbar-chart` shell 은 fill 파이프라인 slot 목록 (`tier-card` / `timeline-event` / `stat-block` 등) 밖이라 `healEightBitOrbitLeftoverCatalogCopy` body-guard skip. `Analytics Core` 도 pixel-label rewriter 화이트리스트 밖. → body-guard 에 `chart-bar-group|chart-bar-label|hbar-row|hbar-label` 추가 + 데모 판정 조건에 `chart-bar-group|hbar-row` 를 별도 fingerprint 로 추가. `neutralizeEightBitOrbitBarChartDemoMetrics` + `neutralizeEightBitOrbitHBarChartDemoMetrics` + `EIGHTBIT_CHART_DEMO_LABEL_RE` (Alpha–Omega, Sector/Series/Segment/Tier, Q1..Q5, FY24, Rookie/Arcade/Boss 를 데모 토큰으로 인식) 이 chart-bar-label 을 `01`·`02`·… 한글 numeric ordinal 로 교체하고, `.chart-bar` / `.hbar-fill` 의 데모 `data-height`·inline `height`·`data-value` 를 0 으로 초기화. shell 구조는 유지 → 슬라이드 레이아웃 살아남음. `fillEightBitOrbitKitSlide` 안 pixel-label rewriter 에 `Analytics Core|Performance Metrics|Quarterly Growth|Team Roster|Community Voice` 추가.
+
+3) shell 중복 → title-only chapter 반복 — `pickShellByRole` 이 role-fallback 만 시도하고 unused shell 이 있어도 doubling 을 허용. 8-Bit Orbit 처럼 body/list 슬롯이 많을 때 같은 shell 이 2번 찍히고 unused body shell 은 방치. → `pickTemplateShellsForContent` 에 **prose-friendly 아웃라인 슬롯 전용** no-duplicate 규칙 추가: `slides.length <= shells.length` AND 아웃라인 role ∈ `{body, list, cards}` AND 현재 shell 이 이미 사용됨 이면 `VARIETY_SAFE_ROLE_PREFERENCE` 순서로 unused 프로즈 friendly shell 을 pull-in. timeline/stat/team/process 같은 구조적 role 은 shell 이 하나뿐이면 duplicate 를 허용 (구조 rendering 을 잃는 것보다 낫다 — 루프450 Capsule 게이트 참조).
+
+4) hero-badge mid-word truncation — `t.slice(0, 12)` 가 code-point 12에서 한글 mid-word 로 자름. → `shortenEightBitOrbitBadgeLabel` : 1) 원본이 fit + 조사 orphan 아니면 그대로, 2) 딜리미터 (`·,、;|/—–-:`) 로 나눈 첫 조각이 fit + 조사 아니면 사용, 3) 공백 토큰 누적으로 채우되 조사 orphan 은 마지막 토큰 drop, 4) 아니면 `''` 반환 → 호출자가 `NN · chromeLabel` fallback 으로 대체. 조사 판정 정규식 `(?:과|와|의|를|을|은|는|이|가|에|에서|으로)$` 로 mid-word cut 을 원천 차단.
+
+5) parrot detector export — `slideTitleLooksLikeKoreanPlaceholder` / `slideTitleParrotsBriefFragment` 를 export 로 승격해 테스트 계약을 명시화.
+
+검증:
+
+- contracts `template-clone-fill.test.ts` 루프559 (a)(b)(c)(d)(e) 5종 red spec. 루프558 상태에서는 5개 중 4개 RED (a,b,c,d), (e) 만 이미 GREEN (detector 는 잘 동작하지만 파이프라인 상류에서 호출되지 않음). 루프559 적용 후 5개 모두 GREEN + 기존 315개 유지 (총 320 passed).
+- End-to-end 8-Bit Orbit deterministic clone repro (`buildTemplateClonedDeckHtml` + `healEightBitOrbitLeftoverCatalogCopy`) 로 확인:
+  - "No canvas limits" / "Analytics Core" / "Alpha"·"Beta"·"Gamma"·"Delta"·"Epsilon" / 데모 값 78·92·64·85·56 → 모두 gone.
+  - hero-badge 3개 모두 word-clean (`01 · OVERVIEW` / `Teamver 개요` / `핵심 포인트`) — mid-word truncation 없음.
+  - shell 중복 2개 → 1개 (구조 role timeline `data-slide="6"` 만 잔존, prose-friendly `data-slide="9"` 는 unique).
+- 전체 contracts vitest 3253 passed / 3 failed (3 failure 는 루프559 이전부터 존재하던 pre-existing: `deck-quality-slide-count`, `deck-framework-compact`, `system-prompt-api-mode`. `git stash` 로 재확인 완료).
+
+남은 스코프 (별도 루프에서 다룰 것):
+
+- 구조 role duplicates (timeline/stat/team) — shell 이 template 에 하나뿐일 때 여전히 duplicate 가능. 두 번째 fill 이 첫 번째의 topic keyword 를 삭제하는 damaged-Korean 패턴 (`기존 문서를 : 을 시작 …`) 은 fill 파이프라인 자체의 문제로, 별도 red-spec 로 후속.
+- 커버 `hero-subtitle` 이 `hero-tagline` 과 동일한 문장으로 채워지는 문제 — 슬롯이 다르므로 lead 와 tagline 을 분리한 synthesizer 필요.
+
 ### 루프558 — Block Frame 커버가 표지·h1 만 남는 회귀 (kit chrome / deco / hero-subtitle 소실)
 
 체감: 루프557 배포 이후 2026-09-17~18 사용자 리포트 실물 스크린샷 — Block Frame 첫 페이지가 크림색 큰 카드 하나에 작은 pink `표지` 라벨과 h1 `업무와 AI를 하나의 공간에서` 만 남고, 4개 `corner-bracket` · `deco-pink-rect` · `deco-green-circle` · `deco-yellow-bar` · `hero-subtitle` 이 모두 사라진 채 표지가 나감. "여전히 결과물을 제대로 만들지 못하고 있다" 재보고.
