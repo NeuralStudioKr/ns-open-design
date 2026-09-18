@@ -10765,6 +10765,69 @@ export function healEightBitOrbitLeftoverCatalogCopy(
     const visible = visibleDeckCopy(body);
     const leftoverTitle = looksLikeEightBitCapsuleLeftoverCopy(visible)
       || /(?<![가-힣])개요(?![가-힣])/.test(visible);
+    // 루프560 — When the pixel-label chip renders the SAME text as its
+    // sibling h2 on the same shell (user report 2026-09-18 — chapter
+    // divider `Teamver 소개 2` shows up in both the chip and the h2), run
+    // the fill pipeline so `fillEightBitOrbitKitSlide`'s pixel-label vs
+    // h2 parrot guard rewrites the chip to a distinct role tag.
+    const pixelLabelParrotsHeading = (() => {
+      const labelMatch = /<(?:div|span)\b[^>]*\bpixel-label\b[^>]*>([\s\S]*?)<\/(?:div|span)>/i.exec(body);
+      const h2Match = /<h2\b[^>]*>([\s\S]*?)<\/h2>/i.exec(body);
+      if (!labelMatch || !h2Match) return false;
+      const labelPlain = String(labelMatch[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      const h2Plain = String(h2Match[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      return !!labelPlain && !!h2Plain && labelPlain === h2Plain;
+    })();
+    // 루프560+ — Cover subtitle/tagline dedup. When the neon-pixel cover
+    // ships `.hero-subtitle` and `.hero-tagline` with identical Korean
+    // copy (user report 2026-09-18 — both render the deck lead), route
+    // through `fillEightBitOrbitKitSlide` so its subtitle-vs-tagline
+    // dedup guard promotes a distinct kicker chip above the h1.
+    const coverSubtitleParrotsTagline = (() => {
+      if (!/\bhero-subtitle\b/i.test(body) || !/\bhero-tagline\b/i.test(body)) return false;
+      const subMatch = /<(?:p|div)\b[^>]*\bhero-subtitle\b[^>]*>([\s\S]*?)<\/(?:p|div)>/i.exec(body);
+      const tagMatch = /<(?:p|div)\b[^>]*\bhero-tagline\b[^>]*>([\s\S]*?)<\/(?:p|div)>/i.exec(body);
+      if (!subMatch || !tagMatch) return false;
+      const subPlain = String(subMatch[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      const tagPlain = String(tagMatch[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      return !!subPlain && !!tagPlain && subPlain === tagPlain;
+    })();
+    // 루프560+ — Hero-badge trio ends with a dangling Korean particle
+    // (user report 2026-09-18 — "Teamver는 초안과" comes from a naive
+    // truncation of the deck lead at 12 chars; the token stops in the
+    // middle of the sentence). Route to the fill so the badge shortener
+    // (`shortenEightBitOrbitBadgeLabel`) can produce a clean chip.
+    const heroBadgeHasDanglingParticle = (() => {
+      if (!/\bhero-badge\b/i.test(body)) return false;
+      const badges = [...String(body ?? '').matchAll(/<span\b[^>]*\bhero-badge\b[^>]*>([\s\S]*?)<\/span>/gi)]
+        .map((m) => String(m[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+      return badges.some((b) => /(?:는|은|이|가|과|와|을|를|의|에|에서)$/u.test(b));
+    })();
+    // 루프560+ — Empty chapter divider shape (only `.pixel-label + h2`
+    // under `.slide-content`, no body slots — user report 2026-09-18
+    // slide 9). Route through the fill so `injectEightBitOrbitTier
+    // FallbackBody` can synthesize body copy from the outline lead.
+    const isEmptyChapterDivider = (() => {
+      if (!/\bslide-content\b/i.test(body)) return false;
+      if (/\b(?:feature-card|timeline-event|stat-block|chart-bar-group|hbar-row|split-layout|quote-container|cta-content|hero-badges|tier-fallback-body|tier-card)\b/i.test(body)) {
+        return false;
+      }
+      const strippedHeader = String(body)
+        .replace(/<(?:div|span)\b[^>]*\bpixel-label\b[^>]*>[\s\S]*?<\/(?:div|span)>/gi, '')
+        .replace(/<h[1-6]\b[^>]*>[\s\S]*?<\/h[1-6]>/gi, '');
+      const visibleAfterHeader = String(strippedHeader).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      return visibleAfterHeader.length < 40;
+    })();
+    // 루프560 — Damaged Korean orphan fingerprint (colon + particle +
+    // space, or a paragraph opening with a bare particle immediately
+    // after a tag). Signals that a topic-keyword strip pass has left
+    // orphan sentence fragments (user report 2026-09-18 — the SECOND
+    // pick of `data-slide="6"` timeline had `사용 흐름` stripped and now
+    // reads `기존 문서를 : 을 시작 보드로 옮기고 …`). Force the healer
+    // through so `fillEightBitOrbitKitSlide` can rewrite the paragraphs
+    // from the role pack.
+    const bodyHasKoreanOrphanDamage = /:\s*(?:을|를|이|가|과|와|의|은|는)\s/u.test(body)
+      || />\s*(?:에서|에|을|를|이|가|과|와|의|은|는)\s+[가-힣]/u.test(body);
     // 루프559 — Chart shells (`.pixel-bar-chart` / `.pixel-hbar-chart`) never
     // match `EIGHTBIT_DEMO_COPY_RE` because their demo copy is Greek-letter
     // labels + numeric data-values only. Recognise chart-bar-group / hbar-row
@@ -10775,6 +10838,11 @@ export function healEightBitOrbitLeftoverCatalogCopy(
       && !/\btier-card\b/i.test(body)
       && !/\bchart-bar-group\b|\bhbar-row\b/i.test(body)
       && !leftoverTitle
+      && !pixelLabelParrotsHeading
+      && !bodyHasKoreanOrphanDamage
+      && !coverSubtitleParrotsTagline
+      && !heroBadgeHasDanglingParticle
+      && !isEmptyChapterDivider
     ) {
       EIGHTBIT_DEMO_COPY_RE.lastIndex = 0;
       continue;
@@ -11844,6 +11912,36 @@ function eightBitPackForBody(body: string, pack: EightBitCopyPack): EightBitRole
   if (/\btier-card\b|\btier-grid\b/i.test(body)) return pack.tiers;
   if (/\bcta-content\b|\bpixel-btn\b/i.test(body)) return pack.close;
   return pack.intro;
+}
+
+/**
+ * 루프560 — Short role-tag chip for the 8-Bit Orbit `.pixel-label` chrome.
+ *
+ * The kit ships `<span class="pixel-label">…</span>` immediately above the
+ * section `<h2>`. Its purpose is a small kicker chip (like a chapter
+ * marker), NOT a repeat of the headline. When MiniMax lacks a distinct
+ * kicker, the fill pipeline defaults `chromeLabel = kicker || heading`,
+ * which makes the pixel-label render the SAME string as the sibling h2 —
+ * user report 2026-09-18 shows this on 6+ of 10 slides (`Teamver 소개 2`,
+ * `서비스 가치 제안 판단`, `도입 단계`, `대상 고객별 메시지 운영`, …).
+ *
+ * Return a stable Korean 2–4 syllable role tag that is guaranteed
+ * different from the outline title. Called ONLY after the primary
+ * pixel-label rewrite has run and only when we can prove the chip is
+ * still equal to the visible h2 on the same slide.
+ */
+function eightBitOrbitRoleKickerForBody(body: string): string {
+  if (/\bpixel-hero-text\b|\bhero-badges\b/i.test(body)) return '표지';
+  if (/\bsplit-layout\b/i.test(body)) return '소개';
+  if (/\bfeature-grid\b|\bfeature-card\b/i.test(body)) return '핵심 기능';
+  if (/\bpixel-hbar-chart\b|\bhbar-row\b/i.test(body)) return '성과';
+  if (/\bpixel-bar-chart\b|\bchart-bar-group\b/i.test(body)) return '지표';
+  if (/\btimeline-event\b/i.test(body)) return '단계';
+  if (/\bstat-block\b/i.test(body)) return '운영';
+  if (/\bquote-text\b|\bquote-container\b/i.test(body)) return '한 마디';
+  if (/\btier-card\b|\btier-grid\b/i.test(body)) return '구성';
+  if (/\bcta-content\b|\bpixel-btn\b/i.test(body)) return '실행';
+  return '내용';
 }
 
 function capsuleSlideCopyPack(topic: string): CapsuleCopyPack {
@@ -14632,6 +14730,82 @@ const EIGHTBIT_CHART_DEMO_LABEL_RE =
  * Structure (chart-bar-group wrappers, .pixel-bar-chart container, colored
  * `.chart-bar.alt` variants) stays intact so the slide still lays out.
  */
+/**
+ * 루프560 — After the neon pixel `.tier-grid` gets stripped (Korean decks
+ * never carry USD pricing), the shell renders as an empty chapter with
+ * only the pixel-label chip and the h2 headline. Inject a topical body
+ * list drawn from the outline's fillLines so the slide keeps carrying
+ * substantive copy. Placement: append inside `.slide-content` so the
+ * flex layout still centers the header + body pair.
+ *
+ * Chooses up to 3 lines that are longer than a bare title token so the
+ * body reads like real content, not another header. Skips silently
+ * (returning the input unchanged) when the shell has no `.slide-content`
+ * anchor or when the fillLines resolve to empty copy.
+ */
+function injectEightBitOrbitTierFallbackBody(
+  html: string,
+  lines: TemplateCloneCardFillLine[],
+  meta: { heading: string; lead: string; bodyText: string },
+): string {
+  const source = String(html ?? '');
+  if (!source || !/\bslide-content\b/i.test(source)) return source;
+  // If the shell already has body copy that isn't the header, leave it.
+  const strippedHeader = source
+    .replace(/<(?:div|span)\b[^>]*\bpixel-label\b[^>]*>[\s\S]*?<\/(?:div|span)>/gi, '')
+    .replace(/<h[1-6]\b[^>]*>[\s\S]*?<\/h[1-6]>/gi, '');
+  const visibleAfterHeader = String(strippedHeader)
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (visibleAfterHeader.length >= 40) return source;
+
+  // Materialize up to three body items from fillLines + lead/bodyText.
+  // 루프560+ — Reject items whose BODY matches SERVICE_INTRO_LEFTOVER_BODY_RE
+  // (the downstream post-pass will strip that phrase, leaving the paragraph
+  // as orphan punctuation like "사용자가 과 전환 비용을 먼저 정의"). Card
+  // titles (`제품 / 사례 / 운영`) are legitimate short labels and MUST be
+  // kept even though they match `SERVICE_INTRO_LEFTOVER_CARD_TITLE_RE`
+  // — that regex is a leftover-heading detector, not a chip-blocklist.
+  const items: Array<{ title: string; body: string }> = [];
+  for (const line of lines) {
+    const resolved = resolveTemplateCloneCardFill(line);
+    const title = normalizeTemplateCloneInlineText(resolved.title || '');
+    const body = normalizeTemplateCloneInlineText(resolved.body || resolved.title || '');
+    if (!title && !body) continue;
+    if (SERVICE_INTRO_LEFTOVER_BODY_RE.test(body)) continue;
+    items.push({ title, body });
+    if (items.length >= 3) break;
+  }
+  if (items.length === 0) {
+    const leadText = normalizeTemplateCloneInlineText(meta.lead || meta.bodyText || meta.heading || '');
+    if (!leadText || leadText.length < 4) return source;
+    items.push({ title: '', body: leadText });
+  }
+  const fallbackHtml = items
+    .map((item) => {
+      // 루프560+ — Skip the leading `<strong>` chip when title == body so
+      // the paragraph doesn't render "Teamver 소개 Teamver 소개" twice.
+      const titleDistinctFromBody = item.title && item.title !== item.body;
+      const t = titleDistinctFromBody
+        ? `<strong style="color: var(--neon-cyan); font-family: var(--font-mono); letter-spacing:0.08em;">${escapeHtml(item.title)}</strong> `
+        : '';
+      const b = escapeHtml(item.body);
+      return `<p style="max-width: 720px; margin: 0 auto 0.9rem; text-align: center; color: rgba(255,255,255,0.82); font-family: var(--font-body); font-size: clamp(1rem, 32.4px, 1.35rem); line-height: 1.6;" data-od-hangul="1">${t}${b}</p>`;
+    })
+    .join('');
+  const fallbackWrapper = `<div class="tier-fallback-body" style="width:100%; max-width:900px; margin:0 auto;">${fallbackHtml}</div>`;
+  // Inject just before the closing </div> of the outermost `.slide-content`.
+  const contentMatch = /(<div\b[^>]*\bslide-content\b[^>]*>)([\s\S]*?)(<\/div>)(?![\s\S]*<\/div>\s*<\/section>|[\s\S]*<div\b[^>]*\bslide-content\b)/i.exec(source);
+  if (!contentMatch) {
+    return source.replace(
+      /(<div\b[^>]*\bslide-content\b[^>]*>)([\s\S]*)/i,
+      (_m, open: string, rest: string) => `${open}${rest}${fallbackWrapper}`,
+    );
+  }
+  return `${source.slice(0, contentMatch.index)}${contentMatch[1]}${contentMatch[2] ?? ''}${fallbackWrapper}${contentMatch[3]}${source.slice(contentMatch.index + contentMatch[0].length)}`;
+}
+
 function neutralizeEightBitOrbitBarChartDemoMetrics(html: string): string {
   const source = String(html ?? '');
   if (!source || !/\bpixel-bar-chart\b|\bchart-bar-group\b/i.test(source)) return source;
@@ -14727,7 +14901,28 @@ export function fillEightBitOrbitKitSlide(
   ) {
     return src;
   }
-  const topic = resolveLockedTopicNoun(input.title, input.lead, input.bodyText, input.kicker);
+  // 루프560 — resolveLockedTopicNoun can bake a SERVICE_INTRO_LEFTOVER_BODY_RE
+  // phrase into `brand` when the outline synthesized a leftover catalog line
+  // (e.g. `bodyText = "파일럿: 작은 팀이나 단일 업무에서 빠르게 파일럿을 시작"`).
+  // That phrase then flows into the pack items as `기존 문서를 <phrase>
+  // 보드로 옮기고 …`; when the post-pass strips the leftover phrase back
+  // out, the timeline paragraphs collapse to `기존 문서를 : 을 시작 보드
+  // 로 옮기고 …` — the exact orphan-punctuation regression the user
+  // reported.
+  //
+  // Only consult `input.title` and `input.kicker` — `lead` / `bodyText`
+  // are prose descriptors ("Teamver가 풀어야 하는 문제") that would become
+  // weird when interpolated into pack templates ("Teamver가 풀어야 하는
+  // 문제가 묶는 일" as the section heading — user report 2026-09-18 slide
+  // 9). Reject any topic candidate that is itself a leftover phrase so
+  // brand falls back to a clean noun.
+  const derivedTopicNoun = resolveLockedTopicNoun(input.title, input.kicker);
+  const topicNounIsLeftover = !!derivedTopicNoun && (
+    looksLikeEightBitCapsuleLeftoverCopy(derivedTopicNoun)
+    || SERVICE_INTRO_LEFTOVER_BODY_RE.test(derivedTopicNoun)
+    || SERVICE_INTRO_LEFTOVER_HEADING_RE.test(derivedTopicNoun)
+  );
+  const topic = topicNounIsLeftover ? '' : derivedTopicNoun;
   const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
   const pack = eightBitSlideCopyPack(brand);
   const role = eightBitPackForBody(src, pack);
@@ -14738,9 +14933,20 @@ export function fillEightBitOrbitKitSlide(
   const bodyText = looksLikeEightBitCapsuleLeftoverCopy(input.bodyText)
     ? role.lead
     : (input.bodyText || role.lead);
+  // 루프560+ — Cover synth outline hard-codes `kicker: 'OVERVIEW'` and the
+  // downstream 8-Bit Orbit chrome ships badges reading `01 · OVERVIEW` on
+  // Korean decks (user report 2026-09-18). Reject any kicker that is pure
+  // Latin/ASCII when the deck's heading carries Hangul so the chrome chip
+  // reuses the Korean heading instead of a stranded English demo token.
+  const kickerLooksLikeStrayLatin =
+    !!input.kicker
+    && /[A-Za-z]/.test(input.kicker)
+    && !/[가-힣]/.test(input.kicker)
+    && /[가-힣]/.test(heading);
   const chromeLabel = normalizeTemplateCloneInlineText(
     looksLikeServiceIntroLeftoverTitle(input.kicker || '')
       || looksLikeBlockedOverviewOrTrioTitle(input.kicker || '')
+      || kickerLooksLikeStrayLatin
       ? heading
       : (input.kicker || heading),
   ).slice(0, 40) || heading;
@@ -14748,12 +14954,42 @@ export function fillEightBitOrbitKitSlide(
     || looksLikeEightBitCapsuleLeftoverCopy(input.kicker || '')
     || looksLikeEightBitCapsuleLeftoverCopy(input.lead)
     || looksLikeEightBitCapsuleLeftoverCopy(input.bodyText);
+  // 루프560 — When the CURRENT body carries damaged Korean orphans (
+  // colon+particle-space, or a paragraph whose visible text leads with
+  // "에서 " / "에 " / a bare particle immediately after a `>`), a topic-
+  // keyword strip pass has left broken sentence fragments. This happens
+  // on the second pick of a duplicated timeline shell (user report
+  // 2026-09-18 data-slide=6 second occurrence). Force the fill pipeline
+  // to use the role pack items instead of the outline's fillLines so
+  // the section gets rewritten to clean copy.
+  const bodyHasKoreanOrphanDamage = /:\s*(?:을|를|이|가|과|와|의|은|는)\s/u.test(src)
+    || />\s*(?:에서|에|을|를|이|가|과|와|의|은|는)\s+[가-힣]/u.test(src);
+  // 루프560+ — Only substitute role.items when the caller's `fillLines`
+  // are all leftover/empty. When the outline already produced clean copy
+  // (title + body without SERVICE_INTRO_LEFTOVER_BODY_RE phrases), keep
+  // it so real user content is not overwritten by pack items that always
+  // point back to the deck brand.
+  const inputFillLinesLookClean = (input.fillLines ?? []).some((line) => {
+    const resolved = resolveTemplateCloneCardFill(line);
+    const t = normalizeTemplateCloneInlineText(resolved.title || '');
+    const b = normalizeTemplateCloneInlineText(resolved.body || '');
+    if (!t && !b) return false;
+    if (SERVICE_INTRO_LEFTOVER_BODY_RE.test(b)) return false;
+    if (SERVICE_INTRO_LEFTOVER_BODY_RE.test(t)) return false;
+    return true;
+  });
+  const shouldForceRoleItems =
+    !inputFillLinesLookClean
+    && (leftoverInput || bodyHasKoreanOrphanDamage)
+    && role.items.length > 0;
   const seeded = {
     ...input,
     title: heading,
     lead,
     bodyText,
-    fillLines: leftoverInput && role.items.length > 0 ? role.items : input.fillLines,
+    fillLines: shouldForceRoleItems
+      ? role.items
+      : (input.fillLines && input.fillLines.length > 0 ? input.fillLines : role.items),
   };
   const lines = biennaleFillLines(seeded, 6);
   let next = src;
@@ -14814,6 +15050,38 @@ export function fillEightBitOrbitKitSlide(
         return full;
       },
     );
+  }
+
+  // 루프560 — Final pixel-label vs h2 parrot guard. `pixel-label` is a
+  // small kicker chip above the section heading; when the chip's text is
+  // IDENTICAL to the sibling `<h2>` we replace it with a short role tag so
+  // the deck stops rendering "Teamver 소개 2" / "서비스 가치 제안 판단"
+  // in the chip AND in the h2 at the same time (2026-09-18 user report).
+  if (/\bpixel-label\b/i.test(next)) {
+    const h2Match = /<h2\b[^>]*>([\s\S]*?)<\/h2>/i.exec(next);
+    const h2PlainText = h2Match
+      ? String(h2Match[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+      : '';
+    if (h2PlainText) {
+      const roleKicker = eightBitOrbitRoleKickerForBody(src);
+      // Pick a kicker distinct from the visible h2. Prefer the role tag
+      // when input.kicker is missing / equals the heading; otherwise keep
+      // the model-provided kicker but still swap on a proven parrot.
+      const modelKicker = normalizeTemplateCloneInlineText(input.kicker || '');
+      const distinctKicker = (modelKicker && modelKicker !== h2PlainText && modelKicker !== heading)
+        ? modelKicker.slice(0, 20)
+        : roleKicker;
+      next = next.replace(
+        /(<(?:div|span)\b[^>]*\bpixel-label\b[^>]*>)([\s\S]*?)(<\/(?:div|span)>)/gi,
+        (full, open: string, inner: string, close: string) => {
+          const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+          if (plain && plain === h2PlainText) {
+            return `${open}${escapeHtml(distinctKicker)}${close}`;
+          }
+          return full;
+        },
+      );
+    }
   }
 
   if (/\bfeature-card\b/i.test(next)) {
@@ -14931,9 +15199,27 @@ export function fillEightBitOrbitKitSlide(
   // pricing. Strip the whole tier block: sends the slide to fallback
   // rendering. The heal path later replaces with topic keypoints via the
   // shared list slot.
+  //
+  // 루프560 — When the shell is stripped of its tier-grid, the slide is
+  // left with only the pixel-label + h2 header (empty chapter divider —
+  // user report 2026-09-18). Synthesize a topic-aware body list from the
+  // outline's fillLines so the slide still carries substantive Korean
+  // copy after the strip.
   if (/\btier-card\b/i.test(next) || /\btier-grid\b/i.test(next)) {
     next = stripClassBlocks(next, 'tier-grid');
     next = stripClassBlocks(next, 'tier-card');
+  }
+  // 루프560+ — Also fire the fallback when MiniMax emitted an EMPTY chapter
+  // divider shape (only `.pixel-label + h2` inside `.slide-content`, no
+  // body cards, no timeline, no chart, no stats). The user report shows
+  // this for BOTH copies of slide 9 in the 8-Bit Orbit deck where the
+  // model dropped the tier-grid on the wire. `injectEightBitOrbitTier
+  // FallbackBody` self-guards on `.slide-content` presence and refuses
+  // to inject when visible copy already exceeds ~40 chars, so this call
+  // is a safe no-op for non-chapter-divider shells.
+  const hasStructuralBody = /\b(?:feature-card|timeline-event|stat-block|chart-bar-group|hbar-row|split-layout|quote-container|cta-content|hero-badges|tier-fallback-body)\b/i.test(next);
+  if (!hasStructuralBody) {
+    next = injectEightBitOrbitTierFallbackBody(next, lines, { heading, lead, bodyText });
   }
 
   // Quote (slide 8): drop the demo attribution — if we don't know the
@@ -14976,9 +15262,59 @@ export function fillEightBitOrbitKitSlide(
     }
   }
 
+  // 루프560 — Cover subtitle vs tagline dedup. Both slots default to the
+  // same `lead` fill when kicker/body are missing, which makes the deck's
+  // opening frame read the same short sentence twice (user report
+  // 2026-09-18). Rewrite the shorter slot (`hero-subtitle`) with a
+  // distinct kicker chip when both plain-text values match.
+  if (/\bhero-subtitle\b/i.test(next) && /\bhero-tagline\b/i.test(next)) {
+    const subInner = /<(?:p|div)\b[^>]*\bhero-subtitle\b[^>]*>([\s\S]*?)<\/(?:p|div)>/i.exec(next)?.[1] ?? '';
+    const tagInner = /<(?:p|div)\b[^>]*\bhero-tagline\b[^>]*>([\s\S]*?)<\/(?:p|div)>/i.exec(next)?.[1] ?? '';
+    const subPlain = String(subInner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const tagPlain = String(tagInner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (subPlain && tagPlain && subPlain === tagPlain) {
+      // Prefer the model-provided kicker; otherwise fall back to a short
+      // brand + topic chip. Never blank the slot — a chip is expected
+      // above the h1 to give the cover its role signal. NEVER accept a
+      // pure-Latin kicker on a Korean deck (`kicker: 'OVERVIEW'` is the
+      // synth default and it renders as a stranded English chip above a
+      // Korean h1).
+      const kickerCandidate = normalizeTemplateCloneInlineText(input.kicker || '');
+      const kickerIsStrayLatin =
+        !!kickerCandidate
+        && /[A-Za-z]/.test(kickerCandidate)
+        && !/[가-힣]/.test(kickerCandidate)
+        && /[가-힣]/.test(tagPlain);
+      const distinctSubtitle = (!kickerIsStrayLatin && kickerCandidate)
+        || shortenEightBitOrbitBadgeLabel(chromeLabel)
+        || chromeLabel.slice(0, 20)
+        || '표지';
+      if (distinctSubtitle && distinctSubtitle !== tagPlain) {
+        next = replaceFirstExactClassText(next, 'hero-subtitle', distinctSubtitle);
+      }
+    }
+  }
+
   const visibleHeading = visibleDeckCopy(
     next.match(/<h2\b[^>]*>([\s\S]*?)<\/h2>/i)?.[1] ?? '',
   );
+  // 루프560+ — Detect `{deckTitle} N` parrot headings (e.g. "Teamver 소개 2")
+  // even when the outline title (`input.title`) was already sanitized, so
+  // the visible h2 gets rewritten to the role heading instead of shipping
+  // the placeholder-shaped label the model painted.
+  const headingLooksLikeNumericDeckParrot = (() => {
+    if (!visibleHeading) return false;
+    const numericTail = /^(.{2,32}?)(?:\s+|\s*·\s*)(\d{1,2})$/.exec(visibleHeading);
+    if (!numericTail) return false;
+    const base = numericTail[1]?.trim() ?? '';
+    if (!base) return false;
+    // Only strip when the base is a short deck-title-shaped label AND we
+    // have a role fallback that reads differently.
+    const baseCharCount = Array.from(base).length;
+    if (baseCharCount > 20) return false;
+    const cleanHeading = normalizeTemplateCloneInlineText(heading);
+    return !!cleanHeading && cleanHeading !== visibleHeading;
+  })();
   if (
     visibleHeading
     && (
@@ -14986,6 +15322,7 @@ export function fillEightBitOrbitKitSlide(
       || looksLikeBlockedOverviewOrTrioTitle(visibleHeading)
       || EIGHTBIT_DEMO_HEADING_RE.test(visibleHeading)
       || SERVICE_INTRO_LEFTOVER_BODY_RE.test(visibleHeading)
+      || headingLooksLikeNumericDeckParrot
     )
   ) {
     next = next.replace(
@@ -17075,6 +17412,32 @@ export function slideTitleParrotsBriefFragment(title: string, brief?: string | n
   if (t.length > b.length && t.startsWith(b)) {
     const tail = t.slice(b.length).trim();
     if (/^(?:[·•\-–—:/]|v)?\s*\d{1,3}$/u.test(tail)) return true;
+  }
+  // 루프560 — Same trailing-N parrot but the caller passed the raw
+  // instruction brief (`Teamver의 서비스 소개서를 만들어줘 …`) rather than
+  // the derived short cover ("Teamver 소개"). The title parrots a
+  // condensed form that only appears fragment-wise inside the brief.
+  //
+  // Detect by shape: strip a trailing " N" / " · N" / " vN" from the
+  // title, keep the base, and require every 2+ char base token to also
+  // appear as a substring somewhere in the brief. This catches the
+  // common MiniMax path where the model condenses `{brand}의 {topic}
+  // {name}` → `{brand} {topic}` and appends a numeric chapter suffix,
+  // without falsely flagging real titles like `도입 준비 2단계` (whose
+  // trailing token is not a bare integer).
+  const tailStrip = t.match(/^(.*?)(?:\s+(?:[·•\-–—:/]|v)?\s*\d{1,3})$/u);
+  if (tailStrip) {
+    const base = String(tailStrip[1] ?? '').trim();
+    if (base.length >= 3 && base.length <= 40) {
+      const tokens = base
+        .split(/\s+/u)
+        .map((tok) => tok.replace(/[·•\-–—:/,.;!?]/gu, '').trim())
+        .filter((tok) => tok.length >= 2);
+      if (tokens.length >= 1 && tokens.length <= 4) {
+        const allTokensInBrief = tokens.every((tok) => b.includes(tok));
+        if (allTokensInBrief) return true;
+      }
+    }
   }
   return false;
 }

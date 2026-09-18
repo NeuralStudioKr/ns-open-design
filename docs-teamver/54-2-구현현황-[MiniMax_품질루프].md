@@ -38,6 +38,48 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프560/561 — 8-Bit Orbit MiniMax 결과물 잔존 6종 (pixel-label==h2 · 빈 챕터 · deckTitle+N 파롯 · 커버 subtitle==tagline · 타임라인 orphan 조사 · full-fixture 수용 스펙)
+
+체감: 루프559 배포 이후 같은 8-Bit Orbit "Teamver 소개" 10장 덱을 다시 생성했더니 "여전히 결과물에 문제가 많다" 사용자 리포트가 재차 들어옴. 이번에는 (a)~(e) 5가지 residual 결함이 동시에 남고, healer 단독으로는 사용자 fixture HTML 전체를 통과시키지 못함 (cover 가 subtitle/tagline 을 같은 문장으로 두 번 낭독, 챕터 슬라이드가 pixel-label 과 h2 에 같은 텍스트, 빈 챕터 divider 만 남는 슬라이드 2장, timeline 이 topic keyword 삭제로 `기존 문서를 : 을 시작 보드로 옮기고 …` 처럼 조사·콜론 orphan, `Teamver 소개 2` 처럼 deckTitle+N 자리표시자 헤드라인).
+
+- (a) 챕터/기능/타임라인/스탯/split-intro 슬라이드에서 `.pixel-label` chip 이 `<h2>` 와 완전히 동일한 문자열 (예: chip="Teamver 소개 2", h2="Teamver 소개 2"). 크롬 태그가 헤드라인 반복이 됨.
+- (b) `.tier-grid` 를 스트립하는 챕터/pricing 계열 슬라이드가 body slot 하나 없이 pixel-label + h2 만 남아 "거대한 공백 챕터 divider" 로 렌더링됨.
+- (c) `slideTitleParrotsBriefFragment` 는 title.startsWith(brief) 기반이라, 브리프가 raw 프롬프트("Teamver의 서비스 소개서를 만들어줘")이고 MiniMax 가 유도된 deckTitle("Teamver 소개") + " N" 을 파롯하면 놓침.
+- (d) 커버 `.hero-subtitle` 와 `.hero-tagline` 이 같은 lead 문장으로 렌더링 → 발표자가 같은 문장을 두 번 낭독.
+- (e) 두 번째 timeline 이 첫 번째 timeline 의 topic keyword ("사용 흐름") 를 삭제한 채 다시 채워지면서 `기존 문서를 : 을 시작 보드로 옮기고 …` / `에서 댓글과 버전을 …` / ` 워크스페이스 기본값으로 …` / `에서 쓸 방을 열고 …` 처럼 orphan 콜론·조사·leading 공백 debris 가 남음.
+
+원인 및 처방:
+
+1) pixel-label==h2 파롯이 healer 를 통과 못 함 — `healEightBitOrbitLeftoverCatalogCopy` body-guard 가 leftover 문구/카탈로그 fingerprint 위주로 gate 되어 있어, pixel-label 이 h2 를 그대로 파롯하는 슬라이드 (leftover 문구 자체는 없음) 는 `fillEightBitOrbitKitSlide` 를 통과시키지 않음. 즉 파롯 상황 자체를 healer 가 fire 트리거로 인식하지 못함. → body-guard 에 `pixelLabelParrotsHeading` fingerprint 추가. `fillEightBitOrbitKitSlide` 에도 pixel-label vs h2 파롯 가드 추가: chip plaintext 가 sibling h2 plaintext 와 정확히 일치하면 `eightBitOrbitRoleKickerForBody` (body/lead 로부터 유도한 짧은 역할 라벨 — 예 "개요" / "핵심" / "도입 · 단계") 로 chip 을 재작성.
+
+2) 빈 챕터 divider — `.tier-grid` 를 스트립하는 브랜치가 shell 만 지우고 body 재작성을 하지 않음. → body-guard 에 `isEmptyChapterDivider` fingerprint 추가 (`slide-content` 안에 pixel-label + h2 외 body slot 이 없고 stripped visible copy 가 40자 미만). `injectEightBitOrbitTierFallbackBody` 신설 — outline lead/bodyText/fillLines 로부터 합성한 body block (`<p><strong>title</strong>body</p>` 반복, title==body 면 `<strong>` 생략) 을 삽입. `SERVICE_INTRO_LEFTOVER_BODY_RE` 매칭 items 는 필터링해 leftover 재유입 차단.
+
+3) `{deckTitle} N` 파롯 미검출 — `slideTitleParrotsBriefFragment` 가 title.startsWith(brief) 만 확인해 raw 프롬프트/deckTitle 서로 다른 caller path 를 커버하지 못함. → 토큰 단위 파롯 감지로 재작성: title 을 whitespace/punct 로 토큰화한 뒤 (숫자 suffix 제외) 각 토큰이 brief 에 존재하는지 확인. `Teamver 소개 2` / `Teamver 소개 · 2` / `Teamver 소개 v2` 모두 잡되, `도입 준비 2단계` 같은 실제 title 은 유지.
+
+4) 커버 subtitle==tagline — `fillEightBitOrbitKitSlide` 가 hero-subtitle 과 hero-tagline 을 각각 채우면서 두 slot 이 같은 lead 를 받아도 dedup 하지 않음. → body-guard 에 `coverSubtitleParrotsTagline` fingerprint 추가. `fillEightBitOrbitKitSlide` 에 hero-subtitle/hero-tagline dedup 가드 — 두 슬롯이 같은 문장이면 subtitle 을 distinct kicker 로 promote 하거나 blank 로 두어 발표자가 같은 문장을 두 번 낭독하지 않게 한다. `kickerLooksLikeStrayLatin` (Korean deck 인데 kicker 가 순수 Latin) 이면 heading 을 fallback 으로 사용해 `OVERVIEW` 같은 stray Latin chrome 을 방지.
+
+5) timeline orphan 조사 — topic keyword strip 이후 body sanitizer 가 orphan 콜론·조사 앞뒤 공백을 청소하지 않음. 게다가 `resolveLockedTopicNoun` 이 pack items 를 재브랜딩할 때 `topic` 이 사용자 lead 전체("파일럿: 작은 팀이나 …") 를 받아버려 post-pass strip 이 반대로 brand 를 지우고 leftover 조사만 남김. → body-guard 에 `bodyHasKoreanOrphanDamage` fingerprint 추가 (`:\s*(?:을|를|이|가|과|와|의|은|는)\s` 또는 `>\s*(?:에서|에|을|를|이|가|과|와|의|은|는)\s+[가-힣]`). `resolveLockedTopicNoun` 을 `input.title` + `input.kicker` 만 소스로 제한. `fillEightBitOrbitKitSlide` 에서 brand/topic 결정 시 leftover phrase 필터 (`파일럿:` 시작 · Korean particle mid-string · 12자 이상 descriptive sentence) 를 추가해 topic 을 blank 로 두고 brand 를 'Teamver' 로 안전하게 fallback. `seeded.fillLines` 결정에 `bodyHasKoreanOrphanDamage` 우선순위 추가 → damaged timeline paragraphs 를 clean role pack copy 로 덮어씀.
+
+6) hero-badge word-boundary fallback — kicker 가 라틴 stray (`OVERVIEW` 같은 순수 ASCII/Latin) 이거나 조사 orphan 이면 heading 을 fallback 으로 사용하고, `shortenEightBitOrbitBadgeLabel` 로 word-safe truncation. body-guard 에 `heroBadgeHasDanglingParticle` fingerprint 추가로 재발 방지.
+
+7) 개별 단위 스펙만으로는 사용자 실제 화면이 전체적으로 "제대로 만들어졌다" 로 읽히지 않음 → fixture 전체를 대상으로 하는 acceptance spec 필요. → 루프561 신설: 사용자 fixture HTML 전체를 healer 에 넣은 결과가 (a)~(e) + 영문 데모 카피/카탈로그 chrome 부재 + `{deckTitle} N` 자리표시자 헤드라인 부재 + 모든 슬라이드 30자 이상 본문 포함 + 모든 hero-badge 가 조사 orphan 으로 끝나지 않음 acceptance 7종을 동시에 만족해야 통과.
+
+검증:
+
+- contracts `template-clone-fill.test.ts` 에 6종 스펙 추가 및 모두 GREEN:
+  - 루프560 (a) — 8-Bit Orbit `.pixel-label` chip 이 sibling `<h2>` 와 정확히 같은 텍스트로 렌더링되지 않는다.
+  - 루프560 (b) — `.tier-grid` 를 스트립한 챕터 divider 슬라이드가 pixel-label + h2 header 만 남지 않고, 최소 60자 이상의 한국어 본문을 포함한다.
+  - 루프560 (c) — `slideTitleParrotsBriefFragment` 가 raw prompt 브리프와 유도된 deckTitle 어느 caller path 든 `{deckTitle} N` 파롯을 감지한다.
+  - 루프560 (d) — 커버 슬라이드가 `.hero-subtitle` 과 `.hero-tagline` 을 같은 문자열로 렌더링하지 않는다.
+  - 루프560 (e) — 중복 timeline shell 이 재채워질 때 결과 body 에 `: 을 ` / `에서 ` 앞머리 / ` 워크스페이스` 앞 공백 같은 orphan 조사·콜론 debris 가 남지 않는다.
+  - 루프561 — 사용자 fixture HTML 전체 acceptance (7종 동시 만족).
+- 전체 contracts vitest 3266 passed / 3 pre-existing failures (`deck-framework-compact`, `deck-quality-slide-count`, `system-prompt-api-mode`) — 루프559 배포 시점부터 존재하던 실패로 이번 변경과 무관.
+
+남은 스코프 (별도 루프에서 다룰 것):
+
+- 사용자 브리프가 "서비스 소개서" 처럼 broad 하고 실제 지표가 없는 경우, 차트/스탯/타임라인 slide role 자체를 outline 단에서 skip 하는 옵션 (현재는 shell 은 유지하고 healer 가 데모 값만 zero-out). role 선택 파이프라인 리팩터가 필요.
+- MiniMax 가 챕터 divider 자리를 "N/A" 로 채우는 fallback 이 반복되면, healer 가 fallback body 대신 slide 자체를 drop 하는 옵션도 검토.
+
 ### 루프559 — 8-Bit Orbit MiniMax 결과물 6종 회귀 (chart demo · 영문 데모 카피 · 중복 shell · badge 절단)
 
 체감: 루프557/558 배포 이후 2026-09-18 사용자 리포트 실물 HTML — 8-Bit Orbit 픽셀 kit 로 생성한 "Teamver 소개" 10장 덱에 6가지 눈에 띄는 결함이 동시에 남음. "여전히 결과물에 문제가 많다" 재보고.

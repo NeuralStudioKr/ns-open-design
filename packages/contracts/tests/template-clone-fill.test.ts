@@ -2465,6 +2465,264 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(slideTitleParrotsBriefFragment('Teamver 도입 방법', 'Teamver 소개')).toBe(false);
   });
 
+  // 루프560 — Follow-on user report 2026-09-18 (same 8-Bit Orbit deck as
+  // 루프559, still "여전히 결과물에 문제가 많다"). Five distinct residual
+  // symptoms survive after 루프559:
+  //  (a) On every non-cover 8-Bit Orbit slide the `.pixel-label` chip and
+  //      the sibling `<h2>` render IDENTICAL text (e.g. both "Teamver 소개
+  //      2"). The chrome chip is supposed to be a short role tag, not a
+  //      repeat of the section headline.
+  //  (b) The tier-card shell (data-slide=9 in the neon kit) drops its
+  //      whole tier-grid when the deck has no pricing metrics, and today
+  //      the fill pipeline leaves the slide with pixel-label + h2 and NO
+  //      body copy at all — a giant blank chapter divider.
+  //  (c) `slideTitleParrotsBriefFragment` only checks `title.startsWith
+  //      (brief)`. When the brief is the raw prompt ("Teamver의 서비스
+  //      소개서를 만들어줘") but MiniMax parrots the derived deck cover
+  //      title ("Teamver 소개") + " N", the detector misses it and the
+  //      parrot title survives.
+  //  (d) `.hero-subtitle` and `.hero-tagline` on the cover both render
+  //      the same lead text — cover kicker == cover subtitle == cover
+  //      tagline.
+  //  (e) When a structural shell (timeline) is duplicated, the second
+  //      pass' body sanitizer strips a topic keyword ("사용 흐름") and
+  //      leaves orphan punctuation (": 을 시작 보드로 옮기고 …").
+  it('루프560 (a) — 8-Bit Orbit `.pixel-label` chip must never render the exact same text as its sibling `<h2>` on the same slide', async () => {
+    const html = await readFile(LOOP559_FIXTURE_URL, 'utf8');
+    const healed = healEightBitOrbitLeftoverCatalogCopy(html, 'Teamver 소개');
+    // Walk each `<section class="slide" …>` and confirm the pixel-label
+    // plain text is not identical to the h2 plain text.
+    const sections = [...healed.matchAll(/<section\b[^>]*\bclass="[^"]*\bslide\b[^"]*"[\s\S]*?<\/section>/gi)]
+      .map((match) => String(match[0] ?? ''));
+    for (const section of sections) {
+      const labelMatch = /<(?:div|span)\b[^>]*\bpixel-label\b[^>]*>([\s\S]*?)<\/(?:div|span)>/i.exec(section);
+      const h2Match = /<h2\b[^>]*>([\s\S]*?)<\/h2>/i.exec(section);
+      if (!labelMatch || !h2Match) continue;
+      const labelText = String(labelMatch[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      const h2Text = String(h2Match[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!labelText || !h2Text) continue;
+      expect(labelText).not.toBe(h2Text);
+    }
+  });
+
+  it('루프560 (b) — 8-Bit Orbit tier-card slide (chapter divider) must not render with only a pixel-label + h2 header when the tier-grid has been stripped', () => {
+    // Regression: neon pixel `.tier-grid` gets stripped for Korean decks
+    // (no `$29/mo` demo pricing survives), but the fill pipeline never
+    // adds replacement body copy. Result: slide-9 ships as a giant blank
+    // frame with only a pixel-label chip and an h2 headline — the user
+    // report calls this "empty chapter" and it happens on both duplicate
+    // shell picks.
+    const body = [
+      '<div class="slide-content">',
+      '<div style="text-align: center; margin-bottom: 2.5rem;">',
+      '<span class="pixel-label" style="background: var(--deep-navy); color: var(--neon-pink);">CHOOSE YOUR</span>',
+      '<h2 style="color: var(--deep-navy);">Access Tiers</h2>',
+      '</div>',
+      '<div class="tier-grid">',
+      '<div class="tier-card"><div class="tier-name">Rookie</div><div class="tier-price">$0<span>/mo</span></div><p class="tier-desc">For solo explorers testing the waters.</p></div>',
+      '<div class="tier-card featured"><div class="tier-name">Arcade</div><div class="tier-price">$29<span>/mo</span></div><p class="tier-desc">Serious builders need serious tooling.</p></div>',
+      '<div class="tier-card"><div class="tier-name">Boss</div><div class="tier-price">$79<span>/mo</span></div><p class="tier-desc">Enterprise-grade control and compliance.</p></div>',
+      '</div>',
+      '</div>',
+    ].join('');
+    const filled = fillEightBitOrbitKitSlide(body, 'class="slide" data-slide="9"', {
+      title: '증거로 만드는 신뢰',
+      lead: '실제 사례와 결과로 팀의 도입 근거를 정리한다.',
+      bodyText: '고객 유형별 문제 해결 사례와 정량·정성 효과를 정리한다.',
+      kicker: '증거 · 사례',
+      fillLines: [
+        { title: '제품', body: '화면과 흐름으로 실체를 보여준다.' },
+        { title: '사례', body: '고객 유형별 문제 해결과 효과를 정리한다.' },
+        { title: '운영', body: '권한·감사·보안 요구를 만족시키는 체계.' },
+      ],
+    });
+    // The tier-grid demo copy must be gone.
+    expect(filled).not.toContain('$29/mo');
+    expect(filled).not.toContain('For solo explorers testing the waters');
+    // But the slide must NOT ship empty. Something readable in Korean
+    // has to remain in the body area after the tier strip.
+    const visible = String(filled)
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    // Require at least one of the fill lines OR the lead/body text to
+    // survive somewhere in the rendered slide body.
+    const hasBodyCopy = /사례|결과|고객|운영|사용자|근거|정리|기록|증거/u.test(visible);
+    expect(hasBodyCopy).toBe(true);
+    // And the total visible copy length must exceed the header-only floor
+    // (pixel-label + h2 alone is ≤ ~40 Korean chars).
+    expect(visible.length).toBeGreaterThan(60);
+  });
+
+  it('루프560 (c) — slideTitleParrotsBriefFragment detects the "{deckTitle} N" parrot form when the raw brief is a long instruction that does NOT start with the deck title', () => {
+    // Regression: brief = raw prompt ("Teamver의 서비스 소개서를 만들어줘"),
+    // deck title = derived cover ("Teamver 소개"). MiniMax slide-2 parrots
+    // "Teamver 소개 2". Today the detector only checks the brief so it
+    // returns false; the parrot title ships to the deck.
+    const briefRaw = 'Teamver의 서비스 소개서를 만들어줘. 주요 기능과 도입 사례를 정리해줘.';
+    const briefDerived = 'Teamver 소개';
+    // With ONLY the raw brief the current detector should already say true
+    // because slideTitleParrotsBriefFragment inspects the trailing token.
+    // But the caller of the detector must be able to pass the derived
+    // deck title as the second argument and still get a positive match.
+    expect(slideTitleParrotsBriefFragment('Teamver 소개 2', briefRaw)).toBe(true);
+    expect(slideTitleParrotsBriefFragment('Teamver 소개 2', briefDerived)).toBe(true);
+    expect(slideTitleParrotsBriefFragment('Teamver 소개 · 3', briefDerived)).toBe(true);
+    // A slide title that ends with a numeric suffix but doesn't parrot
+    // the derived deck title MUST NOT match — otherwise "Chapter 2" style
+    // real titles get eaten.
+    expect(slideTitleParrotsBriefFragment('도입 준비 2단계', briefDerived)).toBe(false);
+  });
+
+  it('루프560 (d) — 8-Bit Orbit cover slide never renders `.hero-subtitle` and `.hero-tagline` with identical text', () => {
+    // Regression: the neon cover ships two copy slots (kicker/subtitle
+    // pill above the h1, tagline below the h1). Today both receive the
+    // `lead` param and render the same string. Presenter reads the same
+    // line twice — the deck loses its cover cadence.
+    const body = [
+      '<div class="slide-content" style="z-index:10;">',
+      '<div class="hero-subtitle">Presentation Template</div>',
+      '<h1 class="pixel-hero-text">Teamver 소개</h1>',
+      '<p class="hero-tagline">Cinematic pixel-art presentation system</p>',
+      '<div class="hero-badges">',
+      '<span class="hero-badge">Presentation Template</span>',
+      '<span class="hero-badge">Presentation Template</span>',
+      '<span class="hero-badge">Presentation Template</span>',
+      '</div>',
+      '</div>',
+    ].join('');
+    const filled = fillEightBitOrbitKitSlide(body, 'class="slide bg-grid" data-slide="1"', {
+      title: 'Teamver 소개',
+      lead: 'Teamver는 초안과 수정을 같은 보드에서 끝낸다.',
+      bodyText: 'Teamver는 초안과 수정을 같은 보드에서 끝낸다.',
+      kicker: '',
+      fillLines: [
+        { title: 'Teamver는 초안과 수정을 같은 보드에서 끝낸다.', body: '' },
+        { title: '핵심 가치', body: '' },
+        { title: '적용 판단', body: '' },
+      ],
+    });
+    const subMatch = /<(?:p|div)\b[^>]*\bhero-subtitle\b[^>]*>([\s\S]*?)<\/(?:p|div)>/i.exec(filled);
+    const tagMatch = /<(?:p|div)\b[^>]*\bhero-tagline\b[^>]*>([\s\S]*?)<\/(?:p|div)>/i.exec(filled);
+    const sub = String(subMatch?.[1] ?? '').replace(/<[^>]+>/g, '').trim();
+    const tag = String(tagMatch?.[1] ?? '').replace(/<[^>]+>/g, '').trim();
+    // Both slots may be filled, but their visible copy must differ
+    // whenever both are non-empty.
+    if (sub && tag) {
+      expect(sub).not.toBe(tag);
+    } else {
+      // If the fill deliberately blanks one of the slots, that's OK too —
+      // as long as the other one still speaks.
+      expect(sub || tag).toBeTruthy();
+    }
+  });
+
+  it('루프560 (e) — When a duplicated timeline shell gets refilled, the resulting body must not contain orphan punctuation (": 을", "에서 " leading, " 워크스페이스" leading space) from a stripped topic keyword', async () => {
+    // Regression: the user report's second `data-slide="6"` block reads
+    //   "기존 문서를 : 을 시작 보드로 옮기고 …"
+    //   "에서 댓글과 버전을 …"
+    //   " 워크스페이스 기본값으로 감사와 보내기 규칙을 둔다."
+    //   "에서 쓸 방을 열고 첫 보드에 팀을 초대한다."
+    // The topic keyword ("사용 흐름") that lived between the noun-phrase
+    // and the following predicate was stripped, leaving orphan colon-
+    // particle-space debris that reads as broken Korean. The healer /
+    // fill pass must either regenerate the keyword or drop the orphan
+    // punctuation so no visible fragment starts with " : " or " 에서 "
+    // as the *very first* copy token on the paragraph.
+    const html = await readFile(LOOP559_FIXTURE_URL, 'utf8');
+    const healed = healEightBitOrbitLeftoverCatalogCopy(html, 'Teamver 소개');
+    // Walk every timeline text paragraph and check its visible content.
+    const paras = [...healed.matchAll(/<(?:p|div)\b[^>]*>([\s\S]*?)<\/(?:p|div)>/gi)]
+      .map((match) => String(match[1] ?? '').replace(/<[^>]+>/g, '').trim())
+      .filter((text) => text.length >= 4);
+    for (const para of paras) {
+      // ": 을 " / ": 를 " / ": 이 " style orphans are the fingerprint.
+      expect(para).not.toMatch(/:\s*(?:을|를|이|가|과|와|의|은|는)\s+/u);
+      // Paragraphs that lead with a bare Korean particle after nothing
+      // else ("에서 …", "에 …") are broken sentences; the healer must
+      // clean them.
+      expect(para).not.toMatch(/^\s*(?:에서|에|을|를|이|가|과|와|의|은|는)\s/u);
+    }
+  });
+
+  // 루프561 — Whole-fixture end-to-end acceptance for the same 8-Bit Orbit
+  // user report ("여전히 결과물에 문제가 많다"). After healing, the deck
+  // must satisfy all of the following observable properties at once — not
+  // just the individual 루프560 (a)–(e) unit conditions. This is the
+  // acceptance test the user's rendered slides must meet.
+  it('루프561 — Full-deck acceptance: healer output is free of the reported symptoms', async () => {
+    const html = await readFile(LOOP559_FIXTURE_URL, 'utf8');
+    const healed = healEightBitOrbitLeftoverCatalogCopy(html, 'Teamver 소개');
+    const sections = [...healed.matchAll(/<section\b[^>]*\bclass="[^"]*\bslide\b[^"]*"[\s\S]*?<\/section>/gi)]
+      .map((match) => String(match[0] ?? ''));
+
+    // 1. No English demo-copy or Latin kit chrome leaks anywhere in the deck.
+    expect(healed).not.toMatch(/Analytics\s+Core/i);
+    expect(healed).not.toMatch(/No canvas limits/i);
+    expect(healed).not.toMatch(/Pixel Perfect Presentation/i);
+    expect(healed).not.toMatch(/\bMission\s+Brief\b/i);
+    expect(healed).not.toMatch(/\bAccess\s+Tiers\b/i);
+    expect(healed).not.toMatch(/\bCore\s+Systems\b/i);
+    // English chart demo labels (Alpha / Beta / Gamma / Delta / Epsilon)
+    // must be scrubbed to numeric ordinals on a Korean deck.
+    for (const label of ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon']) {
+      expect(healed).not.toMatch(new RegExp(`\\b${label}\\b`));
+    }
+
+    // 2. On every slide, `.pixel-label` chip is NOT identical to sibling h2.
+    for (const section of sections) {
+      const lm = /<(?:div|span)\b[^>]*\bpixel-label\b[^>]*>([\s\S]*?)<\/(?:div|span)>/i.exec(section);
+      const hm = /<h2\b[^>]*>([\s\S]*?)<\/h2>/i.exec(section);
+      if (!lm || !hm) continue;
+      const lt = String(lm[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      const ht = String(hm[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!lt || !ht) continue;
+      expect(lt).not.toBe(ht);
+    }
+
+    // 3. Cover slide: hero-subtitle ≠ hero-tagline.
+    const subMatch = /<(?:p|div)\b[^>]*\bhero-subtitle\b[^>]*>([\s\S]*?)<\/(?:p|div)>/i.exec(healed);
+    const tagMatch = /<(?:p|div)\b[^>]*\bhero-tagline\b[^>]*>([\s\S]*?)<\/(?:p|div)>/i.exec(healed);
+    const subPlain = String(subMatch?.[1] ?? '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    const tagPlain = String(tagMatch?.[1] ?? '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    if (subPlain && tagPlain) expect(subPlain).not.toBe(tagPlain);
+
+    // 4. Hero badges do not end with a dangling Korean particle
+    //    ("Teamver는 초안과") from naïve 12-char truncation.
+    const badges = [...healed.matchAll(/<span\b[^>]*\bhero-badge\b[^>]*>([\s\S]*?)<\/span>/gi)]
+      .map((match) => String(match[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+    for (const badge of badges) {
+      expect(badge).not.toMatch(/(?:는|은|이|가|과|와|을|를|의|에|에서|으로)$/u);
+    }
+
+    // 5. No paragraph carries the topic-strip orphan punctuation.
+    const paras = [...healed.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)]
+      .map((match) => String(match[1] ?? '').replace(/<[^>]+>/g, '').trim())
+      .filter((text) => text.length >= 4);
+    for (const para of paras) {
+      expect(para).not.toMatch(/:\s*(?:을|를|이|가|과|와|의|은|는)\s+/u);
+      expect(para).not.toMatch(/^\s*(?:에서|에|을|를|이|가|과|와|의|은|는)\s/u);
+    }
+
+    // 6. Every slide has substantive visible copy (no empty chapter-
+    //    divider frames rendering with only pixel-label + h2).
+    for (let i = 0; i < sections.length; i += 1) {
+      const section = sections[i]!;
+      const visible = String(section).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      // Every slide must speak — floor at ~30 visible Korean chars so a
+      // pixel-label + h2 pair alone (~15–25 chars) cannot pass.
+      expect(visible.length).toBeGreaterThan(30);
+    }
+
+    // 7. No `{deckTitle} N` placeholder headline survives.
+    for (const section of sections) {
+      const hm = /<h2\b[^>]*>([\s\S]*?)<\/h2>/i.exec(section);
+      if (!hm) continue;
+      const ht = String(hm[1] ?? '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+      expect(ht).not.toMatch(/^Teamver\s+소개\s+\d+$/);
+    }
+  });
+
   it('루프538 — Grove forest kit demo chrome (landscape / grove-stat KPI / sidebar) is scrubbed', async () => {
     const html = await readFile(
       new URL(
