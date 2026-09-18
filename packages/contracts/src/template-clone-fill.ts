@@ -978,8 +978,22 @@ export function recoverShortDeckByPaddingToSeed(input: {
       && /<\/html\s*>/i.test(seed)
       && listTemplateCloneSlideShells(seed).length >= 2
     ) {
+      const synthesized = synthesizeTemplateCloneOutlineFromBrief({
+        ...(input.brief !== undefined ? { userBrief: input.brief } : {}),
+        ...(input.deckTitle !== undefined ? { deckTitle: input.deckTitle } : {}),
+        slideCount: seedCount,
+      });
+      const synthesizedHtml = synthesized
+        ? buildTemplateClonedDeckHtml(seed, synthesized.slides, {
+            title: synthesized.title,
+            ...(input.templateId != null ? { templateId: input.templateId } : {}),
+            ...(input.brief != null ? { brief: input.brief } : {}),
+            maxSlides: seedCount,
+            padToSeedSlideCount: true,
+          })
+        : null;
       return {
-        html: seed,
+        html: synthesizedHtml ?? seed,
         seedCount,
         producedCount: 0,
         paddedCount: seedCount,
@@ -1799,7 +1813,7 @@ export function synthesizeTemplateCloneSlideBody(
     // but provide topic-bound decision copy that can safely fill list/card
     // shells without fabricated facts.
     const topic = resolveLockedTopicNoun(cover, brief);
-    const roles: TemplateCloneShellRole[] = ['list', 'cards', 'process', 'timeline'];
+    const roles = ['list', 'cards', 'process', 'timeline'] as const;
     const roleHint = roles[Math.max(0, index - 1) % roles.length]!;
     const topicObject = attachKoreanJosa(topic, '을/를');
     const linesByRole: Record<'list' | 'cards' | 'process' | 'timeline', string[]> = {

@@ -96,6 +96,8 @@ describe('0918-N01 incomplete-html-document-shell persist recovery', () => {
     if (resolved?.kind === 'padded') {
       expect(listTemplateCloneSlideShells(resolved.html).length).toBe(10);
       expect(isIncompleteHtmlDocumentShell(resolved.html)).toBe(false);
+      expect(resolved.html).toContain('Teamver');
+      expect(resolved.html).not.toContain('Seed body 1 with enough copy.');
     }
   });
 

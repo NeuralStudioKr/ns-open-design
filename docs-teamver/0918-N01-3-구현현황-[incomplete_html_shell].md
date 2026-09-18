@@ -27,7 +27,7 @@ persist `isIncompleteHtmlDocumentShell` 직후 **즉시 skip 금지**. `resolveI
 1. scoped → skip (재시도 없음)
 2. 완전 collapse (`too-short-document`) → 쓰레기 미저장 · seed 있으면 keep-seed
 3. create/full fill + seed + head-preamble continue 가능 → `needs-short-response-retry` / `retryKind: 'head-preamble'` · body-only · 배너 0
-4. 그 다음 `persistPadShortDeckToSeed` / `recoverShortDeckByPaddingToSeed({ forcePad: true })` — **0장 head-only도 seed를 완전한 문서로 저장**
+4. 그 다음 `persistPadShortDeckToSeed` / `recoverShortDeckByPaddingToSeed({ forcePad: true })` — **0장 head-only도 brief 기반 deterministic outline으로 seed를 채워 완전한 문서로 저장**
 5. pad 실패일 때만 `skipped-incomplete` → `skipped_incomplete_retry` → `clone_look_seed_fallback`
 
 ## 이전 vs 지금
@@ -35,7 +35,7 @@ persist `isIncompleteHtmlDocumentShell` 직후 **즉시 skip 금지**. `resolveI
 | 시나리오 | 이전 | 지금 |
 |---|---|---|
 | head-only × seed × continue 가능 | skip → seed fallback | **continue 1회** (배너 0) |
-| continue 후 셸 불완전 / 장수 부족 | 상동 skip | **forcePad · section 수 = seed** |
+| continue 후 셸 불완전 / 장수 부족 | 상동 skip | **brief 기반 forcePad · section 수 = seed** |
 | 빈/32자 collapse × seed | seed fallback | **상동**. 쓰레기 미저장 |
 | 정상 10장 | 저장 | 저장 |
 | scoped | skip | **재시도 없음** |
