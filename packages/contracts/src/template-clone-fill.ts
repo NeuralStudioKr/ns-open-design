@@ -1363,6 +1363,18 @@ function topicKeywordForSynthBody(title: string): string {
 const GENERIC_SYNTH_TOPIC_NOUN_RE =
   /^(?:핵심 주제|주제|개요|핵심(?:\s*\d+)?|핵심 포인트|근거와 사례|실행 방안|고객 경험|운영과 보안|도입 로드맵|성과 지표|요약|슬라이드|표지|커버|소개|overview)$/i;
 
+/** 0918-N03 — leftover heading / card title / body. Shared by synth + healers. */
+const SERVICE_INTRO_LEFTOVER_HEADING_RE =
+  /^(?:개요|핵심 포인트|근거와 사례|실행 방안|고객 경험|운영과 보안|도입 로드맵|성과 지표|요약|핵심 주제|핵심\s+\d+|대상 고객별 메시지|서비스 가치 제안|사용 흐름|신뢰를 만드는 증거|측정해야 할 지표|다음 액션)$/;
+
+const SERVICE_INTRO_LEFTOVER_CARD_TITLE_RE =
+  /^(?:핵심 가치|사용 장면|차별점|탐색|실행|확장|전환|활성|품질|전환율|문제|사용자|맥락|실무자|리더|운영자|파일럿|확대|정착|제품|사례|운영)$/;
+
+const SERVICE_INTRO_LEFTOVER_BODY_RE =
+  /사용자가 즉시 얻는 시간 절감|첫 방문에서 문제와 해결|방문에서 문의[·,]?\s*가입까지|도입 전 탐색,\s*팀 협업|기존 대안 대비 더 적은 단계|주요 기능을 체험하거나 문의|팀 규모,\s*권한,\s*반복 작업|시간 절감,\s*품질 개선|다루는 문제와 제공 가치|핵심 맥락과 다음 단계|핵심 메시지와 청중이 얻는 가치|가장 먼저 이해해야 할 개념·근거|의미와 적용 기준을 한 문장으로|반복해서 겪는 핵심 불편|방문자가 처음 보는 순간|사이트에서 확인되는 메시지|결과물 완성도,\s*수정 횟수|핵심 기능 반복 사용|화면,\s*워크플로우,\s*결과물 예시|고객 유형별 문제 해결 사례|지원,\s*보안,\s*개인정보,\s*도입 프로세스|작은 팀이나 단일 업무에서 빠르게 파일럿|반복 사용 패턴을 기준으로 템플릿과 권한|성과 지표와 운영 책임을 정해|반복 작업을 줄이고 결과물 완성도|팀 속도,\s*품질,\s*비용|권한,\s*저장,\s*(?:감사,\s*)?보안 요구/;
+
+const SERVICE_INTRO_PROCESS_TRIO = ['탐색', '실행', '확장'] as const;
+
 function isGenericSynthTopicNoun(topic: string): boolean {
   const text = String(topic ?? '').replace(/\s+/g, ' ').trim();
   if (!text) return true;
@@ -1370,6 +1382,79 @@ function isGenericSynthTopicNoun(topic: string): boolean {
   if (/핵심\s+주제/.test(text)) return true;
   if (/^핵심\s+\d+/.test(text)) return true;
   return false;
+}
+
+function looksLikeServiceIntroLeftoverTitle(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!value) return false;
+  return SERVICE_INTRO_LEFTOVER_HEADING_RE.test(value)
+    || SERVICE_INTRO_LEFTOVER_CARD_TITLE_RE.test(value);
+}
+
+function looksLikeBlockedOverviewOrTrioTitle(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  return /^(?:개요|핵심 포인트|탐색|실행|확장)$/.test(value);
+}
+
+function serviceIntroSynthTitleFallback(topic: string, index: number): string {
+  const noun = topic && !isGenericSynthTopicNoun(topic) ? topic : '';
+  const titles = noun
+    ? [`${noun} 범위`, `${noun} 판단`, `${noun} 쓰는 길`, `${noun} 다음`]
+    : ['범위', '판단', '쓰는 길', '다음'];
+  return titles[Math.max(0, index) % titles.length]!;
+}
+
+function itemTitlesLookLikeProcessTrio(titles: readonly string[]): boolean {
+  if (titles.length < 3) return false;
+  for (let i = 0; i <= titles.length - 3; i += 1) {
+    if (
+      titles[i] === SERVICE_INTRO_PROCESS_TRIO[0]
+      && titles[i + 1] === SERVICE_INTRO_PROCESS_TRIO[1]
+      && titles[i + 2] === SERVICE_INTRO_PROCESS_TRIO[2]
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function sanitizeServiceIntroSynthResult(
+  result: Pick<TemplateCloneSlideContent, 'body' | 'roleHint' | 'items' | 'lead'>,
+  cover: string,
+  label: string,
+  brief?: string | null,
+): Pick<TemplateCloneSlideContent, 'body' | 'roleHint' | 'items' | 'lead'> {
+  const topic = resolveLockedTopicNoun(cover, brief, label);
+  const noun = topic && !isGenericSynthTopicNoun(topic) ? topic : '';
+  let lead = String(result.lead ?? '').replace(/\s+/g, ' ').trim();
+  if (!lead || looksLikeBlockedOverviewOrTrioTitle(lead)) {
+    lead = noun
+      ? `${attachKoreanJosa(noun, '을/를')} 같은 보드에서 점검합니다`
+      : '같은 보드에서 다음 결정을 점검합니다';
+  }
+  const rawItems = Array.isArray(result.items) ? result.items : [];
+  const rawTitles = rawItems.map((item) => String(item.title ?? '').replace(/\s+/g, ' ').trim());
+  const remapTrio = itemTitlesLookLikeProcessTrio(rawTitles);
+  const items = rawItems.map((item, itemIndex) => {
+    const title = String(item.title ?? '').replace(/\s+/g, ' ').trim();
+    const nextTitle = remapTrio || looksLikeBlockedOverviewOrTrioTitle(title)
+      ? serviceIntroSynthTitleFallback(noun, itemIndex)
+      : title;
+    const body = String(item.body ?? '').replace(/\s+/g, ' ').trim();
+    const next: TemplateCloneSlideItem = { title: nextTitle };
+    if (body) next.body = body;
+    return next;
+  });
+  const body = items.length > 0
+    ? items.map((item) => item.body ? `${item.title}: ${item.body}` : item.title).join('\n')
+    : String(result.body ?? '').trim() || lead;
+  const next: Pick<TemplateCloneSlideContent, 'body' | 'roleHint' | 'items' | 'lead'> = {
+    lead,
+    body,
+    items,
+  };
+  if (result.roleHint) next.roleHint = result.roleHint;
+  return next;
 }
 
 function hangulSyllableHasBatchim(ch: string): boolean {
@@ -1506,7 +1591,7 @@ function templatesForSynthTemplateTopic(
       {
         roleHint: 'process',
         lead: '사용 흐름',
-        itemTitles: ['탐색', '실행', '확장'],
+        itemTitles: ['첫 방문', '쓰는 길', '팀으로 넓히기'],
         lines: [
           '첫 방문에서 문제와 해결 방식을 한 문장으로 이해',
           '주요 기능을 체험하거나 문의로 연결되는 명확한 행동 경로',
@@ -1840,7 +1925,24 @@ export function synthesizeTemplateCloneSlideBody(
       items,
     };
   }
-  if (kitKey === PRODUCT_LAUNCH_HALO_KIT_KEY || kitKey === BLOCK_FRAME_NEO_KIT_KEY) {
+  if (kitKey === BLOCK_FRAME_NEO_KIT_KEY) {
+    const topic = resolveBlockFrameTopicNoun(cover, brief);
+    const pack = blockFrameSlideCopyPack(topic);
+    const roles = [
+      'cover', 'intro', 'features', 'chart', 'quote', 'split', 'timeline', 'stats', 'team', 'close',
+    ] as const;
+    const role = roles[Math.max(0, index - 1) % roles.length]!;
+    const picked = pack[role];
+    return sanitizeServiceIntroSynthResult({
+      roleHint: role === 'timeline' || role === 'split' ? 'process' : 'cards',
+      lead: picked.lead,
+      body: picked.items.length > 0
+        ? picked.items.map((item) => `${item.title}: ${item.body}`).join('\n')
+        : picked.lead,
+      items: picked.items,
+    }, cover, label, brief);
+  }
+  if (kitKey === PRODUCT_LAUNCH_HALO_KIT_KEY) {
     // These kits previously returned an almost empty slide to avoid
     // inventing product metrics/personas. During short-response padding that
     // degraded into visible "Slide 3" pages. Keep the no-invention policy,
@@ -1850,51 +1952,52 @@ export function synthesizeTemplateCloneSlideBody(
     const roles = ['list', 'cards', 'process', 'timeline'] as const;
     const roleHint = roles[Math.max(0, index - 1) % roles.length]!;
     const topicObject = attachKoreanJosa(topic, '을/를');
+    const safeLabel = looksLikeServiceIntroLeftoverTitle(label) ? topic : label;
     const linesByRole: Record<'list' | 'cards' | 'process' | 'timeline', string[]> = {
       list: [
-        `${topic}의 ${label} 범위와 현재 상태를 먼저 정의한다`,
-        `${label}에서 우선순위를 가르는 판단 기준을 정리한다`,
+        `${topic}의 ${safeLabel} 범위와 현재 상태를 먼저 정의한다`,
+        `${safeLabel}에서 우선순위를 가르는 판단 기준을 정리한다`,
         `${topicObject} 검증할 질문과 필요한 근거를 연결한다`,
       ],
       cards: [
-        `${topic}의 ${label}에서 관찰한 사실을 구분한다`,
+        `${topic}의 ${safeLabel}에서 관찰한 사실을 구분한다`,
         `대안별 차이를 같은 기준으로 비교한다`,
         `비교 결과가 ${topic}의 다음 결정에 주는 의미를 정리한다`,
       ],
       process: [
         `${topicObject} 실행하기 전에 필요한 입력과 책임을 확인한다`,
-        `${label}을 작은 범위에서 적용하고 피드백을 수집한다`,
+        `${safeLabel}을 작은 범위에서 적용하고 피드백을 수집한다`,
         `결과를 검증해 유지·수정·확대 여부를 결정한다`,
       ],
       timeline: [
         `${topic}의 현재 상태와 해결해야 할 간극을 기록한다`,
-        `${label}의 다음 단계와 완료 조건을 합의한다`,
+        `${safeLabel}의 다음 단계와 완료 조건을 합의한다`,
         `실행 이후 변화와 후속 과제를 같은 지표로 점검한다`,
       ],
     };
-    return {
+    return sanitizeServiceIntroSynthResult({
       roleHint,
-      lead: `${topicObject} ${label} 관점에서 점검합니다`,
+      lead: `${topicObject} 같은 화면에서 점검합니다`,
       body: linesByRole[roleHint].join('\n'),
       items: [],
-    };
+    }, cover, label, brief);
   }
   const templates = templatesForSynthTemplateTopic(
     classifySynthTemplateTopicProfile(cover, brief),
   );
   const picked = templates[(index - 1) % templates.length]!;
-  const result = {
+  const result = sanitizeServiceIntroSynthResult({
     roleHint: picked.roleHint,
     lead: picked.lead || label,
     body: picked.lines.join('\n'),
     items: synthTemplateItems(picked.itemTitles, picked.lines),
-  };
+  }, cover, label, brief);
   if (!looksLikeRawGridPitchSynthContext(kitKey, cover, brief)) return result;
   return {
     ...result,
-    lead: scrubRawGridFinancialClicheText(result.lead),
-    body: scrubRawGridFinancialClicheText(result.body),
-    items: result.items.map((item, itemIndex) => {
+    lead: scrubRawGridFinancialClicheText(result.lead ?? ''),
+    body: scrubRawGridFinancialClicheText(result.body ?? ''),
+    items: (result.items ?? []).map((item, itemIndex) => {
       const next: TemplateCloneSlideItem = {
         title: scrubRawGridFinancialClicheText(
           item.title,
@@ -7846,17 +7949,25 @@ function biennaleFillLines(input: {
   // topic을 body 문장에 스며들게 해서 최소 주제 명사가 유지되도록 정정.
   const topic = topicKeywordForSynthBody(input.title || input.lead || input.bodyText || '');
   const fallbacks: Array<{ title: string; body: string }> = [
-    { title: `${topic} 개요`, body: `${topic}의 핵심 메시지와 청중이 얻는 가치를 먼저 정리합니다.` },
-    { title: '핵심 포인트', body: `${topic}에서 가장 먼저 이해해야 할 개념·근거를 짧게 정리합니다.` },
-    { title: '실행 방법', body: `${topic}을 실제로 적용할 때의 순서와 판단 기준을 제시합니다.` },
-    { title: '기대 효과', body: `${topic}이 성공했을 때 청중·팀·사용자에게 생기는 변화를 정리합니다.` },
-    { title: '다음 단계', body: `${topic}을 이어가기 위한 다음 행동과 필요한 자원을 제안합니다.` },
+    { title: `${topic} 범위`, body: `${topic}의 핵심 메시지와 청중이 얻는 가치를 먼저 정리합니다.` },
+    { title: `${topic} 판단`, body: `${topic}에서 가장 먼저 이해해야 할 개념·근거를 짧게 정리합니다.` },
+    { title: `${topic} 쓰는 길`, body: `${topic}을 실제로 적용할 때의 순서와 판단 기준을 제시합니다.` },
+    { title: `${topic}이 바꾸는 것`, body: `${topic}이 성공했을 때 청중·팀·사용자에게 생기는 변화를 정리합니다.` },
+    { title: `${topic} 다음`, body: `${topic}을 이어가기 위한 다음 행동과 필요한 자원을 제안합니다.` },
   ];
   for (const fallback of fallbacks) {
     if (out.length >= minimum) break;
     out.push(fallback);
   }
-  return out.slice(0, Math.max(minimum, out.length));
+  const topicNoun = topic && !isGenericSynthTopicNoun(topic) ? topic : '';
+  return out.slice(0, Math.max(minimum, out.length)).map((line, lineIndex) => {
+    const title = String(line.title ?? '').replace(/\s+/g, ' ').trim();
+    if (!looksLikeBlockedOverviewOrTrioTitle(title) && !/(?:^|\s)개요$/.test(title)) return line;
+    return {
+      title: serviceIntroSynthTitleFallback(topicNoun, lineIndex),
+      body: line.body,
+    };
+  });
 }
 
 function biennaleFooterRows(input: {
@@ -8162,14 +8273,9 @@ export function healCobaltLeftoverCatalogCopy(
   return stripLeftoverCatalogDemoPhrases(out);
 }
 
-const COBALT_GRID_GENERIC_HEADING_RE =
-  /^(?:개요|핵심 포인트|근거와 사례|실행 방안|고객 경험|운영과 보안|도입 로드맵|성과 지표|요약|핵심 주제|핵심\s+\d+|대상 고객별 메시지|서비스 가치 제안|사용 흐름|신뢰를 만드는 증거|측정해야 할 지표|다음 액션)$/;
-
-const COBALT_GRID_GENERIC_CARD_TITLE_RE =
-  /^(?:핵심 가치|사용 장면|차별점|탐색|실행|확장|전환|활성|품질|전환율|문제|사용자|맥락|실무자|리더|운영자|파일럿|확대|정착|제품|사례|운영)$/;
-
-const COBALT_GRID_LEFTOVER_BODY_RE =
-  /사용자가 즉시 얻는 시간 절감|첫 방문에서 문제와 해결|방문에서 문의[·,]?\s*가입까지|도입 전 탐색,\s*팀 협업|기존 대안 대비 더 적은 단계|주요 기능을 체험하거나 문의|팀 규모,\s*권한,\s*반복 작업|시간 절감,\s*품질 개선|다루는 문제와 제공 가치|핵심 맥락과 다음 단계|핵심 메시지와 청중이 얻는 가치|가장 먼저 이해해야 할 개념·근거|의미와 적용 기준을 한 문장으로|반복해서 겪는 핵심 불편|방문자가 처음 보는 순간|사이트에서 확인되는 메시지|결과물 완성도,\s*수정 횟수|핵심 기능 반복 사용|화면,\s*워크플로우,\s*결과물 예시|고객 유형별 문제 해결 사례|지원,\s*보안,\s*개인정보,\s*도입 프로세스|작은 팀이나 단일 업무에서 빠르게 파일럿|반복 사용 패턴을 기준으로 템플릿과 권한|성과 지표와 운영 책임을 정해/;
+const COBALT_GRID_GENERIC_HEADING_RE = SERVICE_INTRO_LEFTOVER_HEADING_RE;
+const COBALT_GRID_GENERIC_CARD_TITLE_RE = SERVICE_INTRO_LEFTOVER_CARD_TITLE_RE;
+const COBALT_GRID_LEFTOVER_BODY_RE = SERVICE_INTRO_LEFTOVER_BODY_RE;
 
 const COBALT_GRID_ENGLISH_HEAD_RE = /^(?:No\.?|Trend|Reading|Mood|YoY)$/i;
 
@@ -10233,14 +10339,9 @@ const PRODUCT_LAUNCH_DEMO_COPY_RE =
 const PRODUCT_LAUNCH_LEFTOVER_BODY_RE =
   /Halo v2|halo\.audio|Studio-grade spatial|Four years of research|Marques Lin|Pre-order Halo|Pick your Halo|◎\s*Halo|\$179|\$279|\$399|AAC \+ SBC|Hi-Res Lossless/i;
 
-const PRODUCT_LAUNCH_GENERIC_HEADING_RE =
-  /^(?:개요|핵심 포인트|근거와 사례|실행 방안|고객 경험|도입 로드맵|성과 지표|요약|핵심 주제|핵심\s+\d+)$/;
-
-const PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE =
-  /^(?:핵심 가치|사용 장면|차별점|탐색|실행|확장|실무자|리더|운영자)$/;
-
-const PRODUCT_LAUNCH_GENERIC_CARD_BODY_RE =
-  /사용자가 즉시 얻는 시간 절감|도입 전 탐색, 팀 협업|기존 대안 대비 더 적은 단계|첫 방문에서 문제와 해결|주요 기능을 체험하거나 문의|팀 규모, 권한, 반복 작업/;
+const PRODUCT_LAUNCH_GENERIC_HEADING_RE = SERVICE_INTRO_LEFTOVER_HEADING_RE;
+const PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE = SERVICE_INTRO_LEFTOVER_CARD_TITLE_RE;
+const PRODUCT_LAUNCH_GENERIC_CARD_BODY_RE = SERVICE_INTRO_LEFTOVER_BODY_RE;
 
 const PRODUCT_LAUNCH_BROKEN_COPY_RE =
   /주제이|주제을|핵심\s+주제|핵심\s+\d+|—\s*,|의미와 적용 기준을 한 문장으로/;
@@ -11290,6 +11391,105 @@ const BLOCK_FRAME_ROLE_BODY_RE =
 const BLOCK_FRAME_SEED_CARD_TITLES = ['Strategy First', 'Design System', 'Launch Ready'] as const;
 const BLOCK_FRAME_SEED_STEP_TITLES = ['Research', 'Concept', 'Build', 'Launch'] as const;
 
+function resolveBlockFrameTopicNoun(
+  ...candidates: Array<string | null | undefined>
+): string {
+  for (const raw of candidates) {
+    const text = String(raw ?? '');
+    if (/teamver/i.test(text)) return 'Teamver';
+  }
+  const locked = resolveLockedTopicNoun(...candidates);
+  if (locked && !isGenericSynthTopicNoun(locked) && locked !== '주제') return locked;
+  return '주제';
+}
+
+function blockFrameSlideCopyPack(topic: string): {
+  cover: { lead: string; items: Array<{ title: string; body: string }> };
+  intro: { lead: string; heading: string; items: Array<{ title: string; body: string }> };
+  features: { lead: string; items: Array<{ title: string; body: string }> };
+  chart: { lead: string; items: Array<{ title: string; body: string }> };
+  quote: { lead: string; items: Array<{ title: string; body: string }> };
+  split: { lead: string; items: Array<{ title: string; body: string }> };
+  timeline: { lead: string; items: Array<{ title: string; body: string }> };
+  stats: { lead: string; items: Array<{ title: string; body: string }> };
+  team: { lead: string; items: Array<{ title: string; body: string }> };
+  close: { lead: string; title: string; items: Array<{ title: string; body: string }> };
+} {
+  const brand = topic || 'Teamver';
+  return {
+    cover: {
+      lead: `${brand}는 초안과 수정을 같은 보드에서 끝낸다.`,
+      items: [],
+    },
+    intro: {
+      heading: `${brand}가 묶는 일`,
+      lead: `${brand}는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.`,
+      items: [
+        { title: '파일과 대화를 같은 보드에 모은다', body: `${brand}에서 초안이 파일 밖으로 흩어지지 않고 같은 맥락으로 열린다.` },
+        { title: '보기와 고치기 권한을 나눈다', body: `${brand} 보드와 슬라이드마다 누가 보고 고칠 수 있는지 정한다.` },
+        { title: '보낸 뒤에도 이어서 고친다', body: `${brand}에서는 댓글과 수정이 같은 화면에서 끊기지 않고 이어진다.` },
+      ],
+    },
+    features: {
+      lead: `${brand}에서 바로 쓰는 세 가지`,
+      items: [
+        { title: '초안', body: `${brand} 보드에 바로 붙일 수 있는 초안이 열린다.` },
+        { title: '수정', body: `${brand}에서는 보낸 뒤에도 같은 화면에서 문장과 레이아웃을 고친다.` },
+        { title: '공유', body: `${brand}에 필요한 사람만 초대해 보기와 고치기를 나눈다.` },
+      ],
+    },
+    chart: {
+      lead: `${brand} 운영`,
+      items: [
+        { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
+        { title: '권한 경계', body: `${brand}에서 보기·고치기·보내기를 역할마다 나눈다.` },
+        { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 필요하면 되돌린다.` },
+      ],
+    },
+    quote: {
+      lead: `${brand}에서는 초안을 보낸 뒤에도 같은 화면에서 고칠 수 있어야 일이 끝난다.`,
+      items: [],
+    },
+    split: {
+      lead: `${brand} 작업 흐름`,
+      items: [
+        { title: '보드를 연다', body: `흩어진 메모를 ${brand} 워크스페이스로 옮긴다.` },
+        { title: '권한을 나눈다', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+        { title: '이력을 남긴다', body: `${brand} 보드에 바꾼 사람과 시점을 고정한다.` },
+      ],
+    },
+    timeline: {
+      lead: `${brand} 도입 단계`,
+      items: [
+        { title: '한 팀 보드', body: `기존 문서를 ${brand} 보드로 옮기고 보기·고치기 권한을 나눈다.` },
+        { title: '리뷰 습관', body: `${brand}에서 댓글과 버전을 같은 화면에서 고정한다.` },
+        { title: '조직 기준', body: `${brand} 워크스페이스 기본값으로 감사와 보내기 규칙을 둔다.` },
+      ],
+    },
+    stats: {
+      lead: `${brand}가 남기는 것`,
+      items: [
+        { title: '같은 화면', body: `${brand}에서 초안과 리뷰가 한 보드에 남는다.` },
+        { title: '나뉜 권한', body: `${brand}에서 누가 고칠 수 있는지 분명하다.` },
+        { title: '되돌리기', body: `${brand}에서 바꾼 기록을 열어 이전으로 돌린다.` },
+      ],
+    },
+    team: {
+      lead: `${brand}를 쓰는 자리`,
+      items: [
+        { title: '보드에서 쓰기', body: `${brand}에서 실무는 초안을 붙이고 같은 맥락에서 고친다.` },
+        { title: '권한 나누기', body: `${brand}에서 리더는 보기와 보내기 경계를 보드에 둔다.` },
+        { title: '이력 남기기', body: `${brand}에서 운영은 감사와 저장 규칙을 기본값으로 둔다.` },
+      ],
+    },
+    close: {
+      title: '보드에서 이어 쓰기',
+      lead: `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.`,
+      items: [],
+    },
+  };
+}
+
 const BLOCK_FRAME_HANGUL_TYPE_ATTR = 'data-od-block-frame-hangul-type';
 const BLOCK_FRAME_HANGUL_ELEM_ATTR = 'data-od-hangul';
 const BLOCK_FRAME_HANGUL_TYPE_MARK = 'data-od-block-frame-hangul-type-css';
@@ -11410,20 +11610,40 @@ function blockFrameTopicAwareMetricLabel(label: string, topic: string): string {
   return label;
 }
 
+const BLOCK_FRAME_KEPT_SECTION_LABEL_RE =
+  /^(?:근거와 사례|실행 방안|고객 경험|운영과 보안|도입 로드맵|성과 지표)$/;
+
 function rewriteBlockFrameHeadingCopy(
   raw: string,
   kind: 'card' | 'step' | 'title' | 'metric',
   index: number,
   topic = '',
+  pack?: ReturnType<typeof blockFrameSlideCopyPack>,
 ): string {
   const text = restoreBlockFrameBrokenTokens(restoreBlockFrameGluedKoreanTitle(raw)).replace(/\s+/g, ' ').trim();
-  if (BLOCK_FRAME_ROLE_TITLE_RE.test(text)) {
-    if (kind === 'step') return BLOCK_FRAME_SEED_STEP_TITLES[index] ?? '';
-    if (kind === 'card' || kind === 'metric') return BLOCK_FRAME_SEED_CARD_TITLES[index] ?? '';
-    return '';
+  const rolePack = pack ?? blockFrameSlideCopyPack(topic || 'Teamver');
+  if (/^(?:개요|핵심 포인트)$/.test(text)) {
+    if (kind === 'step') return rolePack.timeline.items[index % rolePack.timeline.items.length]?.title ?? '';
+    if (kind === 'metric') return rolePack.chart.items[index % rolePack.chart.items.length]?.title ?? '';
+    if (kind === 'card') return rolePack.intro.items[index % rolePack.intro.items.length]?.title ?? '';
+    return rolePack.intro.heading;
+  }
+  if (BLOCK_FRAME_KEPT_SECTION_LABEL_RE.test(text)) {
+    return text;
+  }
+  if (
+    BLOCK_FRAME_ROLE_TITLE_RE.test(text)
+    || SERVICE_INTRO_LEFTOVER_CARD_TITLE_RE.test(text)
+    || /파일떴|희대다|정척적/.test(String(raw ?? ''))
+  ) {
+    if (kind === 'step') return rolePack.timeline.items[index % rolePack.timeline.items.length]?.title ?? '';
+    if (kind === 'metric') return rolePack.chart.items[index % rolePack.chart.items.length]?.title ?? '';
+    if (kind === 'card') return rolePack.intro.items[index % rolePack.intro.items.length]?.title ?? rolePack.team.items[index % rolePack.team.items.length]?.title ?? '';
+    return rolePack.intro.heading;
   }
   if (BLOCK_FRAME_METRIC_LABEL_RE.test(text)) {
-    return blockFrameTopicAwareMetricLabel(text, topic);
+    return rolePack.chart.items[index % rolePack.chart.items.length]?.title
+      ?? blockFrameTopicAwareMetricLabel(text, topic);
   }
   return text;
 }
@@ -11519,7 +11739,8 @@ export function healBlockFrameLeftoverCatalogCopy(
 ): string {
   const dest = String(html ?? '');
   if (!dest.trim() || !blockFrameLeftoverHealShouldRun(dest)) return dest;
-  const topic = topicKeywordForSynthBody(String(brief ?? ''));
+  const topic = resolveBlockFrameTopicNoun(brief, topicKeywordForSynthBody(String(brief ?? '')));
+  const pack = blockFrameSlideCopyPack(topic);
   const hasHangul = ((dest.match(/[가-힣]/g) ?? []).length >= 2);
   let out = dest;
 
@@ -11533,14 +11754,23 @@ export function healBlockFrameLeftoverCatalogCopy(
   ): string => {
     const plain = blockFrameVisibleCopy(inner);
     if (!plain) return full;
-    if (blockFrameCopyIsKeepable(plain) && !BLOCK_FRAME_ROLE_TITLE_RE.test(plain)) {
+    if (
+      blockFrameCopyIsKeepable(plain)
+      && !BLOCK_FRAME_ROLE_TITLE_RE.test(plain)
+      && !looksLikeServiceIntroLeftoverTitle(plain)
+      && !/^(?:개요|핵심 포인트)$/.test(plain)
+    ) {
       const restored = restoreBlockFrameGluedKoreanTitle(inner);
       return restored === inner ? full : `${open}${restored}${close}`;
     }
-    if (BLOCK_FRAME_ROLE_BODY_RE.test(plain)) {
-      return `${open}${close}`;
+    if (BLOCK_FRAME_ROLE_BODY_RE.test(plain) || SERVICE_INTRO_LEFTOVER_BODY_RE.test(plain)) {
+      const filled =
+        kind === 'step' ? pack.timeline.items[index % pack.timeline.items.length]?.body
+          : kind === 'metric' ? pack.chart.items[index % pack.chart.items.length]?.body
+            : pack.intro.items[index % pack.intro.items.length]?.body;
+      return filled ? `${open}${escapeHtml(filled)}${close}` : `${open}${close}`;
     }
-    const next = rewriteBlockFrameHeadingCopy(plain, kind, index, topic);
+    const next = rewriteBlockFrameHeadingCopy(plain, kind, index, topic, pack);
     if (!next || next === plain) {
       const restored = restoreBlockFrameBrokenTokens(restoreBlockFrameGluedKoreanTitle(inner));
       return restored === inner ? full : `${open}${restored}${close}`;
@@ -11548,17 +11778,25 @@ export function healBlockFrameLeftoverCatalogCopy(
     return `${open}${escapeHtml(next)}${close}`;
   };
 
-  // 루프557 — Native card ranges: role labels + role bodies inside
-  // `.intro-card` / `.nb-card` are the user's real deck content, not a
-  // Product Launch demo leak. Preserve them (with only gentle glued /
-  // broken-token restoration) instead of rewriting to English seed titles.
-  let nativeCardRanges = computeBlockFrameNativeCardRanges(out);
-  const preserveKoreanRoles = (
+  // 0918-N03 — leftover 역할(실무자/리더/운영자, 탐색/실행/확장)은 native
+  // card 안에서도 strip. 한국어 ≥20 구체 문장만 유지 (루프554).
+  const preserveKeepableCopy = (
     full: string,
     open: string,
     inner: string,
     close: string,
   ): string => {
+    const plain = blockFrameVisibleCopy(inner);
+    if (
+      plain
+      && (BLOCK_FRAME_ROLE_TITLE_RE.test(plain)
+        || looksLikeServiceIntroLeftoverTitle(plain)
+        || BLOCK_FRAME_ROLE_BODY_RE.test(plain)
+        || SERVICE_INTRO_LEFTOVER_BODY_RE.test(plain)
+        || /^(?:개요|핵심 포인트)$/.test(plain))
+    ) {
+      return full;
+    }
     const restored = restoreBlockFrameBrokenTokens(
       restoreBlockFrameGluedKoreanTitle(inner),
     );
@@ -11568,72 +11806,61 @@ export function healBlockFrameLeftoverCatalogCopy(
   let cardIndex = 0;
   out = out.replace(
     /(<(?:h[1-4])\b[^>]*>)([\s\S]*?)(<\/h[1-4]>)/gi,
-    (full, open: string, inner: string, close: string, offset: number) => {
-      if (offsetFallsInsideRange(nativeCardRanges, offset)) {
-        // 루프557 — On a Block Frame native card shell, preserve Korean
-        // role labels verbatim rather than swapping in English seed.
-        return preserveKoreanRoles(full, open, inner, close);
-      }
-      const kind = /intro-card|feature-card|team-card|nb-card|(?:^|[^-])\bcard\b/i.test(full)
-        || /<(?:h3|h4)\b/i.test(open)
-        ? 'card'
-        : 'title';
+    (full, open: string, inner: string, close: string) => {
+      const kind = /<(?:h3|h4)\b/i.test(open) ? 'card' : 'title';
       const index = kind === 'card' ? cardIndex++ : 0;
       return rewriteLeaf(full, open, inner, close, kind, index);
     },
   );
 
-  nativeCardRanges = computeBlockFrameNativeCardRanges(out);
   let stepIndex = 0;
   out = out.replace(
     /(<(?:div|span|p)\b[^>]*\bstep-title\b[^>]*>)([\s\S]*?)(<\/(?:div|span|p)>)/gi,
-    (full, open: string, inner: string, close: string, offset: number) => {
-      if (offsetFallsInsideRange(nativeCardRanges, offset)) {
-        return preserveKoreanRoles(full, open, inner, close);
-      }
+    (full, open: string, inner: string, close: string) => {
       return rewriteLeaf(full, open, inner, close, 'step', stepIndex++);
     },
   );
 
-  nativeCardRanges = computeBlockFrameNativeCardRanges(out);
   let headingSlotIndex = 0;
   out = out.replace(
     /(<(?:div|span|p)\b[^>]*(?:\bnb-heading|\bcard-title|\bdata-label|\bdata-num|\bstat-label)[^>]*>)([\s\S]*?)(<\/(?:div|span|p)>)/gi,
-    (full, open: string, inner: string, close: string, offset: number) => {
-      if (offsetFallsInsideRange(nativeCardRanges, offset)) {
-        return preserveKoreanRoles(full, open, inner, close);
-      }
+    (full, open: string, inner: string, close: string) => {
       const kind = /\bdata-(?:num|label)\b|\bstat-label\b/i.test(open) ? 'metric' : 'card';
       return rewriteLeaf(full, open, inner, close, kind, headingSlotIndex++);
     },
   );
 
-  nativeCardRanges = computeBlockFrameNativeCardRanges(out);
+  let descIndex = 0;
   out = out.replace(
     /(<(?:p|div|span)\b[^>]*(?:\bstep-desc\b|\bnb-body\b)[^>]*>)([\s\S]*?)(<\/(?:p|div|span)>)/gi,
-    (full, open: string, inner: string, close: string, offset: number) => {
+    (full, open: string, inner: string, close: string) => {
       const plain = blockFrameVisibleCopy(inner);
       if (!plain) return full;
       if (blockFrameCopyIsKeepable(plain)) return full;
-      if (offsetFallsInsideRange(nativeCardRanges, offset)) {
-        return preserveKoreanRoles(full, open, inner, close);
+      const kind = /\bstep-desc\b/i.test(open) ? 'step' : 'title';
+      const index = kind === 'step' ? descIndex++ : 0;
+      if (BLOCK_FRAME_ROLE_BODY_RE.test(plain) || SERVICE_INTRO_LEFTOVER_BODY_RE.test(plain)) {
+        return rewriteLeaf(full, open, inner, close, kind, index);
       }
-      if (BLOCK_FRAME_ROLE_BODY_RE.test(plain)) return `${open}${close}`;
       const restored = restoreBlockFrameBrokenTokens(inner);
       return restored === inner ? full : `${open}${restored}${close}`;
     },
   );
 
-  nativeCardRanges = computeBlockFrameNativeCardRanges(out);
+  let bodyIndex = 0;
   out = out.replace(
     /(<(?:p|span)\b[^>]*>)([\s\S]*?)(<\/(?:p|span)>)/gi,
-    (full, open: string, inner: string, close: string, offset: number) => {
+    (full, open: string, inner: string, close: string) => {
       const plain = blockFrameVisibleCopy(inner);
-      if (!plain || BLOCK_FRAME_ROLE_TITLE_RE.test(plain)) return full;
-      if (offsetFallsInsideRange(nativeCardRanges, offset)) {
-        return preserveKoreanRoles(full, open, inner, close);
+      if (!plain) return full;
+      if (blockFrameCopyIsKeepable(plain)) return preserveKeepableCopy(full, open, inner, close);
+      if (
+        BLOCK_FRAME_ROLE_TITLE_RE.test(plain)
+        || BLOCK_FRAME_ROLE_BODY_RE.test(plain)
+        || SERVICE_INTRO_LEFTOVER_BODY_RE.test(plain)
+      ) {
+        return rewriteLeaf(full, open, inner, close, 'card', bodyIndex++);
       }
-      if (BLOCK_FRAME_ROLE_BODY_RE.test(plain)) return `${open}${close}`;
       return full;
     },
   );
@@ -11684,7 +11911,13 @@ function fillBlockFrameNeoSlots(
   if (!/\b(?:hero-frame|visual-box|data-box|team-card|nb-btn|close-btn|chart-frame|nb-label|intro-card|feature-card|stat-card|timeline-step)\b/i.test(body)) {
     return body;
   }
-  const lines = biennaleFillLines(input, 4);
+  const topic = resolveBlockFrameTopicNoun(input.title, input.lead, input.bodyText);
+  const pack = blockFrameSlideCopyPack(topic);
+  const safeTitle = looksLikeServiceIntroLeftoverTitle(input.title)
+    || /^(?:개요|핵심 포인트)$/.test(String(input.title ?? '').trim())
+    ? pack.intro.heading
+    : input.title;
+  const lines = biennaleFillLines({ ...input, title: safeTitle }, 4);
   // 루프558 — Block Frame slide-1 (`.hero-frame`) is the cover shell. Its
   // `.hero-label` slot is a small pink pill above the title — the template
   // originally shows "Presentation Template" (a short role label), NOT the
@@ -11716,11 +11949,11 @@ function fillBlockFrameNeoSlots(
   next = replaceFirstExactClassText(next, 'close-btn', '다음 단계');
 
   if (/\bclose-frame\b/i.test(next)) {
-    next = replaceFirstExactClassText(next, 'close-title', input.title);
+    next = replaceFirstExactClassText(next, 'close-title', safeTitle === input.title ? pack.close.title : safeTitle);
     next = replaceFirstExactClassText(
       next,
       'close-subtitle',
-      input.lead || input.bodyText || `${input.title}의 다음 실행 단계를 정리합니다.`,
+      input.lead || input.bodyText || pack.close.lead,
     );
     next = replaceFirstExactClassText(next, 'close-btn', '무료로 시작하기');
   }
@@ -12160,11 +12393,121 @@ function findMatchingCloseForBlockFrame(
  * "Performance Data") leaving a floating colored chip. Refill from title.
  */
 function refillEmptyBlockFrameNeoLabels(html: string, chromeLabel: string): string {
-  const label = String(chromeLabel ?? '').trim() || '표지';
+  const raw = String(chromeLabel ?? '').trim();
+  const label = !raw || looksLikeServiceIntroLeftoverTitle(raw) ? '표지' : raw;
   return String(html ?? '').replace(
     /(<(?:div|span)\b[^>]*\bnb-label\b[^>]*>)\s*(<\/(?:div|span)>)/gi,
     (_m, open: string, close: string) => `${open}${escapeHtml(label)}${close}`,
   );
+}
+
+function refillEmptyBlockFrameSlotsFromPack(
+  html: string,
+  title?: string | null,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim()) return dest;
+  const topic = resolveBlockFrameTopicNoun(title, brief);
+  const pack = blockFrameSlideCopyPack(topic);
+  let out = dest;
+  let cardIndex = 0;
+  out = out.replace(
+    /<(div|article|li)\b([^>]*\b(?:intro-card|nb-card|feature-card|team-card)\b[^>]*)>([\s\S]*?)<\/\1>/gi,
+    (full, tag: string, attrs: string, inner: string) => {
+      const item = pack.intro.items[cardIndex % pack.intro.items.length]
+        ?? pack.features.items[cardIndex % pack.features.items.length]
+        ?? pack.team.items[cardIndex % pack.team.items.length];
+      cardIndex += 1;
+      if (!item) return full;
+      let next = inner;
+      next = next.replace(
+        /(<(?:h[3-4])\b[^>]*>)([\s\S]*?)(<\/h[3-4]>)/i,
+        (leaf, open: string, text: string, close: string) => {
+          const plain = blockFrameVisibleCopy(text);
+          if (plain && blockFrameCopyIsKeepable(plain) && !looksLikeServiceIntroLeftoverTitle(plain)) {
+            return leaf;
+          }
+          if (plain && !looksLikeServiceIntroLeftoverTitle(plain) && !BLOCK_FRAME_ROLE_TITLE_RE.test(plain) && plain.length >= 2) {
+            return leaf;
+          }
+          return `${open}${escapeHtml(item.title)}${close}`;
+        },
+      );
+      next = next.replace(
+        /(<(?:p)\b[^>]*>)([\s\S]*?)(<\/p>)/i,
+        (leaf, open: string, text: string, close: string) => {
+          const plain = blockFrameVisibleCopy(text);
+          if (plain && blockFrameCopyIsKeepable(plain)) return leaf;
+          if (plain && !BLOCK_FRAME_ROLE_BODY_RE.test(plain) && !SERVICE_INTRO_LEFTOVER_BODY_RE.test(plain) && plain.length >= 12) {
+            return leaf;
+          }
+          return `${open}${escapeHtml(item.body)}${close}`;
+        },
+      );
+      return `<${tag}${attrs}>${next}</${tag}>`;
+    },
+  );
+  let stepIndex = 0;
+  out = out.replace(
+    /(<(?:div|span|p)\b[^>]*\bstep-title\b[^>]*>)([\s\S]*?)(<\/(?:div|span|p)>)/gi,
+    (full, open: string, text: string, close: string) => {
+      const item = pack.timeline.items[stepIndex % pack.timeline.items.length];
+      stepIndex += 1;
+      const plain = blockFrameVisibleCopy(text);
+      if (plain && !looksLikeServiceIntroLeftoverTitle(plain) && !/파일떴|희대다|정척적/.test(plain) && plain.length >= 2) {
+        return full;
+      }
+      return item ? `${open}${escapeHtml(item.title)}${close}` : full;
+    },
+  );
+  let stepDescIndex = 0;
+  out = out.replace(
+    /(<(?:div|span|p)\b[^>]*\bstep-desc\b[^>]*>)([\s\S]*?)(<\/(?:div|span|p)>)/gi,
+    (full, open: string, text: string, close: string) => {
+      const item = pack.timeline.items[stepDescIndex % pack.timeline.items.length];
+      stepDescIndex += 1;
+      const plain = blockFrameVisibleCopy(text);
+      if (plain && blockFrameCopyIsKeepable(plain)) return full;
+      if (plain && !SERVICE_INTRO_LEFTOVER_BODY_RE.test(plain) && !BLOCK_FRAME_ROLE_BODY_RE.test(plain) && plain.length >= 12) {
+        return full;
+      }
+      return item ? `${open}${escapeHtml(item.body)}${close}` : full;
+    },
+  );
+  let metricIndex = 0;
+  out = out.replace(
+    /<div\b([^>]*\bdata-box\b[^>]*)>([\s\S]*?)<\/div>/gi,
+    (full, attrs: string, inner: string) => {
+      const item = pack.chart.items[metricIndex % pack.chart.items.length];
+      metricIndex += 1;
+      if (!item) return full;
+      let next = inner;
+      next = next.replace(
+        /(<(?:span|div)\b[^>]*\bdata-num\b[^>]*>)([\s\S]*?)(<\/(?:span|div)>)/i,
+        (leaf, open: string, text: string, close: string) => {
+          const plain = blockFrameVisibleCopy(text);
+          if (plain && !BLOCK_FRAME_METRIC_LABEL_RE.test(plain) && !looksLikeServiceIntroLeftoverTitle(plain) && plain.length >= 2) {
+            return leaf;
+          }
+          return `${open}${escapeHtml(item.title)}${close}`;
+        },
+      );
+      next = next.replace(
+        /(<(?:span|div)\b[^>]*\bdata-label\b[^>]*>)([\s\S]*?)(<\/(?:span|div)>)/i,
+        (leaf, open: string, text: string, close: string) => {
+          const plain = blockFrameVisibleCopy(text);
+          if (plain && blockFrameCopyIsKeepable(plain)) return leaf;
+          if (plain && !SERVICE_INTRO_LEFTOVER_BODY_RE.test(plain) && !BLOCK_FRAME_ROLE_BODY_RE.test(plain) && plain.length >= 12) {
+            return leaf;
+          }
+          return `${open}${escapeHtml(item.body)}${close}`;
+        },
+      );
+      return `<div${attrs}>${next}</div>`;
+    },
+  );
+  return out;
 }
 
 /**
@@ -13199,7 +13542,15 @@ function fillSlideShell(
   body = stripBlockFrameNeoCatalogDemoCopy(body);
   body = stripEightBitOrbitCatalogDemoCopy(body);
   // 루프534 — Demo-copy strip may empty nb-label chips; refill from title.
-  body = refillEmptyBlockFrameNeoLabels(body, title || kicker || '개요');
+  // 0918-N03 — leftover 개요/핵심 포인트 를 chrome 으로 되넣지 않는다.
+  const blockFrameChrome = looksLikeServiceIntroLeftoverTitle(title)
+    || looksLikeServiceIntroLeftoverTitle(kicker)
+    ? (resolveBlockFrameTopicNoun(title, kicker, lead) === '주제' ? '표지' : resolveBlockFrameTopicNoun(title, kicker, lead))
+    : (title || kicker || '표지');
+  body = refillEmptyBlockFrameNeoLabels(body, blockFrameChrome);
+  if (/\b(?:hero-frame|intro-card|feature-card|timeline-step|data-box|nb-card)\b/i.test(body)) {
+    body = refillEmptyBlockFrameSlotsFromPack(body, title, lead || bodyText);
+  }
   body = stripBlueProfessionalCatalogDemoCopy(body);
   body = stripStudioCreativeCatalogDemoCopy(body);
   body = stripLeftoverCatalogDemoPhrases(body);

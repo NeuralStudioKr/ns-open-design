@@ -1039,7 +1039,7 @@ describe('루프450/459/469/470/472 Zhangzara template quality gates', () => {
       .replace(/<[^>]+>/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
-    expect(eighthText).toMatch(/전환.*방문에서 문의|활성.*반복 사용|품질.*완성도/);
+    expect(eighthText).toMatch(/같은 보드|권한 경계|결과 이력/);
     expect(cloned).not.toMatch(/BlockFrame\s*템플릿|채워\s*담아줘|비주얼로\s*구성/);
   });
 });
@@ -1781,29 +1781,66 @@ describe('루프419 Capsule deterministic quality gate', () => {
       'www.teamver.com 서비스 소개',
       BLOCK_FRAME_NEO_KIT_KEY,
     );
-    expect(emptySynth.items).toEqual([]);
     expect(JSON.stringify(emptySynth)).not.toMatch(/실무자|리더|운영자/);
+    expect((emptySynth.items ?? []).map((item) => item.title))
+      .not.toEqual(['탐색', '실행', '확장']);
+    expect(emptySynth.lead).not.toMatch(/개요|핵심 포인트|탐색/);
 
     const healed = salvageMalformedMiniMaxSlideMarkup(html, 'Teamver 소개');
     expect(healed).toMatch(/고객 경험/);
     expect(healed).not.toMatch(/고객경험/);
     expect(healed).toMatch(/근거와 사례/);
     expect(healed).not.toMatch(/근거와사례/);
-    // 루프557 — 실무자 / 리더 / 운영자 that appear inside Block Frame
-    // native `.intro-card` shells are the user's legitimate deck content
-    // (Korean team-collab briefs use exactly these role names), not a
-    // Product Launch demo leak. Preserve them verbatim.
-    expect(healed).toMatch(/<h3[^>]*>\s*실무자\s*<\/h3>/);
-    expect(healed).toMatch(/<h3[^>]*>\s*리더\s*<\/h3>/);
-    expect(healed).toMatch(/<h3[^>]*>\s*운영자\s*<\/h3>/);
-    expect(healed).toMatch(/반복 작업을 줄이고 결과물 완성도를 높이는 방식/);
+    // 0918-N03 — leftover 실무자/리더/운영자 는 native card 안에서도 유지 금지 (556).
+    expect(healed).not.toMatch(/<h3[^>]*>\s*실무자\s*<\/h3>/);
+    expect(healed).not.toMatch(/<h3[^>]*>\s*리더\s*<\/h3>/);
+    expect(healed).not.toMatch(/<h3[^>]*>\s*운영자\s*<\/h3>/);
+    expect(healed).not.toMatch(/반복 작업을 줄이고 결과물 완성도를 높이는 방식/);
+    expect(healed).not.toMatch(/<h[1-4][^>]*>\s*(?:개요|핵심 포인트)\s*</);
     expect(healed).not.toMatch(/파일떴|희대다|정척적/);
+    const timelineTitles = [...healed.matchAll(/<div[^>]*class="step-title"[^>]*>([\s\S]*?)<\/div>/gi)]
+      .map((match) => String(match[1] ?? '').replace(/<[^>]+>/g, '').trim())
+      .filter(Boolean);
+    expect(timelineTitles.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(timelineTitles).size).toBeGreaterThanOrEqual(3);
+    expect(timelineTitles).not.toEqual(expect.arrayContaining(['파일럿', '확대', '정착']));
     expect(healed).not.toMatch(/고 객 경 험|근 거 와 사 례|실 무 자/);
     expect(healed).toMatch(/letter-spacing:\s*0\s*!important/);
     expect(healed).toMatch(/text-transform:\s*none\s*!important/);
     expect(healed).toMatch(/font-size:\s*18px\s*!important/);
     expect(healed).toMatch(/font-size:\s*24px\s*!important/);
     expect(healBlockFrameLeftoverCatalogCopy(html, 'Teamver 소개')).toMatch(/고객 경험/);
+  });
+
+  it('0918-N03 — 공통 synth는 Block Frame/Studio/기본에 탐색+실행+확장 연속 제목을 넣지 않는다', () => {
+    const brief = 'www.teamver.com 서비스 소개';
+    const kits: Array<string | null> = [null, BLOCK_FRAME_NEO_KIT_KEY];
+    for (const kitKey of kits) {
+      for (let index = 1; index <= 8; index += 1) {
+        const synth = synthesizeTemplateCloneSlideBody(
+          'Teamver 소개',
+          '개요',
+          index,
+          brief,
+          kitKey,
+        );
+        const titles = (synth.items ?? []).map((item) => String(item.title ?? '').trim());
+        expect(titles).not.toEqual(['탐색', '실행', '확장']);
+        expect(titles.slice(0, 3)).not.toEqual(['탐색', '실행', '확장']);
+        expect(synth.lead).not.toMatch(/^(?:개요|핵심 포인트)$/);
+        for (const title of titles) {
+          expect(title).not.toMatch(/^(?:개요|핵심 포인트|탐색|실행|확장)$/);
+        }
+      }
+    }
+    const studioSynth = synthesizeTemplateCloneSlideBody(
+      'Teamver 소개',
+      '핵심 포인트',
+      3,
+      brief,
+    );
+    expect((studioSynth.items ?? []).map((item) => item.title))
+      .not.toEqual(['탐색', '실행', '확장']);
   });
 
   it('0918-N03 — sparse Block Frame cover restores a topical subtitle', () => {
@@ -1838,14 +1875,13 @@ describe('루프419 Capsule deterministic quality gate', () => {
     const leftoverOnly = healBlockFrameLeftoverCatalogCopy(html, 'Teamver 소개');
     expect(leftoverOnly).not.toMatch(/운영과보안/);
     expect(leftoverOnly).toMatch(/운영과 보안/);
-    // 루프557 — Role labels + role bodies survive when they sit inside
-    // Block Frame native `.intro-card` / `.nb-card` shells; only the
-    // bare `<div class="card">` (the 3rd peer with `<h4>` — Product Launch
-    // demo shape) still gets treated as leftover.
-    expect(leftoverOnly).toMatch(/<h3[^>]*>\s*실무자\s*<\/h3>/);
-    expect(leftoverOnly).toMatch(/<h3[^>]*>\s*리더\s*<\/h3>/);
-    expect(leftoverOnly).toMatch(/반복 작업을 줄이고 결과물 완성도를/);
-    expect(leftoverOnly).toMatch(/팀 속도, 품질, 비용을 함께 관리할 수 있는 기준/);
+    // 0918-N03 — leftover 역할은 native card 안에서도 strip. 운영 라벨로 교체.
+    expect(leftoverOnly).not.toMatch(/<h3[^>]*>\s*실무자\s*<\/h3>/);
+    expect(leftoverOnly).not.toMatch(/<h3[^>]*>\s*리더\s*<\/h3>/);
+    expect(leftoverOnly).not.toMatch(/반복 작업을 줄이고 결과물 완성도를/);
+    expect(leftoverOnly).not.toMatch(/팀 속도, 품질, 비용을 함께 관리할 수 있는 기준/);
+    expect(leftoverOnly).not.toMatch(/<h[1-4][^>]*>\s*(?:개요|핵심 포인트)\s*</);
+    expect(leftoverOnly).not.toMatch(/>\s*(?:전환율|활성|품질)\s*</);
     expect(leftoverOnly).not.toMatch(/>Q[1-9](?:\s*20\d{2})?</);
     // The healer itself keeps chart-svg (it just wipes demo glyphs); the
     // structural strip happens later in `salvageMalformedMiniMaxSlideMarkup`.
@@ -1866,16 +1902,11 @@ describe('루프419 Capsule deterministic quality gate', () => {
     const healed = salvageMalformedMiniMaxSlideMarkup(html, 'Teamver 소개');
     expect(healed).not.toMatch(/운영과보안/);
     expect(healed).toMatch(/운영과 보안/);
-    // 루프557 — When the Korean role labels appear inside a Block Frame
-    // native `.intro-card` or `.nb-card` shell, they are the user's actual
-    // deck content (not a Product Launch demo leak), so preserve them and
-    // the surrounding descriptions. Only shells without a Block Frame
-    // native card class (bare `<div class="card">`, `<div class="feature-card">`,
-    // or role-body copy that lives *outside* any native card) still get wiped.
-    expect(healed).toMatch(/<h3[^>]*>\s*실무자\s*<\/h3>/);
-    expect(healed).toMatch(/<h3[^>]*>\s*리더\s*<\/h3>/);
-    expect(healed).toMatch(/반복 작업을 줄이고 결과물 완성도를/);
-    expect(healed).toMatch(/팀 속도, 품질, 비용을 함께 관리할 수 있는 기준/);
+    expect(healed).not.toMatch(/<h3[^>]*>\s*실무자\s*<\/h3>/);
+    expect(healed).not.toMatch(/<h3[^>]*>\s*리더\s*<\/h3>/);
+    expect(healed).not.toMatch(/반복 작업을 줄이고 결과물 완성도를/);
+    expect(healed).not.toMatch(/팀 속도, 품질, 비용을 함께 관리할 수 있는 기준/);
+    expect(healed).not.toMatch(/<h[1-4][^>]*>\s*(?:개요|핵심 포인트)\s*</);
     expect(healed).not.toMatch(/>Q[1-9](?:\s*20\d{2})?</);
     // 루프557 — non-metric chart-svg (Q1..Qn axis + colored bars with no
     // real metric numbers in the data-column) is removed entirely, so the
@@ -1922,9 +1953,10 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(slide2Html).toMatch(
       /<div\s+class="col-left"[^>]*>[\s\S]*?운영 권한과 저장 정책을 한 화면에서 검토하고[\s\S]*?<\/div>/,
     );
-    // The intro-card / nb-card contents in col-right survive the reshape.
-    expect(slide2Html).toMatch(/<div\s+class="intro-card"[^>]*>[\s\S]*?실무자/);
-    expect(slide2Html).toMatch(/<div\s+class="nb-card"[^>]*>[\s\S]*?리더/);
+    // The intro-card / nb-card shells survive the reshape; leftover 역할 제목은 빠진다.
+    expect(slide2Html).toMatch(/<div\s+class="intro-card"/);
+    expect(slide2Html).toMatch(/<div\s+class="nb-card"/);
+    expect(slide2Html).not.toMatch(/실무자|리더|운영자/);
   });
 
   it('루프557 — Block Frame chart-frame with non-metric data-column drops chart-svg and lays data-column horizontally', async () => {
@@ -1988,16 +2020,16 @@ describe('루프419 Capsule deterministic quality gate', () => {
       '</body></html>',
     ].join('');
     const healed = healBlockFrameLeftoverCatalogCopy(shellHtml, 'Teamver 소개');
-    // Native shells `.intro-card` / `.nb-card` keep the user's Korean role
-    // labels and descriptions verbatim; they never get swapped for the
-    // English seed strings from BLOCK_FRAME_SEED_CARD_TITLES.
-    expect(healed).toMatch(/<h3[^>]*>\s*실무자\s*<\/h3>/);
-    expect(healed).toMatch(/<h3[^>]*>\s*리더\s*<\/h3>/);
+    // 0918-N03 — leftover 역할은 native shell 안에서도 Teamver 역할 문장으로.
+    expect(healed).not.toMatch(/<h3[^>]*>\s*실무자\s*<\/h3>/);
+    expect(healed).not.toMatch(/<h3[^>]*>\s*리더\s*<\/h3>/);
     expect(healed).not.toMatch(/Strategy First/);
     expect(healed).not.toMatch(/Design System/);
     expect(healed).not.toMatch(/Launch Ready/);
-    expect(healed).toMatch(/반복 작업을 줄이고 결과물 완성도를 높이는 방식/);
-    expect(healed).toMatch(/팀 속도, 품질, 비용을 함께 관리할 수 있는 기준/);
+    expect(healed).not.toMatch(/반복 작업을 줄이고 결과물 완성도를 높이는 방식/);
+    expect(healed).not.toMatch(/팀 속도, 품질, 비용을 함께 관리할 수 있는 기준/);
+    expect(healed).not.toMatch(/<h[1-4][^>]*>\s*(?:개요|핵심 포인트)\s*</);
+    expect(healed).toMatch(/같은 보드|권한|이어서 고친다/);
   });
 
   it('루프557 — Cobalt Grid leftover heal repairs copy and cover/table layout with role-specific Teamver sentences', async () => {
