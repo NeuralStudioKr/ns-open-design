@@ -38,6 +38,24 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프558 — Block Frame 커버가 표지·h1 만 남는 회귀 (kit chrome / deco / hero-subtitle 소실)
+
+체감: 루프557 배포 이후 2026-09-17~18 사용자 리포트 실물 스크린샷 — Block Frame 첫 페이지가 크림색 큰 카드 하나에 작은 pink `표지` 라벨과 h1 `업무와 AI를 하나의 공간에서` 만 남고, 4개 `corner-bracket` · `deco-pink-rect` · `deco-green-circle` · `deco-yellow-bar` · `hero-subtitle` 이 모두 사라진 채 표지가 나감. "여전히 결과물을 제대로 만들지 못하고 있다" 재보고.
+
+원인 (세 지점의 과잉 stripping 이 협력해 커버 chrome 을 삭제):
+- **A. `stripNonSlotWrappers` — kit-owned chrome/deco 도 leftover wrapper 로 판단** — `<div class="nb-label hero-label">Presentation Template</div>` / `<div class="deco-yellow-bar">Get Started</div>` 처럼 "prose 짧고 hero-title/h1/p 슬롯 없음" 이면 wrapper 로 판단해 통째로 drop. `fillBlockFrameNeoSlots` 이 refill 하려던 슬롯 자체가 사라져 label-less / CTA-less 커버가 남음.
+- **B. `unwrapSlideOnlyContainer` 의 inert-deco strip 스코프 과대** — slide container 안쪽 전체에 `stripInertLeftoverDecoBlocks` 를 돌려서 `.slide` 내부의 정상 `.deco-dots` / `.deco-pink-rect` / `.deco-green-circle` 도 empty-div 패턴과 일치해 사라짐. 원 의도는 slide 블록 사이의 inter-slide chrome gap 만 청소.
+- **C. Cover subtitle 합성 부재** — title-only outline (`{ title, roleHint:'cover' }`) 이 들어오면 `<p class="hero-subtitle"></p>` 가 empty 로 남고, 뒤이어 오는 `stripLeafEmptyListAndParagraphShells` / `stripEightBitOrbitCatalogDemoCopy` 가 leaf empty `<p>` 로 판단해 drop → 자막 자체 소실.
+- **D. hero-label 이 deck 타이틀 반복** — `blockFrameNeoChromeLabel` 이 hero-label 에 브리프 제목을 반영하면서 h1 과 duplicate 되고 pink chip 이 프레임을 가로지름. 표지에는 짧은 역할 라벨이 어울림.
+
+수정:
+- `KIT_OWNED_CHROME_SLOT_TOKENS` + `wrapperIsKitOwnedChromeSlot` — Block Frame (`hero-frame`/`hero-label`/`hero-title`/`hero-subtitle`/`hero-tagline`/`hero-badge(s)`/`hero-meta`/`nb-label`/`nb-btn`/`nb-body`/`close-*`/`corner-bracket`/`deco-*`/`title-pill`/`main-title`) · 8-Bit Orbit (`pixel-*`/`starfield`/`scanlines`/`grain`/`crt-glow`) · 공용 (`stat-pill(s)`/`slide-content`/`chart-svg`/`chart-legend`/`card-deco`) allowlist. `stripNonSlotWrappers` 는 wrapper 클래스에 이 토큰이 하나라도 있으면 무조건 유지.
+- `stripInterSlideChromeGaps` + `collectSlideHostBlockRanges` — `unwrapSlideOnlyContainer` 가 slide 블록 범위를 먼저 수집하고, `stripInertLeftoverDecoBlocks` / `stripSlideNavChromeBlocks` 를 slide 사이 gap 세그먼트에만 적용. Slide 내부는 건드리지 않음.
+- `fillCoverSubtitleSlotsIfEmpty` + `COVER_SUBTITLE_SLOT_CLASSES` (`hero-subtitle`/`hero-tagline`/`subtitle`/`subhead`/`cover-subhead`/`close-subtitle`) — 커버 슬라이드 (`index === 0` + `roleHint === 'cover'` 또는 hint 없음) 에서 empty subtitle slot 을 `lead || bodyText || synthesizeTemplateCloneCoverLead(title)` 로 채운다. `fillSlideShell` 이 empty-`<p>` 제거 이전에 호출해 leaf strip 이 지우기 전에 텍스트를 확보.
+- `blockFrameNeoCoverRoleLabel` — `.hero-frame` 이 있는 shell 에서만 hero-label 에 짧은 역할 라벨을 사용. 명시 kicker 가 있으면 (BLOCK_FRAME_ENGLISH_CHROME_LABEL_KO 매핑 또는 28자 이하) 그대로, 아니면 `표지` fallback. `.deco-yellow-bar` 는 커버에서 `topicCta.slice(0, 24)`, 비-커버는 topic-keyword.
+
+검증: contracts `template-clone-fill.test.ts` 루프558 (a)(b)(c)(d) 4종 red spec. 루프557 상태에서는 4개 모두 RED 로 사용자 스크린샷 그대로 재현 (h1 + 라벨만, subtitle/deco 전멸). 루프558 적용 후 4개 모두 GREEN + 기존 303개 유지 (총 307 passed). Headless chrome 렌더로 `.slide-1` 이 `.deco-dots` 배경 + `hero-frame` (4 corner-bracket) + `nb-label hero-label` "표지" + h1 + `hero-subtitle` (topic-aware 리드 문장) + `.deco-pink-rect` / `.deco-green-circle` / `.deco-yellow-bar` (짧은 CTA) 을 모두 그림.
+
 ### 루프557 — Block Frame 2-col orphan header + non-metric chart-svg + 한글 역할 유지
 
 체감: 2026-09-17 사용자 리포트 실물 스크린샷 2장. (1) `근거와 사례` cyan 슬라이드 — 상단 절반 빈 공간 + 3개 카드가 우하단 구석. (2) `운영과 보안` green 슬라이드 — 가짜 pink/cyan 막대 chart-svg + 우측 25% 좁은 data-column. 헤더 loop(555·556) 이후에도 "요소 배치·내용 구성 품질이 v1.4.15보다 떨어진다"는 재보고.
