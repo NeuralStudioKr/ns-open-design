@@ -32,6 +32,57 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **명시 5장+ 요청에서는 저장하지 않는다.** 8–10장 요청의 1장/4장 Template Clone fill은 `deck.html` 덮어쓰기 전에 incomplete로 막고 기존 덱을 보존한다. 6장 이상 첫 fill만 저장 후 top-up 가능하다. 사용자가 1장을 명시하거나 요청 장수가 작을 때만 1장 저장을 허용한다 |
 
+### 1.35 2026-09-21 — Capsule 한글덱 근본 원인: 고정 밀도 peer trim + LOOK 중앙정렬 파괴 (루프512)
+
+§1.34(루프511)이 specialty 슬롯의 영문 데모 카피를 지웠지만, 같은 날 사용자는 세 번째로 재보고했다: “결과물 퀄리티가 더 안좋아졌다. 요소 css도 제대로 안먹히고, 전체적으로 배치, 정렬, 본문 밀도 및 품질이 적절치 않다. 어디서 문제가 되는 것인가? 근본적인 문제를 파악하여 해결이 필요하다.”
+
+이번엔 **끝까지 근본 원인을 파고들기 위해** `buildTemplateClonedDeckHtml` 출력 HTML을 실제 프리뷰 파이프라인(`pinDeckSlidesToFixedCanvas` → `lockStackedDeckCanvasForPreview` → `injectStackedCanvasNeutralizeForLetterbox`)으로 흘려 `google-chrome --headless=new` 로 10장 전부를 1920×1080 스크린샷으로 잘라 시각적으로 확인했다. 세 개의 근본 원인이 드러났다.
+
+**근본 원인 A — `fillAndTrimCardPeers` 가 Capsule의 고정 밀도 그리드를 잘라낸다.** `packages/contracts/src/template-clone-fill.ts`의 `rebuildHostWithPeers` 는 `keepCount = min(lines.length, peers.length)` 로 peer 수를 outline 수에 맞춰 자른다. `.cards-grid` 처럼 개수가 유연한 컨테이너에는 옳지만(“카드 수 = 내용 수”, 0901-N02-C6/C13), Capsule의 `stats-grid`(4× stat-pill), `chart-container`(4× chart-row), `tier-grid`(3× tier-card), `.timeline` + `.timeline-track`(4–5× timeline-step), `diagram-container`(4× diagram-node), `floating-pills`(6× f-pill) 은 **템플릿이 의도한 고정 시각 밀도**를 가진 레이아웃이다. sparse outline(1 title + 짧은 body, items 없음)이 들어오면 4-slot 그리드가 1-slot 으로 축소되어 화면의 3/4 가 텅 빈 letterbox 로 렌더된다.
+
+**근본 원인 B — `LOOK_NEUTRALIZE_CSS` 가 `.slide-inner` 의 수직 중앙정렬을 파괴한다.** `packages/contracts/src/html/deck-template-look-css.ts`의 `LOOK_NEUTRALIZE_CSS` 는 IB 프리젠터 카드가 16:9 를 채우도록 `.slide .slide-inner { min-height: 100% !important; align-self: stretch !important; flex: 1 1 auto !important; }` 를 강제한다. Capsule 은 정반대의 구조 — 부모 `.slide-N { justify-content: center }` 가 작은 `.slide-inner` 를 수직 중앙에 놓는 설계 — 라서, `.slide-inner` 가 1080px 로 늘어나는 순간 부모의 `justify-content: center` 는 움직일 여지가 사라지고, `.slide-inner` 내부에는 `justify-content: center` 가 없어 자식이 flex-start 로 정렬된다. 결과적으로 **모든 Capsule 본문 슬라이드에서 콘텐츠가 상단에 몰리고 하단 절반이 blank letterbox** 가 되어, 사용자가 본 “배치·정렬·본문 밀도 부적절” 증상의 정체가 된다.
+
+**근본 원인 C — refill 이 남은 slot 을 못 채운다.** §1.34 의 `refillCapsuleEmptyStructuredSlots` 는 A 가 slot 을 아예 지워버린 뒤에 실행되어 채울 대상이 없었다. `.diagram-node` 는 refill 대상에도 없었고, statement-box(slide-5) 셸은 `<h1/2/3>` 이 없어 title 추출이 실패해 blockquote 도 빈 채로 남았다.
+
+**구현.** `packages/contracts/src/template-clone-fill.ts`
+
+- (A) `hostIsCapsuleFixedDensity(openTag, hostInnerSample)` 를 신설하고 `rebuildHostWithPeers` 에서 이 host 는 `keepCount = peers.length` 로 유지. Capsule 지문:
+  - `class` 에 `stats-grid` / `chart-container` / `tier-grid` / `diagram-container` / `floating-pills` / `deco-pills` / `deco-pills-closing`
+  - `.timeline` + 내부의 `.timeline-track` (Capsule 만이 갖는 수평 rail — 일반 `.timeline` + `.timeline-step` (kb/process 계열, C5/C6/C8) 은 여전히 line-count 로 자른다)
+- (B) `CAPSULE_LAYOUT_FIX_CSS` 와 `injectCapsuleLayoutFixIfNeeded(html)` 를 신설. Capsule 지문(`title-pill` + `deco-pill` + one-of `orbit-pill`/`f-pill`/`c-pill`) 이 있으면 `<html data-od-capsule-layout-fix="1">` 마커와 `<style data-od-capsule-layout-fix-css>` 를 주입해 다음 규칙으로 LOOK 을 이긴다:
+  ```css
+  html[data-od-capsule-layout-fix] .slide { padding-top: 0 !important; padding-bottom: 0 !important; }
+  html[data-od-capsule-layout-fix] .slide > .slide-inner {
+    justify-content: center !important;
+    align-content: center !important;
+  }
+  ```
+  Capsule 이 아닌 덱에는 no-op.
+- (C) `refillCapsuleEmptyStructuredSlotsInSlide` 를 확장:
+  - `extractSlideRefillTitle` 가 h1/h2/h3 를 못 찾으면 `.attribution` 텍스트로 fallback → slide-5(statement-box) 셸도 title 추출 가능.
+  - blockquote fallback 순서: slide body → slide title → deck title (마지막이 항상 채워짐).
+  - `.diagram-node` 를 refill 대상에 추가 → “`{title} · {n}`” 라벨 (slide-8 flow).
+
+**검증.** `packages/contracts/tests/template-clone-fill.test.ts` 에 `루프512 Capsule fixed-density peer preservation + vertical centering` 스위트를 추가 (16 tests):
+
+- Peer 보존: `stats-grid`(4), `chart-container`(4), `tier-grid`(3), Capsule `.timeline` + `.timeline-track`(5), `diagram-container`(4), `floating-pills`(6) — outline 이 1 line 이어도 peer 개수가 유지된다.
+- Layout fix 주입: Capsule 지문이 있으면 `data-od-capsule-layout-fix` marker + CSS 가 head 에 삽입되고 non-Capsule 덱에는 삽입되지 않는다.
+- Refill: `.stat-label`/`.stat-number` 인덱스 채움, `.chart-label`/`.chart-value` 인덱스 채움, `.step-desc` 를 `.step-label` 로부터 파생, 빈 `<blockquote>` 를 deck title 로 fallback, `.diagram-node` 를 `{title} · {n}` 로 채움, idempotent, 영어 덱에는 no-op.
+- End-to-end: `buildTemplateClonedDeckHtml` 이 stat-pill ≥4 · chart-row ≥4 · diagram-node ≥4 로 밀도를 유지하고 layout-fix 마커도 함께 붙는다.
+
+동시에 기존 `0901-N02-C5/C6/C8` 트림 계열 테스트(kb/process/timeline)가 여전히 초록임을 확인 — Capsule 판별을 `.timeline-track` 존재로 좁힌 덕분에 일반 timeline 은 그대로 잘린다. `pnpm --filter @open-design/contracts test -- template-clone-fill` = 3181 pass / 1 skip.
+
+**시각 회귀 확인.** 재현 스크립트로 Teamver 10-slide brief 를 실행한 뒤의 스크린샷 diff:
+- **커버(slide 1):** 소개 pill (title-pill fill, §1.33) + Teamver 소개 타이틀 + 데코 pill 산개 — 변화 없음.
+- **본문(slide 2/7):** 3장 pillar-card 가 슬라이드 중앙에 정렬 (이전엔 상단에 몰림). ✓
+- **stats(slide 4):** 01/02/03/04 4장 stat-pill (이전엔 “01”만 한 장) · 수직 중앙정렬. ✓
+- **chart(slide 5):** 5장 chart-row 가 각각 색상 다른 bar 로 채워짐 (이전엔 1장). ✓
+- **timeline(slide 3/6):** 5-node 타임라인 · 수평 rail 유지 · Korean step-label/step-desc. ✓
+- **statement-box(slide 9):** blockquote 가 deck title fallback 으로 채워짐 (이전엔 빈 `<blockquote></blockquote>` + 작은 attribution 만). ✓
+- **diagram-container(slide 10):** 4개 diagram-node 가 “지금 시작 · 1/2/3/4” 로 채워짐 (이전엔 4개 빈 rounded rect). ✓
+
+**남은 갭.** Shell picker 가 여전히 outline “요금제(요금제)” 를 slide-5(statement-box) 로 매칭하고 outline “팀 이야기(스토리)” 를 slide-2(orbit-pill split-visual) 로 매칭한다. 이는 semantic-role fit 문제로 별도 후속에서 다룰 예정 (Capsule shells 의 `data-role` 힌트 정의 + `pickTemplateShellsForContent` 의 role-aware 우선순위).
+
 ### 1.34 2026-09-21 — Capsule 한글덱 specialty slot 영문 데모 카피 스크럽 (루프510 후속)
 
 §1.33 (루프510)이 Capsule 커버의 데코 pill + title-pill을 정상화했지만, 사용자는 같은 날 재보고했다: “결과물 퀄리티가 더 안좋아졌다. 요소 CSS도 제대로 안먹히고, 배치·정렬·본문 밀도·품질이 적절치 않다. 근본적인 문제를 파악하여 해결이 필요하다.”

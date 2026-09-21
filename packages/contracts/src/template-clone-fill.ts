@@ -5552,6 +5552,10 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   // /header-pill/closing-pill) similarly leak English demo copy through
   // salvage. Blank the known catalog phrases on Korean decks.
   next = scrubCapsuleLeftoverSpecialtySlotCopy(next, { deckLang: 'auto' });
+  // 루프512 — After scrubbing, refill Capsule specialty shells with synth
+  // Korean copy so sparse outlines do not ship half-empty chart/timeline/
+  // statement/closing slides.
+  next = refillCapsuleEmptyStructuredSlots(next, { deckLang: 'auto' });
   next = enrichSparseCobaltCover(next, brief);
   next = restyleBiennaleSparseChapterBodies(next);
   next = restyleBiennaleSparseDataBodies(next);
@@ -6525,6 +6529,410 @@ export function scrubCapsuleLeftoverSpecialtySlotCopy(
   return out;
 }
 
+/**
+ * 루프512 — After 루프510/511 blank English demo copy, many specialty slots
+ * are left as empty shells (`.chart-label` × 5, `.step-desc` × N, `<blockquote>`,
+ * `.attribution`, `.closing-pill/.closing-sub`, `.pill.pill-filled` diagram
+ * labels, `.stat-label`/`.stat-number`). On a sparse outline (`{title, body}`
+ * only) the deliverable then reads as "구조는 있는데 내용은 다 비어 있다" —
+ * the visual chrome is there but the body density is gone.
+ *
+ * This helper walks each slide and REFILLS those empty specialty slots with
+ * meaningful Korean copy derived from the slide's own title + body + kicker
+ * plus the deck title. It never overwrites a slot the model or the fill
+ * pipeline already populated, and only fires on Korean decks (matches the
+ * scrub pass's guardrail so English decks keep their original demo phrases
+ * where the outline can't produce a Korean rewrite).
+ *
+ * Design choices:
+ * - We work per-slide so each slide's title/body flows into that slide's
+ *   own empty slots, not into the next slide's chrome.
+ * - Blockquote + attribution fall back to `{ slide.body, deck title }` —
+ *   what the model *did* provide is usually the clearest source of quote copy.
+ * - `.step-desc` synth reuses the neighboring `.step-label` text so a
+ *   timeline like "한 팀 보드 / 리뷰 습관 / 조직 기준 / 이어서 쓰기" gets
+ *   short "…을 시작한다" style descriptions instead of a bare label row.
+ * - `.chart-label` / `.stat-label` / `.tier-name` fall back to indexed
+ *   Korean placeholders ("항목 1", "지표 1", …) — better than a bare bar.
+ */
+export function refillCapsuleEmptyStructuredSlots(
+  html: string,
+  options: { deckLang?: 'ko' | 'en' | 'auto'; deckTitle?: string | null } = {},
+): string {
+  const src = String(html ?? '');
+  if (!src) return src;
+  const deckLang = options.deckLang ?? 'auto';
+  if (deckLang === 'en') return src;
+  if (deckLang === 'auto' && !/[가-힣]/.test(src)) return src;
+  const deckTitle = (options.deckTitle ?? '').toString().trim();
+  const slides = listRefillTargetSlideRanges(src);
+  if (slides.length === 0) return src;
+  let out = src;
+  for (let i = slides.length - 1; i >= 0; i -= 1) {
+    const { start, end } = slides[i]!;
+    const before = out.slice(start, end);
+    const after = refillCapsuleEmptyStructuredSlotsInSlide(before, {
+      deckTitle,
+    });
+    if (after !== before) out = out.slice(0, start) + after + out.slice(end);
+  }
+  return out;
+}
+
+type RefillSlideRange = { start: number; end: number };
+
+function listRefillTargetSlideRanges(src: string): RefillSlideRange[] {
+  const out: RefillSlideRange[] = [];
+  const openRe =
+    /<(section|div|article|main)\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b[^"']*["'][^>]*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(src)) !== null) {
+    const tag = (match[1] ?? 'section').toLowerCase();
+    const start = match.index;
+    const openEnd = start + match[0].length;
+    const closeEnd = findMatchingClose(src, openEnd, tag);
+    if (closeEnd < 0) continue;
+    out.push({ start, end: closeEnd });
+    openRe.lastIndex = closeEnd;
+  }
+  return out;
+}
+
+function refillCapsuleEmptyStructuredSlotsInSlide(
+  slideHtml: string,
+  ctx: { deckTitle: string },
+): string {
+  let out = slideHtml;
+  const title = extractSlideRefillTitle(out)
+    // Slide-5 (statement-box) has no h1/h2/h3 slot; fall back to the
+    // .attribution text (which we may have already filled with the deck
+    // title) so downstream slots don't get a bare empty string.
+    || extractSlideRefillAttributionText(out);
+  const bodyText = extractSlideRefillBodyText(out, title);
+  const kicker = extractSlideRefillKicker(out);
+  const stepLabels = extractStepLabelsFromSlide(out);
+
+  // 1) `.blockquote` (Capsule slide-5 statement) — fall back to slide body,
+  //    or slide title if the body was too short. Slide-5 shells have no
+  //    h1/h2/h3, so we also honor the deck title as a last-resort quote.
+  out = fillEmptyClassOnce(
+    out,
+    'blockquote',
+    () => pickCapsuleQuoteCopy(bodyText, title, kicker) || ctx.deckTitle,
+    'blockquote',
+  );
+
+  // 2) `.attribution` (Capsule slide-5) — deck title takes precedence.
+  out = fillEmptyExactClass(out, 'attribution', () => deckTitleAttribution(ctx.deckTitle, title));
+
+  // 3) `.closing-pill` (Capsule slide-10) — slide title / kicker.
+  out = fillEmptyExactClass(out, 'closing-pill', () => title || kicker || ctx.deckTitle);
+  //    `.closing-sub` — slide body / short synth.
+  out = fillEmptyExactClass(out, 'closing-sub', () => bodyText || `${title} 이어서 쓰기`);
+
+  // 4) `.header-pill` — slide kicker or short title.
+  out = fillEmptyExactClass(out, 'header-pill', () => (
+    kicker || truncateForPill(title, 16)
+  ));
+
+  // 5) `.chart-label` / `.chart-value` — indexed placeholders when empty.
+  out = fillEmptyIndexedSlots(out, 'chart-label', (index) => `지표 ${index + 1}`);
+  out = fillEmptyIndexedSlots(out, 'chart-value', () => '');
+
+  // 6) `.step-desc` — reuse the sibling `.step-label` text.
+  out = fillEmptyStepDescriptions(out, stepLabels, title);
+
+  // 7) `.stat-label` / `.stat-number` — indexed labels + short numeric
+  //    placeholders so the stats grid stops reading as one lonely card.
+  out = fillEmptyIndexedSlots(out, 'stat-label', (index) => `항목 ${index + 1}`);
+  out = fillEmptyIndexedSlots(out, 'stat-number', (index) => `0${index + 1}`);
+
+  // 8) `.tier-name` / `.tier-price` — indexed pricing placeholders.
+  out = fillEmptyIndexedSlots(out, 'tier-name', (index) => `옵션 ${index + 1}`);
+  out = fillEmptyIndexedSlots(out, 'tier-price', () => '—');
+
+  // 9) `.pill.pill-filled` diagram nodes — indexed step labels.
+  out = fillEmptyPillFilled(out, title);
+
+  // 10) `.diagram-node` (Capsule slide-8 flow) — indexed short labels.
+  //     These are the top-row nodes; the pill-filled captions below already
+  //     get their own fill via (9).
+  out = fillEmptyIndexedSlots(out, 'diagram-node', (index) => (
+    title ? `${title} · ${index + 1}` : `단계 ${index + 1}`
+  ));
+
+  return out;
+}
+
+/** Slide-5 (statement-box) shells carry the deck author in `.attribution`
+ * instead of an h*. When we later synth Korean copy for the blockquote we
+ * want to fall back to that text if no other title is available.
+ */
+function extractSlideRefillAttributionText(slideHtml: string): string {
+  const re = /<div\b[^>]*\bclass\s*=\s*["'][^"']*\battribution\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i;
+  const m = re.exec(slideHtml);
+  if (!m) return '';
+  const inner = String(m[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return inner;
+}
+
+function extractSlideRefillTitle(slideHtml: string): string {
+  for (const tag of ['h1', 'h2', 'h3']) {
+    const re = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i');
+    const m = re.exec(slideHtml);
+    if (m) {
+      const inner = collapseInnerTextForMatch(m[1] ?? '');
+      const raw = String(m[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (raw) return raw;
+      if (inner) return inner;
+    }
+  }
+  return '';
+}
+
+function extractSlideRefillBodyText(slideHtml: string, title: string): string {
+  const paraRe = /<p\b[^>]*>([\s\S]*?)<\/p>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = paraRe.exec(slideHtml)) !== null) {
+    const inner = String(match[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!inner) continue;
+    if (inner === title) continue;
+    // Skip Capsule subtitle / nav-hint style tags (they usually have class="subtitle" / "nav-hint").
+    const openTag = match[0].slice(0, match[0].indexOf('>')).toLowerCase();
+    if (/\bclass\s*=/i.test(openTag) && /\b(?:subtitle|nav-hint|slide-counter)\b/i.test(openTag)) continue;
+    return inner;
+  }
+  return '';
+}
+
+function extractSlideRefillKicker(slideHtml: string): string {
+  const kickerClasses = ['kicker', 'eyebrow', 'section-label', 'section-kicker'];
+  for (const cls of kickerClasses) {
+    const re = new RegExp(
+      `<[^>]*\\bclass\\s*=\\s*["'][^"']*\\b${escapeRegExp(cls)}\\b[^"']*["'][^>]*>([\\s\\S]*?)<\\/`,
+      'i',
+    );
+    const m = re.exec(slideHtml);
+    if (m) {
+      const inner = String(m[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (inner) return inner;
+    }
+  }
+  return '';
+}
+
+function extractStepLabelsFromSlide(slideHtml: string): string[] {
+  const labels: string[] = [];
+  const stepRe = /<div\b[^>]*\bclass\s*=\s*["'][^"']*\btimeline-step\b[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*(?=<div\b[^>]*\btimeline-step\b|<\/div>)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = stepRe.exec(slideHtml)) !== null) {
+    const inner = String(match[1] ?? '');
+    // Prefer the `.step-label` value first; fall back to the raw leading text
+    // node the current fill pipeline prepends before `.step-node`.
+    const labelMatch = /<div\b[^>]*\bstep-label\b[^>]*>([\s\S]*?)<\/div>/i.exec(inner);
+    const labelText = labelMatch ? String(labelMatch[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
+    if (labelText) { labels.push(labelText); continue; }
+    // Prepended text node before `.step-node`.
+    const prependMatch = /^([^<]{1,80})<div\b[^>]*\bstep-node\b/i.exec(inner);
+    const prepended = prependMatch ? String(prependMatch[1] ?? '').replace(/\s+/g, ' ').trim() : '';
+    labels.push(prepended || '');
+  }
+  return labels;
+}
+
+function pickCapsuleQuoteCopy(bodyText: string, title: string, kicker: string): string {
+  // Prefer explicit body copy; fall back to title so the blockquote isn't
+  // rendered blank when the outline provided a short lead only.
+  if (bodyText && bodyText.length >= 4) return bodyText;
+  if (title) return title;
+  if (kicker) return kicker;
+  return '';
+}
+
+function deckTitleAttribution(deckTitle: string, slideTitle: string): string {
+  const t = deckTitle.trim();
+  if (t) return t;
+  return slideTitle;
+}
+
+function truncateForPill(text: string, max: number): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, max)}…`;
+}
+
+/**
+ * Fill an empty exact-class `<div>/<span>/<p>` with `resolve()` output.
+ * Only touches shells whose inner text is empty (already scrubbed or authored
+ * empty). Preserves attributes and never wraps content in extra tags.
+ */
+function fillEmptyExactClass(
+  html: string,
+  className: string,
+  resolve: () => string,
+): string {
+  const openRe = new RegExp(
+    `<(div|span|p)\\b([^>]*\\bclass\\s*=\\s*["'][^"']*\\b${escapeRegExp(className)}\\b[^"']*["'][^>]*)>`,
+    'gi',
+  );
+  let out = html;
+  const rewrites: Array<{ start: number; end: number; text: string }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) {
+    const openStart = match.index;
+    const openLen = match[0].length;
+    const tag = match[1]!.toLowerCase();
+    const closeRe = new RegExp(`</${tag}\\s*>`, 'gi');
+    closeRe.lastIndex = openStart + openLen;
+    const closeMatch = closeRe.exec(out);
+    if (!closeMatch) continue;
+    const inner = out.slice(openStart + openLen, closeMatch.index);
+    if (inner.replace(/\s+/g, '').length > 0) continue;
+    const text = resolve();
+    if (!text) continue;
+    rewrites.push({ start: openStart + openLen, end: closeMatch.index, text: escapeHtml(text) });
+  }
+  for (let i = rewrites.length - 1; i >= 0; i -= 1) {
+    const r = rewrites[i]!;
+    out = out.slice(0, r.start) + r.text + out.slice(r.end);
+  }
+  return out;
+}
+
+/** Same as `fillEmptyExactClass` but keyed by tag name (e.g., `blockquote`). */
+function fillEmptyClassOnce(
+  html: string,
+  tagName: string,
+  resolve: () => string,
+  fallbackTag: string,
+): string {
+  const tag = tagName.toLowerCase();
+  const openRe = new RegExp(`<${tag}\\b([^>]*)>([\\s\\S]*?)<\\/${tag}>`, 'gi');
+  let out = html;
+  const rewrites: Array<{ start: number; end: number; text: string }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) {
+    const inner = String(match[2] ?? '');
+    if (inner.replace(/\s+/g, '').length > 0) continue;
+    const text = resolve();
+    if (!text) continue;
+    rewrites.push({
+      start: match.index + `<${tag}${match[1] ?? ''}>`.length,
+      end: match.index + match[0].length - `</${tag}>`.length,
+      text: escapeHtml(text),
+    });
+  }
+  for (let i = rewrites.length - 1; i >= 0; i -= 1) {
+    const r = rewrites[i]!;
+    out = out.slice(0, r.start) + r.text + out.slice(r.end);
+  }
+  return out;
+  void fallbackTag; // reserved for future callers
+}
+
+function fillEmptyIndexedSlots(
+  html: string,
+  className: string,
+  resolve: (index: number) => string,
+): string {
+  const openRe = new RegExp(
+    `<(div|span|p)\\b([^>]*\\bclass\\s*=\\s*["'][^"']*\\b${escapeRegExp(className)}\\b[^"']*["'][^>]*)>`,
+    'gi',
+  );
+  let out = html;
+  const rewrites: Array<{ start: number; end: number; text: string }> = [];
+  let match: RegExpExecArray | null;
+  let index = 0;
+  while ((match = openRe.exec(out)) !== null) {
+    const openStart = match.index;
+    const openLen = match[0].length;
+    const tag = match[1]!.toLowerCase();
+    const closeRe = new RegExp(`</${tag}\\s*>`, 'gi');
+    closeRe.lastIndex = openStart + openLen;
+    const closeMatch = closeRe.exec(out);
+    if (!closeMatch) { index += 1; continue; }
+    const inner = out.slice(openStart + openLen, closeMatch.index);
+    if (inner.replace(/\s+/g, '').length > 0) { index += 1; continue; }
+    const text = resolve(index);
+    index += 1;
+    if (!text) continue;
+    rewrites.push({ start: openStart + openLen, end: closeMatch.index, text: escapeHtml(text) });
+  }
+  for (let i = rewrites.length - 1; i >= 0; i -= 1) {
+    const r = rewrites[i]!;
+    out = out.slice(0, r.start) + r.text + out.slice(r.end);
+  }
+  return out;
+}
+
+/**
+ * Fill empty `.step-desc` with a short Korean copy derived from the
+ * sibling `.step-label` (position-matched) or the slide title. Preserves
+ * populated `.step-desc` untouched.
+ */
+function fillEmptyStepDescriptions(
+  html: string,
+  stepLabels: readonly string[],
+  slideTitle: string,
+): string {
+  const openRe = /<div\b([^>]*\bclass\s*=\s*["'][^"']*\bstep-desc\b[^"']*["'][^>]*)>/gi;
+  let out = html;
+  const rewrites: Array<{ start: number; end: number; text: string }> = [];
+  let match: RegExpExecArray | null;
+  let index = 0;
+  while ((match = openRe.exec(out)) !== null) {
+    const openStart = match.index;
+    const openLen = match[0].length;
+    const closeRe = /<\/div\s*>/gi;
+    closeRe.lastIndex = openStart + openLen;
+    const closeMatch = closeRe.exec(out);
+    if (!closeMatch) { index += 1; continue; }
+    const inner = out.slice(openStart + openLen, closeMatch.index);
+    if (inner.replace(/\s+/g, '').length > 0) { index += 1; continue; }
+    const label = stepLabels[index] ?? '';
+    const text = label
+      ? `${label}로 시작한다`
+      : (slideTitle ? `${slideTitle} 단계 ${index + 1}` : `단계 ${index + 1}`);
+    index += 1;
+    rewrites.push({ start: openStart + openLen, end: closeMatch.index, text: escapeHtml(text) });
+  }
+  for (let i = rewrites.length - 1; i >= 0; i -= 1) {
+    const r = rewrites[i]!;
+    out = out.slice(0, r.start) + r.text + out.slice(r.end);
+  }
+  return out;
+}
+
+function fillEmptyPillFilled(html: string, slideTitle: string): string {
+  const openRe =
+    /<(div|span)\b([^>]*\bclass\s*=\s*["'][^"']*\bpill\b[^"']*\bpill-filled\b[^"']*["'][^>]*)>/gi;
+  let out = html;
+  const rewrites: Array<{ start: number; end: number; text: string }> = [];
+  let match: RegExpExecArray | null;
+  let index = 0;
+  while ((match = openRe.exec(out)) !== null) {
+    const openStart = match.index;
+    const openLen = match[0].length;
+    const tag = match[1]!.toLowerCase();
+    const closeRe = new RegExp(`</${tag}\\s*>`, 'gi');
+    closeRe.lastIndex = openStart + openLen;
+    const closeMatch = closeRe.exec(out);
+    if (!closeMatch) { index += 1; continue; }
+    const inner = out.slice(openStart + openLen, closeMatch.index);
+    if (inner.replace(/\s+/g, '').length > 0) { index += 1; continue; }
+    const text = slideTitle
+      ? `${slideTitle} · 단계 ${index + 1}`
+      : `단계 ${index + 1}`;
+    index += 1;
+    rewrites.push({ start: openStart + openLen, end: closeMatch.index, text: escapeHtml(text) });
+  }
+  for (let i = rewrites.length - 1; i >= 0; i -= 1) {
+    const r = rewrites[i]!;
+    out = out.slice(0, r.start) + r.text + out.slice(r.end);
+  }
+  return out;
+}
+
 /** 루프434 / 루프461 — Block-frame / Neo catalog marketing leftovers on Hangul LOOK seeds. */
 const BLOCK_FRAME_NEO_DEMO_COPY_RE =
   /Neobrutalist Presentation Template|Presentation Template|Quarterly Growth Metrics|What We\s*<br\s*\/?>\s*Deliver|What We Deliver|Modular Layouts|Responsive Ready|Data Friendly|Strategy First|Design System|Launch Ready|Core Features|Performance Data|Every project follows a rigorous process[\s\S]{0,160}?fully functional\.|Image Placeholder|Visual System|Get Started|View Process|By The Numbers|The Team|Methodology|Roadmap|Revenue Growth|Active Users|Retention Rate|12\+\s*Years|500\+\s*Projects|J\.\s*Doe|A\.\s*Smith|Creative Lead|Tech Director|Oversees visual direction[\s\S]{0,120}?narrative\.?|Translates s into scalable technical architectures and workflows\.?/gi;
@@ -6864,6 +7272,34 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * 루프512 — Capsule fixed-density containers (`stats-grid` 4×, `chart-container`
+ * 4×, `tier-grid` 3×, `.timeline` 4–5×, `.diagram-container` 4×, `.floating-pills`
+ * 6×) rely on a full peer count for their visual rhythm. A sparse outline
+ * (1 title, no items) previously trimmed those peers to 1 and left cavernous
+ * whitespace where the template intended a rich grid. Preserve every native
+ * peer inside these hosts so 루프511 scrubbing + `refillCapsuleEmptyStructuredSlots`
+ * can populate the remaining slots with Korean placeholder copy instead.
+ * Non-Capsule hosts and generic `.cards-grid` keep the "peer count = line count"
+ * contract (C6/C13).
+ */
+const CAPSULE_PRESERVE_ALL_PEERS_HOST_RE =
+  /\b(?:stats-grid|chart-container|tier-grid|diagram-container|floating-pills|deco-pills|deco-pills-closing)\b/i;
+
+function hostIsCapsuleFixedDensity(openTag: string, hostInnerSample: string): boolean {
+  if (CAPSULE_PRESERVE_ALL_PEERS_HOST_RE.test(openTag)) return true;
+  // Capsule's `.timeline` uses a distinctive `.timeline-track` decorative
+  // sibling (the horizontal rail behind the step nodes). Generic templates
+  // that use `.timeline` + `.timeline-step` without the track (e.g. kb /
+  // process kits covered by C5/C6/C8) MUST keep the trim-to-line-count
+  // contract, so we key on the track's presence — not on `.timeline-step`
+  // — to avoid regressing those hosts.
+  if (/\btimeline\b/i.test(openTag) && /\btimeline-track\b/i.test(hostInnerSample)) {
+    return true;
+  }
+  return false;
+}
+
 function rebuildHostWithPeers(
   source: string,
   openStart: number,
@@ -6875,7 +7311,13 @@ function rebuildHostWithPeers(
   peers: HtmlSpan[],
   lines: TemplateCloneCardFillLine[],
 ): string {
-  const keepCount = Math.min(Math.max(0, lines.length), peers.length);
+  const preserveAll = hostIsCapsuleFixedDensity(
+    openTag,
+    source.slice(openEnd, Math.min(closeEnd, openEnd + 4096)),
+  );
+  const keepCount = preserveAll
+    ? peers.length
+    : Math.min(Math.max(0, lines.length), peers.length);
   const keepPeerStarts = new Set(peers.slice(0, keepCount).map((span) => span.start));
   const rebuilt: string[] = [];
   for (let index = 0; index < children.length; index += 1) {
@@ -8630,10 +9072,13 @@ function fillOneCardPeer(cardHtml: string, line: TemplateCloneCardFillLine): str
     return next;
   }
   // 0901-N02-C5 step title slots (kb / process / timeline / cycle / flow).
-  if (/\b(?:kb-step-title|step-title|cycle-title|flow-title)\b/i.test(next)) {
+  // 루프512 — Capsule `.timeline-step` uses `.step-label` (not `.step-title`);
+  // include it here so the outline item title lands in the structural slot
+  // instead of a bare text-node prepend that empties the styled label.
+  if (/\b(?:kb-step-title|step-title|cycle-title|flow-title|step-label)\b/i.test(next)) {
     next = fillClassInner(
       next,
-      /(<[^>]*\b(?:kb-step-title|step-title|cycle-title|flow-title)\b[^>]*>)([\s\S]*?)(<\/)/i,
+      /(<[^>]*\b(?:kb-step-title|step-title|cycle-title|flow-title|step-label)\b[^>]*>)([\s\S]*?)(<\/)/i,
       text,
     );
     next = fillClassInner(
@@ -8641,6 +9086,41 @@ function fillOneCardPeer(cardHtml: string, line: TemplateCloneCardFillLine): str
       /(<[^>]*\b(?:kb-step-body|step-desc|cycle-desc|flow-desc)\b[^>]*>)([\s\S]*?)(<\/)/gi,
       body,
     );
+    return next;
+  }
+  // 루프512 — Capsule `.chart-row` peer routes the item into
+  // `.chart-label` + `.chart-value` (bar-fill percentage is preserved).
+  if (/\bchart-(?:label|value|bar-track)\b/i.test(next)) {
+    const slots = assignStatSlots(text, body);
+    next = fillClassInner(
+      next,
+      /(<[^>]*\bchart-label\b[^>]*>)([\s\S]*?)(<\/)/i,
+      slots.label,
+    );
+    next = fillClassInner(
+      next,
+      /(<[^>]*\bchart-value\b[^>]*>)([\s\S]*?)(<\/)/i,
+      slots.value,
+    );
+    return next;
+  }
+  // 루프512 — Capsule `.tier-card` peer (slide-9 pricing) routes into
+  // `.tier-name` + `.tier-desc` + `.tier-price` + `.tier-features`. Bare
+  // fallback fills tier-name + tier-desc; features stay whatever the model
+  // gave (or empty when there was no list source).
+  if (/\btier-(?:name|desc|price|features)\b/i.test(next)) {
+    next = fillClassInner(
+      next,
+      /(<[^>]*\btier-name\b[^>]*>)([\s\S]*?)(<\/)/i,
+      text,
+    );
+    if (body) {
+      next = fillClassInner(
+        next,
+        /(<[^>]*\btier-desc\b[^>]*>)([\s\S]*?)(<\/)/i,
+        body,
+      );
+    }
     return next;
   }
   // xhs-white-editorial: `.xw-txt` body line on xw-step.
@@ -9097,6 +9577,70 @@ function injectTeamverSizeStyle(html: string): string {
   return `${style}\n${html}`;
 }
 
+/**
+ * 루프512 — LOOK_NEUTRALIZE_CSS (`packages/contracts/src/html/deck-template-look-css.ts`)
+ * stretches every `.slide-inner` to `min-height: 100%` + `flex: 1 1 auto` so
+ * IB-family presenter cards can fill the 1920×1080 canvas. Capsule's
+ * `.slide-inner`, however, is a compact flex column whose parent `.slide-N`
+ * centers it with `justify-content: center`. Once neutralize fills the inner
+ * to 1080px the parent's centering has nothing to move — Capsule content
+ * pins to the top of every slide and the bottom half of each page reads as
+ * a blank letterbox.
+ *
+ * We cannot loosen the universal LOOK_NEUTRALIZE rule without regressing
+ * catalog decks that depend on the fill. Instead, tag Capsule-cloned decks
+ * with a scope attribute and re-center the inner via a stronger rule.
+ * Grid inners (Capsule slide-2 / slide-9) keep `align-items: center` from
+ * the source CSS and are not disturbed by `justify-content: center` because
+ * their axis is column-wise anyway.
+ */
+const CAPSULE_LAYOUT_FIX_CSS = [
+  'html[data-od-capsule-layout-fix] .slide{padding-top:0!important;padding-bottom:0!important}',
+  'html[data-od-capsule-layout-fix] .slide>.slide-inner{',
+  'justify-content:center!important;',
+  'align-content:center!important;',
+  '}',
+  'html[data-od-capsule-layout-fix] .slide.slide-1>.slide-inner,',
+  'html[data-od-capsule-layout-fix] .slide.slide-2>.slide-inner,',
+  'html[data-od-capsule-layout-fix] .slide.slide-9>.slide-inner{',
+  'align-content:center!important;',
+  '}',
+].join('');
+
+function looksLikeCapsuleClone(html: string): boolean {
+  const src = String(html ?? '');
+  if (!src) return false;
+  // Capsule's decorative pill trio is the safest fingerprint — .title-pill
+  // alone is shared with other kits, but the trio of {title-pill, deco-pill,
+  // orbit-pill|f-pill|c-pill} is unique to Capsule's atmospheric chrome.
+  if (!/\btitle-pill\b/i.test(src)) return false;
+  if (!/\bdeco-pill\b/i.test(src)) return false;
+  return /\b(?:orbit-pill|f-pill|c-pill)\b/i.test(src);
+}
+
+function injectCapsuleLayoutFixIfNeeded(html: string): string {
+  const src = String(html ?? '');
+  if (!src) return src;
+  if (!looksLikeCapsuleClone(src)) return src;
+  let next = src;
+  if (!/data-od-capsule-layout-fix/i.test(next)) {
+    if (/<html\b[^>]*>/i.test(next)) {
+      next = next.replace(/<html\b([^>]*)>/i, (_m, attrs: string) => (
+        `<html${attrs} data-od-capsule-layout-fix="1">`
+      ));
+    }
+  }
+  if (/data-od-capsule-layout-fix-css/i.test(next)) return next;
+  const style = `<style data-od-capsule-layout-fix-css>${CAPSULE_LAYOUT_FIX_CSS}</style>`;
+  if (/<\/head>/i.test(next)) {
+    return next.replace(/<\/head>/i, `${style}</head>`);
+  }
+  if (/<body\b/i.test(next)) {
+    return next.replace(/<body\b[^>]*>/i, (open) => `${open}\n${style}`);
+  }
+  return `${style}\n${next}`;
+}
+
 function replaceDocumentTitle(html: string, title: string): string {
   if (!/<title\b/i.test(html)) return html;
   return html.replace(/<title\b[^>]*>[\s\S]*?<\/title>/i, `<title>${escapeHtml(title)}</title>`);
@@ -9368,6 +9912,11 @@ export function buildTemplateClonedDeckHtml(
   // `looksLikeCompactApiStackedDeck` expects (see 0826-N01-2 §F1-b).
   out = hoistCloneSlidesOutOfFlexTrack(out);
   out = injectTeamverSizeStyle(out);
+  // 루프512 — restore Capsule vertical centering that LOOK_NEUTRALIZE_CSS
+  // (`min-height: 100%` on `.slide-inner`) unintentionally breaks. Only
+  // fires on decks that look like Capsule (title-pill + deco-pill + one of
+  // orbit-pill / f-pill / c-pill) — safe no-op for every other kit.
+  out = injectCapsuleLayoutFixIfNeeded(out);
   // 루프425 — leftover Capsule catalog copy can sit outside filled shells
   // (footer / unused chrome). Wipe the whole document, not just each slide.
   // 루프434 — Neo/block-frame marketing leftovers too.
@@ -9404,6 +9953,17 @@ export function buildTemplateClonedDeckHtml(
     kicker: firstSlideKicker,
     deckTitle,
     fallback: '소개',
+  });
+  // 루프512 — After the scrub passes blank English demo copy inside Capsule
+  // specialty slots (chart-label, step-desc, blockquote, attribution,
+  // closing-pill/-sub, stat-label/-number, tier-name/-price, pill-filled),
+  // the deliverable ships as "구조는 있는데 내용은 다 비어 있다" for sparse
+  // outlines. Refill those empty shells with meaningful Korean copy derived
+  // from each slide's own title / body / kicker plus the deck title so the
+  // visual density matches the template's design intent.
+  out = refillCapsuleEmptyStructuredSlots(out, {
+    deckLang: 'auto',
+    deckTitle,
   });
   out = renumberBiennalePagenums(out, filled.length);
   return out.trim() || null;
