@@ -1385,14 +1385,59 @@ function isGenericSynthTopicNoun(topic: string): boolean {
   if (GENERIC_SYNTH_TOPIC_NOUN_RE.test(text)) return true;
   if (/핵심\s+주제/.test(text)) return true;
   if (/^핵심\s+\d+/.test(text)) return true;
+  // 0921-N05 — leftover outline labels must never become the deck topic noun
+  // (`대상 고객별 메시지 다음`, `측정해야 할 지표 쓰는 길`).
+  if (looksLikeServiceIntroLeftoverTitle(text)) return true;
   return false;
 }
 
 function looksLikeServiceIntroLeftoverTitle(text: string): boolean {
   const value = String(text ?? '').replace(/\s+/g, ' ').trim();
   if (!value) return false;
-  return SERVICE_INTRO_LEFTOVER_HEADING_RE.test(value)
-    || SERVICE_INTRO_LEFTOVER_CARD_TITLE_RE.test(value);
+  if (SERVICE_INTRO_LEFTOVER_HEADING_RE.test(value)
+    || SERVICE_INTRO_LEFTOVER_CARD_TITLE_RE.test(value)) {
+    return true;
+  }
+  // 0921-N05 — leftover heading + synth suffix (`대상 고객별 메시지 다음`).
+  return /^(?:대상 고객별 메시지|서비스 가치 제안|사용 흐름|신뢰를 만드는 증거|측정해야 할 지표|다음 액션)(?:\s+(?:범위|판단|쓰는 길|다음))?$/.test(value);
+}
+
+/**
+ * 0921-N05 — leftover substring wipe leftovers such as `로 연결되는…`,
+ * `Teamver가 `, `빠르게을 시작`, `사용자가과 전환`.
+ */
+function looksLikeBrokenHangulLeftoverRemnant(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!value) return true;
+  if (/빠르게을|사용자가과|:\s*을\s|을 시작 판단/.test(value)) return true;
+  // Josa-only leftovers (`로 연결되는…`) — do not treat 로컬/으로시작 as remnants.
+  if (/^(?:로|으로|을|를|이|가|은|는|와|과|의)(?:\s|$)/.test(value)) return true;
+  // Latin stem + dangling josa (`Teamver가 `). Do not treat 인가/우리가 as remnants.
+  if (/^[A-Za-z][A-Za-z0-9.]*[이가은는을를의와과]\s*$/.test(value) && value.length <= 16) {
+    return true;
+  }
+  if (/^주제[이가을를은는의]/.test(value)) return true;
+  return false;
+}
+
+/**
+ * 0921-N04 AI fill / 0921-N05 — Strip leftover service-intro phrases only
+ * when the whole leaf is leftover (or leftover + a josa remnant). Never
+ * delete a substring from the middle of a keepable sentence.
+ */
+function wipeServiceIntroLeftoverLeaves(html: string): string {
+  return String(html ?? '').replace(/>([^<]{2,})</g, (full, chunk: string) => {
+    const plain = String(chunk).replace(/\s+/g, ' ').trim();
+    if (!plain) return full;
+    if (looksLikeBrokenHangulLeftoverRemnant(plain)) return '><';
+    if (!SERVICE_INTRO_LEFTOVER_BODY_RE.test(plain)) return full;
+    const stripped = plain
+      .replace(SERVICE_INTRO_LEFTOVER_BODY_RE, '')
+      .replace(/[\s·—\-:,]+/g, '')
+      .trim();
+    if (!stripped) return '><';
+    return full;
+  });
 }
 
 function looksLikeBlockedOverviewOrTrioTitle(text: string): boolean {
@@ -1607,11 +1652,11 @@ export function healGenericTemplateCloneLeftover(
   return stripGenericLeftoverCopyPhrases(out);
 }
 
-function serviceIntroSynthTitleFallback(topic: string, index: number): string {
-  const noun = topic && !isGenericSynthTopicNoun(topic) ? topic : '';
-  const titles = noun
-    ? [`${noun} 범위`, `${noun} 판단`, `${noun} 쓰는 길`, `${noun} 다음`]
-    : ['범위', '판단', '쓰는 길', '다음'];
+function serviceIntroSynthTitleFallback(_topic: string, index: number): string {
+  // 0921-N05 / 0921-N04 AI fill — never concatenate a topic/leftover heading
+  // with 범위/판단/쓰는 길/다음. Those suffixes produced
+  // `대상 고객별 메시지 다음` and `측정해야 할 지표 쓰는 길`.
+  const titles = ['핵심', '장면', '차이', '경로'] as const;
   return titles[Math.max(0, index) % titles.length]!;
 }
 
@@ -2577,7 +2622,7 @@ function padDeterministicTemplateCloneSlides(
     }
     if (used.has(label.toLowerCase())) {
       label = genericRoleCopyForIndex(cover, brief, out.length + 1).heading;
-      if (used.has(label.toLowerCase())) label = `${cover} · ${out.length + 1}`;
+      // 0921-N05 — do not mint `${cover} · N` salt titles.
     }
     used.add(label.toLowerCase());
     out.push({
@@ -9726,11 +9771,11 @@ function biennaleFillLines(input: {
   // topic을 body 문장에 스며들게 해서 최소 주제 명사가 유지되도록 정정.
   const topic = topicKeywordForSynthBody(input.title || input.lead || input.bodyText || '');
   const fallbacks: Array<{ title: string; body: string }> = [
-    { title: `${topic} 범위`, body: `${topic}의 핵심 메시지와 청중이 얻는 가치를 먼저 정리합니다.` },
-    { title: `${topic} 판단`, body: `${topic}에서 가장 먼저 이해해야 할 개념·근거를 짧게 정리합니다.` },
-    { title: `${topic} 쓰는 길`, body: `${topic}을 실제로 적용할 때의 순서와 판단 기준을 제시합니다.` },
-    { title: `${topic}이 바꾸는 것`, body: `${topic}이 성공했을 때 청중·팀·사용자에게 생기는 변화를 정리합니다.` },
-    { title: `${topic} 다음`, body: `${topic}을 이어가기 위한 다음 행동과 필요한 자원을 제안합니다.` },
+    { title: '핵심', body: `${topic}의 핵심 메시지와 청중이 얻는 가치를 먼저 정리합니다.` },
+    { title: '장면', body: `${topic}에서 가장 먼저 이해해야 할 개념·근거를 짧게 정리합니다.` },
+    { title: '차이', body: `${topic}을 실제로 적용할 때의 순서와 판단 기준을 제시합니다.` },
+    { title: '변화', body: `${topic}이 성공했을 때 청중·팀·사용자에게 생기는 변화를 정리합니다.` },
+    { title: '경로', body: `${topic}을 이어가기 위한 다음 행동과 필요한 자원을 제안합니다.` },
   ];
   for (const fallback of fallbacks) {
     if (out.length >= minimum) break;
@@ -13167,12 +13212,10 @@ function eightBitCapsuleCopyIsKeepable(text: string): boolean {
 }
 
 function wipeEightBitCapsuleLeftoverPhrases(html: string): string {
-  return String(html ?? '')
-    .replace(SERVICE_INTRO_LEFTOVER_BODY_RE, '')
+  return wipeServiceIntroLeftoverLeaves(String(html ?? ''))
     .replace(/파일럿\s*[:—\-]\s*작은 팀이나 단일 업무에서 빠르게 파일럿을 시작/g, '')
     .replace(/확대\s*[:—\-]\s*반복 사용 패턴을 기준으로 템플릿과 권한 정책을 확장/g, '')
-    .replace(/정착\s*[:—\-]\s*성과 지표와 운영 책임을 정해 조직 표준으로 정착/g, '')
-    .replace(/파일럿/g, '');
+    .replace(/정착\s*[:—\-]\s*성과 지표와 운영 책임을 정해 조직 표준으로 정착/g, '');
 }
 
 const DAISY_SLIDE_ROLES = [
@@ -14417,7 +14460,16 @@ function biennalePackForBody(body: string, attrs: string, pack: BiennaleCopyPack
   return pack.manifesto;
 }
 
+function slideHasForeignChromeBlockingCoral(html: string, attrs = ''): boolean {
+  const hay = `${attrs}\n${html}`;
+  // 0921-N05 — Coral used to fire on every `slide-N` host. Block Frame /
+  // Capsule / EightBit / Daisy also use slide-1…slide-10, so Coral appended
+  // section-label/big-statement/body-text into their row flex and broke layout.
+  return /\b(?:hero-frame|intro-card|feature-card|chart-frame|data-box|nb-heading|nb-label|nb-card|close-frame|stat-card|timeline-step|title-pill|orbit-pill|deco-pills|header-pill|pixel-label|crt-glow|starfield|deco-daisy|welcome-frame|day-card)\b/i.test(hay);
+}
+
 function coralSlideHasKitChrome(html: string, attrs = ''): boolean {
+  if (slideHasForeignChromeBlockingCoral(html, attrs)) return false;
   const hay = `${attrs}\n${html}`;
   // slide-N on a Coral deck is enough — pad merge can strip inner chrome
   // (big-statement) while leaving the host class. CSS tokens live on <style>,
@@ -14775,7 +14827,11 @@ export function fillCoralKitSlide(
     );
   }
 
-  if (!/\bbig-statement\b/i.test(next) && /\bslide-2\b/i.test(attrs)) {
+  if (
+    !/\bbig-statement\b/i.test(next)
+    && /\bslide-2\b/i.test(attrs)
+    && !slideHasForeignChromeBlockingCoral(next, attrs)
+  ) {
     next = [
       next,
       `<div class="section-label">${escapeHtml(seeded.title)}</div>`,
@@ -15290,9 +15346,8 @@ function fillGroveLeftoverKitSlide(
 }
 
 function wipeGroveStudioLeftoverPhrases(html: string): string {
-  return String(html ?? '')
+  return wipeServiceIntroLeftoverLeaves(String(html ?? ''))
     .replace(GROVE_LEFTOVER_BODY_RE, '')
-    .replace(SERVICE_INTRO_LEFTOVER_BODY_RE, '')
     .replace(/파일럿\s*—\s*작은 팀이나 단일 업무에서 빠르게 파일럿을 시작/g, '')
     .replace(/확대\s*—\s*반복 사용 패턴을 기준으로 템플릿과 권한 정책을 확장/g, '')
     .replace(/정착\s*—\s*성과 지표와 운영 책임을 정해 조직 표준으로 정착/g, '')
@@ -17828,7 +17883,11 @@ function fillSlideShell(
     || (slideLooksLikeProductLaunchKit(shell.attrs, body) ? '' : `Slide ${index + 1}`);
   const kitShell = /\b(?:hero-frame|feature-card|timeline-step|data-box|nb-heading|slide--cover|slide--chapter|slide--stats|slide--list|slide--quote|slide--compare|slide--chart|slide--end|slide--split|slide--statement|intro-card|grove-stat|cover-meta)\b/i
     .test(`${shell.attrs}\n${body}`);
-  const topicNoun = resolveLockedTopicNoun(rawTitle, content.lead, content.body);
+  const topicNoun = resolveLockedTopicNoun(
+    looksLikeServiceIntroLeftoverTitle(rawTitle) ? '' : rawTitle,
+    content.lead,
+    content.body,
+  );
   const title = kitShell
     ? rewriteLeftoverKitSlideTitle(
       rawTitle,
@@ -18602,7 +18661,10 @@ export function buildTemplateClonedDeckHtml(
           });
         } else {
           const n = workingSlides.length + 1;
-          const label = n === 1 ? deckTitle : `${deckTitle} · ${n}`;
+          // 0921-N05 — do not mint `${deckTitle} · N` salt titles.
+          const label = n === 1
+            ? deckTitle
+            : genericRoleCopyForIndex(deckTitle, options.brief, Math.max(1, n - 1)).heading;
           workingSlides.push({
             title: label,
             ...synthesizeTemplateCloneSlideBody(
@@ -19588,16 +19650,15 @@ function rewriteInstructionParrotingSlideTitles(
  * placeholder-shaped slides through the same fallback shape), the reused
  * shell renders two near-identical Fit/Body slides in the same deck
  * (2026-09-17 사용자 리포트: slide 3 · slide 9 both `주제의 쓰임과 근거`).
- * Keeping the first occurrence and appending ` · N` to later duplicates
- * preserves the outline order while making each slide's headline distinct.
+ * Keeping the first occurrence and rewriting later duplicates to a short
+ * role title (not `${cover} · N` salt) makes each headline distinct.
  */
 function dedupeIdenticalOutlineTitles(
   slides: TemplateCloneSlideContent[],
-  deckTitle: string,
+  _deckTitle: string,
 ): TemplateCloneSlideContent[] {
   if (slides.length <= 1) return slides;
   const seen = new Map<string, number>();
-  const cover = sanitizeTemplateCloneDeckTitle(deckTitle) ?? '슬라이드';
   return slides.map((slide, index) => {
     const raw = String(slide.title ?? '').trim();
     if (!raw) return slide;
@@ -19606,7 +19667,17 @@ function dedupeIdenticalOutlineTitles(
       seen.set(raw, index);
       return slide;
     }
-    return { ...slide, title: `${cover} · ${index + 1}` };
+    const lead = String(slide.lead ?? '').replace(/\s+/g, ' ').trim();
+    if (
+      lead
+      && lead !== raw
+      && lead.length <= 32
+      && !looksLikeServiceIntroLeftoverTitle(lead)
+    ) {
+      return { ...slide, title: lead };
+    }
+    // 0921-N05 — unique without `${cover} · N` salt.
+    return { ...slide, title: serviceIntroSynthTitleFallback('', index) };
   });
 }
 

@@ -78,6 +78,7 @@ import {
   resolveTemplateCloneKitKey,
   scrubRawGridFinancialClicheText,
   synthesizeTemplateCloneSlideBody,
+  fillCoralKitSlide,
   healCobaltOrphanDataStats,
   injectCobaltAbsoluteSlotCss,
   officialLookIsCobaltGrid,
@@ -1101,6 +1102,79 @@ describe('루프450/459/469/470/472 Zhangzara template quality gates', () => {
         .trim();
       expect(visible, `${tpl} leaked Teamver hardcoded pack titles into non-Teamver brief`).not.toMatch(TEAMVER_HARDCODED_LEAK_RE);
     }
+  });
+
+  it('루프571: Teamver Block Frame fill does not inject Coral chrome or leftover remnants', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-block-frame/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const brief = 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.';
+    const slides = resolveTemplateCloneSlidesForDeterministicFill({
+      userInstruction: brief,
+      deckTitle: 'Teamver 소개',
+      slideCount: 10,
+    });
+    const cloned = buildTemplateClonedDeckHtml(html, slides, {
+      title: 'Teamver 소개',
+      templateId: 'html-ppt-zhangzara-block-frame',
+      brief,
+      maxSlides: 10,
+    });
+    expect(cloned).toBeTruthy();
+    const visible = String(cloned ?? '')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    expect(visible).not.toMatch(/대상 고객별 메시지 다음|측정해야 할 지표 쓰는 길|을 시작 판단/);
+    expect(visible).not.toMatch(/빠르게을|사용자가과/);
+    expect(visible).not.toMatch(/(?:^|\s)(?:로|으로|을|를)\s+연결되는/);
+    expect(visible).not.toMatch(/Teamver가\s{2,}|Teamver가\s*$/);
+    const introSlide = listTemplateCloneSlideShells(cloned!).find((shell) => (
+      /\bslide-2\b/i.test(shell.attrs) && /\bcol-left\b/i.test(shell.body) && /\bintro-card\b/i.test(shell.body)
+    ));
+    expect(introSlide, 'Block Frame slide-2 intro shell').toBeTruthy();
+    expect(introSlide!.body).not.toMatch(/\bsection-label\b/);
+    expect(introSlide!.body).not.toMatch(/\bbig-statement\b/);
+    expect(introSlide!.body).not.toMatch(/\bbody-text\b/);
+
+    const coralOnBlockFrame = fillCoralKitSlide(
+      [
+        '<div class="col-left"><h2 class="nb-heading-lg">왜 Teamver인가</h2></div>',
+        '<div class="col-right"><div class="intro-card"><h3>맥락 통합</h3><p>워크스페이스에 묶어둡니다.</p></div></div>',
+      ].join(''),
+      'class="slide slide-2"',
+      {
+        title: '대상 고객별 메시지',
+        lead: '대상 고객별 메시지는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.',
+        bodyText: '첫 방문에서 문제와 해결 방식을 한 문장으로 이해',
+        kicker: '대상 고객별 메시지',
+        fillLines: [],
+      },
+    );
+    expect(coralOnBlockFrame).not.toMatch(/\bsection-label\b|\bbig-statement\b|\bbody-text\b/);
+    expect(coralOnBlockFrame).toMatch(/왜 Teamver인가/);
+    expect(coralOnBlockFrame).toMatch(/맥락 통합/);
+
+    const coralKeepFullLeftoverSentence = fillCoralKitSlide(
+      '<div class="main-title">VENTURE</div><p>첫 방문에서 문제와 해결 방식을 한 문장으로 이해</p>',
+      'class="slide slide-1"',
+      {
+        title: 'Teamver 소개',
+        lead: 'Teamver가 한 화면에서 초안과 수정을 끝낸다.',
+        bodyText: 'Teamver에서 보드와 권한을 나눈다.',
+        kicker: '표지',
+        fillLines: [],
+      },
+    );
+    expect(coralKeepFullLeftoverSentence).toMatch(/첫 방문에서 문제와 해결 방식을 한 문장으로 이해/);
+    expect(coralKeepFullLeftoverSentence).not.toMatch(/>\s*방식을 한 문장으로 이해/);
+    expect(coralKeepFullLeftoverSentence).not.toMatch(/빠르게을|사용자가과/);
   });
 });
 
