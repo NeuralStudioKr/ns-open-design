@@ -9,6 +9,7 @@ from ..db.connection import async_session_maker
 from ..db.crud import token_usage_crud
 from ..db.models.base import utcnow
 from .credit_meter import meter_design_run
+from .workspace_plan import plan_id_for_workspace
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ async def alog_token_usage(
         token_count_source=scope.token_count_source,
         cache_read_input_tokens=scope.cache_read_input_tokens,
         cache_creation_input_tokens=scope.cache_creation_input_tokens,
+        plan_id=plan_id_for_workspace(scope.workspace_id),
     )
     # Server-side meter is SSOT for audit — never trust client-supplied credits.
     credits_amount_t = metered.amount_t if metered.amount_t > 0 else None

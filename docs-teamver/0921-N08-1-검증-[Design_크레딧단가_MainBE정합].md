@@ -65,7 +65,7 @@ Pay-as-you-go Standard (상시 50% off M3 ≤512k):
 | `.env.staging` (+ examples) | `DESIGN_MODEL_PRICES_JSON` + 앵커 env 주석 |
 | config | `DESIGN_BILLING_USD_KRW_RATE` / `CREDIT_KRW_RATE` / `PRICE_TO_COST_RATIO` (기본 1550/0.5/2.0) |
 
-**미포함(의도):** Priority 1.5×, M3 >512k, B2B ratio 자동 감지(Registry에 plan 없음 → Design 기본 B2C). Enterprise만 쓰는 배포는 `DESIGN_BILLING_PRICE_TO_COST_RATIO=2.5`.
+**미포함(의도):** Priority 1.5×. B2B는 `plan_id=PLAN-ENTERPRISE`일 때 ratio 2.5. MiniMax-M3 입력(프롬프트+캐시)이 512,000을 넘으면 공식 Standard 장기 구간($0.60/$2.40/$0.12 per M)을 요청 전체에 적용.
 
 ## 5. 직접 테스트
 
@@ -95,7 +95,8 @@ python -m pytest tests/test_credit_meter.py tests/test_byok_billing.py -q
 
 | 리스크 | 완화 |
 |--------|------|
-| B2B 워크스페이스에 B2C 단가 | env로 ratio=2.5 가능. plan-aware는 후속 |
+| B2B 워크스페이스에 B2C 단가 | 부트스트랩 `plan_id`를 기억해 `PLAN-ENTERPRISE`만 ×2.5. 아직 안 본 워크스페이스는 B2C |
+| M3 >512k | 입력 컨텍스트 `prompt+cache` > 512000이면 long_* 단가. Priority 티어는 미적용 |
 | 슬라이드 **제품 고정가**(0818: MiniMax 300/500) vs 실토큰 | 현행은 방식 B(실토큰). 고정 덱 단가는 별 정책 |
 | Main BE에 MiniMax 시드 없음 | Design JSON이 공급 단가 SSOT. 추후 `ai_model_pricing` 시드 추가 시 동기화 |
 | DISABLED=1 | 잔액 미차감. ledger `credits_amount_t`만 새 산식으로 채워짐 |

@@ -152,6 +152,7 @@ export type ResolveTeamverBillingReserveAmountResult = {
 
 export async function resolveTeamverBillingReserveAmountFromDaemon(args: {
   modelName?: string | null;
+  workspaceId?: string | null;
 }): Promise<ResolveTeamverBillingReserveAmountResult> {
   const env = billingEnv();
   if (!env) {
@@ -159,6 +160,7 @@ export async function resolveTeamverBillingReserveAmountFromDaemon(args: {
   }
 
   const modelName = (args.modelName ?? '').trim() || 'default';
+  const workspaceId = (args.workspaceId ?? '').trim();
   const envFallback = reserveAmountEnvFallback();
 
   const finish = (
@@ -180,7 +182,7 @@ export async function resolveTeamverBillingReserveAmountFromDaemon(args: {
     }>(
       `${env.baseUrl}/api/internal/billing/estimate-reserve`,
       env.apiKey,
-      { model_name: modelName },
+      { model_name: modelName, ...(workspaceId ? { workspace_id: workspaceId } : {}) },
       billingTimeoutMs(),
     );
     if (status !== 200 || !payload) {

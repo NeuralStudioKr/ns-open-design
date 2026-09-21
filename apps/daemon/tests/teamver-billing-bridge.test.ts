@@ -61,6 +61,28 @@ describe('teamver-billing-bridge', () => {
       });
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/api/internal/billing/estimate-reserve');
+      const init = fetchMock.mock.calls[0]?.[1] as { body?: string } | undefined;
+      expect(JSON.parse(String(init?.body))).toEqual({ model_name: 'claude-sonnet-4-5' });
+    });
+
+    it('sends workspace_id so Enterprise reserve uses the B2B ratio', async () => {
+      vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+      vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'k');
+      const fetchMock: FetchMock = vi.fn().mockResolvedValue(
+        jsonResponse(200, { amount_t: 53, policy: 'metered', model_name: 'MiniMax-M3' }),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+
+      await resolveTeamverBillingReserveAmountFromDaemon({
+        modelName: 'MiniMax-M3',
+        workspaceId: 'ws-enterprise',
+      });
+
+      const init = fetchMock.mock.calls[0]?.[1] as { body?: string } | undefined;
+      expect(JSON.parse(String(init?.body))).toEqual({
+        model_name: 'MiniMax-M3',
+        workspace_id: 'ws-enterprise',
+      });
     });
 
     it('returns unwired result when teamver env is not configured', async () => {

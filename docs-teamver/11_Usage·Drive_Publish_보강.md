@@ -470,8 +470,9 @@ supply_usd = Σ (tokens/1000) × cost_usd_per_1k
 credits    = max(1, round(supply_usd × usd_krw_rate × ratio / credit_krw_rate))
 ```
 
-시드 기본: `usd_krw=1550`, `credit_krw=0.5`, B2C `ratio=2.0` → **`×6200`**.  
+시드 기본: `usd_krw=1550`, `credit_krw=0.5`, B2C `ratio=2.0` → **`×6200`**. Enterprise(`PLAN-ENTERPRISE`)만 B2B `ratio=2.5` → **`×7750`**.  
 `DESIGN_MODEL_PRICES_JSON` 값은 **USD / 1k tokens** (`ai_model_pricing`과 동일 단위). MiniMax 공식 $/M → ÷1000.  
+MiniMax-M3는 입력(프롬프트+캐시)이 512,000을 넘으면 `long_*` 단가를 요청 전체에 쓴다.  
 ~~잘못된 구 규칙 `1T≡$0.001`(Claude를 3/15로 넣던 방식)은 폐기.~~
 
 **`DESIGN_MODEL_PRICES_JSON` 예시**
@@ -481,7 +482,11 @@ credits    = max(1, round(supply_usd × usd_krw_rate × ratio / credit_krw_rate)
   "MiniMax-M3": {
     "prompt_cost_per_1k": 0.0003,
     "completion_cost_per_1k": 0.0012,
-    "cache_read_cost_per_1k": 0.00006
+    "cache_read_cost_per_1k": 0.00006,
+    "context_threshold_tokens": 512000,
+    "long_prompt_cost_per_1k": 0.0006,
+    "long_completion_cost_per_1k": 0.0024,
+    "long_cache_read_cost_per_1k": 0.00012
   },
   "claude-sonnet-4-5": {
     "prompt_cost_per_1k": 0.003,
@@ -490,7 +495,7 @@ credits    = max(1, round(supply_usd × usd_krw_rate × ratio / credit_krw_rate)
 }
 ```
 
-> MiniMax-M3: platform 상시 50% off · ≤512k Standard. Pretty SSOT `deploy/teamver/design_model_prices.json`. 검증: `docs-teamver/0921-N08-1-검증-[Design_크레딧단가_MainBE정합].md`.
+> MiniMax-M3 Standard: ≤512k `$0.30/$1.20/$0.06` per M, >512k `$0.60/$2.40/$0.12` per M (요청 전체). B2B는 `PLAN-ENTERPRISE`만 ratio 2.5. Pretty SSOT `deploy/teamver/design_model_prices.json`.
 
 #### 4.5.1 `token_count_source`별 과금 정책 (제안)
 

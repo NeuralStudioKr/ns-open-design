@@ -31,6 +31,7 @@ def _reset_meter_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "design_billing_usd_krw_rate", 1550)
     monkeypatch.setattr(settings, "design_billing_credit_krw_rate", 0.5)
     monkeypatch.setattr(settings, "design_billing_price_to_cost_ratio", 2.0)
+    monkeypatch.setattr(settings, "design_billing_b2b_price_to_cost_ratio", 2.5)
 
 
 def test_credits_from_supply_usd_matches_main_be_b2c() -> None:
@@ -108,6 +109,98 @@ def test_meter_minimax_m3_official_payg_via_main_be_formula(
     # 0.0003 + 0.0024 + 0.00006 = 0.00276 → round(0.00276*6200)=round(17.112)=17
     assert abs(result.supply_usd - supply) < 1e-12
     assert result.amount_t == credits_from_supply_usd(supply) == 17
+
+
+def test_credits_from_supply_usd_b2b_is_enterprise_only() -> None:
+    supply = 0.033
+    b2b = credits_from_supply_usd(supply, plan_id="PLAN-ENTERPRISE")
+    b2c = credits_from_supply_usd(supply, plan_id="PLAN-PRO")
+    main_b2b = tokens_from_supply_usd_krw(
+        supply,
+        usd_krw_rate=1550,
+        credit_krw_rate=0.5,
+        price_to_cost_ratio=2.5,
+    )
+    assert b2c == 205
+    assert b2b == main_b2b == 256
+
+
+def test_meter_minimax_m3_long_context_above_512k(monkeypatch: pytest.MonkeyPatch) -> None:
+    """>512k input uses Standard long row ($0.60/$2.40/$0.12 per M) for the whole request."""
+    monkeypatch.setattr(
+        settings,
+        "design_model_prices_json",
+        json.dumps(
+            {
+                "MiniMax-M3": {
+                    "prompt_cost_per_1k": 0.0003,
+                    "completion_cost_per_1k": 0.0012,
+                    "cache_read_cost_per_1k": 0.00006,
+                }
+            }
+        ),
+    )
+    short = meter_design_run(
+        model_name="MiniMax-M3",
+        input_tokens=512_000,
+        output_tokens=0,
+        token_count_source="provider_usage",
+    )
+    long = meter_design_run(
+        model_name="MiniMax-M3",
+        input_tokens=512_001,
+        output_tokens=0,
+        token_count_source="provider_usage",
+    )
+    # 512k × $0.30/M = 0.1536 USD → round(952.32)=952
+    assert short.amount_t == 952
+    # 512001 × $0.60/M = 0.3072006 USD → round(1904.64372)=1905
+    assert long.amount_t == 1905
+    enterprise = meter_design_run(
+        model_name="MiniMax-M3",
+        input_tokens=512_001,
+        output_tokens=0,
+        token_count_source="provider_usage",
+        plan_id="PLAN-ENTERPRISE",
+    )
+    # 0.3072006 × 7750 = 2380.80465 → 2381
+    assert enterprise.amount_t == 2381
+
+
+def test_meter_minimax_m3_context_does_not_double_count_openai_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        settings,
+        "design_model_prices_json",
+        json.dumps(
+            {
+                "MiniMax-M3": {
+                    "prompt_cost_per_1k": 0.0003,
+                    "completion_cost_per_1k": 0.0012,
+                    "cache_read_cost_per_1k": 0.00006,
+                }
+            }
+        ),
+    )
+    # prompt already includes the 200k cache (OpenAI). Stay on the ≤512k row.
+    subset = meter_design_run(
+        model_name="MiniMax-M3",
+        input_tokens=400_000,
+        output_tokens=0,
+        cache_read_input_tokens=200_000,
+        token_count_source="provider_usage",
+    )
+    assert subset.supply_usd == pytest.approx(400 * 0.0003 + 200 * 0.00006)
+    # Anthropic-style cache sits on top of input and crosses 512k.
+    additive = meter_design_run(
+        model_name="MiniMax-M3",
+        input_tokens=100,
+        output_tokens=0,
+        cache_read_input_tokens=512_000,
+        token_count_source="provider_usage",
+    )
+    assert additive.supply_usd == pytest.approx((100 / 1000) * 0.0006 + 512 * 0.00012)
 
 
 def test_meter_minimax_accepts_usd_per_m_keys(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -271,3 +364,31 @@ def test_ssot_json_file_loads_and_meters_minimax(monkeypatch: pytest.MonkeyPatch
     )
     # supply = 10*0.0003 + 5*0.0012 = 0.009 → round(55.8)=56
     assert result.amount_t == 56
+
+
+def test_workspace_plan_cache_selects_b2b_ratio(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services import workspace_plan
+
+    workspace_plan._cache.clear()
+    workspace_plan.remember_workspace_plan("ws-ent", "PLAN-ENTERPRISE")
+    monkeypatch.setattr(
+        settings,
+        "design_model_prices_json",
+        json.dumps(
+            {
+                "claude-sonnet-4-5": {
+                    "prompt_cost_per_1k": 0.003,
+                    "completion_cost_per_1k": 0.015,
+                }
+            }
+        ),
+    )
+    result = meter_design_run(
+        model_name="claude-sonnet-4-5",
+        input_tokens=1000,
+        output_tokens=2000,
+        token_count_source="provider_usage",
+        plan_id=workspace_plan.plan_id_for_workspace("ws-ent"),
+    )
+    assert result.amount_t == 256
+    workspace_plan._cache.clear()
