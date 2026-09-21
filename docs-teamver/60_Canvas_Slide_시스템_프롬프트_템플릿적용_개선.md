@@ -32,6 +32,34 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **명시 5장+ 요청에서는 저장하지 않는다.** 8–10장 요청의 1장/4장 Template Clone fill은 `deck.html` 덮어쓰기 전에 incomplete로 막고 기존 덱을 보존한다. 6장 이상 첫 fill만 저장 후 top-up 가능하다. 사용자가 1장을 명시하거나 요청 장수가 작을 때만 1장 저장을 허용한다 |
 
+### 1.37 2026-09-21 — 근본 원인: sparse outline이 specialty shell로 매핑되어 발생하는 “빈 격자 + 데코 slide-flow 누수” (루프514)
+
+§1.36(루프513) 이후에도 사용자는 재보고했다: “결과물 퀄리티가 더 안좋아졌다. 요소 css도 제대로 안먹히고, 전체적으로 배치, 정렬, 본문 밀도 및 품질이 적절치 않다. 어디서 문제가 되는 것인가? 근본적인 문제를 파악하여 해결이 필요하다.” 첨부 스크린샷은 Capsule 커버 슬라이드였는데, 좌측에 slide-2 의 `.orbit-pill`(Research/Ideation/Prototype/Iterate/Launch/Scale), 우상단에 다른 슬라이드의 `.orbit-pill`(DESIGN), 하단에 slide-10 의 `.c-pill`(FUTURE/NEXT), 좌측 최외곽에 slide-3 의 `.card-icon`(II/III) 이 “다른 슬라이드의 데코가 커버 슬라이드에 겹쳐 보이는” 상태였다.
+
+**근본 원인 두 갈래로 갈라진다.**
+
+1. **정적 원인 — sparse title-only outline 이 specialty shell 로 매핑된다.**
+  `inferTemplateCloneContentRole` 이 “측정해야 할 지표 / 수치 요약” 같은 title 만 있는 sparse outline 을 **KPI 토픽 매칭**(`/\b지표|수치|통계|차트/`) 만 보고 `stat` 롤로 분류했다. 그러면 picker 가 slide-4(chart-container 5× chart-row)나 slide-7(stats-grid 4× stat-pill) 로 라우팅한다. outline 이 items[] 를 안 주면 `enrichSparseSlideForShell` 도 “stat/quote/closing 셸에는 prose synth 를 쓰지 않는다” 라는 이전 트레이드오프로 skip 했고, 결과적으로 **1 개의 label + 3–4 개의 빈 stat-pill/chart-row** 가 렌더된다. 이것이 “배치·정렬·본문 밀도 부적절” 이슈의 정체.
+
+2. **동적 원인 — LOOK_NEUTRALIZE 가 `.slide{overflow:visible!important}` 를 강제해 Capsule 의 원본 `overflow:hidden` 을 덮는다.**
+  LOOK_NEUTRALIZE_CSS(`packages/contracts/src/html/deck-template-look-css.ts`)는 Daisy/Graphify 계열의 Motif hang 을 살리기 위해 `.slide` 에 `overflow:visible !important` 를 준다. Capsule 은 반대로 각 슬라이드의 `.orbit-pill`/`.c-pill`/`.f-pill`/`.card-icon` 을 슬라이드 안쪽 0–100% 좌표에 absolute 로 놓고, 원본 CSS 의 `.slide{overflow:hidden}` 으로 클립하는 설계다. 프리뷰의 `#od-stacked-deck-stage > .slide{display:none}` 이 미적용되는 경로(export 플래튼, standalone HTML 다운로드, 특정 프리뷰 타이밍) 에서 각 슬라이드가 1080px 로 세로 스택되고, 클립을 잃은 데코가 인접 슬라이드에 “줄줄이 흘러들어가는” 게 사용자 스크린샷 그대로다.
+
+**구현.** `packages/contracts/src/template-clone-fill.ts`
+
+- **[정적 A] `inferTemplateCloneContentRole` sparse guard 추가.** `items.length < 2 && body.length < 60` 인 sparse outline 이 stat / timeline / team / process 토픽 매칭에 걸리면 `cards` 로 downgrade. items[] 가 있는 outline 은 그대로 stat/timeline/team/process 를 유지 (기존 회귀 없음). 이제 “측정해야 할 지표(title-only)” 는 cards → 카드 그리드 셸로 라우팅되고, `enrichSparseSlideForShell` 이 title/brief 기반 prose synth items 로 셸을 채운다.
+- **[정적 B] `enrichSparseSlideForShell` 이 stat / timeline / process / team 셸도 enrich 한다.** 이전엔 `shellRole === 'stat'` 이면 return slide 로 빠져나갔지만, 실제 사용 결과 “빈 격자” 가 “불필요한 synth” 보다 훨씬 나쁘게 읽혔다. cover / closing / quote 만 skip 하고 나머지 peer≥2 셸은 synth items 로 채운다. items[] 는 slot-fill 이 `.stat-label`/`.chart-label`/`.step-label`/`.tier-name` 로 자동 라우팅하고, 숫자 슬롯(`.stat-number`/`.chart-value`) 은 여전히 비운다 — 없는 지표를 지어내지 않는다.
+- **[동적] `CAPSULE_LAYOUT_FIX_CSS` 에 `overflow:hidden!important` 추가.** `html[data-od-capsule-layout-fix] .slide` 에 붙여서, LOOK_NEUTRALIZE 의 `.slide{overflow:visible!important}` 를 이긴다 (`html[…] .slide` = 0,1,1,0 > `.slide` = 0,0,1,0). Capsule 데크에만 적용되므로 Daisy/Graphify 계열의 hang 은 그대로.
+
+**검증.** `packages/contracts/tests/template-clone-fill.test.ts`
+
+- 기존 end-to-end 테스트 갱신 — 지표/수치 outline 에 items[] 를 붙여서 stats-grid / chart-container 셸이 실제로 선택되도록 하고, `overflow:hidden!important` 마커가 head 에 삽입되었는지 검증.
+- 신규 케이스 “loop514 — sparse title-only 지표/수치 outlines demote to cards role instead of empty stats-grid”: `inferTemplateCloneContentRole({ title: '측정해야 할 지표', body: '실사용 지표.' }) === 'cards'`, items[] 를 붙이면 `stat` 그대로 유지.
+- 전체: `pnpm --filter @open-design/contracts test` → **3185 pass / 1 skip / 0 fail**.
+
+**시각 회귀.** 재현 스크립트(`buildTemplateClonedDeckHtml` + FE 프리뷰 파이프라인 시뮬레이터)로 커버 슬라이드를 다시 렌더한 결과, slide-2/3/10 의 데코가 slide-1 로 흘러들어가던 원본 사용자 스크린샷과 달리 각 슬라이드의 데코 pill 이 자기 슬라이드 안쪽에 클립되어 유지된다. 커버 슬라이드는 “Teamver 소개” + “소개” title-pill + 자기 슬라이드의 empty deco-pill 만 렌더하고, 인접 슬라이드의 chrome 이 전혀 보이지 않는다.
+
+**남은 갭.** Diagram-container(slide-8/9) 의 `.diagram-node` 는 아직 `CAPSULE_SLOT_MAP.peerClasses` 에 없어서 `enrichSparseSlideForShell` 의 peer 카운트 인식이 0. 후속 루프에서 slot map 을 확장하면 outline items[] 도 diagram-node 로 라우팅된다.
+
 ### 1.36 2026-09-21 — Capsule refill: outline 기반 semantic slot 채움 + machine-tag placeholder 제거 (루프513)
 
 §1.35(루프512) 이후 다시 확인한 스크린샷에서 남은 결함:

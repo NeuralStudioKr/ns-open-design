@@ -6059,14 +6059,38 @@ describe('루프512 Capsule fixed-density peer preservation + vertical centering
         ),
         'utf8',
       );
+      // 루프514 — Outlines that land on specialty shells (stats-grid /
+      // chart-container / diagram-container / timeline) MUST carry
+      // structured items so the shell's fixed-density grid reads as
+      // "complete". Sparse title-only outlines are now demoted to `cards`
+      // role by `inferTemplateCloneContentRole` so they never leave the
+      // deck with 3–4 empty stat-pills / chart-rows.
       const cloned = buildTemplateClonedDeckHtml(
         source,
         [
           { title: 'Teamver 소개', body: '요약 문장.' },
           { title: '문제', body: '분리된 도구', items: ['초안이 흩어짐', '수정이 다른 툴에서', '히스토리 단절'] },
           { title: '가치', body: '한 화면.', items: ['초안', '수정', '공유'] },
-          { title: '지표', body: '실사용 지표' },       // sparse → 4 stat-pills
-          { title: '수치', body: '핵심' },              // sparse → chart-rows
+          {
+            title: '성과 지표',
+            body: '핵심 KPI',
+            items: [
+              { title: '도달', body: '82%' },
+              { title: '참여', body: '67%' },
+              { title: '리텐션', body: '45%' },
+              { title: '만족도', body: '92%' },
+            ],
+          },
+          {
+            title: '월별 수치',
+            body: '핵심 그래프',
+            items: [
+              { title: '1월', body: '820명' },
+              { title: '2월', body: '1,240명' },
+              { title: '3월', body: '2,180명' },
+              { title: '4월', body: '3,050명' },
+            ],
+          },
           { title: '도입', body: '로드맵.', items: ['a', 'b', 'c', 'd'] },
           { title: '고객', body: '누구?' },
           { title: '이야기', body: '초안을 보낸 뒤에도 같은 화면에서 고칠 수 있어야 일이 끝난다.' },
@@ -6077,13 +6101,12 @@ describe('루프512 Capsule fixed-density peer preservation + vertical centering
       );
       expect(cloned).not.toBeNull();
       const html = cloned!;
-      // stat-pill / chart-row / diagram-node fixed-density grids are preserved.
+      // stat-pill / chart-row fixed-density grids are preserved WHEN
+      // the outline provides items[] that justify those shells.
       const statPillCount = [...html.matchAll(/class="stat-pill"/g)].length;
       const chartRowCount = [...html.matchAll(/class="chart-row"/g)].length;
-      const diagramNodeCount = [...html.matchAll(/class="diagram-node[^"]*"/g)].length;
       expect(statPillCount, 'stats-grid should keep its 4 pills').toBeGreaterThanOrEqual(4);
       expect(chartRowCount, 'chart-container should keep its 4 rows').toBeGreaterThanOrEqual(4);
-      expect(diagramNodeCount, 'diagram-container should keep its 4 nodes').toBeGreaterThanOrEqual(4);
       // Content-slot indexed placeholders are gone (루프513 quality gate).
       expect(html).not.toContain('항목 2');
       expect(html).not.toContain('지표 2');
@@ -6092,8 +6115,33 @@ describe('루프512 Capsule fixed-density peer preservation + vertical centering
       expect(html).not.toContain('시작 · 1');
       // Semantic slot fill still works: no bare empty blockquote.
       expect(html).not.toMatch(/<blockquote>\s*<\/blockquote>/);
-      // The layout fix ships alongside so vertical centering is restored.
+      // The layout fix ships alongside so vertical centering is restored
+      // and Capsule slides reclaim `overflow:hidden` (loop514 — kills the
+      // cross-slide decorative pill leak in stacked-flow rendering).
       expect(html).toContain('data-od-capsule-layout-fix');
+      expect(html).toMatch(/overflow:hidden!important/);
+    });
+
+    it('loop514 — sparse title-only 지표/수치 outlines demote to cards role instead of empty stats-grid', () => {
+      // The specific regression: a title-only "측정해야 할 지표" outline
+      // used to route to `stat` role → stats-grid shell → 1 filled label +
+      // 3 empty stat-pills. Now it downgrades to `cards` so the picker
+      // lands it on a card-grid shell that `enrichSparseSlideForShell`
+      // fills with synth items from title/brief.
+      const sparse = { title: '측정해야 할 지표', body: '실사용 지표.' };
+      const role = inferTemplateCloneContentRole(sparse, 3, 10);
+      expect(role).toBe('cards');
+      // With items[] on the same title the picker still routes to stat.
+      const withItems = {
+        title: '측정해야 할 지표',
+        body: '실사용 지표.',
+        items: [
+          { title: '도달', body: '82%' },
+          { title: '참여', body: '67%' },
+        ],
+      };
+      const roleWithItems = inferTemplateCloneContentRole(withItems, 3, 10);
+      expect(roleWithItems).toBe('stat');
     });
   });
 });

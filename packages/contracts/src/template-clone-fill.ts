@@ -1554,6 +1554,24 @@ export function inferTemplateCloneContentRole(
   }
   // Bulleted single body without items[] still routes through list.
   if (lines.length >= 2 || /^[-*•·]/.test(body) || /^\d+[.)]/.test(body)) return 'list';
+  // 루프514 — Sparse title-only outlines (no items[], thin body) that name a
+  // structured topic ("측정해야 할 지표", "수치 요약", "도입 단계", "팀 이야기")
+  // used to route to stat / timeline / team / process shells whose fixed-density
+  // grids (4× stat-pill, 5× chart-row, 5× timeline-step) need real items to
+  // read as "complete". Without items the fill pipeline leaves 3–4 empty
+  // structural cards per slide, and the deck reads as unfinished. Downgrade
+  // sparse structured topics to `cards` — the picker's cards fallback lands
+  // on peer grids that `enrichSparseSlideForShell` fills with synth items
+  // from the title/brief, so the slide reads as "3 short prose cards" (a
+  // subtle placeholder) instead of "1 label + 3 empty structural cards"
+  // (obvious hole).
+  const isSparseContent = body.length < 60;
+  if (isSparseContent) {
+    if (/\bKPI\b|\d+\s*(?:%|배|건|회|명)|통계|지표|차트|수치|\bmetric\b|\bstat\b/i.test(blob)) return 'cards';
+    if (timelineRe.test(blob)) return 'cards';
+    if (teamRe.test(title)) return 'cards';
+    if (processRe.test(title)) return 'cards';
+  }
   if (/\bKPI\b|\d+\s*(?:%|배|건|회|명)|통계|지표|차트|수치|\bmetric\b|\bstat\b/i.test(blob)) return 'stat';
   if (timelineRe.test(blob)) return 'timeline';
   if (teamRe.test(title)) return 'team';
@@ -9498,7 +9516,20 @@ function injectTeamverSizeStyle(html: string): string {
  * their axis is column-wise anyway.
  */
 const CAPSULE_LAYOUT_FIX_CSS = [
-  'html[data-od-capsule-layout-fix] .slide{padding-top:0!important;padding-bottom:0!important}',
+  'html[data-od-capsule-layout-fix] .slide{padding-top:0!important;padding-bottom:0!important;',
+  // 루프514 — LOOK_NEUTRALIZE_CSS forces `overflow:visible !important` on
+  // every `.slide` to preserve Daisy/Graphify Motif hangs (§0.76). Capsule
+  // however uses absolutely-positioned decorative pills that sit at 0–100%
+  // percentages inside each slide's box; without the source template's
+  // `overflow:hidden`, decorations from slide-N bleed into the vertically-
+  // stacked-slide render path (standalone HTML export, PDF flatten, and
+  // any preview where the `#od-stacked-deck-stage` `display:none` is
+  // beaten). The user's original report shows exactly that — `.orbit-pill`
+  // (Research/Ideation/…) from slide-2, `.c-pill` (FUTURE/NEXT) from
+  // slide-10, and `.card-icon` (II/III) from slide-3 painting over the
+  // slide-1 cover. Reclaim the source `overflow:hidden` for Capsule only.
+  'overflow:hidden!important;',
+  '}',
   'html[data-od-capsule-layout-fix] .slide>.slide-inner{',
   'justify-content:center!important;',
   'align-content:center!important;',
@@ -9634,11 +9665,30 @@ function enrichSparseSlideForShell(
   if (items.length >= 2) return slide;
   if (bodyLines.length >= 2) return slide;
   const shellRole = classifyTemplateCloneShellRole(shell);
-  if (shellRole === 'cover' || shellRole === 'closing' || shellRole === 'quote' || shellRole === 'stat') {
+  // Cover / closing hero + thanks layouts read worse with padded cards;
+  // quote shells expect a single statement, not a card list.
+  if (shellRole === 'cover' || shellRole === 'closing' || shellRole === 'quote') {
     return slide;
   }
   const peers = countPeerSlotsInShellBody(shell.body, slotMap);
   if (peers < 2) return slide;
+  // 루프514 — Also enrich stat/timeline/process/team specialty shells.
+  //
+  // The prior "stat shells want number-shaped copy — synth prose looks worse
+  // than a clean empty slot" trade-off was correct in isolation, but in
+  // practice a title-only outline landing on a stats-grid ships as 1 label +
+  // 3–4 EMPTY stat-pills. That is visibly a hole, not a subtle placeholder;
+  // the deck reads as "generation failed halfway through". A page filled
+  // with 3–4 prose-shaped items derived from the title (via
+  // `synthesizeTemplateCloneSlideBody`) is a subtle placeholder — it fills
+  // the layout with rhythm-matching copy and never claims a specific
+  // number/percentage the outline did not give.
+  //
+  // The slot-fill pipeline already routes items[] into peer slots
+  // (`fillOneCardPeer` handles `.stat-label`, `.chart-label`, `.step-label`,
+  // `.tier-name`, …). Numeric slots (`.stat-number`, `.chart-value`) stay
+  // empty — that is intentional; the peer shell (border, color chip, bar)
+  // still contributes density without forging metrics.
   const targetCount = Math.max(2, Math.min(peers, 4));
   const synth = synthesizeTemplateCloneSlideBody(
     deckTitle || slide.title,
