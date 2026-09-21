@@ -2219,7 +2219,7 @@ export function decideTemplateCloneSlotFillTerminal(input: {
       ? { brief: input.userBrief }
       : {}),
     ...(honorCeiling != null ? { maxSlides: honorCeiling } : {}),
-    padToSeedSlideCount: true,
+    padToSeedSlideCount: false,
   };
   const filled = applyTemplateCloneSlotFill(seed, raw, templateOpts);
   if (filled) return { kind: 'slot-fill', html: filled.html, title: filled.title };
@@ -7484,6 +7484,19 @@ export function fillCapsuleKitSlide(
     if (!sub || /A Framework for Bold Ideas/i.test(sub) || !eightBitCapsuleCopyIsKeepable(sub)) {
       next = replaceFirstExactClassText(next, 'subtitle', lead);
     }
+  }
+
+  if (/\bslide-1\b/i.test(attrs) && /\bmain-title\b/i.test(next)) {
+    const pillLabel = input.kicker && input.kicker.trim() !== heading
+      ? input.kicker.trim()
+      : 'OVERVIEW';
+    next = replaceFirstExactClassText(next, 'title-pill', pillLabel);
+    const subtitle = lead && lead !== heading ? lead : bodyText;
+    next = next.replace(
+      /(<h1\b[^>]*\bmain-title\b[^>]*>)[\s\S]*?(<\/h1>)/i,
+      (_match, open: string, close: string) =>
+        `${open}${escapeHtml(heading)}<span class="subtitle">${escapeHtml(subtitle)}</span>${close}`,
+    );
   }
 
   const visibleHeading = visibleDeckCopy(
@@ -16121,6 +16134,7 @@ export function buildTemplateClonedDeckHtml(
     if (
       hint != null
       && hint > workingSlides.length
+      && options.padToSeedSlideCount !== false
       // 루프547 · slide.body가 undefined여도 items/lead가 있으면 substance로
       // 인정. 이전 검사(`every(slide => isPlaceholderCloneBody(slide.body))`)는
       // items-only cards outline(body 없음)을 empty placeholder로 오판해 pad
@@ -16285,6 +16299,10 @@ export function buildTemplateClonedDeckHtml(
   // `looksLikeCompactApiStackedDeck` expects (see 0826-N01-2 §F1-b).
   out = hoistCloneSlidesOutOfFlexTrack(out);
   out = injectTeamverSizeStyle(out);
+  if (officialLookIsCapsule(source)) {
+    const stackStyle = '<style data-teamver-capsule-stack>.presentation{height:auto!important}.presentation>.slide{position:relative!important;inset:auto!important;opacity:1!important;pointer-events:auto!important;transition:none!important}</style>';
+    out = out.replace(/<\/head>/i, `${stackStyle}</head>`);
+  }
   // 루프425 — leftover Capsule catalog copy can sit outside filled shells
   // (footer / unused chrome). Wipe the whole document, not just each slide.
   // 루프434 — Neo/block-frame marketing leftovers too.

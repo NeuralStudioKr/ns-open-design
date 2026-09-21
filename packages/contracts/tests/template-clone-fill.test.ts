@@ -101,6 +101,7 @@ import {
   dropEmptyDeckSlides,
   inferKitSlideCountFromCss,
   recoverShortDeckByPaddingToSeed,
+  decideTemplateCloneSlotFillTerminal,
   healBlockFrameGenericKoreanLeftovers,
   pinNeoBrutalEmptyDecoBlocks,
   unwrapStrayBoldShells,
@@ -1045,6 +1046,57 @@ describe('루프450/459/469/470/472 Zhangzara template quality gates', () => {
 });
 
 describe('루프419 Capsule deterministic quality gate', () => {
+  it('keeps model-authored slide count instead of padding to the Capsule seed', async () => {
+    const seed = await readFile(
+      new URL('../../../plugins/_official/examples/html-ppt-zhangzara-capsule/example.html', import.meta.url),
+      'utf8',
+    );
+    const slides = Array.from({ length: 6 }, (_, index) => ({
+      title: index === 0 ? 'Teamver 소개' : `팀 업무 사례 ${index}`,
+      lead: `팀 업무 맥락을 연결하는 사례 ${index + 1}`,
+      body: `회의 기록과 프로젝트 파일을 바탕으로 팀이 검토할 수 있는 결과를 만듭니다. 사례 ${index + 1}`,
+    }));
+    const output = buildTemplateClonedDeckHtml(seed, slides, {
+      title: 'Teamver 소개',
+      templateId: 'html-ppt-zhangzara-capsule',
+      maxSlides: 10,
+      padToSeedSlideCount: false,
+    });
+    expect(output).not.toBeNull();
+    expect(listTemplateCloneSlideShells(output!).length).toBe(6);
+    expect(output).not.toContain('data-teamver-pad="short-response"');
+    expect(output).toContain('data-teamver-capsule-stack');
+    expect(output).toContain('.presentation>.slide{position:relative!important');
+    expect(listTemplateCloneSlideShells(output!)[0]!.full).toContain('<span class="subtitle">팀 업무 맥락을 연결하는 사례 1</span>');
+    expect(listTemplateCloneSlideShells(output!)[0]!.full).not.toContain('<div class="title-pill">Teamver 소개</div>');
+    const promptMerge = applyTemplateClonePromptFillLookMerge(seed, output!, {
+      templateId: 'html-ppt-zhangzara-capsule',
+      deckTitle: 'Teamver 소개',
+      padToSeedSlideCount: false,
+      forcePad: true,
+    });
+    expect(promptMerge).not.toBeNull();
+    expect(listTemplateCloneSlideShells(promptMerge!.html).length).toBe(6);
+
+    const elevenSlides = Array.from({ length: 11 }, (_, index) => ({
+      title: index === 0 ? 'Teamver 소개' : `팀 업무 사례 ${index}`,
+      body: `팀의 회의와 프로젝트 자료에서 사례 ${index + 1}의 근거를 정리합니다.`,
+    }));
+    const decision = decideTemplateCloneSlotFillTerminal({
+      rawFinalText: JSON.stringify({ title: 'Teamver 소개', slides: elevenSlides }),
+      seedHtml: seed,
+      repairAlreadyAttempted: false,
+      templateId: 'html-ppt-zhangzara-capsule',
+      slideCount: 20,
+      userBrief: 'Teamver 서비스 소개',
+    });
+    expect(decision.kind).toBe('slot-fill');
+    if (decision.kind === 'slot-fill') {
+      expect(listTemplateCloneSlideShells(decision.html).length).toBe(11);
+      expect(decision.html).not.toContain('data-teamver-pad="short-response"');
+    }
+  });
+
   it('fills Capsule cards for www.teamver.com + 8-10 without MiniMax HTML', async () => {
     // 루프450 — delegate the 4-axis gate to the shared helper. Loop419 keeps
     // its Capsule-specific body-copy invariants that the generic gate does
