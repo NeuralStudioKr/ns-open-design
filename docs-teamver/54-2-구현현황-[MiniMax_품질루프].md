@@ -23,6 +23,7 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 3. FileViewer ←/→ tools-dev + Teamver BFF GUI bake(선택)
 4. ~~Studio/Creative leftover denylist 보강(선택)~~ → 루프476 ☑ (N08)
 5. ~~deterministic synth cover lead(`한눈에`)~~ → 루프473–475 ☑ (N06-4/5 + N07)
+6. ~~Block Frame leftover 잔재 persist heal~~ → 루프572 ☑ (0921-N07)
 
 ### 빈 칸 번호 카드 (코드명 leftover)
 
@@ -37,6 +38,12 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 `기둥` / `PILLAR` / `Phase`는 모델이 붙이는 접두일 뿐, 발표 용어가 아닙니다. extra-copy·stub는 주제 단어 목록이 아닙니다(루프259·265).
 
 ## 2026-09-02 현재 판단 · 최신 루프
+
+### 루프572 — Block Frame leftover 잔재 persist heal
+
+체감: 저장된 Teamver Block Frame 덱에 `Teamver가 ` / `로 연결되는` / `빠르게을` / `대상 고객별 메시지 다음` / 빈 list-num.
+
+수정: persist heal이 잔재 leaf를 비움. 대체 문장 없음. `.list-num` 제거는 sibling 카피 span을 건너뛰지 않는다(공식 example no-op). [0921-N07-1](./0921-N07-1-상위설계-[block_frame_leftover_잔재_persist_heal].md).
 
 ### 루프558 — Block Frame 커버가 표지·h1 만 남는 회귀 (kit chrome / deco / hero-subtitle 소실)
 

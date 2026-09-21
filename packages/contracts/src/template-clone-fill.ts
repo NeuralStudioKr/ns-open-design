@@ -1406,10 +1406,21 @@ function looksLikeServiceIntroLeftoverTitle(text: string): boolean {
  * 0921-N06 — leftover substring wipe leftovers such as `로 연결되는…`,
  * `Teamver가 `, `빠르게을 시작`, `사용자가과 전환`.
  */
+const SERVICE_INTRO_LEFTOVER_TITLE_PREFIX_RE =
+  /^(?:대상 고객별 메시지|서비스 가치 제안|사용 흐름|신뢰를 만드는 증거|측정해야 할 지표|다음 액션)(?:\s+(?:범위|판단|쓰는 길|다음))?/;
+
+function looksLikeLeftoverTitleSentence(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!value) return false;
+  if (!SERVICE_INTRO_LEFTOVER_TITLE_PREFIX_RE.test(value)) return false;
+  if (looksLikeServiceIntroLeftoverTitle(value)) return true;
+  return /^(?:대상 고객별 메시지|서비스 가치 제안|사용 흐름|신뢰를 만드는 증거|측정해야 할 지표|다음 액션)(?:\s+(?:범위|판단|쓰는 길|다음))?(?:[이가은는을를의와과]|에서|으로|로)/.test(value);
+}
+
 function looksLikeBrokenHangulLeftoverRemnant(text: string): boolean {
   const value = String(text ?? '').replace(/\s+/g, ' ').trim();
   if (!value) return true;
-  if (/빠르게을|사용자가과|:\s*을\s|을 시작 판단/.test(value)) return true;
+  if (/빠르게을|사용자가과|다음는|:\s*을\s|을 시작 판단/.test(value)) return true;
   // Josa-only leftovers (`로 연결되는…`) — do not treat 로컬/으로시작 as remnants.
   if (/^(?:로|으로|을|를|이|가|은|는|와|과|의)(?:\s|$)/.test(value)) return true;
   // Latin stem + dangling josa (`Teamver가 `). Do not treat 인가/우리가 as remnants.
@@ -1417,6 +1428,11 @@ function looksLikeBrokenHangulLeftoverRemnant(text: string): boolean {
     return true;
   }
   if (/^주제[이가을를은는의]/.test(value)) return true;
+  // Mid-sentence leftover strip leftover (` 방식을 한 문장으로 이해`).
+  if (/^(?:방식을 한 문장으로 이해|정책을 확장|조직 표준으로 정착)$/.test(value)) {
+    return true;
+  }
+  if (looksLikeLeftoverTitleSentence(value)) return true;
   return false;
 }
 
@@ -1426,18 +1442,62 @@ function looksLikeBrokenHangulLeftoverRemnant(text: string): boolean {
  * delete a substring from the middle of a keepable sentence.
  */
 function wipeServiceIntroLeftoverLeaves(html: string): string {
-  return String(html ?? '').replace(/>([^<]{2,})</g, (full, chunk: string) => {
+  const dest = String(html ?? '');
+  let changed = false;
+  const next = dest.replace(/>([^<]{2,})</g, (full, chunk: string) => {
     const plain = String(chunk).replace(/\s+/g, ' ').trim();
     if (!plain) return full;
-    if (looksLikeBrokenHangulLeftoverRemnant(plain)) return '><';
+    if (looksLikeBrokenHangulLeftoverRemnant(plain)) {
+      changed = true;
+      return '><';
+    }
     if (!SERVICE_INTRO_LEFTOVER_BODY_RE.test(plain)) return full;
     const stripped = plain
       .replace(SERVICE_INTRO_LEFTOVER_BODY_RE, '')
       .replace(/[\s·—\-:,]+/g, '')
       .trim();
-    if (!stripped) return '><';
+    if (!stripped) {
+      changed = true;
+      return '><';
+    }
     return full;
   });
+  return changed ? next : dest;
+}
+
+/**
+ * Drop `<li>` whose only visible child is a `.list-num` ordinal pill
+ * (`<li><span class="list-num">02</span></li>` or the same pill plus an
+ * emptied sibling after leftover wipe). Do not use `[\s\S]*?</span>` —
+ * that backtracks across a following copy `<span>` and strips official
+ * Block Frame content-list items (01 Discovery / 02 Iterative / …).
+ */
+function stripEmptyListNumOnlyItems(html: string): string {
+  return String(html ?? '').replace(
+    /<li\b[^>]*>([\s\S]*?)<\/li>/gi,
+    (full, inner: string) => {
+      if (!/\blist-num\b/i.test(inner)) return full;
+      const withoutBadge = String(inner).replace(
+        /<span\b[^>]*\blist-num\b[^>]*>[^<]*<\/span>/gi,
+        '',
+      );
+      return leafOnlyWhitespace(withoutBadge) ? '' : full;
+    },
+  );
+}
+
+/**
+ * 루프572 — Persist/preview heal for leftover-wipe remnants that already
+ * landed in saved Block Frame HTML (`Teamver가 `, `로 연결되는…`,
+ * `대상 고객별 메시지 다음`, empty `.list-num` pills). Empties broken
+ * leaves; does not invent replacement copy.
+ */
+export function healBrokenServiceIntroLeftoverRemnants(html: string): string {
+  const dest = String(html ?? '');
+  if (!dest.trim()) return dest;
+  return stripLeafEmptyListAndParagraphShells(
+    stripEmptyListNumOnlyItems(wipeServiceIntroLeftoverLeaves(dest)),
+  );
 }
 
 function looksLikeBlockedOverviewOrTrioTitle(text: string): boolean {
