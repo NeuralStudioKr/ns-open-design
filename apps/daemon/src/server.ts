@@ -12834,11 +12834,8 @@ export async function startServer({
       }
     }
 
-    // Teamver Registry billing (Phase 2 / 09 §3 / A9) — reserve credits before
-    // the agent starts. Skipped paths (no workspace, billing disabled, amount
-    // not configured, registry not wired) no-op. When reserve is enforced
-    // (`TEAMVER_BILLING_RESERVE_AMOUNT` or positive caller amount) a failure
-    // aborts the run — mirrors design-api `run_lifecycle.reserve_run`.
+    // 0918-N07-2 — spendable gate only. Estimate amount is 0 (deferred);
+    // TEAMVER_BILLING_RESERVE_AMOUNT must not start a full-amount reserve.
     {
       const identity = (run as { teamverIdentity?: TeamverRequestIdentity | null }).teamverIdentity ?? null;
       const modelName = typeof run.model === 'string' ? run.model : '';
@@ -12847,16 +12844,23 @@ export async function startServer({
         workspaceId: identity?.workspaceId,
       });
       const workspaceId = (identity?.workspaceId ?? '').trim();
+      if (workspaceId && estimate.billingWired && estimate.policy === 'insufficient_balance') {
+        return design.runs.fail(
+          run,
+          'TEAMVER_INSUFFICIENT_BALANCE',
+          'TEAMVER_INSUFFICIENT_BALANCE',
+        );
+      }
       if (
         workspaceId &&
         estimate.billingWired &&
-        estimate.estimateUnavailable &&
-        estimate.amount <= 0
+        (estimate.policy === 'balance_unavailable' ||
+          (estimate.estimateUnavailable && estimate.amount <= 0))
       ) {
         return design.runs.fail(
           run,
-          'BAD_REQUEST',
-          'Billing reserve estimate unavailable; cannot start this run.',
+          'TEAMVER_BALANCE_UNAVAILABLE',
+          'TEAMVER_BALANCE_UNAVAILABLE',
         );
       }
       const reserve = await reserveTeamverBillingFromDaemon({

@@ -21,9 +21,9 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from ..services import run_lifecycle
+from ..services.billing_outbox import drain_once
 from ..services.byok_billing import finalize_byok_run_billing
-from ..services.credit_meter import estimate_design_run_reserve
-from ..services.workspace_plan import plan_id_for_workspace
+from ..services.workspace_balance import estimate_balance_policy
 from ..teamver_sdk import get_internal_api_key_dependency
 
 logger = logging.getLogger(__name__)
@@ -98,21 +98,19 @@ async def estimate_reserve(
     body: EstimateReserveBody,
     _: Literal[True] = Depends(get_internal_api_key_dependency()),
 ) -> EstimateReserveResponse:
-    if run_lifecycle.billing_kill_switch_on():
-        return EstimateReserveResponse(
-            amount_t=0,
-            policy="billing_disabled",
-            model_name=body.model_name,
-        )
-    metered = estimate_design_run_reserve(
-        model_name=body.model_name,
-        plan_id=plan_id_for_workspace(body.workspace_id),
-    )
+    policy = await estimate_balance_policy(workspace_id=body.workspace_id)
     return EstimateReserveResponse(
-        amount_t=metered.amount_t,
-        policy=metered.policy,
-        model_name=metered.model_name or body.model_name,
+        amount_t=0,
+        policy=policy,
+        model_name=body.model_name,
     )
+
+
+@router.post("/drain-outbox")
+async def drain_outbox(
+    _: Literal[True] = Depends(get_internal_api_key_dependency()),
+) -> dict:
+    return await drain_once()
 
 
 @router.post("/reserve", response_model=ReserveResponse)

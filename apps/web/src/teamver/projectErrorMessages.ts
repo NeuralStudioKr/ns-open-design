@@ -644,7 +644,7 @@ export function extractProjectRunErrorCode(err: unknown): string | undefined {
   }
   if (/overloaded/i.test(message)) return "OVERLOADED_ERROR";
   const known =
-    /\b(UPSTREAM_UNAVAILABLE|RATE_LIMITED|UNAUTHORIZED|FORBIDDEN|BAD_REQUEST|INTERNAL_ERROR|OVERLOADED_ERROR|PROJECT_STORAGE_UNAVAILABLE|PROJECT_STORAGE_SYNC_FAILED|MANAGED_API_KEY_MISSING|API_KEY_REQUIRED|MANAGED_KEY_UNAVAILABLE|CONTEXT_LENGTH_EXCEEDED|AGENT_EXECUTION_FAILED|AGENT_EXECUTION_STALLED)\b/.exec(
+    /\b(UPSTREAM_UNAVAILABLE|RATE_LIMITED|UNAUTHORIZED|FORBIDDEN|BAD_REQUEST|INTERNAL_ERROR|OVERLOADED_ERROR|PROJECT_STORAGE_UNAVAILABLE|PROJECT_STORAGE_SYNC_FAILED|MANAGED_API_KEY_MISSING|API_KEY_REQUIRED|MANAGED_KEY_UNAVAILABLE|CONTEXT_LENGTH_EXCEEDED|AGENT_EXECUTION_FAILED|AGENT_EXECUTION_STALLED|TEAMVER_INSUFFICIENT_BALANCE|TEAMVER_BALANCE_UNAVAILABLE)\b/.exec(
       message,
     );
   if (known?.[1]) return known[1];
@@ -685,6 +685,12 @@ export function formatProjectRunErrorForUser(err: unknown): string {
   }
   if (code === "PROJECT_STORAGE_UNAVAILABLE") {
     return "프로젝트 저장소를 준비하지 못했습니다. 잠시 후 다시 시도하세요.";
+  }
+  if (code === "TEAMVER_INSUFFICIENT_BALANCE") {
+    return "크레딧이 부족해 이번 작업을 시작할 수 없습니다.";
+  }
+  if (code === "TEAMVER_BALANCE_UNAVAILABLE") {
+    return "크레딧 잔액을 확인할 수 없어 이번 작업을 시작할 수 없습니다.";
   }
   if (code === "UNAUTHORIZED" || code === "FORBIDDEN") {
     return "API 인증에 실패했습니다. 잠시 후 다시 시도하거나 관리자에게 문의하세요.";

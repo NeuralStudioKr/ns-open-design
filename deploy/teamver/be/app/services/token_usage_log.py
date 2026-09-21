@@ -56,6 +56,19 @@ async def alog_token_usage(
     credits_amount_t = metered.amount_t if metered.amount_t > 0 else None
     try:
         async with async_session_maker() as db:
+            from ..config import settings
+            from . import billing_outbox
+
+            billing_status = scope.billing_status
+            should_enqueue = (
+                not settings.teamver_billing_disabled
+                and (scope.run_status or "").lower() in {"succeeded", "success", "completed"}
+                and bool(credits_amount_t)
+                and bool((scope.workspace_id or "").strip())
+                and bool((scope.run_id or "").strip())
+            )
+            if should_enqueue:
+                billing_status = "pending"
             await token_usage_crud.aupsert_usage(
                 db,
                 model_name=model_name,
@@ -71,7 +84,7 @@ async def alog_token_usage(
                 run_status=scope.run_status,
                 token_count_source=scope.token_count_source,
                 registry_usage_id=scope.registry_usage_id,
-                billing_status=scope.billing_status,
+                billing_status=billing_status,
                 credits_committed=scope.credits_committed,
                 cache_read_input_tokens=scope.cache_read_input_tokens,
                 cache_creation_input_tokens=scope.cache_creation_input_tokens,
@@ -81,6 +94,14 @@ async def alog_token_usage(
                 latency_ms=scope.latency_ms,
                 stop_reason=scope.stop_reason,
             )
+            if should_enqueue:
+                await billing_outbox.enqueue(
+                    db,
+                    workspace_id=str(scope.workspace_id),
+                    run_id=str(scope.run_id),
+                    amount_t=int(credits_amount_t or 0),
+                    model_name=model_name,
+                )
             await db.commit()
     except Exception:
         logger.exception(

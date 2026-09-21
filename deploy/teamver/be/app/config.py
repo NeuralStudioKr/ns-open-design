@@ -122,6 +122,24 @@ class Settings(BaseModel):
     design_billing_b2b_price_to_cost_ratio: float = Field(
         default_factory=lambda: float(os.getenv("DESIGN_BILLING_B2B_PRICE_TO_COST_RATIO", "2.5") or "2.5")
     )
+    design_billing_outbox_drain_tick_sec: int = Field(
+        default_factory=lambda: _env_nonneg_int("DESIGN_BILLING_OUTBOX_DRAIN_TICK_SEC", default=300)
+    )
+    design_billing_outbox_drain_workspace_limit: int = Field(
+        default_factory=lambda: _env_nonneg_int("DESIGN_BILLING_OUTBOX_DRAIN_WORKSPACE_LIMIT", default=20)
+    )
+    design_billing_outbox_drain_runs_per_ws: int = Field(
+        default_factory=lambda: _env_nonneg_int("DESIGN_BILLING_OUTBOX_DRAIN_RUNS_PER_WS", default=200)
+    )
+    design_billing_outbox_lock_ttl_sec: int = Field(
+        default_factory=lambda: _env_nonneg_int("DESIGN_BILLING_OUTBOX_LOCK_TTL_SEC", default=60)
+    )
+    design_billing_outbox_max_attempts: int = Field(
+        default_factory=lambda: _env_nonneg_int("DESIGN_BILLING_OUTBOX_MAX_ATTEMPTS", default=5)
+    )
+    design_billing_balance_cache_ttl_sec: int = Field(
+        default_factory=lambda: _env_nonneg_int("DESIGN_BILLING_BALANCE_CACHE_TTL_SEC", default=60)
+    )
 
     # Embed managed API mode — server env only (never VITE_* / git)
     # Empty means "inherit TEAMVER_DESIGN_DEFAULT_PROVIDER when set".
@@ -237,28 +255,17 @@ class Settings(BaseModel):
             raise ValueError(
                 f"TEAMVER_OD_API_KEY or TEAMVER_MINIMAX_API_KEY is required in {deploy_env}"
             )
-        registry_configured = all(
-            value.strip()
-            for value in (
-                self.teamver_registry_app_id,
-                self.teamver_registry_key_id,
-                self.teamver_registry_access_key,
-            )
-        )
-        if not registry_configured and not self.teamver_billing_disabled:
-            raise ValueError(
-                f"TEAMVER_REGISTRY_* credentials or TEAMVER_BILLING_DISABLED=1 "
-                f"are required in {deploy_env}"
-            )
-        # 0918-N07 — when billing is ON, require a priced meter path or flat
-        # reserve so estimate-reserve / BYOK meter do not silently skip charge.
-        if registry_configured and not self.teamver_billing_disabled:
+        if not self.teamver_billing_disabled:
             has_prices = bool((self.design_model_prices_json or "").strip())
-            has_flat = self.teamver_billing_reserve_amount > 0
-            if not has_prices and not has_flat:
+            if not has_prices:
                 raise ValueError(
-                    f"DESIGN_MODEL_PRICES_JSON or TEAMVER_BILLING_RESERVE_AMOUNT>0 "
-                    f"is required in {deploy_env} when TEAMVER_BILLING_DISABLED is off"
+                    f"DESIGN_MODEL_PRICES_JSON is required in {deploy_env} "
+                    f"when TEAMVER_BILLING_DISABLED is off"
+                )
+            if not (self.teamver_internal_api_key or "").strip():
+                raise ValueError(
+                    f"TEAMVER_INTERNAL_API_KEY is required in {deploy_env} "
+                    f"when TEAMVER_BILLING_DISABLED is off"
                 )
         return self
 

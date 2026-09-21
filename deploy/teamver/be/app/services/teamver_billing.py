@@ -1,43 +1,101 @@
-"""Main BE Registry billing — Phase 2. teamver-app-sdk ``BillingClient``."""
+"""Main Apps credits — 0918-N07-2. M2M internal key only. Registry 호출 없음."""
 from __future__ import annotations
 
 import logging
 from typing import Any
 
-from teamver_app_sdk.registry import AppServiceRegistryCredentials
+import httpx
 
 from ..config import settings
-from ..teamver_sdk import get_teamver_client
 
 logger = logging.getLogger(__name__)
 
+_INTERNAL_KEY_HEADER = "X-Teamver-Internal-Api-Key"
 
-def _registry_credentials() -> AppServiceRegistryCredentials:
-    app_id = (settings.teamver_registry_app_id or "").strip()
-    key_id = (settings.teamver_registry_key_id or "").strip()
-    access_key = (settings.teamver_registry_access_key or "").strip()
-    if not app_id or not key_id or not access_key:
-        raise RuntimeError("registry_credentials_not_configured")
-    return AppServiceRegistryCredentials(app_id=app_id, key_id=key_id, access_key=access_key)
+
+def _main_base() -> str:
+    return (settings.teamver_api_base_url or "").rstrip("/")
+
+
+def _internal_headers() -> dict[str, str]:
+    key = (settings.teamver_internal_api_key or "").strip()
+    if not key:
+        raise RuntimeError("internal_api_key_not_configured")
+    return {_INTERNAL_KEY_HEADER: key}
+
+
+def _timeout() -> float:
+    return max(1.0, float(settings.teamver_http_timeout_seconds or 5))
+
+
+async def get_spendable(*, workspace_id: str) -> int:
+    ws = (workspace_id or "").strip()
+    if not ws:
+        raise RuntimeError("missing_workspace_id")
+    url = f"{_main_base()}/internal/apps/design/credits/spendable"
+    async with httpx.AsyncClient(timeout=_timeout()) as client:
+        response = await client.get(
+            url,
+            params={"workspace_id": ws},
+            headers=_internal_headers(),
+        )
+    if response.status_code != 200:
+        logger.warning(
+            "spendable http_%s workspace=%s body=%s",
+            response.status_code,
+            ws,
+            response.text[:300],
+        )
+        raise RuntimeError(f"spendable_http_{response.status_code}")
+    payload = response.json()
+    return max(0, int(payload.get("spendable_t") or 0))
+
+
+async def consume_credits(
+    *,
+    workspace_id: str,
+    amount_t: int,
+    reference_id: str,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    ws = (workspace_id or "").strip()
+    ref = (reference_id or "").strip()
+    amount = int(amount_t)
+    if not ws or not ref or amount < 1:
+        raise RuntimeError("invalid_consume_body")
+    url = f"{_main_base()}/internal/apps/design/credits/consume"
+    body: dict[str, Any] = {
+        "workspace_id": ws,
+        "amount_t": amount,
+        "reference_id": ref,
+    }
+    if user_id and user_id.strip():
+        body["user_id"] = user_id.strip()
+    async with httpx.AsyncClient(timeout=_timeout()) as client:
+        response = await client.post(url, json=body, headers=_internal_headers())
+    if response.status_code == 400:
+        text = (response.text or "").lower()
+        if "insufficient" in text:
+            raise RuntimeError("insufficient_balance")
+        raise RuntimeError(f"consume_http_{response.status_code}")
+    if response.status_code != 200:
+        raise RuntimeError(f"consume_http_{response.status_code}")
+    return response.json() if response.content else {"status": "consumed"}
 
 
 async def reserve_credits(*, workspace_id: str, amount: int, reason: str = "design_run") -> dict[str, Any]:
-    client = get_teamver_client()
-    return await client.billing.reserve(
-        workspace_id=workspace_id,
-        amount=amount,
-        reason=reason,
-        credentials=_registry_credentials(),
-        app_id=settings.teamver_registry_app_id or None,
-    )
+    logger.warning("reserve_credits retired — use consume_credits")
+    return {}
 
 
 async def commit_usage(*, usage_id: str) -> dict[str, Any]:
-    client = get_teamver_client()
-    return await client.billing.commit(
-        usage_id=usage_id,
-        credentials=_registry_credentials(),
-    )
+    logger.warning("commit_usage retired")
+    return {}
+
+
+async def refund_usage(*, usage_id: str, reason: str = "design_run_failed") -> dict[str, Any]:
+    logger.warning("refund_usage retired")
+    return {}
 
 
 async def post_presentation_completed(
@@ -47,34 +105,10 @@ async def post_presentation_completed(
     artifact_id: str,
     job_id: str | None = None,
 ) -> dict[str, Any]:
-    """PPT KPI. Main ``POST /api/app-service/events`` ``presentation.completed``.
-
-    토큰 ``/usage/events`` 와 별개. 크레딧으로 PPT 건수를 세지 않는다.
-    """
-    client = get_teamver_client()
-    app_id = (settings.teamver_registry_app_id or "").strip() or None
-    metadata: dict[str, Any] = {
-        "artifact_id": artifact_id,
-        "workspace_id": workspace_id,
-        "user_id": user_id,
-    }
-    job = (job_id or "").strip()
-    if job:
-        metadata["job_id"] = job
-    return await client.app_service.post_event(
-        workspace_id=workspace_id,
-        event_type="presentation.completed",
-        credentials=_registry_credentials(),
-        app_id=app_id,
-        user_id=user_id,
-        metadata=metadata,
+    """PPT KPI. Registry 없이 skip — product_usage 는 별도 ingest."""
+    logger.info(
+        "presentation.completed skipped (no registry) workspace=%s artifact=%s",
+        workspace_id,
+        artifact_id,
     )
-
-
-async def refund_usage(*, usage_id: str, reason: str = "design_run_failed") -> dict[str, Any]:
-    client = get_teamver_client()
-    return await client.billing.refund(
-        usage_id=usage_id,
-        reason=reason,
-        credentials=_registry_credentials(),
-    )
+    return {"skipped": True}

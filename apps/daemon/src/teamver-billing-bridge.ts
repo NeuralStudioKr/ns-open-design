@@ -1,29 +1,16 @@
-// Daemon → design-api `/api/internal/billing/{reserve,commit,refund}` bridge.
+// Daemon → design-api billing bridge (0918-N07-2).
 //
-// Mirrors `teamver-usage-bridge.ts`. Bridge for Registry Phase 2 wiring
-// (docs-teamver/04 A9, docs-teamver/11 §B-1):
-//   - `reserveTeamverBillingFromDaemon` is called at chat run start;
-//     callers persist the returned `usageId` on the run object as
-//     `run.teamverBillingUsageId` so the terminal hook can finalize.
-//   - `commitTeamverBillingFromDaemon` runs on terminal `succeeded`.
-//   - `refundTeamverBillingFromDaemon` runs on `failed` / `canceled`.
+// Run start uses `estimate-reserve` as a 0-balance gate. Policies:
+//   billing_disabled | billing_deferred | insufficient_balance | balance_unavailable
+// A positive estimate amount is not used for a full-amount reserve.
+// `TEAMVER_BILLING_RESERVE_AMOUNT` must not fire.
+//
+// Legacy reserve/commit/refund stay for leftover usage_id only. New runs
+// enqueue on design-api and drain via Main M2M consume.
 //
 // Env knobs:
-//   - `TEAMVER_BILLING_DISABLED`          — kill switch (1/true/yes/on), all calls no-op.
-//   - `TEAMVER_BILLING_RESERVE_AMOUNT=N`  — fallback amount when caller
-//     passes amount==0 (positive int; invalid/NaN/non-positive skips billing).
-//   - `TEAMVER_BILLING_TIMEOUT_MS=ms`     — override HTTP timeout
-//     (clamped to 100..30000; default 5000).
-//
-// The bridge stays a no-op (returns `ok=true, usageId=null, skipped=true`) when:
-//   - `TEAMVER_BILLING_DISABLED` is truthy (1/true/yes/on — mirrors BE `_env_bool`), or
-//   - `TEAMVER_DESIGN_API_URL` is unset (standalone OD), or
-//   - `TEAMVER_INTERNAL_API_KEY` is unset, or
-//   - the design-api orchestrator skipped reserve because registry creds
-//     (`TEAMVER_REGISTRY_*`) are absent on the BE side.
-//
-// Failures return `{ ok: false }` — callers that enforced reserve (non-skipped
-// path) must abort the run. Commit/refund still degrade and never throw.
+//   - `TEAMVER_BILLING_DISABLED` — kill switch (1/true/yes/on), all calls no-op.
+//   - `TEAMVER_BILLING_TIMEOUT_MS` — HTTP timeout (100..30000; default 5000).
 
 import { teamverDesignApiBaseUrl } from './teamver-project-access.js';
 import type { TeamverRequestIdentity } from './teamver-project-access.js';
@@ -75,15 +62,6 @@ function billingTimeoutMs(): number {
   const parsed = Number(raw);
   if (!Number.isFinite(parsed)) return DEFAULT_TIMEOUT_MS;
   return Math.min(MAX_TIMEOUT_MS, Math.max(MIN_TIMEOUT_MS, Math.floor(parsed)));
-}
-
-function reserveAmountEnvFallback(): number | null {
-  const raw = (process.env.TEAMVER_BILLING_RESERVE_AMOUNT ?? '').trim();
-  if (!raw) return null;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) return null;
-  if (parsed <= 0) return null;
-  return Math.floor(parsed);
 }
 
 function emitUsage5xxMarker(stage: string, fields: Record<string, unknown>): void {
@@ -140,14 +118,14 @@ async function postJson<T>(
 function resolveReserveAmount(callerAmount: number): number | null {
   if (!Number.isFinite(callerAmount) || callerAmount < 0) return null;
   if (callerAmount > 0) return Math.floor(callerAmount);
-  const fallback = reserveAmountEnvFallback();
-  return fallback ?? 0;
+  return 0;
 }
 
 export type ResolveTeamverBillingReserveAmountResult = {
   amount: number;
   billingWired: boolean;
   estimateUnavailable: boolean;
+  policy?: string;
 };
 
 export async function resolveTeamverBillingReserveAmountFromDaemon(args: {
@@ -156,29 +134,16 @@ export async function resolveTeamverBillingReserveAmountFromDaemon(args: {
 }): Promise<ResolveTeamverBillingReserveAmountResult> {
   const env = billingEnv();
   if (!env) {
-    return { amount: 0, billingWired: false, estimateUnavailable: false };
+    return { amount: 0, billingWired: false, estimateUnavailable: false, policy: 'billing_disabled' };
   }
 
   const modelName = (args.modelName ?? '').trim() || 'default';
   const workspaceId = (args.workspaceId ?? '').trim();
-  const envFallback = reserveAmountEnvFallback();
-
-  const finish = (
-    amount: number,
-    estimateUnavailable: boolean,
-  ): ResolveTeamverBillingReserveAmountResult => {
-    if (amount > 0) {
-      return { amount: Math.floor(amount), billingWired: true, estimateUnavailable };
-    }
-    if (envFallback && envFallback > 0) {
-      return { amount: envFallback, billingWired: true, estimateUnavailable: true };
-    }
-    return { amount: 0, billingWired: true, estimateUnavailable };
-  };
 
   try {
     const { status, payload } = await postJson<{
       amount_t?: number;
+      policy?: string;
     }>(
       `${env.baseUrl}/api/internal/billing/estimate-reserve`,
       env.apiKey,
@@ -186,19 +151,30 @@ export async function resolveTeamverBillingReserveAmountFromDaemon(args: {
       billingTimeoutMs(),
     );
     if (status !== 200 || !payload) {
-      return finish(0, true);
+      return { amount: 0, billingWired: true, estimateUnavailable: true, policy: 'balance_unavailable' };
+    }
+    const policy = String(payload.policy || '').trim();
+    if (policy === 'insufficient_balance' || policy === 'balance_unavailable') {
+      return {
+        amount: 0,
+        billingWired: true,
+        estimateUnavailable: policy === 'balance_unavailable',
+        policy,
+      };
+    }
+    if (policy === 'billing_disabled' || policy === 'billing_deferred') {
+      return { amount: 0, billingWired: true, estimateUnavailable: false, policy };
     }
     const amount = Number(payload.amount_t);
     if (!Number.isFinite(amount) || amount < 0) {
-      return finish(0, true);
+      return { amount: 0, billingWired: true, estimateUnavailable: true, policy: policy || 'balance_unavailable' };
     }
     if (amount === 0) {
-      // Legitimate zero estimate (no price table / billing skipped on BE) — not a transport failure.
-      return { amount: 0, billingWired: true, estimateUnavailable: false };
+      return { amount: 0, billingWired: true, estimateUnavailable: false, policy: policy || 'billing_deferred' };
     }
-    return finish(amount, false);
+    return { amount: Math.floor(amount), billingWired: true, estimateUnavailable: false, policy: policy || 'metered' };
   } catch {
-    return finish(0, true);
+    return { amount: 0, billingWired: true, estimateUnavailable: true, policy: 'balance_unavailable' };
   }
 }
 

@@ -86,6 +86,29 @@ def apply_postgres_schema_patches() -> None:
         "ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS latency_ms INTEGER;",
         "ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS stop_reason TEXT;",
         """
+        CREATE TABLE IF NOT EXISTS design_billing_outbox (
+          id TEXT PRIMARY KEY,
+          workspace_id TEXT NOT NULL,
+          run_id TEXT NOT NULL,
+          amount_t INTEGER NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending',
+          settlement_id TEXT,
+          consume_reference_id TEXT,
+          consume_attempted BOOLEAN NOT NULL DEFAULT false,
+          locked_until TIMESTAMPTZ,
+          attempts INTEGER NOT NULL DEFAULT 0,
+          last_error TEXT,
+          model_name TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          UNIQUE (workspace_id, run_id)
+        );
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_design_billing_outbox_status_ws
+          ON design_billing_outbox (status, workspace_id);
+        """,
+        """
         CREATE TABLE IF NOT EXISTS workspace_billing_plans (
           workspace_id TEXT PRIMARY KEY,
           plan_id TEXT NOT NULL,

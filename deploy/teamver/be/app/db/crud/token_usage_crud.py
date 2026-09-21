@@ -29,6 +29,7 @@ _BILLING_STATUS_PRIORITY: dict[str, int] = {
     "not_configured": 1,
     "not_metered": 1,
     "meter_failed": 1,
+    "pending": 2,
     "reserving": 2,  # in-flight claim — blocks concurrent double-reserve
     "reserved": 3,
     "reserve_failed": 4,

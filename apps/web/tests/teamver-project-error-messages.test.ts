@@ -372,6 +372,20 @@ describe("project conversation error messages", () => {
     const sessionErr = new Error("session probe failed") as Error & { code?: string };
     sessionErr.code = "session_unreachable";
     expect(formatProjectRunErrorForUser(sessionErr)).toContain("Teamver 세션");
+    const insufficientErr = new Error("TEAMVER_INSUFFICIENT_BALANCE") as Error & {
+      code?: string;
+    };
+    insufficientErr.code = "TEAMVER_INSUFFICIENT_BALANCE";
+    expect(formatProjectRunErrorForUser(insufficientErr)).toBe(
+      "크레딧이 부족해 이번 작업을 시작할 수 없습니다.",
+    );
+    const balanceUnavailableErr = new Error("TEAMVER_BALANCE_UNAVAILABLE") as Error & {
+      code?: string;
+    };
+    balanceUnavailableErr.code = "TEAMVER_BALANCE_UNAVAILABLE";
+    expect(formatProjectRunErrorForUser(balanceUnavailableErr)).toBe(
+      "크레딧 잔액을 확인할 수 없어 이번 작업을 시작할 수 없습니다.",
+    );
     const unauthorizedErr = new Error("proxy 401: UNAUTHORIZED invalid key") as Error & {
       code?: string;
     };

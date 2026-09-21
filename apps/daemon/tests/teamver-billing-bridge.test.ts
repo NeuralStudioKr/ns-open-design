@@ -58,6 +58,7 @@ describe('teamver-billing-bridge', () => {
         amount: 42,
         billingWired: true,
         estimateUnavailable: false,
+        policy: 'metered',
       });
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/api/internal/billing/estimate-reserve');
@@ -92,11 +93,12 @@ describe('teamver-billing-bridge', () => {
         amount: 0,
         billingWired: false,
         estimateUnavailable: false,
+        policy: 'billing_disabled',
       });
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it('falls back to TEAMVER_BILLING_RESERVE_AMOUNT when estimate fails', async () => {
+    it('does not fall back to TEAMVER_BILLING_RESERVE_AMOUNT when estimate fails', async () => {
       vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
       vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'k');
       vi.stubEnv('TEAMVER_BILLING_RESERVE_AMOUNT', '25');
@@ -104,17 +106,19 @@ describe('teamver-billing-bridge', () => {
       vi.stubGlobal('fetch', fetchMock);
 
       await expect(resolveTeamverBillingReserveAmountFromDaemon({ modelName: 'm' })).resolves.toEqual({
-        amount: 25,
+        amount: 0,
         billingWired: true,
         estimateUnavailable: true,
+        policy: 'balance_unavailable',
       });
     });
 
-    it('treats legitimate zero estimate as available (caller fail-closed when wired)', async () => {
+    it('maps insufficient_balance without using a reserve amount', async () => {
       vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
       vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'k');
+      vi.stubEnv('TEAMVER_BILLING_RESERVE_AMOUNT', '25');
       const fetchMock: FetchMock = vi.fn().mockResolvedValue(
-        jsonResponse(200, { amount_t: 0, policy: 'skipped' }),
+        jsonResponse(200, { amount_t: 0, policy: 'insufficient_balance' }),
       );
       vi.stubGlobal('fetch', fetchMock);
 
@@ -122,6 +126,23 @@ describe('teamver-billing-bridge', () => {
         amount: 0,
         billingWired: true,
         estimateUnavailable: false,
+        policy: 'insufficient_balance',
+      });
+    });
+
+    it('treats legitimate zero estimate as available (caller fail-closed when wired)', async () => {
+      vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+      vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'k');
+      const fetchMock: FetchMock = vi.fn().mockResolvedValue(
+        jsonResponse(200, { amount_t: 0, policy: 'billing_deferred' }),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(resolveTeamverBillingReserveAmountFromDaemon({ modelName: 'm' })).resolves.toEqual({
+        amount: 0,
+        billingWired: true,
+        estimateUnavailable: false,
+        policy: 'billing_deferred',
       });
     });
 
@@ -135,6 +156,7 @@ describe('teamver-billing-bridge', () => {
         amount: 0,
         billingWired: true,
         estimateUnavailable: true,
+        policy: 'balance_unavailable',
       });
     });
   });
@@ -215,13 +237,11 @@ describe('teamver-billing-bridge', () => {
       });
     });
 
-    it('uses TEAMVER_BILLING_RESERVE_AMOUNT fallback when caller amount is 0', async () => {
+    it('does not use TEAMVER_BILLING_RESERVE_AMOUNT when caller amount is 0', async () => {
       vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
       vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'k');
       vi.stubEnv('TEAMVER_BILLING_RESERVE_AMOUNT', '50');
-      const fetchMock: FetchMock = vi.fn(async () =>
-        jsonResponse(200, { ok: true, usage_id: 'u-2' }),
-      );
+      const fetchMock: FetchMock = vi.fn();
       vi.stubGlobal('fetch', fetchMock);
 
       const result = await reserveTeamverBillingFromDaemon({
@@ -229,9 +249,13 @@ describe('teamver-billing-bridge', () => {
         identity,
         amount: 0,
       });
-      expect(result.ok).toBe(true);
-      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-      expect(JSON.parse(String(init.body)).amount).toBe(50);
+      expect(result).toEqual({
+        ok: true,
+        usageId: null,
+        skipped: true,
+        error: 'billing_amount_not_configured',
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it('caller amount > 0 takes priority over RESERVE_AMOUNT fallback', async () => {
@@ -295,7 +319,6 @@ describe('teamver-billing-bridge', () => {
     it('treats registry_not_configured BE response as ok without usage_id', async () => {
       vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
       vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'k');
-      vi.stubEnv('TEAMVER_BILLING_RESERVE_AMOUNT', '25');
       const fetchMock: FetchMock = vi.fn(async () =>
         jsonResponse(200, { ok: true, usage_id: null, error: 'registry_not_configured' }),
       );
@@ -304,7 +327,7 @@ describe('teamver-billing-bridge', () => {
       const result = await reserveTeamverBillingFromDaemon({
         runId: 'run-1',
         identity,
-        amount: 0,
+        amount: 5,
       });
       expect(result.ok).toBe(true);
       expect(result.usageId).toBeNull();

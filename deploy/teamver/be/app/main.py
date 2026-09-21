@@ -44,7 +44,20 @@ async def lifespan(app: FastAPI):
         except Exception:
             logger.exception("Postgres schema ensure failed")
             raise
-        yield
+        drain_task = None
+        if not settings.teamver_billing_disabled:
+            from .services.billing_outbox import drain_loop
+
+            drain_task = asyncio.create_task(drain_loop())
+        try:
+            yield
+        finally:
+            if drain_task is not None:
+                drain_task.cancel()
+                try:
+                    await drain_task
+                except asyncio.CancelledError:
+                    pass
     from .services.drive_proxy import aclose_drive_proxy_client
 
     await aclose_drive_proxy_client()
