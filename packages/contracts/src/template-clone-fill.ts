@@ -2097,6 +2097,181 @@ function looksLikeRawGridPitchSynthContext(
   return officialLookIsRawGridPitch(hay);
 }
 
+/**
+ * 0921-N04 (루프570) — Kit-branded copy packs whose card titles / lead
+ * sentences hardcode Teamver product features (같은 보드 · 권한 경계 · 결과
+ * 이력 · 초안과 수정 · 팀 보드 복제 …). `${brand}` 치환은 문장 안의
+ * '${brand}에서 초안과 피드백이 …'만 바꿀 뿐, 카드 title '같은 보드'는
+ * 그대로다. 따라서 브리프가 Teamver 제품이 아닐 때 이 팩들을 그대로
+ * 쓰면 non-Teamver 덱(예: neuralstudio.kr 회사 소개)에 Teamver 마케팅이
+ * 문장으로 그대로 새어 나온다.
+ *
+ * Product-launch-halo와 raw-grid-pitch는 이미 topic-parameterized한 문장을
+ * 반환하므로 이 목록에서 제외한다.
+ */
+const TEAMVER_BRANDED_KIT_KEYS: ReadonlySet<string> = new Set([
+  'cobalt-grid',
+  'block-frame-neo',
+  'grove',
+  'studio',
+  'eightbit-orbit',
+  'capsule',
+  'daisy-days',
+  'broadside',
+  'playful',
+  'coral',
+  'mat',
+  'biennale-yellow',
+]);
+
+/**
+ * 0921-N04 (루프570) — True when the brief / cover / label explicitly names
+ * Teamver as the product being pitched.
+ *
+ * Teamver-scoped 팩은 `${brand}에서 초안과 피드백이 …` 같은 제품 특유의
+ * 마케팅 문장을 하드코딩한다. 이 문장들은 브리프가 실제 Teamver 제품
+ * 소개일 때만 정확하다. 그 외에는 kitKey를 비워 `templatesForSynthTemplateTopic`
+ * fallback으로 fall-through하여 토픽-중립 서비스 인트로 아웃라인을 만든다.
+ */
+export function briefIsAboutTeamverProduct(
+  cover?: string | null,
+  brief?: string | null,
+  label?: string | null,
+): boolean {
+  const hay = `${cover ?? ''}\n${brief ?? ''}\n${label ?? ''}`;
+  return /(?:^|[^a-zA-Z0-9])(?:teamver|팀버)(?:[^a-zA-Z0-9]|$)/i.test(hay);
+}
+
+/**
+ * 0921-N04 (루프570) — Teamver 제품 기능 이름을 카드 title로 하드코딩한 kit
+ * copy pack이 non-Teamver 브리프에도 새어 나온다. 최종 HTML에서 이들을
+ * 토픽-중립 명사구로 치환하여 예: `neuralstudio.kr 회사 소개` 덱이 `같은
+ * 보드 / 권한 경계 / 결과 이력` 카드를 그대로 노출하지 않도록 한다.
+ *
+ * 매핑 원칙:
+ *   - Teamver 제품 특유의 명명(보드·워크스페이스·감사 흐름)을 벗기고,
+ *     서비스/제품 소개 덱에서 일반적으로 통하는 명사구로 바꾼다.
+ *   - `${brand}`가 interpolate된 body 문장은 별도로 다루지 않는다. 카드
+ *     title보다 훨씬 덜 눈에 띄고, brand는 topic-derived이므로 어느 정도
+ *     읽힌다.
+ */
+const TEAMVER_HARDCODED_PACK_TITLE_MAP: ReadonlyArray<readonly [string, string]> = [
+  ['같은 보드', '통합 화면'],
+  ['권한 경계', '역할 정의'],
+  ['결과 이력', '변경 이력'],
+  ['같은 맥락', '공통 맥락'],
+  ['같은 화면', '단일 화면'],
+  ['나뉜 권한', '분리 권한'],
+  ['한 팀 보드', '첫 도입'],
+  ['리뷰 습관', '리뷰 방식'],
+  ['조직 기준', '조직 표준'],
+  ['이어서 쓰기', '지속 사용'],
+  ['이어서 고치기', '지속 개선'],
+  ['팀 보드 복제', '템플릿 복제'],
+  ['대문 보드 체험', '시작 체험'],
+  ['도입 헤이지 연결', '도입 절차'],
+  ['보드에서 이어 쓰기', '이어서 사용하기'],
+  ['보드를 연다', '작업을 시작한다'],
+  ['권한을 나눈다', '역할을 나눈다'],
+  ['이력을 남긴다', '기록을 남긴다'],
+  ['한 팀 보드로', '첫 단계로'],
+  ['팀 보드', '작업 공간'],
+  ['한 보드', '한 공간'],
+];
+
+/**
+ * 0921-N04 (루프570) — Body 문장의 Teamver 제품 특유 서술구도 함께 치환한다.
+ * `${brand}에서 …`처럼 brand는 topic-parameterized 되지만 뒤에 오는 서술구
+ * ("초안과 피드백이 파일 밖으로 흩어지지 않는다")는 제품-특유 마케팅
+ * 문장이라 non-Teamver 브리프에서 어색하다.
+ */
+const TEAMVER_HARDCODED_PACK_BODY_MAP: ReadonlyArray<readonly [RegExp, string]> = [
+  [/초안과 피드백이 파일 밖으로 흩어지지 않는다/g, '핵심 자료가 한곳에 모인다'],
+  [/보기와 고치기를 슬라이드마다 정한다/g, '역할별 접근 범위를 정한다'],
+  [/누가 언제 바꿨는지 남기고 되돌린다/g, '변경 기록을 남기고 이전 상태로 되돌린다'],
+  [/누가 언제 바꿨는지 남기고 필요하면 되돌린다/g, '변경 기록을 남기고 필요할 때 되돌린다'],
+  [/보드에 바로 붙일 수 있는 초안이 열린다/g, '바로 활용할 수 있는 시작 자료가 열린다'],
+  [/보낸 뒤에도 같은 화면에서 문장과 레이아웃을 고친다/g, '전달한 뒤에도 같은 화면에서 이어 다듬는다'],
+  [/필요한 사람만 초대해 보기와 고치기를 나눈다/g, '필요한 사람만 초대해 역할을 나눈다'],
+  [/댓글과 버전을 같은 화면에서 고정한다/g, '피드백과 버전을 같은 화면에서 정리한다'],
+  [/워크스페이스 기본값으로 감사와 보내기 규칙을 둔다/g, '조직 기본값으로 검토와 전달 기준을 둔다'],
+  [/쓸 방을 열고 첫 보드에 팀을 초대한다/g, '첫 화면을 열고 팀을 초대한다'],
+  [/보드를 열고 권한을 나눈 뒤 이력을 남긴다/g, '작업을 시작하고 역할을 나눈 뒤 기록을 남긴다'],
+  [/파일과 대화를 한 맥락으로 연다/g, '자료와 대화를 한 맥락으로 연다'],
+  [/파일과 대화가 한 화면으로 열린다/g, '자료와 대화가 한 화면으로 열린다'],
+  [/파일과 대화가 한곳으로 모인다/g, '자료와 대화가 한곳으로 모인다'],
+  [/초안과 리뷰가 한 보드에 남는다/g, '진행 상황이 한 화면에 남는다'],
+  [/초안과 리뷰가 흩어지지 않는다/g, '진행 상황이 흩어지지 않는다'],
+  // 카드 title 밖(문장 안)에 남는 하드코드 제품 명명.
+  [/같은 맥락에서/g, '공통 맥락에서'],
+  [/같은 맥락으로/g, '공통 맥락으로'],
+  [/같은 맥락에/g, '공통 맥락에'],
+  [/같은 보드에서/g, '통합 화면에서'],
+  [/같은 보드에/g, '통합 화면에'],
+  [/같은 화면에서/g, '단일 화면에서'],
+  [/같은 화면에/g, '단일 화면에'],
+  [/한 보드에/g, '한 화면에'],
+  [/한 팀 보드/g, '첫 도입'],
+  [/팀 보드/g, '작업 공간'],
+  [/보드에서 이어 쓰기/g, '이어서 사용하기'],
+  [/보드에 바꾼 시점을 고정한다/g, '작업 이력의 시점을 고정한다'],
+  [/보드에 바꾼 사람과 시점을 고정한다/g, '변경한 사람과 시점을 기록한다'],
+  [/보드에 초안을 바로 연다/g, '작업 화면에서 시작 자료를 연다'],
+  [/보드에 붙일 초안이 같은 자리에서 열린다/g, '작업 화면에 붙일 시작 자료가 같은 자리에서 열린다'],
+  [/보드로 옮긴다/g, '작업 공간으로 옮긴다'],
+  [/보드로 옮기고 보기·고치기 권한을 나눈다/g, '작업 공간으로 옮기고 역할을 나눈다'],
+  [/워크스페이스로 옮긴다/g, '작업 공간으로 옮긴다'],
+  [/에서 쓸 방을 열고/g, '에서 시작 화면을 열고'],
+  [/워크스페이스 기준으로 이력과 보내기를 고정한다/g, '조직 기준으로 이력과 전달을 정한다'],
+];
+
+/**
+ * 0921-N04 (루프570) — 최종 덱 HTML에서 Teamver 하드코드 카드 title / body
+ * 서술구를 토픽-중립 문구로 치환한다. `briefIsAboutTeamverProduct`가 true면
+ * 원본을 그대로 보존한다.
+ *
+ * 왜 최종 HTML 후처리인가:
+ *   - `fillSlideShell` → `fillCapsuleKitSlide` / `refillEmptyBlockFrameSlotsFromPack`
+ *     등 여러 경로에서 pack.items를 slot에 심는다. 각 filler에 brief를
+ *     threading하는 대신, 하나의 후처리 pass로 pack-owned 하드코드 문구를
+ *     정리한다.
+ *   - Element text content (`>...<`)만 정확히 겨냥해 attribute value / CSS
+ *     선택자 안의 임의 문자열은 건드리지 않는다.
+ */
+function neutralizeTeamverPackCopyInDeckHtml(
+  html: string,
+  brief?: string | null,
+  deckTitle?: string | null,
+): string {
+  if (briefIsAboutTeamverProduct(deckTitle, brief, null)) return html;
+  const source = String(html ?? '');
+  if (!source) return source;
+  let out = source;
+  // 0921-N04 · Title 하드코드는 element text 내부에 그대로도 나올 수 있고
+  // (`<h3>같은 보드</h3>`), body 문장 중간에도 붙어 나올 수 있어(`리뷰 습관과
+  // 조직 기준을 고정한다.`) 두 pass 모두 필요하다.
+  //   - Pass 1: `>...<`로 감싸진 정확한 title slot을 우선 치환 (더 정확).
+  //   - Pass 2: 잔여 하드코드가 문장 중간에 남아 있으면 raw substring으로 치환.
+  //     Teamver 제품 특유 명명(같은 보드/권한 경계/결과 이력/한 팀 보드/리뷰
+  //     습관 …)은 다른 문맥에서 재등장할 확률이 낮아 안전하다.
+  for (const [teamverTitle, neutralTitle] of TEAMVER_HARDCODED_PACK_TITLE_MAP) {
+    const teamverEsc = teamverTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const titleRe = new RegExp(
+      `(>|&gt;)(\\s*)${teamverEsc}(\\s*)(<|&lt;)`,
+      'g',
+    );
+    out = out.replace(titleRe, (_m, openBr: string, ws1: string, ws2: string, closeBr: string) => (
+      `${openBr}${ws1}${neutralTitle}${ws2}${closeBr}`
+    ));
+    const rawRe = new RegExp(teamverEsc, 'g');
+    out = out.replace(rawRe, neutralTitle);
+  }
+  for (const [teamverBodyRe, neutralBody] of TEAMVER_HARDCODED_PACK_BODY_MAP) {
+    out = out.replace(teamverBodyRe, neutralBody);
+  }
+  return out;
+}
+
 export function synthesizeTemplateCloneSlideBody(
   cover: string,
   label: string,
@@ -2104,6 +2279,18 @@ export function synthesizeTemplateCloneSlideBody(
   brief?: string | null,
   kitKey?: string | null,
 ): Pick<TemplateCloneSlideContent, 'body' | 'roleHint' | 'items' | 'lead'> {
+  // 0921-N04 (루프570) — Kit-branded copy packs stamp Teamver product
+  // features (같은 보드 / 권한 경계 / 결과 이력 / 팀 보드 복제 …) as card
+  // titles that do not parameterize on `${brand}`. When the brief is not
+  // about the Teamver product, drop the kitKey so the function falls through
+  // to `templatesForSynthTemplateTopic`, which is topic-parameterized.
+  if (
+    kitKey
+    && TEAMVER_BRANDED_KIT_KEYS.has(kitKey)
+    && !briefIsAboutTeamverProduct(cover, brief, label)
+  ) {
+    kitKey = null;
+  }
   if (kitKey === COBALT_GRID_KIT_KEY) {
     // 루프557 — never inject service-intro biennale outline
     // (개요 / 핵심 포인트 / 탐색·실행·확장) into Cobalt Grid.
@@ -18597,6 +18784,12 @@ export function buildTemplateClonedDeckHtml(
   // 루프555 — MiniMax token-loop 반복(예: `다음 단계 다음 단계`) 축약.
   out = collapseAdjacentDuplicatedPhrasesInDeckText(out);
   out = renumberBiennalePagenums(out, filled.length);
+  // 0921-N04 (루프570) — Kit-branded copy pack들은 카드 title에 Teamver 제품
+  // 기능(같은 보드 · 권한 경계 · 결과 이력 …)을 하드코딩한다. `${brand}`
+  // interpolation은 body 문장에만 걸려서 title은 그대로 새어 나온다. 브리프가
+  // Teamver 제품에 대한 것이 아닐 때 최종 HTML에서 이들을 토픽-중립 명사구로
+  // 치환한다. Teamver 브리프에서는 no-op (pack의 원문이 유지된다).
+  out = neutralizeTeamverPackCopyInDeckHtml(out, options.brief, deckTitle);
   return out.trim() || null;
 }
 

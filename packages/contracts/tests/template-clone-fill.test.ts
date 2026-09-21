@@ -1044,8 +1044,63 @@ describe('루프450/459/469/470/472 Zhangzara template quality gates', () => {
       .replace(/<[^>]+>/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
-    expect(eighthText).toMatch(/같은 보드|권한 경계|결과 이력/);
+    // 0921-N04 (루프570) — brief가 non-Teamver(neuralstudio.kr 회사) 이므로
+    // Teamver 하드코드 pack title (같은 보드 · 권한 경계 · 결과 이력)이 새어
+    // 나오면 안 된다. 후처리에서 이들을 토픽-중립 명사구(통합 화면 · 역할
+    // 정의 · 변경 이력)로 치환한다.
+    expect(eighthText).not.toMatch(/같은 보드|권한 경계|결과 이력/);
+    expect(eighthText).toMatch(/통합 화면|역할 정의|변경 이력/);
     expect(cloned).not.toMatch(/BlockFrame\s*템플릿|채워\s*담아줘|비주얼로\s*구성/);
+  });
+
+  it('루프570: non-Teamver company brief에 kit copy pack Teamver 하드코드 문구가 새어 나오지 않는다', async () => {
+    // Regression red-spec for 0921-N04. Kit copy packs (block-frame, capsule,
+    // eightbit-orbit, daisy, broadside, playful, coral, mat, biennale,
+    // grove, studio, cobalt-grid) hardcode Teamver product feature names
+    // ('같은 보드' · '권한 경계' · '결과 이력' · '팀 보드 복제' …) as card
+    // titles that do NOT parameterize on ${brand}. When a brief is not about
+    // Teamver, these must be neutralized so a `neuralstudio.kr 회사 소개`
+    // deck does not ship with Teamver marketing phrases baked in.
+    const templates = [
+      'html-ppt-zhangzara-block-frame',
+      'html-ppt-zhangzara-capsule',
+      'html-ppt-zhangzara-8-bit-orbit',
+      'html-ppt-zhangzara-daisy-days',
+      'html-ppt-zhangzara-broadside',
+      'html-ppt-zhangzara-playful',
+    ];
+    const brief = 'neuralstudio.kr 회사 사이트야. 분석해서 회사 소개 ppt 만들어줘.';
+    const deckTitle = 'Neuralstudio KR 회사 소개';
+    const slides = resolveTemplateCloneSlidesForDeterministicFill({
+      userInstruction: brief,
+      deckTitle,
+      slideCount: 10,
+    });
+    const TEAMVER_HARDCODED_LEAK_RE = /같은 보드|권한 경계|결과 이력|같은 맥락|한 팀 보드|리뷰 습관|팀 보드 복제/;
+    for (const tpl of templates) {
+      let seed: string;
+      try {
+        seed = await readFile(
+          new URL(`../../../plugins/_official/examples/${tpl}/example.html`, import.meta.url),
+          'utf8',
+        );
+      } catch {
+        continue;
+      }
+      const cloned = buildTemplateClonedDeckHtml(seed, slides, {
+        title: deckTitle,
+        templateId: tpl,
+        brief,
+        maxSlides: 10,
+      });
+      const visible = String(cloned ?? '')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      expect(visible, `${tpl} leaked Teamver hardcoded pack titles into non-Teamver brief`).not.toMatch(TEAMVER_HARDCODED_LEAK_RE);
+    }
   });
 });
 
