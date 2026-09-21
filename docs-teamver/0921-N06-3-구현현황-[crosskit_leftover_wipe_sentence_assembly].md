@@ -29,3 +29,4 @@ Block Frame Teamver 덱에서 Coral chrome 이 row flex 를 깨고, leftover sub
 - [x] 루프571 red-spec (Teamver + Block Frame)
 - [x] `template-clone-fill` + loop558–562 leftover 389 pass
 - [x] staging N05 와 번호 충돌 해소 — 본 슬라이스를 0921-N06 으로 재넘버링
+- [x] 이미 저장된 잔재 persist heal → 루프572 [0921-N07-1](./0921-N07-1-상위설계-[block_frame_leftover_잔재_persist_heal].md)

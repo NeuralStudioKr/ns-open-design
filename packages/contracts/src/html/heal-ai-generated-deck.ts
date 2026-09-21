@@ -18,6 +18,7 @@ import {
 import { reconcileHeadingItemCounts } from './heal-heading-item-count.js';
 import {
   catalogExampleShouldBeScrubbed,
+  healBrokenServiceIntroLeftoverRemnants,
   officialLookIsCapsule,
   officialLookIsEightBitOrbit,
   scrubLeftoverCatalogExampleHtml,
@@ -5243,6 +5244,10 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // (loop376), now applied in the general heal pipeline so modify-turn
   // HTML gets the same cleanup.
   out = stripLeafEmptyListAndParagraphShells(out);
+  // 루프572 — leftover substring wipe leftovers (`Teamver가 `, particle-only
+  // step copy, `${leftover} 다음` titles, empty list-num pills) survive
+  // save unless persist heal empties them. Do not invent replacements.
+  out = healBrokenServiceIntroLeftoverRemnants(out);
   // 루프383 — heading-only 슬라이드에서 layout wrapper (.split-content,
   // .hero-frame, .card 등)가 heading을 감싸 slide-flow의 hero-centering을
   // 못 받게 만든다. leaf-empty strip 이후에 실행해 방금 빈 <ul>/<p>를 걷어낸
