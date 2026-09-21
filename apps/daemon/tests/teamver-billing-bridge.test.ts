@@ -88,7 +88,7 @@ describe('teamver-billing-bridge', () => {
       });
     });
 
-    it('treats legitimate zero estimate as available (reserve skip path)', async () => {
+    it('treats legitimate zero estimate as available (caller fail-closed when wired)', async () => {
       vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
       vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'k');
       const fetchMock: FetchMock = vi.fn().mockResolvedValue(
@@ -347,6 +347,23 @@ describe('teamver-billing-bridge', () => {
       expect(result.skipped).toBe(true);
       expect(fetchMock).not.toHaveBeenCalled();
     });
+
+    it('skips when TEAMVER_BILLING_DISABLED=true (BE _env_bool parity)', async () => {
+      vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+      vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'k');
+      vi.stubEnv('TEAMVER_BILLING_DISABLED', 'true');
+      const fetchMock: FetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result = await reserveTeamverBillingFromDaemon({
+        runId: 'run-1',
+        identity,
+        amount: 5,
+      });
+      expect(result.ok).toBe(true);
+      expect(result.skipped).toBe(true);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
   });
 
   describe('commitTeamverBillingFromDaemon', () => {
@@ -398,8 +415,9 @@ describe('teamver-billing-bridge', () => {
       const fetchMock: FetchMock = vi.fn();
       vi.stubGlobal('fetch', fetchMock);
 
+      // Orphan usage_id under kill switch must NOT report success (ledger drift).
       const ok = await commitTeamverBillingFromDaemon({ runId: 'run-1', usageId: 'u-1' });
-      expect(ok).toBe(true);
+      expect(ok).toBe(false);
       expect(fetchMock).not.toHaveBeenCalled();
     });
   });

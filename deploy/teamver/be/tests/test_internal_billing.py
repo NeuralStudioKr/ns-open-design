@@ -32,6 +32,21 @@ def _registry_configured(monkeypatch: pytest.MonkeyPatch) -> None:
         "teamver_registry_access_key",
         "secret-1",
     )
+    monkeypatch.setattr(
+        internal_billing.run_lifecycle.settings, "teamver_billing_disabled", False
+    )
+
+
+@pytest.mark.asyncio
+async def test_estimate_reserve_returns_billing_disabled_when_kill_switch_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        internal_billing.run_lifecycle.settings, "teamver_billing_disabled", True
+    )
+    response = await estimate_reserve(EstimateReserveBody(model_name="MiniMax-M3"), True)
+    assert response.amount_t == 0
+    assert response.policy == "billing_disabled"
 
 
 @pytest.mark.asyncio
@@ -41,13 +56,17 @@ async def test_estimate_reserve_endpoint_returns_metered_amount(
     monkeypatch.setattr(
         credit_meter.settings,
         "design_model_prices_json",
-        '{"claude-sonnet-4-5":{"input_per_1k_t":3,"output_per_1k_t":15}}',
+        '{"claude-sonnet-4-5":{"prompt_cost_per_1k":0.003,"completion_cost_per_1k":0.015}}',
     )
+    monkeypatch.setattr(credit_meter.settings, "design_billing_usd_krw_rate", 1550)
+    monkeypatch.setattr(credit_meter.settings, "design_billing_credit_krw_rate", 0.5)
+    monkeypatch.setattr(credit_meter.settings, "design_billing_price_to_cost_ratio", 2.0)
     monkeypatch.setattr(credit_meter.settings, "design_billing_reserve_input_tokens", 1000)
     monkeypatch.setattr(credit_meter.settings, "design_billing_reserve_output_tokens", 0)
 
     response = await estimate_reserve(EstimateReserveBody(model_name="claude-sonnet-4-5"), True)
-    assert response.amount_t == 3
+    # 1000 in × 0.003 USD/1k → 0.003 USD → round(0.003×6200)=19
+    assert response.amount_t == 19
     assert response.policy == "metered"
 
 
@@ -92,6 +111,26 @@ async def test_reserve_endpoint_passes_registry_not_configured_through(
 
 
 @pytest.mark.asyncio
+async def test_reserve_endpoint_skips_when_kill_switch_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        internal_billing.run_lifecycle.settings, "teamver_billing_disabled", True
+    )
+
+    async def must_not_call(**kwargs):  # pragma: no cover
+        raise AssertionError("billing must be skipped when kill switch is on")
+
+    monkeypatch.setattr(run_lifecycle.teamver_billing, "reserve_credits", must_not_call)
+
+    body = ReserveBody(workspace_id="ws-1", amount=5)
+    response = await reserve_run(body, True)
+    assert response.ok is True
+    assert response.usage_id is None
+    assert response.error == "billing_disabled"
+
+
+@pytest.mark.asyncio
 async def test_reserve_endpoint_skips_zero_amount_before_registry_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -105,6 +144,7 @@ async def test_reserve_endpoint_skips_zero_amount_before_registry_call(
     assert response.ok is True
     assert response.usage_id is None
     assert response.error == "billing_amount_not_configured"
+
 
 
 @pytest.mark.asyncio

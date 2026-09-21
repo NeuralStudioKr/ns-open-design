@@ -104,6 +104,16 @@ class Settings(BaseModel):
         default_factory=lambda: _env_nonneg_int("DESIGN_BILLING_RESERVE_OUTPUT_TOKENS", default=8192)
     )
     design_model_prices_json: str = os.getenv("DESIGN_MODEL_PRICES_JSON", "")
+    # Main BE token_cost_setting anchors (docs/125) — Design meter parity.
+    design_billing_usd_krw_rate: int = Field(
+        default_factory=lambda: _env_nonneg_int("DESIGN_BILLING_USD_KRW_RATE", default=1550)
+    )
+    design_billing_credit_krw_rate: float = Field(
+        default_factory=lambda: float(os.getenv("DESIGN_BILLING_CREDIT_KRW_RATE", "0.5") or "0.5")
+    )
+    design_billing_price_to_cost_ratio: float = Field(
+        default_factory=lambda: float(os.getenv("DESIGN_BILLING_PRICE_TO_COST_RATIO", "2.0") or "2.0")
+    )
 
     # Embed managed API mode — server env only (never VITE_* / git)
     # Empty means "inherit TEAMVER_DESIGN_DEFAULT_PROVIDER when set".

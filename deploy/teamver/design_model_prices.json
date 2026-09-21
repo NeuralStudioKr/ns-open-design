@@ -1,0 +1,54 @@
+{
+  "_comment": "USD per 1k tokens (Main BE ai_model_pricing unit). MiniMax official $/M ÷ 1000. Design then applies credits=round(supply_usd×usd_krw×ratio/credit_krw) with defaults 1550×2.0/0.5 (=×6200 B2C). Do not use the obsolete 1T≡$0.001 shortcut.",
+  "MiniMax-M3": {
+    "prompt_cost_per_1k": 0.0003,
+    "completion_cost_per_1k": 0.0012,
+    "cache_read_cost_per_1k": 0.00006
+  },
+  "MiniMax-M2.7": {
+    "prompt_cost_per_1k": 0.0003,
+    "completion_cost_per_1k": 0.0012,
+    "cache_read_cost_per_1k": 0.00006,
+    "cache_creation_cost_per_1k": 0.000375
+  },
+  "MiniMax-M2.7-highspeed": {
+    "prompt_cost_per_1k": 0.0006,
+    "completion_cost_per_1k": 0.0024,
+    "cache_read_cost_per_1k": 0.00006,
+    "cache_creation_cost_per_1k": 0.000375
+  },
+  "MiniMax-M2.5": {
+    "prompt_cost_per_1k": 0.0003,
+    "completion_cost_per_1k": 0.0012,
+    "cache_read_cost_per_1k": 0.00003,
+    "cache_creation_cost_per_1k": 0.000375
+  },
+  "MiniMax-M2.5-highspeed": {
+    "prompt_cost_per_1k": 0.0006,
+    "completion_cost_per_1k": 0.0024,
+    "cache_read_cost_per_1k": 0.00003,
+    "cache_creation_cost_per_1k": 0.000375
+  },
+  "MiniMax-M2.1": {
+    "prompt_cost_per_1k": 0.0003,
+    "completion_cost_per_1k": 0.0012,
+    "cache_read_cost_per_1k": 0.00003,
+    "cache_creation_cost_per_1k": 0.000375
+  },
+  "MiniMax-M2.1-highspeed": {
+    "prompt_cost_per_1k": 0.0006,
+    "completion_cost_per_1k": 0.0024,
+    "cache_read_cost_per_1k": 0.00003,
+    "cache_creation_cost_per_1k": 0.000375
+  },
+  "MiniMax-M2": {
+    "prompt_cost_per_1k": 0.0003,
+    "completion_cost_per_1k": 0.0012,
+    "cache_read_cost_per_1k": 0.00003,
+    "cache_creation_cost_per_1k": 0.000375
+  },
+  "claude-sonnet-4-5": {
+    "prompt_cost_per_1k": 0.003,
+    "completion_cost_per_1k": 0.015
+  }
+}

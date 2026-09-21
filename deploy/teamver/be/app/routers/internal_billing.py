@@ -96,6 +96,12 @@ async def estimate_reserve(
     body: EstimateReserveBody,
     _: Literal[True] = Depends(get_internal_api_key_dependency()),
 ) -> EstimateReserveResponse:
+    if run_lifecycle.billing_kill_switch_on():
+        return EstimateReserveResponse(
+            amount_t=0,
+            policy="billing_disabled",
+            model_name=body.model_name,
+        )
     metered = estimate_design_run_reserve(model_name=body.model_name)
     return EstimateReserveResponse(
         amount_t=metered.amount_t,

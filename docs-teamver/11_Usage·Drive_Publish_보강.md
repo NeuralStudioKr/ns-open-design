@@ -459,18 +459,38 @@ def meter_design_run(
 
 **단가 소스 (우선순위 제안)**
 
-1. design-api env `DESIGN_MODEL_PRICES_JSON` (모델별 input/output per-1k **크레딧 T**)
+1. design-api env `DESIGN_MODEL_PRICES_JSON` (모델별 input/output per-1k **크레딧 T**, float 허용)
 2. Main BE M2M `ai_model_pricing` 조회 (후속 — 캐시·환율·마진 SSOT는 Main BE `TokenService`와 정합)
 3. 폴백: `TEAMVER_BILLING_RESERVE_AMOUNT` 또는 `token_cost_setting`의 `aiapp_design` 키
+
+**환산 규칙 (Main BE docs/125 · `token_pricing_math`):**
+
+```text
+supply_usd = Σ (tokens/1000) × cost_usd_per_1k
+credits    = max(1, round(supply_usd × usd_krw_rate × ratio / credit_krw_rate))
+```
+
+시드 기본: `usd_krw=1550`, `credit_krw=0.5`, B2C `ratio=2.0` → **`×6200`**.  
+`DESIGN_MODEL_PRICES_JSON` 값은 **USD / 1k tokens** (`ai_model_pricing`과 동일 단위). MiniMax 공식 $/M → ÷1000.  
+~~잘못된 구 규칙 `1T≡$0.001`(Claude를 3/15로 넣던 방식)은 폐기.~~
 
 **`DESIGN_MODEL_PRICES_JSON` 예시**
 
 ```json
 {
-  "claude-sonnet-4-5": { "input_per_1k_t": 3, "output_per_1k_t": 15 },
-  "gpt-4o": { "input_per_1k_t": 5, "output_per_1k_t": 20 }
+  "MiniMax-M3": {
+    "prompt_cost_per_1k": 0.0003,
+    "completion_cost_per_1k": 0.0012,
+    "cache_read_cost_per_1k": 0.00006
+  },
+  "claude-sonnet-4-5": {
+    "prompt_cost_per_1k": 0.003,
+    "completion_cost_per_1k": 0.015
+  }
 }
 ```
+
+> MiniMax-M3: platform 상시 50% off · ≤512k Standard. Pretty SSOT `deploy/teamver/design_model_prices.json`. 검증: `docs-teamver/0921-N08-1-검증-[Design_크레딧단가_MainBE정합].md`.
 
 #### 4.5.1 `token_count_source`별 과금 정책 (제안)
 

@@ -354,6 +354,7 @@ import {
   refundTeamverBillingFromDaemon,
   reserveTeamverBillingFromDaemon,
   resolveTeamverBillingReserveAmountFromDaemon,
+  teamverBillingDisabled,
 } from './teamver-billing-bridge.js';
 import {
   deriveLangfuseDeliveryState,
@@ -3336,6 +3337,20 @@ export function createFinalizedMessageTelemetryReporter({
       const usageId = (run as { teamverBillingUsageId?: string | null }).teamverBillingUsageId ?? null;
       const workspaceId = run.teamverIdentity?.workspaceId?.trim() ?? '';
       if (!usageId) return;
+      // Record-only mode: never fake-commit/refund a leftover usage_id while
+      // TEAMVER_BILLING_DISABLED is on (would mark ledger committed without Registry).
+      if (teamverBillingDisabled()) {
+        if (workspaceId) {
+          await finalizeTeamverUsageBillingFromDaemon({
+            runId: run.id,
+            workspaceId,
+            billingStatus: 'disabled',
+            creditsCommitted: false,
+            registryUsageId: usageId,
+          });
+        }
+        return;
+      }
       const status = saved.runStatus;
       if (status === 'succeeded') {
         if (!usagePosted) {
@@ -3355,13 +3370,32 @@ export function createFinalizedMessageTelemetryReporter({
           }
           return;
         }
-        const ok = await commitTeamverBillingFromDaemon({ runId: run.id, usageId });
+        const committed = await commitTeamverBillingFromDaemon({ runId: run.id, usageId });
+        if (committed) {
+          if (workspaceId) {
+            await finalizeTeamverUsageBillingFromDaemon({
+              runId: run.id,
+              workspaceId,
+              billingStatus: 'committed',
+              creditsCommitted: true,
+              registryUsageId: usageId,
+            });
+          }
+          return;
+        }
+        // Commit failed — refund so Registry does not hold locked credits
+        // (mirrors BYOK Strategy B). Ledger: commit_failed if refund OK.
+        const refunded = await refundTeamverBillingFromDaemon({
+          runId: run.id,
+          usageId,
+          reason: 'commit_failed',
+        });
         if (workspaceId) {
           await finalizeTeamverUsageBillingFromDaemon({
             runId: run.id,
             workspaceId,
-            billingStatus: ok ? 'committed' : 'commit_failed',
-            creditsCommitted: ok,
+            billingStatus: refunded ? 'commit_failed' : 'refund_failed',
+            creditsCommitted: false,
             registryUsageId: usageId,
           });
         }
