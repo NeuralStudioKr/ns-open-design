@@ -2512,7 +2512,7 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(out).toMatch(/사용자 리서치/);
   });
 
-  it('루프540 — 8-Bit Orbit tier 슬라이드: 가짜 $29/mo tier 카드 · English feature bullets 스트립', async () => {
+  it('루프559 — 8-Bit Orbit tier 슬라이드: 가격 의미만 제거하고 3-card 템플릿 셸은 본문으로 채운다', async () => {
     const html = await readFile(
       new URL(
         './fixtures/loop540-eightbit-orbit-korean-writing-tips.html',
@@ -2536,9 +2536,11 @@ describe('루프419 Capsule deterministic quality gate', () => {
         { title: '마무리 각인', body: '한 문장으로 요점을 남긴다.' },
       ],
     });
-    // Tier chrome dropped entirely.
-    expect(filled).not.toMatch(/tier-card/);
-    expect(filled).not.toMatch(/tier-grid/);
+    expect(filled).toMatch(/tier-grid/);
+    expect((filled.match(/tier-card/g) ?? []).length).toBe(3);
+    expect(filled).toMatch(/도입 흡인/);
+    expect(filled).toMatch(/흐름 유지/);
+    expect(filled).toMatch(/마무리 각인/);
     expect(filled).not.toMatch(/\$\s*29\s*\/\s*mo/);
     expect(filled).not.toMatch(/Rookie/);
     expect(filled).not.toMatch(/For solo explorers testing the waters/);
@@ -2762,7 +2764,7 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(filled).not.toMatch(/Pixels Rendered/);
   });
 
-  it('루프542 — KPI 슬롯 정책 pin: 가짜 $/% pricing (tier-price) leaks 방지 (8-Bit tier-card 전체 strip)', async () => {
+  it('루프559 — KPI 슬롯 정책 pin: 가짜 가격은 제거하되 tier-card 레이아웃은 유지', async () => {
     const { fillEightBitOrbitKitSlide } = await import('../src/template-clone-fill');
     const tierBody =
       '<div class="tier-grid">'
@@ -2775,15 +2777,140 @@ describe('루프419 Capsule deterministic quality gate', () => {
       lead: '',
       bodyText: '',
       kicker: '',
-      fillLines: [],
+      fillLines: [
+        { title: '현황', body: '현재 업무 흐름과 병목을 같은 보드에서 확인한다.' },
+        { title: '협업', body: '보기와 고치기 권한을 나눠 결과물을 함께 다듬는다.' },
+        { title: '운영', body: '변경 이력과 전달 기준을 워크스페이스에 남긴다.' },
+      ],
     });
-    // 정책: 주제 무관한 pricing 슬롯 전체 strip. 가짜 $ leak 금지.
+    // 정책: 가짜 가격 의미는 제거하고, 템플릿의 세 카드 구도는 보존한다.
     expect(filled).not.toMatch(/\$\s*0/);
     expect(filled).not.toMatch(/\$\s*29/);
     expect(filled).not.toMatch(/\$\s*79/);
     expect(filled).not.toMatch(/tier-price/);
-    expect(filled).not.toMatch(/tier-card/);
-    expect(filled).not.toMatch(/tier-grid/);
+    expect(filled).toMatch(/tier-grid/);
+    expect((filled.match(/tier-card/g) ?? []).length).toBe(3);
+    expect(filled).toMatch(/현재 업무 흐름과 병목/);
+    expect(filled).toMatch(/변경 이력과 전달 기준/);
+  });
+
+  it('루프559 — 8-Bit Orbit chart는 스크립트 제거 뒤에도 0% 막대로 남지 않는다', () => {
+    const body = '<div class="pixel-bar-chart">'
+      + '<div class="chart-bar-group"><div class="chart-value" data-value="78">0</div><div class="chart-bar" data-height="78" style="height: 0%;"></div><div class="chart-bar-label">Alpha</div></div>'
+      + '<div class="chart-bar-group"><div class="chart-value" data-value="92">0</div><div class="chart-bar alt" data-height="92" style="height: 0%;"></div><div class="chart-bar-label">Beta</div></div>'
+      + '</div>';
+    const filled = fillEightBitOrbitKitSlide(body, 'class="slide"', {
+      title: '업무 흐름',
+      lead: '초안에서 리뷰까지 한 흐름으로 이어진다.',
+      bodyText: '',
+      kicker: '흐름',
+      fillLines: [
+        { title: '초안', body: '자료를 모아 첫 구조를 만든다.' },
+        { title: '리뷰', body: '댓글과 수정 이력을 같은 화면에 남긴다.' },
+      ],
+    });
+    expect(filled).not.toMatch(/height:\s*0%/);
+    expect(filled).toMatch(/style="height:62%"/);
+    expect(filled).toMatch(/style="height:78%"/);
+    expect(filled).toMatch(/>초안</);
+    expect(filled).toMatch(/>리뷰</);
+    expect(filled).not.toMatch(/>Alpha</);
+  });
+
+  it('루프559 — 8-Bit Orbit horizontal chart도 데모 라벨·수치·0% 너비를 남기지 않는다', () => {
+    const body = '<span class="pixel-label">SYSTEM LOAD</span><div class="pixel-hbar-chart">'
+      + '<div class="hbar-row"><div class="hbar-label">Compute</div><div class="hbar-track"><div class="hbar-fill" data-width="88" style="width:0%"></div></div><div class="hbar-value">88%</div></div>'
+      + '<div class="hbar-row"><div class="hbar-label">Storage</div><div class="hbar-track"><div class="hbar-fill alt" data-width="72" style="width:0%"></div></div><div class="hbar-value">72%</div></div>'
+      + '</div>';
+    const filled = fillEightBitOrbitKitSlide(body, 'class="slide"', {
+      title: '다음 단계',
+      lead: '한 업무부터 연결해 팀의 리뷰 기준을 확인합니다.',
+      bodyText: '',
+      kicker: '시작하기',
+      fillLines: [
+        { title: '업무 선택', body: '반복 빈도가 높은 업무 하나를 고릅니다.' },
+        { title: '팀 초대', body: '검토 담당자와 승인 권한을 함께 정합니다.' },
+      ],
+    });
+    expect(filled).not.toMatch(/SYSTEM LOAD|Compute|Storage|>88%<|>72%</i);
+    expect(filled).not.toMatch(/width:\s*0%/);
+    expect(filled).toMatch(/style="width:74%"/);
+    expect(filled).toMatch(/style="width:88%"/);
+    expect(filled).toMatch(/업무 선택/);
+    expect(filled).toMatch(/팀 초대/);
+    expect(filled).toMatch(/class="hbar-value">01</);
+    expect(filled).toMatch(/class="hbar-value">02</);
+  });
+
+  it('루프559 — CTA chrome이 있는 8-Bit shell은 chart가 아니라 closing으로 분류한다', () => {
+    const closing = {
+      attrs: 'class="slide bg-grid" data-slide="10"',
+      body: '<div class="slide-content"><div class="cta-content"><h2>Ready Player One?</h2><button class="pixel-btn">Initialize Deck</button></div><div class="pixel-hbar-chart"></div></div>',
+    };
+    expect(classifyTemplateCloneShellRole(closing)).toBe('closing');
+    const picked = pickTemplateShellsForContent(
+      [
+        { attrs: 'class="slide hero"', body: '<h1>Cover</h1>' },
+        { attrs: 'class="slide"', body: '<div class="pixel-hbar-chart"><div class="hbar-row"></div></div>' },
+        closing,
+      ],
+      [
+        { title: '표지', roleHint: 'cover' },
+        { title: '다음 단계', roleHint: 'closing', lead: '첫 보드를 엽니다.' },
+      ],
+    );
+    expect(picked[1]).toBe(closing);
+  });
+
+  it('루프559 — closing CTA 버튼과 cover eyebrow는 설명문을 중복하지 않는다', () => {
+    const cover = fillEightBitOrbitKitSlide(
+      '<div class="hero-subtitle">Pixel Perfect Presentation System</div><h1 class="pixel-hero-text">8-BIT ORBIT</h1><p class="hero-tagline">old</p>',
+      'class="slide"',
+      {
+        title: 'Teamver 소개',
+        lead: '자료를 읽고 초안을 만든 뒤 같은 화면에서 수정합니다.',
+        bodyText: '',
+        kicker: '업무 AI 워크스페이스',
+        fillLines: [],
+      },
+    );
+    expect((cover.match(/자료를 읽고 초안을 만든 뒤 같은 화면에서 수정합니다\./g) ?? []).length).toBe(1);
+    expect(cover).toMatch(/hero-subtitle">업무 AI 워크스페이스</);
+
+    const closing = fillEightBitOrbitKitSlide(
+      '<div class="cta-content"><h2>Ready Player One?</h2><button class="pixel-btn">Initialize Deck</button><button class="pixel-btn pink-btn">View Documentation</button></div>',
+      'class="slide"',
+      {
+        title: '첫 보드부터 시작하세요',
+        lead: '한 업무부터 연결합니다.',
+        bodyText: '',
+        kicker: '다음 단계',
+        fillLines: [],
+      },
+    );
+    expect(closing).toMatch(/첫 보드 열기/);
+    expect(closing).toMatch(/도입 방법 보기/);
+    expect((closing.match(/자세히 보기/g) ?? []).length).toBe(0);
+  });
+
+  it('루프559 — 8-Bit Orbit split은 영문 데모 문단을 AI 본문으로 모두 교체한다', () => {
+    const body = '<div class="split-layout"><div></div><div>'
+      + '<h2>소개</h2>'
+      + '<p>No canvas limits. No cookie-cutter layouts.</p>'
+      + '<p>Just pure CSS architecture delivering cinematic depth.</p>'
+      + '</div></div>';
+    const filled = fillEightBitOrbitKitSlide(body, 'class="slide"', {
+      title: 'Teamver가 묶는 일',
+      lead: '초안과 피드백을 같은 맥락에서 연결한다.',
+      bodyText: '파일, 대화, 수정 이력을 하나의 워크스페이스에서 이어 본다.',
+      kicker: '소개',
+      fillLines: [
+        { title: '초안', body: '자료를 읽고 바로 편집 가능한 구조를 만든다.' },
+      ],
+    });
+    expect(filled).not.toMatch(/No canvas limits|cookie-cutter|pure CSS architecture/i);
+    expect(filled).toMatch(/초안과 피드백을 같은 맥락/);
+    expect(filled).toMatch(/파일, 대화, 수정 이력/);
   });
 
   it('루프539 — persist heal unwraps invented hero shells together', async () => {

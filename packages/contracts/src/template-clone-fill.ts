@@ -1378,6 +1378,10 @@ const SERVICE_INTRO_PROCESS_TRIO = ['탐색', '실행', '확장'] as const;
 function isGenericSynthTopicNoun(topic: string): boolean {
   const text = String(topic ?? '').replace(/\s+/g, ' ').trim();
   if (!text) return true;
+  // A failed outline parse can leave punctuation-only fragments (`:`, `-`,
+  // `/`) in a title/lead slot. Treating one of those as the deck topic
+  // produces broken Korean such as `기존 문서를 : 보드로 옮기고`.
+  if (!/[A-Za-z0-9가-힣]/u.test(text)) return true;
   if (GENERIC_SYNTH_TOPIC_NOUN_RE.test(text)) return true;
   if (/핵심\s+주제/.test(text)) return true;
   if (/^핵심\s+\d+/.test(text)) return true;
@@ -2320,6 +2324,12 @@ export function classifyTemplateCloneShellRole(shell: {
 }): TemplateCloneShellRole {
   const hay = `${shell.attrs}\n${shell.body.slice(0, 800)}`;
   if (/\bslide-title\b|\bcover\b|\bhero\b|\btitle-box\b/i.test(hay)) return 'cover';
+  // CTA shells can contain decorative telemetry/chart chrome. Classify the
+  // semantic CTA wrapper first or a closing outline is incorrectly routed to
+  // a data slide and ships demo labels such as System Load / Compute.
+  if (/\bslide-closing\b|\bthanks\b|\bend\b|\bclosing\b|\bcta-content\b|\bpixel-btn\b/i.test(hay)) {
+    return 'closing';
+  }
   if (/\bslide-quote\b|\bquote-text\b|\bquote-mark\b/i.test(hay)) return 'quote';
   if (/\bslide-timeline\b|\btimeline\b/i.test(hay)) return 'timeline';
   if (
@@ -2344,7 +2354,6 @@ export function classifyTemplateCloneShellRole(shell: {
     return 'cards';
   }
   if (/\bslide-welcome\b|\bwelcome-list\b|<[uo]l\b/i.test(hay)) return 'list';
-  if (/\bslide-closing\b|\bthanks\b|\bend\b|\bclosing\b/i.test(hay)) return 'closing';
   return 'body';
 }
 
@@ -10698,7 +10707,7 @@ export function healEightBitOrbitLeftoverCatalogCopy(
   // shells without markers.
   if (
     !officialLookIsEightBitOrbit(dest)
-    && !/\b(?:pixel-hero-text|pixel-label|pixel-box|tier-card|timeline-event|stat-block|quote-author|hero-badge|pixel-btn)\b/i.test(dest)
+    && !/\b(?:pixel-hero-text|pixel-label|pixel-box|tier-card|timeline-event|stat-block|quote-author|hero-badge|pixel-btn|pixel-bar-chart|chart-bar-group|pixel-hbar-chart|hbar-row)\b/i.test(dest)
   ) {
     return dest;
   }
@@ -10724,7 +10733,7 @@ export function healEightBitOrbitLeftoverCatalogCopy(
     const span = spans[i]!;
     const body = out.slice(span.bodyStart, span.bodyEnd);
     if (
-      !/\b(?:tier-card|timeline-event|stat-block|quote-author|hero-badge|hero-subtitle|pixel-label|pixel-btn|cta-content|split-layout|feature-card)\b/i.test(body)
+      !/\b(?:tier-card|timeline-event|stat-block|quote-author|hero-badge|hero-subtitle|pixel-label|pixel-btn|cta-content|split-layout|feature-card|pixel-bar-chart|chart-bar-group|pixel-hbar-chart|hbar-row)\b/i.test(body)
     ) {
       continue;
     }
@@ -14519,7 +14528,7 @@ export function fillEightBitOrbitKitSlide(
 ): string {
   const src = String(body ?? '');
   if (
-    !/\b(?:pixel-hero-text|pixel-label|hero-badge|hero-tagline|tier-card|tier-features|timeline-event|timeline-text|stat-block|stat-label|stat-number|quote-author|quote-text|pixel-btn|cta-content|split-layout)\b/i.test(src)
+    !/\b(?:pixel-hero-text|pixel-label|hero-badge|hero-tagline|tier-card|tier-features|timeline-event|timeline-text|stat-block|stat-label|stat-number|quote-author|quote-text|pixel-btn|cta-content|split-layout|pixel-bar-chart|chart-bar-group|pixel-hbar-chart|hbar-row)\b/i.test(src)
   ) {
     return src;
   }
@@ -14544,22 +14553,37 @@ export function fillEightBitOrbitKitSlide(
     || looksLikeEightBitCapsuleLeftoverCopy(input.kicker || '')
     || looksLikeEightBitCapsuleLeftoverCopy(input.lead)
     || looksLikeEightBitCapsuleLeftoverCopy(input.bodyText);
+  const hasAuthoredDenseLines = input.fillLines.length >= 2
+    && input.fillLines.some((line) => (
+      templateCloneItemBodyLooksDense(resolveTemplateCloneCardFill(line).body)
+    ));
   const seeded = {
     ...input,
     title: heading,
     lead,
     bodyText,
-    fillLines: leftoverInput && role.items.length > 0 ? role.items : input.fillLines,
+    fillLines: leftoverInput && !hasAuthoredDenseLines && role.items.length > 0
+      ? role.items
+      : input.fillLines,
   };
   const lines = biennaleFillLines(seeded, 6);
   let next = src;
 
   // Cover: hero-subtitle + hero-badge trio.
   if (/\bpixel-hero-text\b/i.test(next) || /\bhero-badges\b/i.test(next)) {
-    // hero-subtitle should be a short korean lede — replace the "Pixel
-    // Perfect Presentation System" placeholder with the deck's actual lead.
-    const heroSub = lead || bodyText || synthesizeTemplateCloneCoverLead(heading);
+    // Keep the small eyebrow distinct from the explanatory hero tagline.
+    // Using `lead` in both slots visibly repeated the same sentence twice.
+    const kicker = normalizeTemplateCloneInlineText(input.kicker);
+    const heroSub = kicker && !looksLikeEightBitCapsuleLeftoverCopy(kicker)
+      ? kicker
+      : (role.heading || chromeLabel || 'OVERVIEW');
     next = replaceFirstExactClassText(next, 'hero-subtitle', heroSub);
+    if (!/\bhero-tagline\b/i.test(next) && lead && lead !== heroSub) {
+      next = next.replace(
+        /(<h1\b[^>]*\bpixel-hero-text\b[^>]*>[\s\S]*?<\/h1>)/i,
+        `$1<p class="hero-tagline">${escapeHtml(lead)}</p>`,
+      );
+    }
     // hero-badge triplet: use topic-derived short labels from lines[0..2]. If
     // fewer lines exist, fall back to the chromeLabel / ordinal.
     const badgeLabels = [0, 1, 2].map((i) => {
@@ -14590,7 +14614,7 @@ export function fillEightBitOrbitKitSlide(
         const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
         if (!plain) return `${open}${escapeHtml(chromeLabel)}${close}`;
         // English demo chrome literals — always rewrite.
-        if (/^(?:Mission\s+Brief|Core\s+Systems|Chronology|Live\s+Telemetry|Access\s+Tiers|Loadout|Roadmap|Vision)$/i.test(plain)) {
+        if (/^(?:Mission\s+Brief|Core\s+Systems|Chronology|Live\s+Telemetry|System\s+Load|Access\s+Tiers|Loadout|Roadmap|Vision)$/i.test(plain)) {
           return `${open}${escapeHtml(chromeLabel)}${close}`;
         }
         if (
@@ -14693,13 +14717,121 @@ export function fillEightBitOrbitKitSlide(
     );
   }
 
-  // Pricing tiers (slide 9) — Korean writing-tips deck never has $29/mo
-  // pricing. Strip the whole tier block: sends the slide to fallback
-  // rendering. The heal path later replaces with topic keypoints via the
-  // shared list slot.
+  // Static chart shells depended on the template's JS animation to turn
+  // `height:0%` into visible bars. Clone output intentionally strips scripts,
+  // so bind the authored outline directly and materialize stable bar heights.
+  if (/\bpixel-bar-chart\b|\bchart-bar-group\b/i.test(next)) {
+    const heights = [62, 78, 88, 70, 82, 66];
+    next = replaceExactClassBlocksBySequence(
+      next,
+      'chart-bar-group',
+      lines,
+      (block, line, index) => {
+        const resolved = resolveTemplateCloneCardFill(line);
+        const height = heights[index % heights.length]!;
+        const metric = titleLooksLikeMetric(resolved.title)
+          ? resolved.title
+          : titleLooksLikeMetric(resolved.body)
+            ? resolved.body
+            : String(index + 1).padStart(2, '0');
+        let filled = block.replace(
+          /(<div\b[^>]*\bchart-value\b[^>]*>)([\s\S]*?)(<\/div>)/i,
+          (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(metric)}${close}`,
+        );
+        filled = filled.replace(
+          /(<div\b[^>]*\bchart-bar(?=[\s"'])[^>]*)(>)([\s\S]*?)(<\/div>)/i,
+          (_m, open: string, gt: string, inner: string, close: string) => {
+            const attrs = open
+              .replace(/\sdata-height\s*=\s*(["'])[^"']*\1/gi, '')
+              .replace(/\sstyle\s*=\s*(["'])[^"']*\1/gi, '');
+            return `${attrs} data-height="${height}" style="height:${height}%"${gt}${inner}${close}`;
+          },
+        );
+        return filled.replace(
+          /(<div\b[^>]*\bchart-bar-label\b[^>]*>)([\s\S]*?)(<\/div>)/i,
+          (_m, open: string, _inner: string, close: string) => (
+            `${open}${escapeHtml(resolved.title || `${chromeLabel} ${index + 1}`)}${close}`
+          ),
+        );
+      },
+    );
+  }
+
+  if (/\bpixel-hbar-chart\b|\bhbar-row\b/i.test(next)) {
+    const widths = [74, 88, 66, 80, 58, 70];
+    next = replaceExactClassBlocksBySequence(
+      next,
+      'hbar-row',
+      lines,
+      (block, line, index) => {
+        const resolved = resolveTemplateCloneCardFill(line);
+        const width = widths[index % widths.length]!;
+        const value = titleLooksLikeMetric(resolved.title)
+          ? resolved.title
+          : titleLooksLikeMetric(resolved.body)
+            ? resolved.body
+            : String(index + 1).padStart(2, '0');
+        let filled = block.replace(
+          /(<div\b[^>]*\bhbar-label\b[^>]*>)([\s\S]*?)(<\/div>)/i,
+          (_m, open: string, _inner: string, close: string) => (
+            `${open}${escapeHtml(resolved.title || `${chromeLabel} ${index + 1}`)}${close}`
+          ),
+        );
+        filled = filled.replace(
+          /(<div\b[^>]*\bhbar-fill(?=[\s"'])[^>]*)(>)([\s\S]*?)(<\/div>)/i,
+          (_m, open: string, gt: string, inner: string, close: string) => {
+            const attrs = open
+              .replace(/\sdata-width\s*=\s*(["'])[^"']*\1/gi, '')
+              .replace(/\sstyle\s*=\s*(["'])[^"']*\1/gi, '');
+            return `${attrs} data-width="${width}" style="width:${width}%"${gt}${inner}${close}`;
+          },
+        );
+        return filled.replace(
+          /(<div\b[^>]*\bhbar-value\b[^>]*>)([\s\S]*?)(<\/div>)/i,
+          (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(value)}${close}`,
+        );
+      },
+    );
+  }
+
+  // Split intro pages commonly carry a second English marketing paragraph.
+  // Replace every prose slot with the outline instead of only scrubbing the
+  // demo sentence, which otherwise leaves a visually empty right column.
+  if (/\bsplit-layout\b/i.test(next)) {
+    const prose = [
+      lead || bodyText,
+      bodyText,
+      ...lines.map((line) => resolveTemplateCloneCardFill(line).body),
+    ].map((value) => normalizeTemplateCloneInlineText(value)).filter(Boolean);
+    let proseIndex = 0;
+    next = next.replace(
+      /(<p\b[^>]*>)([\s\S]*?)(<\/p>)/gi,
+      (_m, open: string, _inner: string, close: string) => {
+        const value = prose[proseIndex] ?? prose[prose.length - 1] ?? lead ?? heading;
+        proseIndex += 1;
+        return `${open}${escapeHtml(value)}${close}`;
+      },
+    );
+  }
+
+  // Pricing is only the demo semantics; the three-card composition is part
+  // of the template identity. Keep that composition and turn each tier into
+  // a topic card instead of deleting the entire grid (which shipped a blank
+  // page in the 2026-09-18 Teamver deck).
   if (/\btier-card\b/i.test(next) || /\btier-grid\b/i.test(next)) {
-    next = stripClassBlocks(next, 'tier-grid');
-    next = stripClassBlocks(next, 'tier-card');
+    next = replaceExactClassBlocksBySequence(
+      next,
+      'tier-card',
+      lines,
+      (block, line, index) => {
+        const resolved = resolveTemplateCloneCardFill(line);
+        const open = block.match(/^<([a-z0-9-]+)\b[^>]*>/i)?.[0] ?? '<div class="tier-card">';
+        const close = block.match(/<\/([a-z0-9-]+)>\s*$/i)?.[0] ?? '</div>';
+        const title = resolved.title || `${chromeLabel} ${index + 1}`;
+        const description = resolved.body || lead || bodyText || heading;
+        return `${open}<div class="tier-name">${escapeHtml(title)}</div><div class="tier-desc">${escapeHtml(description)}</div>${close}`;
+      },
+    );
   }
 
   // Quote (slide 8): drop the demo attribution — if we don't know the
@@ -14721,12 +14853,16 @@ export function fillEightBitOrbitKitSlide(
 
   // CTA (slide 10): .pixel-btn text → Korean "자세히 보기" / "지금 시작하기".
   if (/\bpixel-btn\b/i.test(next)) {
+    const labels = ['첫 보드 열기', '도입 방법 보기'];
+    let buttonIndex = 0;
     next = next.replace(
       /(<(?:button|a)\b[^>]*\bpixel-btn\b[^>]*>)([\s\S]*?)(<\/(?:button|a)>)/gi,
       (full, open: string, inner: string, close: string) => {
         const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
         if (/^(?:Select|Initialize Deck|View Documentation|Get Started|Learn More|Start|Play)$/i.test(plain)) {
-          return `${open}자세히 보기${close}`;
+          const label = labels[buttonIndex] ?? `다음 단계 ${buttonIndex + 1}`;
+          buttonIndex += 1;
+          return `${open}${label}${close}`;
         }
         return full;
       },
@@ -14764,10 +14900,10 @@ export function fillEightBitOrbitKitSlide(
 }
 
 const EIGHTBIT_DEMO_HEADING_RE =
-  /Rewiring How We Share Ideas|Four Engines Running|Quarterly Growth Metrics|Resource Allocation|Development Roadmap|Platform Vitals|Choose Your Loadout|Ready Player/i;
+  /Rewiring How We Share Ideas|Four Engines Running|Quarterly Growth Metrics|Resource Allocation|System Load|Development Roadmap|Platform Vitals|Choose Your Loadout|Ready Player/i;
 
 const EIGHTBIT_DEMO_COPY_RE =
-  /Pixel Perfect Presentation System|Rewiring How We Share Ideas|Four Engines Running|Quarterly Growth Metrics|Resource Allocation|Access Tiers|Live Telemetry|Chronology|Mission Brief|Core Systems|Loadout|Ready Player(?:<br\s*\/?>|\s)+One\?|Deploy your first 8-BIT ORBIT deck[\s\S]{0,120}?power\.?|Initialize Deck|View Documentation|Wireframes,\s*palette selection[\s\S]{0,120}?established\.?|Pixel components, iconography[\s\S]{0,120}?coded\.?|Charting engine, animated counters[\s\S]{0,120}?binding\.?|Public release with full documentation[\s\S]{0,120}?support\.?|Real-time aggregate figures from active deployments|Active Worlds|Pixels Rendered|Uptime Score|Max Resolution|Concept\s*(?:&(?:amp;)?)?\s*Architecture|Asset Generation|Data Integration|Global Launch|The best presentations do not merely inform[\s\S]{0,240}?unlocked\.?|Lead Creative Technologist,\s*Studio Orbital|Studio Orbital|10\s*Slides|CSS Native|Zero Dependencies|Rookie|Arcade\b(?!\s*[가-힣])|\bBoss\b(?=\s*(?:$|<|\s*<))|\$\s*0\s*\/\s*mo|\$\s*29\s*\/\s*mo|\$\s*79\s*\/\s*mo|For solo explorers testing the waters\.?|Serious builders need serious tooling\.?|Enterprise-grade control and compliance\.?|5\s*slide\s*maximum|Standard grid themes|Community support|Static export only|Unlimited slides|All atmospheric packs|Live data binding|Priority rendering|Custom cursor sets|Everything in Arcade|White-label export|SSO\s*(?:&(?:amp;)?)?\s*audit logs|Dedicated pipeline|No canvas limits\.\s*No cookie-cutter layouts\.[\s\S]{0,140}?architecture[\s\S]{0,80}?compromise\.?|Development Roadmap|Platform Vitals|Choose Your Loadout|8-BIT(?:<br\s*\/?>|\s)+ORBIT/gi;
+  /Pixel Perfect Presentation System|Rewiring How We Share Ideas|Four Engines Running|Quarterly Growth Metrics|Resource Allocation|System Load|\bCompute\b|\bStorage\b|\bNetwork\b|\bMemory\b|\bGraphics\b|Access Tiers|Live Telemetry|Chronology|Mission Brief|Core Systems|Loadout|Ready Player(?:<br\s*\/?>|\s)+One\?|Deploy your first 8-BIT ORBIT deck[\s\S]{0,120}?power\.?|Initialize Deck|View Documentation|Wireframes,\s*palette selection[\s\S]{0,120}?established\.?|Pixel components, iconography[\s\S]{0,120}?coded\.?|Charting engine, animated counters[\s\S]{0,120}?binding\.?|Public release with full documentation[\s\S]{0,120}?support\.?|Real-time aggregate figures from active deployments|Active Worlds|Pixels Rendered|Uptime Score|Max Resolution|Concept\s*(?:&(?:amp;)?)?\s*Architecture|Asset Generation|Data Integration|Global Launch|The best presentations do not merely inform[\s\S]{0,240}?unlocked\.?|Lead Creative Technologist,\s*Studio Orbital|Studio Orbital|10\s*Slides|CSS Native|Zero Dependencies|Rookie|Arcade\b(?!\s*[가-힣])|\bBoss\b(?=\s*(?:$|<|\s*<))|\$\s*0\s*\/\s*mo|\$\s*29\s*\/\s*mo|\$\s*79\s*\/\s*mo|For solo explorers testing the waters\.?|Serious builders need serious tooling\.?|Enterprise-grade control and compliance\.?|5\s*slide\s*maximum|Standard grid themes|Community support|Static export only|Unlimited slides|All atmospheric packs|Live data binding|Priority rendering|Custom cursor sets|Everything in Arcade|White-label export|SSO\s*(?:&(?:amp;)?)?\s*audit logs|Dedicated pipeline|No canvas limits\.\s*No cookie-cutter layouts\.[\s\S]{0,140}?architecture[\s\S]{0,80}?compromise\.?|Development Roadmap|Platform Vitals|Choose Your Loadout|8-BIT(?:<br\s*\/?>|\s)+ORBIT/gi;
 
 export function stripEightBitOrbitCatalogDemoCopy(html: string): string {
   return String(html ?? '')

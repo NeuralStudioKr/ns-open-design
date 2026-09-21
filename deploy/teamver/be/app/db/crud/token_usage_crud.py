@@ -28,12 +28,14 @@ _BILLING_STATUS_PRIORITY: dict[str, int] = {
     "disabled": 1,
     "not_configured": 1,
     "not_metered": 1,
-    "reserved": 2,
-    "reserve_failed": 3,
-    "commit_failed": 3,
-    "refunded": 4,
-    "refund_failed": 4,
-    "committed": 5,
+    "meter_failed": 1,
+    "reserving": 2,  # in-flight claim — blocks concurrent double-reserve
+    "reserved": 3,
+    "reserve_failed": 4,
+    "commit_failed": 4,
+    "refunded": 5,
+    "refund_failed": 5,
+    "committed": 6,
 }
 
 
@@ -47,6 +49,9 @@ def _should_overwrite_billing_status(existing: str | None, incoming: str | None)
     incoming_priority = _billing_status_priority(incoming)
     if incoming_priority < 0:
         return False
+    # ``reserving`` is an ephemeral claim lock — any explicit successor wins.
+    if (existing or "").strip() == "reserving":
+        return True
     existing_priority = _billing_status_priority(existing)
     if existing_priority < 0:
         return True
@@ -64,13 +69,107 @@ async def afind_usage_by_run(
     *,
     workspace_id: str,
     run_id: str,
+    for_update: bool = False,
 ) -> AiModelTokenUsage | None:
     stmt = select(AiModelTokenUsage).where(
         AiModelTokenUsage.workspace_id == workspace_id,
         AiModelTokenUsage.run_id == run_id,
     )
+    if for_update:
+        stmt = stmt.with_for_update()
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
+
+
+# Claimable ledger states — another writer has not yet started Registry reserve.
+_CLAIMABLE_BILLING_STATUSES = frozenset(
+    {"", "not_attempted", "disabled", "not_configured", "not_metered", "meter_failed"}
+)
+
+
+async def aclaim_byok_billing_attempt(
+    db: AsyncSession,
+    *,
+    workspace_id: str,
+    run_id: str,
+    model_name: str,
+    run_status: str | None = None,
+    operation: str = "design_run_byok",
+) -> tuple[str, AiModelTokenUsage | None]:
+    """Atomically claim ``(workspace_id, run_id)`` for a Strategy B billing attempt.
+
+    Returns ``(outcome, row)``:
+
+    - ``claimed`` — this caller owns the attempt (``billing_status=reserving``)
+    - ``committed`` / ``reserved`` / ``reserving`` / ``terminal`` — another path
+      already owns or finished billing; caller must not call ``reserve_credits``
+    """
+    row = await afind_usage_by_run(
+        db, workspace_id=workspace_id, run_id=run_id, for_update=True
+    )
+    if row is None:
+        stub = AiModelTokenUsage(
+            id=new_token_usage_id(),
+            model_name=(model_name or "unknown").strip() or "unknown",
+            input_tokens=0,
+            output_tokens=0,
+            total_tokens=None,
+            user_id=None,
+            workspace_id=workspace_id,
+            used_at=utcnow(),
+            operation=operation,
+            project_id=None,
+            run_id=run_id,
+            run_status=run_status,
+            token_count_source="unknown",
+            registry_usage_id=None,
+            billing_status="reserving",
+            credits_committed=False,
+        )
+        db.add(stub)
+        try:
+            await db.flush()
+        except IntegrityError:
+            await db.rollback()
+            row = await afind_usage_by_run(
+                db, workspace_id=workspace_id, run_id=run_id, for_update=True
+            )
+            if row is None:
+                raise
+            return _classify_existing_billing_claim(row), row
+        await db.refresh(stub)
+        return "claimed", stub
+
+    outcome = _classify_existing_billing_claim(row)
+    if outcome != "claimable":
+        return outcome, row
+
+    row.billing_status = "reserving"
+    row.credits_committed = False
+    if run_status:
+        row.run_status = str(run_status)
+    if model_name and model_name.strip():
+        row.model_name = model_name.strip()
+    _touch_usage_row_updated_at(row)
+    await db.flush()
+    await db.refresh(row)
+    return "claimed", row
+
+
+def _classify_existing_billing_claim(row: AiModelTokenUsage) -> str:
+    status = (row.billing_status or "").strip()
+    if status == "committed":
+        return "committed"
+    if status == "reserved" and row.registry_usage_id:
+        return "reserved"
+    if status == "reserving":
+        return "reserving"
+    if status in {"reserve_failed", "commit_failed", "refund_failed", "refunded"}:
+        return "terminal"
+    if status in _CLAIMABLE_BILLING_STATUSES:
+        return "claimable"
+    # Unknown statuses — fail closed (do not double-reserve).
+    return "terminal"
 
 
 def _token_total(
