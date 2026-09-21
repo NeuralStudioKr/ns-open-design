@@ -5543,6 +5543,11 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = healStudioLeftoverCatalogCopy(next, brief);
   next = healCreativeLeftoverCatalogCopy(next, brief);
   next = healCobaltOrphanDataStats(next);
+  // 루프510 — Capsule leaves English decorative demo copy inside .orbit-pill
+  // / .deco-pill / .f-pill / .c-pill / .diagram-node / .mini-pill even on
+  // Korean decks because the salvage pipeline only rewrites main content
+  // slots. Blank the demo labels; keep the pill shape.
+  next = scrubCapsuleLeftoverDecorativeChrome(next, { deckLang: 'auto' });
   next = enrichSparseCobaltCover(next, brief);
   next = restyleBiennaleSparseChapterBodies(next);
   next = restyleBiennaleSparseDataBodies(next);
@@ -6115,6 +6120,150 @@ function stripCapsuleCatalogDemoCopy(html: string): string {
   return String(html ?? '')
     .replace(CAPSULE_CATALOG_DEMO_COPY_RE, '')
     .replace(CAPSULE_CATALOG_DEMO_METRIC_RE, '');
+}
+
+/**
+ * 루프510 — Capsule decorative chrome pills carry English demo labels
+ * (`Concept`, `Strategy`, `Vision`, `Research`, `Ideation`, `Bold`,
+ * `Continue`, `Input Layer`, …). The main clone-fill pipeline only rewrites
+ * h1/h2/p/li slots, so on a Korean deck these atmospheric pills stay in
+ * English and look untranslated. Blank the pill text (but keep the pill
+ * shape/color) so the atmosphere reads without leaking demo copy. Preserves
+ * any real content the model may already have written in (Hangul, digits).
+ */
+const CAPSULE_DECORATIVE_PILL_CLASSES = [
+  'deco-pill',
+  'orbit-pill',
+  'f-pill',
+  'c-pill',
+  'diagram-node',
+  'mini-pill',
+] as const;
+
+const CAPSULE_DECORATIVE_PILL_DEMO_LABELS = new Set<string>([
+  // slide-1 .deco-pill (year labels like "2026" are intentionally not
+  // stripped — years are neutral and may be legitimate content).
+  'concept', 'strategy', 'vision', 'future', 'design', 'next',
+  // slide-2 .orbit-pill (orbit around center circle)
+  'research', 'ideation', 'prototype', 'iterate', 'launch', 'scale',
+  // slide-5 .f-pill (floating pills)
+  'bold', 'inspire', 'create', 'elevate', 'now', 'today',
+  // slide-8 .diagram-node
+  'input layer', 'processing core', 'decision engine', 'output stream',
+  // slide-10 .c-pill (closing pills)
+  'continue', 'explore', 'discover', 'go', 'begin', 'more',
+  // slide-9 .mini-pill (text-pills sidecar)
+  'build', 'measure',
+]);
+
+function normalizePillLabelForMatch(text: string): string {
+  return text
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/[.·•,;:!?]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function isCapsuleDecorativeDemoLabel(text: string): boolean {
+  const normalized = normalizePillLabelForMatch(text);
+  if (!normalized) return false;
+  if (CAPSULE_DECORATIVE_PILL_DEMO_LABELS.has(normalized)) return true;
+  // Trim trailing/leading Latin punctuation ('Design.' etc.).
+  const trimmed = normalized.replace(/^[a-z0-9.\s-]+$/i, (m) => m.trim());
+  return CAPSULE_DECORATIVE_PILL_DEMO_LABELS.has(trimmed);
+}
+
+/**
+ * 루프510 — Blank English demo copy inside Capsule decorative chrome pills
+ * for Korean decks. Only touches pills whose *entire* visible text matches a
+ * known Capsule demo label; any pill the model rewrote (Korean text, digits
+ * that are real content) is left untouched.
+ */
+export function scrubCapsuleLeftoverDecorativeChrome(
+  html: string,
+  options: { deckLang?: 'ko' | 'en' | 'auto' } = {},
+): string {
+  const src = String(html ?? '');
+  if (!src) return src;
+  const deckLang = options.deckLang ?? 'auto';
+  if (deckLang === 'en') return src;
+  if (deckLang === 'auto') {
+    // Only run for decks that contain Hangul — the demo labels are
+    // legitimate content for an English deck.
+    if (!/[가-힣]/.test(src)) return src;
+  }
+  const classPattern = CAPSULE_DECORATIVE_PILL_CLASSES.join('|');
+  const openRe = new RegExp(
+    `<(div|span)\\b([^>]*\\bclass\\s*=\\s*"[^"]*\\b(?:${classPattern})\\b[^"]*"[^>]*)>`,
+    'gi',
+  );
+  let out = src;
+  let match: RegExpExecArray | null;
+  const rewrites: Array<{ start: number; end: number; replacement: string }> = [];
+  while ((match = openRe.exec(src)) !== null) {
+    const openStart = match.index;
+    const openLen = match[0].length;
+    const tag = match[1]!.toLowerCase();
+    const closeRe = new RegExp(`</${tag}\\s*>`, 'gi');
+    closeRe.lastIndex = openStart + openLen;
+    const closeMatch = closeRe.exec(src);
+    if (!closeMatch) continue;
+    const closeStart = closeMatch.index;
+    const inner = src.slice(openStart + openLen, closeStart);
+    // Skip pills that contain nested tags (chart bars, decoration inside) —
+    // the demo-label test is meant for pure text pills.
+    if (/<[a-z]/i.test(inner)) continue;
+    if (!isCapsuleDecorativeDemoLabel(inner)) continue;
+    rewrites.push({
+      start: openStart + openLen,
+      end: closeStart,
+      replacement: '',
+    });
+  }
+  // Apply rewrites back-to-front so earlier offsets stay valid.
+  for (let i = rewrites.length - 1; i >= 0; i -= 1) {
+    const { start, end, replacement } = rewrites[i]!;
+    out = out.slice(0, start) + replacement + out.slice(end);
+  }
+  return out;
+}
+
+/**
+ * 루프510 — Capsule's cover template ships a `.title-pill` chrome ("PRESENTATION
+ * TEMPLATE") that the clone-fill pipeline empties out. On the actual cover
+ * the yellow pill is a required kicker slot — leaving it blank makes the
+ * cover feel unfinished. Populate it with the provided kicker (from the
+ * outline slide) or a safe short fallback derived from the deck title, so
+ * Korean decks show a Korean kicker instead of an empty yellow pill.
+ */
+export function fillCapsuleEmptyTitlePill(
+  html: string,
+  options: { kicker?: string | null; deckTitle?: string | null; fallback?: string | null } = {},
+): string {
+  const src = String(html ?? '');
+  if (!src) return src;
+  if (!/<div\b[^>]*\bclass\s*=\s*"[^"]*\btitle-pill\b[^"]*"[^>]*>\s*<\/div>/i.test(src)) {
+    return src;
+  }
+  const rawKicker = (options.kicker ?? '').toString().trim();
+  const deckTitle = (options.deckTitle ?? '').toString().trim();
+  const fallback = (options.fallback ?? '').toString().trim();
+  // Prefer explicit kicker; else derive a short label from the deck title.
+  let label = rawKicker || '';
+  if (!label && deckTitle) {
+    const hangulTokens = deckTitle.match(/[가-힣]{2,}/g);
+    label = hangulTokens && hangulTokens.length > 0 ? hangulTokens[0]! : deckTitle;
+  }
+  if (!label) label = fallback || '';
+  // Hard cap for pill copy (yellow pill is small).
+  if (label.length > 12) label = label.slice(0, 12);
+  if (!label) return src;
+  return src.replace(
+    /(<div\b[^>]*\bclass\s*=\s*"[^"]*\btitle-pill\b[^"]*"[^>]*>)\s*(<\/div>)/i,
+    `$1${escapeHtml(label)}$2`,
+  );
 }
 
 /** 루프434 / 루프461 — Block-frame / Neo catalog marketing leftovers on Hangul LOOK seeds. */
@@ -8970,6 +9119,23 @@ export function buildTemplateClonedDeckHtml(
   out = stripBlueProfessionalCatalogDemoCopy(out);
   out = stripStudioCreativeCatalogDemoCopy(out);
   out = stripLeftoverCatalogDemoPhrases(out);
+  // 루프510 — decorative English demo pills (Capsule .orbit-pill / .f-pill /
+  // .c-pill / .deco-pill / .diagram-node / .mini-pill) survive clone-fill
+  // because the slot map only rewrites h*/p/li text. On Korean decks that
+  // leaves atmospheric chrome untranslated ("Research"/"Ideation"/"Bold"…).
+  // Blank the demo labels; keep the pill shape/color intact so the deck
+  // still carries the intended visual rhythm.
+  out = scrubCapsuleLeftoverDecorativeChrome(out, { deckLang: 'auto' });
+  // 루프510 — Capsule cover's yellow `.title-pill` gets emptied by the clone
+  // fill; restore a short Korean kicker so the cover pill is not a bare
+  // blank on Korean decks.
+  const firstSlideKicker =
+    (workingSlides[0] as { kicker?: string | null } | undefined)?.kicker ?? null;
+  out = fillCapsuleEmptyTitlePill(out, {
+    kicker: firstSlideKicker,
+    deckTitle,
+    fallback: '소개',
+  });
   out = renumberBiennalePagenums(out, filled.length);
   return out.trim() || null;
 }

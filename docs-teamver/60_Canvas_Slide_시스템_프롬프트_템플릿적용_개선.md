@@ -32,6 +32,33 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **명시 5장+ 요청에서는 저장하지 않는다.** 8–10장 요청의 1장/4장 Template Clone fill은 `deck.html` 덮어쓰기 전에 incomplete로 막고 기존 덱을 보존한다. 6장 이상 첫 fill만 저장 후 top-up 가능하다. 사용자가 1장을 명시하거나 요청 장수가 작을 때만 1장 저장을 허용한다 |
 
+### 1.33 2026-09-21 — Capsule 한글덱 데코 chrome 스크럽 · 커버 title-pill 채움
+
+§1.32까지의 sparse-outline 안전망은 “카드 그리드 shell에 착지한 title-only 슬라이드에 items[]가 없다”를 해결한다. 그러나 사용자는 2026-09-21에 “결과물 퀄리티가 더 안좋아졌다. 요소 CSS도 제대로 안먹히고, 배치·정렬·본문 밀도·품질이 적절치 않다”고 재보고했고, 첨부 스크린샷은 Capsule 템플릿 커버 슬라이드였다. `<h1>Teamver 소개</h1>`는 정상이지만 좌측에 `Research/Ideation/Prototype/Iterate/Launch/Scale` 라벨이 붙은 큰 pill이 세로로 쌓여 letterbox 바깥으로 빠져나오고, 상하좌우로 `OVERVIEW/DESIGN/FUTURE/NEXT`가 흩어져 있었다.
+
+원인:
+
+1. **주 slot만 rewrite한다.** `buildTemplateClonedDeckHtml` / `salvageMalformedMiniMaxSlideMarkup` 파이프라인은 `h1/h2/p/li` 등 컨텐츠 slot만 rewrite한다. Capsule은 **데코 chrome**(`.orbit-pill`, `.deco-pill`, `.f-pill`, `.c-pill`, `.diagram-node`, `.mini-pill`)에 원본 데모 라벨(`Research`, `Ideation`, `Concept`, `Bold`, `Continue`, `Input Layer`, …)을 넣어놨는데, 이것이 slot이 아니라서 “한국어 덱인데 영문 데모 라벨이 그대로” 남는다. 실제 로컬 결정론 clone-fill로 재현했을 때 22종 이상의 영문 라벨이 살아있었다.
+2. **커버 `.title-pill`이 빈 `<div>`로 렌더된다.** Capsule 원본은 노란 pill에 “Presentation Template” 카피가 들어있는데, clone-fill이 그 slot을 지워버리고 재채움 로직이 없다. `restyleForeignIbMagazineCover`의 Capsule branch는 IB→Capsule migration에서만 발화한다. 결과: 노란 pill이 빈 상자로 남아 커버가 미완성처럼 보인다.
+3. **Motif leak**(`overflow:visible` + rotate 데코가 캔버스 밖으로 painting)는 `deck-fixed-canvas` / `LOOK_NEUTRALIZE_CSS`의 명시적 pin이라 이번 스코프에서 제외. 영문 라벨이 blank이면 시각 노이즈 자체가 대폭 감소한다.
+
+구현 현황:
+
+- [x] `packages/contracts/src/template-clone-fill.ts` — `scrubCapsuleLeftoverDecorativeChrome(html, { deckLang })` 신설. Hangul이 있는 덱(`deckLang: 'auto'`)에서 `CAPSULE_DECORATIVE_PILL_CLASSES` 안의 정확한 영문 데모 라벨(`CAPSULE_DECORATIVE_PILL_DEMO_LABELS` 세트)만 blank한다. 연도(2026 등)·한글·%는 절대 안 만짐. class/style은 보존 → 컬러/rotate 등 원본 시각 리듬 유지.
+- [x] `packages/contracts/src/template-clone-fill.ts` — `fillCapsuleEmptyTitlePill(html, { kicker, deckTitle, fallback })` 신설. 빈 `<div class="title-pill"></div>`만 대상으로 잡아 `kicker` → deckTitle의 첫 Hangul 토큰 → fallback(기본 `소개`) 순으로 짧은 (≤12자) 라벨 채움.
+- [x] `buildTemplateClonedDeckHtml` end (기존 catalog scrub 뒤)에 두 함수 wiring 추가. `firstSlideKicker`는 `workingSlides[0].kicker`에서 추출.
+- [x] `salvageMalformedMiniMaxSlideMarkup` 체인의 `healCobaltOrphanDataStats` 뒤에도 `scrubCapsuleLeftoverDecorativeChrome` 삽입 → MiniMax stream 경로에서도 동일하게 정리.
+- [x] 회귀:
+  - `template-clone-fill.test.ts` — `루프510 Capsule Korean-deck decorative chrome scrub + title-pill fill` describe 10개 케이스 (orbit-pill/다중 데코 클래스/영문 덱 예외/한글·연도·% 예외/커버 title-pill kicker·Hangul 토큰·fallback/이미 채워진 pill/end-to-end `buildTemplateClonedDeckHtml`/사용자 리포트 fixture pin)
+  - `packages/contracts/tests/fixtures/loop510-capsule-korean-deck-clone.html` — 신규 fixture (fix 전 상태 pin)
+  - 전체: `pnpm --filter @open-design/contracts test -- --run --testNamePattern '루프510'` → 3152 tests pass, 1 skipped, 0 failed
+
+주의 / 다음:
+
+- 데코 pill을 한국어로 “번역”하지 않고 blank한 이유는 데모 라벨(Research/Ideation/…)에 대응하는 슬라이드 컨텐츠가 outline에 없어 임의 번역이 오히려 오해를 만들 수 있기 때문. 실제 슬라이드 컨텐츠에서 뽑아낼 수 있는 `.diagram-node` 같은 케이스는 후속 루프에서 slot-fill로 커버 후보.
+- `.header-pill` (“Core Principles”), `.closing-pill` (“The Journey Continues”), 슬라이드-5 blockquote/attribution 같이 “주 컨텐츠 slot이지만 clone-fill이 못 채우는” 위치는 이번 스코프에서 제외. 별도 루프 후보.
+- Motif leak 자체는 기존 pinned 정책이라 이번 루프에서 손대지 않음. 필요 시 “per-Capsule 슬라이드 overflow:hidden 오버라이드” 또는 “motif 원본 좌표 sanitize” 형태의 별도 설계 필요.
+
 ### 1.32 2026-09-14 — 결과물 완성도 2단계 (sparse outline 안전망 · Copy density prompt)
 
 §1.31이 prompt/picker/scaffold 3면에서 레이아웃 다양성을 강제하도록 만들었지만, 사용자는 여전히 “미리보기보다 결과물 완성도가 훨씬 떨어진다”고 재보고했다. 실제로 §1.31 이후 남은 완성도 갭은 **레이아웃이 아닌 콘텐츠 밀도** 쪽이었다.

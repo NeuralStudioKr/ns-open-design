@@ -101,6 +101,8 @@ import {
   fillAndTrimCardPeers,
   hoistCloneSlidesOutOfFlexTrack,
   resolveTemplateCloneSlotMap,
+  scrubCapsuleLeftoverDecorativeChrome,
+  fillCapsuleEmptyTitlePill,
 } from '../src/template-clone-fill.js';
 import { pinDeckSlidesToFixedCanvas } from '../src/html/deck-fixed-canvas.js';
 import { hoistDeckHostStylesToHead } from '../src/html/deck-template-look-css.js';
@@ -5162,5 +5164,245 @@ describe('루프381 absorbFollowingPillHeadingIntoEmptyChromeShell', () => {
       '<h3>Heading</h3>',
     ].join('');
     expect(absorbFollowingPillHeadingIntoEmptyChromeShell(html)).toBe(html);
+  });
+});
+
+/**
+ * 루프510 — Capsule template clones for Korean decks leave English
+ * decorative pill labels (`Research`, `Ideation`, `Concept`, `Bold`, …) and
+ * an empty `.title-pill` on the cover. That is what the user's 2026-09-21
+ * screenshot showed as "요소 CSS도 제대로 안먹히고, 배치·정렬·본문 밀도·품질
+ * 이 적절치 않다" — the leftover chrome dominated the visual, not a broken
+ * CSS. This describe pins the two invariants together.
+ */
+describe('루프510 Capsule Korean-deck decorative chrome scrub + title-pill fill', () => {
+  const FIXTURE_PATH =
+    '../../../packages/contracts/tests/fixtures/loop510-capsule-korean-deck-clone.html';
+
+  it('blanks English demo copy inside .orbit-pill on Korean decks', () => {
+    const html = [
+      '<div class="right-visual">',
+      '  <div class="orbit-pill pill-coral" style="top:10%;left:20%;">Research</div>',
+      '  <div class="orbit-pill pill-lime" style="top:5%;right:15%;">Ideation</div>',
+      '  <div class="orbit-pill pill-sky" style="bottom:15%;">Prototype</div>',
+      '  <p>Teamver는 초안과 수정을 같은 보드에서 끝냅니다.</p>',
+      '</div>',
+    ].join('\n');
+    const out = scrubCapsuleLeftoverDecorativeChrome(html);
+    expect(out).not.toMatch(/>Research</);
+    expect(out).not.toMatch(/>Ideation</);
+    expect(out).not.toMatch(/>Prototype</);
+    // Pill shapes/attributes stay in place — only the text is blanked.
+    expect(out).toContain('class="orbit-pill pill-coral"');
+    expect(out).toContain('class="orbit-pill pill-lime"');
+    expect(out).toContain('class="orbit-pill pill-sky"');
+    // Real Korean content is preserved untouched.
+    expect(out).toContain('초안과 수정을 같은 보드에서');
+  });
+
+  it('blanks English demo copy inside .deco-pill / .f-pill / .c-pill / .diagram-node / .mini-pill on Korean decks', () => {
+    const html = [
+      '<div class="deco-pills">',
+      '  <div class="deco-pill pill-coral">Concept</div>',
+      '  <div class="deco-pill pill-lavender">Strategy</div>',
+      '  <div class="deco-pill pill-white">Design</div>',
+      '</div>',
+      '<div class="floating-pills">',
+      '  <div class="f-pill pill-coral">Bold</div>',
+      '  <div class="f-pill pill-lime">Elevate</div>',
+      '</div>',
+      '<div class="deco-pills-closing">',
+      '  <div class="c-pill pill-lime">Continue</div>',
+      '  <div class="c-pill pill-sky">Explore</div>',
+      '  <div class="c-pill pill-coral">Go</div>',
+      '</div>',
+      '<div class="diagram-container">',
+      '  <div class="diagram-node pill-white">Input Layer</div>',
+      '  <div class="diagram-node pill-lavender">Processing Core</div>',
+      '</div>',
+      '<div class="text-pills">',
+      '  <div class="mini-pill pill-coral">Research</div>',
+      '  <div class="mini-pill pill-lime">Build</div>',
+      '</div>',
+      '<h1>팀버 소개</h1>',
+    ].join('\n');
+    const out = scrubCapsuleLeftoverDecorativeChrome(html);
+    for (const label of [
+      'Concept', 'Strategy', 'Design',
+      'Bold', 'Elevate',
+      'Continue', 'Explore', 'Go',
+      'Input Layer', 'Processing Core',
+      'Research', 'Build',
+    ]) {
+      expect(out, `label ${label} still present`).not.toMatch(
+        new RegExp(`>${label.replace(/\s+/g, '\\s+')}<`),
+      );
+    }
+    // Pill shapes stay intact.
+    for (const cls of ['deco-pill', 'f-pill', 'c-pill', 'diagram-node', 'mini-pill']) {
+      expect(out, `class ${cls} preserved`).toContain(cls);
+    }
+  });
+
+  it('never touches decorative pill copy on English-only decks', () => {
+    const html = [
+      '<div class="deco-pills">',
+      '  <div class="deco-pill pill-coral">Concept</div>',
+      '  <div class="deco-pill pill-lavender">Strategy</div>',
+      '</div>',
+      '<p>An English deck about strategy and vision.</p>',
+    ].join('\n');
+    const out = scrubCapsuleLeftoverDecorativeChrome(html);
+    expect(out).toContain('>Concept<');
+    expect(out).toContain('>Strategy<');
+  });
+
+  it('does not blank pills whose content is Korean, digits, or model rewrites', () => {
+    const html = [
+      '<div class="deco-pill pill-coral">개요</div>',
+      '<div class="deco-pill pill-lavender">2026</div>',
+      '<div class="orbit-pill pill-sky">협업</div>',
+      '<div class="c-pill pill-yellow">100%</div>',
+      '<h1>팀 소개</h1>',
+    ].join('\n');
+    const out = scrubCapsuleLeftoverDecorativeChrome(html);
+    expect(out).toContain('>개요<');
+    expect(out).toContain('>2026<');
+    expect(out).toContain('>협업<');
+    expect(out).toContain('>100%<');
+  });
+
+  it('fills empty .title-pill on Capsule cover with the slide kicker', () => {
+    const html = [
+      '<div class="slide slide-1 active">',
+      '  <div class="deco-pills"><div class="deco-pill"></div></div>',
+      '  <div class="title-pill"></div>',
+      '  <h1 class="main-title">Teamver 소개</h1>',
+      '</div>',
+    ].join('\n');
+    const out = fillCapsuleEmptyTitlePill(html, {
+      kicker: '개요',
+      deckTitle: 'Teamver 소개',
+    });
+    expect(out).toContain('<div class="title-pill">개요</div>');
+    expect(out).not.toContain('<div class="title-pill"></div>');
+  });
+
+  it('falls back to a Korean deck-title token when kicker is missing', () => {
+    const html = [
+      '<div class="slide slide-1 active">',
+      '  <div class="title-pill"></div>',
+      '  <h1 class="main-title">Teamver 서비스</h1>',
+      '</div>',
+    ].join('\n');
+    const out = fillCapsuleEmptyTitlePill(html, {
+      kicker: null,
+      deckTitle: 'Teamver 서비스',
+    });
+    // Should contain the first Hangul token from deck title.
+    expect(out).toContain('<div class="title-pill">서비스</div>');
+  });
+
+  it('uses the safe Korean fallback when neither kicker nor Hangul deck-title exist', () => {
+    const html = '<div class="title-pill"></div>';
+    const out = fillCapsuleEmptyTitlePill(html, {
+      kicker: null,
+      deckTitle: null,
+      fallback: '소개',
+    });
+    expect(out).toContain('<div class="title-pill">소개</div>');
+  });
+
+  it('leaves a non-empty .title-pill untouched (already filled by the model)', () => {
+    const html = '<div class="title-pill">CUSTOM COPY</div>';
+    const out = fillCapsuleEmptyTitlePill(html, {
+      kicker: '개요',
+      deckTitle: 'Teamver 소개',
+    });
+    expect(out).toBe(html);
+  });
+
+  it('full pipeline: buildTemplateClonedDeckHtml scrubs Capsule leftover chrome on Korean deck', async () => {
+    const source = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-capsule/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const slides = [
+      { title: 'Teamver 소개', body: 'Teamver는 초안과 수정을 같은 보드에서 끝냅니다.' },
+      { title: 'Teamver가 풀어야 하는 문제', body: '초안과 수정이 분리돼 있습니다.' },
+      { title: '핵심 가치', body: '한 화면에서 끝나는 협업 흐름을 만듭니다.' },
+      { title: '측정해야 할 지표', body: '실사용 지표.' },
+      { title: '수치 요약', body: '핵심 수치.' },
+      { title: '도입 단계', body: '점진적 도입 로드맵.' },
+      { title: '대상 고객', body: '누구를 위한가.' },
+      { title: '팀 이야기', body: '초안을 보낸 뒤에도 같은 화면에서 고칠 수 있어야 일이 끝난다.' },
+      { title: '요금제', body: '유연한 요금제.' },
+      { title: '지금 시작', body: '초대로 첫 보드를 열어보세요.' },
+    ];
+    const cloned = buildTemplateClonedDeckHtml(source, slides, {
+      title: 'Teamver 소개',
+      templateId: 'html-ppt-zhangzara-capsule',
+    });
+    expect(cloned).not.toBeNull();
+    const html = cloned!;
+
+    // No English decorative pill demo labels leak into a Korean deck.
+    for (const label of [
+      'Concept', 'Strategy', 'Vision', 'Future', 'Design', 'Next',
+      'Research', 'Ideation', 'Prototype', 'Iterate', 'Launch', 'Scale',
+      'Bold', 'Inspire', 'Create', 'Elevate', 'Now', 'Today',
+      'Continue', 'Explore',
+      'Input Layer', 'Processing Core', 'Decision Engine', 'Output Stream',
+    ]) {
+      expect(html, `decorative pill label ${label} leaked`).not.toMatch(
+        new RegExp(`>\\s*${label.replace(/\s+/g, '\\s+')}\\s*<`, 'i'),
+      );
+    }
+
+    // Cover title-pill is non-empty.
+    expect(html).not.toMatch(/<div class="title-pill">\s*<\/div>/);
+  });
+
+  it('full pipeline: cover .title-pill contains Korean copy (not the empty <div>)', async () => {
+    const source = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-capsule/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const cloned = buildTemplateClonedDeckHtml(
+      source,
+      [{ title: '팀버 소개', body: '팀버는 초안과 수정을 한 화면에서 끝냅니다.' }],
+      { title: '팀버 소개', templateId: 'html-ppt-zhangzara-capsule' },
+    );
+    expect(cloned).not.toBeNull();
+    const html = cloned!;
+    const titlePillMatch = /<div class="title-pill">([^<]*)<\/div>/.exec(html);
+    expect(titlePillMatch, 'title-pill missing entirely').not.toBeNull();
+    const inner = String(titlePillMatch![1]).trim();
+    expect(inner.length).toBeGreaterThan(0);
+    // Ideally Korean copy (from title '팀버 소개' hangul token '팀버' or fallback '소개').
+    expect(inner).toMatch(/[가-힣]/);
+  });
+
+  it('user fixture pin (2026-09-21): cloned Capsule Korean deck contains no English demo pill labels', async () => {
+    const fixture = await readFile(new URL(FIXTURE_PATH, import.meta.url), 'utf8');
+    // The saved fixture was generated pre-fix; scrub it and confirm the
+    // healer clears every leftover.
+    const out = scrubCapsuleLeftoverDecorativeChrome(fixture);
+    for (const label of [
+      'Concept', 'Strategy', 'Vision', 'Future', 'Design', 'Next',
+      'Research', 'Ideation', 'Prototype', 'Iterate', 'Launch', 'Scale',
+      'Bold', 'Inspire', 'Create', 'Elevate', 'Now', 'Today',
+      'Input Layer', 'Processing Core', 'Decision Engine', 'Output Stream',
+    ]) {
+      expect(out, `label ${label} still present after scrub`).not.toMatch(
+        new RegExp(`>\\s*${label.replace(/\s+/g, '\\s+')}\\s*<`, 'i'),
+      );
+    }
   });
 });
