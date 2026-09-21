@@ -13443,8 +13443,11 @@ function biennalePackForBody(body: string, attrs: string, pack: BiennaleCopyPack
 
 function coralSlideHasKitChrome(html: string, attrs = ''): boolean {
   const hay = `${attrs}\n${html}`;
-  return /\b(?:main-title|brand-mark|zigzag-layer|zigzag-deco|big-statement|col-title|sidebar-item|info-bar|column-card|closing-title)\b/i.test(hay)
-    || (/\bslide-(?:[1-9]|10)\b/i.test(hay) && /--coral\s*:|#E85D5D|Bebas Neue/i.test(hay));
+  // slide-N on a Coral deck is enough — pad merge can strip inner chrome
+  // (big-statement) while leaving the host class. CSS tokens live on <style>,
+  // not on the empty slide body.
+  return /\b(?:main-title|brand-mark|zigzag-layer|zigzag-deco|big-statement|col-title|sidebar-item|info-bar|column-card|closing-title|slide-(?:[1-9]|10))\b/i.test(hay)
+    || /--coral\s*:|#E85D5D|Bebas Neue/i.test(hay);
 }
 
 function matSlideHasKitChrome(html: string, attrs = ''): boolean {
@@ -13794,6 +13797,15 @@ export function fillCoralKitSlide(
         return block.replace(/(>)([^<]*)(<\/)/, `$1${escapeHtml(seeded.lead)}$3`);
       },
     );
+  }
+
+  if (!/\bbig-statement\b/i.test(next) && /\bslide-2\b/i.test(attrs)) {
+    next = [
+      next,
+      `<div class="section-label">${escapeHtml(seeded.title)}</div>`,
+      `<div class="big-statement">${escapeHtml(seeded.lead)}</div>`,
+      `<div class="body-text">${escapeHtml(seeded.bodyText || seeded.lead)}</div>`,
+    ].join('');
   }
 
   return wipeEightBitCapsuleLeftoverPhrases(stripCoralCatalogDemoCopy(next));

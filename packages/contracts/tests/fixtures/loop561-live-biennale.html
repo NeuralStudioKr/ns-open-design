@@ -1,0 +1,789 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Teamver 소개</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --paper:      #E9E5DB;   /* warm parchment ground */
+    --paper-deep: #DCD6C4;   /* slightly darker for shadows */
+    --sun:        #F1EE2E;   /* signature solar yellow */
+    --sun-soft:   #F8F39B;
+    --ink:        #1B2566;   /* deep indigo navy */
+    --ember:      #E26B4A;   /* warm peach accent */
+    --haze:       #F0DA7C;
+    --line:       #1B2566;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; background: #0a0a0a; }
+  body {
+    font-family: 'Archivo', 'Helvetica Neue', sans-serif;
+    color: var(--ink);
+    overflow: hidden;
+  }
+
+  /* deck wrapper — fills the viewport, centers a stage */
+  .deck { position: fixed; inset: 0; display: grid; place-items: center; }
+  .stage {
+    position: relative;
+    width: 1920px; height: 1080px;
+    overflow: hidden;
+    background: var(--paper);
+  }
+
+  /* one slide at a time, soft cross-fade */
+  .slide {
+    position: absolute; inset: 0;
+    opacity: 0; pointer-events: none;
+    transition: opacity 280ms ease;
+  }
+  .slide.active { opacity: 1; pointer-events: auto; }
+
+  /* Type system — kept on a small set of utility classes */
+  .display      { font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; line-height: 0.9; letter-spacing: -0.012em; }
+  .display-it   { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; line-height: 1.04; letter-spacing: -0.005em; }
+  .micro-label  { font-family: 'Archivo', sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: 0.18em; }
+  .body-text    { font-family: 'Archivo', sans-serif; font-weight: 400; line-height: 1.5; }
+  .mono-tab     { font-family: 'JetBrains Mono', ui-monospace, monospace; font-weight: 400; }
+
+  /* Page number — single, bottom-right, on every slide */
+  .pagenum {
+    position: absolute;
+    right: clamp(24px, 46.08px, 48px);
+    bottom: clamp(22px, 25.92px, 42px);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: clamp(11px, 16.32px, 13px);
+    color: var(--ink);
+    letter-spacing: 0.08em;
+    z-index: 8;
+    opacity: 0.75;
+  }
+
+  /* Persistent navigation hint — bottom-left, single appearance */
+  .nav-hint {
+    position: fixed;
+    left: clamp(20px, 38.4px, 36px);
+    bottom: clamp(16px, 21.6px, 28px);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: clamp(10px, 14.4px, 12px);
+    color: var(--ink);
+    letter-spacing: 0.08em;
+    opacity: 0.4;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  /* ──────────────────────────────────────────────────────────────────
+     SLIDE 1 — COVER (poster echo)
+     ────────────────────────────────────────────────────────────────── */
+  .s-cover { background: var(--paper); }
+  /* abstract block grid behind, gives the layered yellow feeling */
+  .s-cover .blocks {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    grid-template-rows: repeat(8, 1fr);
+  }
+  .s-cover .blocks div { background: transparent; }
+  .s-cover .blocks .b1 { background: rgba(241,238,46,0.55); grid-column: 1; grid-row: 3 / 6; }
+  .s-cover .blocks .b2 { background: rgba(241,238,46,0.4);  grid-column: 4; grid-row: 1 / 4; }
+  .s-cover .blocks .b3 { background: rgba(241,238,46,0.7);  grid-column: 1 / 3; grid-row: 6 / 9; }
+  .s-cover .blocks .b4 { background: rgba(241,238,46,0.45); grid-column: 3 / 5; grid-row: 6 / 8; }
+
+  /* central sun-bloom + corner peach edge */
+  .s-cover .sunglow {
+    position: absolute; inset: 0; pointer-events: none;
+    background:
+      radial-gradient(ellipse 42% 38% at 52% 42%, rgba(241,238,46,0.95) 0%, rgba(241,238,46,0.65) 38%, rgba(240,218,124,0.22) 65%, rgba(233,229,219,0) 88%),
+      radial-gradient(ellipse 28% 30% at 88% 16%, rgba(226,107,74,0.22) 0%, rgba(226,107,74,0) 70%);
+  }
+
+  .s-cover .date-rail {
+    position: absolute;
+    top: clamp(28px, 34.56px, 56px);
+    right: clamp(40px, 76.8px, 76px);
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-size: clamp(48px, min(99.84px, 97.2px), 96px);
+    color: var(--ink);
+    line-height: 0.96;
+    text-align: right;
+    letter-spacing: -0.005em;
+    z-index: 5;
+  }
+
+  .s-cover .titlewrap {
+    position: absolute;
+    left: clamp(40px, 76.8px, 76px);
+    bottom: clamp(132px, 172.8px, 220px);
+    z-index: 5;
+    max-width: 88%;
+  }
+  .s-cover .title {
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-size: clamp(120px, min(280.32px, 237.6px), 240px);
+    line-height: 0.86;
+    color: var(--ink);
+    letter-spacing: -0.018em;
+  }
+  .s-cover .title em { font-style: italic; }
+  .s-cover .subline {
+    margin-top: clamp(8px, 10.8px, 18px);
+    font-family: 'Archivo', sans-serif;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: clamp(11px, 16.32px, 13px);
+    color: var(--ink);
+  }
+
+  .s-cover .footer-row {
+    position: absolute;
+    left: clamp(40px, 76.8px, 76px);
+    right: clamp(40px, 76.8px, 76px);
+    bottom: clamp(28px, 32.4px, 52px);
+    display: grid;
+    grid-template-columns: 1.1fr 1fr 1.4fr 2fr;
+    gap: clamp(20px, 46.08px, 44px);
+    z-index: 5;
+  }
+  .s-cover .footer-row > div {
+    border-top: 1px solid var(--ink);
+    padding-top: clamp(10px, 12.96px, 16px);
+  }
+  .s-cover .footer-row .ftag {
+    text-transform: uppercase; letter-spacing: 0.16em; font-weight: 600;
+    font-size: clamp(10px, 13.82px, 12px);
+    margin-bottom: 6px;
+  }
+  .s-cover .footer-row .ftxt {
+    font-family: 'Archivo', sans-serif;
+    font-size: clamp(11px, 14.98px, 13px);
+    line-height: 1.45;
+  }
+  .s-cover .footer-row .fdesc {
+    font-family: 'Archivo', sans-serif;
+    font-size: clamp(11px, 14.21px, 12px);
+    line-height: 1.5;
+    color: var(--ink);
+  }
+
+  /* ──────────────────────────────────────────────────────────────────
+     SLIDE 2 — MANIFESTO (single italic statement, atmospheric)
+     ────────────────────────────────────────────────────────────────── */
+  .s-manifesto { background: var(--paper); display: flex; align-items: center; justify-content: center; }
+  .s-manifesto .haze {
+    position: absolute; inset: 0; pointer-events: none;
+    background:
+      radial-gradient(ellipse 70% 60% at 50% 50%, rgba(241,238,46,0.7) 0%, rgba(248,243,155,0.42) 32%, rgba(240,218,124,0.18) 56%, rgba(233,229,219,0) 80%),
+      radial-gradient(circle 600px at 12% 88%, rgba(226,107,74,0.15) 0%, rgba(226,107,74,0) 70%);
+  }
+  .s-manifesto .quote {
+    position: relative; z-index: 4;
+    max-width: min(86%, 1480px);
+    padding: 0 clamp(40px, 115.2px, 120px);
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-style: italic;
+    font-weight: 400;
+    font-size: clamp(56px, min(134.4px, 118.8px), 120px);
+    line-height: 1.04;
+    color: var(--ink);
+    letter-spacing: -0.005em;
+    text-align: left;
+  }
+  .s-manifesto .attr {
+    position: absolute;
+    left: clamp(40px, 76.8px, 76px);
+    bottom: clamp(56px, 64.8px, 96px);
+    font-family: 'Archivo', sans-serif;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    font-size: clamp(11px, 16.32px, 13px);
+    color: var(--ink);
+    z-index: 4;
+  }
+
+  /* ──────────────────────────────────────────────────────────────────
+     SLIDE 3 — PROGRAMME (split editorial spread)
+     ────────────────────────────────────────────────────────────────── */
+  .s-programme { background: var(--paper); display: grid; grid-template-columns: 1fr 1fr; }
+  .s-programme .left {
+    background: var(--sun);
+    position: relative;
+    padding: clamp(40px, 80.64px, 80px);
+    display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .s-programme .left .kicker {
+    font-family: 'Archivo', sans-serif;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.2em;
+    font-size: clamp(11px, 16.32px, 14px);
+    color: var(--ink);
+  }
+  .s-programme .left .word {
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-size: clamp(110px, min(211.2px, 194.4px), 200px);
+    line-height: 0.86;
+    color: var(--ink);
+    letter-spacing: -0.018em;
+  }
+  .s-programme .left .meta {
+    font-family: 'Archivo', sans-serif;
+    font-size: clamp(13px, 18.24px, 16px);
+    line-height: 1.5;
+    max-width: 88%;
+    color: var(--ink);
+  }
+  .s-programme .right {
+    background: var(--paper);
+    position: relative;
+    padding: clamp(40px, 80.64px, 80px) clamp(40px, 80.64px, 80px) clamp(56px, 54px, 88px);
+    display: flex; flex-direction: column; gap: clamp(18px, 23.76px, 32px);
+  }
+  .s-programme .right .head {
+    font-family: 'Archivo', sans-serif;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.18em;
+    font-size: clamp(11px, 16.32px, 14px);
+    border-bottom: 1px solid var(--ink);
+    padding-bottom: 14px;
+  }
+  .s-programme .strands {
+    display: flex; flex-direction: column;
+    gap: clamp(14px, 19.44px, 22px);
+  }
+  .s-programme .strand {
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    gap: clamp(14px, 26.88px, 24px);
+    border-bottom: 1px solid rgba(27,37,102,0.18);
+    padding-bottom: clamp(12px, 17.28px, 22px);
+  }
+  .s-programme .strand .num {
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-size: clamp(28px, 38.4px, 38px);
+    color: var(--ink);
+    line-height: 1;
+  }
+  .s-programme .strand h3 {
+    margin: 0 0 4px 0;
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-weight: 400;
+    font-size: clamp(22px, 32.64px, 32px);
+    line-height: 1.1;
+    color: var(--ink);
+  }
+  .s-programme .strand p {
+    margin: 0;
+    font-family: 'Archivo', sans-serif;
+    font-size: clamp(14px, 18.24px, 15px);
+    line-height: 1.5;
+    color: var(--ink);
+    max-width: 92%;
+  }
+
+  /* ──────────────────────────────────────────────────────────────────
+     SLIDE 4 — CHAPTER DIVIDER (huge serif numeral)
+     ────────────────────────────────────────────────────────────────── */
+  .s-chapter { background: var(--paper); }
+  .s-chapter .glow {
+    position: absolute; inset: 0; pointer-events: none;
+    background:
+      radial-gradient(circle 720px at -10% -10%, rgba(241,238,46,0.7) 0%, rgba(241,238,46,0) 65%),
+      radial-gradient(circle 540px at 110% 110%, rgba(226,107,74,0.18) 0%, rgba(226,107,74,0) 70%);
+  }
+  .s-chapter .vrail {
+    position: absolute;
+    left: clamp(40px, 76.8px, 76px);
+    top: 50%;
+    transform: translateY(-50%) rotate(-90deg);
+    transform-origin: 0 50%;
+    font-family: 'Archivo', sans-serif;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.32em;
+    font-size: clamp(11px, 16.32px, 13px);
+    color: var(--ink);
+    white-space: nowrap;
+    z-index: 4;
+  }
+  .s-chapter .stack {
+    position: absolute;
+    left: clamp(120px, 230.4px, 220px);
+    top: clamp(40px, 54px, 96px);
+    bottom: clamp(80px, 97.2px, 130px);
+    right: clamp(40px, 76.8px, 76px);
+    display: flex; flex-direction: column; justify-content: center;
+    z-index: 4;
+  }
+  .s-chapter .nm {
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-size: clamp(220px, min(537.6px, 691.2px), 720px);
+    line-height: 0.84;
+    color: var(--ink);
+    letter-spacing: -0.04em;
+  }
+  .s-chapter .ttl {
+    margin-top: clamp(12px, 17.28px, 28px);
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-style: italic;
+    font-size: clamp(40px, min(84.48px, 75.6px), 90px);
+    line-height: 1.05;
+    color: var(--ink);
+    max-width: 78%;
+  }
+  .s-chapter .lede {
+    margin-top: clamp(18px, 23.76px, 36px);
+    font-family: 'Archivo', sans-serif;
+    font-size: clamp(15px, 20.16px, 18px);
+    line-height: 1.55;
+    color: var(--ink);
+    max-width: 56ch;
+  }
+
+  /* ──────────────────────────────────────────────────────────────────
+     SLIDE 5 — DATA: ATTENDANCE BARS
+     ────────────────────────────────────────────────────────────────── */
+  .s-data { background: var(--paper); }
+  .s-data .glow {
+    position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse 50% 40% at 92% 8%, rgba(241,238,46,0.55) 0%, rgba(241,238,46,0) 70%);
+  }
+  .s-data .frame {
+    position: absolute; inset: clamp(40px, 76.8px, 76px) clamp(40px, 76.8px, 76px) clamp(70px, 75.6px, 120px);
+    display: grid;
+    grid-template-columns: 1fr 1.4fr;
+    grid-template-rows: auto 1fr;
+    gap: clamp(20px, 48px, 48px);
+    z-index: 4;
+  }
+  .s-data .head { grid-column: 1 / 3; display: flex; align-items: end; justify-content: space-between; gap: 32px; border-bottom: 1px solid var(--ink); padding-bottom: clamp(14px, 17.28px, 24px); }
+  .s-data .head .lab { font-family: 'Archivo', sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: 0.2em; font-size: clamp(11px, 16.32px, 13px); color: var(--ink); }
+  .s-data .head .h { font-family: 'Instrument Serif', Georgia, serif; font-size: clamp(32px, min(69.12px, 64.8px), 56px); line-height: 1; color: var(--ink); }
+
+  .s-data .col-a { display: flex; flex-direction: column; justify-content: center; gap: clamp(18px, 21.6px, 32px); }
+  .s-data .stat { display: flex; flex-direction: column; gap: 4px; }
+  .s-data .stat .v { font-family: 'Instrument Serif', Georgia, serif; font-size: clamp(72px, min(134.4px, 129.6px), 144px); line-height: 0.92; color: var(--ink); letter-spacing: -0.01em; }
+  .s-data .stat .v sup { font-size: 0.42em; vertical-align: super; opacity: 0.7; font-style: italic; }
+  .s-data .stat .lab2 { font-family: 'Archivo', sans-serif; font-weight: 500; text-transform: uppercase; letter-spacing: 0.18em; font-size: clamp(11px, 15.36px, 13px); color: var(--ink); }
+  .s-data .stat .desc { font-family: 'Archivo', sans-serif; font-size: clamp(14px, 18.24px, 15px); line-height: 1.45; color: var(--ink); max-width: 32ch; margin-top: 4px; }
+
+  .s-data .chart { display: flex; flex-direction: column; gap: clamp(8px, 10.8px, 14px); justify-content: center; }
+  .s-data .row { display: grid; grid-template-columns: 64px 1fr 80px; align-items: center; gap: clamp(12px, 19.2px, 22px); }
+  .s-data .row .yr { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: clamp(12px, 16.32px, 14px); color: var(--ink); letter-spacing: 0.04em; }
+  .s-data .row .val { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: clamp(12px, 16.32px, 14px); color: var(--ink); text-align: right; letter-spacing: 0.02em; }
+  .s-data .bar { height: clamp(14px, 17.28px, 22px); background: var(--ink); position: relative; }
+  .s-data .bar.lit { background: var(--sun); border: 1px solid var(--ink); }
+
+  /* ──────────────────────────────────────────────────────────────────
+     SLIDE 6 — QUOTE SPREAD
+     ────────────────────────────────────────────────────────────────── */
+  .s-quote { background: var(--paper); }
+  .s-quote .yblock {
+    position: absolute;
+    right: 0; top: 0; bottom: 0;
+    width: 32%;
+    background: var(--sun);
+  }
+  .s-quote .glow {
+    position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(circle 600px at 8% 92%, rgba(241,238,46,0.4) 0%, rgba(241,238,46,0) 70%);
+  }
+  .s-quote .qwrap {
+    position: absolute;
+    left: clamp(40px, 76.8px, 76px);
+    right: 36%;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 4;
+  }
+  .s-quote .qkicker {
+    font-family: 'Archivo', sans-serif; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.22em;
+    font-size: clamp(11px, 15.74px, 13px);
+    color: var(--ink);
+    margin-bottom: clamp(14px, 19.44px, 26px);
+  }
+  .s-quote .qbody {
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-style: italic;
+    font-size: clamp(40px, min(88.32px, 75.6px), 88px);
+    line-height: 1.06;
+    color: var(--ink);
+    letter-spacing: -0.005em;
+  }
+  .s-quote .qattr {
+    margin-top: clamp(20px, 25.92px, 36px);
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: clamp(14px, 26.88px, 24px);
+    align-items: end;
+    border-top: 1px solid var(--ink);
+    padding-top: clamp(10px, 15.12px, 18px);
+  }
+  .s-quote .qattr .who { font-family: 'Archivo', sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: 0.16em; font-size: clamp(11px, 16.32px, 13px); color: var(--ink); }
+  .s-quote .qattr .role { font-family: 'Archivo', sans-serif; font-size: clamp(11px, 14.98px, 13px); color: var(--ink); opacity: 0.75; }
+  .s-quote .y-mark {
+    position: absolute;
+    right: clamp(40px, 76.8px, 76px);
+    bottom: clamp(70px, 86.4px, 130px);
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-size: clamp(120px, min(288px, 237.6px), 280px);
+    line-height: 0.9;
+    color: var(--ink);
+    letter-spacing: -0.04em;
+    z-index: 4;
+  }
+
+  /* ──────────────────────────────────────────────────────────────────
+     SLIDE 7 — CALENDAR (dense tabular)
+     ────────────────────────────────────────────────────────────────── */
+  .s-cal { background: var(--paper); }
+  .s-cal .glow {
+    position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(circle 700px at 105% 0%, rgba(241,238,46,0.45) 0%, rgba(241,238,46,0) 65%);
+  }
+  .s-cal .frame {
+    position: absolute;
+    inset: clamp(40px, 76.8px, 76px) clamp(40px, 76.8px, 76px) clamp(70px, 75.6px, 120px);
+    display: flex; flex-direction: column;
+    z-index: 4;
+  }
+  .s-cal .frame .topbar {
+    display: flex; align-items: end; justify-content: space-between;
+    border-bottom: 1px solid var(--ink);
+    padding-bottom: clamp(12px, 15.12px, 22px);
+    margin-bottom: clamp(16px, 19.44px, 26px);
+  }
+  .s-cal .frame .topbar .h {
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-size: clamp(40px, min(84.48px, 75.6px), 80px);
+    line-height: 1;
+    color: var(--ink);
+  }
+  .s-cal .frame .topbar .lab { font-family: 'Archivo', sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: 0.2em; font-size: clamp(11px, 15.74px, 13px); color: var(--ink); }
+  .s-cal .ledger { flex: 1; display: flex; flex-direction: column; gap: 0; }
+  .s-cal .row {
+    display: grid;
+    grid-template-columns: 92px 1.6fr 0.9fr 80px;
+    gap: clamp(14px, 26.88px, 28px);
+    align-items: center;
+    padding: clamp(10px, 14.04px, 18px) 0;
+    border-bottom: 1px solid rgba(27,37,102,0.2);
+  }
+  .s-cal .row .date { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: clamp(13px, 18.24px, 16px); color: var(--ink); letter-spacing: 0.02em; }
+  .s-cal .row .ttl  { font-family: 'Instrument Serif', Georgia, serif; font-size: clamp(20px, 30.72px, 30px); line-height: 1.15; color: var(--ink); }
+  .s-cal .row .ttl em { font-style: italic; }
+  .s-cal .row .ven  { font-family: 'Archivo', sans-serif; font-size: clamp(14px, 17.66px, 15px); color: var(--ink); }
+  .s-cal .row .dur  { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: clamp(12px, 16.13px, 14px); color: var(--ink); text-align: right; letter-spacing: 0.04em; opacity: 0.78; }
+  .s-cal .row.headrow { border-bottom: 1px solid var(--ink); padding-bottom: 8px; }
+  .s-cal .row.headrow > div { font-family: 'Archivo', sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: 0.18em; font-size: clamp(10px, 13.44px, 12px); color: var(--ink); }
+
+  /* ──────────────────────────────────────────────────────────────────
+     SLIDE 8 — COLOPHON (mirror of cover, inverted)
+     ────────────────────────────────────────────────────────────────── */
+  .s-colophon { background: var(--paper); }
+  .s-colophon .glow {
+    position: absolute; inset: 0; pointer-events: none;
+    background:
+      radial-gradient(ellipse  50% at 50% 110%, rgba(241,238,46,0.85) 0%, rgba(241,238,46,0.5) 35%, rgba(240,218,124,0.18) 60%, rgba(233,229,219,0) 84%),
+      radial-gradient(ellipse 30% 30% at 12% 18%, rgba(226,107,74,0.18) 0%, rgba(226,107,74,0) 70%);
+  }
+  .s-colophon .blocks {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; grid-template-rows: repeat(8, 1fr);
+  }
+  .s-colophon .blocks .b1 { background: rgba(241,238,46,0.55); grid-column: 1 / 3; grid-row: 1 / 3; }
+  .s-colophon .blocks .b2 { background: rgba(241,238,46,0.4);  grid-column: 4; grid-row: 5 / 8; }
+  .s-colophon .titlewrap {
+    position: absolute;
+    left: clamp(40px, 76.8px, 76px);
+    top: clamp(36px, 43.2px, 72px);
+    z-index: 5;
+    max-width: 92%;
+  }
+  .s-colophon .ktag {
+    font-family: 'Archivo', sans-serif; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.22em; font-size: clamp(11px, 15.74px, 13px); color: var(--ink); margin-bottom: clamp(12px, 15.12px, 22px);
+  }
+  .s-colophon .ttl {
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-size: clamp(80px, min(192px, 172.8px), 200px);
+    line-height: 0.86;
+    color: var(--ink);
+    letter-spacing: -0.018em;
+  }
+  .s-colophon .ttl em { font-style: italic; }
+
+  .s-colophon .colofo {
+    position: absolute;
+    left: clamp(40px, 76.8px, 76px);
+    bottom: clamp(70px, 86.4px, 120px);
+    right: clamp(40px, 76.8px, 76px);
+    display: grid;
+    grid-template-columns: 1.2fr 1.1fr 1fr 1.4fr;
+    gap: clamp(20px, 46.08px, 44px);
+    z-index: 5;
+  }
+  .s-colophon .colofo > div {
+    border-top: 1px solid var(--ink);
+    padding-top: clamp(10px, 12.96px, 16px);
+  }
+  .s-colophon .colofo .ftag { text-transform: uppercase; letter-spacing: 0.16em; font-weight: 600; font-size: clamp(10px, 13.82px, 12px); margin-bottom: 6px; color: var(--ink); }
+  .s-colophon .colofo .ftxt { font-family: 'Archivo', sans-serif; font-size: clamp(11px, 14.98px, 13px); line-height: 1.5; color: var(--ink); }
+</style>
+<style data-teamver-template-clone-size>html,body{margin:0;padding:0;overflow:auto}.slides-container{width:auto;height:auto;overflow:visible;scroll-snap-type:none}.slide{width:1920px;height:1080px;min-height:1080px;max-height:1080px;box-sizing:border-box;scroll-snap-align:none}.nav-dots,.slide-counter,.nav-dot{display:none!important}</style><style data-od-biennale-sparse-fill>.s-cover:not(:has(.footer-row)) .titlewrap{bottom:clamp(48px,6vh,96px)}.s-chapter .stack:not(:has(.nm)){left:clamp(40px,4vw,76px)}.s-chapter .stack:not(:has(.nm)) .ttl{font-size:clamp(64px,min(8vw,14vh),160px);max-width:92%}.s-data .frame:not(:has(.chart)){grid-template-columns:1fr}.s-data .frame:not(:has(.chart)) .head,.s-data .frame:not(:has(.chart)) .col-a{grid-column:1/-1}.s-cover .title,.s-cover .titlewrap,.s-colophon .ttl,.s-colophon .titlewrap{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}.s-colophon .titlewrap .ttl{font-size:clamp(56px,min(7vw,12vh),120px);max-width:90%;line-height:1.05}</style></head>
+<body>
+
+
+  
+
+    <!-- 1. COVER ──────────────────────────────────────────────────── -->
+    <section class="slide s-cover active" style="width:1920px;height:1080px;box-sizing:border-box">
+      <div class="blocks" aria-hidden="true">
+        <div class="b1"></div><div class="b2"></div><div class="b3"></div><div class="b4"></div>
+      </div>
+      <div class="sunglow" aria-hidden="true"></div>
+
+      <div class="date-rail">02.05—<br/>11.10.2026</div>
+
+      <div class="titlewrap">
+        <h1 class="title">Teamver 소개</h1>
+        <div class="caption subline">Teamver는 초안과 수정을 같은 보드에서 끝낸다.</div>
+      </div>
+
+      <div class="footer-row">
+        <div>
+          <div class="caption ftag">OVERVIEW</div>
+          <div class="caption ftxt">Teamver 소개</div>
+        </div>
+        <div>
+          <div class="caption ftag">방향</div>
+          <div class="caption ftxt">Teamver는 초안과 수정을 같은 보드에서 끝낸다.</div>
+        </div>
+        <div>
+          <div class="caption ftag">구성</div>
+          <div class="caption ftxt">Teamver의 핵심 흐름과 사용자가 얻는 가치를 정리</div>
+        </div>
+        <div>
+          <div class="caption ftag">메모</div>
+          <div class="caption fdesc">Teamver 소개</div>
+        </div>
+      </div>
+
+      <div class="pagenum">01 / 08</div>
+    </section>
+
+<section class="slide s-data" style="width:1920px;height:1080px;box-sizing:border-box">
+      <div class="glow" aria-hidden="true"></div>
+      <div class="frame">
+        <div class="head">
+          <div class="h">Teamver는 초안과 수정을 같은 보드에서 끝낸다. 운영</div>
+          <div class="caption lab">Teamver는 초안과 수정을 같은 보드에서 끝낸다.</div>
+        </div>
+        <div class="col-a"><div class="stat"><div class="v">01</div>
+            <div class="caption lab2">같은 보드</div>
+            <div class="desc">Teamver는 초안과 수정을 같은 보드에서 끝낸다.에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.</div>
+          </div><div class="stat"><div class="v">02</div>
+            <div class="caption lab2">권한 경계</div>
+            <div class="desc">Teamver는 초안과 수정을 같은 보드에서 끝낸다.에서 보기와 고치기를 슬라이드마다 정한다.</div>
+          </div></div>
+        
+      </div>
+      <div class="pagenum">02 / 08</div>
+    </section>
+
+<section class="slide s-manifesto" style="width:1920px;height:1080px;box-sizing:border-box">
+      <div class="haze" aria-hidden="true"></div>
+      <p class="quote">초안: Teamver 보드에 붙일 초안이 같은 자리에서 열린다.
+수정: Teamver에서는 보낸 뒤에도 문장과 칸을 고친다.</p>
+      <div class="attr">Teamver에서는 보낸 뒤에도 문장과 칸을 고친다.</div>
+      <div class="pagenum">03 / 08</div>
+    </section>
+
+<section class="slide s-programme" style="width:1920px;height:1080px;box-sizing:border-box">
+      <div class="left">
+        <div class="kicker"></div>
+        <div>
+          <div class="word">사용 흐름가 다루는 칸</div>
+        </div>
+        <div class="meta">사용 흐름에서 보드·권한·이력·보내기를 한 흐름으로 본다.</div>
+      </div>
+      <div class="right">
+        <div class="head caption">사용 흐름에서 보드·권한·이력·보내기를 한 흐름으로 본다.</div>
+        <div class="strands">
+          <div class="strand">
+            <div class="num">01</div>
+            <div>
+              <h3>같은 보드</h3>
+              <p>사용 흐름에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.</p>
+            </div>
+          </div>
+          <div class="strand">
+            <div class="num">02</div>
+            <div>
+              <h3>권한 경계</h3>
+              <p>사용 흐름에서 보기와 고치기를 슬라이드마다 정한다.</p>
+            </div>
+          </div>
+          <div class="strand">
+            <div class="num">03</div>
+            <div>
+              <h3>결과 이력</h3>
+              <p>사용 흐름에서 누가 언제 바꿨는지 남기고 되돌린다.</p>
+            </div>
+          </div>
+          <div class="strand">
+            <div class="num">04</div>
+            <div>
+              <h3>같은 맥락</h3>
+              <p>사용 흐름에서 파일과 대화가 한 화면으로 열린다.</p>
+            </div>
+          </div>
+          <div class="strand">
+            <div class="num">05</div>
+            <div>
+              <h3>작업 흐름</h3>
+              <p>사용 흐름에서 보드를 열고 권한을 나눈 뒤 이력을 남긴다.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="pagenum">04 / 08</div>
+    </section>
+
+<section class="slide s-chapter" style="width:1920px;height:1080px;box-sizing:border-box">
+      <div class="glow" aria-hidden="true"></div>
+      <div class="caption vrail">First Chapter — </div>
+      <div class="stack">
+        <div class="nm">01</div>
+        <div class="ttl">A reading of the season's quietest hours</div>
+        <p class="lede">대상 고객별 메시지</p>
+      </div>
+      <div class="pagenum">05 / 08</div>
+    </section>
+
+<section class="slide s-quote" style="width:1920px;height:1080px;box-sizing:border-box">
+      <div class="yblock" aria-hidden="true"></div>
+      <div class="glow" aria-hidden="true"></div>
+      <div class="qwrap">
+        <div class="caption qkicker">신뢰를 만드는 증거가 남기는 증거</div>
+        <p class="qbody">신뢰를 만드는 증거에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.</p>
+        <div class="qattr">
+          <div class="caption who">와 정량·정성 효과를 정리한다</div>
+          <div class="caption role">사례</div>
+        </div>
+      </div>
+      <div class="y-mark" aria-hidden="true">¨</div>
+      <div class="pagenum">06 / 08</div>
+    </section>
+
+<section class="slide s-cal" style="width:1920px;height:1080px;box-sizing:border-box">
+      <div class="glow" aria-hidden="true"></div>
+      <div class="frame">
+        <div class="topbar">
+          <div class="h">Teamver 운영</div>
+          <div class="caption lab">한 팀 보드를 Teamver로 옮긴 뒤 리뷰 습관과 조직 기준을 고정한다.</div>
+        </div>
+        <div class="ledger">
+          <div class="row headrow"><div class="caption">Date</div><div class="caption">Title</div><div class="caption">Venue</div><div class="caption">Length</div></div>
+          <div class="row">
+            <div class="caption date">02</div>
+            <div class="ttl"><em>리뷰 습관</em>, opening lecture</div>
+            <div class="ven">Teamver에서 댓글과 버전을 같은 화면에서 고정한다.</div>
+            <div class="caption dur">핵심</div>
+          </div>
+          <div class="row">
+            <div class="caption date">03</div>
+            <div class="ttl">조직 기준</div>
+            <div class="ven">Teamver 워크스페이스 기본값으로 감사와 보내기 규칙을 둔다.</div>
+            <div class="caption dur">핵심</div>
+          </div>
+          <div class="row">
+            <div class="caption date">04</div>
+            <div class="ttl"><em>이어서 쓰기</em> — opening</div>
+            <div class="ven">Teamver에서 쓸 방을 열고 첫 보드에 팀을 초대한다.</div>
+            <div class="caption dur">핵심</div>
+          </div>
+          <div class="row">
+            <div class="caption date">05</div>
+            <div class="ttl">한 팀 보드를 Teamver로 옮긴 뒤 리뷰 습관과 조직 기준을 고정한다.</div>
+            <div class="ven">한 팀 보드를 Teamver로 옮긴 뒤 리뷰 습관과 조직 기준을 고정한다.</div>
+            <div class="caption dur">핵심</div>
+          </div>
+          <div class="row">
+            <div class="caption date">06</div>
+            <div class="ttl"><em>Teamver 운영 범위</em>, evening reading</div>
+            <div class="ven">Teamver 운영의 를 먼저 정리합니다.</div>
+            <div class="caption dur">핵심</div>
+          </div>
+          <div class="row">
+            <div class="caption date">07</div>
+            <div class="ttl">Teamver 운영 판단</div>
+            <div class="ven">Teamver 운영에서 를 짧게 정리합니다.</div>
+            <div class="caption dur">핵심</div>
+          </div>
+          <div class="row">
+            <div class="caption date">08</div>
+            <div class="ttl">Teamver 운영 쓰는 길</div>
+            <div class="ven">Teamver 운영을 실제로 적용할 때의 순서와 판단 기준을 제시합니다.</div>
+            <div class="caption dur">핵심</div>
+          </div>
+          <div class="row">
+            <div class="caption date">09</div>
+            <div class="ttl"><em>Teamver 운영 쓰는 길</em>, closing performance</div>
+            <div class="ven">Teamver 운영을 실제로 적용할 때의 순서와 판단 기준을 제시합니다.</div>
+            <div class="caption dur">핵심</div>
+          </div>
+        </div>
+      </div>
+      <div class="pagenum">07 / 08</div>
+    </section>
+
+<section class="slide s-colophon" style="width:1920px;height:1080px;box-sizing:border-box">
+      <div class="blocks" aria-hidden="true">
+        <div class="b1"></div><div class="b2"></div>
+      </div>
+      <div class="glow" aria-hidden="true"></div>
+
+      <div class="titlewrap">
+        <div class="caption ktag">Colophon · Programme 04</div>
+        <h2 class="ttl">Teamver를 쓰는 자리</h2>
+      </div>
+
+      <div class="colofo">
+        <div>
+          <div class="caption ftag">Curated by</div>
+          <div class="caption ftxt"><br/>with the editorial board</div>
+        </div>
+        <div>
+          <div class="caption ftag">Designed</div>
+          <div class="caption ftxt">In daylight, on warm paper,<br/>over fourteen weeks</div>
+        </div>
+        <div>
+          <div class="caption ftag">Hosts</div>
+          <div class="caption ftxt"><br/><br/></div>
+        </div>
+        <div>
+          <div class="caption ftag">Until next year</div>
+          <div class="caption ftxt">The fifth programme opens in May 2027. Look for the yellow on the door.</div>
+        </div>
+      </div>
+
+      <div class="pagenum">08 / 08</div>
+    </section>
+
+  
+
+
+<div class="caption nav-hint">← / → · space</div>
+
+
+
+</body>
+</html>
