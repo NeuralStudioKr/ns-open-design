@@ -44,7 +44,7 @@ describe('0921-N01 loop561 Coral/Mat/Biennale leftover pack', () => {
   });
 
   it('Coral empty slide-2 statement is reconstructed so pad does not drop it', () => {
-    const filled = fillCoralKitSlide('', 'class="slide slide-2"', {
+    const filled = fillCoralKitSlide('', 'class="slide slide-2" data-od-kit="coral"', {
       title: '개요',
       lead: 'Teamver가 다루는 문제와 제공 가치',
       bodyText: '',

@@ -24,6 +24,9 @@ import { readFile } from 'node:fs/promises';
 
 import {
   buildTemplateClonedDeckHtml,
+  fillAndTrimCardPeers,
+  fillCoralKitSlide,
+  healBlockFrameLeftoverCatalogCopy,
   resolveTemplateCloneSlidesForDeterministicFill,
 } from '../src/template-clone-fill';
 
@@ -112,5 +115,71 @@ describe('루프562 · server sentence assembly 제거', () => {
     expect(html).toMatch(/사용자가과 전환 비용을 먼저 정의/);
     // data-od-hangul="1" marking — offline heal 이 전량 rewrite 했음을 표시.
     expect(html).toMatch(/data-od-hangul="1"/);
+  });
+
+  it('Block Frame slide-2 를 Coral statement 구조로 오인하지 않는다', () => {
+    const body = [
+      '<div data-od-slide-flow style="display:flex">',
+      '<div class="col-left"><h2 class="nb-heading-md">왜 Teamver인가</h2></div>',
+      '<div class="col-right"><div class="intro-card"><h3>맥락 통합</h3><p>업무 맥락을 연결합니다.</p></div></div>',
+      '</div>',
+    ].join('');
+    const filled = fillCoralKitSlide(body, 'class="slide slide-2"', {
+      title: '왜 Teamver인가',
+      lead: '업무 도구를 하나의 워크스페이스로 연결합니다.',
+      bodyText: '팀의 같은 맥락에서 AI와 함께 실행합니다.',
+      kicker: '핵심 가치',
+      fillLines: [],
+    });
+    expect(filled).toBe(body);
+    expect(filled).not.toMatch(/class="(?:section-label|big-statement|body-text)"/);
+  });
+
+  it('이미 붙은 Coral statement tail 을 Block Frame split에서 제거한다', () => {
+    const broken = [
+      '<section class="slide slide-2">',
+      '<div data-od-slide-flow style="display:flex">',
+      '<div class="col-left"><h2 class="nb-heading-md">왜 Teamver인가</h2></div>',
+      '<div class="col-right"><div class="intro-card"><h3>맥락 통합</h3><p>업무 맥락을 연결합니다.</p></div></div>',
+      '<div class="section-label">왜 Teamver인가</div>',
+      '<div class="big-statement">업무 도구를 하나로 연결합니다.</div>',
+      '<div class="body-text">업무 도구를 하나로 연결합니다.</div>',
+      '</div>',
+      '</section>',
+    ].join('');
+    const healed = healBlockFrameLeftoverCatalogCopy(broken, 'Teamver 서비스 소개');
+    expect(healed).toMatch(/col-left/);
+    expect(healed).toMatch(/col-right/);
+    expect(healed).not.toMatch(/class="(?:section-label|big-statement|body-text)"/);
+  });
+
+  it('Block Frame stat-card 라벨에 긴 본문을 합치지 않는다', () => {
+    const host = [
+      '<div class="stats-grid">',
+      '<div class="stat-card"><div class="stat-number">00</div><div class="stat-label">demo</div></div>',
+      '</div>',
+    ].join('');
+    const filled = fillAndTrimCardPeers(host, [{
+      title: '사례 — 소규모 팀 워크스페이스',
+      body: '프로젝트별 자료와 권한, 결정 기록을 같은 공간에서 연결해 운영합니다.',
+    }]);
+    expect(filled).toMatch(/class="stat-number">01</);
+    expect(filled).toMatch(/class="stat-label">소규모 팀/);
+    expect(filled).not.toMatch(/프로젝트별 자료와 권한/);
+  });
+
+  it('persisted Block Frame stat-label 의 긴 문장도 짧은 의미 라벨로 복구한다', () => {
+    const broken = [
+      '<section class="slide slide-6">',
+      '<h2 class="nb-heading-md">신뢰를 만드는 4가지 증거</h2>',
+      '<div class="stats-grid">',
+      '<div class="stat-card"><div class="stat-number">02</div>',
+      '<div class="stat-label">사례 — 소규모 팀·교육·스타트업·조직 도입 장면과 정성적 효과를 정리한다</div></div>',
+      '</div>',
+      '</section>',
+    ].join('');
+    const healed = healBlockFrameLeftoverCatalogCopy(broken, 'Teamver 서비스 소개');
+    expect(healed).toMatch(/class="stat-label"[^>]*>소규모 팀·교육/);
+    expect(healed).not.toMatch(/정성적 효과를 정리한다/);
   });
 });

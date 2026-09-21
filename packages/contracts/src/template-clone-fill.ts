@@ -14472,10 +14472,11 @@ function slideHasForeignChromeBlockingCoral(html: string, attrs = ''): boolean {
 function coralSlideHasKitChrome(html: string, attrs = ''): boolean {
   if (slideHasForeignChromeBlockingCoral(html, attrs)) return false;
   const hay = `${attrs}\n${html}`;
-  // slide-N on a Coral deck is enough — pad merge can strip inner chrome
-  // (big-statement) while leaving the host class. CSS tokens live on <style>,
-  // not on the empty slide body.
-  return /\b(?:main-title|brand-mark|zigzag-layer|zigzag-deco|big-statement|col-title|sidebar-item|info-bar|column-card|closing-title|slide-(?:[1-9]|10))\b/i.test(hay)
+  // `slide-N` is shared by most HTML deck kits. Treating that ordinal class
+  // as a Coral fingerprint injected Coral statement nodes into Block Frame
+  // slides and squeezed their native columns into a narrow strip.
+  return /\b(?:main-title|brand-mark|zigzag-layer|zigzag-deco|big-statement|col-title|sidebar-item|info-bar|column-card|closing-title)\b/i.test(hay)
+    || /\bdata-od-(?:kit|template-kit)\s*=\s*["']coral["']/i.test(hay)
     || /--coral\s*:|#E85D5D|Bebas Neue/i.test(hay);
 }
 
@@ -14831,7 +14832,7 @@ export function fillCoralKitSlide(
   if (
     !/\bbig-statement\b/i.test(next)
     && /\bslide-2\b/i.test(attrs)
-    && !slideHasForeignChromeBlockingCoral(next, attrs)
+    && coralSlideHasKitChrome(next, attrs)
   ) {
     next = [
       next,
@@ -16019,6 +16020,29 @@ function offsetFallsInsideRange(
 }
 
 /**
+ * Remove the exact Coral statement tail that older clone-fill runs appended
+ * after a Block Frame split layout. Those three direct siblings participate
+ * in the parent's flex row and collapse the authored left/right columns.
+ */
+function stripForeignCoralStatementTailFromBlockFrame(html: string): string {
+  const source = String(html ?? '');
+  if (
+    !/\b(?:hero-frame|nb-heading|intro-card|feature-card|stat-card|timeline-step)\b/i.test(source)
+    || !/\bcol-left\b/i.test(source)
+    || !/\bcol-right\b/i.test(source)
+  ) {
+    return source;
+  }
+  const foreignTail = new RegExp(
+    '(?:\\s*<div\\b[^>]*\\bclass\\s*=\\s*["\'][^"\']*\\bsection-label\\b[^"\']*["\'][^>]*>[^<]*<\\/div>'
+      + '\\s*<div\\b[^>]*\\bclass\\s*=\\s*["\'][^"\']*\\bbig-statement\\b[^"\']*["\'][^>]*>[^<]*<\\/div>'
+      + '\\s*<div\\b[^>]*\\bclass\\s*=\\s*["\'][^"\']*\\bbody-text\\b[^"\']*["\'][^>]*>[^<]*<\\/div>)+',
+    'gi',
+  );
+  return source.replace(foreignTail, '');
+}
+
+/**
  * 루프555 / N28 — Block Frame leftover-only heal.
  * 루프556 / N29 — persist 경로에서도 chart 데모 wipe, 역할/지표 leftover,
  * lang=en 한글 tracking. Product Launch 역할 템플릿과 붙여쓴 한글 제목만 정리.
@@ -16033,7 +16057,7 @@ export function healBlockFrameLeftoverCatalogCopy(
   const topic = resolveBlockFrameTopicNoun(brief, topicKeywordForSynthBody(String(brief ?? '')));
   const pack = blockFrameSlideCopyPack(topic);
   const hasHangul = ((dest.match(/[가-힣]/g) ?? []).length >= 2);
-  let out = dest;
+  let out = stripForeignCoralStatementTailFromBlockFrame(dest);
 
   const rewriteLeaf = (
     full: string,
@@ -16157,6 +16181,16 @@ export function healBlockFrameLeftoverCatalogCopy(
   );
 
   out = out.replace(
+    /(<(?:div|span|p)\b[^>]*\bstat-label\b[^>]*>)([\s\S]*?)(<\/(?:div|span|p)>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const plain = blockFrameVisibleCopy(inner);
+      const compact = compactBlockFrameStatLabel(plain);
+      if (!compact || compact === plain) return full;
+      return `${open}${escapeHtml(compact)}${close}`;
+    },
+  );
+
+  out = out.replace(
     /(<(?:div|span|p|h[1-3])\b[^>]*(?:\bnb-heading|\bhero-title|\bnb-label)[^>]*>)([\s\S]*?)(<\/(?:div|span|p|h[1-3])>)/gi,
     (full, open: string, inner: string, close: string) => {
       const restored = restoreBlockFrameBrokenTokens(restoreBlockFrameGluedKoreanTitle(inner));
@@ -16202,6 +16236,7 @@ function fillBlockFrameNeoSlots(
   if (!/\b(?:hero-frame|visual-box|data-box|team-card|nb-btn|close-btn|chart-frame|nb-label|intro-card|feature-card|stat-card|timeline-step)\b/i.test(body)) {
     return body;
   }
+  body = stripForeignCoralStatementTailFromBlockFrame(body);
   const topic = resolveBlockFrameTopicNoun(input.title, input.lead, input.bodyText);
   const pack = blockFrameSlideCopyPack(topic);
   const safeTitle = looksLikeServiceIntroLeftoverTitle(input.title)
@@ -17276,7 +17311,7 @@ function shortenDenseCardTitle(title: string): string {
   const raw = normalizeTemplateCloneInlineText(title);
   if (!raw) return '';
   const delimiterParts = raw
-    .split(/\s*(?:[,，、;；:：|/]|[—–-])\s*/g)
+    .split(/\s*(?:[,，、;；:：|/·]|[—–-])\s*/g)
     .map((part) => part.trim())
     .filter(Boolean);
   if (delimiterParts.length >= 2) {
@@ -17298,6 +17333,13 @@ function shortenDenseCardTitle(title: string): string {
   }
 
   return Array.from(raw).slice(0, DENSE_CARD_TITLE_MAX_CHARS).join('').trim();
+}
+
+function compactBlockFrameStatLabel(value: string, fallback = ''): string {
+  const raw = normalizeTemplateCloneInlineText(value || fallback)
+    .replace(/^(?:제목|제품|사례|운영|요금제|항목)\s*(?:[—–:-]|·)\s*/u, '');
+  return shortenDenseCardTitle(raw)
+    || shortenDenseCardTitle(normalizeTemplateCloneInlineText(fallback));
 }
 
 function resolveCardFillForTemplatePeer(
@@ -17585,6 +17627,31 @@ function fillOneCardPeer(
       next,
       /(<[^>]*\bdata-label\b[^>]*>)([\s\S]*?)(<\/)/i,
       label,
+    );
+    return next;
+  }
+  // Block Frame `.stat-card` reserves its lower slot for a compact label.
+  // Joining title + body here produced full sentences in a 1-line caption,
+  // forcing unreadably small type in the four-up statistics layout.
+  if (/\bstat-card\b/i.test(cardHtml) && /\bstat-(?:number|label)\b/i.test(next)) {
+    const slots = assignStatSlots(text, body);
+    const metricSource = titleLooksLikeMetric(slots.value)
+      ? slots.value
+      : (titleLooksLikeMetric(slots.label) ? slots.label : '');
+    const rawLabel = metricSource
+      ? (metricSource === slots.value ? slots.label : slots.value)
+      : (text || body);
+    const compactLabel = compactBlockFrameStatLabel(rawLabel, text || body)
+      || String(Math.max(1, peerIndex + 1)).padStart(2, '0');
+    next = fillClassInner(
+      next,
+      /(<[^>]*\bstat-number\b[^>]*>)([\s\S]*?)(<\/)/i,
+      metricSource || String(Math.max(1, peerIndex + 1)).padStart(2, '0'),
+    );
+    next = fillClassInner(
+      next,
+      /(<[^>]*\bstat-label\b[^>]*>)([\s\S]*?)(<\/)/i,
+      compactLabel,
     );
     return next;
   }
@@ -17878,6 +17945,7 @@ function fillSlideShell(
   content: TemplateCloneSlideContent,
   index: number,
   slotMap?: TemplateCloneSlotMap | null,
+  templateKitKey?: string | null,
 ): string {
   let body = shell.body;
   const rawTitle = content.title.trim()
@@ -18090,7 +18158,10 @@ function fillSlideShell(
   body = fillMatKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
   body = fillDaisyDaysKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
   body = fillPlayfulKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
-  body = fillCoralKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
+  const coralContextAttrs = templateKitKey === CORAL_KIT_KEY
+    ? `${shell.attrs} data-od-kit="coral"`
+    : shell.attrs;
+  body = fillCoralKitSlide(body, coralContextAttrs, { title, lead, bodyText, kicker, fillLines });
   if (playfulSlideHasKitChrome(body, shell.attrs) && !/[가-힣]/.test(visibleDeckCopy(stripPlayfulCatalogDemoCopy(body)))) {
     body = fillPlayfulKitSlide(stripPlayfulCatalogDemoCopy(body), shell.attrs, {
       title,
@@ -18109,8 +18180,8 @@ function fillSlideShell(
       fillLines,
     });
   }
-  if (coralSlideHasKitChrome(body, shell.attrs) && !/[가-힣]/.test(visibleDeckCopy(stripCoralCatalogDemoCopy(body)))) {
-    body = fillCoralKitSlide(stripCoralCatalogDemoCopy(body), shell.attrs, {
+  if (coralSlideHasKitChrome(body, coralContextAttrs) && !/[가-힣]/.test(visibleDeckCopy(stripCoralCatalogDemoCopy(body)))) {
+    body = fillCoralKitSlide(stripCoralCatalogDemoCopy(body), coralContextAttrs, {
       title,
       lead,
       bodyText,
@@ -18572,6 +18643,7 @@ export function buildTemplateClonedDeckHtml(
     ...(options.templateId !== undefined ? { templateId: options.templateId } : {}),
     html: source,
   });
+  const templateKitKey = resolveTemplateCloneKitKey(source);
 
   const cleanedSlides: TemplateCloneSlideContent[] = [];
   for (const slide of slides) {
@@ -18754,7 +18826,7 @@ export function buildTemplateClonedDeckHtml(
     const content = enrichedSlides[index] ?? {
       title: deckTitle,
     };
-    const section = fillSlideShell(shell, content, index, slotMap);
+    const section = fillSlideShell(shell, content, index, slotMap, templateKitKey);
     // 루프547 · pad marker · outline이 seed shell 개수보다 짧아서 auto-pad된
     // slide만 `data-teamver-pad="short-response"`로 표시. leftover healer /
     // dropEmptyDeckSlides가 이 마커를 보면 스크럽 대상에서 제외한다 (아래
