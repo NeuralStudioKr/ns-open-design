@@ -113,6 +113,9 @@ async def fetch_bootstrap(
             payload=body,
         )
 
+    from .workspace_plan import remember_plans_from_bootstrap
+
+    remember_plans_from_bootstrap(body)
     inc("bootstrap.cache.miss")
     if ttl > 0:
         entry = _CacheEntry(

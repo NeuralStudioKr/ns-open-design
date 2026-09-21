@@ -86,6 +86,13 @@ def apply_postgres_schema_patches() -> None:
         "ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS latency_ms INTEGER;",
         "ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS stop_reason TEXT;",
         """
+        CREATE TABLE IF NOT EXISTS workspace_billing_plans (
+          workspace_id TEXT PRIMARY KEY,
+          plan_id TEXT NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        """,
+        """
         CREATE UNIQUE INDEX IF NOT EXISTS uq_token_usage_workspace_run
           ON ai_model_token_usages (workspace_id, run_id)
           WHERE run_id IS NOT NULL AND run_id <> '';

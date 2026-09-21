@@ -34,6 +34,7 @@ from ..config import settings
 from ..db.connection import async_session_maker
 from ..db.crud import token_usage_crud
 from .credit_meter import meter_design_run
+from .workspace_plan import plan_id_for_workspace
 from .run_lifecycle import (
     billing_kill_switch_on,
     commit_run_detailed,
@@ -258,6 +259,7 @@ async def finalize_byok_run_billing(
             token_count_source=source,
             cache_read_input_tokens=cache_read_input_tokens,
             cache_creation_input_tokens=cache_creation_input_tokens,
+            plan_id=plan_id_for_workspace(workspace_id),
         )
         return ByokBillingResult(
             ok=True,
@@ -323,6 +325,7 @@ async def finalize_byok_run_billing(
         token_count_source=source,
         cache_read_input_tokens=cache_read_input_tokens,
         cache_creation_input_tokens=cache_creation_input_tokens,
+        plan_id=plan_id_for_workspace(workspace_id),
     )
 
     token_total = (

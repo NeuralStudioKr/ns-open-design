@@ -1,9 +1,13 @@
 {
-  "_comment": "USD per 1k tokens (Main BE ai_model_pricing unit). MiniMax official $/M ÷ 1000. Design then applies credits=round(supply_usd×usd_krw×ratio/credit_krw) with defaults 1550×2.0/0.5 (=×6200 B2C). Do not use the obsolete 1T≡$0.001 shortcut.",
+  "_comment": "USD per 1k tokens (Main BE ai_model_pricing unit). MiniMax official $/M ÷ 1000. MiniMax-M3 input context >512000 uses long_* for the whole request. credits=round(supply_usd×usd_krw×ratio/credit_krw). B2C ratio 2.0 (×6200). B2B PLAN-ENTERPRISE ratio 2.5 (×7750).",
   "MiniMax-M3": {
     "prompt_cost_per_1k": 0.0003,
     "completion_cost_per_1k": 0.0012,
-    "cache_read_cost_per_1k": 0.00006
+    "cache_read_cost_per_1k": 0.00006,
+    "context_threshold_tokens": 512000,
+    "long_prompt_cost_per_1k": 0.0006,
+    "long_completion_cost_per_1k": 0.0024,
+    "long_cache_read_cost_per_1k": 0.00012
   },
   "MiniMax-M2.7": {
     "prompt_cost_per_1k": 0.0003,

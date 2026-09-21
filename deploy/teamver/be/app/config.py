@@ -111,8 +111,16 @@ class Settings(BaseModel):
     design_billing_credit_krw_rate: float = Field(
         default_factory=lambda: float(os.getenv("DESIGN_BILLING_CREDIT_KRW_RATE", "0.5") or "0.5")
     )
+    # B2C = every plan except PLAN-ENTERPRISE. Legacy env name stays the B2C knob.
     design_billing_price_to_cost_ratio: float = Field(
-        default_factory=lambda: float(os.getenv("DESIGN_BILLING_PRICE_TO_COST_RATIO", "2.0") or "2.0")
+        default_factory=lambda: float(
+            os.getenv("DESIGN_BILLING_B2C_PRICE_TO_COST_RATIO")
+            or os.getenv("DESIGN_BILLING_PRICE_TO_COST_RATIO")
+            or "2.0"
+        )
+    )
+    design_billing_b2b_price_to_cost_ratio: float = Field(
+        default_factory=lambda: float(os.getenv("DESIGN_BILLING_B2B_PRICE_TO_COST_RATIO", "2.5") or "2.5")
     )
 
     # Embed managed API mode — server env only (never VITE_* / git)

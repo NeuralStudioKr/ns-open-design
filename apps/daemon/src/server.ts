@@ -12842,7 +12842,10 @@ export async function startServer({
     {
       const identity = (run as { teamverIdentity?: TeamverRequestIdentity | null }).teamverIdentity ?? null;
       const modelName = typeof run.model === 'string' ? run.model : '';
-      const estimate = await resolveTeamverBillingReserveAmountFromDaemon({ modelName });
+      const estimate = await resolveTeamverBillingReserveAmountFromDaemon({
+        modelName,
+        workspaceId: identity?.workspaceId,
+      });
       const workspaceId = (identity?.workspaceId ?? '').trim();
       if (
         workspaceId &&
