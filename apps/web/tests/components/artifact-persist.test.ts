@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   artifactVersionTabsToClose,
   collapseArtifactVersionOpenTabs,
+  htmlArtifactValidationFailureShouldAutoContinue,
   isArtifactVersionSiblingTab,
   normalizeSlideOnlyArtifactContractType,
   preferredArtifactVersionTab,
@@ -24,6 +25,34 @@ describe('normalizeSlideOnlyArtifactContractType', () => {
     expect(normalizeSlideOnlyArtifactContractType('deck', true)).toBe('deck');
     expect(normalizeSlideOnlyArtifactContractType('', true)).toBe('deck');
     expect(normalizeSlideOnlyArtifactContractType(null, true)).toBe('deck');
+  });
+});
+
+describe('htmlArtifactValidationFailureShouldAutoContinue', () => {
+  it('routes incomplete deck validation failures to auto-continue', () => {
+    expect(htmlArtifactValidationFailureShouldAutoContinue({
+      artifactType: 'deck',
+      reason: 'content too short to be HTML (got 32 chars, need ≥64)',
+    })).toBe(true);
+    expect(htmlArtifactValidationFailureShouldAutoContinue({
+      artifactType: 'deck',
+      reason: 'empty content',
+    })).toBe(true);
+    expect(htmlArtifactValidationFailureShouldAutoContinue({
+      artifactType: 'deck',
+      reason: 'content does not start with <!doctype html> or <html — looks like prose, not a complete HTML document',
+    })).toBe(true);
+  });
+
+  it('keeps security refusals and non-deck artifacts as rejected', () => {
+    expect(htmlArtifactValidationFailureShouldAutoContinue({
+      artifactType: 'deck',
+      reason: 'content references an internal project storage path such as .live-artifacts, .od, or .tmp',
+    })).toBe(false);
+    expect(htmlArtifactValidationFailureShouldAutoContinue({
+      artifactType: 'text/html',
+      reason: 'content too short to be HTML (got 32 chars, need ≥64)',
+    })).toBe(false);
   });
 });
 

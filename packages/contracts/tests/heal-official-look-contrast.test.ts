@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { conformInlinePaletteToOfficialLook } from '../src/html/heal-official-look-contrast.js';
+import {
+  conformInlinePaletteToOfficialLook,
+  repairLowContrastDeckHeadings,
+} from '../src/html/heal-official-look-contrast.js';
 
 /** Biennale Yellow kit — cream paper, indigo ink (사용자 리포트 2026-09-08). */
 const BIENNALE_LOOK = `<style data-od-official-look-css>
@@ -92,5 +95,31 @@ describe('루프478 official look contrast conformance', () => {
       slide('<p style="color:#93c5fd">USE CASES</p>'),
     );
     expect(conformInlinePaletteToOfficialLook(once)).toBe(once);
+  });
+});
+
+describe('루프555 freeform heading contrast repair', () => {
+  it('repairs a class-colored black title on a dark slide without official look metadata', () => {
+    const source = '<!doctype html><html><head><style>'
+      + 'body{background:#15151b}.slide{background:#15151b}.hero{color:#05050a}'
+      + '</style></head><body><section class="slide">'
+      + '<h1 class="hero">핵심 주제 한눈에</h1><p style="color:#ff684d">TEAMVER</p>'
+      + '</section></body></html>';
+    const healed = repairLowContrastDeckHeadings(source);
+    expect(healed).toContain('style="color:#ffffff!important"');
+    expect(healed).toContain('color:#ff684d');
+  });
+
+  it('keeps an already readable light heading on a dark slide unchanged', () => {
+    const source = '<style>.slide{background:#090a12}.hero{color:#f8fafc}</style>'
+      + '<section class="slide"><h1 class="hero">Readable</h1></section>';
+    expect(repairLowContrastDeckHeadings(source)).toBe(source);
+  });
+
+  it('is idempotent after adding the readable inline color', () => {
+    const source = '<style>.slide{background:#111}.hero{color:#000}</style>'
+      + '<section class="slide"><h2 class="hero">Dark title</h2></section>';
+    const once = repairLowContrastDeckHeadings(source);
+    expect(repairLowContrastDeckHeadings(once)).toBe(once);
   });
 });

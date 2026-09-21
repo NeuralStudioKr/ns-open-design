@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "../../src/types";
 import { AUTO_CONTINUE_PROMPT_SENTINEL } from "../../src/runtime/resume";
 import {
+  collapseDuplicateCreateTurns,
   collapseEmptyAssistantShellsBeforeSuccessor,
   DELIVERABLE_LIFECYCLE_STATUS_CODES,
   dedupeAssistantMessagesByRunId,
@@ -740,5 +741,26 @@ describe("resolveLastSubstantiveAssistantMessageId", () => {
       },
     ];
     expect(resolveLastSubstantiveAssistantMessageId(messages)).toBe("a-live");
+  });
+});
+
+describe("collapseDuplicateCreateTurns", () => {
+  it("drops a second identical create turn and keeps a later follow-up", () => {
+    const messages: ChatMessage[] = [
+      { id: "u1", role: "user", content: "www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.", createdAt: 1_000 },
+      { id: "a1", role: "assistant", content: "작성 중입니다.", createdAt: 1_001 },
+      { id: "u2", role: "user", content: "www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.", createdAt: 1_400 },
+      { id: "a2", role: "assistant", content: "작성 중입니다.", createdAt: 1_401 },
+      { id: "u3", role: "user", content: "표지 문구만 바꿔줘.", createdAt: 20_000 },
+      { id: "a3", role: "assistant", content: "수정 중입니다.", createdAt: 20_001 },
+    ];
+    const collapsed = collapseDuplicateCreateTurns(messages);
+    expect(collapsed.map((message) => message.id)).toEqual(["u1", "a1", "u3", "a3"]);
+    expect(dedupeConversationAssistantRows(messages).map((message) => message.id)).toEqual([
+      "u1",
+      "a1",
+      "u3",
+      "a3",
+    ]);
   });
 });

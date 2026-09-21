@@ -12,6 +12,12 @@ type Props = {
   liveCountLabel?: string;
   className?: string;
   onCoverOverride?: (cover: ProjectCoverFile | null) => void;
+  /**
+   * Embed: wait for viewport preview/html batch warm before mounting
+   * ProjectCardHtmlCover — otherwise visible cards fire /raw before cache seed
+   * (0914-N01, mirrors home `homeCoversReady`).
+   */
+  htmlCoverWarmReady?: boolean;
 };
 
 /** DesignsTab grid card thumb — cover-hints first, `/files` if hints miss (visible only). */
@@ -21,6 +27,7 @@ export function DesignsTabProjectThumb({
   liveCountLabel,
   className,
   onCoverOverride,
+  htmlCoverWarmReady = true,
 }: Props) {
   const { slideOnlyMvp } = useTeamverBranding();
   const { anchorRef, cover, override } = useLazyProjectCover(project, {
@@ -62,13 +69,17 @@ export function DesignsTabProjectThumb({
       ) : cover.kind === "video" && cover.src ? (
         <video className="thumb-media" src={cover.src} muted preload="metadata" playsInline />
       ) : cover.kind === "html" && cover.src ? (
-        <ProjectCardHtmlCover
-          src={cover.src}
-          deckCoverOnly={slideOnlyMvp || project.metadata?.kind === "deck"}
-          // Parent useLazyProjectCover already defers until the card is near
-          // the viewport — a second IntersectionObserver only delayed /raw.
-          deferUntilVisible={false}
-        />
+        htmlCoverWarmReady ? (
+          <ProjectCardHtmlCover
+            src={cover.src}
+            deckCoverOnly={slideOnlyMvp || project.metadata?.kind === "deck"}
+            // Parent useLazyProjectCover already defers until the card is near
+            // the viewport — a second IntersectionObserver only delayed /raw.
+            deferUntilVisible={false}
+          />
+        ) : (
+          <span className="project-thumb-deck-loading" aria-hidden />
+        )
       ) : (
         glyph
       )}

@@ -7,9 +7,12 @@
  * triggers the endpoint — BYOK Messages API has no Clone tool for the model.
  */
 
+import { pickPromptFillLookSeedHtml } from '@open-design/contracts';
+
 import { deckLooksLikeUnfilledCatalogExample } from '../artifacts/deck-html-content';
 import { fetchProjectFileText } from '../providers/registry';
 import { getProject } from '../state/projects';
+import { fetchPluginPreviewLookSource } from './fetchPluginLocalSkill';
 import { fetchTeamverDaemon } from './teamverDaemonHeaders';
 
 export type SeedTemplateClonedDeckResult =
@@ -24,6 +27,8 @@ export type SeedTemplateClonedDeckResult =
       preservedFilled?: boolean;
       /** Server already slot-filled the LOOK seed — FE must not auto-send MiniMax. */
       contentFilled?: boolean;
+      /** LOOK/layout is ready, but generic synthesized copy needs an AI outline. */
+      needsAiContentFill?: boolean;
     }
   | {
       ok: false;
@@ -81,6 +86,7 @@ export async function recoverExistingTemplateClonedDeck(
         metadata?: {
           templateClonedDeckSeeded?: unknown;
           templateCloneContentFilled?: unknown;
+          templateCloneContentFillPending?: unknown;
           selectedDeckTemplateId?: unknown;
         };
       };
@@ -96,6 +102,19 @@ export async function recoverExistingTemplateClonedDeck(
           recoveredExisting: true,
           preservedFilled: true,
           contentFilled: true,
+        };
+      }
+      if (json?.metadata?.templateCloneContentFillPending === true) {
+        return {
+          ok: true,
+          fileName: 'deck.html',
+          slideCount: 1,
+          templateId: asSeededTemplateId(
+            json.metadata?.selectedDeckTemplateId,
+            json.sourceSkillId,
+          ),
+          recoveredExisting: true,
+          needsAiContentFill: true,
         };
       }
       if (json?.metadata?.templateClonedDeckSeeded === true) {
@@ -121,6 +140,7 @@ export async function recoverExistingTemplateClonedDeck(
       | {
           templateClonedDeckSeeded?: unknown;
           templateCloneContentFilled?: unknown;
+          templateCloneContentFillPending?: unknown;
           selectedDeckTemplateId?: unknown;
         }
       | undefined;
@@ -133,6 +153,16 @@ export async function recoverExistingTemplateClonedDeck(
         recoveredExisting: true,
         preservedFilled: true,
         contentFilled: true,
+      };
+    }
+    if (meta?.templateCloneContentFillPending === true) {
+      return {
+        ok: true,
+        fileName: 'deck.html',
+        slideCount: 1,
+        templateId: asSeededTemplateId(meta.selectedDeckTemplateId),
+        recoveredExisting: true,
+        needsAiContentFill: true,
       };
     }
     if (meta?.templateClonedDeckSeeded === true) {
@@ -151,6 +181,36 @@ export async function recoverExistingTemplateClonedDeck(
   return null;
 }
 
+/**
+ * Persist LOOK host for Clone fill. MiniMax may have overwritten `deck.html`
+ * with monotone model HTML — prefer the official plugin preview so host
+ * variety / sparse enrich still run against the template shells.
+ */
+export async function resolveTemplateCloneLookSeedHtml(input: {
+  templateId?: string | null;
+  readProjectHtml: (name: string) => Promise<string | null>;
+}): Promise<string> {
+  const templateId = String(input.templateId ?? '').trim();
+  let pluginPreviewHtml: string | null = null;
+  if (templateId) {
+    try {
+      pluginPreviewHtml = await fetchPluginPreviewLookSource(templateId);
+    } catch {
+      pluginPreviewHtml = null;
+    }
+  }
+  let diskDeckHtml: string | null = null;
+  try {
+    diskDeckHtml = await input.readProjectHtml('deck.html');
+  } catch {
+    diskDeckHtml = null;
+  }
+  return pickPromptFillLookSeedHtml({
+    pluginPreviewHtml,
+    diskDeckHtml,
+  });
+}
+
 /** True when a clone/fill result already occupies deck.html — do not MiniMax. */
 export function cloneResultSuppressesAiFill(
   result: SeedTemplateClonedDeckResult | null | undefined,
@@ -158,7 +218,7 @@ export function cloneResultSuppressesAiFill(
   return Boolean(
     result
     && result.ok
-    && (result.contentFilled === true || result.preservedFilled === true || result.recoveredExisting === true),
+    && (result.contentFilled === true || result.preservedFilled === true),
   );
 }
 
@@ -227,6 +287,7 @@ export async function seedTemplateClonedDeck(options: {
       templateId?: string;
       preservedFilled?: boolean;
       contentFilled?: boolean;
+      needsAiContentFill?: boolean;
     };
     if (!json?.ok || json.fileName !== 'deck.html') {
       return {
@@ -242,6 +303,7 @@ export async function seedTemplateClonedDeck(options: {
       templateId: typeof json.templateId === 'string' ? json.templateId : pluginId,
       ...(json.preservedFilled === true ? { preservedFilled: true } : {}),
       ...(json.contentFilled === true ? { contentFilled: true } : {}),
+      ...(json.needsAiContentFill === true ? { needsAiContentFill: true } : {}),
     };
   };
 
@@ -343,6 +405,7 @@ export async function fillTemplateClonedDeckDeterministically(options: {
       templateId?: string;
       preservedFilled?: boolean;
       contentFilled?: boolean;
+      needsAiContentFill?: boolean;
     };
     if (!json?.ok || json.fileName !== 'deck.html') {
       return {
@@ -358,6 +421,7 @@ export async function fillTemplateClonedDeckDeterministically(options: {
       templateId: typeof json.templateId === 'string' ? json.templateId : pluginId,
       ...(json.preservedFilled === true ? { preservedFilled: true } : {}),
       ...(json.contentFilled === true ? { contentFilled: true } : {}),
+      ...(json.needsAiContentFill === true ? { needsAiContentFill: true } : {}),
     };
   };
 

@@ -9,6 +9,8 @@ import {
   findClientSlideCountRegression,
   findTemplateCloneFillStructureIncomplete,
   findTemplateCloneFillSlideCountIncomplete,
+  resolveTemplateCloneRunBrief,
+  templateCloneSeedFallbackShouldWarn,
   promptWithExistingDeckEditInstruction,
   resolveCanonicalDeckFileForEdit,
   promptWithSlideAttachmentDeliverableInstruction,
@@ -193,6 +195,46 @@ describe("promptWithSlideAttachmentDeliverableInstruction", () => {
     expect(prompt).toMatch(/NEW slide deck|This is CREATE/i);
     expect(prompt).not.toContain("NEVER reduce the number of `<section class=\"slide\">` blocks");
     expect(prompt).not.toContain("surgical insert into the EXISTING deck");
+  });
+});
+
+describe("resolveTemplateCloneRunBrief", () => {
+  it("keeps the original user topic on Clone retry / auto-continue turns", () => {
+    const brief = resolveTemplateCloneRunBrief({
+      prompt: [
+        '<!--od:auto_continue_incomplete_output-->',
+        '[FINAL RETRY]',
+        '직전 응답은 `deck.html`을 완성하지 못했습니다.',
+      ].join('\n'),
+      persistedUserContent: '슬라이드 채우기에 실패해 템플릿 초안(LOOK seed)을 유지했습니다.',
+      retryUserContent: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장',
+      pendingPrompt: [
+        'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장',
+        '',
+        '[Template clone prompt fill]',
+        'Host-only contract.',
+      ].join('\n'),
+      projectName: '슬라이드',
+    });
+
+    expect(brief).toBe('www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장');
+  });
+
+  it("uses the selected pending prompt topic instead of a generic project title", () => {
+    const brief = resolveTemplateCloneRunBrief({
+      prompt: '',
+      persistedUserContent: '',
+      retryUserContent: '',
+      pendingPrompt: [
+        'Expo 개발 도구에 대해 시니어 개발자용 발표 자료를 만들어 주세요',
+        '',
+        '[Template clone content fill]',
+        'JSON outline only.',
+      ].join('\n'),
+      projectName: '슬라이드',
+    });
+
+    expect(brief).toBe('Expo 개발 도구에 대해 시니어 개발자용 발표 자료를 만들어 주세요');
   });
 });
 
@@ -440,6 +482,67 @@ describe("findClientSlideCountRegression", () => {
     ).toBeNull();
   });
 
+  // 루프524 — A fresh brief re-send after the LOOK seed banner has no
+  // `runTemplateCloneContentFillRef` / `runTemplateClonePromptFillRef`
+  // lineage, so `allowSlideCountReduction` is false. The disk carries
+  // an 8–10 slide Clone LOOK seed (metadata: templateClonedDeckSeeded);
+  // a legitimate 2–3 slide fresh fill must not be rejected as
+  // `artifact_regression` (reason=slide-count). The dedicated
+  // `priorProjectFile` bypass keeps the same guarantee that
+  // `findClientArtifactRegression` already gives via its `projectFiles`
+  // lookup, so the two sibling guards stay symmetric.
+  it("allows a compact fresh fill when the on-disk prior is a Clone LOOK seed", () => {
+    const priorSeed = Array.from(
+      { length: 8 },
+      (_, i) =>
+        `<section class="slide" data-slide-index="${i}"><h2>Slide ${i + 1}</h2></section>`,
+    ).join("\n");
+    const freshFill = [
+      '<section class="slide"><h1>Fresh cover</h1></section>',
+      '<section class="slide"><h2>Overview</h2><p>Body copy 1.</p></section>',
+      '<section class="slide"><h2>Details</h2><p>Body copy 2.</p></section>',
+    ].join("\n");
+    // Without the bypass: prior 8 vs new 3 → regression fires (control).
+    expect(
+      findClientSlideCountRegression({
+        fileName: "deck.html",
+        htmlBody: freshFill,
+        priorHtml: priorSeed,
+      }),
+    ).toMatchObject({ priorCount: 8, newCount: 3 });
+    // With `priorProjectFile` carrying the LOOK seed marker → bypass.
+    expect(
+      findClientSlideCountRegression({
+        fileName: "deck.html",
+        htmlBody: freshFill,
+        priorHtml: priorSeed,
+        priorProjectFile: {
+          artifactManifest: {
+            metadata: { templateClonedDeckSeeded: true },
+          },
+        },
+      }),
+    ).toBeNull();
+    // A filled stamp cancels the seed bypass — a real deliverable on
+    // disk must still enforce slide-count regression when the model
+    // regresses.
+    expect(
+      findClientSlideCountRegression({
+        fileName: "deck.html",
+        htmlBody: freshFill,
+        priorHtml: priorSeed,
+        priorProjectFile: {
+          artifactManifest: {
+            metadata: {
+              templateClonedDeckSeeded: true,
+              templateCloneContentFilled: true,
+            },
+          },
+        },
+      }),
+    ).toMatchObject({ priorCount: 8, newCount: 3 });
+  });
+
   it("counts slides even when open-tags contain quoted '>' in style attrs", () => {
     const priorHtml = Array.from({ length: 8 }, (_, i) =>
       i === 0
@@ -473,24 +576,40 @@ describe("findTemplateCloneFillSlideCountIncomplete", () => {
     ).toBeNull();
   });
 
-  it("allows a titled one-slide cover draft so top-up can append the rest", () => {
+  it("blocks a one-slide unspecified first fill before it can become the final deck", () => {
     expect(
       findTemplateCloneFillSlideCountIncomplete({
         fileName: "deck.html",
         htmlBody: '<section class="slide"><h1>Cover only</h1></section>',
         requestedSlideCount: null,
+        defaultFirstFillSlideCount: 6,
       }),
-    ).toBeNull();
+    ).toMatchObject({ producedCount: 1, expectedCount: 6 });
   });
 
-  it("allows untitled one-slide drafts so top-up can append instead of incomplete_output", () => {
+  it("blocks a two-slide unspecified first fill like the live Block Frame regression", () => {
     expect(
       findTemplateCloneFillSlideCountIncomplete({
         fileName: "deck.html",
-        htmlBody: '<section class="slide"><p>placeholder</p></section>',
+        htmlBody: '<section class="slide"><h1>Cover</h1></section>'
+          + '<section class="slide"><h2>Problem</h2><p>body</p></section>',
         requestedSlideCount: null,
+        defaultFirstFillSlideCount: 6,
       }),
-    ).toBeNull();
+    ).toMatchObject({ producedCount: 2, expectedCount: 6 });
+  });
+
+  it("allows a six-slide unspecified first fill", () => {
+    const sixSlides = Array.from(
+      { length: 6 },
+      (_, index) => `<section class="slide"><h2>Slide ${index + 1}</h2><p>body</p></section>`,
+    ).join("");
+    expect(findTemplateCloneFillSlideCountIncomplete({
+      fileName: "deck.html",
+      htmlBody: sixSlides,
+      requestedSlideCount: null,
+      defaultFirstFillSlideCount: 6,
+    })).toBeNull();
   });
 
   it("does not block short fills against an explicit small slide count", () => {
@@ -608,6 +727,30 @@ describe("findTemplateCloneFillStructureIncomplete", () => {
         htmlBody: valid,
       }),
     ).toBeNull();
+  });
+});
+
+describe("templateCloneSeedFallbackShouldWarn", () => {
+  it("warns only when the raw LOOK seed is kept unchanged", () => {
+    const seed = '<section class="slide"><h1>Demo</h1></section>';
+    expect(
+      templateCloneSeedFallbackShouldWarn({
+        seedHtml: seed,
+        decisionHtml: seed,
+      }),
+    ).toBe(true);
+    expect(
+      templateCloneSeedFallbackShouldWarn({
+        seedHtml: seed,
+        decisionHtml: '<section class="slide"><h1>Expo</h1></section>',
+      }),
+    ).toBe(false);
+    expect(
+      templateCloneSeedFallbackShouldWarn({
+        seedHtml: seed,
+        decisionHtml: '',
+      }),
+    ).toBe(true);
   });
 });
 
@@ -1158,7 +1301,8 @@ describe("mergeMissingActiveRunAssistantMessages", () => {
       runStatus: "running",
     };
 
-    const merged = mergeMissingActiveRunAssistantMessages([assistant], [
+    const messages = [assistant];
+    const merged = mergeMissingActiveRunAssistantMessages(messages, [
       {
         id: "run-1",
         assistantMessageId: "a1",
@@ -1167,6 +1311,7 @@ describe("mergeMissingActiveRunAssistantMessages", () => {
       },
     ]);
 
+    expect(merged).toBe(messages);
     expect(merged).toEqual([assistant]);
   });
 

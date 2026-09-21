@@ -466,9 +466,10 @@ describe('seedTemplateClonedDeckOnServer', () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.contentFilled).toBe(true);
-    expect(manifest?.metadata?.templateCloneContentFilled).toBe(true);
-    expect(manifest?.metadata?.templateCloneContentFillPending).toBe(false);
+    expect(result.contentFilled).toBeUndefined();
+    expect(result.needsAiContentFill).toBe(true);
+    expect(manifest?.metadata?.templateCloneContentFilled).toBe(false);
+    expect(manifest?.metadata?.templateCloneContentFillPending).toBe(true);
     expect(manifest?.metadata?.templateCloneFillMode).toBe('deterministic');
     expect(marked[0]?.contentFillMode).toBe('deterministic-fill');
   });
@@ -558,13 +559,16 @@ describe('seedTemplateClonedDeckOnServer', () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.contentFilled).toBe(true);
+    expect(result.contentFilled).toBeUndefined();
+    expect(result.needsAiContentFill).toBe(true);
     expect(result.slideCount).toBe(10);
     const deck = written.get('deck.html') ?? '';
     expect(deck).toContain('--coral');
     expect(deck).toContain('--lime');
     expect(deck).toMatch(/팀버|Teamver/i);
-    expect(deck).toContain('직접적인 가치');
+    expect(deck).toContain('핵심 포인트');
+    expect(deck).toContain('사용자가 즉시 얻는 시간 절감');
+    expect(deck).not.toMatch(/<div\b[^>]*\bstat-number\b[^>]*>[^<]*(?:방문에서 문의|핵심 기능 반복|결과물 완성도|반복 작업을 줄이고)[^<]*<\/div>/);
     expect(deck).not.toMatch(/Hartfield|Daisy Days|Clarity of Purpose/i);
     expect(deck).not.toContain('The Journey Continues');
     expect(deck).not.toContain('340%');
@@ -639,7 +643,9 @@ describe('seedTemplateClonedDeckOnServer', () => {
     expect(deck).toContain('--coral');
     expect(deck).toContain('--lime');
     expect(deck).toMatch(/팀버|Teamver/i);
-    expect(deck).toContain('직접적인 가치');
+    expect(deck).toContain('핵심 포인트');
+    expect(deck).toContain('사용자가 즉시 얻는 시간 절감');
+    expect(deck).not.toMatch(/<div\b[^>]*\bstat-number\b[^>]*>[^<]*(?:방문에서 문의|핵심 기능 반복|결과물 완성도|반복 작업을 줄이고)[^<]*<\/div>/);
     expect(deck).not.toContain('The Journey Continues');
     expect(deck).not.toContain('340%');
     expect(deck).not.toContain('…');
@@ -1243,7 +1249,9 @@ describe('루프450/459 Zhangzara 서버 fill 스모크', () => {
 
       expect(result.ok, `[루프450:${spec.name}] server fill failed`).toBe(true);
       if (!result.ok) return;
-      expect(result.contentFilled, `[루프450:${spec.name}] contentFilled`).toBe(true);
+      expect(result.contentFilled, `[루프450:${spec.name}] contentFilled`).toBeUndefined();
+      expect(result.needsAiContentFill, `[루프450:${spec.name}] needsAiContentFill`)
+        .toBe(true);
       expect(result.slideCount, `[루프450:${spec.name}] slideCount`)
         .toBe(spec.expectedSlideCount);
 

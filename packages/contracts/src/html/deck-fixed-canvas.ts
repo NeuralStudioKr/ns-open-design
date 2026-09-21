@@ -139,6 +139,62 @@ article[data-screen-label] {
   left: auto !important;
   margin-top: auto !important;
 }
+/* 루프536 — Broadside / Studio / Signal / Grove kits author
+ * .slide grid rows make the
+ * .slide-body middle row grow to 1fr. Compact fills wrap contents in an
+ * absolute flow wrapper (flex column) and the grid rule no longer applies —
+ * .slide-body collapses to intrinsic height, leaving diagram/stats/pie/
+ * fadelist copy pinned to the top-left of a 1920×1080 canvas (user report
+ * 2026-09-15: "실행 방안" slide with a huge empty bottom half). Restore the
+ * stretch so diagram/body centering rules etc.
+ * can vertically center content across the middle band. */
+.slide > [data-od-slide-flow] > .slide-body,
+.slide > [data-od-slide-flow] > .slide-chrome + .slide-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+/* 루프541 — 컴팩트 rewrap 시 킷별 primary content wrapper
+ * (.slide-content)는 stretch가 필요하다. 8-Bit Orbit .slide-content는 원본
+ * example.html에서 부모 .slide flex-column의 자식으로 flex:1 없이 그저
+ * justify-content:center로 배치돼 컨텐츠 intrinsic height만큼만 잡히다가
+ * data-od-slide-flow 래퍼 하에서 상단에 붙어버린다. */
+.slide > [data-od-slide-flow] > .slide-content,
+.slide > [data-od-slide-flow] > .slide-chrome + .slide-content {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+/* 0918-N03 — Block Frame's hero is a bordered content panel, not a full
+ * canvas body. Stretching it to flex:1 produced a tall portrait-like white
+ * slab with the headline stranded at the top. Let the authored width/padding
+ * define an intrinsic panel and center that panel via the wrapper above. */
+.slide > [data-od-slide-flow] > .hero-frame,
+.slide > [data-od-slide-flow] > .slide-chrome + .hero-frame {
+  flex: 0 1 auto !important;
+  height: auto !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+}
+/* 루프539 — MiniMax invents block-frame classes that the kit never declared
+ * (.hero-title-highlight, .download-card / .platform-card, .hero-cta
+ * pair with "Enterprise 데모"). fillBlockFrameNeoSlots unwraps most of them
+ * on the server, but defensive CSS is still needed:
+ * (1) Invented .hero-title-highlight span survives → make it flow inline
+ *     with a proper multi-line highlight box (box-decoration-break) so
+ *     wrapped characters do not clip out of a fixed-width rectangle.
+ * (2) Invented empty .download-card / .platform-card shells slip past
+ *     the strip → hide when the card only carries a heading (no body text). */
+.slide .hero-title-highlight {
+  display: inline !important;
+  padding: 0.08em 0.12em !important;
+  -webkit-box-decoration-break: clone !important;
+  box-decoration-break: clone !important;
+}
+.slide .download-card:empty,
+.slide .platform-card:empty,
+.slide .download-card:not(:has(> p, > ul, > ol, > span:not(:empty), > div:not(:empty))),
+.slide .platform-card:not(:has(> p, > ul, > ol, > span:not(:empty), > div:not(:empty))) {
+  display: none !important;
+}
 /* Compact/stacked 16:9 only — keep catalog presenter paper untouched. */
 html:has(body > .slide) .slide > [data-od-slide-flow]:has(.slide-inner),
 html:has(#od-stacked-deck-stage) .slide > [data-od-slide-flow]:has(.slide-inner) {

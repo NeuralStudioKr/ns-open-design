@@ -15,6 +15,8 @@ import {
   HOME_EMPTY_CREATE_SLIDES_PROMPT,
   SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE,
   SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION,
+  SLIDE_DECK_COPY_DENSITY_INSTRUCTION,
+  SLIDE_DECK_LAYOUT_VARIETY_INSTRUCTION,
   SLIDE_DECK_QUALITY_BAR_INSTRUCTION,
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
@@ -59,6 +61,10 @@ describe("canvasSlideLaunch", () => {
     expect(HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/do not emit `<head>`/i);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toContain(SLIDE_DECK_QUALITY_BAR_INSTRUCTION);
     expect(HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION).toContain(SLIDE_DECK_QUALITY_BAR_INSTRUCTION);
+    expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toContain(SLIDE_DECK_LAYOUT_VARIETY_INSTRUCTION);
+    expect(HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION).toContain(SLIDE_DECK_LAYOUT_VARIETY_INSTRUCTION);
+    expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toContain(SLIDE_DECK_COPY_DENSITY_INSTRUCTION);
+    expect(HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION).toContain(SLIDE_DECK_COPY_DENSITY_INSTRUCTION);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toContain(SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION);
     expect(HOME_CREATE_SLIDES_INTERNAL_INSTRUCTION).toContain(SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toContain(SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE);
@@ -774,6 +780,11 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).toContain("templateCloneFillSlideCountOverrideNotice(");
     expect(projectView).toContain("slimTemplateVisualKitForFill(");
     expect(projectView).toContain("templateCloneContentFill: isCloneContentFillTurn");
+    expect(projectView).toContain("applyTemplateClonePromptFillLookMerge(");
+    expect(projectView).toContain("observeTemplateClonePersistQuality(");
+    expect(projectView).toContain("observeTemplateCloneOutlineQuality(");
+    expect(projectView).toContain("resolveTemplateCloneLookSeedHtml(");
+    expect(projectView).toContain("runTemplateClonePromptFillRef.current && artifactToPersist?.html");
     expect(projectView).toContain("appendIncomingSlidesOntoExistingDeck(");
     expect(projectView).toContain("incomingBeforeSalvage");
     expect(projectView).toContain("top-up-did-not-append-slides");
@@ -787,6 +798,13 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).toContain("deckArtifactStartsWithMotifSvgDump");
     expect(projectView).toContain("shouldAbortStreamForMotifSvgDump");
     expect(projectView).toContain("shouldAbortStreamForHeadOnlyKitDump");
+    expect(projectView).toContain("stalledRunHeadPreambleText(");
+    expect(projectView).toContain("stripAbandonedHeadPreambleFromStreamedText(");
+    expect(projectView).toContain("shouldPreserveLookSeedOverInventedCover(");
+    expect(projectView).toMatch(
+      /stalledHeadPreamble && finalizeText[\s\S]{0,180}rewriteLiveContent\(finalizeText\)/,
+    );
+    expect(projectView).not.toContain("finalizeText !== (latestAssistantMsg.content || '')");
     expect(projectView).toContain("templateCloneContentFill: isCloneHostFillTurn");
     expect(projectView).toContain("FILL_MOTIF_SVG_DUMP_STOP_REASON");
     expect(projectView).toContain("FILL_HEAD_KIT_DUMP_STOP_REASON");

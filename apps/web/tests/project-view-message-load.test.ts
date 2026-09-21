@@ -193,7 +193,9 @@ describe("ProjectView message loading", () => {
 
   it("injects selected deck template skillIds into daemon runs from project metadata", () => {
     const source = readSource("src/components/ProjectView.tsx");
-    expect(source).toContain("enrichChatSendMetaWithProjectDeckTemplate(meta, project.metadata)");
+    expect(source).toContain("ensureChatSendMetaHasDurableDeckTemplate(meta, {");
+    expect(source).toContain("projectMetadataNeedsDeckTemplatePin(project.metadata, durablePin)");
+    expect(source).toContain("resolveDurableDeckTemplatePin({");
     expect(source).toContain("resolveDeckTemplateSkillId(project.metadata, meta)");
   });
 
@@ -382,11 +384,13 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const persistStart = source.indexOf("const persistArtifact = useCallback");
     expect(persistStart).toBeGreaterThan(0);
-    const persistBlock = source.slice(persistStart, persistStart + 40000);
+    const persistBlock = source.slice(persistStart, persistStart + 48000);
     // Terminal scrub after salvage/repair/stabilize — not 2–4× early passes.
     expect(persistBlock).toContain("htmlBody = sanitizeManualEditFullSource(htmlBody)");
     expect(persistBlock).toContain("mergeOfficialLookCssForTemplate");
     expect(persistBlock).toContain("firstOfficialDeckTemplateId");
+    expect(persistBlock).toContain("resolveDurableDeckTemplatePin");
+    expect(persistBlock).toContain("selectedDeckTemplateId: persistTemplateId");
     expect(persistBlock).toContain("runSelectedDeckTemplateIdRef.current");
     expect(persistBlock).toContain("Single terminal scrub after salvage/repair/stabilize");
     // Look/Motif merge before surface bleed so cream !important cannot win
@@ -443,7 +447,7 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const persistStart = source.indexOf("const persistArtifact = useCallback");
     expect(persistStart).toBeGreaterThan(0);
-    const persistBlock = source.slice(persistStart, persistStart + 40000);
+    const persistBlock = source.slice(persistStart, persistStart + 48000);
     expect(persistBlock).toContain("htmlBodyBeforeSanitize");
     expect(persistBlock).toContain("scoped edit scrubbed to no-op");
     expect(persistBlock).toContain(
@@ -456,7 +460,7 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const persistStart = source.indexOf("const persistArtifact = useCallback");
     expect(persistStart).toBeGreaterThan(0);
-    const persistBlock = source.slice(persistStart, persistStart + 40000);
+    const persistBlock = source.slice(persistStart, persistStart + 48000);
     expect(persistBlock).toContain("const readDiskHtml = async");
     expect(persistBlock).toContain("diskHtmlForTarget");
     expect(persistBlock).toContain("currentHtml: diskHtmlForTarget");
@@ -598,7 +602,8 @@ describe("ProjectView message loading", () => {
     // readDiskHtml cache + visualMarksAlreadyStabilized + skipped-noop,
     // then 28000 for official template look CSS merge on persist,
     // then 40000 for cover-draft salvage + persistable short-draft trust.
-    const persistBlock = source.slice(persistStart, persistStart + 40000);
+    // 루프554 — persist 직전 pad 블록이 늘어 persist window를 56000으로 올림.
+    const persistBlock = source.slice(persistStart, persistStart + 56000);
 
     expect(persistBlock).toContain("Promise<ArtifactPersistResult>");
     expect(persistBlock).toContain("preferDeck: slideOnlyMvp");
@@ -612,6 +617,8 @@ describe("ProjectView message loading", () => {
     expect(persistBlock).toContain("project.name || '슬라이드'");
     expect(persistBlock).toContain("lastResortTitle: LAST_RESORT_DECK_COVER_TITLE");
     expect(persistBlock).toContain("resolveDeckHtmlForIncompleteShellPersist(");
+    expect(persistBlock).toContain("shouldPreserveLookSeedOverInventedCover(");
+    expect(persistBlock).toContain("preserveLookSeedOverInventedCover");
     expect(persistBlock).toContain("kind: 'skipped-incomplete'");
     // deck-patch interceptor must run BEFORE the incomplete-shell / validate
     // gates so partial patches never get rejected as "not a full document".
@@ -632,14 +639,22 @@ describe("ProjectView message loading", () => {
       persistStart,
     );
     expect(shellStart).toBeGreaterThan(persistStart);
-    const shellBlock = source.slice(shellStart, shellStart + 900);
+    const shellBlock = source.slice(shellStart, shellStart + 2200);
+    expect(shellBlock).toContain("resolveIncompleteHtmlShellPersist({");
+    expect(shellBlock).toContain("needs-short-response-retry");
+    expect(shellBlock).toContain("incompleteShellPaddedToSeed");
     expect(shellBlock).toContain("kind: 'skipped-incomplete'");
     expect(shellBlock).not.toContain("setError(");
     expect(shellBlock).not.toContain("formatProjectArtifactRejectedError(");
+    expect(source).toContain("retryKind === 'head-preamble'");
+    expect(source).toContain("buildHeadPreambleContinuePrompt()");
+    expect(source.indexOf("resolveIncompleteHtmlShellPersist({")).toBeLessThan(
+      source.indexOf("`skipped_incomplete_retry:${String(failedPersistResult.reason"),
+    );
 
     const autoOpenStart = source.indexOf("const scheduleStreamRunHtmlAutoOpen");
     expect(autoOpenStart).toBeGreaterThan(0);
-    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 60000);
+    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 72000);
 
     expect(autoOpenBlock).toContain("const cloneFillSourceText = streamedText || fullText || latestAssistantMsg.content || ''");
     expect(autoOpenBlock).toContain("const rawFinalText = prepareTemplateCloneSlotFillAssistantText(cloneFillSourceText)");
@@ -832,7 +847,7 @@ describe("ProjectView message loading", () => {
     // empty element-patch policy.
     const persistStart = source.indexOf("const persistArtifact = useCallback");
     expect(persistStart).toBeGreaterThan(0);
-    const persistBlock = source.slice(persistStart, persistStart + 40000);
+    const persistBlock = source.slice(persistStart, persistStart + 48000);
     expect(persistBlock).toContain(
       "isDeckPatchEmptyBody(art.html ?? '', merged.reason)",
     );
@@ -844,6 +859,10 @@ describe("ProjectView message loading", () => {
     );
     expect(persistBlock).toContain(
       "The model emitted an empty deck-patch artifact on a run without a scoped comment target.",
+    );
+    // 루프530 — Unscoped missing data-slide-index must not become scope-rejected.
+    expect(persistBlock).toContain(
+      "!runIsScoped && merged.code === 'deck_patch_parse_failed'",
     );
   });
 
@@ -1127,11 +1146,21 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("shouldSkipDaemonArtifactStubGuard");
     expect(source).toContain("bannerKind: 'slide-count'");
     expect(source).toContain("const FIRST_FILL_SLIDE_COUNT_THIS_TURN = 6");
+    // 루프508 — existing deck.html persist target must not force strict slide-count.
+    expect(source).not.toMatch(
+      /strictSlideCount\s*=\s*[\s\S]{0,200}Boolean\(runPersistTargetFileRef\.current\)/,
+    );
     expect(source).toContain("deckTitle: project.name || '슬라이드'");
     expect(source).toContain("priorHtml");
     expect(source).toContain("blocked placeholder artifact regression before save");
     expect(source).toContain("kind: 'artifact-regression'");
     expect(source).toContain("? 'artifact_regression'");
+    const regressionBlock = source.slice(
+      source.indexOf("const regression = findClientArtifactRegression({"),
+      source.indexOf("const skipDaemonStubGuard = shouldSkipDaemonArtifactStubGuard({"),
+    );
+    expect(regressionBlock).not.toContain("formatProjectArtifactRejectedError");
+    expect(regressionBlock).toContain("return {\n          kind: 'artifact-regression'");
   });
 
   it("skips low-substance deck artifacts before marking slide generation complete", () => {
@@ -1190,5 +1219,101 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("applyTerminalRunStatusToAssistant");
     expect(source).toContain("formatPersistedProjectRunError(err)");
     expect(source).toContain("attachPersistedChatError(prev, persisted.detail, persisted.code)");
+  });
+
+  it("retries deterministic Clone fill persist before falling back to the raw LOOK seed", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const recoveryStart = source.indexOf("// 루프362/364/365 — Clone first-fill LOOK seed recovery.");
+    expect(recoveryStart).toBeGreaterThan(0);
+    const recoveryBlock = source.slice(recoveryStart, recoveryStart + 4800);
+    expect(recoveryBlock).toContain("terminalPersistResult?.kind === 'skipped-incomplete'");
+    expect(recoveryBlock).toContain("terminalPersistResult?.kind === 'artifact-regression'");
+    expect(recoveryBlock).toContain("artifactToPersist = null");
+    expect(recoveryBlock).toContain("await recoverCloneLookSeedFallback({");
+    expect(recoveryBlock).toContain("`skipped_incomplete:${String(failedPersistResult.reason");
+    expect(recoveryBlock).toContain("reason: failedPersistPrefix");
+    expect(recoveryBlock).toContain("artifact_regression_retry:");
+    expect(recoveryBlock).toContain("artifactToPersist?.html");
+    expect(recoveryBlock).toContain("const retryPersistResult = await persistArtifact");
+    expect(recoveryBlock).toContain("prepareArtifact: false");
+    expect(recoveryBlock).toContain("`skipped_incomplete_retry:${String(failedPersistResult.reason");
+  });
+
+  // 루프528 — Outline fallback must mark failed + error event so Retry dock
+  // matches the banner copy (LOOK seed / 루프525 mirror). Emergency stays succeeded.
+  it("marks outline-deck fallback as failed with Retry-dock error event", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const start = source.indexOf("} else if (outlineFallbackRecovered) {");
+    expect(start).toBeGreaterThan(0);
+    const block = source.slice(start, start + 1800);
+    expect(block).toContain("OUTLINE_DECK_FALLBACK_STATUS_CODE");
+    expect(block).toContain("appendErrorStatusEvent");
+    expect(block).toContain("runStatus: 'failed'");
+    expect(block).toContain("resumable: false");
+    expect(block).toContain("updateConversationLatestRun('failed'");
+    expect(block).not.toContain("resolveSucceededRunStatus");
+  });
+
+  // 루프529 — Emergency salvage is review-only: succeeded, no Retry dock.
+  it("keeps emergency deck salvage as succeeded without Retry-dock error event", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const start = source.indexOf("if (emergencyRecovered) {");
+    expect(start).toBeGreaterThan(0);
+    const block = source.slice(start, start + 900);
+    expect(block).toContain("EMERGENCY_DECK_FALLBACK_STATUS_CODE");
+    expect(block).toContain("resolveSucceededRunStatus");
+    expect(block).toContain("updateConversationLatestRun('succeeded'");
+    expect(block).not.toContain("appendErrorStatusEvent");
+    expect(block).not.toContain("runStatus: 'failed'");
+  });
+
+  it("short-response auto-retry arms once without padding template drafts", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("shouldAutoRetryShortSlideResponse({");
+    expect(source).toContain("kind: 'needs-short-response-retry'");
+    expect(source).toContain("autoRetryForShortResponse: true");
+    expect(source).toContain("renderShortResponseAutoRetryPrompt({");
+    expect(source).toContain("applyQuantitativeSlideCountInstruction(modelPrompt, seedShellCount)");
+    expect(source).toContain("defaultFirstFillSlideCount:");
+    expect(source).toContain("padToSeedSlideCount: false");
+  });
+
+  it("slide-count short response retries then preserves the existing deck", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const start = source.indexOf("const slideRegression = findClientSlideCountRegression({");
+    expect(start).toBeGreaterThan(0);
+    const block = source.slice(start, start + 6200);
+    expect(block).toContain("shouldAutoRetryShortSlideResponse({");
+    expect(block).toContain("kind: 'needs-short-response-retry'");
+    expect(block).toContain("retryKind: 'slide-count'");
+    expect(block).not.toContain("recoverShortDeckByPaddingToSeed({");
+    expect(block).toContain("kind: 'artifact-regression'");
+  });
+
+  it("head-preamble continue skips short-response retry without padding", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("runHeadPreambleContinueRef.current");
+    expect(source).toContain("!runHeadPreambleContinueRef.current");
+    expect(source).toContain("buildHeadPreambleContinuePrompt()");
+    expect(source).toContain("kind: 'skipped-incomplete'");
+    expect(source).toContain("shouldEmitHeadPreambleBanner");
+  });
+
+  it("0918-N03 · prompt rollback always rebuilds model HTML through official seed shells", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const start = source.indexOf("const merged = applyTemplateClonePromptFillLookMerge(");
+    expect(start).toBeGreaterThan(0);
+    const block = source.slice(start, start + 2600);
+    expect(block).toContain("padToSeedSlideCount: false");
+    expect(block).toContain("forcePad: true");
+    expect(block).not.toContain("shortVsSeed ? { forcePad: true }");
+  });
+
+  it("루프552 · too-short HTML uses the same retry gate then LOOK seed fallback", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("resolveTooShortHtmlArtifactPersist({");
+    expect(source).toContain("renderTooShortHtmlAutoRetryPrompt({");
+    expect(source).toContain("retryKind === 'too-short-html'");
+    expect(source).toContain("isNotHtmlDeliverableValidationReason(terminalPersistResult.reason)");
   });
 });

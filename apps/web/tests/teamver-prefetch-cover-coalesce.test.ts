@@ -99,8 +99,116 @@ describe("prefetch cover-hints coalesce (loop 358 · S-6)", () => {
 
     expect(daemonCallsMatching("cover-hints")).toBe(1);
     expect(prefetchLatestPublishSummariesMock).toHaveBeenCalledTimes(1);
-    // Home recent caps at HOME_RECENT_LIST_LIMIT (6); DesignsTab stays hints-only.
+    // Home recent caps at HOME_RECENT_LIST_LIMIT (6); DesignsTab warm stays hints-only.
     expect(fetchProjectFilesMock).toHaveBeenCalledTimes(6);
+  });
+
+  it("DesignsTab viewport warms preview-url/cover-html batch from entryFile without /files", async () => {
+    const projects = Array.from({ length: 4 }, (_, index) => ({
+      ...project(`tab-${index}`, 100 - index),
+      metadata: { kind: "deck" as const, entryFile: "deck.html" },
+    }));
+    fetchCoverHintsMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("cover-hints")) {
+        return { ok: true, json: async () => ({ hints: [] }) };
+      }
+      if (url.includes("preview-url-batch")) {
+        return {
+          ok: true,
+          json: async () => ({
+            results: projects.map((item) => ({
+              projectId: item.id,
+              ok: true,
+              url: `/api/projects/${item.id}/preview/scope/deck.html`,
+              file: "deck.html",
+            })),
+          }),
+        };
+      }
+      if (url.includes("cover-html-batch")) {
+        return {
+          ok: true,
+          json: async () => ({
+            results: projects.map((item) => ({
+              projectId: item.id,
+              ok: true,
+              file: "deck.html",
+              html: `<!doctype html><html><body><section class="slide">${item.id}</section></body></html>`,
+            })),
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    await prefetchDesignsTabViewport(projects);
+
+    expect(daemonCallsMatching("cover-hints")).toBe(1);
+    expect(daemonCallsMatching("preview-url-batch")).toBe(1);
+    expect(daemonCallsMatching("cover-html-batch")).toBe(1);
+    expect(fetchProjectFilesMock).not.toHaveBeenCalled();
+  });
+
+  it("parallel DesignsTab + home warm coalesces preview/html batch drains", async () => {
+    const projects = Array.from({ length: 4 }, (_, index) => ({
+      ...project(`both-${index}`, 100 - index),
+      metadata: { kind: "deck" as const, entryFile: "deck.html" },
+    }));
+    fetchCoverHintsMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("cover-hints")) {
+        return {
+          ok: true,
+          json: async () => ({
+            hints: projects.map((item) => ({
+              projectId: item.id,
+              entryFile: "deck.html",
+              coverKind: "html",
+              coverPath: "deck.html",
+              coverVersion: 1,
+            })),
+          }),
+        };
+      }
+      if (url.includes("preview-url-batch")) {
+        return {
+          ok: true,
+          json: async () => ({
+            results: projects.map((item) => ({
+              projectId: item.id,
+              ok: true,
+              url: `/api/projects/${item.id}/preview/scope/deck.html`,
+              file: "deck.html",
+            })),
+          }),
+        };
+      }
+      if (url.includes("cover-html-batch")) {
+        return {
+          ok: true,
+          json: async () => ({
+            results: projects.map((item) => ({
+              projectId: item.id,
+              ok: true,
+              file: "deck.html",
+              html: `<!doctype html><html><body><section class="slide">${item.id}</section></body></html>`,
+            })),
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    await Promise.all([
+      prefetchDesignsTabViewport(projects),
+      prefetchHomeProjectCovers(projects),
+    ]);
+
+    expect(daemonCallsMatching("cover-hints")).toBe(1);
+    expect(daemonCallsMatching("preview-url-batch")).toBe(1);
+    expect(daemonCallsMatching("cover-html-batch")).toBe(1);
+    expect(fetchProjectFilesMock).not.toHaveBeenCalled();
   });
 
   it("home recent prefetch uses bounded /files fallback on embed when cover-hints are empty", async () => {

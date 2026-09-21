@@ -806,7 +806,7 @@ A **Selected deck template** is already in this prompt. Use the **token-safe lay
 
 Do **not** paste a full \`example.html\` dump into the artifact (input was already summarized into the kit; rewriting the whole preview burns output tokens and truncates).
 
-**Body-first output order:** first 1200 chars after \`<artifact\` must include \`<body\` and one complete \`<section class="slide">...</section>\` with real copy. Put any shared \`<style>\` after slide 1. No \`<head>\`/long chrome dump. Do not stream full \`example.html\` CSS; do render compact visible kit motif/deco anchors when provided. Complete deck beats perfect motif fidelity.
+**Body-first output order:** Emit slides immediately; do not stop after \`</head>\`. First 1200 chars after \`<artifact\` must include \`<body\` and one complete \`<section class="slide">...</section>\` with real copy. Put any shared \`<style>\` after slide 1. No \`<head>\`/long chrome dump. Do not stream full \`example.html\` CSS; do render compact visible kit motif/deco anchors when provided. Complete deck beats perfect motif fidelity.
 
 Fallback wireframe ONLY when neither kit nor scaffold map is usable (structure only — still use Selected template tokens). This sample is a **minimum shape**, not the deliverable. Stopping after 3 slides is a failure — close 6 THIS TURN. Never close \`</html></artifact>\` after a single section:
 

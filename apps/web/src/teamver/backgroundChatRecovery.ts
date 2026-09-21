@@ -552,9 +552,9 @@ export const TEAMVER_STALE_RUN_POLL_MS = 30_000;
 export const TEAMVER_STALE_RUN_FORCE_FAIL_MS = 12 * 60 * 1000;
 
 /** API/BYOK rows without a daemon runId — shorter windows than managed runs. */
-export const TEAMVER_STALE_API_RUN_RECONCILE_MS = 10 * 60 * 1000;
-/** Must stay above deck SSE idle (10m) so force-fail does not race a live quiet stream. */
-export const TEAMVER_STALE_API_RUN_FORCE_FAIL_MS = 11 * 60 * 1000;
+export const TEAMVER_STALE_API_RUN_RECONCILE_MS = 6 * 60 * 1000;
+/** Must stay above deck SSE idle (6m, 루프508) so force-fail does not race a live quiet stream. */
+export const TEAMVER_STALE_API_RUN_FORCE_FAIL_MS = 7 * 60 * 1000;
 export const TEAMVER_STALE_API_RUN_POLL_MS = 15_000;
 export const API_RUN_STALLED_ERROR_CODE = "AGENT_EXECUTION_STALLED";
 

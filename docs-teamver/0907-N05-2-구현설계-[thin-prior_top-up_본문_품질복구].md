@@ -111,6 +111,15 @@ Rewrite prompt: sentinel + “replace thin LOOK shells with a complete filled de
 | soft prompt | sparse만 (entryFrom과 정렬) |
 | detector | mid-body `[od:…]` NEVER-copy 오탐 제거 |
 
+### H. 루프508 — 생성 지연 체감 · slide-count 오탐
+
+| 항목 | 내용 |
+|------|------|
+| UX | rewrite / top-up / sparse pending·streaming 시 Working 문구를 단계별로 표기 |
+| 큐 | `rewriteCount≥1`이면 slide-count top-up 예산 **1회** (기본 2 → 축소) |
+| idle | deck content-idle **10분 → 6분** · stale API reconcile 정렬 |
+| persist | slide-count `strict`는 comment/image만 — `runPersistTargetFileRef`만으로 strict 금지 (루프279 substance-rich 면제 복구) |
+
 ## 검증
 
 - unit: improve-thin / not-improve / recoverable reason / rewrite sentinel
@@ -118,6 +127,7 @@ Rewrite prompt: sentinel + “replace thin LOOK shells with a complete filled de
 - 루프503: produced=1 requested=8 → top-up true · top-up은 soft-improvement 아님
 - 루프504: Biennale cover sentinel heal · strip · AfterHeal · low-substance · prompt exact N
 - 루프505: preview heal-first · thin APPEND block · count>sparse · soft prompt · detector
+- 루프508: top-up budget after rewrite · deck idle 6m · strict=comment/image only · Working phase labels
 - ProjectView 로직은 가능하면 순수 함수로 추출해 테스트
 
 ## 변경 이력
@@ -127,3 +137,4 @@ Rewrite prompt: sentinel + “replace thin LOOK shells with a complete filled de
 | 2026-09-11 | 루프503 — 명시 요청 1장 shortfall top-up · top-up 실패 가시화 |
 | 2026-09-11 | 루프504 — thin-rewrite 센티널 커버 누수 · rewrite prompt 장수/킷 강화 |
 | 2026-09-11 | 루프505 — preview heal · count>sparse · thin APPEND 차단 |
+| 2026-09-14 | 루프508 — Working 단계 표기 · top-up 예산 · idle 6m · slide-count strict 오탐 |

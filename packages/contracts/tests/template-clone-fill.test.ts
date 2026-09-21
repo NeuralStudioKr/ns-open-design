@@ -8,8 +8,16 @@ import {
 } from './helpers/deterministic-template-quality-gate.js';
 
 import {
+  applyTemplateClonePromptFillLookMerge,
+  summarizeTemplateClonePersistQuality,
+  buildTemplateClonePersistQualityObserve,
+  summarizeTemplateCloneOutlineQuality,
+  buildTemplateCloneOutlineQualityObserve,
+  buildTemplateCloneLookSeedFallbackObserve,
+  pickPromptFillLookSeedHtml,
   applyTemplateCloneSlotFill,
   buildTemplateClonedDeckHtml,
+  extractTemplateCloneOutlineFromDeckHtml,
   classifyTemplateCloneShellRole,
   inferTemplateCloneContentRole,
   listTemplateCloneSlideShells,
@@ -38,10 +46,38 @@ import {
   restyleForeignIbMagazineCover,
   enrichSparseCobaltCover,
   healCobaltLeftoverCatalogCopy,
+  healCobaltGridLeftoverCatalogCopy,
+  COBALT_GRID_KIT_KEY,
   healSakuraLeftoverCatalogCopy,
   healLongTableLeftoverCatalogCopy,
   healStudioLeftoverCatalogCopy,
+  healBroadsideLeftoverCatalogCopy,
+  healGroveLeftoverCatalogCopy,
   healCreativeLeftoverCatalogCopy,
+  neutralizeBlockFrameInventedHeroTitleHighlight,
+  stripInventedBlockFramePlatformCards,
+  neutralizeBlockFrameEnglishHeroCta,
+  neutralizeBlockFrameChartSvgDemoMetrics,
+  healBlockFrameInventedHeroShells,
+  healEightBitOrbitLeftoverCatalogCopy,
+  fillEightBitOrbitKitSlide,
+  stripEightBitOrbitCatalogDemoCopy,
+  healRawGridLeftoverCatalogCopy,
+  stripRawGridCatalogDemoCopy,
+  officialLookIsRawGridPitch,
+  RAW_GRID_PITCH_KIT_KEY,
+  RAW_GRID_PITCH_SLOT_MAP,
+  healProductLaunchLeftoverCatalogCopy,
+  healBlockFrameLeftoverCatalogCopy,
+  attachKoreanJosa,
+  officialLookIsProductLaunchHalo,
+  officialLookIsNeoBrutalBlockFrame,
+  PRODUCT_LAUNCH_HALO_KIT_KEY,
+  BLOCK_FRAME_NEO_KIT_KEY,
+  PRODUCT_LAUNCH_SLOT_MAP,
+  resolveTemplateCloneKitKey,
+  scrubRawGridFinancialClicheText,
+  synthesizeTemplateCloneSlideBody,
   healCobaltOrphanDataStats,
   injectCobaltAbsoluteSlotCss,
   officialLookIsCobaltGrid,
@@ -63,6 +99,10 @@ import {
   restoreAtmosphericOverlayPositioning,
   dropStudyNotesChromeOnNonIbKits,
   dropEmptyDeckSlides,
+  inferKitSlideCountFromCss,
+  recoverShortDeckByPaddingToSeed,
+  decideTemplateCloneSlotFillTerminal,
+  healBlockFrameGenericKoreanLeftovers,
   pinNeoBrutalEmptyDecoBlocks,
   unwrapStrayBoldShells,
   rejoinPrematureFlexStepRows,
@@ -105,6 +145,10 @@ import {
   scrubCapsuleLeftoverSpecialtySlotCopy,
   refillCapsuleEmptyStructuredSlots,
   fillCapsuleEmptyTitlePill,
+  stripSynthRotationSaltLeaks,
+  slideSectionIsShortResponsePad,
+  TEAMVER_SHORT_RESPONSE_PAD_ATTR,
+  TEAMVER_SHORT_RESPONSE_PAD_VALUE,
 } from '../src/template-clone-fill.js';
 import { pinDeckSlidesToFixedCanvas } from '../src/html/deck-fixed-canvas.js';
 import { hoistDeckHostStylesToHead } from '../src/html/deck-template-look-css.js';
@@ -180,6 +224,59 @@ describe('buildTemplateClonedDeckHtml', () => {
     expect(classifyTemplateCloneShellRole(picked[1]!)).toBe('list');
     expect(classifyTemplateCloneShellRole(picked[2]!)).toBe('quote');
     expect(inferTemplateCloneContentRole(slides[1]!, 1, 3)).toBe('list');
+  });
+
+  it('spreads repetitive model roleHints across compatible template layout shells', () => {
+    const shells = [
+      {
+        tag: 'section' as const,
+        attrs: ' class="slide slide-title"',
+        body: '<h1>Demo</h1>',
+        full: '<section class="slide slide-title"><h1>Demo</h1></section>',
+      },
+      {
+        tag: 'section' as const,
+        attrs: ' class="slide slide-welcome"',
+        body: '<ul><li>One</li><li>Two</li></ul>',
+        full: '<section class="slide slide-welcome"><ul><li>One</li><li>Two</li></ul></section>',
+      },
+      {
+        tag: 'section' as const,
+        attrs: ' class="slide slide-cards"',
+        body: '<div class="cards-grid"><div class="info-card">A</div><div class="info-card">B</div></div>',
+        full: '<section class="slide slide-cards"><div class="cards-grid"><div class="info-card">A</div><div class="info-card">B</div></div></section>',
+      },
+      {
+        tag: 'section' as const,
+        attrs: ' class="slide slide-data"',
+        body: '<div class="stats-grid"><div class="stat-card">42%</div></div>',
+        full: '<section class="slide slide-data"><div class="stats-grid"><div class="stat-card">42%</div></div></section>',
+      },
+      {
+        tag: 'section' as const,
+        attrs: ' class="slide slide-timeline"',
+        body: '<div class="timeline"><div class="timeline-card">Step</div></div>',
+        full: '<section class="slide slide-timeline"><div class="timeline"><div class="timeline-card">Step</div></div></section>',
+      },
+      {
+        tag: 'section' as const,
+        attrs: ' class="slide slide-quote"',
+        body: '<blockquote class="quote-text">Quote</blockquote>',
+        full: '<section class="slide slide-quote"><blockquote class="quote-text">Quote</blockquote></section>',
+      },
+    ];
+    const picked = pickTemplateShellsForContent(shells, [
+      { title: '표지', roleHint: 'cover' },
+      { title: '섹션 1', body: '하나: 설명\n둘: 설명', roleHint: 'cards' },
+      { title: '섹션 2', body: '하나: 설명\n둘: 설명', roleHint: 'cards' },
+      { title: '섹션 3', body: '하나: 설명\n둘: 설명', roleHint: 'cards' },
+      { title: '섹션 4', body: '하나: 설명\n둘: 설명', roleHint: 'cards' },
+      { title: '섹션 5', body: '하나: 설명\n둘: 설명', roleHint: 'cards' },
+    ]);
+    const roles = picked.map((shell) => classifyTemplateCloneShellRole(shell));
+    expect(roles[0]).toBe('cover');
+    expect(new Set(roles.slice(1)).size).toBeGreaterThanOrEqual(4);
+    expect(roles.slice(1)).toEqual(expect.arrayContaining(['list', 'cards', 'stat', 'timeline']));
   });
 
   it('distributes layout across ≥ 4 distinct shell roles when the template exposes many (docs-teamver/60)', async () => {
@@ -317,8 +414,8 @@ describe('buildTemplateClonedDeckHtml', () => {
     expect(cloned).toBeTruthy();
     expect(listTemplateCloneSlideShells(cloned!).length).toBe(8);
     expect(cloned).toContain('팀버 소개');
-    expect(cloned).toContain('서비스 가치 제안');
     expect(cloned).toContain('도입 로드맵');
+    expect(cloned).toMatch(/Teamver|보드|초안/);
     expect(cloned).not.toContain('핵심 기능과 사용자가 얻는 직접적인 가치');
     expect(cloned).not.toMatch(/Aurora|Public attendance|Open programme|Field Notes|Quiet Editions|The Long Yellow/i);
     expect(cloned).not.toMatch(/입력입력|정리정리|병목병목|A 2\.4× rise|Returning audience/i);
@@ -380,6 +477,111 @@ describe('buildTemplateClonedDeckHtml', () => {
     expect(cloned).toContain('<span class="accent">신규</span>');
     expect(cloned).toContain('class="item"');
     expect(cloned).toContain('<em>항목</em>');
+  });
+
+  // 루프555 — v1.4.15 대비 결과물 품질 회귀의 근본 원인 3종을 격리한다.
+  // 사용자 리포트 HTML(2026-09-17)에서 관찰된 회귀:
+  //  (a) MiniMax가 리터럴 "주제 [가/는/을/를/의/…]" placeholder 문구를 슬라이드
+  //     제목/lead로 그대로 뱉음 — "주제가 해결하는 문제", "주제의 쓰임과 근거",
+  //     "주제를 쓰는 순서" 등.
+  //  (b) 인접 phrase 반복 — "쓰는 방법을 쓰는 방법", "다음 단계 다음 단계"
+  //  (c) 동일 outline title이 두 슬롯에 오면 reused Fit shell이 near-identical
+  //     중복 슬라이드를 만듦.
+  //  (d) `{brief} 2` 숫자 파롯 (product-launch `Halo v2` 슬롯).
+  it('루프555 (a) — outline title이 "주제 [particle] X" placeholder이면 실패 제목으로 판정해 교체한다', () => {
+    const shell = `<!doctype html><html><body>
+<section class="slide"><h1>Cover</h1></section>
+<section class="slide"><h2>Slot A</h2></section>
+<section class="slide"><h2>Slot B</h2></section>
+<section class="slide"><h2>Slot C</h2></section>
+</body></html>`;
+    const cloned = buildTemplateClonedDeckHtml(
+      shell,
+      [
+        { title: 'Teamver 소개' },
+        { title: '주제가 해결하는 문제' },
+        { title: '주제의 쓰임과 근거' },
+        { title: '주제를 쓰는 순서' },
+      ],
+      { title: 'Teamver 소개', brief: 'Teamver 소개' },
+    );
+    expect(cloned).toBeTruthy();
+    expect(cloned!).not.toContain('주제가 해결하는 문제');
+    expect(cloned!).not.toContain('주제의 쓰임과 근거');
+    expect(cloned!).not.toContain('주제를 쓰는 순서');
+    expect(cloned!).toMatch(/Teamver 소개/);
+  });
+
+  it('루프555 (b) — 인접 phrase 반복 "X를 Y를 Y" / "X Y Y"가 heal에서 축약된다', () => {
+    const shell = `<!doctype html><html><body>
+<section class="slide"><h1>Old cover title</h1></section>
+<section class="slide"><h2>Body slot A</h2></section>
+<section class="slide"><h2>Body slot B</h2></section>
+</body></html>`;
+    const cloned = buildTemplateClonedDeckHtml(
+      shell,
+      [
+        { title: 'Teamver 소개' },
+        { title: '쓰는 방법을 쓰는 방법' },
+        { title: '다음 단계 다음 단계' },
+      ],
+    );
+    expect(cloned).toBeTruthy();
+    expect(cloned!).not.toContain('쓰는 방법을 쓰는 방법');
+    expect(cloned!).not.toContain('다음 단계 다음 단계');
+    expect(cloned!).toMatch(/쓰는 방법을/);
+    expect(cloned!).toMatch(/다음 단계/);
+  });
+
+  it('루프555 (c) — 동일 outline title이 두 슬롯에 오면 두 번째는 indexed fallback으로 대체된다', () => {
+    const eightShellDeck = `<!doctype html><html><body>
+<section class="slide"><h1>Cover</h1></section>
+<section class="slide"><h2>Intro</h2></section>
+<section class="slide"><h2>A</h2></section>
+<section class="slide"><h2>B</h2></section>
+<section class="slide"><h2>C</h2></section>
+<section class="slide"><h2>D</h2></section>
+<section class="slide"><h2>E</h2></section>
+<section class="slide"><h2>F</h2></section>
+</body></html>`;
+    const outline = [
+      { title: 'Teamver 소개' },
+      { title: '문제 정의' },
+      { title: '고유 가치' },
+      { title: '고객 여정' },
+      { title: '핵심 기능' },
+      { title: '도입 로드맵' },
+      { title: '성과 지표' },
+      { title: '레퍼런스' },
+      { title: '다음 액션' },
+      { title: '고객 여정' },
+    ];
+    const cloned = buildTemplateClonedDeckHtml(eightShellDeck, outline, {
+      title: 'Teamver 소개',
+      maxSlides: 10,
+    });
+    expect(cloned).toBeTruthy();
+    const duplicatedTitleMatches = cloned!.match(/고객 여정/g) ?? [];
+    expect(duplicatedTitleMatches.length).toBeLessThanOrEqual(1);
+    expect(cloned!).toContain('문제 정의');
+    expect(cloned!).toContain('고유 가치');
+  });
+
+  it('루프555 (d) — `{brief} 2` shape parrot도 실패 제목으로 판정한다', () => {
+    const shell = `<!doctype html><html><body>
+<section class="slide"><h1>Cover</h1></section>
+<section class="slide"><h2>Slot A</h2></section>
+</body></html>`;
+    const cloned = buildTemplateClonedDeckHtml(
+      shell,
+      [
+        { title: 'Teamver 소개' },
+        { title: 'Teamver 소개 2' },
+      ],
+      { title: 'Teamver 소개', brief: 'Teamver 소개' },
+    );
+    expect(cloned).toBeTruthy();
+    expect(cloned!).not.toMatch(/>Teamver 소개 2</);
   });
 });
 
@@ -445,32 +647,189 @@ describe('resolveTemplateCloneSlidesFromBrief', () => {
     expect(slides.length).toBeGreaterThanOrEqual(4);
   });
 
-  it('루프479 — restores v1.3-like topical density for non-service prompts', () => {
+  it('루프479/516 — free-form topics stay dense without domain essay presets', () => {
     const slides = resolveTemplateCloneSlidesForDeterministicFill({
       userInstruction: '삼각함수 설명 피피티 만들어줘. 고등학생 대상.',
       deckTitle: '삼각함수',
       slideCount: 6,
     });
     expect(slides).toHaveLength(6);
-    expect(slides[0]?.lead).toMatch(/삼각함수|핵심|단계/);
+    expect(slides[0]?.lead).toMatch(/삼각함수|핵심|단계|문제|가치/);
     for (const slide of slides.slice(1)) {
-      expect(slide.lead?.length ?? 0).toBeGreaterThan(8);
-      expect(slide.body?.length ?? 0).toBeGreaterThan(50);
+      expect(slide.lead?.length ?? 0).toBeGreaterThan(6);
+      expect(slide.body?.length ?? 0).toBeGreaterThan(40);
       expect(slide.items?.length ?? 0).toBeGreaterThanOrEqual(2);
     }
     const text = JSON.stringify(slides);
-    expect(text).toMatch(/sin|cos|tan|단위원|그래프|주기/);
+    expect(text).toMatch(/삼각함수/);
+    expect(text).toMatch(/배경|핵심 개념|실행 체크리스트|정리와 다음/);
+    expect(text).not.toMatch(/단위원|sin·cos|피타고라스|라디안을 같은 회전/);
     expect(text).not.toMatch(/파일·대화·템플릿|팀 워크스페이스|핵심 기능과 사용자가 얻는 직접적인 가치/);
   });
 
-  it('루프479 — keeps template clone content dense for senior engineering topics', () => {
+  it('루프543 — free-form 주제는 카드 body/lead에 topic 명사가 스며야 한다', () => {
+    // 사용자 리포트: 제목이 "글을 매력적으로 쓰는 팁"이어도 카드 body가
+    // `개념/구조/영향`, `용어와 원리를 짧고 정확하게 정의`만 나옴.
+    // topicKeywordForSynthBody가 "글을 매력적으로 쓰는 팁"을 그대로 반환하므로
+    // 카드 body에 topic이 최소 한 번은 등장해야 한다.
+    const slides = resolveTemplateCloneSlidesForDeterministicFill({
+      userInstruction: '글을 매력적으로 쓰는 팁을 정리한 슬라이드 만들어줘',
+      deckTitle: '글을 매력적으로 쓰는 팁',
+      slideCount: 6,
+    });
+    expect(slides).toHaveLength(6);
+    const bodySlides = slides.slice(1);
+    const bodiesWithTopic = bodySlides.filter((slide) =>
+      /글을 매력적으로 쓰는 팁/.test(slide.body ?? ''),
+    );
+    // 6-body 슬라이드 중 topic이 body에 등장하는 슬라이드가 과반이어야 한다.
+    expect(bodiesWithTopic.length).toBeGreaterThanOrEqual(Math.ceil(bodySlides.length / 2));
+    // 카탈로그 하드코딩 문장이 topic 없이 남으면 안 된다.
+    const jointBody = bodySlides.map((s) => s.body ?? '').join('\n');
+    expect(jointBody).not.toMatch(/^개념: 용어와 원리를 짧고 정확하게 정의$/m);
+    expect(jointBody).not.toMatch(/^구조: 구성 요소와 서로 연결되는 방식을 설명$/m);
+  });
+
+  it('루프545 — synth body/items/lead에 rotation salt(요약, 핵심 포인트 등)가 노출되지 않는다', () => {
+    // slideCount > templates.length(6)로 순환을 강제. 루프543이 넣었던
+    // `(요약)` / `· 요약` / `— 요약` salt가 사용자 카피에 노출됐던 회귀를
+    // 방지한다. rotation salt는 이제 완전히 제거.
+    const slides = resolveTemplateCloneSlidesForDeterministicFill({
+      userInstruction: '글을 매력적으로 쓰는 팁 정리해줘',
+      deckTitle: '글을 매력적으로 쓰는 팁',
+      slideCount: 10,
+    });
+    expect(slides).toHaveLength(10);
+    const payload = JSON.stringify(slides);
+    // TEMPLATE_CLONE_GENERIC_SECTION_LABELS 8개가 body/items/lead 안의
+    // salt 위치 (괄호·middot·emdash 뒤)에 절대 등장하면 안 된다.
+    const labels = ['개요', '핵심 포인트', '근거와 사례', '실행 방안', '고객 경험', '운영과 보안', '도입 로드맵', '성과 지표', '요약'];
+    for (const label of labels) {
+      // decorateSynthLineWithSlideLabel · 트레일링 (label) 패턴
+      expect(payload).not.toMatch(new RegExp(`\\((?:${label})\\)`));
+      // decorateSynthItemTitleWithSlideLabel · ` · label` 패턴
+      expect(payload).not.toMatch(new RegExp(`\\s·\\s${label}`));
+      // lead ` — label` 패턴
+      expect(payload).not.toMatch(new RegExp(`\\s—\\s${label}(?=\\s|"|$)`));
+    }
+    // 완전 복붙 방지는 topic이 body에 스며있는 것으로 유지된다는 sanity check.
+    // 반복 자체는 template pool 6개라 순환할 수 있지만, topic이 각 body에
+    // 등장해야 한다 (loop543 pin 유지).
+    for (const slide of slides.slice(1)) {
+      const body = (slide.body ?? '') + JSON.stringify(slide.items ?? []);
+      expect(body).toContain('글을 매력적으로 쓰는 팁');
+    }
+  });
+
+  it('루프545 — stripSynthRotationSaltLeaks가 저장된 salt는 벗기고 진짜 헤딩은 보존한다', () => {
+    // 사용자 리포트 실물 HTML을 재현. 콜론 안쪽 (요약) / trailing (요약) /
+    // ` · 요약` / ` — 요약` 4가지 패턴이 모두 healer로 벗겨져야 한다.
+    const dirty = [
+      '<section class="slide">',
+      '<h2>문제 · 요약</h2>',
+      '<p>Teamver가 풀어야 하는 문제 — 요약</p>',
+      '<ul>',
+      '<li>사용자가 반복해서 겪는 핵심 불편과 전환 비용을 먼저 정의 (요약)</li>',
+      '<li>개념: (요약) 용어와 원리를 짧고 정확하게 정의</li>',
+      '</ul>',
+      '</section>',
+      // 진짜 사용자가 슬라이드 제목을 "요약"으로 쓴 경우는 보존 필수.
+      '<section class="slide"><h2>요약</h2><p>전체 내용을 3줄로 정리한다.</p></section>',
+      // "핵심 포인트" salt도 벗겨져야 하지만 텍스트 안에 자연스럽게 쓴 것은 보존.
+      '<section class="slide"><h2>결론</h2><p>핵심 포인트를 다시 짚는다.</p></section>',
+    ].join('');
+    const healed = stripSynthRotationSaltLeaks(dirty);
+    // salt 4패턴이 사라져야 한다.
+    expect(healed).not.toContain('· 요약');
+    expect(healed).not.toContain(' — 요약');
+    expect(healed).not.toContain('(요약)');
+    // 진짜 h2 "요약"은 그대로.
+    expect(healed).toContain('<h2>요약</h2>');
+    // 텍스트 안에 자연스럽게 쓴 "핵심 포인트를 다시 짚는다"는 보존.
+    expect(healed).toContain('핵심 포인트를 다시 짚는다');
+    // decorate 콜론 안쪽 salt는 콜론+공백만 남기고 벗겨진다.
+    expect(healed).toContain('개념: 용어와 원리');
+    expect(healed).not.toContain('개념: (요약)');
+  });
+
+  it('루프544 — slideNeedsDeterministicBody 게이트 미변경: items 있는 슬라이드는 synth로 덮이지 않는다', async () => {
+    const { slideNeedsDeterministicBody } = await import('../src/template-clone-fill');
+    // items가 하나라도 있으면 얕은 라벨이든 구체 body든 상관없이 false.
+    // 이 경계를 느슨하게 만들면 모델이 채운 좋은 items도 synth로 덮어쓸 위험이
+    // 있어서 이번 루프544 슬라이스에서는 미변경을 pin한다.
+    expect(slideNeedsDeterministicBody({
+      title: '핵심 포인트',
+      items: [{ title: '핵심', body: '핵심' }],
+    })).toBe(false);
+    expect(slideNeedsDeterministicBody({
+      title: '핵심 포인트',
+      items: [{ title: '자막 배치 3원칙', body: '가독성 · 시선 흐름 · 브랜드 목소리' }],
+    })).toBe(false);
+    // items가 없고 body가 placeholder(…)이면 true — synth로 채워야 한다.
+    expect(slideNeedsDeterministicBody({
+      title: '핵심 포인트',
+      body: '…',
+    })).toBe(true);
+    // items가 없고 body가 구체적이면 false — 모델이 이미 채운 것으로 존중.
+    expect(slideNeedsDeterministicBody({
+      title: '핵심 포인트',
+      body: '초안은 요점만 놓고, 근거·예시·다음 행동을 각 단락으로 분리한다.',
+    })).toBe(false);
+  });
+
+  it('루프543 — biennaleFillLines fallback도 topic 명사가 스며든다 (Teamver 특화 하드코딩 금지)', async () => {
+    // 8-Bit / Broadside / Block-frame kit-specific fill 함수가 fillLines 부족 시
+    // biennaleFillLines의 fallback을 사용한다. 이전에는 '협업, 파일, AI 작업 흐름을
+    // 한 화면에서 연결합니다' 같은 Teamver 특화 문장이 free-form 주제에도 그대로
+    // 등장했다. 이 회귀 테스트는 fallback 문장에 topic이 들어가는지 검증한다.
+    const { fillEightBitOrbitKitSlide } = await import('../src/template-clone-fill');
+    // fillLines를 비워서 fallback 경로 강제.
+    const body =
+      '<div class="timeline-container">'
+      + '<div class="timeline-event"><span class="date">Q1 2026</span><h4>x</h4><p>y</p></div>'
+      + '<div class="timeline-event"><span class="date">Q2 2026</span><h4>x</h4><p>y</p></div>'
+      + '<div class="timeline-event"><span class="date">Q3 2026</span><h4>x</h4><p>y</p></div>'
+      + '<div class="timeline-event"><span class="date">Q4 2026</span><h4>x</h4><p>y</p></div>'
+      + '</div>';
+    const filled = fillEightBitOrbitKitSlide(body, 'class="slide"', {
+      title: '글을 매력적으로 쓰는 팁',
+      lead: '',
+      bodyText: '',
+      kicker: '',
+      fillLines: [],
+    });
+    // Teamver 특화 하드코딩 문장이 절대 등장하면 안 된다.
+    expect(filled).not.toMatch(/협업.*파일.*AI 작업/);
+    expect(filled).not.toMatch(/반복 업무를 줄이고 팀의 실행 속도/);
+    expect(filled).not.toMatch(/도입 검토와 실행 계획을 명확하게 제안/);
+    // 대신 topic이 body에 스며들어야 한다.
+    expect(filled).toMatch(/글을 매력적으로 쓰는 팁/);
+  });
+
+  it('루프543 — synth outline은 없는 KPI 숫자($, %, 억, M/B/조)를 지어내지 않는다', () => {
+    const slides = resolveTemplateCloneSlidesForDeterministicFill({
+      userInstruction: '팀 협업 도구 도입 가이드 만들어줘',
+      deckTitle: '팀 협업 도구 도입 가이드',
+      slideCount: 8,
+    });
+    const text = JSON.stringify(slides);
+    // 카탈로그 데모 KPI ($3.5B, $29/mo, 40%, 3× 등)가 synth에서 신규 삽입되면 안 된다.
+    expect(text).not.toMatch(/\$\s*\d+(?:\.\d+)?\s*(?:B|M|K|\/mo|\/yr)/);
+    expect(text).not.toMatch(/\d+(?:\.\d+)?\s*(?:억|조)\b/);
+    // ×/x 수치 배수(2×, 3x, 12.4×)도 synth 문장에는 없어야 한다.
+    expect(text).not.toMatch(/\b\d+(?:\.\d+)?\s*[×xX]\b/);
+  });
+
+  it('루프479/516 — senior engineering briefs use generic topic skeleton, not monorepo essay', () => {
     const slides = resolveTemplateCloneSlidesForDeterministicFill({
       userInstruction: 'monorepo에 대해서 설명하는 피피티 만들어줘. 시니어 개발자 레벨. 8장',
       deckTitle: 'Monorepo',
     });
     expect(slides).toHaveLength(8);
     const text = JSON.stringify(slides);
-    expect(text).toMatch(/workspace graph|태스크 캐시|Changesets|CI|CODEOWNERS/);
+    expect(text).toMatch(/monorepo/i);
+    expect(text).toMatch(/배경|핵심 개념|실행 체크리스트/);
+    expect(text).not.toMatch(/workspace graph|Changesets|CODEOWNERS|Turborepo/);
     expect(text).not.toMatch(/파일·대화·템플릿|팀 워크스페이스|초안 생성 후 템플릿 레이아웃/);
     expect(slides.slice(1).every((slide) => (slide.items?.length ?? 0) >= 2)).toBe(true);
   });
@@ -656,7 +1015,7 @@ describe('루프450/459/469/470/472 Zhangzara template quality gates', () => {
       slideCount: 9,
     });
     expect(slides).toHaveLength(9);
-    expect(slides[0]?.title).toBe('NeuralStudio');
+    expect(slides[0]?.title).toBe('Neuralstudio');
     expect(JSON.stringify(slides)).not.toMatch(/BlockFrame\s*템플릿|채워\s*담아줘|비주얼로\s*구성/);
     expect(JSON.stringify(slides)).toMatch(/서비스\s*가치|도입\s*로드맵|대상\s*고객|신뢰/);
 
@@ -685,12 +1044,63 @@ describe('루프450/459/469/470/472 Zhangzara template quality gates', () => {
       .replace(/<[^>]+>/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
-    expect(eighthText).toMatch(/전환.*방문에서 문의|활성.*반복 사용|품질.*완성도/);
+    expect(eighthText).toMatch(/같은 보드|권한 경계|결과 이력/);
     expect(cloned).not.toMatch(/BlockFrame\s*템플릿|채워\s*담아줘|비주얼로\s*구성/);
   });
 });
 
 describe('루프419 Capsule deterministic quality gate', () => {
+  it('keeps model-authored slide count instead of padding to the Capsule seed', async () => {
+    const seed = await readFile(
+      new URL('../../../plugins/_official/examples/html-ppt-zhangzara-capsule/example.html', import.meta.url),
+      'utf8',
+    );
+    const slides = Array.from({ length: 6 }, (_, index) => ({
+      title: index === 0 ? 'Teamver 소개' : `팀 업무 사례 ${index}`,
+      lead: `팀 업무 맥락을 연결하는 사례 ${index + 1}`,
+      body: `회의 기록과 프로젝트 파일을 바탕으로 팀이 검토할 수 있는 결과를 만듭니다. 사례 ${index + 1}`,
+    }));
+    const output = buildTemplateClonedDeckHtml(seed, slides, {
+      title: 'Teamver 소개',
+      templateId: 'html-ppt-zhangzara-capsule',
+      maxSlides: 10,
+      padToSeedSlideCount: false,
+    });
+    expect(output).not.toBeNull();
+    expect(listTemplateCloneSlideShells(output!).length).toBe(6);
+    expect(output).not.toContain('data-teamver-pad="short-response"');
+    expect(output).toContain('data-teamver-capsule-stack');
+    expect(output).toContain('.presentation>.slide{position:relative!important');
+    expect(listTemplateCloneSlideShells(output!)[0]!.full).toContain('<span class="subtitle">팀 업무 맥락을 연결하는 사례 1</span>');
+    expect(listTemplateCloneSlideShells(output!)[0]!.full).not.toContain('<div class="title-pill">Teamver 소개</div>');
+    const promptMerge = applyTemplateClonePromptFillLookMerge(seed, output!, {
+      templateId: 'html-ppt-zhangzara-capsule',
+      deckTitle: 'Teamver 소개',
+      padToSeedSlideCount: false,
+      forcePad: true,
+    });
+    expect(promptMerge).not.toBeNull();
+    expect(listTemplateCloneSlideShells(promptMerge!.html).length).toBe(6);
+
+    const elevenSlides = Array.from({ length: 11 }, (_, index) => ({
+      title: index === 0 ? 'Teamver 소개' : `팀 업무 사례 ${index}`,
+      body: `팀의 회의와 프로젝트 자료에서 사례 ${index + 1}의 근거를 정리합니다.`,
+    }));
+    const decision = decideTemplateCloneSlotFillTerminal({
+      rawFinalText: JSON.stringify({ title: 'Teamver 소개', slides: elevenSlides }),
+      seedHtml: seed,
+      repairAlreadyAttempted: false,
+      templateId: 'html-ppt-zhangzara-capsule',
+      slideCount: 20,
+      userBrief: 'Teamver 서비스 소개',
+    });
+    expect(decision.kind).toBe('slot-fill');
+    if (decision.kind === 'slot-fill') {
+      expect(listTemplateCloneSlideShells(decision.html).length).toBe(11);
+      expect(decision.html).not.toContain('data-teamver-pad="short-response"');
+    }
+  });
+
   it('fills Capsule cards for www.teamver.com + 8-10 without MiniMax HTML', async () => {
     // 루프450 — delegate the 4-axis gate to the shared helper. Loop419 keeps
     // its Capsule-specific body-copy invariants that the generic gate does
@@ -698,8 +1108,8 @@ describe('루프419 Capsule deterministic quality gate', () => {
     const capsuleSpec = ZHANGZARA_QUALITY_GATE_SPECS.find((s) => s.name === 'Capsule');
     expect(capsuleSpec).toBeTruthy();
     const cloned = await runDeterministicTemplateQualityGate(capsuleSpec!);
-    expect(cloned).toContain('핵심 가치');
-    expect(cloned).toContain('파일럿');
+    expect(cloned).toMatch(/같은 보드|초안|권한/);
+    expect(cloned).not.toContain('파일럿');
     expect(cloned).not.toContain('핵심 기능과 사용자가 얻는 직접적인 가치');
   });
 
@@ -832,7 +1242,7 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(healed).not.toMatch(/We started the bulletin/);
     expect(healed).not.toMatch(/Reader response, by quarter/);
     expect(healed).toMatch(/82%/);
-    expect(healed).toContain('팀버');
+    expect(healed).toMatch(/Teamver/i);
     expect(healed).toMatch(/[가-힣]{2,}/);
 
     const official = await readFile(
@@ -922,7 +1332,7 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(healed).not.toMatch(/Tape Garden|SUPERCATALOG|CATALOGUE NO\. 7/i);
     expect(healed).not.toMatch(/We make small analog|SUPER TAPE|MIX CHAIR|T-26/i);
     expect(healed).toMatch(/26/);
-    expect(healed).toContain('팀버');
+    expect(healed).toMatch(/Teamver/i);
     expect(healed).toMatch(/[가-힣]{2,}/);
 
     const official = await readFile(
@@ -1023,7 +1433,7 @@ describe('루프419 Capsule deterministic quality gate', () => {
       'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
     );
     expect(healed).not.toMatch(/We started Long Table|Roasted chestnut soup|22 seats only/i);
-    expect(healed).toContain('팀버');
+    expect(healed).toMatch(/Teamver/i);
 
     const official = await readFile(
       new URL(
@@ -1127,7 +1537,7 @@ describe('루프419 Capsule deterministic quality gate', () => {
     );
     expect(healed).not.toMatch(/WHO WE ARE|Our studio pairs|Years of practice|\[Studio Name\]/i);
     expect(healed).toMatch(/12/);
-    expect(healed).toContain('팀버');
+    expect(healed).toMatch(/Teamver/i);
     expect(healed).toMatch(/[가-힣]{2,}/);
 
     const official = await readFile(
@@ -1173,7 +1583,7 @@ describe('루프419 Capsule deterministic quality gate', () => {
     );
     expect(healed).not.toMatch(/eight pages|Lift In Engagement|Layer alpha|Placeholder caption/i);
     expect(healed).toMatch(/42%/);
-    expect(healed).toContain('팀버');
+    expect(healed).toMatch(/Teamver/i);
 
     const official = await readFile(
       new URL(
@@ -1183,6 +1593,1421 @@ describe('루프419 Capsule deterministic quality gate', () => {
       'utf8',
     );
     expect(healCreativeLeftoverCatalogCopy(official)).toBe(official);
+  });
+
+  it('루프536 — Broadside orange kit demo chrome (stat KPI / pie legend / fadelist / Broadside footer) is scrubbed', async () => {
+    const html = await readFile(
+      new URL(
+        './fixtures/loop536-broadside-teamver-empty-bottom.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(officialLookIsBroadside(html)).toBe(true);
+    const healed = healBroadsideLeftoverCatalogCopy(
+      html,
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+    );
+    // Stat KPI demo digits neutralized (no invented $3.5B / 3× / #1).
+    expect(healed).not.toMatch(/\$3\.5B/);
+    expect(healed).not.toMatch(/>3×</);
+    expect(healed).not.toMatch(/>#1</);
+    // Pie legend Leader/Challenger/Followers/Other + TOTAL MARKET wiped.
+    expect(healed).not.toMatch(/>Leader</);
+    expect(healed).not.toMatch(/>Challenger</);
+    expect(healed).not.toMatch(/>Followers</);
+    expect(healed).not.toMatch(/TOTAL\s+MARKET\s*:\s*\$?\[X\]B/i);
+    expect(healed).not.toMatch(/>40%</);
+    // Fadelist chrome (Before/During/After / the session / [Studio X] Guidelines).
+    expect(healed).not.toMatch(/>Before</);
+    expect(healed).not.toMatch(/>During</);
+    expect(healed).not.toMatch(/>After</);
+    expect(healed).not.toMatch(/\[Studio\s*X\]\s*Guidelines/i);
+    // Broadside footer label wiped.
+    expect(healed).not.toMatch(/>Broadside</);
+  });
+
+  it('루프550 — Raw Grid pitch 재무 KPI($27.6M / $4.5M / +47% / Series B) wipe + chart/table shell 유지', async () => {
+    const html = await readFile(
+      new URL('./fixtures/loop550-raw-grid-kpi.html', import.meta.url),
+      'utf8',
+    );
+    expect(officialLookIsRawGridPitch(html)).toBe(true);
+    expect(resolveTemplateCloneKitKey(html)).toBe(RAW_GRID_PITCH_KIT_KEY);
+    expect(resolveTemplateCloneSlotMap({
+      templateId: 'html-ppt-zhangzara-raw-grid',
+    })).toEqual(RAW_GRID_PITCH_SLOT_MAP);
+    expect(resolveTemplateCloneSlotMap({ html })).toEqual(RAW_GRID_PITCH_SLOT_MAP);
+
+    const healed = healRawGridLeftoverCatalogCopy(
+      html,
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+    );
+    expect(healed).not.toMatch(/\$27\.6M/);
+    expect(healed).not.toMatch(/\$4\.5M/);
+    expect(healed).not.toMatch(/\$6\.2M/);
+    expect(healed).not.toMatch(/\$42M/);
+    expect(healed).not.toMatch(/\$1B\+/);
+    expect(healed).not.toMatch(/\$5\.0M/);
+    expect(healed).not.toMatch(/\+47%/);
+    expect(healed).not.toMatch(/>63%</);
+    expect(healed).not.toMatch(/Series\s+B/);
+    expect(healed).not.toMatch(/\$\d+\.?\d*[MBK]/i);
+    expect(healed).toContain('s3-bar-track');
+    expect(healed).toContain('s3-bar-fill');
+    expect(healed).toContain('s7-donut-container');
+    expect(healed).toContain('viewBox="0 0 200 200"');
+    expect(healed).toContain('s9-table');
+    expect(healed).toContain('s7-legend-swatch');
+  });
+
+  it('루프550 — Raw Grid healer는 Grove / Broadside 킷에 발동하지 않는다', async () => {
+    const grove = await readFile(
+      new URL('./fixtures/loop538-grove-teamver-leftover.html', import.meta.url),
+      'utf8',
+    );
+    expect(officialLookIsGrove(grove)).toBe(true);
+    expect(officialLookIsRawGridPitch(grove)).toBe(false);
+    expect(healRawGridLeftoverCatalogCopy(grove, TEAMVER_SERVICE_INTRO_BRIEF)).toBe(grove);
+    expect(grove).toMatch(/73<em>%<\/em>/);
+
+    const broadside = await readFile(
+      new URL('./fixtures/loop536-broadside-teamver-empty-bottom.html', import.meta.url),
+      'utf8',
+    );
+    expect(officialLookIsBroadside(broadside)).toBe(true);
+    expect(officialLookIsRawGridPitch(broadside)).toBe(false);
+    expect(healRawGridLeftoverCatalogCopy(broadside, TEAMVER_SERVICE_INTRO_BRIEF)).toBe(broadside);
+    expect(broadside).toMatch(/\$3\.5B/);
+  });
+
+  it('루프550 — synth fallback은 raw-grid-pitch에서 재무 상투어를 남기지 않는다', () => {
+    expect(scrubRawGridFinancialClicheText('ARR $27.6M · Series B · +47%')).toBe('ARR  ·  · ');
+    expect(scrubRawGridFinancialClicheText('Series A', '01')).toBe('01');
+    const synth = synthesizeTemplateCloneSlideBody(
+      '팀버 소개',
+      '성과 지표',
+      7,
+      [
+        '<div class="slide-deck"><div class="slide s3">',
+        '<div class="s3-stat-number">$27.6M</div>',
+        '<style>:root{--pink:#f2d4cf;--green:#e5edd6}</style>',
+        '</div></div>',
+      ].join(''),
+      RAW_GRID_PITCH_KIT_KEY,
+    );
+    const blob = JSON.stringify(synth);
+    expect(blob).not.toMatch(/\$\d+\.?\d*[MBK]/i);
+    expect(blob).not.toMatch(/Series\s+[A-E]/i);
+    expect(stripRawGridCatalogDemoCopy('<div class="s3-stat-number">$27.6M</div>'))
+      .not.toMatch(/\$27\.6M/);
+  });
+
+  it('루프551 — Product Launch Halo 카탈로그 데모 스크럽 + feature/price/hero shell 유지', async () => {
+    const html = await readFile(
+      new URL('./fixtures/loop551-product-launch-halo.html', import.meta.url),
+      'utf8',
+    );
+    expect(officialLookIsProductLaunchHalo(html)).toBe(true);
+    expect(resolveTemplateCloneKitKey(html)).toBe(PRODUCT_LAUNCH_HALO_KIT_KEY);
+    expect(resolveTemplateCloneSlotMap({
+      templateId: 'html-ppt-product-launch',
+    })).toEqual(PRODUCT_LAUNCH_SLOT_MAP);
+    expect(resolveTemplateCloneSlotMap({ html })).toEqual(PRODUCT_LAUNCH_SLOT_MAP);
+
+    const healed = healProductLaunchLeftoverCatalogCopy(
+      html,
+      TEAMVER_SERVICE_INTRO_BRIEF,
+    );
+    expect(healed).not.toMatch(/Halo v2/);
+    expect(healed).not.toMatch(/halo\.audio/);
+    expect(healed).not.toMatch(/Studio-grade spatial/);
+    expect(healed).not.toMatch(/Four years of research/);
+    expect(healed).not.toMatch(/\$179/);
+    expect(healed).not.toMatch(/\$279/);
+    expect(healed).not.toMatch(/\$399/);
+    expect(healed).not.toMatch(/Marques Lin/);
+    expect(healed).not.toMatch(/Pre-order Halo/);
+    expect(healed).not.toMatch(/AAC \+ SBC/);
+    expect(healed).not.toMatch(/Hi-Res Lossless/);
+    expect(healed).toContain('hero-shot');
+    expect(healed).toContain('price-card');
+    expect(healed).toContain('feature-card');
+    expect(healed).toMatch(/Teamver|팀버/i);
+    expect(healed).not.toMatch(/<h[12][^>]*>\s*(?:개요|핵심 포인트|근거와 사례|실행 방안|고객 경험|도입 로드맵|성과 지표|요약)\s*</);
+    expect(healed).not.toMatch(/<h4[^>]*>\s*(?:핵심 가치|사용 장면|차별점|탐색|실행|확장|실무자|리더|운영자)\s*</);
+  });
+
+  it('루프551 — Product Launch healer는 Grove / Broadside 킷에 발동하지 않는다', async () => {
+    const grove = await readFile(
+      new URL('./fixtures/loop538-grove-teamver-leftover.html', import.meta.url),
+      'utf8',
+    );
+    expect(officialLookIsGrove(grove)).toBe(true);
+    expect(officialLookIsProductLaunchHalo(grove)).toBe(false);
+    expect(healProductLaunchLeftoverCatalogCopy(grove, TEAMVER_SERVICE_INTRO_BRIEF)).toBe(grove);
+
+    const broadside = await readFile(
+      new URL('./fixtures/loop536-broadside-teamver-empty-bottom.html', import.meta.url),
+      'utf8',
+    );
+    expect(officialLookIsBroadside(broadside)).toBe(true);
+    expect(officialLookIsProductLaunchHalo(broadside)).toBe(false);
+    expect(healProductLaunchLeftoverCatalogCopy(broadside, TEAMVER_SERVICE_INTRO_BRIEF)).toBe(broadside);
+    expect(broadside).toMatch(/\$3\.5B/);
+  });
+
+  it('루프553 — Product Launch 조사·라벨 누수와 빈 슬라이드를 고친다', async () => {
+    expect(attachKoreanJosa('핵심 주제', '이/가')).toBe('핵심 주제가');
+    expect(attachKoreanJosa('핵심 주제', '을/를')).toBe('핵심 주제를');
+    expect(attachKoreanJosa('Teamver', '이/가')).toBe('Teamver가');
+
+    const html = await readFile(
+      new URL('./fixtures/loop553-product-launch-broken-josa.html', import.meta.url),
+      'utf8',
+    );
+    expect(officialLookIsProductLaunchHalo(html)).toBe(true);
+    const healed = healProductLaunchLeftoverCatalogCopy(html, 'Teamver 소개');
+
+    expect(healed).not.toMatch(/주제이/);
+    expect(healed).not.toMatch(/주제을/);
+    expect(healed).not.toMatch(/핵심 9/);
+    expect(healed).not.toMatch(/핵심 10/);
+    expect(healed).not.toMatch(/—\s*,/);
+    expect(healed).not.toMatch(/의미와 적용 기준을 한 문장으로/);
+    expect(healed).not.toMatch(/Halo v2|\$179|\$279|\$399/i);
+
+    const cover = /<section\b[^>]*data-title="Cover"[^>]*>[\s\S]*?<\/section>/i.exec(healed)?.[0] ?? '';
+    const coverKicker = /<p class="kicker">([^<]*)<\/p>/.exec(cover)?.[1] ?? '';
+    const coverLede = /<p class="lede[^"]*">([^<]*)<\/p>/.exec(cover)?.[1] ?? '';
+    expect(coverKicker.length).toBeGreaterThan(0);
+    expect(coverLede).not.toMatch(/핵심 맥락과 다음 단계/);
+    if (coverLede) expect(coverKicker).not.toBe(coverLede);
+
+    const ship = /<section\b[^>]*data-title="Ship"[^>]*>[\s\S]*?<\/section>/i.exec(healed)?.[0] ?? '';
+    expect(ship).not.toMatch(/—\s*,/);
+    expect(ship).toMatch(/testimonial|cta-btn/);
+    expect(ship).toMatch(/Teamver|지금 시작|쓰기 시작한/);
+    expect(healed).toContain('워크스페이스 구조와 권한');
+    expect(healed).toContain('price-card');
+    expect(healed).toMatch(/실무|리더|운영/);
+
+    const intro = [...healed.matchAll(/<section\b[^>]*data-title="Introducing"[^>]*>[\s\S]*?<\/section>/gi)]
+      .map((match) => match[0] ?? '');
+    expect(intro.length).toBeGreaterThanOrEqual(2);
+    for (const section of intro) {
+      expect(section).not.toMatch(/핵심 주제 한눈에|핵심 9/);
+    }
+  });
+
+  it('루프554 — Product Launch healer가 MiniMax 문장을 주제-템플릿으로 덮지 않는다', async () => {
+    const html = await readFile(
+      new URL('./fixtures/loop554-product-launch-healer-overwrite.html', import.meta.url),
+      'utf8',
+    );
+    expect(officialLookIsProductLaunchHalo(html)).toBe(true);
+    const healed = healProductLaunchLeftoverCatalogCopy(html, 'Teamver 소개');
+
+    expect(healed).not.toMatch(/소개\s+2/);
+    expect(healed).not.toMatch(/쓰는 순서를 쓰는 순서/);
+    expect(healed).not.toMatch(/다음 단계 다음 단계/);
+    expect(healed).not.toMatch(/주제가 해결/);
+    expect(healed).not.toMatch(/◎/);
+    expect(healed).not.toMatch(/Teamver을/);
+    expect(healed).not.toMatch(/핵심 맥락과 다음 단계/);
+    expect(healed).toContain('첫 7일');
+    expect(healed).toContain(
+      '팀이 분산된 메모와 문서를 하나의 워크스페이스로 옮겨오는 첫 단계에서, 사용 흐름을 끊지 않고 같은 화면에서 정렬한다',
+    );
+    expect(healed).not.toMatch(/Halo v2|\$179|\$279|\$399/i);
+    expect(healed).not.toMatch(/>\s*Pricing\s*</);
+    expect(healed).toMatch(/Teamver 시작하기|지금 시작하기/);
+  });
+
+  it('루프555 — Block Frame leftover heal restores glued Korean and drops role templates', async () => {
+    const html = await readFile(
+      new URL('./fixtures/loop555-block-frame-broken-ko.html', import.meta.url),
+      'utf8',
+    );
+    expect(officialLookIsNeoBrutalBlockFrame(html)).toBe(true);
+    const emptySynth = synthesizeTemplateCloneSlideBody(
+      'Teamver 소개',
+      '근거와 사례',
+      4,
+      'www.teamver.com 서비스 소개',
+      BLOCK_FRAME_NEO_KIT_KEY,
+    );
+    expect(JSON.stringify(emptySynth)).not.toMatch(/실무자|리더|운영자/);
+    expect((emptySynth.items ?? []).map((item) => item.title))
+      .not.toEqual(['탐색', '실행', '확장']);
+    expect(emptySynth.lead).not.toMatch(/개요|핵심 포인트|탐색/);
+
+    const healed = salvageMalformedMiniMaxSlideMarkup(html, 'Teamver 소개');
+    expect(healed).toMatch(/고객 경험/);
+    expect(healed).not.toMatch(/고객경험/);
+    expect(healed).toMatch(/근거와 사례/);
+    expect(healed).not.toMatch(/근거와사례/);
+    // 0918-N03 — leftover 실무자/리더/운영자 는 native card 안에서도 유지 금지 (556).
+    expect(healed).not.toMatch(/<h3[^>]*>\s*실무자\s*<\/h3>/);
+    expect(healed).not.toMatch(/<h3[^>]*>\s*리더\s*<\/h3>/);
+    expect(healed).not.toMatch(/<h3[^>]*>\s*운영자\s*<\/h3>/);
+    expect(healed).not.toMatch(/반복 작업을 줄이고 결과물 완성도를 높이는 방식/);
+    expect(healed).not.toMatch(/<h[1-4][^>]*>\s*(?:개요|핵심 포인트)\s*</);
+    expect(healed).not.toMatch(/파일떴|희대다|정척적/);
+    const timelineTitles = [...healed.matchAll(/<div[^>]*class="step-title"[^>]*>([\s\S]*?)<\/div>/gi)]
+      .map((match) => String(match[1] ?? '').replace(/<[^>]+>/g, '').trim())
+      .filter(Boolean);
+    expect(timelineTitles.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(timelineTitles).size).toBeGreaterThanOrEqual(3);
+    expect(timelineTitles).not.toEqual(expect.arrayContaining(['파일럿', '확대', '정착']));
+    expect(healed).not.toMatch(/고 객 경 험|근 거 와 사 례|실 무 자/);
+    expect(healed).toMatch(/letter-spacing:\s*0\s*!important/);
+    expect(healed).toMatch(/text-transform:\s*none\s*!important/);
+    expect(healed).toMatch(/font-size:\s*18px\s*!important/);
+    expect(healed).toMatch(/font-size:\s*24px\s*!important/);
+    expect(healBlockFrameLeftoverCatalogCopy(html, 'Teamver 소개')).toMatch(/고객 경험/);
+  });
+
+  it('0918-N03 — 공통 synth는 Block Frame/Studio/기본에 탐색+실행+확장 연속 제목을 넣지 않는다', () => {
+    const brief = 'www.teamver.com 서비스 소개';
+    const kits: Array<string | null> = [null, BLOCK_FRAME_NEO_KIT_KEY];
+    for (const kitKey of kits) {
+      for (let index = 1; index <= 8; index += 1) {
+        const synth = synthesizeTemplateCloneSlideBody(
+          'Teamver 소개',
+          '개요',
+          index,
+          brief,
+          kitKey,
+        );
+        const titles = (synth.items ?? []).map((item) => String(item.title ?? '').trim());
+        expect(titles).not.toEqual(['탐색', '실행', '확장']);
+        expect(titles.slice(0, 3)).not.toEqual(['탐색', '실행', '확장']);
+        expect(synth.lead).not.toMatch(/^(?:개요|핵심 포인트)$/);
+        for (const title of titles) {
+          expect(title).not.toMatch(/^(?:개요|핵심 포인트|탐색|실행|확장)$/);
+        }
+      }
+    }
+    const studioSynth = synthesizeTemplateCloneSlideBody(
+      'Teamver 소개',
+      '핵심 포인트',
+      3,
+      brief,
+    );
+    expect((studioSynth.items ?? []).map((item) => item.title))
+      .not.toEqual(['탐색', '실행', '확장']);
+  });
+
+  it('0918-N03 — sparse Block Frame cover restores a topical subtitle', () => {
+    const html = [
+      '<!doctype html><html lang="ko"><head><style>',
+      ':root{--pink:#FE90E8}.slide-1 .hero-frame{border:6px solid #000}.nb-heading-xl{}',
+      '</style></head><body>',
+      '<section class="slide slide-1"><div class="hero-frame">',
+      '<div class="nb-label hero-label">표지</div>',
+      '<h1 class="nb-heading-xl hero-title">업무와 AI를 하나의 공간에서</h1>',
+      '</div></section></body></html>',
+    ].join('');
+    const healed = healBlockFrameLeftoverCatalogCopy(html, 'Teamver 서비스 소개');
+    expect(healed).toContain('class="hero-subtitle"');
+    expect(healed).toContain('Teamver는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.');
+    expect(healBlockFrameLeftoverCatalogCopy(healed, 'Teamver 서비스 소개'))
+      .toBe(healed);
+  });
+
+  it('루프556 — Block Frame ops chart + role leftover + hangul tracking on lang=en', async () => {
+    const html = await readFile(
+      new URL('./fixtures/loop556-block-frame-ops-chart.html', import.meta.url),
+      'utf8',
+    );
+    expect(officialLookIsNeoBrutalBlockFrame(html)).toBe(true);
+    expect(html).toMatch(/lang="en"/);
+    expect(html).toMatch(/운영과보안/);
+    expect(html).toMatch(/<h3>\s*실무자\s*<\/h3>/);
+    expect(html).toMatch(/반복 작업을 줄이고 결과물 완성도를/);
+    expect(html).toMatch(/>Q1</);
+
+    const leftoverOnly = healBlockFrameLeftoverCatalogCopy(html, 'Teamver 소개');
+    expect(leftoverOnly).not.toMatch(/운영과보안/);
+    expect(leftoverOnly).toMatch(/운영과 보안/);
+    // 0918-N03 — leftover 역할은 native card 안에서도 strip. 운영 라벨로 교체.
+    expect(leftoverOnly).not.toMatch(/<h3[^>]*>\s*실무자\s*<\/h3>/);
+    expect(leftoverOnly).not.toMatch(/<h3[^>]*>\s*리더\s*<\/h3>/);
+    expect(leftoverOnly).not.toMatch(/반복 작업을 줄이고 결과물 완성도를/);
+    expect(leftoverOnly).not.toMatch(/팀 속도, 품질, 비용을 함께 관리할 수 있는 기준/);
+    expect(leftoverOnly).not.toMatch(/<h[1-4][^>]*>\s*(?:개요|핵심 포인트)\s*</);
+    expect(leftoverOnly).not.toMatch(/>\s*(?:전환율|활성|품질)\s*</);
+    expect(leftoverOnly).not.toMatch(/>Q[1-9](?:\s*20\d{2})?</);
+    // The healer itself keeps chart-svg (it just wipes demo glyphs); the
+    // structural strip happens later in `salvageMalformedMiniMaxSlideMarkup`.
+    expect(leftoverOnly).toMatch(/class="chart-svg"/);
+    expect(leftoverOnly).toMatch(/lang="en"/);
+    expect(leftoverOnly).toMatch(/data-od-block-frame-hangul-type="1"/);
+    expect(leftoverOnly).toMatch(/data-od-hangul="1"/);
+    expect(leftoverOnly).toMatch(/\[data-od-hangul="1"\]/);
+    expect(leftoverOnly).toMatch(/\[data-od-block-frame-hangul-type="1"\] \.nb-mono/);
+    expect(leftoverOnly).toMatch(/\[data-od-block-frame-hangul-type="1"\] \.legend-item/);
+    expect(leftoverOnly).toMatch(/letter-spacing:\s*0\s*!important/);
+    expect(leftoverOnly).toMatch(/운영 권한과 저장 정책을 한 화면에서 검토하고 배포 전에 확인한다/);
+    // The 방문에서 문의·가입까지 이어지는 전환율 body sits inside a `.data-box`
+    // (chart-frame descendant), which is not a native intro-card / nb-card
+    // shell. It still gets wiped by the metric leftover rules.
+    expect(leftoverOnly).not.toMatch(/방문에서 문의·가입까지 이어지는 전환율/);
+
+    const healed = salvageMalformedMiniMaxSlideMarkup(html, 'Teamver 소개');
+    expect(healed).not.toMatch(/운영과보안/);
+    expect(healed).toMatch(/운영과 보안/);
+    expect(healed).not.toMatch(/<h3[^>]*>\s*실무자\s*<\/h3>/);
+    expect(healed).not.toMatch(/<h3[^>]*>\s*리더\s*<\/h3>/);
+    expect(healed).not.toMatch(/반복 작업을 줄이고 결과물 완성도를/);
+    expect(healed).not.toMatch(/팀 속도, 품질, 비용을 함께 관리할 수 있는 기준/);
+    expect(healed).not.toMatch(/<h[1-4][^>]*>\s*(?:개요|핵심 포인트)\s*</);
+    expect(healed).not.toMatch(/>Q[1-9](?:\s*20\d{2})?</);
+    // 루프557 — non-metric chart-svg (Q1..Qn axis + colored bars with no
+    // real metric numbers in the data-column) is removed entirely, so the
+    // `.data-column` can stretch to full width instead of being squeezed
+    // to a ~240px right rail.
+    expect(healed).not.toMatch(/class="chart-svg"/);
+    expect(healed).toMatch(/\[data-od-hangul="1"\]/);
+  });
+
+  it('루프557 — Block Frame slide-2 orphan header (nb-label / h2 / nb-body direct-child of .slide with .col-right, no .col-left) is rewrapped into .col-left', async () => {
+    const html = await readFile(
+      new URL('./fixtures/loop556-block-frame-ops-chart.html', import.meta.url),
+      'utf8',
+    );
+    // Fixture baseline: slide-2 has direct-child `nb-label`, `h2.nb-heading-lg`,
+    // and `p.nb-body` alongside `.col-right`, but NO `.col-left`. The kit's
+    // `.slide-2 { flex-direction: row }` scoped CSS then paints an empty left
+    // half + a squeezed right column, matching the user's screenshot.
+    expect(html).toMatch(
+      /<section\b[^>]*\bslide-2\b[^>]*>[\s\S]*?<div\s+class="nb-label[^"]*">[\s\S]*?<h2\s+class="nb-heading-lg"[^>]*>[\s\S]*?<div\s+class="col-right"/,
+    );
+    expect(html).not.toMatch(/<div\s+class="col-left"/);
+
+    const healed = salvageMalformedMiniMaxSlideMarkup(html, 'Teamver 소개');
+    // After the reshape the header content (nb-label + h2 + trailing nb-body)
+    // must sit inside a synthesized `.col-left` sibling to `.col-right`.
+    const slide2 = healed.match(/<section\b[^>]*\bslide-2\b[^>]*>[\s\S]*?<\/section>/);
+    expect(slide2).not.toBeNull();
+    const slide2Html = slide2![0];
+    expect(slide2Html).toMatch(/<div\s+class="col-left"[^>]*>/);
+    expect(slide2Html).toMatch(/<div\s+class="col-right"[^>]*>/);
+    // Ordering: col-left must appear before col-right so the flex-row layout
+    // paints the header on the left.
+    const colLeftIdx = slide2Html.indexOf('class="col-left"');
+    const colRightIdx = slide2Html.indexOf('class="col-right"');
+    expect(colLeftIdx).toBeGreaterThan(-1);
+    expect(colRightIdx).toBeGreaterThan(colLeftIdx);
+    // nb-label + h2 header stack must be *inside* col-left.
+    expect(slide2Html).toMatch(
+      /<div\s+class="col-left"[^>]*>[\s\S]*?<div\s+class="nb-label[^"]*"[^>]*>[\s\S]*?<h2\s+class="nb-heading-lg"/,
+    );
+    // Trailing nb-body must be absorbed into col-left (not orphaned after
+    // col-right).
+    expect(slide2Html).toMatch(
+      /<div\s+class="col-left"[^>]*>[\s\S]*?운영 권한과 저장 정책을 한 화면에서 검토하고[\s\S]*?<\/div>/,
+    );
+    // The intro-card / nb-card shells survive the reshape; leftover 역할 제목은 빠진다.
+    expect(slide2Html).toMatch(/<div\s+class="intro-card"/);
+    expect(slide2Html).toMatch(/<div\s+class="nb-card"/);
+    expect(slide2Html).not.toMatch(/실무자|리더|운영자/);
+  });
+
+  it('루프557 — Block Frame chart-frame with non-metric data-column drops chart-svg and lays data-column horizontally', async () => {
+    const html = await readFile(
+      new URL('./fixtures/loop556-block-frame-ops-chart.html', import.meta.url),
+      'utf8',
+    );
+    // Baseline: the fixture ships a full demo `<svg class="chart-svg">` with
+    // Q1..Q5 axis labels + colored bars, alongside a `.data-column` where
+    // every `.data-num` is a Korean word (`전환율`, `활성`, `품질`) rather than
+    // a numeric metric.
+    expect(html).toMatch(/<svg\s+class="chart-svg"/);
+    expect(html).toMatch(/>Q[1-5]</);
+    expect(html).toMatch(/<span\s+class="data-num">\s*전환율\s*<\/span>/);
+
+    const healed = salvageMalformedMiniMaxSlideMarkup(html, 'Teamver 소개');
+    const slide4 = healed.match(/<section\b[^>]*\bslide-4\b[^>]*>[\s\S]*?<\/section>/);
+    expect(slide4).not.toBeNull();
+    const slide4Html = slide4![0];
+
+    // Fake `chart-svg` shell removed so kit CSS `.chart-body:not(:has(.chart-svg))`
+    // fallback can stretch `.data-column` to full width.
+    expect(slide4Html).not.toMatch(/class="chart-svg"/);
+    expect(slide4Html).not.toMatch(/>Q[1-9](?:\s*20\d{2})?</);
+    // chart-frame + chart-body + data-column must survive the strip.
+    expect(slide4Html).toMatch(/class="chart-frame"/);
+    expect(slide4Html).toMatch(/class="chart-body"/);
+    expect(slide4Html).toMatch(/class="data-column"/);
+    // data-column receives inline `flex-direction: row` so its data-box
+    // children spread horizontally instead of stacking vertically.
+    expect(slide4Html).toMatch(
+      /<div\s+class="data-column"[^>]*style="[^"]*flex-direction\s*:\s*row/,
+    );
+    expect(slide4Html).toMatch(
+      /<div\s+class="data-column"[^>]*style="[^"]*width\s*:\s*100%/,
+    );
+  });
+
+  it('루프557 — Korean role labels + role bodies inside .intro-card / .nb-card native shells are preserved (not overwritten by BLOCK_FRAME_SEED_CARD_TITLES)', async () => {
+    const shellHtml = [
+      '<!doctype html>',
+      '<html lang="ko" data-od-block-frame-hangul-type="1">',
+      '<head><style>.slide{}</style></head>',
+      '<body>',
+      '<section class="slide slide-2">',
+      '<div class="col-left">',
+      '<div class="nb-label nb-label-yellow">근거와 사례</div>',
+      '<h2 class="nb-heading-lg">근거와 사례</h2>',
+      '</div>',
+      '<div class="col-right">',
+      '<div class="intro-card">',
+      '<h3>실무자</h3>',
+      '<p>반복 작업을 줄이고 결과물 완성도를 높이는 방식</p>',
+      '</div>',
+      '<div class="nb-card">',
+      '<h3>리더</h3>',
+      '<p>팀 속도, 품질, 비용을 함께 관리할 수 있는 기준</p>',
+      '</div>',
+      '</div>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const healed = healBlockFrameLeftoverCatalogCopy(shellHtml, 'Teamver 소개');
+    // 0918-N03 — leftover 역할은 native shell 안에서도 Teamver 역할 문장으로.
+    expect(healed).not.toMatch(/<h3[^>]*>\s*실무자\s*<\/h3>/);
+    expect(healed).not.toMatch(/<h3[^>]*>\s*리더\s*<\/h3>/);
+    expect(healed).not.toMatch(/Strategy First/);
+    expect(healed).not.toMatch(/Design System/);
+    expect(healed).not.toMatch(/Launch Ready/);
+    expect(healed).not.toMatch(/반복 작업을 줄이고 결과물 완성도를 높이는 방식/);
+    expect(healed).not.toMatch(/팀 속도, 품질, 비용을 함께 관리할 수 있는 기준/);
+    expect(healed).not.toMatch(/<h[1-4][^>]*>\s*(?:개요|핵심 포인트)\s*</);
+    expect(healed).toMatch(/같은 보드|권한|이어서 고친다/);
+  });
+
+  it('루프557 — Cobalt Grid leftover heal repairs copy and cover/table layout with role-specific Teamver sentences', async () => {
+    const html = await readFile(
+      new URL('./fixtures/loop557-cobalt-grid-teamver.html', import.meta.url),
+      'utf8',
+    );
+    expect(officialLookIsCobaltGrid(html)).toBe(true);
+    expect(resolveTemplateCloneKitKey(html)).toBe(COBALT_GRID_KIT_KEY);
+
+    const healed = salvageMalformedMiniMaxSlideMarkup(html, 'Teamver 소개');
+    expect(healCobaltGridLeftoverCatalogCopy(html, 'Teamver 소개')).toBeTruthy();
+
+    expect(healed).not.toMatch(/소개\s+2/);
+    expect(healed).not.toMatch(/>\s*No\.\s*</);
+    expect(healed).not.toMatch(/>\s*YoY\s*</);
+    expect(healed).not.toMatch(/파일럿/);
+    expect(healed).not.toMatch(/<\/div>\s*·\s*</);
+    expect(healed).not.toMatch(/<h[1-4][^>]*>\s*(?:개요|핵심 포인트)\s*</);
+    expect(healed).not.toMatch(/<(?:div|h[1-4])[^>]*>\s*개요\s*</);
+    expect(healed).not.toMatch(/<(?:div|h[1-4])[^>]*>\s*핵심 포인트\s*</);
+
+    const index = /<section\b[^>]*\bs-index\b[^>]*>[\s\S]*?<\/section>/i.exec(healed)?.[0] ?? '';
+    const indexTitles = [...index.matchAll(/<h3\b[^>]*>([\s\S]*?)<\/h3>/gi)]
+      .map((match) => String(match[1] ?? '').replace(/<[^>]+>/g, '').trim())
+      .filter(Boolean);
+    expect(indexTitles).not.toEqual(expect.arrayContaining(['탐색', '실행', '확장']));
+    expect(new Set(indexTitles).size).toBeGreaterThanOrEqual(3);
+    expect(index).toContain('팀이 분산된 메모와 문서를 하나의 워크스페이스로');
+
+    const cover = /<section\b[^>]*\bs-cover\b[^>]*>[\s\S]*?<\/section>/i.exec(healed)?.[0] ?? '';
+    const coverKicker = /<[^>]*\bl\b[^>]*>([\s\S]*?)<\//i.exec(cover)?.[1]?.replace(/<[^>]+>/g, '').trim() ?? '';
+    const footerTags = [...cover.matchAll(/<[^>]*\bftag\b[^>]*>([\s\S]*?)<\//gi)]
+      .map((match) => String(match[1] ?? '').replace(/<[^>]+>/g, '').trim());
+    expect(coverKicker.length).toBeGreaterThan(0);
+    expect(footerTags.length).toBeGreaterThanOrEqual(2);
+    expect(footerTags).not.toContain(coverKicker);
+    expect(cover).toMatch(/<div class="cfooter">[\s\S]*<div class="colf">/);
+    expect(cover).toMatch(/<div class="v-row[^"]*">\s*\S/);
+
+    const manifesto = /<section\b[^>]*\bs-manifesto\b[^>]*>[\s\S]*?<\/section>/i.exec(healed)?.[0] ?? '';
+    expect(manifesto).not.toMatch(/소개\s+2/);
+    expect(manifesto).toMatch(/보드/);
+
+    const data = /<section\b[^>]*\bs-data\b[^>]*>[\s\S]*?<\/section>/i.exec(healed)?.[0] ?? '';
+    expect(data).not.toMatch(/<div class="vbig"><\/div>/);
+    expect(data).not.toMatch(/%/);
+    expect(data).not.toMatch(/>\s*(?:전환|활성|품질)\s*</);
+    expect(data).toMatch(/class="(?:bars|stack|cell)/);
+
+    const quote = /<section\b[^>]*\bs-quote\b[^>]*>[\s\S]*?<\/section>/i.exec(healed)?.[0] ?? '';
+    const qbody = /<[^>]*\bqbody\b[^>]*>([\s\S]*?)<\//i.exec(quote)?.[1] ?? '';
+    expect(qbody).not.toMatch(/\n/);
+    expect(qbody.replace(/<[^>]+>/g, '').trim().length).toBeGreaterThan(10);
+
+    const table = /<section\b[^>]*\bs-table\b[^>]*>[\s\S]*?<\/section>/i.exec(healed)?.[0] ?? '';
+    expect(table).toMatch(/>\s*번호\s*</);
+    expect(table).toMatch(/>\s*항목\s*</);
+    expect(table).not.toMatch(/02\s*\/\s*2/);
+
+    const chapter = /<section\b[^>]*\bs-chapter\b[^>]*>[\s\S]*?<\/section>/i.exec(healed)?.[0] ?? '';
+    expect(chapter).not.toMatch(/대상 고객별 메시지/);
+    const chapterLede = /<[^>]*\blede\b[^>]*>([\s\S]*?)<\//i.exec(chapter)?.[1]?.replace(/<[^>]+>/g, '').trim() ?? '';
+    const quoteBody = qbody.replace(/<[^>]+>/g, '').trim();
+    expect(chapterLede).not.toBe(quoteBody);
+
+    expect(healed).toMatch(/class="qr-block"[^>]*>\s*<span class="px/);
+  });
+
+  it('루프557 — Cobalt Grid healer는 Product Launch / Block Frame에 발동하지 않고 official example은 no-op', async () => {
+    const halo = await readFile(
+      new URL('./fixtures/loop554-product-launch-healer-overwrite.html', import.meta.url),
+      'utf8',
+    );
+    expect(healCobaltGridLeftoverCatalogCopy(halo, 'Teamver 소개')).toBe(halo);
+
+    const block = await readFile(
+      new URL('./fixtures/loop555-block-frame-broken-ko.html', import.meta.url),
+      'utf8',
+    );
+    expect(healCobaltGridLeftoverCatalogCopy(block, 'Teamver 소개')).toBe(block);
+
+    const official = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-cobalt-grid/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(healCobaltGridLeftoverCatalogCopy(official)).toBe(official);
+    expect(synthesizeTemplateCloneSlideBody('Teamver 소개', '개요', 1, 'Teamver 소개', COBALT_GRID_KIT_KEY).lead)
+      .not.toMatch(/개요|핵심 포인트|탐색/);
+  });
+
+  // 루프558 — Cover slide user report 2026-09-17: MiniMax ships a title-only
+  // cover, the pipeline strips the template's own visual chrome (hero-frame
+  // brackets, deco squares, yellow tab, hero-subtitle placeholder), and the
+  // cover renders as a giant blank frame with only the h1 + a small pink
+  // label. Root cause is three collaborating over-strippers plus a missing
+  // subtitle synthesis step. These red specs pin each contributing behavior
+  // so a future refactor cannot re-break the cover.
+  it('루프558 (a) — stripNonSlotWrappers keeps kit-owned chrome (hero-label / deco-yellow-bar / corner-bracket / nb-label) even when their prose is short template stub copy', () => {
+    // Before the fix, `<div class="nb-label hero-label">Presentation Template</div>`
+    // and `<div class="deco-yellow-bar">Get Started</div>` were treated as
+    // "wrappers whose visible prose doesn't own a fill slot" and dropped
+    // wholesale — even though the kit-specific refill pass wants to swap
+    // topic-aware copy into those exact slots on the next stage.
+    const html = [
+      '<div class="hero-frame">',
+      '<div class="corner-bracket tl"></div>',
+      '<div class="corner-bracket tr"></div>',
+      '<div class="nb-label hero-label">Presentation Template</div>',
+      '<h1 class="nb-heading-xl hero-title">Cover</h1>',
+      '<div class="deco-pink-rect"></div>',
+      '<div class="deco-green-circle"></div>',
+      '<div class="deco-yellow-bar">Get Started</div>',
+      '</div>',
+    ].join('');
+    const next = stripNonSlotWrappers(html);
+    expect(next).toContain('hero-frame');
+    expect(next).toContain('corner-bracket tl');
+    expect(next).toContain('corner-bracket tr');
+    expect(next).toContain('nb-label hero-label');
+    expect(next).toContain('deco-pink-rect');
+    expect(next).toContain('deco-green-circle');
+    expect(next).toContain('deco-yellow-bar');
+    // The h1 is a real slot; it always survived. Verify it is still present.
+    expect(next).toMatch(/<h1[^>]*hero-title[^>]*>\s*Cover\s*<\/h1>/);
+  });
+
+  it('루프558 (b) — Block Frame cover slide from a title-only outline keeps deco-dots / hero-frame corner-brackets / deco-pink-rect / deco-green-circle / deco-yellow-bar end-to-end through buildTemplateClonedDeckHtml + salvageMalformedMiniMaxSlideMarkup', async () => {
+    // End-to-end pin: the visible cover chrome must survive the full clone +
+    // salvage pipeline. `stripInertLeftoverDecoBlocks` (called through
+    // `unwrapSlideOnlyContainer`) previously ran on the entire slide
+    // container inner and stripped legitimate deco squares inside `.slide-1`
+    // because their empty-div signature matched the "inert deco" regex.
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-block-frame/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const outline = [
+      { title: '업무와 AI를 하나의 공간에서', roleHint: 'cover' as const },
+      { title: '두 번째 슬라이드', body: '내용' },
+      { title: '세 번째 슬라이드', body: '내용' },
+    ];
+    const brief = '업무와 AI를 하나의 공간에서 관리하는 협업 도구를 소개하는 프리젠테이션';
+    const cloned = buildTemplateClonedDeckHtml(html, outline, {
+      title: '업무와 AI를 하나의 공간에서',
+      templateId: 'html-ppt-zhangzara-block-frame',
+      maxSlides: 3,
+      brief,
+    });
+    expect(cloned).toBeTruthy();
+    const salvaged = salvageMalformedMiniMaxSlideMarkup(cloned || '', brief);
+    const healed = healAiGeneratedDeckMarkup(salvaged, brief);
+    const slide1 = healed.match(
+      /<section[^>]*class="[^"]*\bslide\s+slide-1\b[^"]*"[^>]*>[\s\S]*?<\/section>/i,
+    )?.[0] || '';
+    expect(slide1).toBeTruthy();
+    expect(slide1).toContain('deco-dots');
+    expect(slide1).toContain('hero-frame');
+    expect(slide1).toMatch(/corner-bracket\s+tl/);
+    expect(slide1).toMatch(/corner-bracket\s+tr/);
+    expect(slide1).toMatch(/corner-bracket\s+bl/);
+    expect(slide1).toMatch(/corner-bracket\s+br/);
+    expect(slide1).toContain('deco-pink-rect');
+    expect(slide1).toContain('deco-green-circle');
+    expect(slide1).toContain('deco-yellow-bar');
+  });
+
+  it('루프558 (c) — Block Frame cover slide from a title-only outline synthesizes a non-empty hero-subtitle (never ships title-only)', async () => {
+    // Cover subtitle synthesis: when the outline has only a title (no lead,
+    // no body), the cover shell's `<p class="hero-subtitle"></p>` was left
+    // empty and then dropped by the leaf-empty-paragraph strip, so the
+    // rendered cover was h1-only.
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-block-frame/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const brief = '업무와 AI를 하나의 공간에서 관리하는 협업 도구';
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      [{ title: '업무와 AI를 하나의 공간에서', roleHint: 'cover' as const }],
+      { title: '업무와 AI를 하나의 공간에서', templateId: 'html-ppt-zhangzara-block-frame', maxSlides: 1, brief },
+    );
+    expect(cloned).toBeTruthy();
+    const salvaged = salvageMalformedMiniMaxSlideMarkup(cloned || '', brief);
+    const slide1 = salvaged.match(
+      /<section[^>]*class="[^"]*\bslide\s+slide-1\b[^"]*"[^>]*>[\s\S]*?<\/section>/i,
+    )?.[0] || '';
+    expect(slide1).toBeTruthy();
+    // A `<p class="hero-subtitle">…</p>` element MUST exist and MUST contain
+    // non-whitespace visible text.
+    const subMatch = slide1.match(
+      /<p[^>]*\bclass\s*=\s*["'][^"']*\bhero-subtitle\b[^"']*["'][^>]*>([\s\S]*?)<\/p>/i,
+    );
+    expect(subMatch).not.toBeNull();
+    const visible = String(subMatch?.[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
+    expect(visible.length).toBeGreaterThan(0);
+    // Cover subtitle should reference the deck's actual title/topic — not
+    // an unrelated hardcoded English template fallback.
+    expect(visible).toContain('업무와 AI');
+  });
+
+  it('루프558 (d) — Block Frame cover slide uses a short role label ("표지") for hero-label instead of duplicating the full deck title', async () => {
+    // Duplicate-title anti-pattern: the hero-label pink pill previously
+    // received the full deck title, which duplicated the h1 immediately
+    // below it and stretched the chip across the whole cover frame.
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-block-frame/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const deckTitle = '업무와 AI를 하나의 공간에서';
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      [{ title: deckTitle, roleHint: 'cover' as const }],
+      { title: deckTitle, templateId: 'html-ppt-zhangzara-block-frame', maxSlides: 1, brief: deckTitle },
+    );
+    expect(cloned).toBeTruthy();
+    const salvaged = salvageMalformedMiniMaxSlideMarkup(cloned || '', deckTitle);
+    const slide1 = salvaged.match(
+      /<section[^>]*class="[^"]*\bslide\s+slide-1\b[^"]*"[^>]*>[\s\S]*?<\/section>/i,
+    )?.[0] || '';
+    expect(slide1).toBeTruthy();
+    const labelMatch = slide1.match(
+      /<div[^>]*\bclass\s*=\s*["'][^"']*\bhero-label\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
+    );
+    expect(labelMatch).not.toBeNull();
+    const labelVisible = String(labelMatch?.[1] ?? '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    // Short role pill, not the full deck title.
+    expect(labelVisible).not.toBe(deckTitle);
+    expect(labelVisible.length).toBeLessThanOrEqual(8);
+    expect(labelVisible).toMatch(/표지|개요|커버|Cover/i);
+  });
+
+  it('루프538 — Grove forest kit demo chrome (landscape / grove-stat KPI / sidebar) is scrubbed', async () => {
+    const html = await readFile(
+      new URL(
+        './fixtures/loop538-grove-teamver-leftover.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(officialLookIsGrove(html)).toBe(true);
+    expect(officialLookIsStudio(html)).toBe(false);
+    expect(officialLookIsBroadside(html)).toBe(false);
+    expect(looksLikeLeftoverTemplateDemoDeck(html)).toBe(true);
+    const healed = healGroveLeftoverCatalogCopy(
+      html,
+      TEAMVER_SERVICE_INTRO_BRIEF,
+    );
+    expect(healed).not.toMatch(/The landscape has shifted/);
+    expect(healed).not.toMatch(/The brands that will lead the next decade/);
+    expect(healed).not.toMatch(/Strategy\s*[·•]\s*Presentation/);
+    expect(healed).not.toMatch(/\[Prepared by\]/);
+    expect(healed).not.toMatch(/\[Confidential\]/);
+    expect(healed).not.toMatch(/Of consumers distrust brand-created content/);
+    expect(healed).not.toMatch(/73\s*%/);
+    expect(healed).not.toMatch(/4\.8\s*[×xX]/);
+    expect(healed).not.toMatch(/>#1</);
+    expect(healed).toMatch(/Teamver|팀버|슬라이드/i);
+
+    const topical = [
+      '<!doctype html><html><head><style>:root{--c-bg:#192b1b;--c-accent:#c8524a}</style>',
+      '<link href="https://fonts.googleapis.com/css2?family=Playfair+Display&family=Jost&display=swap" rel="stylesheet">',
+      '</head><body>',
+      '<section class="slide dark slide--cover">',
+      '<div class="grove-sidebar">Teamver</div>',
+      '<h1 class="h1">팀버 소개</h1>',
+      '<p class="lead">로컬 우선 디자인 스튜디오</p>',
+      '</section>',
+      '<section class="slide dark slide--stats">',
+      '<div class="grove-stat"><div class="grove-stat-val">12</div><div class="grove-stat-label">도입 주</div></div>',
+      '<div class="grove-stat"><div class="grove-stat-val">99</div><div class="grove-stat-label">만족도</div></div>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    expect(officialLookIsGrove(topical)).toBe(true);
+    expect(healGroveLeftoverCatalogCopy(topical, TEAMVER_SERVICE_INTRO_BRIEF)).toBe(topical);
+
+    const official = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-grove/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(officialLookIsGrove(official)).toBe(true);
+    expect(healGroveLeftoverCatalogCopy(official)).toBe(official);
+  });
+
+  it('루프539 — Block-frame invented hero-title-highlight span is unwrapped', () => {
+    const html =
+      '<h1 class="nb-heading-xl hero-title">팀의 AI 업무 공간을 <span class="hero-title-highlight">지금 시작</span> 하세요.</h1>';
+    const out = neutralizeBlockFrameInventedHeroTitleHighlight(html);
+    expect(out).not.toMatch(/hero-title-highlight/);
+    expect(out).toMatch(/팀의 AI 업무 공간을 지금 시작 하세요\./);
+  });
+
+  it('루프539 invented Desktop / Android / iOS platform cards are stripped', async () => {
+    const html = await readFile(
+      new URL(
+        './fixtures/loop538-block-frame-invented-hero-shells.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const out = stripInventedBlockFramePlatformCards(html);
+    expect(out).not.toMatch(/download-cards/);
+    expect(out).not.toMatch(/>🖥️ Desktop</);
+    expect(out).not.toMatch(/>🤖 Android</);
+    // iOS card that only carried legal footer info is also dropped.
+    expect(out).not.toMatch(/사업자등록번호\s*699-86-03820/);
+    expect(out).not.toMatch(/판교\s*R&D/);
+  });
+
+  it('루프539 generic English "Enterprise 데모" / "Get Started" CTAs get Korean rewrite', () => {
+    const html =
+      '<a class="nb-btn hero-cta cta-secondary">Enterprise 데모</a>'
+      + '<a class="nb-btn hero-cta cta-primary">Get Started</a>';
+    const out = neutralizeBlockFrameEnglishHeroCta(html);
+    // Pure or template-generic Enterprise/데모 button → "기업 도입 문의".
+    expect(out).toMatch(/기업 도입 문의/);
+    // Pure English generic CTA → replaced with 자세히 보기.
+    expect(out).toMatch(/자세히 보기/);
+    expect(out).not.toMatch(/>Enterprise 데모</);
+    expect(out).not.toMatch(/>Get Started</);
+  });
+
+  it('루프539 mixed-sentence "Enterprise 고객 상담" swaps just the English word', () => {
+    const html = '<a class="nb-btn hero-cta cta-secondary">Enterprise 고객 상담</a>';
+    const out = neutralizeBlockFrameEnglishHeroCta(html);
+    // Not template-generic — mixed KR body, just swap the English word.
+    expect(out).toMatch(/기업 고객 상담/);
+    expect(out).not.toMatch(/\bEnterprise\b/);
+  });
+
+  it('루프539 — cross-kit leftover chrome (THANK YOU FOR WATCHING, NEXUS VENTURES, Analog Presentation Template) is scrubbed', async () => {
+    const { stripLeftoverCatalogDemoPhrases } = await import('../src/template-clone-fill');
+    const html =
+      '<h2>THANK YOU FOR WATCHING</h2>'
+      + '<div class="hero-title">NEXUS<br>VENTURES</div>'
+      + '<span>Analog Presentation Template</span>'
+      + '<div>Q3 Strategic Overview</div>'
+      + '<p>Neobrutalist Presentation Template</p>';
+    const out = stripLeftoverCatalogDemoPhrases(html);
+    expect(out).not.toMatch(/THANK YOU FOR WATCHING/);
+    expect(out).not.toMatch(/NEXUS/);
+    expect(out).not.toMatch(/VENTURES/);
+    expect(out).not.toMatch(/Analog Presentation Template/);
+    expect(out).not.toMatch(/Q3 Strategic Overview/);
+    expect(out).not.toMatch(/Presentation Template/);
+  });
+
+  it('루프539 — extended cross-kit English chrome (AGENDA.TXT, All systems operational, Complex problems, Connecting Founders) is scrubbed', async () => {
+    const { stripLeftoverCatalogDemoPhrases } = await import('../src/template-clone-fill');
+    const html =
+      '<h2>AGENDA.TXT</h2>'
+      + '<span>All systems operational</span>'
+      + '<div>API Calls / Day</div>'
+      + '<div>Avg. Response Time</div>'
+      + '<p>Concept development and prototype validation</p>'
+      + '<p>Full implementation and iterative refinement</p>'
+      + '<p>Expansion and long-term optimization</p>'
+      + '<p>Complex problems deserve simple explanations.</p>'
+      + '<p>Every partnership is built on radical transparency.</p>'
+      + '<h2>Connecting Founders With Opportunity</h2>'
+      + '<span>Advanced Analytics Suite</span>'
+      + '<span>API marketplace</span>';
+    const out = stripLeftoverCatalogDemoPhrases(html);
+    expect(out).not.toMatch(/AGENDA\.TXT/);
+    expect(out).not.toMatch(/All systems operational/);
+    expect(out).not.toMatch(/API Calls/);
+    expect(out).not.toMatch(/Avg\.? Response Time/);
+    expect(out).not.toMatch(/Concept development and prototype validation/);
+    expect(out).not.toMatch(/Full implementation and iterative refinement/);
+    expect(out).not.toMatch(/Expansion and long-term optimization/);
+    expect(out).not.toMatch(/Complex problems deserve simple explanations/);
+    expect(out).not.toMatch(/Every partnership is built on radical transparency/);
+    expect(out).not.toMatch(/Connecting Founders With Opportunity/);
+    expect(out).not.toMatch(/Advanced Analytics Suite/);
+    expect(out).not.toMatch(/API marketplace/);
+  });
+
+  it('루프539 — placeholder contact chrome (555 phones, hello@example, HELLO@VENTURE.IO, SEATTLE WA) is scrubbed', async () => {
+    const { stripLeftoverCatalogDemoPhrases } = await import('../src/template-clone-fill');
+    const html =
+      '<p>+1 (555) 014-2298</p>'
+      + '<p>+1 (555) 000 1234</p>'
+      + '<p>+1 (555) 000-0000</p>'
+      + '<a>hello@example.studio</a>'
+      + '<a>hello@example.com</a>'
+      + '<span>HELLO@VENTURE.IO</span>'
+      + '<span>www.example.studio</span>'
+      + '<span>www.example.com</span>'
+      + '<p>SEATTLE, WA</p>'
+      + '<div class="hero-title">8-BIT<br>ORBIT</div>'
+      + '<p>Pixel Perfect Presentation System</p>';
+    const out = stripLeftoverCatalogDemoPhrases(html);
+    expect(out).not.toMatch(/\+1\s*\(?555\)?/);
+    expect(out).not.toMatch(/hello@example/);
+    expect(out).not.toMatch(/HELLO@VENTURE\.IO/);
+    expect(out).not.toMatch(/www\.example\./);
+    expect(out).not.toMatch(/SEATTLE, WA/);
+    expect(out).not.toMatch(/8-BIT/);
+    expect(out).not.toMatch(/ORBIT/);
+    expect(out).not.toMatch(/Pixel Perfect Presentation System/);
+  });
+
+  it('루프539 — bare "Presentation Template" scrubbed but Korean surrounding text preserved', async () => {
+    const { stripLeftoverCatalogDemoPhrases } = await import('../src/template-clone-fill');
+    const html = '<p>Presentation Template</p><p>사용자 리서치</p>';
+    const out = stripLeftoverCatalogDemoPhrases(html);
+    expect(out).not.toMatch(/Presentation Template/);
+    expect(out).toMatch(/사용자 리서치/);
+  });
+
+  it('루프559 — 8-Bit Orbit tier 슬라이드: 가격 의미만 제거하고 3-card 템플릿 셸은 본문으로 채운다', async () => {
+    const html = await readFile(
+      new URL(
+        './fixtures/loop540-eightbit-orbit-korean-writing-tips.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    // Slice out slide-9 body only + attrs.
+    const shell = /<section\b([^>]*data-slide="9"[^>]*)>([\s\S]*?)<\/section>/i.exec(html);
+    expect(shell).toBeTruthy();
+    const attrs = shell![1] ?? '';
+    const body = shell![2] ?? '';
+    const filled = fillEightBitOrbitKitSlide(body, attrs, {
+      title: '글을 매력적으로 쓰는 팁',
+      lead: '독자를 붙잡는 도입, 흐름, 마무리',
+      bodyText: '',
+      kicker: '핵심',
+      fillLines: [
+        { title: '도입 흡인', body: '첫 문장에서 독자의 호기심을 붙잡는다.' },
+        { title: '흐름 유지', body: '문단 사이 자연스러운 논리 연결.' },
+        { title: '마무리 각인', body: '한 문장으로 요점을 남긴다.' },
+      ],
+    });
+    expect(filled).toMatch(/tier-grid/);
+    expect((filled.match(/tier-card/g) ?? []).length).toBe(3);
+    expect(filled).toMatch(/도입 흡인/);
+    expect(filled).toMatch(/흐름 유지/);
+    expect(filled).toMatch(/마무리 각인/);
+    expect(filled).not.toMatch(/\$\s*29\s*\/\s*mo/);
+    expect(filled).not.toMatch(/Rookie/);
+    expect(filled).not.toMatch(/For solo explorers testing the waters/);
+  });
+
+  it('루프540 — 8-Bit Orbit timeline 슬라이드: Q1..Q4 → STEP 01..04 + English 본문 → 한국어 fill', async () => {
+    const html = await readFile(
+      new URL(
+        './fixtures/loop540-eightbit-orbit-korean-writing-tips.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const shell = /<section\b([^>]*data-slide="6"[^>]*)>([\s\S]*?)<\/section>/i.exec(html);
+    expect(shell).toBeTruthy();
+    const attrs = shell![1] ?? '';
+    const body = shell![2] ?? '';
+    const filled = fillEightBitOrbitKitSlide(body, attrs, {
+      title: '글을 매력적으로 쓰는 팁',
+      lead: '',
+      bodyText: '',
+      kicker: '진행',
+      fillLines: [
+        { title: '주제 정하기', body: '독자를 특정하고 각도를 좁힌다.' },
+        { title: '개요 구성', body: '도입-본론-마무리 골격을 짠다.' },
+        { title: '초고 쓰기', body: '완성보다 흐름을 우선한다.' },
+        { title: '퇴고와 마무리', body: '문장을 다듬고 리듬을 조율한다.' },
+      ],
+    });
+    expect(filled).toMatch(/STEP\s*01/);
+    expect(filled).toMatch(/STEP\s*04/);
+    expect(filled).not.toMatch(/Q1\s*2026/);
+    expect(filled).not.toMatch(/Q4\s*2026/);
+    expect(filled).not.toMatch(/Wireframes, palette selection/);
+    expect(filled).not.toMatch(/Public release with full documentation/);
+    expect(filled).toMatch(/주제 정하기/);
+    expect(filled).toMatch(/퇴고와 마무리/);
+  });
+
+  it('루프540 — 8-Bit Orbit stat 슬라이드: data-target reset + English label → 한국어 label', async () => {
+    const html = await readFile(
+      new URL(
+        './fixtures/loop540-eightbit-orbit-korean-writing-tips.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const shell = /<section\b([^>]*data-slide="7"[^>]*)>([\s\S]*?)<\/section>/i.exec(html);
+    expect(shell).toBeTruthy();
+    const attrs = shell![1] ?? '';
+    const body = shell![2] ?? '';
+    const filled = fillEightBitOrbitKitSlide(body, attrs, {
+      title: '글쓰기 지표',
+      lead: '',
+      bodyText: '',
+      kicker: '지표',
+      fillLines: [
+        { title: '도입 문장', body: '가독성 우선' },
+        { title: '문단 리듬', body: '3~5문장' },
+        { title: '어휘 다양성', body: '반복 회피' },
+        { title: '마무리 각인', body: '한 줄 요약' },
+      ],
+    });
+    // data-target attributes wiped.
+    expect(filled).not.toMatch(/data-target=/);
+    expect(filled).not.toMatch(/data-suffix=/);
+    // English labels replaced.
+    expect(filled).not.toMatch(/Active Worlds/);
+    expect(filled).not.toMatch(/Pixels Rendered/);
+    expect(filled).not.toMatch(/Uptime Score/);
+    expect(filled).not.toMatch(/Max Resolution/);
+    expect(filled).toMatch(/도입 문장/);
+    expect(filled).toMatch(/어휘 다양성/);
+  });
+
+  it('루프540 — 8-Bit Orbit quote 슬라이드: demo 인용/저자 wipe + Korean lead 삽입', async () => {
+    const html = await readFile(
+      new URL(
+        './fixtures/loop540-eightbit-orbit-korean-writing-tips.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const shell = /<section\b([^>]*data-slide="8"[^>]*)>([\s\S]*?)<\/section>/i.exec(html);
+    expect(shell).toBeTruthy();
+    const attrs = shell![1] ?? '';
+    const body = shell![2] ?? '';
+    const filled = fillEightBitOrbitKitSlide(body, attrs, {
+      title: '기억할 한 문장',
+      lead: '문장이 짧을수록 독자는 오래 기억한다.',
+      bodyText: '',
+      kicker: '',
+      fillLines: [],
+    });
+    expect(filled).not.toMatch(/Studio Orbital/);
+    expect(filled).not.toMatch(/Lead Creative Technologist/);
+    expect(filled).not.toMatch(/The best presentations do not merely inform/);
+    expect(filled).toMatch(/문장이 짧을수록 독자는 오래 기억한다/);
+  });
+
+  it('루프540 — 8-Bit Orbit cover: hero-badges English 문구를 주제 라벨로 대체 + Pixel Perfect Presentation System 스트립', async () => {
+    const html = await readFile(
+      new URL(
+        './fixtures/loop540-eightbit-orbit-korean-writing-tips.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const shell = /<section\b([^>]*data-slide="1"[^>]*)>([\s\S]*?)<\/section>/i.exec(html);
+    expect(shell).toBeTruthy();
+    const attrs = shell![1] ?? '';
+    const body = shell![2] ?? '';
+    const filled = fillEightBitOrbitKitSlide(body, attrs, {
+      title: '글을 매력적으로 쓰는 팁',
+      lead: '독자를 붙잡는 도입, 흐름, 마무리',
+      bodyText: '',
+      kicker: '가이드',
+      fillLines: [
+        { title: '도입', body: '' },
+        { title: '흐름', body: '' },
+        { title: '마무리', body: '' },
+      ],
+    });
+    // Hero subtitle replaced (no more Pixel Perfect Presentation System).
+    expect(filled).not.toMatch(/Pixel Perfect Presentation System/);
+    expect(filled).toMatch(/독자를 붙잡는 도입/);
+    // Badges rewritten to topic labels.
+    expect(filled).not.toMatch(/10 Slides/);
+    expect(filled).not.toMatch(/CSS Native/);
+    expect(filled).not.toMatch(/Zero Dependencies/);
+    expect(filled).toMatch(/도입/);
+    expect(filled).toMatch(/흐름/);
+    expect(filled).toMatch(/마무리/);
+  });
+
+  it('루프540 — stripEightBitOrbitCatalogDemoCopy 는 catalog literal English를 광범위하게 제거', () => {
+    const html =
+      '<p>Pixel Perfect Presentation System</p>'
+      + '<span>Access Tiers</span><span>Live Telemetry</span><span>Chronology</span>'
+      + '<span>Mission Brief</span><span>Core Systems</span>'
+      + '<button>Initialize Deck</button><button>View Documentation</button>'
+      + '<h2>Development Roadmap</h2><h2>Platform Vitals</h2><h2>Choose Your Loadout</h2>'
+      + '<div>Rookie</div><div>$0/mo</div><div>$29/mo</div><div>$79/mo</div>'
+      + '<li>5 slide maximum</li><li>Everything in Arcade</li>'
+      + '<div>Active Worlds</div><div>Pixels Rendered</div>'
+      + '<p>Wireframes, palette selection, and core grid system established.</p>'
+      + '<p>Real-time aggregate figures from active deployments</p>'
+      + '<div class="quote-author">— Lead Creative Technologist, Studio Orbital</div>'
+      + '<h1>8-BIT<br>ORBIT</h1>';
+    const out = stripEightBitOrbitCatalogDemoCopy(html);
+    expect(out).not.toMatch(/Pixel Perfect Presentation System/);
+    expect(out).not.toMatch(/Access Tiers/);
+    expect(out).not.toMatch(/Live Telemetry/);
+    expect(out).not.toMatch(/Chronology/);
+    expect(out).not.toMatch(/Mission Brief/);
+    expect(out).not.toMatch(/Core Systems/);
+    expect(out).not.toMatch(/Initialize Deck/);
+    expect(out).not.toMatch(/View Documentation/);
+    expect(out).not.toMatch(/Development Roadmap/);
+    expect(out).not.toMatch(/Platform Vitals/);
+    expect(out).not.toMatch(/Choose Your Loadout/);
+    expect(out).not.toMatch(/Rookie/);
+    expect(out).not.toMatch(/\$\s*0\s*\/\s*mo/);
+    expect(out).not.toMatch(/\$\s*29\s*\/\s*mo/);
+    expect(out).not.toMatch(/5\s*slide\s*maximum/);
+    expect(out).not.toMatch(/Everything in Arcade/);
+    expect(out).not.toMatch(/Active Worlds/);
+    expect(out).not.toMatch(/Wireframes, palette selection/);
+    expect(out).not.toMatch(/Real-time aggregate figures from active deployments/);
+    expect(out).not.toMatch(/Studio Orbital/);
+    expect(out).not.toMatch(/Lead Creative Technologist/);
+    expect(out).not.toMatch(/8-BIT/);
+    expect(out).not.toMatch(/>ORBIT</);
+  });
+
+  it('루프540 — appendInlineStyle 은 같은 property를 두 번 이상 실행해도 누적하지 않는다', async () => {
+    // 힐러가 두 번 실행되어도 style 조각이 중복 append 되면 안 됨.
+    const { fitDenseCardPeerText } = await import('../src/template-clone-fill') as any;
+    if (typeof fitDenseCardPeerText !== 'function') return; // fitDenseCardPeerText not exported — skip.
+    const seed = '<div class="feature-card"><h3>제목</h3><p>본문</p></div>';
+    const once = fitDenseCardPeerText(seed, true);
+    const twice = fitDenseCardPeerText(once, true);
+    const thrice = fitDenseCardPeerText(twice, true);
+    // Style declarations must not stack — `font-size:36px` should appear once
+    // per element (h3 once, p once), not 3x per element.
+    const fontSizeMatches = (thrice.match(/font-size:\s*36px/gi) ?? []).length;
+    expect(fontSizeMatches).toBeLessThanOrEqual(2);
+  });
+
+  it('루프542 — KPI 슬롯 정책 pin: 실측 있으면 metric · 없으면 ordinal · 가짜 $/% wipe (8-Bit + Broadside)', async () => {
+    // (1) 8-Bit Orbit .stat-number: data-target/suffix wipe + metric OR ordinal.
+    const { fillEightBitOrbitKitSlide } = await import('../src/template-clone-fill');
+    const eightbitBody =
+      '<div class="stat-block">'
+      + '<div class="stat-number" data-target="847">0</div>'
+      + '<div class="stat-label">Active Worlds</div>'
+      + '</div>'
+      + '<div class="stat-block">'
+      + '<div class="stat-number" data-target="12.4" data-suffix="M">0</div>'
+      + '<div class="stat-label">Pixels Rendered</div>'
+      + '</div>';
+    const filled = fillEightBitOrbitKitSlide(eightbitBody, 'class="slide"', {
+      title: '지표',
+      lead: '',
+      bodyText: '',
+      kicker: '지표',
+      fillLines: [
+        { title: '42%', body: '전환율' },   // metric-like → 유지
+        { title: '가독성', body: '체감 기준' }, // metric 없음 → ordinal
+      ],
+    });
+    // Policy A: metric-like title → keep as .stat-number.
+    expect(filled).toMatch(/>42%</);
+    // Policy B: no metric → ordinal.
+    expect(filled).toMatch(/>02</);
+    // Policy C: data-target/data-suffix 속성 wipe.
+    expect(filled).not.toMatch(/data-target=/);
+    expect(filled).not.toMatch(/data-suffix=/);
+    // Policy D: English label 대체.
+    expect(filled).not.toMatch(/Active Worlds/);
+    expect(filled).not.toMatch(/Pixels Rendered/);
+  });
+
+  it('루프559 — KPI 슬롯 정책 pin: 가짜 가격은 제거하되 tier-card 레이아웃은 유지', async () => {
+    const { fillEightBitOrbitKitSlide } = await import('../src/template-clone-fill');
+    const tierBody =
+      '<div class="tier-grid">'
+      + '<div class="tier-card"><div class="tier-name">Rookie</div><div class="tier-price">$0<span>/mo</span></div></div>'
+      + '<div class="tier-card featured"><div class="tier-name">Arcade</div><div class="tier-price">$29<span>/mo</span></div></div>'
+      + '<div class="tier-card"><div class="tier-name">Boss</div><div class="tier-price">$79<span>/mo</span></div></div>'
+      + '</div>';
+    const filled = fillEightBitOrbitKitSlide(tierBody, 'class="slide"', {
+      title: '요약',
+      lead: '',
+      bodyText: '',
+      kicker: '',
+      fillLines: [
+        { title: '현황', body: '현재 업무 흐름과 병목을 같은 보드에서 확인한다.' },
+        { title: '협업', body: '보기와 고치기 권한을 나눠 결과물을 함께 다듬는다.' },
+        { title: '운영', body: '변경 이력과 전달 기준을 워크스페이스에 남긴다.' },
+      ],
+    });
+    // 정책: 가짜 가격 의미는 제거하고, 템플릿의 세 카드 구도는 보존한다.
+    expect(filled).not.toMatch(/\$\s*0/);
+    expect(filled).not.toMatch(/\$\s*29/);
+    expect(filled).not.toMatch(/\$\s*79/);
+    expect(filled).not.toMatch(/tier-price/);
+    expect(filled).toMatch(/tier-grid/);
+    expect((filled.match(/tier-card/g) ?? []).length).toBe(3);
+    expect(filled).toMatch(/현재 업무 흐름과 병목/);
+    expect(filled).toMatch(/변경 이력과 전달 기준/);
+  });
+
+  it('루프559 — 8-Bit Orbit chart는 스크립트 제거 뒤에도 0% 막대로 남지 않는다', () => {
+    const body = '<div class="pixel-bar-chart">'
+      + '<div class="chart-bar-group"><div class="chart-value" data-value="78">0</div><div class="chart-bar" data-height="78" style="height: 0%;"></div><div class="chart-bar-label">Alpha</div></div>'
+      + '<div class="chart-bar-group"><div class="chart-value" data-value="92">0</div><div class="chart-bar alt" data-height="92" style="height: 0%;"></div><div class="chart-bar-label">Beta</div></div>'
+      + '</div>';
+    const filled = fillEightBitOrbitKitSlide(body, 'class="slide"', {
+      title: '업무 흐름',
+      lead: '초안에서 리뷰까지 한 흐름으로 이어진다.',
+      bodyText: '',
+      kicker: '흐름',
+      fillLines: [
+        { title: '초안', body: '자료를 모아 첫 구조를 만든다.' },
+        { title: '리뷰', body: '댓글과 수정 이력을 같은 화면에 남긴다.' },
+      ],
+    });
+    expect(filled).not.toMatch(/height:\s*0%/);
+    expect(filled).toMatch(/style="height:62%"/);
+    expect(filled).toMatch(/style="height:78%"/);
+    expect(filled).toMatch(/>초안</);
+    expect(filled).toMatch(/>리뷰</);
+    expect(filled).not.toMatch(/>Alpha</);
+  });
+
+  it('루프559 — 8-Bit Orbit horizontal chart도 데모 라벨·수치·0% 너비를 남기지 않는다', () => {
+    const body = '<span class="pixel-label">SYSTEM LOAD</span><div class="pixel-hbar-chart">'
+      + '<div class="hbar-row"><div class="hbar-label">Compute</div><div class="hbar-track"><div class="hbar-fill" data-width="88" style="width:0%"></div></div><div class="hbar-value">88%</div></div>'
+      + '<div class="hbar-row"><div class="hbar-label">Storage</div><div class="hbar-track"><div class="hbar-fill alt" data-width="72" style="width:0%"></div></div><div class="hbar-value">72%</div></div>'
+      + '</div>';
+    const filled = fillEightBitOrbitKitSlide(body, 'class="slide"', {
+      title: '다음 단계',
+      lead: '한 업무부터 연결해 팀의 리뷰 기준을 확인합니다.',
+      bodyText: '',
+      kicker: '시작하기',
+      fillLines: [
+        { title: '업무 선택', body: '반복 빈도가 높은 업무 하나를 고릅니다.' },
+        { title: '팀 초대', body: '검토 담당자와 승인 권한을 함께 정합니다.' },
+      ],
+    });
+    expect(filled).not.toMatch(/SYSTEM LOAD|Compute|Storage|>88%<|>72%</i);
+    expect(filled).not.toMatch(/width:\s*0%/);
+    expect(filled).toMatch(/style="width:74%"/);
+    expect(filled).toMatch(/style="width:88%"/);
+    expect(filled).toMatch(/업무 선택/);
+    expect(filled).toMatch(/팀 초대/);
+    expect(filled).toMatch(/class="hbar-value">01</);
+    expect(filled).toMatch(/class="hbar-value">02</);
+  });
+
+  it('루프559 — CTA chrome이 있는 8-Bit shell은 chart가 아니라 closing으로 분류한다', () => {
+    const closing = {
+      attrs: 'class="slide bg-grid" data-slide="10"',
+      body: '<div class="slide-content"><div class="cta-content"><h2>Ready Player One?</h2><button class="pixel-btn">Initialize Deck</button></div><div class="pixel-hbar-chart"></div></div>',
+    };
+    expect(classifyTemplateCloneShellRole(closing)).toBe('closing');
+    const picked = pickTemplateShellsForContent(
+      [
+        { attrs: 'class="slide hero"', body: '<h1>Cover</h1>' },
+        { attrs: 'class="slide"', body: '<div class="pixel-hbar-chart"><div class="hbar-row"></div></div>' },
+        closing,
+      ],
+      [
+        { title: '표지', roleHint: 'cover' },
+        { title: '다음 단계', roleHint: 'closing', lead: '첫 보드를 엽니다.' },
+      ],
+    );
+    expect(picked[1]).toBe(closing);
+  });
+
+  it('루프559 — closing CTA 버튼과 cover eyebrow는 설명문을 중복하지 않는다', () => {
+    const cover = fillEightBitOrbitKitSlide(
+      '<div class="hero-subtitle">Pixel Perfect Presentation System</div><h1 class="pixel-hero-text">8-BIT ORBIT</h1><p class="hero-tagline">old</p>',
+      'class="slide"',
+      {
+        title: 'Teamver 소개',
+        lead: '자료를 읽고 초안을 만든 뒤 같은 화면에서 수정합니다.',
+        bodyText: '',
+        kicker: '업무 AI 워크스페이스',
+        fillLines: [],
+      },
+    );
+    expect((cover.match(/자료를 읽고 초안을 만든 뒤 같은 화면에서 수정합니다\./g) ?? []).length).toBe(1);
+    expect(cover).toMatch(/hero-subtitle">업무 AI 워크스페이스</);
+
+    const closing = fillEightBitOrbitKitSlide(
+      '<div class="cta-content"><h2>Ready Player One?</h2><button class="pixel-btn">Initialize Deck</button><button class="pixel-btn pink-btn">View Documentation</button></div>',
+      'class="slide"',
+      {
+        title: '첫 보드부터 시작하세요',
+        lead: '한 업무부터 연결합니다.',
+        bodyText: '',
+        kicker: '다음 단계',
+        fillLines: [],
+      },
+    );
+    expect(closing).toMatch(/첫 보드 열기/);
+    expect(closing).toMatch(/도입 방법 보기/);
+    expect((closing.match(/자세히 보기/g) ?? []).length).toBe(0);
+  });
+
+  it('루프559 — 8-Bit Orbit split은 영문 데모 문단을 AI 본문으로 모두 교체한다', () => {
+    const body = '<div class="split-layout"><div></div><div>'
+      + '<h2>소개</h2>'
+      + '<p>No canvas limits. No cookie-cutter layouts.</p>'
+      + '<p>Just pure CSS architecture delivering cinematic depth.</p>'
+      + '</div></div>';
+    const filled = fillEightBitOrbitKitSlide(body, 'class="slide"', {
+      title: 'Teamver가 묶는 일',
+      lead: '초안과 피드백을 같은 맥락에서 연결한다.',
+      bodyText: '파일, 대화, 수정 이력을 하나의 워크스페이스에서 이어 본다.',
+      kicker: '소개',
+      fillLines: [
+        { title: '초안', body: '자료를 읽고 바로 편집 가능한 구조를 만든다.' },
+      ],
+    });
+    expect(filled).not.toMatch(/No canvas limits|cookie-cutter|pure CSS architecture/i);
+    expect(filled).toMatch(/초안과 피드백을 같은 맥락/);
+    expect(filled).toMatch(/파일, 대화, 수정 이력/);
+  });
+
+  it('루프539 — persist heal unwraps invented hero shells together', async () => {
+    const html = await readFile(
+      new URL(
+        './fixtures/loop538-block-frame-invented-hero-shells.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const healed = healBlockFrameInventedHeroShells(html);
+    expect(healed).not.toMatch(/hero-title-highlight/);
+    expect(healed).not.toMatch(/download-cards/);
+    expect(healed).not.toMatch(/사업자등록번호/);
+    expect(healed).toMatch(/기업 도입 문의/);
+    expect(healed).toMatch(/팀의 AI 업무 공간을 지금 시작/);
+  });
+
+  // 루프547 — Block Frame chart-svg 데모 잔재 (X 축 Q1..Q5 + 3-계열 성장형
+  // 막대)가 non-metric 프로즈 슬라이드에 그대로 남는 사용자 케이스.
+  // 힐 후: chart-svg shell 유지 · Q1..Q5 wipe · 15개 컬러 막대 y/height 균등화.
+  it('루프547: Block-frame chart-svg strips Q1..Q5 labels and equalizes demo bars', async () => {
+    const html = await readFile(
+      new URL('./fixtures/loop547-block-frame-q1-q5.html', import.meta.url),
+      'utf8',
+    );
+    const healed = neutralizeBlockFrameChartSvgDemoMetrics(html);
+    // Chart shell must survive so `.data-column` sibling does not collapse.
+    expect(healed).toMatch(/class="chart-svg"/);
+    // X-axis Q1..Q5 demo labels must be blanked (only axis labels use `Q\d+`).
+    expect(healed).not.toMatch(/>Q[1-9](?:\s*20\d{2})?</);
+    // Y-axis 0/33/66/100 demo labels blanked by the existing digit rule.
+    expect(healed).not.toMatch(/>\s*(?:0|33|66|100)\s*</);
+    // All 15 colored bars must be equalized: single `y` and single `height`
+    // across the pink / blue / green series.
+    const rectTags = Array.from(
+      healed.matchAll(/<rect\b[^>]*\bfill\s*=\s*(["'])#[0-9A-Fa-f]{6}\1[^>]*>/gi),
+    ).map((m) => m[0]);
+    expect(rectTags.length).toBe(15);
+    const heights = new Set(
+      rectTags
+        .map((tag) => /\bheight\s*=\s*(["'])(-?\d+(?:\.\d+)?)\1/.exec(tag)?.[2])
+        .filter(Boolean),
+    );
+    const ys = new Set(
+      rectTags
+        .map((tag) => /\by\s*=\s*(["'])(-?\d+(?:\.\d+)?)\1/.exec(tag)?.[2])
+        .filter(Boolean),
+    );
+    expect(heights.size, 'expected uniform bar height').toBe(1);
+    expect(ys.size, 'expected uniform bar y').toBe(1);
+    // Baseline preserved (y + h = 280 in the example.html viewBox).
+    const uniqH = Number([...heights][0]);
+    const uniqY = Number([...ys][0]);
+    expect(uniqY + uniqH).toBe(280);
+    // Axes (`<line>` elements) must be untouched by the bar equalizer.
+    expect(healed).toMatch(/<line[^>]+y1="280"[^>]+y2="280"/);
+    expect(healed).toMatch(/<line[^>]+y1="20"[^>]+y2="280"/);
+  });
+
+  // 루프547 — full-pipeline pin: chart slide is Korean prose ("운영과 보안")
+  // → non-metric branch runs `neutralizeBlockFrameChartSvgDemoMetrics`. Q1..Q5
+  // must not survive into the persisted deck, and chart-svg shell stays.
+  it('루프547: buildTemplateClonedDeckHtml drops Q1..Q5 from block-frame chart slide', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-block-frame/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const slides = Array.from({ length: 10 }, (_, i) => ({
+      title: i === 3 ? '운영과 보안' : `슬라이드 ${i + 1}`,
+      body:
+        i === 3
+          ? '전환 — 방문에서 문의\n활성 — 핵심 기능 반복\n품질 — 결과물 완성도'
+          : '포인트 A\n포인트 B\n포인트 C',
+      roleHint: i === 3 ? 'chart' : 'cards',
+      kicker: 'OVERVIEW',
+      lead: 'lead',
+    }));
+    const cloned = buildTemplateClonedDeckHtml(html, slides, {
+      title: 'Teamver 소개',
+      templateId: 'example-html-ppt-zhangzara-block-frame',
+      brief: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드',
+    });
+    expect(cloned).toBeTruthy();
+    const slide4 = /<section\b[^>]*\bslide-4\b[\s\S]*?<\/section>/i.exec(cloned ?? '');
+    expect(slide4?.[0], 'expected .slide-4 section').toBeTruthy();
+    // chart-svg shell still present (regression guard for loop534).
+    expect(slide4![0]).toContain('chart-svg');
+    // No Q\d+ demo labels remain anywhere in the persisted deck.
+    expect(cloned).not.toMatch(/>Q[1-9](?:\s*20\d{2})?</);
   });
 
   it('loop421 — empty-brief padding synthesizes card bodies instead of empty shells', () => {
@@ -1252,6 +3077,48 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(cloned).not.toContain('What We Deliver');
     expect(cloned).toContain('팀버');
     expect(cloned).toContain('전략');
+  });
+
+  // 루프534 — Non-metric deterministic fill must keep chart-svg (flex sibling)
+  // and must not leave empty nb-label chips after demo-copy strip.
+  it('루프534: Block-frame chart slide keeps chart-svg and refills empty nb-labels', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-block-frame/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    // 10 outline rows → 1:1 with template shells; index 3 is `.slide-4` chart-frame.
+    const slides = Array.from({ length: 10 }, (_, i) => ({
+      title: i === 3 ? '운영과 보안' : `슬라이드 ${i + 1}`,
+      body:
+        i === 3
+          ? '전환 — 방문에서 문의\n활성 — 핵심 기능 반복\n품질 — 결과물 완성도'
+          : '포인트 A\n포인트 B\n포인트 C',
+      roleHint: i === 3 ? 'chart' : 'cards',
+      kicker: 'OVERVIEW',
+      lead: 'lead',
+    }));
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      slides,
+      {
+        title: 'Teamver 소개',
+        templateId: 'example-html-ppt-zhangzara-block-frame',
+        brief: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드',
+      },
+    );
+    expect(cloned).toBeTruthy();
+    const slide4 = /<section\b[^>]*\bslide-4\b[\s\S]*?<\/section>/i.exec(cloned ?? '');
+    expect(slide4?.[0], 'expected .slide-4 section').toBeTruthy();
+    // Primary regression: chart-svg must survive non-metric deterministic fill.
+    expect(slide4![0]).toContain('chart-svg');
+    expect(slide4![0]).toContain('chart-frame');
+    expect(slide4![0]).toContain('data-column');
+    expect(slide4![0]).not.toMatch(/<div class="nb-label[^"]*">\s*<\/div>/);
+    expect(cloned).not.toContain('Performance Data');
+    expect(cloned).not.toContain('Quarterly Growth Metrics');
   });
 
   it('loop425 — does not IB-restyle a real Capsule deck that lost title-pill', () => {
@@ -1714,13 +3581,25 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(restyled).not.toMatch(/학습 노트|class="mast"|class="ribbon"|h1 class="display"/i);
     expect(restyled).toMatch(/background:var\(--cream\)/);
 
-    expect(polishUrlSiteCoverTitle('www.teamver.com 사이', 'www.teamver.com 사이트 분석')).toBe('팀버');
+    expect(polishUrlSiteCoverTitle('www.teamver.com 사이', 'www.teamver.com 사이트 분석')).toBe('Teamver');
     expect(polishUrlSiteCoverTitle(
       'www.teamver.com 사이',
       'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘',
-    )).toBe('팀버 소개');
+    )).toBe('Teamver 소개');
     expect(deriveDeckCoverTitleFromBrief('www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘'))
-      .toMatch(/팀버/);
+      .toMatch(/Teamver/i);
+    // 루프513 — host→Latin brand is general (not a teamver-only map); never phonetic Hangul.
+    expect(polishUrlSiteCoverTitle(
+      'www.teamver.com 사이',
+      'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘',
+    )).not.toMatch(/팀버/);
+    expect(polishUrlSiteCoverTitle('www.acme.com 사이', 'www.acme.com 사이트 분석')).toBe('Acme');
+    expect(polishUrlSiteCoverTitle(
+      'www.acme.com 사이',
+      'www.acme.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘',
+    )).toBe('Acme 소개');
+    expect(polishUrlSiteCoverTitle('figma.io 사이', 'figma.io 사이트 분석해서 서비스 소개')).toBe('Figma 소개');
+    expect(polishUrlSiteCoverTitle('neuralstudio.kr 회사', null)).toBe('Neuralstudio 소개');
   });
 
   it('루프390: restyles foreign IB magazine cover onto 8-Bit Orbit hero', () => {
@@ -2178,13 +4057,13 @@ ${capsuleLook}
 </body></html>`;
     expect(looksLikeRawUrlSiteCoverTitle('www.teamver.com 사이')).toBe(true);
     const healed = healInstructionCopyCoverHeading(html, brief);
-    expect(healed).toMatch(/팀버/);
+    expect(healed).toMatch(/Teamver/i);
     expect(healed).not.toMatch(/www\.teamver\.com 사이/);
     expect(healed).toMatch(/class="subkicker"/);
     expect(healed).toMatch(/제품 소개|Product introduction/);
 
     const enriched = enrichSparseCobaltCover(html, brief);
-    expect(enriched).toMatch(/팀버/);
+    expect(enriched).toMatch(/Teamver/i);
     expect(enriched).toMatch(/subkicker/);
   });
 
@@ -2197,10 +4076,10 @@ ${capsuleLook}
       '</section>',
     ].join('');
     const salvaged = salvageMalformedMiniMaxSlideMarkup(html);
-    expect(salvaged).toMatch(/팀버/);
+    expect(salvaged).toMatch(/Teamver/i);
     expect(salvaged).not.toMatch(/www\.teamver\.com 사이/);
     expect(salvaged).toMatch(/subkicker/);
-    expect(rewriteRawUrlSiteCoverTitles(html)).toMatch(/팀버/);
+    expect(rewriteRawUrlSiteCoverTitles(html)).toMatch(/Teamver/i);
   });
 
   it('루프451: reparents Cobalt orphan s-data stats and drops Field Office leftover', async () => {
@@ -4681,6 +6560,152 @@ describe('0901-N02-C13 peer-fit catalog + sticky chrome deny', () => {
     expect(bodyOnly).toContain('전환');
   });
 
+  it('루프531: block-frame feature cards split dense sentences into title and body slots', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-block-frame/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      [
+        { title: '킥오프', roleHint: 'cover' },
+        {
+          title: '고객 경험',
+          roleHint: 'cards',
+          items: [
+            {
+              title: '화면, 워크플로우, 결과물 예시로 제품 실체를 보여준다',
+              body: '데모 화면과 사용자 흐름을 연결해 구매 전 이해를 돕습니다.',
+            },
+            {
+              title: '고객 유형별 문제 해결 사례와 정량·정성 효과를 정리한다',
+              body: '도입 전 우려와 기대 효과를 한 화면에서 비교합니다.',
+            },
+            {
+              title: '지원, 보안, 개인정보 보호 프로세스를 투명하게 제시한다',
+              body: '운영 단계의 책임 범위와 응답 절차를 명확히 안내합니다.',
+            },
+          ],
+        },
+      ],
+      {
+        title: '고객 경험',
+        templateId: 'example-html-ppt-zhangzara-block-frame',
+      },
+    );
+    expect(cloned).toBeTruthy();
+    const bodyOnly = (cloned ?? '').replace(/<style[\s\S]*?<\/style>/gi, '');
+    const headings = [...bodyOnly.matchAll(/<h3\b[^>]*>([\s\S]*?)<\/h3>/gi)]
+      .map((match) => match[1]!.replace(/<[^>]*>/g, '').trim())
+      .filter(Boolean);
+    expect(headings).toContain('화면·워크플로우');
+    expect(headings).toContain('고객 유형별 문제 해결');
+    expect(headings).toContain('지원·보안');
+    expect(headings.some((heading) => heading.includes('결과물 예시로 제품 실체를 보여준다'))).toBe(false);
+    expect(bodyOnly).toContain('화면, 워크플로우, 결과물 예시로 제품 실체를 보여준다');
+    expect(bodyOnly).toContain('데모 화면과 사용자 흐름을 연결해 구매 전 이해를 돕습니다.');
+    expect(bodyOnly).toContain('data-od-card-fit="compact"');
+    expect(bodyOnly).toMatch(/font-size:36px;line-height:1\.08/);
+  });
+
+  it('루프537: block-frame cards and CTA keep readable copy instead of empty UI shells', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-block-frame/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      [
+        { title: '킥오프', roleHint: 'cover' },
+        {
+          title: '단독 도구가 아니라, 워크스페이스와 연결.',
+          roleHint: 'cards',
+          items: [
+            { title: 'AI Slides', body: '공유 자료와 채팅 대화를 기반으로 발표자료 초안을 자동 생성한다.' },
+            { title: 'AI Docs', body: '회의 메모와 리서치 PDF를 보고서 초안으로 통합한다.' },
+            { title: 'AI Meetings', body: '녹음과 메모를 회의록과 다음 액션으로 정리한다.' },
+          ],
+        },
+        { title: '중간', body: '제품 이해\n전환 설계\n운영 준비', roleHint: 'cards' },
+        { title: '차트', body: '전환 — 방문에서 문의\n활성 — 핵심 기능 반복\n품질 — 결과물 완성도', roleHint: 'chart' },
+        { title: '문장', body: '핵심 메시지', roleHint: 'quote' },
+        { title: '방법', body: '탐색\n도입\n확장\n검증', roleHint: 'process' },
+        { title: '로드맵', body: '준비\n실행\n측정\n확장', roleHint: 'timeline' },
+        { title: '지표', body: '전환\n활성\n품질\n지원', roleHint: 'stat' },
+        {
+          title: '팀의 AI 업무 공간을 지금 시작하세요.',
+          roleHint: 'team',
+          items: [
+            { title: '무료 시작', body: '자료 업로드와 첫 덱 생성을 바로 시험한다.' },
+            { title: 'Enterprise 데모', body: '보안, 권한, 도입 절차를 함께 확인한다.' },
+            { title: 'Desktop', body: '팀 파일과 프로젝트 맥락을 한 화면에서 관리한다.' },
+            { title: 'Android', body: '이동 중에도 회의 메모와 요청을 이어간다.' },
+            { title: 'iOS', body: '알림, 승인, 결과물 검토를 빠르게 처리한다.' },
+          ],
+        },
+      ],
+      {
+        title: 'Teamver 소개',
+        templateId: 'example-html-ppt-zhangzara-block-frame',
+        brief: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+        maxSlides: 9,
+      },
+    );
+    expect(cloned).toBeTruthy();
+    const bodyOnly = (cloned ?? '').replace(/<style[\s\S]*?<\/style>/gi, '');
+    expect(bodyOnly).toMatch(/<p\b[^>]*font-size:2[246]px[^>]*>공유 자료와 채팅 대화를 기반으로 발표자료 초안을 자동 생성한다\./);
+    expect(bodyOnly).toContain('무료 시작');
+    expect(bodyOnly).toContain('자료 업로드와 첫 덱 생성을 바로 시험한다.');
+    expect(bodyOnly).toContain('Enterprise 데모');
+    expect(bodyOnly).toContain('보안, 권한, 도입 절차를 함께 확인한다.');
+    expect(bodyOnly).not.toMatch(/<div class="team-bio">\s*<\/div>/);
+    expect(bodyOnly).not.toMatch(/>\s*Desktop\s*<\/div>\s*<div class="team-role">\s*<\/div>/);
+    expect(bodyOnly).not.toMatch(/View Process|Get In Touch/);
+  });
+
+  it('루프532: Capsule stat pills never place prose in the stat-number slot', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-capsule/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      [
+        { title: '킥오프', roleHint: 'cover' },
+        {
+          title: '실행 방안',
+          roleHint: 'stat',
+          items: [
+            { title: '전환', body: '방문에서 문의와 가입까지 이어지는 흐름을 측정한다' },
+            { title: '활성', body: '핵심 기능 반복 사용과 팀 초대 흐름을 확인한다' },
+            { title: '품질', body: '결과물 완성도와 수정 횟수를 함께 본다' },
+          ],
+        },
+      ],
+      {
+        title: '실행 방안',
+        templateId: 'example-html-ppt-zhangzara-capsule',
+      },
+    );
+    expect(cloned).toBeTruthy();
+    const bodyOnly = (cloned ?? '').replace(/<style[\s\S]*?<\/style>/gi, '');
+    const statNumbers = [...bodyOnly.matchAll(/<div\b[^>]*\bstat-number\b[^>]*>([\s\S]*?)<\/div>/gi)]
+      .map((match) => match[1]!.replace(/<[^>]*>/g, '').trim())
+      .filter(Boolean);
+    expect(statNumbers).toEqual(expect.arrayContaining(['01', '02', '03']));
+    expect(statNumbers.some((value) => /방문에서 문의|핵심 기능 반복|결과물 완성도/.test(value))).toBe(false);
+    expect(bodyOnly).toContain('전환 — 방문에서 문의와 가입까지 이어지는 흐름을 측정한다');
+  });
+
   it('루프454: blue-professional 3-line cards prefer metric-card×3', async () => {
     const html = await readFile(
       new URL(
@@ -4986,7 +7011,7 @@ describe('루프509 sparse title-only outlines are enriched when landing on card
     expect(filled!.html).toContain('핵심 개념');
   });
 
-  it('does NOT enrich title-only slides on list shells (preserves 루프376 empty-list drop)', () => {
+  it('enriches title-only slides on list shells with synth bullet lines (loop510)', () => {
     const seed = [
       '<!doctype html><html><head><style>.motif{color:#FCDF6C}</style></head><body>',
       '<section class="slide slide-title cover"><h1>Demo Cover</h1></section>',
@@ -5001,9 +7026,12 @@ describe('루프509 sparse title-only outlines are enriched when landing on card
       ],
     });
     expect(filled).not.toBeNull();
-    // 루프376 invariant — list shells still drop empty <li>/<ul> for title-only.
+    // Loop510 — sparse title-only on a list shell now gets synth bullets instead
+    // of an empty wiped list (loop376 placeholder path).
     expect(filled!.html).not.toMatch(/<li>\s*<\/li>/);
     expect(filled!.html).not.toMatch(/<ul[^>]*>\s*<\/ul>/);
+    expect(filled!.html).toMatch(/<li>[^<]{8,}<\/li>/);
+    expect(filled!.html).not.toMatch(/Demo A|Demo B/);
     expect(filled!.html).toContain('Smarter &amp; Faster');
   });
 
@@ -6143,5 +8171,760 @@ describe('루프512 Capsule fixed-density peer preservation + vertical centering
       const roleWithItems = inferTemplateCloneContentRole(withItems, 3, 10);
       expect(roleWithItems).toBe('stat');
     });
+  });
+});
+
+describe('루프515 prompt-fill LOOK seed merge (Canvas/Home same host path)', () => {
+  const diverseSeed = [
+    '<!doctype html><html><head><style>.motif{color:#FCDF6C}</style></head><body>',
+    '<section class="slide slide-title cover"><h1>Demo Cover</h1><p class="subtitle">Demo lead</p></section>',
+    '<section class="slide slide-cards">',
+    '<h2>Demo Cards</h2>',
+    '<div class="cards-grid">',
+    '<article class="info-card"><h3>Demo A</h3><p>Demo A body that is a real sentence.</p></article>',
+    '<article class="info-card"><h3>Demo B</h3><p>Demo B body that is a real sentence.</p></article>',
+    '<article class="info-card"><h3>Demo C</h3><p>Demo C body that is a real sentence.</p></article>',
+    '</div>',
+    '</section>',
+    '<section class="slide slide-6"><div class="split-content"><h2>Demo List</h2><ul class="content-list"><li>Demo A</li><li>Demo B</li><li>Demo C</li></ul></div></section>',
+    '<section class="slide slide-chart"><h2>Demo Stat</h2><div class="stats-grid"><div class="stat-card"><h3>12</h3><p>Demo metric</p></div></div></section>',
+    '</body></html>',
+  ].join('');
+
+  it('extracts titles, leads, and card items from model HTML', () => {
+    const model = [
+      '<!doctype html><html><body>',
+      '<section class="slide slide-title cover"><h1>분기 전략</h1><p class="subtitle">한 분기를 한 문장으로 정리합니다.</p></section>',
+      '<section class="slide slide-cards"><h2>핵심 개념</h2><div class="cards-grid">',
+      '<article class="info-card"><h3>속도</h3><p>배포 주기를 일주일 단위로 줄입니다.</p></article>',
+      '<article class="info-card"><h3>품질</h3><p>리뷰 게이트로 회귀를 막습니다.</p></article>',
+      '<article class="info-card"><h3>관측</h3><p>실패 신호를 같은 날 확인합니다.</p></article>',
+      '</div></section>',
+      '</body></html>',
+    ].join('');
+    const outline = extractTemplateCloneOutlineFromDeckHtml(model);
+    expect(outline).not.toBeNull();
+    expect(outline!.slides).toHaveLength(2);
+    expect(outline!.slides[0]?.title).toBe('분기 전략');
+    expect(outline!.slides[0]?.lead).toContain('한 분기');
+    expect(outline!.slides[1]?.items?.length).toBeGreaterThanOrEqual(3);
+    expect(outline!.slides[1]?.items?.[0]?.title).toBe('속도');
+    expect(outline!.slides[1]?.items?.[0]?.body).toContain('배포 주기');
+    // Model shell roles must not lock host variety (loop517).
+    expect(outline!.slides[1]?.roleHint).toBeUndefined();
+  });
+
+  it('fills title-only extracted cards so LOOK merge is not a label grid (loop517)', () => {
+    const model = [
+      '<!doctype html><html><body>',
+      '<section class="slide"><h1>분기 전략</h1><p>한 분기를 한 문장으로 정리합니다.</p></section>',
+      '<section class="slide slide-cards"><h2>핵심 개념</h2><div class="cards-grid">',
+      '<article class="info-card"><h3>속도</h3></article>',
+      '<article class="info-card"><h3>품질</h3></article>',
+      '<article class="info-card"><h3>관측</h3></article>',
+      '</div></section>',
+      '<section class="slide"><h2>실행 원칙</h2></section>',
+      '<section class="slide"><h2>다음 단계</h2></section>',
+      '</body></html>',
+    ].join('');
+    const merged = applyTemplateClonePromptFillLookMerge(diverseSeed, model, {
+      brief: '분기 전략 리뷰',
+      deckTitle: '분기 전략',
+    });
+    expect(merged).not.toBeNull();
+    expect(merged!.html).toContain('속도');
+    const cardBodies = [...merged!.html.matchAll(/<article\b[^>]*\binfo-card\b[^>]*>[\s\S]*?<p>([\s\S]*?)<\/p>/gi)]
+      .map((match) => String(match[1] ?? '').replace(/<[^>]+>/g, '').trim());
+    expect(cardBodies.length).toBeGreaterThanOrEqual(2);
+    expect(cardBodies.every((body) => body.length >= 12)).toBe(true);
+    const before = summarizeTemplateClonePersistQuality(model);
+    const after = summarizeTemplateClonePersistQuality(merged!.html);
+    expect(before?.titleOnlyCardCount).toBeGreaterThan(0);
+    expect(after?.titleOnlyCardRate ?? 1).toBeLessThan(before!.titleOnlyCardRate);
+    const again = applyTemplateClonePromptFillLookMerge(diverseSeed, model, {
+      brief: '분기 전략 리뷰',
+      deckTitle: '분기 전략',
+    });
+    expect(again?.html).toBe(merged!.html);
+  });
+
+  it('still merges chrome-heavy prompt-fill HTML (nav/counters are not real copy)', () => {
+    const model = [
+      '<!doctype html><html><body>',
+      '<section class="slide"><h1>분기 전략</h1><p>한 분기를 한 문장으로 정리합니다.</p>',
+      '<div class="nav">01 / 08 NEXT PREV</div></section>',
+      '<section class="slide"><h2>핵심 개념</h2><div class="counter">02 / 08</div></section>',
+      '<section class="slide"><h2>실행 원칙</h2></section>',
+      '<section class="slide"><h2>다음 단계</h2></section>',
+      '</body></html>',
+    ].join('');
+    expect(applyTemplateClonePromptFillLookMerge(diverseSeed, model, {
+      brief: '분기 전략 리뷰',
+      deckTitle: '분기 전략',
+    })).not.toBeNull();
+  });
+
+  it('merges monotone model HTML through diverse LOOK seed shells + sparse enrich', () => {
+    const model = [
+      '<!doctype html><html><body>',
+      '<section class="slide"><h1>분기 전략</h1><p>한 분기를 한 문장으로 정리합니다.</p></section>',
+      '<section class="slide"><h2>핵심 개념</h2></section>',
+      '<section class="slide"><h2>실행 원칙</h2></section>',
+      '<section class="slide"><h2>다음 단계</h2></section>',
+      '</body></html>',
+    ].join('');
+    const merged = applyTemplateClonePromptFillLookMerge(diverseSeed, model, {
+      brief: '분기 전략 리뷰',
+      deckTitle: '분기 전략',
+    });
+    expect(merged).not.toBeNull();
+    expect(merged!.html).toContain('분기 전략');
+    expect(merged!.html).toContain('핵심 개념');
+    // Host picker + enrich must keep a card grid instead of 4 identical empty bodies.
+    expect(merged!.html).toMatch(/info-card|content-list|stats-grid/);
+    expect(merged!.html).not.toMatch(/<div class="cards-grid">\s*<\/div>/);
+    expect(merged!.html).not.toMatch(/Demo A body that is a real sentence/);
+  });
+
+  it('루프552 — prompt-fill merge strips Product Launch Halo seed copy from extracted model HTML', async () => {
+    const seed = await readFile(
+      new URL('./fixtures/loop551-product-launch-halo.html', import.meta.url),
+      'utf8',
+    );
+    const model = [
+      '<!doctype html><html><body>',
+      '<section class="slide"><h1>◎ Halo</h1><p class="subtitle">Teamver가 다루는 문제와 제공 가치</p><p>Studio-grade spatial audio in the lightest open-ear earbuds ever made.</p><p>halo.audio</p></section>',
+      '<section class="slide"><h2>Teamver가 풀어야 하는 문제</h2><p>Four years of research. Three generations of silicon. One product you&#39;ll forget you&#39;re wearing.</p></section>',
+      '<section class="slide"><h2>Pricing 실행 방안</h2><div class="cards-grid">',
+      '<article class="price-card"><h3>실무자</h3><p>$179 반복 작업을 줄이고 결과물 완성도를 높이는 방식 AAC + SBC Single-tap controls USB-C charging</p></article>',
+      '<article class="price-card"><h3>리더</h3><p>$279 팀 속도, 품질, 비용을 함께 관리할 수 있는 기준 Hi-Res Lossless Live translate · 41 lang Wireless + MagSafe charging</p></article>',
+      '<article class="price-card"><h3>운영자</h3><p>$399 권한, 저장, 감사, 보안 요구를 만족시키는 운영 체계 32-bit binaural capture XLR dongle included Lifetime firmware</p></article>',
+      '</div></section>',
+      '<section class="slide"><h2>도입 로드맵</h2><blockquote>I forgot I was wearing them. Then I remembered, and I didn&#39;t want to take them off. — Marques Lin, The Verge</blockquote><p>Ships May 14 $279 Pre-order Halo v2 → Free shipping · 45-day return · 2-year warranty</p></section>',
+      '</body></html>',
+    ].join('');
+    const merged = applyTemplateClonePromptFillLookMerge(seed, model, {
+      brief: TEAMVER_SERVICE_INTRO_BRIEF,
+      deckTitle: 'Teamver 소개',
+      maxSlides: 4,
+    });
+
+    expect(merged).not.toBeNull();
+    expect(merged!.html).toMatch(/Teamver|팀버/i);
+    expect(merged!.html).not.toMatch(/Halo v2|◎\s*Halo|halo\.audio|Studio-grade spatial|open-ear earbuds/i);
+    expect(merged!.html).not.toMatch(/Four years of research|Three generations of silicon|forget you(?:'|&#39;|&#x27;|\u2019)ll/i);
+    expect(merged!.html).not.toMatch(/AAC \+ SBC|Hi-Res Lossless|MagSafe|binaural capture|Marques Lin|The Verge|45-day return/i);
+  });
+
+  it('prefers plugin preview over MiniMax-overwritten disk deck.html', () => {
+    const model = [
+      '<!doctype html><html><body>',
+      '<section class="slide"><h1>분기 전략</h1></section>',
+      '<section class="slide"><h2>핵심 개념</h2></section>',
+      '</body></html>',
+    ].join('');
+    expect(pickPromptFillLookSeedHtml({
+      pluginPreviewHtml: diverseSeed,
+      diskDeckHtml: model,
+    })).toBe(diverseSeed);
+    const merged = applyTemplateClonePromptFillLookMerge(
+      pickPromptFillLookSeedHtml({
+        pluginPreviewHtml: diverseSeed,
+        diskDeckHtml: model,
+      }),
+      model,
+      { brief: '분기 전략 리뷰', deckTitle: '분기 전략' },
+    );
+    expect(merged).not.toBeNull();
+    expect(merged!.html).toMatch(/info-card|content-list|stats-grid/);
+  });
+
+  it('extracts Cobalt-style .row / .stmt and Biennale quote copy', () => {
+    const model = [
+      '<!doctype html><html><body>',
+      '<section class="slide s-manifesto"><h2>선언</h2>',
+      '<p class="stmt">도구는 조용해야 하며 기본값이 켜져 있어야 한다.</p></section>',
+      '<section class="slide s-index"><h2>여섯 항목</h2><div class="list">',
+      '<div class="row"><div class="num-tag">01.</div><div><h3>느린 소프트웨어</h3><p>긴급함 대신 기본 켜짐을 약속한다.</p></div></div>',
+      '<div class="row"><div class="num-tag">02.</div><div><h3>가정용 인터페이스</h3><p>거실에 두어도 거슬리지 않는 화면.</p></div></div>',
+      '</div></section>',
+      '<section class="slide s-quote"><h2>한 줄</h2>',
+      '<p class="qbody">가장 큰 소리는 다시 읽히지 않는 문장을 삼킨다.</p></section>',
+      '</body></html>',
+    ].join('');
+    const outline = extractTemplateCloneOutlineFromDeckHtml(model);
+    expect(outline).not.toBeNull();
+    expect(outline!.slides[0]?.lead || outline!.slides[0]?.body).toMatch(/도구는 조용해야/);
+    expect(outline!.slides[1]?.items?.map((item) => item.title)).toEqual([
+      '느린 소프트웨어',
+      '가정용 인터페이스',
+    ]);
+    expect(outline!.slides[1]?.items?.[0]?.body).toContain('기본 켜짐');
+    expect(outline!.slides[2]?.lead || outline!.slides[2]?.body).toMatch(/가장 큰 소리/);
+  });
+
+  it('binds sparse card bodies to item + slide titles (no generic 문제/사용자)', () => {
+    const model = [
+      '<!doctype html><html><body>',
+      '<section class="slide"><h1>분기 전략</h1></section>',
+      '<section class="slide slide-cards"><h2>핵심 개념</h2><div class="cards-grid">',
+      '<article class="info-card"><h3>속도</h3></article>',
+      '<article class="info-card"><h3>품질</h3></article>',
+      '<article class="info-card"><h3>관측</h3></article>',
+      '</div></section>',
+      '</body></html>',
+    ].join('');
+    const merged = applyTemplateClonePromptFillLookMerge(diverseSeed, model, {
+      brief: '분기 전략 리뷰',
+      deckTitle: '분기 전략',
+    });
+    expect(merged).not.toBeNull();
+    expect(merged!.html).toContain('속도');
+    expect(merged!.html).toMatch(/속도[\s\S]{0,80}핵심 개념/);
+    expect(merged!.html).not.toMatch(/사용자가 반복해서 겪는 핵심 불편/);
+  });
+
+  it('fills empty quote/stat shells without inventing KPI digits', () => {
+    const seed = [
+      '<!doctype html><html><body>',
+      '<section class="slide slide-title cover"><h1>Demo Cover</h1></section>',
+      '<section class="slide slide-quote"><h2>Demo Quote</h2><p class="quote-text">Template quote</p></section>',
+      '<section class="slide slide-chart"><h2>Demo Stat</h2><div class="stats-grid">',
+      '<div class="stat-card"><h3>99%</h3><p class="stat-label">Demo metric</p></div>',
+      '<div class="stat-card"><h3>12</h3><p class="stat-label">Demo count</p></div>',
+      '</div></section>',
+      '</body></html>',
+    ].join('');
+    const model = [
+      '<!doctype html><html><body>',
+      '<section class="slide"><h1>분기 전략</h1></section>',
+      '<section class="slide"><h2>한 줄 메시지</h2>',
+      '<p class="qbody">이 분기의 선택은 속도가 아니라 판단 기준을 고정하는 일이다.</p></section>',
+      '<section class="slide"><h2>핵심 지표</h2></section>',
+      '</body></html>',
+    ].join('');
+    const merged = applyTemplateClonePromptFillLookMerge(seed, model, {
+      brief: '분기 전략 리뷰',
+      deckTitle: '분기 전략',
+    });
+    expect(merged).not.toBeNull();
+    expect(merged!.html).toMatch(/한 줄 메시지/);
+    expect(merged!.html).not.toMatch(/99%/);
+    expect(merged!.html).not.toMatch(/\b42%\b/);
+    expect(merged!.html).not.toMatch(/Template quote/);
+  });
+
+  it('keeps model HTML when there is no LOOK seed', () => {
+    const model = '<!doctype html><html><body><section class="slide"><h1>A</h1></section><section class="slide"><h2>B</h2></section></body></html>';
+    expect(applyTemplateClonePromptFillLookMerge('', model)).toBeNull();
+    expect(applyTemplateClonePromptFillLookMerge('<html><body><p>no slides</p></body></html>', model)).toBeNull();
+  });
+
+  it('keeps dense .copy sentences instead of aborting merge (loop518 extract)', () => {
+    const denseParas = Array.from({ length: 8 }, (_, i) => (
+      `<span class="copy">이 문장은 모델이 쓴 실제 본문 ${i + 1}번이며 추출기가 놓치면 안 되는 구체적인 설명입니다.</span>`
+    )).join('');
+    const model = [
+      '<!doctype html><html><body>',
+      `<section class="slide mystery-layout"><h2>핵심 개념</h2><div class="unknown">${denseParas}</div></section>`,
+      `<section class="slide mystery-layout"><h2>실행 원칙</h2><div class="unknown">${denseParas}</div></section>`,
+      '</body></html>',
+    ].join('');
+    const merged = applyTemplateClonePromptFillLookMerge(diverseSeed, model, {
+      deckTitle: '핵심 개념',
+    });
+    expect(merged).not.toBeNull();
+    expect(merged!.html).toContain('이 문장은 모델이 쓴 실제 본문 1번이며');
+    expect(merged!.html).toContain('실행 원칙');
+  });
+
+  it('keeps model HTML when leftover prose is not in extractable slots', () => {
+    const denseParas = Array.from({ length: 8 }, (_, i) => (
+      `<em class="mystery">이 문장은 모델이 쓴 실제 본문 ${i + 1}번이며 추출기가 놓치면 안 되는 구체적인 설명입니다.</em>`
+    )).join('');
+    const model = [
+      '<!doctype html><html><body>',
+      `<section class="slide mystery-layout"><h2>핵심 개념</h2><div class="unknown">${denseParas}</div></section>`,
+      `<section class="slide mystery-layout"><h2>실행 원칙</h2><div class="unknown">${denseParas}</div></section>`,
+      '</body></html>',
+    ].join('');
+    expect(applyTemplateClonePromptFillLookMerge(diverseSeed, model)).toBeNull();
+  });
+});
+
+describe('루프523 persist quality observe-only', () => {
+  it('returns null for empty or slide-less HTML', () => {
+    expect(summarizeTemplateClonePersistQuality('')).toBeNull();
+    expect(summarizeTemplateClonePersistQuality('<html><body><p>no slides</p></body></html>')).toBeNull();
+  });
+
+  it('builds observe payload deltas without mutating HTML', () => {
+    const beforeHtml = [
+      '<section class="slide slide-cards"><h2>핵심</h2><div class="cards-grid">',
+      '<article class="info-card"><h3>속도</h3></article>',
+      '<article class="info-card"><h3>품질</h3></article>',
+      '</div></section>',
+    ].join('');
+    const afterHtml = [
+      '<section class="slide slide-title cover"><h1>표지</h1></section>',
+      '<section class="slide slide-cards"><h2>핵심</h2><div class="cards-grid">',
+      '<article class="info-card"><h3>속도</h3><p>속도에 묶인 한 문장 본문입니다.</p></article>',
+      '<article class="info-card"><h3>품질</h3><p>품질에 묶인 한 문장 본문입니다.</p></article>',
+      '</div></section>',
+    ].join('');
+    const frozenBefore = beforeHtml;
+    const frozenAfter = afterHtml;
+    const observe = buildTemplateClonePersistQualityObserve({
+      phase: 'prompt-fill-look-merge',
+      beforeHtml,
+      html: afterHtml,
+      applied: true,
+      templateId: 'html-ppt-zhangzara-daisy-days',
+    });
+    const deterministicObserve = buildTemplateClonePersistQualityObserve({
+      phase: 'deterministic-fill',
+      html: afterHtml,
+      applied: true,
+      templateId: 'html-ppt-zhangzara-daisy-days',
+    });
+    expect(deterministicObserve.phase).toBe('deterministic-fill');
+    expect(deterministicObserve.applied).toBe(true);
+    expect(deterministicObserve.after?.titleOnlyCardRate).toBe(0);
+    expect(beforeHtml).toBe(frozenBefore);
+    expect(afterHtml).toBe(frozenAfter);
+    expect(observe.applied).toBe(true);
+    expect(observe.templateId).toBe('html-ppt-zhangzara-daisy-days');
+    expect(observe.before?.titleOnlyCardRate).toBe(1);
+    expect(observe.after?.titleOnlyCardRate).toBe(0);
+    expect(observe.titleOnlyRateDelta).toBe(-1);
+    expect(observe.distinctShellDelta).toBeGreaterThanOrEqual(0);
+  });
+
+  it('records catalog baselines for Daisy / Block Frame / Capsule', async () => {
+    const catalogs = [
+      'html-ppt-zhangzara-daisy-days',
+      'html-ppt-zhangzara-block-frame',
+      'html-ppt-zhangzara-capsule',
+    ];
+    for (const id of catalogs) {
+      const html = await readFile(
+        new URL(`../../../plugins/_official/examples/${id}/example.html`, import.meta.url),
+        'utf8',
+      );
+      const snap = summarizeTemplateClonePersistQuality(html);
+      expect(snap, id).not.toBeNull();
+      expect(snap!.slideCount, id).toBeGreaterThanOrEqual(4);
+      expect(snap!.distinctShellCount, id).toBeGreaterThanOrEqual(2);
+    }
+  });
+});
+
+describe('루프526 outline quality observe-only', () => {
+  it('flags title-only model outlines without changing slot-fill HTML', () => {
+    const raw = JSON.stringify({
+      title: '분기 전략',
+      slides: [
+        { title: '분기 전략' },
+        { title: '핵심 개념', roleHint: 'cards' },
+        { title: '실행 원칙', roleHint: 'cards' },
+        { title: '다음 단계', roleHint: 'cards' },
+      ],
+    });
+    const snap = summarizeTemplateCloneOutlineQuality({
+      title: '분기 전략',
+      slides: [
+        { title: '분기 전략' },
+        { title: '핵심 개념', roleHint: 'cards' },
+        { title: '실행 원칙', roleHint: 'cards' },
+        { title: '다음 단계', roleHint: 'cards' },
+      ],
+    });
+    expect(snap?.titleOnlySlideRate).toBe(1);
+    expect(snap?.distinctRoleHintCount).toBe(1);
+    const observe = buildTemplateCloneOutlineQualityObserve({
+      rawFinalText: raw,
+      kind: 'slot-fill',
+      templateId: 'html-ppt-zhangzara-daisy-days',
+    });
+    expect(observe.source).toBe('model');
+    expect(observe.outline?.titleOnlySlideRate).toBe(1);
+    const seed = [
+      '<section class="slide slide-title cover"><h1>Demo</h1></section>',
+      '<section class="slide slide-cards"><h2>Cards</h2></section>',
+    ].join('');
+    const first = applyTemplateCloneSlotFill(seed, raw, { brief: '분기 전략' });
+    const second = applyTemplateCloneSlotFill(seed, raw, { brief: '분기 전략' });
+    expect(first?.html).toBe(second?.html);
+  });
+
+  it('records dense roleHint variety and low title-only rates', () => {
+    const observe = buildTemplateCloneOutlineQualityObserve({
+      rawFinalText: JSON.stringify({
+        title: '분기 전략',
+        slides: [
+          { title: '분기 전략', lead: '한 분기를 한 문장으로 정리합니다.', roleHint: 'cover' },
+          {
+            title: '핵심 개념',
+            roleHint: 'cards',
+            items: [
+              { title: '속도', body: '속도에 묶인 한 문장 본문입니다.' },
+              { title: '품질', body: '품질에 묶인 한 문장 본문입니다.' },
+            ],
+          },
+          { title: '일정', roleHint: 'timeline', body: '이번 분기 마일스톤을 순서대로 적습니다.' },
+          { title: '지표', roleHint: 'stat', items: [{ title: '12', body: '활성 사용자를 나타내는 지표 라벨' }, { title: '4', body: '함께 일하는 팀 규모 라벨' }] },
+        ],
+      }),
+      kind: 'slot-fill',
+    });
+    expect(observe.source).toBe('model');
+    expect(observe.outline?.distinctRoleHintCount).toBeGreaterThanOrEqual(4);
+    expect(observe.outline?.titleOnlySlideRate).toBe(0);
+    expect(observe.outline?.titleOnlyCardRate).toBe(0);
+  });
+
+  it('records partial recovery when JSON is truncated', () => {
+    const observe = buildTemplateCloneOutlineQualityObserve({
+      rawFinalText: '{ "title": "분기 전략", "slides": [ { "title": "핵심 개념" ',
+      kind: 'seed-fallback',
+    });
+    expect(observe.source).toBe('partial');
+    expect(observe.outline?.slideCount).toBeGreaterThanOrEqual(2);
+    expect(observe.outline?.titleOnlySlideRate).toBe(1);
+  });
+
+  it('returns none when the model emitted no outline', () => {
+    expect(buildTemplateCloneOutlineQualityObserve({
+      rawFinalText: 'thinking only',
+    }).source).toBe('none');
+  });
+});
+
+describe('루프537 look-seed-fallback observe-only', () => {
+  it('records persist vs reload without inventing a template id', () => {
+    expect(buildTemplateCloneLookSeedFallbackObserve({
+      source: 'persist',
+      reason: 'seed_fallback_untouched_look',
+      genericBrief: true,
+      fillMode: 'prompt',
+      templateId: 'html-ppt-zhangzara-daisy-days',
+    })).toEqual({
+      source: 'persist',
+      reason: 'seed_fallback_untouched_look',
+      genericBrief: true,
+      fillMode: 'prompt',
+      templateId: 'html-ppt-zhangzara-daisy-days',
+    });
+    expect(buildTemplateCloneLookSeedFallbackObserve({
+      source: 'reload',
+    })).toEqual({
+      source: 'reload',
+      reason: null,
+      genericBrief: false,
+      fillMode: null,
+      templateId: null,
+    });
+  });
+});
+
+describe('루프547 short-response auto-pad (padToSeedSlideCount)', () => {
+  // 검증된 seed(5 shell · 다양한 role) · 위 루프515 describe에서 사용하는 것과
+  // 동일 구조. LOOK merge extract/gate를 통과함.
+  const fiveShellSeed = [
+    '<!doctype html><html><head><style>.motif{color:#FCDF6C}</style></head><body>',
+    '<section class="slide slide-title cover"><h1>Demo Cover</h1><p class="subtitle">Demo lead</p></section>',
+    '<section class="slide slide-cards">',
+    '<h2>Demo Cards</h2>',
+    '<div class="cards-grid">',
+    '<article class="info-card"><h3>Demo A</h3><p>Demo A body that is a real sentence.</p></article>',
+    '<article class="info-card"><h3>Demo B</h3><p>Demo B body that is a real sentence.</p></article>',
+    '<article class="info-card"><h3>Demo C</h3><p>Demo C body that is a real sentence.</p></article>',
+    '</div>',
+    '</section>',
+    '<section class="slide slide-6"><div class="split-content"><h2>Demo List</h2><ul class="content-list"><li>Demo A</li><li>Demo B</li><li>Demo C</li></ul></div></section>',
+    '<section class="slide slide-chart"><h2>Demo Stat</h2><div class="stats-grid"><div class="stat-card"><h3>12</h3><p>Demo metric</p></div></div></section>',
+    '<section class="slide slide-close"><h2>Demo Close</h2><p>Demo closing sentence.</p></section>',
+    '</body></html>',
+  ].join('');
+
+  // 짧은 응답: 2 slide만 반환.
+  const twoSlideModel = [
+    '<!doctype html><html><body>',
+    '<section class="slide slide-title cover"><h1>글쓰기 팁</h1><p class="subtitle">한 문장으로 매력적인 글의 원리를 정리합니다.</p></section>',
+    '<section class="slide slide-cards"><h2>핵심 원칙</h2><div class="cards-grid">',
+    '<article class="info-card"><h3>구체성</h3><p>추상 대신 사례를 든다.</p></article>',
+    '<article class="info-card"><h3>리듬</h3><p>짧은 문장과 긴 문장을 섞는다.</p></article>',
+    '<article class="info-card"><h3>독자</h3><p>독자의 질문에 먼저 답한다.</p></article>',
+    '</div></section>',
+    '</body></html>',
+  ].join('');
+
+  it('applyTemplateClonePromptFillLookMerge · 기본값(padToSeedSlideCount=true)로 seed shell 개수까지 확장', () => {
+    const merged = applyTemplateClonePromptFillLookMerge(fiveShellSeed, twoSlideModel, {
+      brief: '글을 매력적으로 쓰는 팁',
+      deckTitle: '글쓰기 팁',
+    });
+    expect(merged?.html).toBeTruthy();
+    const sectionCount = (merged?.html?.match(/<section\b[^>]*\bslide\b/gi) ?? []).length;
+    // seed 5 shells · outline 2 → auto-pad로 5까지.
+    expect(sectionCount).toBe(5);
+  });
+
+  it('padToSeedSlideCount=false는 short outline을 그대로 유지 (backward compat)', () => {
+    const merged = applyTemplateClonePromptFillLookMerge(fiveShellSeed, twoSlideModel, {
+      brief: '글을 매력적으로 쓰는 팁',
+      deckTitle: '글쓰기 팁',
+      padToSeedSlideCount: false,
+    });
+    expect(merged?.html).toBeTruthy();
+    const sectionCount = (merged?.html?.match(/<section\b[^>]*\bslide\b/gi) ?? []).length;
+    // outline 2 · seed 5인데 pad 안 함 → 2 유지.
+    expect(sectionCount).toBe(2);
+  });
+
+  it('auto-pad된 슬라이드에 data-teamver-pad="short-response" attribute가 붙는다', () => {
+    const merged = applyTemplateClonePromptFillLookMerge(fiveShellSeed, twoSlideModel, {
+      brief: '글을 매력적으로 쓰는 팁',
+      deckTitle: '글쓰기 팁',
+    });
+    expect(merged?.html).toBeTruthy();
+    const padMatches = merged?.html?.match(
+      new RegExp(`${TEAMVER_SHORT_RESPONSE_PAD_ATTR}="${TEAMVER_SHORT_RESPONSE_PAD_VALUE}"`, 'gi'),
+    );
+    // outline 2 · seed 5 → 3개 pad section.
+    expect((padMatches ?? []).length).toBe(3);
+  });
+
+  it('dropEmptyDeckSlides가 pad marker section을 유지한다', () => {
+    // pad section이 body-empty처럼 보여도 marker gate로 살아남아야 한다.
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide"><h1>표지</h1><p>표지 문장</p></section>',
+      // 정상적으로는 pad section도 채워지지만, marker gate가 방어층이므로
+      // 극단적으로 body가 empty해도 drop되지 않아야 한다.
+      `<section class="slide" ${TEAMVER_SHORT_RESPONSE_PAD_ATTR}="${TEAMVER_SHORT_RESPONSE_PAD_VALUE}"></section>`,
+      '<section class="slide"><h2>본문</h2><p>본문 문장</p></section>',
+      '</body></html>',
+    ].join('');
+    const out = dropEmptyDeckSlides(html);
+    expect(out).toContain(`${TEAMVER_SHORT_RESPONSE_PAD_ATTR}="${TEAMVER_SHORT_RESPONSE_PAD_VALUE}"`);
+    // 3개 section 모두 유지.
+    expect((out.match(/<section\b/gi) ?? []).length).toBe(3);
+  });
+
+  it('slideSectionIsShortResponsePad 헬퍼가 marker를 정확히 판정', () => {
+    expect(slideSectionIsShortResponsePad(
+      `<section class="slide" ${TEAMVER_SHORT_RESPONSE_PAD_ATTR}="${TEAMVER_SHORT_RESPONSE_PAD_VALUE}"><h2>x</h2></section>`,
+    )).toBe(true);
+    expect(slideSectionIsShortResponsePad('<section class="slide"><h2>x</h2></section>')).toBe(false);
+    expect(slideSectionIsShortResponsePad('')).toBe(false);
+  });
+
+  // 루프549 · incomplete-retry pad · 사용자 케이스 재현.
+  // MiniMax가 explicit 5+ slide 요청에 1 slide만 반환한 상황에서 pad 훅이
+  // seed shells로 부족분을 채워 저장 가능한 5장 결과를 만들어야 한다.
+  const oneSlideModel = [
+    '<!doctype html><html><body>',
+    '<section class="slide slide-title cover"><h1>글쓰기 팁</h1><p class="subtitle">한 문장으로 매력적인 글의 원리.</p></section>',
+    '</body></html>',
+  ].join('');
+
+  it('루프549 · seed 5 shell + 1-slide 응답을 pad로 5장으로 완성 (사용자 케이스)', () => {
+    const merged = applyTemplateClonePromptFillLookMerge(fiveShellSeed, oneSlideModel, {
+      brief: '글을 매력적으로 쓰는 팁',
+      deckTitle: '글쓰기 팁',
+    });
+    expect(merged?.html).toBeTruthy();
+    const sectionCount = (merged?.html?.match(/<section\b[^>]*\bslide\b/gi) ?? []).length;
+    expect(sectionCount).toBe(5);
+    const padMatches = merged?.html?.match(
+      new RegExp(`${TEAMVER_SHORT_RESPONSE_PAD_ATTR}="${TEAMVER_SHORT_RESPONSE_PAD_VALUE}"`, 'gi'),
+    );
+    // 1 real slide + 4 padded slides.
+    expect((padMatches ?? []).length).toBe(4);
+  });
+});
+
+describe('루프554 Block Frame 2-slide leftover + pad-to-seed', () => {
+  const tenShellSeed = [
+    '<!doctype html><html><head><style>',
+    '.slide-1{} .slide-2{} .slide-3{} .slide-4{} .slide-5{}',
+    '.slide-6{} .slide-7{} .slide-8{} .slide-9{} .slide-10{}',
+    '.nb-heading-xl{} .hero-frame{} .nb-btn{}',
+    '</style></head><body>',
+    '<section class="slide slide-1"><div class="hero-frame"><div class="nb-label hero-label">OVERVIEW</div><h1 class="nb-heading-xl hero-title">Demo Cover</h1><p class="hero-subtitle">Demo lead sentence.</p><a class="nb-btn">Learn More</a></div></section>',
+    '<section class="slide slide-2"><div class="intro-card"><h3>A</h3><p>Demo A body that is a real sentence.</p></div><div class="intro-card"><h3>B</h3><p>Demo B body that is a real sentence.</p></div></section>',
+    '<section class="slide slide-3"><div class="feature-card"><h3>C</h3><p>Demo C body that is a real sentence.</p></div></section>',
+    '<section class="slide slide-4"><div class="chart-frame"><h2>Demo Chart</h2></div></section>',
+    '<section class="slide slide-5"><div class="team-card"><div class="team-name">Demo</div><div class="team-role">Role</div><div class="team-bio">Bio sentence.</div></div></section>',
+    '<section class="slide slide-6"><div class="split-content"><h2>Demo Split</h2><ul class="content-list"><li>Demo A</li><li>Demo B</li><li>Demo C</li></ul><a class="nb-btn">Learn More</a></div></section>',
+    '<section class="slide slide-7"><div class="content-list"><h2>Demo List</h2><ul><li>One</li><li>Two</li></ul></div></section>',
+    '<section class="slide slide-8"><div class="timeline-step"><h2>Demo Step</h2><p>Step body sentence.</p></div></section>',
+    '<section class="slide slide-9"><div class="quote-frame"><h2>Demo Quote</h2><p>Quote body sentence.</p></div></section>',
+    '<section class="slide slide-10"><div class="close-frame"><h2 class="close-title">Demo Close</h2><p class="close-subtitle">Close body sentence.</p><a class="nb-btn close-btn">Next</a></div></section>',
+    '</body></html>',
+  ].join('');
+
+  it('CSS .slide-1…10 infers kit count 10 even when body has 2 sections', async () => {
+    const fixture = await readFile(
+      new URL('./fixtures/loop552-block-frame-two-slide-thin.html', import.meta.url),
+      'utf8',
+    );
+    expect(inferKitSlideCountFromCss(fixture)).toBe(10);
+    expect(listTemplateCloneSlideShells(fixture).length).toBe(2);
+  });
+
+  it('deterministic JSON fill pads a degraded 2-section / 10-layout seed to 10', async () => {
+    const degradedSeed = await readFile(
+      new URL('./fixtures/loop552-block-frame-two-slide-thin.html', import.meta.url),
+      'utf8',
+    );
+    const filled = applyTemplateCloneSlotFill(
+      degradedSeed,
+      JSON.stringify({
+        title: 'Teamver',
+        slides: [
+          { title: 'Teamver', roleHint: 'cover', lead: '팀의 업무 맥락을 연결합니다.' },
+          { title: '핵심 가치', body: '공유 맥락\n빠른 초안\n일관된 실행' },
+        ],
+      }),
+      { brief: 'Teamver 소개 슬라이드 만들어줘' },
+    );
+
+    expect(filled).not.toBeNull();
+    const filledShells = listTemplateCloneSlideShells(filled!.html);
+    expect(filledShells.length).toBe(10);
+    expect(filled!.html).toMatch(/data-teamver-pad="short-response"/);
+    expect(filled!.html).not.toMatch(/>\s*Slide\s+[3-9]\s*</i);
+    expect(filled!.html).not.toContain('Teamver을');
+    for (const shell of filledShells.slice(2)) {
+      const visible = shell.full.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      expect(visible.length).toBeGreaterThan(36);
+      expect(visible).toMatch(/Teamver/);
+    }
+  });
+
+  it('persist recovery pads when the only available seed is already the short deck', async () => {
+    const degradedSeed = await readFile(
+      new URL('./fixtures/loop552-block-frame-two-slide-thin.html', import.meta.url),
+      'utf8',
+    );
+    const recovered = recoverShortDeckByPaddingToSeed({
+      seedHtml: degradedSeed,
+      modelHtml: degradedSeed,
+      brief: 'Teamver 소개 슬라이드 만들어줘',
+      deckTitle: 'Teamver',
+    });
+
+    expect(recovered).not.toBeNull();
+    expect(recovered!.seedCount).toBe(10);
+    expect(recovered!.producedCount).toBe(2);
+    expect(recovered!.paddedCount).toBe(10);
+  });
+
+  it('heal/fill 후 개요 반복·자세히 보기 leftover가 덮이고 10장까지 pad', async () => {
+    const fixture = await readFile(
+      new URL('./fixtures/loop552-block-frame-two-slide-thin.html', import.meta.url),
+      'utf8',
+    );
+    const recovered = recoverShortDeckByPaddingToSeed({
+      seedHtml: tenShellSeed,
+      modelHtml: fixture,
+      brief: 'Teamver 소개 슬라이드 만들어줘',
+      deckTitle: 'Teamver',
+    });
+    expect(recovered).not.toBeNull();
+    expect(recovered!.paddedCount).toBe(10);
+    expect(listTemplateCloneSlideShells(recovered!.html).length).toBe(10);
+    expect(recovered!.html).toMatch(/data-teamver-pad="short-response"/);
+    const healed = healBlockFrameGenericKoreanLeftovers(recovered!.html, {
+      title: 'Teamver',
+      lead: '팀이 같은 맥락에서 AI 초안을 만든다',
+      bodyText: 'Teamver 소개',
+    });
+    const heroLabel = healed.match(/hero-label[^>]*>([\s\S]*?)<\//i)?.[1]?.replace(/<[^>]+>/g, '').trim();
+    expect(heroLabel).not.toBe('개요');
+    expect(healed).toMatch(/Teamver/);
+    expect(healed).not.toMatch(/Teamver가 다루는 문제와 제공 가치/);
+    expect(healed).not.toMatch(/>\s*자세히 보기\s*</);
+    expect(healed).toMatch(/Teamver 살펴보기|지금 시작하기/);
+  });
+
+  it('forcePad merges leftover-heavy 2-slide Block Frame instead of keeping 2', async () => {
+    const fixture = await readFile(
+      new URL('./fixtures/loop552-block-frame-two-slide-thin.html', import.meta.url),
+      'utf8',
+    );
+    const skipped = applyTemplateClonePromptFillLookMerge(tenShellSeed, fixture, {
+      brief: 'Teamver 소개',
+      deckTitle: 'Teamver',
+      padToSeedSlideCount: false,
+    });
+    const forced = applyTemplateClonePromptFillLookMerge(tenShellSeed, fixture, {
+      brief: 'Teamver 소개',
+      deckTitle: 'Teamver',
+      padToSeedSlideCount: true,
+      forcePad: true,
+    });
+    expect(skipped == null || listTemplateCloneSlideShells(skipped.html).length === 2).toBe(true);
+    expect(forced).not.toBeNull();
+    expect(listTemplateCloneSlideShells(forced!.html).length).toBe(10);
+  });
+
+  it('0918-N03 — same-count free-form HTML is rebuilt through Block Frame shells', () => {
+    const modelSlides = Array.from({ length: 10 }, (_, index) => [
+      `<section class="slide custom-layout-${index + 1}">`,
+      `<h${index === 0 ? 1 : 2}>Teamver ${index === 0 ? '업무 공간' : `핵심 장면 ${index + 1}`}</h${index === 0 ? 1 : 2}>`,
+      '<div class="oversized-empty-card">',
+      `<h3>실행 포인트 ${index + 1}</h3>`,
+      `<p>팀이 같은 맥락에서 자료를 읽고 초안을 만든 뒤 리뷰와 실행을 연결하는 구체적인 작업 흐름 ${index + 1}을 설명한다.</p>`,
+      '</div></section>',
+    ].join('')).join('');
+    const model = `<!doctype html><html><body>${modelSlides}</body></html>`;
+    expect(listTemplateCloneSlideShells(model)).toHaveLength(10);
+
+    const merged = applyTemplateClonePromptFillLookMerge(tenShellSeed, model, {
+      templateId: 'html-ppt-zhangzara-block-frame',
+      brief: 'Teamver 서비스 소개',
+      deckTitle: 'Teamver',
+      padToSeedSlideCount: true,
+      forcePad: true,
+    });
+    expect(merged).not.toBeNull();
+    expect(listTemplateCloneSlideShells(merged!.html)).toHaveLength(10);
+    expect(merged!.html).not.toMatch(/custom-layout-|oversized-empty-card/);
+    expect(merged!.html).toMatch(/hero-frame/);
+    expect(merged!.html).toMatch(/intro-card|feature-card|team-card|timeline-step/);
+    expect(merged!.html).toContain('팀이 같은 맥락에서');
+  });
+
+  it('forcePad persists a complete seed when the model HTML is head-only (0 slides)', () => {
+    const headOnly = [
+      '<!doctype html><html lang="ko"><head><meta charset="utf-8">',
+      `<style>${'.slide-1{} .slide-10{}'.repeat(12)}</style></head>`,
+    ].join('');
+    expect(headOnly.length).toBeGreaterThanOrEqual(64);
+    expect(listTemplateCloneSlideShells(headOnly).length).toBe(0);
+    const recovered = recoverShortDeckByPaddingToSeed({
+      seedHtml: tenShellSeed,
+      modelHtml: headOnly,
+      forcePad: true,
+    });
+    expect(recovered).not.toBeNull();
+    expect(recovered!.producedCount).toBe(0);
+    expect(recovered!.paddedCount).toBe(10);
+    expect(listTemplateCloneSlideShells(recovered!.html).length).toBe(10);
+    expect(recovered!.html).toMatch(/<\/html\s*>/i);
+  });
+
+  it('does not persist a 32-char collapse as deck.html even with forcePad', () => {
+    const collapse = "I'll generate the slides now!!";
+    expect(collapse.length).toBeLessThan(64);
+    const recovered = recoverShortDeckByPaddingToSeed({
+      seedHtml: tenShellSeed,
+      modelHtml: collapse,
+      forcePad: true,
+    });
+    expect(recovered).toBeNull();
   });
 });

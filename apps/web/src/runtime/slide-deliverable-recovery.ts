@@ -27,18 +27,25 @@ import {
 import {
   SLIDE_COUNT_REQUEST_MAX,
   extractRequestedSlideCountSpecFromMessages,
+  isSlideCountTopUpPrompt,
+  isSparseContentTopUpPrompt,
+  isThinPriorFullRewritePrompt,
 } from '../teamver/slideCountTopUp';
 import { findPrecedingUserMessage } from './auto-continue-comment-scope';
 import {
+  extractTemplateCloneUserFacingRequest,
   historyHasTemplateCloneContentFill,
+  shouldExplainGenericBriefOnLookSeedFallback,
   templateCloneFillModeFromUserMessage,
 } from '../teamver/templateCloneContentFill';
+import { observeTemplateCloneLookSeedFallback } from '../teamver/templateCloneLookSeedFallbackQuality';
 import {
+  appendErrorStatusEvent,
   appendWarningStatusEvent,
   clearDurableDeliverableErrorsAfterRecovery,
 } from './chat-events';
 import { CLONE_LOOK_SEED_FALLBACK_STATUS_CODE } from './deliverable-lifecycle-codes';
-import { formatCloneLookSeedFallbackNotice, isCloneSlotFillRepairInProgressNotice } from '../teamver/projectErrorMessages';
+import { formatCloneLookSeedFallbackErrorDetail, formatCloneLookSeedFallbackNotice, isCloneSlotFillRepairInProgressNotice } from '../teamver/projectErrorMessages';
 
 /**
  * Status-event code for the "auto-continue cap exhausted and we synthesized a
@@ -504,8 +511,8 @@ export async function attemptEmergencySlideDeckRecovery(options: {
  *   - marked with a distinct `OUTLINE_DECK_FALLBACK_STATUS_CODE`
  *   - accompanied by an "임시 개요만 저장" warning notice so the user
  *     immediately knows to hit "다시 시도"
- *   - still resumable via the existing failed-run retry affordance if we
- *     lift it back to `runStatus: 'failed'` at the caller site
+ *   - 루프528 — caller marks `runStatus: 'failed'` + matching error event so
+ *     ChatPane's Retry dock renders (same pattern as LOOK seed / 루프525)
  *
  * Returns `{ recovered: false }` when the conversation has no usable
  * outline material — in that case the caller should still surface the
@@ -617,6 +624,15 @@ export function isCloneContentFillReloadRecoveryCandidate(
   incompleteAssistant: ChatMessage,
 ): boolean {
   const precedingUser = findPrecedingUserMessage(messages, incompleteAssistant.id);
+  const precedingContent = precedingUser?.content;
+  // 루프521 — Hidden automation after a Clone fill must not promote LOOK seed.
+  if (
+    isSparseContentTopUpPrompt(precedingContent)
+    || isSlideCountTopUpPrompt(precedingContent)
+    || isThinPriorFullRewritePrompt(precedingContent)
+  ) {
+    return false;
+  }
   return templateCloneFillModeFromUserMessage(precedingUser) === 'json'
     || historyHasTemplateCloneContentFill(messages);
 }
@@ -624,15 +640,49 @@ export function isCloneContentFillReloadRecoveryCandidate(
 export function buildCloneLookSeedReloadRecoveredAssistant(
   incompleteAssistant: ChatMessage,
   producedFiles: readonly ProjectFile[],
+  options?: { reason?: string | null; messages?: readonly ChatMessage[] },
 ): ChatMessage {
-  return buildCloneLookSeedRecoveredAssistant(incompleteAssistant, producedFiles);
+  return buildCloneLookSeedRecoveredAssistant(incompleteAssistant, producedFiles, options);
+}
+
+function lookSeedFallbackGenericBriefFromMessages(
+  messages: readonly ChatMessage[] | undefined,
+  assistant: ChatMessage,
+): boolean {
+  if (!messages?.length) return false;
+  const precedingUser = findPrecedingUserMessage(messages, assistant.id);
+  return shouldExplainGenericBriefOnLookSeedFallback({
+    brief: extractTemplateCloneUserFacingRequest({
+      userInstruction: precedingUser?.content,
+      pendingPrompt: precedingUser?.content,
+    }),
+    userContent: precedingUser?.content,
+    attachments: precedingUser?.attachments,
+  });
 }
 
 function buildCloneLookSeedRecoveredAssistant(
   assistant: ChatMessage,
   producedFiles: readonly ProjectFile[],
+  options?: { reason?: string | null; messages?: readonly ChatMessage[] },
 ): ChatMessage {
-  const lookSeedNotice = formatCloneLookSeedFallbackNotice();
+  const genericBrief = lookSeedFallbackGenericBriefFromMessages(options?.messages, assistant);
+  const precedingUser = options?.messages
+    ? findPrecedingUserMessage(options.messages, assistant.id)
+    : null;
+  const fillMode = templateCloneFillModeFromUserMessage(precedingUser);
+  observeTemplateCloneLookSeedFallback({
+    source: 'reload',
+    reason: options?.reason,
+    genericBrief,
+    fillMode,
+  });
+  const lookSeedNotice = formatCloneLookSeedFallbackNotice({ genericBrief });
+  const lookSeedErrorDetail = formatCloneLookSeedFallbackErrorDetail(options?.reason, {
+    genericBrief,
+    source: 'reload',
+    fillMode,
+  });
   let produced = [...producedFiles];
   if (!produced.some((file) => file.name === 'deck.html')) {
     produced = [
@@ -654,15 +704,40 @@ function buildCloneLookSeedRecoveredAssistant(
         && isCloneSlotFillRepairInProgressNotice(event.detail)),
     ),
   };
+  const withWarning = appendWarningStatusEvent(
+    clearDurableDeliverableErrorsAfterRecovery(withoutRepairNotice),
+    lookSeedNotice,
+    CLONE_LOOK_SEED_FALLBACK_STATUS_CODE,
+  );
+  // 루프525 — Emit a matching `status:error` event so ChatPane's
+  // `failedRunErrorEvent` picks up the LOOK seed code and renders the
+  // Retry dock via `resolveRunFailureUi(CLONE_LOOK_SEED_FALLBACK_STATUS_CODE, ...)`
+  // (falls through to the non-AMR / non-Antigravity branch → primaryAction 'retry').
+  // Prior to 525 the row was `succeeded + resumable: true` under the mistaken
+  // assumption that `resumable` alone enabled Retry — but ChatPane's Retry dock
+  // requires `retryAssistant.runStatus === 'failed'`, so the banner copy
+  // ("우측 '다시 시도' 버튼") was pointing at a button that never rendered.
+  // `hasPersistedRunErrorEvent` already excludes this code, so reload does not
+  // flip legacy succeeded rows to failed; new rows are already failed.
+  // 루프533 — Error detail carries encodePersistedRunErrorDetail so
+  // copy-diagnostics is not stuck on reason=unavailable.
+  const withError = appendErrorStatusEvent(
+    withWarning,
+    lookSeedErrorDetail,
+    CLONE_LOOK_SEED_FALLBACK_STATUS_CODE,
+  );
   return {
-    ...appendWarningStatusEvent(
-      clearDurableDeliverableErrorsAfterRecovery(withoutRepairNotice),
-      lookSeedNotice,
-      CLONE_LOOK_SEED_FALLBACK_STATUS_CODE,
-    ),
+    ...withError,
     producedFiles: produced,
-    runStatus: 'succeeded',
-    resumable: true,
+    // 루프525 — LOOK seed is a persisted failure (fill did not complete),
+    // not a salvage completion. Mark failed so ChatPane's Retry dock matches
+    // the banner copy. `resumable: false` because MiniMax BYOK has no daemon
+    // session to resume — Retry re-plays the original brief through
+    // `resolveRetryTarget` (requires failed) → `runTemplateCloneContentFillRef`
+    // becomes true → loop524 A1 `allowReplaceSeedOrLeftover` gate keeps the
+    // subsequent compact fill from tripping the byte / slide-count guards.
+    runStatus: 'failed',
+    resumable: false,
     endedAt: assistant.endedAt ?? Date.now(),
   };
 }
@@ -724,6 +799,7 @@ export async function attemptCloneSlotFillStuckRepairNoticeRecovery(options: {
     updatedAssistant: buildCloneLookSeedRecoveredAssistant(
       options.stuckAssistant,
       options.producedFiles,
+      { messages: options.messages },
     ),
   };
 }
@@ -757,6 +833,7 @@ export async function attemptCloneContentFillLookSeedReloadRecovery(options: {
     updatedAssistant: buildCloneLookSeedReloadRecoveredAssistant(
       options.incompleteAssistant,
       options.producedFiles,
+      { messages: options.messages },
     ),
   };
 }

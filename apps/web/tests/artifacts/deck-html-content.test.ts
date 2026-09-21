@@ -18,7 +18,9 @@ import {
   deckLooksLikeUnfilledCatalogExample,
   deckLooksLikeRepeatedUserBriefParrot,
   deckSlideHeadingsLookLikeFailedGenerate,
+  looksLikeHeadOpenedDeckPreamble,
   shouldAbortStreamForHeadOnlyKitDump,
+  stripAbandonedHeadPreambleFromStreamedText,
   shouldAbortStreamForMotifSvgDump,
   shouldDiscardPartialHtmlForMotifSvgDump,
   stripAbandonedHeadKitDumpFromStreamedText,
@@ -451,6 +453,49 @@ describe("deck-html-content", () => {
     expect(stripped).toContain("<!-- motif svg dump abandoned -->");
     expect(stripped).not.toContain("<path d=");
     expect(stripped).not.toMatch(/<svg\s/);
+  });
+
+  it("detects the MiniMax first-turn head preamble hang (loop540/541)", () => {
+    const stub = [
+      "Teamver 서비스 소개 슬라이드를 C Cobalt Grid 템플릿 비주얼로 작성 중입니다.",
+      '<artifact type="deck" identifier="deck">',
+      "<!doctype html>",
+      '<html lang="ko">',
+      "<head>",
+    ].join("\n");
+    const htmlOnly = stub.replace(/\n<head>$/, "");
+    expect(looksLikeHeadOpenedDeckPreamble(stub)).toBe(true);
+    expect(looksLikeHeadOpenedDeckPreamble(htmlOnly)).toBe(true);
+    expect(
+      looksLikeHeadOpenedDeckPreamble(
+        `${stub}</head><body><section class="slide"><h1>표지</h1></section></body></html>`,
+      ),
+    ).toBe(false);
+    expect(
+      looksLikeHeadOpenedDeckPreamble(
+        '<artifact type="deck"><!doctype html><html lang="ko"><body><section class="slide">',
+      ),
+    ).toBe(false);
+    expect(
+      looksLikeHeadOpenedDeckPreamble(
+        '<artifact type="deck"><body><section class="slide"><h1>표지</h1></section>',
+      ),
+    ).toBe(false);
+    expect(
+      looksLikeHeadOpenedDeckPreamble(
+        '<artifact type="deck"><!doctype html><html lang="ko"><style>.slide{}</style>',
+      ),
+    ).toBe(true);
+    const stripped = stripAbandonedHeadPreambleFromStreamedText(stub);
+    expect(stripped).toContain("<!-- head kit dump abandoned -->");
+    expect(stripped).toContain('<artifact type="deck" identifier="deck">');
+    expect(stripped).not.toContain("<head>");
+    expect(stripped).not.toContain("<!doctype");
+    expect(stripped).not.toContain("<html");
+    const strippedHtmlOnly = stripAbandonedHeadPreambleFromStreamedText(htmlOnly);
+    expect(strippedHtmlOnly).not.toContain("<!doctype");
+    expect(strippedHtmlOnly).not.toContain("<html");
+    expect(stripAbandonedHeadPreambleFromStreamedText(stripped)).not.toContain("<head>");
   });
 
   it("aborts fill streams that dump a long head/style kit with no titled slide", () => {

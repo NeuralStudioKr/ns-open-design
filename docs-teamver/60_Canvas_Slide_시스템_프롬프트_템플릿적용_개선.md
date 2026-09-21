@@ -32,179 +32,136 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **명시 5장+ 요청에서는 저장하지 않는다.** 8–10장 요청의 1장/4장 Template Clone fill은 `deck.html` 덮어쓰기 전에 incomplete로 막고 기존 덱을 보존한다. 6장 이상 첫 fill만 저장 후 top-up 가능하다. 사용자가 1장을 명시하거나 요청 장수가 작을 때만 1장 저장을 허용한다 |
 
-### 1.37 2026-09-21 — 근본 원인: sparse outline이 specialty shell로 매핑되어 발생하는 “빈 격자 + 데코 slide-flow 누수” (루프514)
+### 1.44 2026-09-21 — Capsule 한글 덱 chrome / overflow / sparse-role (0921-N03 · 루프563)
 
-§1.36(루프513) 이후에도 사용자는 재보고했다: “결과물 퀄리티가 더 안좋아졌다. 요소 css도 제대로 안먹히고, 전체적으로 배치, 정렬, 본문 밀도 및 품질이 적절치 않다. 어디서 문제가 되는 것인가? 근본적인 문제를 파악하여 해결이 필요하다.” 첨부 스크린샷은 Capsule 커버 슬라이드였는데, 좌측에 slide-2 의 `.orbit-pill`(Research/Ideation/Prototype/Iterate/Launch/Scale), 우상단에 다른 슬라이드의 `.orbit-pill`(DESIGN), 하단에 slide-10 의 `.c-pill`(FUTURE/NEXT), 좌측 최외곽에 slide-3 의 `.card-icon`(II/III) 이 “다른 슬라이드의 데코가 커버 슬라이드에 겹쳐 보이는” 상태였다.
+0918-N05가 Capsule kit key + 역할 pack + leftover healer를 넣었지만, 커버 데코 pill 누수와 title-only specialty 빈 격자는 남았다. 브랜치 내부 loop510–514는 staging 루프510–514와 번호가 겹치므로 **루프563**으로 기록한다.
 
-**근본 원인 두 갈래로 갈라진다.**
+- [x] `scrubCapsuleLeftoverDecorativeChrome` — Research/Ideation 등 데코 pill blank (역할 pack catalog RE에 없음)
+- [x] `scrubCapsuleLeftoverSpecialtySlotCopy` — chart/timeline/quote/stat/closing 영문 데모 blank
+- [x] `fillCapsuleEmptyTitlePill` + outline-aware semantic refill (blockquote / attribution / closing / header-pill). 인덱스 placeholder 금지
+- [x] `hostIsCapsuleFixedDensity` — 고정밀도 그리드 peer 보존. 일반 `.timeline` trim 계약은 유지
+- [x] sparse title-only 지표/타임라인/팀/프로세스 → `cards` demote. items[] 있으면 specialty 유지
+- [x] `CAPSULE_LAYOUT_FIX_CSS` `overflow:hidden!important` — LOOK_NEUTRALIZE 클립 덮기. Daisy/Graphify hang 불변
+- [x] `CAPSULE_SLOT_MAP` chart/timeline/stats/tier/diagram host+peer
+- [x] 0918-N05 `fillCapsuleKitSlide` / `healCapsuleLeftoverCatalogCopy` / persist·pad·continue **불변**
 
-1. **정적 원인 — sparse title-only outline 이 specialty shell 로 매핑된다.**
-  `inferTemplateCloneContentRole` 이 “측정해야 할 지표 / 수치 요약” 같은 title 만 있는 sparse outline 을 **KPI 토픽 매칭**(`/\b지표|수치|통계|차트/`) 만 보고 `stat` 롤로 분류했다. 그러면 picker 가 slide-4(chart-container 5× chart-row)나 slide-7(stats-grid 4× stat-pill) 로 라우팅한다. outline 이 items[] 를 안 주면 `enrichSparseSlideForShell` 도 “stat/quote/closing 셸에는 prose synth 를 쓰지 않는다” 라는 이전 트레이드오프로 skip 했고, 결과적으로 **1 개의 label + 3–4 개의 빈 stat-pill/chart-row** 가 렌더된다. 이것이 “배치·정렬·본문 밀도 부적절” 이슈의 정체.
+### 1.43 2026-09-16 — Grove leftover catalog healer
 
-2. **동적 원인 — LOOK_NEUTRALIZE 가 `.slide{overflow:visible!important}` 를 강제해 Capsule 의 원본 `overflow:hidden` 을 덮는다.**
-  LOOK_NEUTRALIZE_CSS(`packages/contracts/src/html/deck-template-look-css.ts`)는 Daisy/Graphify 계열의 Motif hang 을 살리기 위해 `.slide` 에 `overflow:visible !important` 를 준다. Capsule 은 반대로 각 슬라이드의 `.orbit-pill`/`.c-pill`/`.f-pill`/`.card-icon` 을 슬라이드 안쪽 0–100% 좌표에 absolute 로 놓고, 원본 CSS 의 `.slide{overflow:hidden}` 으로 클립하는 설계다. 프리뷰의 `#od-stacked-deck-stage > .slide{display:none}` 이 미적용되는 경로(export 플래튼, standalone HTML 다운로드, 특정 프리뷰 타이밍) 에서 각 슬라이드가 1080px 로 세로 스택되고, 클립을 잃은 데코가 인접 슬라이드에 “줄줄이 흘러들어가는” 게 사용자 스크린샷 그대로다.
+0916-N01 Round 1 (a). Broadside는 persist leftover 힐러가 있지만 Grove `slide--*` 가족은 전용 경로가 없어 example.html 데모 문장·`73%`/`4.8×`/`#1` grove-stat이 남는다.
 
-**구현.** `packages/contracts/src/template-clone-fill.ts`
+- [x] `healGroveLeftoverCatalogCopy` — leftover 슬라이드만 채움 (루프538)
+- [x] `grove-stat-val` 데모 KPI만 ordinal. `12`/`99` seed 유지. 숫자 발명 없음
+- fill 기본값 / LOOK merge / synth preset은 변경하지 않음
+- Mat / Signal / 나머지 킷 leftover는 후속
 
-- **[정적 A] `inferTemplateCloneContentRole` sparse guard 추가.** `items.length < 2 && body.length < 60` 인 sparse outline 이 stat / timeline / team / process 토픽 매칭에 걸리면 `cards` 로 downgrade. items[] 가 있는 outline 은 그대로 stat/timeline/team/process 를 유지 (기존 회귀 없음). 이제 “측정해야 할 지표(title-only)” 는 cards → 카드 그리드 셸로 라우팅되고, `enrichSparseSlideForShell` 이 title/brief 기반 prose synth items 로 셸을 채운다.
-- **[정적 B] `enrichSparseSlideForShell` 이 stat / timeline / process / team 셸도 enrich 한다.** 이전엔 `shellRole === 'stat'` 이면 return slide 로 빠져나갔지만, 실제 사용 결과 “빈 격자” 가 “불필요한 synth” 보다 훨씬 나쁘게 읽혔다. cover / closing / quote 만 skip 하고 나머지 peer≥2 셸은 synth items 로 채운다. items[] 는 slot-fill 이 `.stat-label`/`.chart-label`/`.step-label`/`.tier-name` 로 자동 라우팅하고, 숫자 슬롯(`.stat-number`/`.chart-value`) 은 여전히 비운다 — 없는 지표를 지어내지 않는다.
-- **[동적] `CAPSULE_LAYOUT_FIX_CSS` 에 `overflow:hidden!important` 추가.** `html[data-od-capsule-layout-fix] .slide` 에 붙여서, LOOK_NEUTRALIZE 의 `.slide{overflow:visible!important}` 를 이긴다 (`html[…] .slide` = 0,1,1,0 > `.slide` = 0,0,1,0). Capsule 데크에만 적용되므로 Daisy/Graphify 계열의 hang 은 그대로.
+### 1.42 2026-09-15 — LOOK seed 배너 observe-only
 
-**검증.** `packages/contracts/tests/template-clone-fill.test.ts`
+N09 Option D. prompt 기본 복구 후 배너 빈도를 셀 수 있게 한다. 알림 threshold는 데이터 후.
 
-- 기존 end-to-end 테스트 갱신 — 지표/수치 outline 에 items[] 를 붙여서 stats-grid / chart-container 셸이 실제로 선택되도록 하고, `overflow:hidden!important` 마커가 head 에 삽입되었는지 검증.
-- 신규 케이스 “loop514 — sparse title-only 지표/수치 outlines demote to cards role instead of empty stats-grid”: `inferTemplateCloneContentRole({ title: '측정해야 할 지표', body: '실사용 지표.' }) === 'cards'`, items[] 를 붙이면 `stat` 그대로 유지.
-- 전체: `pnpm --filter @open-design/contracts test` → **3185 pass / 1 skip / 0 fail**.
+- [x] `buildTemplateCloneLookSeedFallbackObserve` + `[teamver] look-seed-fallback` (루프537)
+- [x] persisted diagnostic extras (`genericBrief` / `source` / `fillMode`)
+- fill/heal/LOOK merge HTML은 변경하지 않음
+- 배너 카피 · Retry dock은 변경하지 않음
+- [ ] 서버 알림 threshold
 
-**시각 회귀.** 재현 스크립트(`buildTemplateClonedDeckHtml` + FE 프리뷰 파이프라인 시뮬레이터)로 커버 슬라이드를 다시 렌더한 결과, slide-2/3/10 의 데코가 slide-1 로 흘러들어가던 원본 사용자 스크린샷과 달리 각 슬라이드의 데코 pill 이 자기 슬라이드 안쪽에 클립되어 유지된다. 커버 슬라이드는 “Teamver 소개” + “소개” title-pill + 자기 슬라이드의 empty deco-pill 만 렌더하고, 인접 슬라이드의 chrome 이 전혀 보이지 않는다.
+### 1.41 2026-09-15 — LOOK seed 배너에 generic brief만 주제 안내
 
-**남은 갭.** Diagram-container(slide-8/9) 의 `.diagram-node` 는 아직 `CAPSULE_SLOT_MAP.peerClasses` 에 없어서 `enrichSparseSlideForShell` 의 peer 카운트 인식이 0. 후속 루프에서 slot map 을 확장하면 outline items[] 도 diagram-node 로 라우팅된다.
+N09 Option A leftover. Home empty-brief defer는 N15. MiniMax/JSON이 raw LOOK seed로 떨어질 때 주제가 없으면 배너에 한 문장을 더 붙인다.
 
-### 1.36 2026-09-21 — Capsule refill: outline 기반 semantic slot 채움 + machine-tag placeholder 제거 (루프513)
+- [x] `formatCloneLookSeedFallbackNotice({ genericBrief })` — 상황별 N09 문장 (루프536)
+- [x] Canvas/Drive · topical brief는 기존 「다시 시도」 카피 유지
+- fill/heal/LOOK merge HTML은 변경하지 않음
+- Retry dock 동작은 변경하지 않음
 
-§1.35(루프512) 이후 다시 확인한 스크린샷에서 남은 결함:
+### 1.40 2026-09-15 — deterministic persist 후 sparse top-up만 연결
 
-- 슬라이드 4/5/7 처럼 outline body 가 짧고 items 가 없는 경우 stat-label/chart-label/tier-name/pill-filled/diagram-node 슬롯이 `항목 2 / 지표 3 / 옵션 4 / 단계 2` 같은 **명백한 machine-generated placeholder** 로 채워져 “가짜 데이터” 인상을 남긴다.
-- 슬라이드 9(요금제) 처럼 outline 이 statement-box shell 로 매핑되면 `<h1/2/3>` 슬롯이 없어 refill 이 rendered title 을 못 뽑고, blockquote/attribution 이 **deck title(“Teamver 소개”)** 로 폴백되어 다른 슬라이드와 완전히 동일한 인용문이 반복된다.
-- 슬라이드 6(도입 단계) 의 step-desc 가 `습관로 시작한다` 처럼 **한국어 조사 오류** 를 담는다 (자동 접미사 “로 시작한다” 가 명사 어미와 무관하게 붙음).
+loop532가 fill 기본을 deterministic으로 바꿔 MiniMax 2차 턴을 없앴다. 그 결과 MiniMax persist 뒤에만 돌던 persist-quality observe와 sparse-repair가 create landing에서 빠졌다. 병렬 loop534 (`0914-N20`) 는 Block-frame chart-svg 보존.
 
-**구현.** `packages/contracts/src/template-clone-fill.ts`
+- [x] `templateCloneSparseCheckPending` — Home / Canvas / Drive deterministic 성공 후 한 번만 검사 (루프535)
+- [x] persist-quality `phase: deterministic-fill` observe-only
+- [x] evidence가 있을 때만 기존 sparse-repair (soft-improvement). thin rewrite / 장수 APPEND는 연결하지 않음
+- fill/heal/LOOK merge HTML은 변경하지 않음
+- [ ] staging MiniMax live bake (Daisy / Block Frame / Capsule)
 
-- `refillCapsuleEmptyStructuredSlots` 시그니처에 `outlineSlides?: ReadonlyArray<{ title, body }>` 옵션 추가. `buildTemplateClonedDeckHtml` 이 workingSlides 를 문서 순서 그대로 전달해서, 슬라이드-i 의 refill 이 **rendered HTML 대신 원본 outline** 을 볼 수 있게 했다.
-- `refillCapsuleEmptyStructuredSlotsInSlide(ctx: { deckTitle, outlineTitle, outlineBody })` — semantic 슬롯만 refill:
-  - `<blockquote>` → outline body → outline title → deck title (statement-box 슬라이드에도 항상 outline-scoped 문장이 남는다)
-  - `.attribution` → outline title 이 있으면 `"{deckTitle} · {outlineTitle}"`, 없으면 deck title (다른 슬라이드와 동일한 attribution 이 반복되지 않는다)
-  - `.closing-pill` / `.closing-sub` → outline title / body (deck title fallback 은 최후수단)
-  - `.header-pill` → kicker 또는 outline title 요약
-- **content 슬롯 인덱스 placeholder 완전 제거** — `.chart-label`/`.chart-value`/`.step-desc`/`.stat-label`/`.stat-number`/`.tier-name`/`.tier-price`/`.pill.pill-filled`/`.diagram-node` 는 outline 이 데이터를 주지 않으면 **비운 채 남긴다**. loop512 가 유지한 peer shell (borders/color/chip) 이 그 자체로 시각 리듬을 담당하고, 인덱스 라벨 없이 렌더되는 편이 “가짜 라벨” 보다 훨씬 얌전하다. 이로써 `습관로 시작한다` 같은 조사 오류 케이스도 자동 소멸.
-- `deckLang === 'auto'` 감지를 확장 — src HTML 자체에 Hangul 이 없더라도 `deckTitle` 또는 `outlineSlides` 에 한글이 있으면 “Korean deck” 로 판정한다. Capsule statement-box 셸은 h1/h2 슬롯이 비어 있어서 src 만 보면 한글이 없어 refill 이 조기 종료되던 회귀를 막는다.
-- 미사용 헬퍼(`fillEmptyIndexedSlots` / `fillEmptyPillFilled` / `fillEmptyStepDescriptions` / `extractStepLabelsFromSlide`) 제거.
+### 1.39 2026-09-15 — 선택 템플릿 핀이 persist/이어서 쓰기에서 다시 빠지지 않게
 
-**검증.** `packages/contracts/tests/template-clone-fill.test.ts`
+loop527 이후 Retry는 원본 user 핀을 붙이지만, persist LOOK와 LOOK seed는 `runSelectedDeckTemplateIdRef`가 런 종료 후 null이면 기본 템플릿으로 떨어졌다.
 
-- 기존 `refillCapsuleEmptyStructuredSlots` 스위트를 인덱스 placeholder 제거에 맞춰 정정 (예: `expect(out).not.toContain('항목 2')`).
-- 신규 케이스:
-  - statement-box shell 에 `outlineSlides` 를 넘기면 blockquote 가 outline body 로, attribution 이 `"{deckTitle} · {outlineTitle}"` 로 채워진다.
-  - 여러 슬라이드가 있을 때 각 슬라이드가 자기 순서의 outline 을 받는다 (attribution 이 슬라이드별로 다르다).
-  - `outlineSlides` 를 넘기지 않아도 (backward compat) 예전 동작으로 폴백한다.
-- 전체: `pnpm --filter @open-design/contracts test` → 3184 pass / 1 skip / 0 fail.
+- [x] `resolveDurableDeckTemplatePin` — turn / run ref / project / history / artifact 한 경로 (루프529)
+- [x] 복구 핀을 `project.metadata`와 `deck.html.artifact.json`에 다시 씀
+- [x] Retry / Resume / auto-continue meta에 동일 핀
+- [x] `example-simple-deck`은 `selectedDeckTemplateMetadata`에서도 시각 핀이 아님
+- fill/heal/LOOK merge HTML은 변경하지 않음
 
-**남은 갭.** Shell picker 의 role 매칭(“요금제 → statement-box” 오매칭)은 여전히 유효한 이슈이지만, refill 이 outline 을 존중하도록 바뀌었으므로 “다른 슬라이드와 blockquote 가 똑같이 보이는” 최악의 회귀는 해소된다. 다음 루프에서 `pickTemplateShellsForContent` 를 role-aware 로 확장하는 것이 정공법.
+### 1.38 2026-09-14 — Retry에서 선택 템플릿이 기본값으로 바뀌는 문제
 
-### 1.35 2026-09-21 — Capsule 한글덱 근본 원인: 고정 밀도 peer trim + LOOK 중앙정렬 파괴 (루프512)
+증상: 1차 Clone fill 실패 후 「다시 시도」를 누르면 고른 Zhangzara 등 시각 템플릿이 사라지고 기본 슬라이드 템플릿이 적용된다.
 
-§1.34(루프511)이 specialty 슬롯의 영문 데모 카피를 지웠지만, 같은 날 사용자는 세 번째로 재보고했다: “결과물 퀄리티가 더 안좋아졌다. 요소 css도 제대로 안먹히고, 전체적으로 배치, 정렬, 본문 밀도 및 품질이 적절치 않다. 어디서 문제가 되는 것인가? 근본적인 문제를 파악하여 해결이 필요하다.”
+원인: `handleRetry`는 `{ retryOfAssistantId }`만 보낸다. 첫 턴은 confirm turn meta로 핀을 붙이지만 Retry에는 turn meta가 없고, `project.metadata`가 비어 있으면 compose/LOOK seed가 simple-deck으로 떨어진다.
 
-이번엔 **끝까지 근본 원인을 파고들기 위해** `buildTemplateClonedDeckHtml` 출력 HTML을 실제 프리뷰 파이프라인(`pinDeckSlidesToFixedCanvas` → `lockStackedDeckCanvasForPreview` → `injectStackedCanvasNeutralizeForLetterbox`)으로 흘려 `google-chrome --headless=new` 로 10장 전부를 1920×1080 스크린샷으로 잘라 시각적으로 확인했다. 세 개의 근본 원인이 드러났다.
+- [x] `mergeRetryDeckTemplateIntoSendMeta` — 원본 user `runContext`에서 explicit 시각 핀 복구 (루프527)
+- [x] 대화 history fallback — 컴포저 재입력에서도 마지막 explicit 핀 유지
+- [x] `example-simple-deck`은 시각 핀으로 승격하지 않음
+- fill/heal/LOOK merge HTML은 변경하지 않음
 
-**근본 원인 A — `fillAndTrimCardPeers` 가 Capsule의 고정 밀도 그리드를 잘라낸다.** `packages/contracts/src/template-clone-fill.ts`의 `rebuildHostWithPeers` 는 `keepCount = min(lines.length, peers.length)` 로 peer 수를 outline 수에 맞춰 자른다. `.cards-grid` 처럼 개수가 유연한 컨테이너에는 옳지만(“카드 수 = 내용 수”, 0901-N02-C6/C13), Capsule의 `stats-grid`(4× stat-pill), `chart-container`(4× chart-row), `tier-grid`(3× tier-card), `.timeline` + `.timeline-track`(4–5× timeline-step), `diagram-container`(4× diagram-node), `floating-pills`(6× f-pill) 은 **템플릿이 의도한 고정 시각 밀도**를 가진 레이아웃이다. sparse outline(1 title + 짧은 body, items 없음)이 들어오면 4-slot 그리드가 1-slot 으로 축소되어 화면의 3/4 가 텅 빈 letterbox 로 렌더된다.
+### 1.37 2026-09-14 — LOOK seed fallback 안내 오탐 차단
 
-**근본 원인 B — `LOOK_NEUTRALIZE_CSS` 가 `.slide-inner` 의 수직 중앙정렬을 파괴한다.** `packages/contracts/src/html/deck-template-look-css.ts`의 `LOOK_NEUTRALIZE_CSS` 는 IB 프리젠터 카드가 16:9 를 채우도록 `.slide .slide-inner { min-height: 100% !important; align-self: stretch !important; flex: 1 1 auto !important; }` 를 강제한다. Capsule 은 정반대의 구조 — 부모 `.slide-N { justify-content: center }` 가 작은 `.slide-inner` 를 수직 중앙에 놓는 설계 — 라서, `.slide-inner` 가 1080px 로 늘어나는 순간 부모의 `justify-content: center` 는 움직일 여지가 사라지고, `.slide-inner` 내부에는 `justify-content: center` 가 없어 자식이 flex-start 로 정렬된다. 결과적으로 **모든 Capsule 본문 슬라이드에서 콘텐츠가 상단에 몰리고 하단 절반이 blank letterbox** 가 되어, 사용자가 본 “배치·정렬·본문 밀도 부적절” 증상의 정체가 된다.
+증상: “슬라이드 채우기에 실패해 템플릿 초안(LOOK seed)을 유지했습니다” 안내가 생성 완료처럼 보이는 결과 뒤에도 노출됐다. raw LOOK seed만 열린 경우와, broken JSON을 brief 기반 synthesized outline으로 slot-fill해 topical deck을 만든 경우를 같은 `seed-fallback` 분기로 처리했기 때문이다.
 
-**근본 원인 C — refill 이 남은 slot 을 못 채운다.** §1.34 의 `refillCapsuleEmptyStructuredSlots` 는 A 가 slot 을 아예 지워버린 뒤에 실행되어 채울 대상이 없었다. `.diagram-node` 는 refill 대상에도 없었고, statement-box(slide-5) 셸은 `<h1/2/3>` 이 없어 title 추출이 실패해 blockquote 도 빈 채로 남았다.
+수정:
 
-**구현.** `packages/contracts/src/template-clone-fill.ts`
+- `decision.html`이 raw LOOK seed와 다르면 `templateCloneSlotFillFallback` 플래그를 세우지 않는다.
+- raw LOOK seed가 그대로 유지된 경우에만 LOOK seed fallback 안내를 표시한다.
+- `templateCloneSeedFallbackShouldWarn` unit으로 raw seed / topical synthesized fill / empty body 판정을 고정.
 
-- (A) `hostIsCapsuleFixedDensity(openTag, hostInnerSample)` 를 신설하고 `rebuildHostWithPeers` 에서 이 host 는 `keepCount = peers.length` 로 유지. Capsule 지문:
-  - `class` 에 `stats-grid` / `chart-container` / `tier-grid` / `diagram-container` / `floating-pills` / `deco-pills` / `deco-pills-closing`
-  - `.timeline` + 내부의 `.timeline-track` (Capsule 만이 갖는 수평 rail — 일반 `.timeline` + `.timeline-step` (kb/process 계열, C5/C6/C8) 은 여전히 line-count 로 자른다)
-- (B) `CAPSULE_LAYOUT_FIX_CSS` 와 `injectCapsuleLayoutFixIfNeeded(html)` 를 신설. Capsule 지문(`title-pill` + `deco-pill` + one-of `orbit-pill`/`f-pill`/`c-pill`) 이 있으면 `<html data-od-capsule-layout-fix="1">` 마커와 `<style data-od-capsule-layout-fix-css>` 를 주입해 다음 규칙으로 LOOK 을 이긴다:
-  ```css
-  html[data-od-capsule-layout-fix] .slide { padding-top: 0 !important; padding-bottom: 0 !important; }
-  html[data-od-capsule-layout-fix] .slide > .slide-inner {
-    justify-content: center !important;
-    align-content: center !important;
-  }
-  ```
-  Capsule 이 아닌 덱에는 no-op.
-- (C) `refillCapsuleEmptyStructuredSlotsInSlide` 를 확장:
-  - `extractSlideRefillTitle` 가 h1/h2/h3 를 못 찾으면 `.attribution` 텍스트로 fallback → slide-5(statement-box) 셸도 title 추출 가능.
-  - blockquote fallback 순서: slide body → slide title → deck title (마지막이 항상 채워짐).
-  - `.diagram-node` 를 refill 대상에 추가 → “`{title} · {n}`” 라벨 (slide-8 flow).
+### 1.34 2026-09-14 — Canvas→Slide = Home과 같은 host merge (loop515)
 
-**검증.** `packages/contracts/tests/template-clone-fill.test.ts` 에 `루프512 Capsule fixed-density peer preservation + vertical centering` 스위트를 추가 (16 tests):
+질문은 “Canvas→Slide는 다른 코드인가? 따로 조치가 필요한가?”였다. **제품 진입점(Canvas / Home / Drive)은 갈라져야 할 이유가 없다.** 갈라진 것은 fill *mode*다.
 
-- Peer 보존: `stats-grid`(4), `chart-container`(4), `tier-grid`(3), Capsule `.timeline` + `.timeline-track`(5), `diagram-container`(4), `floating-pills`(6) — outline 이 1 line 이어도 peer 개수가 유지된다.
-- Layout fix 주입: Capsule 지문이 있으면 `data-od-capsule-layout-fix` marker + CSS 가 head 에 삽입되고 non-Capsule 덱에는 삽입되지 않는다.
-- Refill: `.stat-label`/`.stat-number` 인덱스 채움, `.chart-label`/`.chart-value` 인덱스 채움, `.step-desc` 를 `.step-label` 로부터 파생, 빈 `<blockquote>` 를 deck title 로 fallback, `.diagram-node` 를 `{title} · {n}` 로 채움, idempotent, 영어 덱에는 no-op.
-- End-to-end: `buildTemplateClonedDeckHtml` 이 stat-pill ≥4 · chart-row ≥4 · diagram-node ≥4 로 밀도를 유지하고 layout-fix 마커도 함께 붙는다.
+| 경로 | 언제 | host `buildTemplateClonedDeckHtml` |
+|------|------|-------------------------------------|
+| JSON slot-fill | `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=json` | 예 (loop506–510 안전망) |
+| prompt-fill | **staging 기본** (`=prompt`) | loop515 이전에는 아니오 |
+| 기본 템플릿 (explicit 아님) | clone seed 없음 | 해당 없음 — 프롬프트만 |
 
-동시에 기존 `0901-N02-C5/C6/C8` 트림 계열 테스트(kb/process/timeline)가 여전히 초록임을 확인 — Capsule 판별을 `.timeline-track` 존재로 좁힌 덕분에 일반 timeline 은 그대로 잘린다. `pnpm --filter @open-design/contracts test -- template-clone-fill` = 3181 pass / 1 skip.
-
-**시각 회귀 확인.** 재현 스크립트로 Teamver 10-slide brief 를 실행한 뒤의 스크린샷 diff:
-- **커버(slide 1):** 소개 pill (title-pill fill, §1.33) + Teamver 소개 타이틀 + 데코 pill 산개 — 변화 없음.
-- **본문(slide 2/7):** 3장 pillar-card 가 슬라이드 중앙에 정렬 (이전엔 상단에 몰림). ✓
-- **stats(slide 4):** 01/02/03/04 4장 stat-pill (이전엔 “01”만 한 장) · 수직 중앙정렬. ✓
-- **chart(slide 5):** 5장 chart-row 가 각각 색상 다른 bar 로 채워짐 (이전엔 1장). ✓
-- **timeline(slide 3/6):** 5-node 타임라인 · 수평 rail 유지 · Korean step-label/step-desc. ✓
-- **statement-box(slide 9):** blockquote 가 deck title fallback 으로 채워짐 (이전엔 빈 `<blockquote></blockquote>` + 작은 attribution 만). ✓
-- **diagram-container(slide 10):** 4개 diagram-node 가 “지금 시작 · 1/2/3/4” 로 채워짐 (이전엔 4개 빈 rounded rect). ✓
-
-**남은 갭.** Shell picker 가 여전히 outline “요금제(요금제)” 를 slide-5(statement-box) 로 매칭하고 outline “팀 이야기(스토리)” 를 slide-2(orbit-pill split-visual) 로 매칭한다. 이는 semantic-role fit 문제로 별도 후속에서 다룰 예정 (Capsule shells 의 `data-role` 힌트 정의 + `pickTemplateShellsForContent` 의 role-aware 우선순위).
-
-### 1.34 2026-09-21 — Capsule 한글덱 specialty slot 영문 데모 카피 스크럽 (루프510 후속)
-
-§1.33 (루프510)이 Capsule 커버의 데코 pill + title-pill을 정상화했지만, 사용자는 같은 날 재보고했다: “결과물 퀄리티가 더 안좋아졌다. 요소 CSS도 제대로 안먹히고, 배치·정렬·본문 밀도·품질이 적절치 않다. 근본적인 문제를 파악하여 해결이 필요하다.”
-
-로컬 재현(`buildTemplateClonedDeckHtml` + FE 프리뷰 파이프라인 `injectStackedCanvasNeutralizeForLetterbox` 시뮬레이션 → `google-chrome --headless=new` 스크린샷)으로 실제 렌더를 확인한 결과, 루프510이 잡은 것은 커버의 데코 chrome뿐이었고 **본문 슬라이드는 여전히 영문 카탈로그 데모 카피가 그대로였다**:
-
-- 슬라이드-4 chart: `Market Reach 8.2M / Engagement 4.5M / Conversion 2.1M / Retention 7.8M / Satisfaction 6.3M`
-- 슬라이드-6 timeline: `Discovery / Map the terrain before you traverse it`, `Definition / Sharpen the question to find the answer`, `Development / Build with intent, iterate with care`, `Delivery / Ship the work, then make it better`
-- 슬라이드-5 quote: `<blockquote>The best time to plant a tree was twenty years ago…</blockquote>` + `<div class="attribution">A Philosophy of Action</div>`
-- 슬라이드-3 header: `<div class="header-pill">Core Principles</div>`
-- 슬라이드-8 diagram flow: `Data Ingestion / Transformation / Distribution` + `Raw signals are captured…`, `Information is enriched…`, `Results are routed…`
-- 슬라이드-7 stat: `Growth in Active Users / Total Reach Across Channels / System Uptime Record / Average User Satisfaction Score`
-- 슬라이드-10 closing: `The Journey Continues / Questions and conversation welcome`
-- 슬라이드-9 visual: `<span>Visual Placeholder</span>`
-
-원인:
-
-1. **`CAPSULE_SLOT_MAP`이 host `cards-grid` + peer `pillar-card`/`card` 만 인식한다.** Capsule 템플릿의 나머지 특수 슬롯(`.chart-label`, `.chart-value`, `.step-label`, `.step-desc`, `blockquote`, `.attribution`, `.header-pill`, `.closing-pill`, `.closing-sub`, `.stat-label`, `.pill.pill-filled` + 그 옆 데모 설명 div, `.frame-content` visual placeholder)은 slot-fill을 통과하지 않는다. 이 상태에서 outline이 슬라이드마다 `title + body`만 주면 **본문 슬라이드의 “영문 카피 슬롯”이 원본 데모 카피 그대로 렌더된다.**
-2. **루프510은 데코 chrome만 대상.** 커버/사이드의 pill 시각 노이즈는 잡았지만, 본문 슬라이드의 “content-shaped 영문 카피”는 손대지 않았다. 사용자가 본 “배치·정렬·본문 밀도·품질” 이슈는 실질적으로 이 영문 데모 카피 leak 때문.
-3. **FE 프리뷰 파이프라인이 `LOOK_NEUTRALIZE`를 잘 주입한다.** 처음에는 “`.slide{opacity:0}` 때문에 슬라이드가 하나만 보이는 것 아닌가” 의심했지만, 실제 프리뷰 경로(`srcdoc.ts`의 `injectStackedCanvasNeutralizeForLetterbox`)가 `LOOK_NEUTRALIZE_CSS`를 주입하고 있어 슬라이드는 전부 보인다. 문제는 CSS가 아니라 콘텐츠(영문 데모)였다.
+JSON을 staging 기본으로 올리지 않는 이유: MiniMax JSON-only 턴이 `AGENT_EXECUTION_FAILED`로 깨진 이력(루프414/379). prompt-fill은 유지한다.
 
 구현 현황:
 
-- [x] `packages/contracts/src/template-clone-fill.ts` — `scrubCapsuleLeftoverSpecialtySlotCopy(html, { deckLang })` 신설. `deckLang: 'auto'`(기본)에서 문서에 Hangul이 있으면 활성화. `CAPSULE_SPECIALTY_SLOT_CLASSES` (`chart-label|chart-value|step-label|step-desc|attribution|header-pill|closing-pill|closing-sub|stat-label`)에 대해 innerText가 `CAPSULE_SPECIALTY_SLOT_DEMO_TEXTS` 목록의 알려진 영문 데모 문구와 정확히 일치할 때만 innerText를 blank한다. `<br>`-깨진 stat-label(`Growth in<br>Active Users`)는 `collapseInnerTextForMatch`가 whitespace/HTML/`&nbsp;`를 flatten해서 매칭. Hangul이 하나라도 있으면 절대 손대지 않음.
-- [x] `blankCapsuleDemoBlockquote` / `blankCapsuleVisualPlaceholder` / `blankCapsulePillFilledDemo` 세부 blanker 추가 — 각각 슬라이드-5 인용문, 슬라이드-9 visual placeholder, 슬라이드-8 diagram flow (`.pill.pill-filled` + sibling 데모 설명 div) 대상. 모두 “Hangul 없음 + 알려진 영문 데모 문구 매칭”일 때만 blank하고 shell(class/style)은 유지 → 컬러/레이아웃 리듬은 그대로.
-- [x] `buildTemplateClonedDeckHtml` end (루프510 `scrubCapsuleLeftoverDecorativeChrome` 뒤, `fillCapsuleEmptyTitlePill` 앞)에 `scrubCapsuleLeftoverSpecialtySlotCopy` 호출 추가.
-- [x] `salvageMalformedMiniMaxSlideMarkup` 체인의 `scrubCapsuleLeftoverDecorativeChrome` 뒤에도 동일 호출 삽입 → MiniMax stream 경로 커버.
-- [x] 회귀:
-  - `template-clone-fill.test.ts` — `루프511 Capsule Korean-deck specialty-slot demo copy scrub` describe 13 케이스 (chart-label/chart-value/step-label/step-desc/blockquote/attribution/header-pill/closing-pill+closing-sub/stat-label multiline `<br>`/pill.pill-filled + 데모 설명/visual placeholder/영문 덱 예외/한국어 채워진 슬롯 보존/idempotent/end-to-end)
-  - 전체: `pnpm --filter @open-design/contracts test` → 3165 tests pass, 1 skipped, 0 failed
+- [x] `extractTemplateCloneOutlineFromDeckHtml` + `applyTemplateClonePromptFillLookMerge` — prompt-fill 모델 HTML을 outline으로 보고 LOOK seed에 다시 slot-fill. 추출이 본문 대부분을 잃으면 model HTML 유지.
+- [x] `ProjectView` persist — `runTemplateClonePromptFillRef`에서 위 merge 호출. Canvas/Home/Drive 명시 템플릿이 같은 함수.
+- [x] `SLIDE_DECK_LAYOUT_VARIETY_INSTRUCTION` / `SLIDE_DECK_COPY_DENSITY_INSTRUCTION` — prompt-fill seed · Canvas/Home internal instruction · kit hard-requirements에 공유.
+- [x] JSON 기본값 전환 **하지 않음**.
 
-주의 / 다음:
+### 1.36 2026-09-14 — LOOK seed 보존 · extract 확대 · title-bound synth · stat/quote 안전 보강 (loop518)
 
-- 이번 스코프는 “영문 데모 카피 노출 제거”. 데모 카피가 사라진 뒤에는 슬롯이 빈 상태로 남는다(예: chart-label 5개 빈 칸, timeline 4개 step-label 빈 칸). 이는 outline이 해당 슬롯을 채울 데이터를 주지 않았기 때문. **후속 루프에서 (a) `CAPSULE_SLOT_MAP`을 chart-row/timeline-step/pill-filled peer로 확장해 outline items[]에서 채우거나, (b) synth item으로 채우는 안전망(루프509와 동일 패턴)** 이 필요.
-- 이번 healer는 Capsule 템플릿 한정. 다른 opacity-stack 프레젠터 템플릿(Blue Professional, Bold Poster, Playful, Sakura Chroma, Cobalt Grid, Long Table, Biennale Yellow, Coral, Retro Zine, Cartesian, Weekly Report, Retro Windows 등)에도 유사한 “specialty slot 영문 데모 카피 leak”이 있을 가능성 높음. 별도 루프 후보.
-- 진짜 근본 해결은 “specialty slot을 slot-map으로 확장”. 이번 healer는 “영문 카피 노출 방지”라는 최소 방어선.
+§1.34–1.35 merge는 persist에서 `readProjectHtml('deck.html')`을 host로 썼다. MiniMax가 같은 턴에 `deck.html`을 덮어쓰면 seed가 모델 HTML이 되어 variety/enrich가 같은 monotone shell을 다시 채운다.
 
-### 1.33 2026-09-21 — Capsule 한글덱 데코 chrome 스크럽 · 커버 title-pill 채움
+- [x] persist LOOK host = 플러그인 `example.html` (`fetchPluginPreviewLookSource`) 우선. disk `deck.html`은 preview를 못 읽을 때만.
+- [x] extract — Cobalt `.row`/`.stmt`, Biennale `.qbody`/`.quote`, generic `.copy`/`.body-tx`.
+- [x] title-only card/list body는 item+slide 제목에 묶인 한 문장. 루프516이 지운 주제 preset을 되돌리지 않음.
+- [x] quote = 제목/lead 한 문장. stat = 라벨만. KPI 숫자 발명 금지.
+- [ ] 기본 템플릿(explicit 아님) LOOK seed — 제품 결정 후속
+- [ ] staging 실기 bake (Daisy / Block Frame / Capsule)
+- [x] persist 텔레메트리 (distinct shell · title-only card rate) — 루프523 observe-only. staging MiniMax live bake는 후속.
+- [x] JSON을 staging 기본으로 올리지 **않음**.
 
-§1.32까지의 sparse-outline 안전망은 “카드 그리드 shell에 착지한 title-only 슬라이드에 items[]가 없다”를 해결한다. 그러나 사용자는 2026-09-21에 “결과물 퀄리티가 더 안좋아졌다. 요소 CSS도 제대로 안먹히고, 배치·정렬·본문 밀도·품질이 적절치 않다”고 재보고했고, 첨부 스크린샷은 Capsule 템플릿 커버 슬라이드였다. `<h1>Teamver 소개</h1>`는 정상이지만 좌측에 `Research/Ideation/Prototype/Iterate/Launch/Scale` 라벨이 붙은 큰 pill이 세로로 쌓여 letterbox 바깥으로 빠져나오고, 상하좌우로 `OVERVIEW/DESIGN/FUTURE/NEXT`가 흩어져 있었다.
+### 1.35 2026-09-14 — prompt-fill merge 품질 (title-only cards · role lock · chrome skip) (loop517)
 
-원인:
+§1.34 merge는 올렸지만 persist 후에도 미리보기보다 성긴 덱이 남을 수 있다.
 
-1. **주 slot만 rewrite한다.** `buildTemplateClonedDeckHtml` / `salvageMalformedMiniMaxSlideMarkup` 파이프라인은 `h1/h2/p/li` 등 컨텐츠 slot만 rewrite한다. Capsule은 **데코 chrome**(`.orbit-pill`, `.deco-pill`, `.f-pill`, `.c-pill`, `.diagram-node`, `.mini-pill`)에 원본 데모 라벨(`Research`, `Ideation`, `Concept`, `Bold`, `Continue`, `Input Layer`, …)을 넣어놨는데, 이것이 slot이 아니라서 “한국어 덱인데 영문 데모 라벨이 그대로” 남는다. 실제 로컬 결정론 clone-fill로 재현했을 때 22종 이상의 영문 라벨이 살아있었다.
-2. **커버 `.title-pill`이 빈 `<div>`로 렌더된다.** Capsule 원본은 노란 pill에 “Presentation Template” 카피가 들어있는데, clone-fill이 그 slot을 지워버리고 재채움 로직이 없다. `restyleForeignIbMagazineCover`의 Capsule branch는 IB→Capsule migration에서만 발화한다. 결과: 노란 pill이 빈 상자로 남아 커버가 미완성처럼 보인다.
-3. **Motif leak**(`overflow:visible` + rotate 데코가 캔버스 밖으로 painting)는 `deck-fixed-canvas` / `LOOK_NEUTRALIZE_CSS`의 명시적 pin이라 이번 스코프에서 제외. 영문 라벨이 blank이면 시각 노이즈 자체가 대폭 감소한다.
+- [x] 모델 HTML `roleHint`를 복사하지 않음 — 같은 `.slide`/`.slide-cards` 반복이 host variety를 잠그지 않게.
+- [x] `enrichSparseSlideForShell` — items[]가 있어도 body가 12자 미만이면 제목 유지 + synth 문장 보강.
+- [x] merge 포기 조건을 “visible 전체 대비 40%”에서 **추출되지 않은 문장 leftover**로 바꿈. nav/장수 chrome 때문에 merge를 건너뛰지 않음. span에만 있는 본문은 여전히 model HTML 유지.
+- [x] card peer 추출에 Daisy/postit/day-card 등 템플릿 클래스 추가.
 
-구현 현황:
+### 1.33 2026-09-14 — list shell sparse 보강 · FE hard rules Copy density (loop510)
 
-- [x] `packages/contracts/src/template-clone-fill.ts` — `scrubCapsuleLeftoverDecorativeChrome(html, { deckLang })` 신설. Hangul이 있는 덱(`deckLang: 'auto'`)에서 `CAPSULE_DECORATIVE_PILL_CLASSES` 안의 정확한 영문 데모 라벨(`CAPSULE_DECORATIVE_PILL_DEMO_LABELS` 세트)만 blank한다. 연도(2026 등)·한글·%는 절대 안 만짐. class/style은 보존 → 컬러/rotate 등 원본 시각 리듬 유지.
-- [x] `packages/contracts/src/template-clone-fill.ts` — `fillCapsuleEmptyTitlePill(html, { kicker, deckTitle, fallback })` 신설. 빈 `<div class="title-pill"></div>`만 대상으로 잡아 `kicker` → deckTitle의 첫 Hangul 토큰 → fallback(기본 `소개`) 순으로 짧은 (≤12자) 라벨 채움.
-- [x] `buildTemplateClonedDeckHtml` end (기존 catalog scrub 뒤)에 두 함수 wiring 추가. `firstSlideKicker`는 `workingSlides[0].kicker`에서 추출.
-- [x] `salvageMalformedMiniMaxSlideMarkup` 체인의 `healCobaltOrphanDataStats` 뒤에도 `scrubCapsuleLeftoverDecorativeChrome` 삽입 → MiniMax stream 경로에서도 동일하게 정리.
-- [x] 회귀:
-  - `template-clone-fill.test.ts` — `루프510 Capsule Korean-deck decorative chrome scrub + title-pill fill` describe 10개 케이스 (orbit-pill/다중 데코 클래스/영문 덱 예외/한글·연도·% 예외/커버 title-pill kicker·Hangul 토큰·fallback/이미 채워진 pill/end-to-end `buildTemplateClonedDeckHtml`/사용자 리포트 fixture pin)
-  - `packages/contracts/tests/fixtures/loop510-capsule-korean-deck-clone.html` — 신규 fixture (fix 전 상태 pin)
-  - 전체: `pnpm --filter @open-design/contracts test -- --run --testNamePattern '루프510'` → 3152 tests pass, 1 skipped, 0 failed
+루프509 검토: cards grid title-only는 채워지지만 list/`<ul>` shell title-only는 placeholder wipe 후 빈 목록. FE `templateCloneContentFillHardRules`에 Copy density 누락(contracts `system.ts`만 강제).
 
-주의 / 다음:
-
-- 데코 pill을 한국어로 “번역”하지 않고 blank한 이유는 데모 라벨(Research/Ideation/…)에 대응하는 슬라이드 컨텐츠가 outline에 없어 임의 번역이 오히려 오해를 만들 수 있기 때문. 실제 슬라이드 컨텐츠에서 뽑아낼 수 있는 `.diagram-node` 같은 케이스는 후속 루프에서 slot-fill로 커버 후보.
-- `.header-pill` (“Core Principles”), `.closing-pill` (“The Journey Continues”), 슬라이드-5 blockquote/attribution 같이 “주 컨텐츠 slot이지만 clone-fill이 못 채우는” 위치는 이번 스코프에서 제외. 별도 루프 후보.
-- Motif leak 자체는 기존 pinned 정책이라 이번 루프에서 손대지 않음. 필요 시 “per-Capsule 슬라이드 overflow:hidden 오버라이드” 또는 “motif 원본 좌표 sanitize” 형태의 별도 설계 필요.
+- [x] `enrichSparseSlideForShell` — list/`<ul>` + placeholder-only body → synth bullet `body`. non-empty single-line body는 보존.
+- [x] `templateCloneContentFillHardRules` — Copy density 추가.
+- [x] 회귀: loop510 list test · web seed assert.
 
 ### 1.32 2026-09-14 — 결과물 완성도 2단계 (sparse outline 안전망 · Copy density prompt)
 
@@ -217,35 +174,32 @@
 
 구현 현황:
 
-- [x] `buildTemplateClonedDeckHtml` — picker 이후 `enrichSparseSlideForShell`를 통과시켜, title-only 슬라이드가 카드 그리드 shell (≥2 카드 피어)에 착지하면 `synthesizeTemplateCloneSlideBody`가 만든 items[]로 채운다. 커버(index 0) / closing / quote / stat shell에는 안 씀 — stat은 숫자, quote는 인용문이라 프로스로 채우면 오히려 이상하고, cover는 hero라서 카드 padding이 어색하다. 기존 items[] / 다중라인 body는 절대 덮어쓰지 않아 모델 의도 보존.
-- [x] `countPeerSlotsInShellBody` — `fillAndTrimCardPeers`가 사용하는 host/peer 발견 heuristic을 그대로 재사용해서 shell body 안에서 도달 가능한 최대 카드 피어 수를 센다. 이렇게 해야 enrichment의 items[] 목표 수가 fill 단계의 피어 수와 일치한다.
-- [x] `TEAMVER_SELECTED_TEMPLATE_VISUAL_FILL_AUTHORITY` (JSON slot-fill) · `TEAMVER_TEMPLATE_CLONE_PROMPT_FILL_CONTRACT` (HTML fill) · Selected template hard-requirements — 모두 “**Copy density** — 모든 non-cover/non-closing 슬라이드는 full-sentence `lead` + 각 item에 1문장 body (~12–28 Korean chars or 6–16 English words) 필요, `핵심`/`개념`/`요약` 같은 1단어 라벨이나 단어형 카드 title은 실패한 산출물” 문장 추가. stat 슬라이드는 예외 (`items[].title`이 지표값, `body`가 짧은 라벨).
-- [x] 회귀:
-  - `template-clone-fill.test.ts` — `루프509 sparse title-only outlines are enriched when landing on card-grid shells` describe 4개 케이스: (a) title-only cards shell이 실제 items로 채워짐 · (b) list shell의 title-only는 여전히 empty `<li>` drop (`루프376` invariant 보존) · (c) 모델이 emit한 items[]는 절대 덮어쓰지 않음 · (d) cover(index 0)는 enrichment 대상 아님
-  - `system-prompt-api-mode.test.ts` — JSON slot-fill / HTML fill / hard-requirements 세 경로 모두 `Copy density` 문구 노출 assert 추가
-- [ ] `synthesizeTemplateCloneSlideBody`의 “generic” preset이 여전히 다소 templatey — 브리프별 topic profile을 더 세분화하는 것은 후속 (품질 vs 안전성 트레이드오프).
-- [ ] outline generator 텔레메트리 관찰은 §1.31 후속 그대로 유지.
+- [x] `buildTemplateClonedDeckHtml` — picker 이후 `enrichSparseSlideForShell`를 통과시켜, title-only 슬라이드가 카드 그리드 shell (≥2 카드 피어)에 착지하면 `synthesizeTemplateCloneSlideBody`가 만든 items[]로 채운다. 커버(index 0) / closing / quote / stat shell에는 안 씀. 기존 items[] / 다중라인 body는 절대 덮어쓰지 않음.
+- [x] `countPeerSlotsInShellBody` — `fillAndTrimCardPeers` host/peer heuristic 재사용.
+- [x] JSON slot-fill authority · HTML fill contract · Selected template hard-requirements — “**Copy density**” 규칙 추가.
+- [x] 회귀: `template-clone-fill.test.ts` loop509 describe · `system-prompt-api-mode.test.ts` Copy density assert
+- [x] outline generator 텔레메트리 — 루프526 observe-only. generic synth preset 세분화는 품질 리스크로 보류.
 
 ### 1.31 2026-09-14 — 템플릿 레이아웃 다양성 · 결과물 완성도 (`roleHint` 벡터)
 
-여러 유형의 페이지 레이아웃이 있는 템플릿에서 “한두 개 레이아웃만 반복 사용”되고 미리보기보다 완성도가 낮았다. 원인은 세 가지가 겹쳐 있었다.
+증상: 템플릿 preview/example에는 여러 페이지 유형이 있는데 결과물은 cover/cards/body 한두 패턴만 반복됐다. JSON slot-fill 모델이 모든 본문 slide에 같은 `roleHint`를 주면, host slot-fill이 LOOK seed를 유지하더라도 같은 shell 위주로 선택해 “템플릿 미리보기보다 완성도가 낮은” 덱이 됐다.
 
-1. **scaffold map이 어휘를 안 알려줌.** kit의 `### Template scaffold map`이 `role=welcome/weekly/chart-bar` 같은 템플릿 고유 이름만 나열해, outline 생성기는 이걸 `TemplateCloneShellRole` 캐노니컬 enum (`list/cards/stat/…`)으로 되돌리기 어려워 사실상 모두 `body`로 폴백했다.
-2. **prompt가 다양성을 요구 안 함.** JSON slot-fill authority가 `roleHint`를 optional로 취급하고 “같은 shell을 반복해도 된다”는 여지를 남겼다.
-3. **picker 다양성 부족.** `pickTemplateShellsForContent`가 role 매칭에 성공한 첫 shell을 계속 재사용해, 4장 넘는 덱에서 카드/스탯/타임라인이 있어도 같은 body shell만 스탬프됐다.
-4. **role 추론이 items[] 신호를 놓침.** `inferTemplateCloneContentRole`이 items 2+ 카드 슬라이드를 `list`로 접어버려 카드/스탯 shell이 후보에서 사라졌다. 한국어 키워드 (`팀`/`통계`)는 `\b` 워드 바운더리가 유니코드에 안 맞아 아예 매칭 실패.
-5. **template-scaffold 의존 커플링.** scaffold map 예산을 늘리자 sprite pool을 kit 출력에서 스크레이프하던 `template-scaffold.ts`가 sprite를 잃고 (kit이 sprite 하나만 담을 정도로 꽉 차서) full-scaffold의 CSS가 잘려 `#F5F0E6` 크림·`.slide{overflow:visible}` override가 빠졌다.
+원인 (겹침):
 
-구현 현황:
+1. **scaffold map 어휘 부재** — `role=welcome/weekly` 등 템플릿 고유 이름만 노출 → outline 생성기가 캐노니컬 `roleHint` enum으로 되돌리기 어려움.
+2. **prompt 다양성 미요구** — JSON slot-fill authority가 `roleHint` optional · FE `templateCloneContentFillHardRules`만으로는 picker까지 연결 안 됨.
+3. **picker shell 재사용** — `pickTemplateShellsForContent`가 첫 매칭 shell만 반복.
+4. **items[]→list 접힘** — `inferTemplateCloneContentRole` + 한국어 `\b` 워드바운더리 실패.
+5. **sprite pool 커플링** — scaffold map 예산 상향 시 kit sprite eviction.
 
-- [x] `extractTemplateScaffoldMap` — 각 row에 `roleHint=<enum>` · `items~=N` 힌트 삽입, 다양성 배너 (roleHint universe + “4장+ 덱은 최소 4개 이상 spread” 요구) 추가, 예산 1_000→1_500 상향
-- [x] `composeTeamverSlideApiPrompt` — JSON slot-fill hard requirement에 “every slide REQUIRES `roleHint`”, “4개 이상의 서로 다른 `roleHint` 값으로 spread”, “items 수 scaffold row `items~=` 매칭” 추가
-- [x] `TEAMVER_TEMPLATE_CLONE_PROMPT_FILL_CONTRACT` (HTML fill path) — “Layout variety is REQUIRED (mirror the template preview)” + “Card/grid slots must be filled (real title + 2–4 sentence body per card)” 추가. JSON slot-fill 경로만 강화하면 HTML fill 경로가 monotone 덱을 그대로 통과시켜 미리보기 대비 완성도 격차가 계속 유지되기 때문.
-- [x] `inferTemplateCloneContentRole` — items[] 2+ 신호 우선순위 강화 (stat/team/timeline/process 우선), 한국어 키워드 regex `\b` 제거
-- [x] `pickTemplateShellsForContent` — `VARIETY_SAFE_ROLE_PREFERENCE` 도입, shell이 2회 이상 스탬프될 때만 (그리고 template body pool ≥5일 때만) 재우선순위로 미사용 shell을 rotate — 콘텐츠와 무관한 shell로 튀지 않게 conservative
-- [x] `template-visual-kit` — `extractMotifSpritesFromHtml` 명시적 export, `template-scaffold`는 이제 kit 출력을 스크레이프하지 않고 sprite 목록을 직접 얻어옴 (scaffold map 예산 변동과 무관하게 sprite pool 안정)
-- [x] 회귀: `template-visual-kit.test.ts` (scaffold row에 `roleHint=` / `items~=` / 다양성 배너 노출), `template-clone-fill.test.ts` (items[] 슬라이드가 `stat`/`team`/`cards`로 라벨링됨, 8장 덱이 4+ distinct role로 spread됨), `system-prompt-api-mode.test.ts` (JSON slot-fill 프롬프트에 spread 요건 등장), `template-scaffold.test.ts` (Daisy `#F5F0E6` + `.slides-container{overflow:visible}` override 유지)
-- [ ] outline generator가 실제 브리프에서 4+ distinct `roleHint`를 emit하는지 통계 텔레메트리로 관찰 — 후속
+수정 (FE + contracts + prompt):
+
+- [x] `templateCloneContentFillHardRules` — 5장+ 최소 3종, 8–10장 최소 4종 body `roleHint` 다양성 요구.
+- [x] `resolveTemplateCloneContentRolesForShellVariety` — 5장+ 덱 role monotony 시 템플릿 보유 shell role 안에서 list/cards/stat/timeline/quote/process/body/closing 재분배 (cover/closing 보존, 3종 미만 템플릿은 skip).
+- [x] `extractTemplateScaffoldMap` — `roleHint=<enum>` · `items~=N` · 다양성 배너 · 예산 1_500 · `extractMotifSpritesFromHtml` export.
+- [x] `composeTeamverSlideApiPrompt` — JSON/HTML fill contract에 roleHint 필수 · 4+ distinct spread · card/grid slot fill · Copy density.
+- [x] `inferTemplateCloneContentRole` · `VARIETY_SAFE_ROLE_PREFERENCE` · `template-scaffold` sprite decoupling.
+- [x] 회귀: repetitive roleHint spread unit · Daisy 8-slide 4+ role · items[] classification · scaffold map · system-prompt tests.
 
 ### 1.30 2026-08-24 — Clone fill Final authority 단일 READ LAST
 
@@ -2372,3 +2326,5 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-09-03 | §0.95 — 실제 실패 HTML에서 8~10장 요청이 6장으로 저장되고, `h2`/pill 내부에 grid/card가 중첩되어 본문 배치가 무너졌다. 원인은 `findTemplateCloneFillSlideCountIncomplete()`가 1장 초안/top-up 회귀를 피하려고 완전히 no-op 상태였고, JSON/outline fallback 합성도 `slideCount`를 최대 6장으로 clamp하고 있었기 때문이다. 수정: content-fill/prompt-fill 모두에서 명시 최소 4장 이상 요청의 produced `< min`이면 저장 전 `skipped-incomplete`로 보내고, 1~3장 소형 요청은 기존처럼 허용한다. 또한 salvage 이후에도 heading 안에 block/grid가 남아 있으면 구조 붕괴로 저장을 막는다. `synthesizeTemplateCloneOutlineFromBrief()`는 요청 장수를 `TEMPLATE_CLONE_OUTLINE_MAX_SLIDES`까지 보존하고, 서비스덱용 섹션 라벨을 9개까지 확장했다. |
 | 2026-09-03 | §0.97 — **현재 시점 기준 판단(루프404).** §0.95 장수 게이트가 `produced 1 < min 8`에서 디스크 쓰기를 막아 top-up이 예약되지 않았고, prompt-fill은 LOOK seed 복구 대상이 아니라 durable `incomplete_output`이 났다. 수정: 장수 shortfall은 다시 저장 허용(`findTemplateCloneFillSlideCountIncomplete` no-op)하고 first-fill honor + `shouldQueueSlideCountTopUp`이 미스를 salvage한다. 구조 게이트는 유지. LOOK seed recovery를 prompt-fill에도 확장. 검증: web `project-view-message-merge` · `slideCountTopUp`. |
 | 2026-09-03 | §0.98 — **현재 시점 기준 판단(루프413).** `pure-prompt` 기본값은 Clone 이중지시를 피하는 우회였지만, 사용자가 명시적으로 선택한 Capsule/Daisy/Zhangzara 템플릿의 실제 SVG·도형·색상·레이아웃을 보존하지 못해 썸네일과 결과물이 달라지는 부작용이 컸다. staging/default를 `deterministic`으로 복구해 실제 `example.html` shell을 유지하고 JSON outline으로 내용만 채우는 경로를 기본화했다. `pure-prompt`/`prompt`는 rollback 모드로 남김. 또한 outline 실패 fallback이 브리프에서 `8~10장`을 직접 읽고, 각 본문 슬라이드에 2~3줄 body + `roleHint`를 넣어 제목-only/빈약 deck 저장 가능성을 줄였다. 다음 게이트는 실제 `www.teamver.com + Capsule + 8~10장` fixture로 장수·본문 밀도·motif token/SVG·1920×1080을 자동 검증하는 것이다. |
+| 2026-09-14 | §0.99 — **LOOK seed fallback / retry regression 보강.** 1차 시도에서 provider가 artifact/JSON outline을 만들지 못하면 prompt-fill은 slot-fill decision을 거치지 않고 `deck.html` LOOK seed를 그대로 성공+경고 처리할 수 있었다. 이 상태에서 Retry는 빈 prompt로 재실행되므로 사용자 brief가 `FINAL RETRY`/자동 이어쓰기 문구로 흐려지고, 기존 seed의 많은 slide count를 기준으로 `artifact_regression(reason=slide-count)`이 다시 발생했다. 수정: clone host-fill 실행의 `runVisiblePromptRef`를 원래 사용자 메시지, persist된 사용자 content, pending prompt에서 복구하는 `resolveTemplateCloneRunBrief()`로 교체하고, raw seed recovery 직전에 `decideTemplateCloneSlotFillTerminal(rawFinalText:"")`을 호출해 seed+brief deterministic synth가 가능하면 경고 없이 완성본 artifact persist로 이어가게 했다. persist 이후 reload/skip recovery는 기존처럼 seed 안내만 담당하도록 `prepareArtifact:false`로 분리했다. 검증: web `project-view-message-merge`, contracts `template-clone-outline`. |
+| 2026-09-14 | §0.100 — **post-persist skipped-incomplete 경로 보강.** §0.99는 모델이 artifact를 전혀 만들지 못한 pre-persist fallback에는 유효했지만, 모델 HTML이 생성된 뒤 `persistArtifact()` 품질 가드에서 `skipped-incomplete`가 된 경우에는 이미 저장 블록이 지나간 뒤라 deterministic synth artifact를 준비해도 저장 기회가 없었다. 이 경로가 그대로 `clone_look_seed_fallback` 배너로 종료되던 것이 잔여 1차 실패 원인이다. 수정: clone host-fill의 `terminalPersistResult.kind === "skipped-incomplete"` recovery에서 raw LOOK seed 안내 전에 `recoverCloneLookSeedFallback()`을 `prepareArtifact:true`로 호출하고, 합성 artifact가 생기면 즉시 `persistArtifact()`를 한 번 더 실행한다. 그 재시도도 실패하거나 seed만 남는 경우에만 `prepareArtifact:false` seed 안내로 떨어진다. 회귀 테스트: `project-view-message-load`가 이 분기 구조를 고정하고, contracts는 빈 model output + user brief가 raw seed가 아니라 topical synth로 채워지는지 검증한다. |

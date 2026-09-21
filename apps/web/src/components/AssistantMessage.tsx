@@ -340,6 +340,10 @@ interface Props {
   shareToOpenDesignBusy?: boolean;
   // True only for the most recent assistant message.
   isLast?: boolean;
+  /**
+   * 루프508 — Override Preparing/Working copy for hidden rewrite/top-up turns.
+   */
+  slideAutomationPhaseLabel?: string | null;
   // Assistant message id whose run-failure error is rendered as ChatPane's
   // top-level error card; that message's per-message error pill is suppressed
   // to avoid duplication. Other messages keep their error pill.
@@ -397,6 +401,7 @@ const ASSISTANT_MESSAGE_COMPARED_PROPS: Array<keyof Props> = [
   'activePluginActionPaths',
   'hiddenPluginActionPaths',
   'isLast',
+  'slideAutomationPhaseLabel',
   'errorCardOwnerId',
   'nextUserContent',
   'forking',
@@ -531,6 +536,7 @@ function AssistantMessageImpl({
   onShareToOpenDesign,
   shareToOpenDesignBusy = false,
   isLast,
+  slideAutomationPhaseLabel = null,
   errorCardOwnerId = null,
   nextUserContent,
   onOpenQuestions,
@@ -883,7 +889,7 @@ function AssistantMessageImpl({
       <div className="assistant-flow">
         {streaming && !hasContent ? (
           <div className="assistant-waiting-output shimmer-text shimmer-prepare" role="status">
-            {t("assistant.waitingFirstOutput")}
+            {slideAutomationPhaseLabel || t("assistant.waitingFirstOutput")}
           </div>
         ) : null}
         {terminalSucceededLeadCopy ? (
@@ -1066,6 +1072,7 @@ function AssistantMessageImpl({
                   hasEmptyResponse,
                   runFailed,
                   preparing,
+                  streamingPhaseLabel: slideAutomationPhaseLabel,
                   todoProgress: hideAssistantThinkingDetails ? streamingTodoProgress : null,
                   copyMarkdown,
                   onFork: canFork ? onForkFromMessage : undefined,
@@ -1084,6 +1091,7 @@ function AssistantMessageImpl({
                 hasEmptyResponse={hasEmptyResponse}
                 runFailed={runFailed}
                 preparing={preparing}
+                streamingPhaseLabel={slideAutomationPhaseLabel}
                 todoProgress={hideAssistantThinkingDetails ? streamingTodoProgress : null}
                 copyMarkdown={copyMarkdown}
                 onFork={canFork ? onForkFromMessage : undefined}
@@ -1245,6 +1253,8 @@ interface AssistantFooterProps {
   // Pre-output phase: streaming but nothing rendered yet. The label shimmers
   // "Preparing…"; once content lands it flips to "Working".
   preparing?: boolean;
+  /** 루프508 — Hidden rewrite/top-up phase overrides Preparing/Working. */
+  streamingPhaseLabel?: string | null;
   // Compact TodoWrite progress for long turns (esp. Teamver embed). Agent
   // currentLabel is free text — not chrome-locale translated.
   todoProgress?: TodoProgressSummary | null;
@@ -1267,6 +1277,7 @@ function AssistantFooter({
   hasEmptyResponse,
   runFailed,
   preparing = false,
+  streamingPhaseLabel = null,
   todoProgress = null,
   copyMarkdown,
   onFork,
@@ -1295,6 +1306,11 @@ function AssistantFooter({
     !onFork
   )
     return null;
+  const streamingLabel = streamingPhaseLabel
+    ? streamingPhaseLabel
+    : preparing
+      ? t("assistant.statusPreparing")
+      : t("assistant.workingLabel");
   return (
     <div
       className="assistant-footer"
@@ -1303,11 +1319,9 @@ function AssistantFooter({
       data-last={isLast ? "true" : "false"}
     >
       <span className="dot" data-active={streaming ? "true" : "false"} />
-      <span className={`assistant-label${streaming && preparing ? " shimmer-text shimmer-prepare" : ""}`}>
+      <span className={`assistant-label${streaming && (preparing || streamingPhaseLabel) ? " shimmer-text shimmer-prepare" : ""}`}>
         {streaming
-          ? preparing
-            ? t("assistant.statusPreparing")
-            : t("assistant.workingLabel")
+          ? streamingLabel
           : hasEmptyResponse
           ? t("assistant.emptyResponseLabel")
           : runFailed

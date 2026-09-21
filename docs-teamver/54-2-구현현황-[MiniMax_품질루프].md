@@ -38,6 +38,64 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 
 ## 2026-09-02 현재 판단 · 최신 루프
 
+### 루프558 — Block Frame 커버가 표지·h1 만 남는 회귀 (kit chrome / deco / hero-subtitle 소실)
+
+체감: 루프557 배포 이후 2026-09-17~18 사용자 리포트 실물 스크린샷 — Block Frame 첫 페이지가 크림색 큰 카드 하나에 작은 pink `표지` 라벨과 h1 `업무와 AI를 하나의 공간에서` 만 남고, 4개 `corner-bracket` · `deco-pink-rect` · `deco-green-circle` · `deco-yellow-bar` · `hero-subtitle` 이 모두 사라진 채 표지가 나감. "여전히 결과물을 제대로 만들지 못하고 있다" 재보고.
+
+원인 (세 지점의 과잉 stripping 이 협력해 커버 chrome 을 삭제):
+- **A. `stripNonSlotWrappers` — kit-owned chrome/deco 도 leftover wrapper 로 판단** — `<div class="nb-label hero-label">Presentation Template</div>` / `<div class="deco-yellow-bar">Get Started</div>` 처럼 "prose 짧고 hero-title/h1/p 슬롯 없음" 이면 wrapper 로 판단해 통째로 drop. `fillBlockFrameNeoSlots` 이 refill 하려던 슬롯 자체가 사라져 label-less / CTA-less 커버가 남음.
+- **B. `unwrapSlideOnlyContainer` 의 inert-deco strip 스코프 과대** — slide container 안쪽 전체에 `stripInertLeftoverDecoBlocks` 를 돌려서 `.slide` 내부의 정상 `.deco-dots` / `.deco-pink-rect` / `.deco-green-circle` 도 empty-div 패턴과 일치해 사라짐. 원 의도는 slide 블록 사이의 inter-slide chrome gap 만 청소.
+- **C. Cover subtitle 합성 부재** — title-only outline (`{ title, roleHint:'cover' }`) 이 들어오면 `<p class="hero-subtitle"></p>` 가 empty 로 남고, 뒤이어 오는 `stripLeafEmptyListAndParagraphShells` / `stripEightBitOrbitCatalogDemoCopy` 가 leaf empty `<p>` 로 판단해 drop → 자막 자체 소실.
+- **D. hero-label 이 deck 타이틀 반복** — `blockFrameNeoChromeLabel` 이 hero-label 에 브리프 제목을 반영하면서 h1 과 duplicate 되고 pink chip 이 프레임을 가로지름. 표지에는 짧은 역할 라벨이 어울림.
+
+수정:
+- `KIT_OWNED_CHROME_SLOT_TOKENS` + `wrapperIsKitOwnedChromeSlot` — Block Frame (`hero-frame`/`hero-label`/`hero-title`/`hero-subtitle`/`hero-tagline`/`hero-badge(s)`/`hero-meta`/`nb-label`/`nb-btn`/`nb-body`/`close-*`/`corner-bracket`/`deco-*`/`title-pill`/`main-title`) · 8-Bit Orbit (`pixel-*`/`starfield`/`scanlines`/`grain`/`crt-glow`) · 공용 (`stat-pill(s)`/`slide-content`/`chart-svg`/`chart-legend`/`card-deco`) allowlist. `stripNonSlotWrappers` 는 wrapper 클래스에 이 토큰이 하나라도 있으면 무조건 유지.
+- `stripInterSlideChromeGaps` + `collectSlideHostBlockRanges` — `unwrapSlideOnlyContainer` 가 slide 블록 범위를 먼저 수집하고, `stripInertLeftoverDecoBlocks` / `stripSlideNavChromeBlocks` 를 slide 사이 gap 세그먼트에만 적용. Slide 내부는 건드리지 않음.
+- `fillCoverSubtitleSlotsIfEmpty` + `COVER_SUBTITLE_SLOT_CLASSES` (`hero-subtitle`/`hero-tagline`/`subtitle`/`subhead`/`cover-subhead`/`close-subtitle`) — 커버 슬라이드 (`index === 0` + `roleHint === 'cover'` 또는 hint 없음) 에서 empty subtitle slot 을 `lead || bodyText || synthesizeTemplateCloneCoverLead(title)` 로 채운다. `fillSlideShell` 이 empty-`<p>` 제거 이전에 호출해 leaf strip 이 지우기 전에 텍스트를 확보.
+- `blockFrameNeoCoverRoleLabel` — `.hero-frame` 이 있는 shell 에서만 hero-label 에 짧은 역할 라벨을 사용. 명시 kicker 가 있으면 (BLOCK_FRAME_ENGLISH_CHROME_LABEL_KO 매핑 또는 28자 이하) 그대로, 아니면 `표지` fallback. `.deco-yellow-bar` 는 커버에서 `topicCta.slice(0, 24)`, 비-커버는 topic-keyword.
+
+검증: contracts `template-clone-fill.test.ts` 루프558 (a)(b)(c)(d) 4종 red spec. 루프557 상태에서는 4개 모두 RED 로 사용자 스크린샷 그대로 재현 (h1 + 라벨만, subtitle/deco 전멸). 루프558 적용 후 4개 모두 GREEN + 기존 303개 유지 (총 307 passed). Headless chrome 렌더로 `.slide-1` 이 `.deco-dots` 배경 + `hero-frame` (4 corner-bracket) + `nb-label hero-label` "표지" + h1 + `hero-subtitle` (topic-aware 리드 문장) + `.deco-pink-rect` / `.deco-green-circle` / `.deco-yellow-bar` (짧은 CTA) 을 모두 그림.
+
+### 루프557 — Block Frame 2-col orphan header + non-metric chart-svg + 한글 역할 유지
+
+체감: 2026-09-17 사용자 리포트 실물 스크린샷 2장. (1) `근거와 사례` cyan 슬라이드 — 상단 절반 빈 공간 + 3개 카드가 우하단 구석. (2) `운영과 보안` green 슬라이드 — 가짜 pink/cyan 막대 chart-svg + 우측 25% 좁은 data-column. 헤더 loop(555·556) 이후에도 "요소 배치·내용 구성 품질이 v1.4.15보다 떨어진다"는 재보고.
+
+원인 (3가지 독립 이슈가 한 슬라이드 배치를 동시에 망가뜨림):
+- **A. slide-2 orphan header** — MiniMax가 `.slide-2` (Block Frame 2-col intro shell) 안에 `nb-label` / `nb-heading-lg` / `nb-body`를 `<section>` 직속으로 두고 `.col-right`만 붙임. Kit CSS `.slide-2 { flex-direction: row }`이 그대로 걸려서 orphan 헤더가 row-item으로 흩어지고 카드는 우측 column에만 몰림.
+- **B. Decorative chart-svg on non-metric slide** — 루프547이 `chart-svg`를 flex-spacer로 유지하고 데모 Q1..Qn 라벨만 blank/균등화. 하지만 `.data-column`의 `.data-num`이 전부 한글 라벨(`전환율`/`활성`/`품질`)이면 실제 데이터가 없으므로 색막대 배열이 fake 데이터로 남고 kit `.slide-4 .data-column { flex: 0 0 240px }`가 3개 stat 카드를 240px 우측 레일로 짜부라뜨림.
+- **C. 한글 역할 leftover heal 과잉치환** — 루프555·556이 `실무자`/`리더`/`운영자`와 그 설명 문구를 Product Launch demo leak으로 간주해 `BLOCK_FRAME_SEED_CARD_TITLES` (Strategy First / Design System / Launch Ready)로 덮고 본문을 wipe. 사용자의 Korean team-collab 브리프는 정확히 그 용어를 실제 컨텐츠로 쓴다.
+
+수정:
+- `wrapBlockFrameOrphanTwoColumnHeader` — `.slide-2` (또는 nb-heading-lg/intro-card 지문) shell에 `.col-right`만 있고 `.col-left`가 없으면 orphan header (nb-label / heading / nb-body / stat-pill/stat-pills)를 새 `<div class="col-left">`로 감싼다. col-right 이전에 배치해 2-col row 레이아웃이 재구성됨.
+- `stripBlockFrameNonMetricChartFrame` — `.chart-frame` 안에 `.chart-svg`와 `.data-column`이 공존하면 `.data-num` 텍스트를 검사해 `%`/`Nx`/`+N`/한자·한글 수량 단위 등 실제 지표 글리프가 하나도 없으면 chart-svg + chart-legend를 통째로 제거하고 `layoutBlockFrameDataColumnAsHorizontalRow`가 `.data-column`에 인라인 `display:flex; flex-direction:row; width:100%; flex:1 1 auto`를 스탬프. Kit CSS의 slide-4-scoped column 규칙을 인라인 specificity로 눌러 3개 data-box가 전폭 가로 배치됨.
+- `computeBlockFrameNativeCardRanges` — `.intro-card` / `.nb-card` / `.feature-card` / `.team-card` / `.stat-card` / `.timeline-step` 을 native shell 로 간주. `.col-right` / `.cards-row` / `.stats-grid` / `.team-grid` / `.stats-row` 내부의 bare `.card` 도 native peer로 포함. Native 범위 안에 있는 h1–h4 / step-title / nb-heading / card-title / data-* / stat-label / step-desc / nb-body 는 `preserveKoreanRoles` (glued/broken token restore만) 통과시켜 seed replace / role-body wipe 를 건너뜀. Chart-frame 안 `.data-box` 는 native가 아니므로 metric leftover 규칙 그대로 유지.
+
+검증: contracts `template-clone-fill` 루프557 (a) slide-2 orphan header 재구성 · (b) chart-svg 스트립 + horizontal data-column · (c) native shell 한글 역할 유지. 루프555·556 assertion 을 신규 정책(한글 역할 유지)에 맞춰 업데이트. 3232 passed · 사전 존재 실패 3건은 무관 (deck-framework-compact / deck-quality-slide-count / system-prompt-api-mode). 헤드리스 chrome 렌더 before/after 비교로 시각 확인.
+
+### 루프556 — Block Frame 운영차트·역할 leftover·한글 tracking (lang=en)
+
+체감: 555 이후에도 `운영과보안` + Q1–Q5 데모 막대 + `전환율`/`활성`/`품질` + `실무자`/`리더`/`운영자`. [0917-N29-1](./0917-N29-1-상위설계-[block_frame_ops_chart_leftover].md).
+
+원인: leftover heal이 chart neutralize 미호출. var() fill 막대 미균등. leftover 본문/지표 선택자 누락. tracking이 `:lang(ko)` 만.
+
+수정: persist leftover heal에서 chart wipe · 역할/지표 leftover · `data-od-hangul` tracking.
+
+검증: contracts `loop556-block-frame-ops-chart.html`.
+
+### 루프555 — MiniMax outline placeholder / 반복 / 파롯 회귀 (v1.4.15 대비)
+
+체감: 2026-09-17 사용자 리포트 실물 — `주제가 해결하는 문제` / `쓰는 순서를 쓰는 순서` / 동일 Fit 슬라이드 중복 / `Teamver 소개 2`.
+
+원인: sanitize가 리터럴 `주제 [particle] X`를 정상 제목으로 인정. phrase 반복 축약 없음. 동일 outline title이 reused shell에 그대로 심김. 브리프+숫자 파롯을 instruction-copy에서만 잡음.
+
+수정: placeholder 실패 제목 판정 · particle-aware phrase 축약 · identical outline title dedupe · 브리프+숫자 파롯 감지.
+
+검증: contracts template-clone-fill 루프555 (a)(b)(c)(d).
+
+### 루프539 — Block Frame 발명 hero 셸
+
+표지 `.hero-title-highlight` 클립 · 빈 platform 카드 · `Enterprise 데모`. [0916-N03-1](./0916-N03-1-상위설계-[Block_frame_발명_hero_셸].md).
+
 ### 루프479 — 공식 look 대비·flow inset·잔여 텍스트 품질 가드
 
 체감: slide count와 template clone은 통과해도, light-paper 템플릿에서 본문·카드가 거의 보이지 않거나 내용이 한쪽으로 밀리는 결과가 남았다. 예: Biennale Yellow 화면에서 `실제 팀이 쓰는 방법` 카드는 `rgba(255,255,255,0.05)` glass + light blue copy라 paper 위에서 비어 보였고, host padding과 flow padding이 겹치면 1920×1080 안의 usable area가 과도하게 줄었다.
@@ -47,6 +105,76 @@ MiniMax compact fill 이후 반복되는 품질·오류 항목. 체크는 코드
 수정: `conformInlinePaletteToOfficialLook`를 persist heal 마지막 단계에 붙여 공식 look CSS의 paper/ink token으로 실제 contrast를 판단한다. 저대비 inline copy는 kit ink/paper로 snap하고, light paper 위 invisible glass card는 ink tint/card border로 보정한다. 공식 motif와 kit-painted subtree는 보호한다. flow 래핑은 host padding을 복사하지 않는 규칙으로 고정하고, stray acronym/bracket salvage 범위를 넓혔다. Prompt hard requirements에도 forbidden fallback palette와 light kit contrast 실패 케이스를 명시했다.
 
 검증: contracts 254 passed · daemon template-clone 37 passed · web templateCloneContentFill 38 passed · contracts build passed.
+
+### 루프548 — Clone LOOK 위 발명 커버 persist 금지
+
+체감: 빈 doctype / kit CSS dump가 last-resort 1920 커버로 저장되면 LOOK seed가 덮이고 이어쓰기가 숨음.
+
+수정: Clone fill 턴에서는 `salvageTemplateFillShellAsCoverDraft` / `resolveDeckHtmlForIncompleteShellPersist`를 건너뛴다. 그린필드 last-resort는 유지.
+
+검증: web salvage-truncated `루프548` · project-view-message-load · canvas-slide-launch bind.
+
+### 루프541 — preamble 이어쓰기 품질 가드 (LOOK / CSS dump / `<html>` hang)
+
+체감: 루프540 이후에도 `<html>`에서 멈추면 6분 idle, CSS dump가 저장된 슬라이드로 남거나 last-resort 커버가 LOOK을 덮음.
+
+수정: preamble 탐지를 doctype/`<html>`까지 확대하되 body-first·슬라이드 호스트는 제외. CSS-only는 salvage 금지. finalize 전 `<html>`/`<head>`를 걷고 parser를 항상 replay. JSON fill 기본은 유지.
+
+검증: web deck-html-content · stalledRunDeckSalvage · api-proxy adaptive · canvas-slide-launch source bind.
+
+### 루프540 — 첫 턴 `<head>` preamble 스톨을 60초 후 auto-continue
+
+체감: 첫 요청이 `<artifact>`/`<head>` + `: keepalive`에서 끊기고 2·3차 작업을 수동으로 이어가야 함.
+
+수정: head-opened preamble(제목 슬라이드 없음)은 덱 6분 idle 대신 60초. 400자 미만 stub도 finalize → incomplete-shell 이어쓰기. 이미 그린 토큰의 soft-retry는 그대로 금지.
+
+### 루프529 / 0914-N12 — 선택 템플릿 핀 내구성
+
+체감: Retry에서 핀을 붙여도 persist/이어서 쓰기에서 다시 기본 템플릿이 적용됐다.
+
+수정: 핀 해석을 한 함수로 모으고 metadata/artifact에 다시 씀. fill/heal 비범위. [0914-N12-3](./0914-N12-3-구현현황-[템플릿_핀_내구성].md).
+
+검증: web selected-deck-template + project-view-message-load + embed-slide-only + canvas-slide-launch 133 passed.
+
+### 루프527 / 0914-N10 — Retry 선택 템플릿 핀 복구
+
+체감: 1차 생성 실패 후 다시 시도하면 고른 템플릿이 사라지고 기본 템플릿이 적용됐다.
+
+수정: Retry/후속 전송에서 원본 user `runContext`의 시각 핀만 복구. fill/heal/LOOK merge 비범위. [0914-N10-3](./0914-N10-3-구현현황-[Retry_템플릿_핀_소실].md).
+
+검증: web selected-deck-template + project-view-message-load + embed-slide-only + canvas-slide-launch 128 passed.
+
+### 루프526 / 0914-N07 — outline generator 텔레메트리 (observe-only)
+
+체감: 첫 JSON outline이 title-only여도 persist 후에야 숫자가 남았다.
+
+수정: 모델 outline의 roleHint 다양성·title-only rate만 관측. synth preset/HTML 비범위. [0914-N07-3](./0914-N07-3-구현현황-[outline_generator_텔레메트리].md).
+
+검증: contracts `루프523 persist` + `루프526` 7 passed · web outline/persist/launch 36 passed.
+
+### 루프523 / 0914-N06 — persist 품질 텔레메트리 (observe-only)
+
+체감: merge 후 레이아웃 다양성·title-only 카드 비율을 staging에서 남길 숫자가 없었다.
+
+수정: persist HTML은 그대로 두고 distinct shell / title-only rate만 관측. [0914-N06-3](./0914-N06-3-구현현황-[persist_품질_텔레메트리].md).
+
+### 루프520–521 / 0914-N05 — deck-patch 비어있음 거부
+
+체감: 빈 `deck-patch` wrapper가 unscoped `rejected`로 떨어지고, 이미 저장된 덱이 LOOK seed 배너·저장 거부로 보였다.
+
+수정: 프롬프트 fail-fast(루프520) · sparse-repair persist만 soft-cancel · 자동화 턴 LOOK seed reload 제외(루프521). fill/heal/LOOK merge 비범위. [0914-N05-3](./0914-N05-3-구현현황-[deck-patch_비어있음_거부_근본해결].md).
+
+### 루프519 / 0908-N02-6 — SSE 스톨 abort · 재시도 thinking 미도색
+
+체감: 데몬 watchdog SSE 스톨은 첫 스트림이 남은 채 재시도되고, 재시도 thinking이 카드에 붙었다.
+
+수정: SSE·idle 동일 abort/`resumable` · 2회차 thinking 미도색 · fill 비범위. [0908-N02-6](./0908-N02-6-구현설계-[스톨_SSE_abort_재시도thinking].md).
+
+### 루프512 / 0908-N02-5 — 스톨 abort · 1회 재시도 · thinking-only
+
+체감: 478 soft-retry가 첫 MiniMax를 남긴 채 두 번째 fetch를 열고, idle 3회가 ~18분 Working이 되며, thinking-only 스톨은 빈 실패 카드로 끝났다.
+
+수정: 스톨 시 업스트림 abort · 스톨만 2시도 · thinking-only STALLED는 1회 재시도. [0908-N02-5](./0908-N02-5-구현설계-[스톨_재시도_abort_1회_thinking].md).
 
 ### 루프478 / 0908-N02-4 — 부분 덱 없는 스톨 soft-retry
 

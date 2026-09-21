@@ -259,7 +259,7 @@ describe('Teamver embed slide-only MVP policy', () => {
     const projectView = readSource('src/components/ProjectView.tsx');
     expect(projectView).toContain('selectedDeckTemplateMetadata(');
     expect(projectView).toContain('turnDeckTemplateMeta');
-    expect(projectView).toContain('enrichChatSendMetaWithProjectDeckTemplate');
+    expect(projectView).toContain('ensureChatSendMetaHasDurableDeckTemplate');
     expect(projectView).toContain('fetchPluginLocalSkill(selectedTemplate.id)');
     expect(projectView).toContain('Selected visual template');
     const chatComposer = readSource('src/components/ChatComposer.tsx');

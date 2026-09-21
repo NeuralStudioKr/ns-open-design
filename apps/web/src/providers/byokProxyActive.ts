@@ -35,10 +35,21 @@ export type ActiveByokProxyStreamSummary = {
 let byokProxyAuthBackoffUntil = 0;
 /** Pause `/api/proxy/active` polls after a dead-cookie 401 (App + ProjectView). */
 export const BYOK_PROXY_AUTH_BACKOFF_MS = 60_000;
+/**
+ * App runs-poll and ProjectView recovery both hit this read. A leaked stream
+ * or a messages-identity loop used to issue a request per render. Share one
+ * in-flight call and reuse a fresh result so the endpoint cannot be hammered.
+ */
+export const BYOK_PROXY_ACTIVE_MIN_INTERVAL_MS = 15_000;
+
+const inflightByProjectId = new Map<string, Promise<ActiveByokProxyStreamSummary[]>>();
+const recentByProjectId = new Map<string, { at: number; streams: ActiveByokProxyStreamSummary[] }>();
 
 /** @internal vitest */
 export function resetByokProxyActiveAuthBackoffForTests(): void {
   byokProxyAuthBackoffUntil = 0;
+  inflightByProjectId.clear();
+  recentByProjectId.clear();
 }
 
 export function shouldSkipByokProxyActivePoll(): boolean {
@@ -55,6 +66,7 @@ function noteByokProxyAuthBackoff(): void {
 
 export async function listActiveByokProxyStreams(
   projectId: string,
+  options?: { bypassCache?: boolean },
 ): Promise<ActiveByokProxyStreamSummary[]> {
   // Dead cookie / sticky: do not even open the socket — App + ProjectView
   // background polls used to hammer this every 2–15s and each 401 re-entered
@@ -62,7 +74,25 @@ export async function listActiveByokProxyStreams(
   if (shouldSkipByokProxyActivePoll()) {
     throw new ActiveByokProxyAuthTransientError();
   }
+  if (!options?.bypassCache) {
+    const recent = recentByProjectId.get(projectId);
+    if (recent && Date.now() - recent.at < BYOK_PROXY_ACTIVE_MIN_INTERVAL_MS) {
+      return recent.streams;
+    }
+    const pending = inflightByProjectId.get(projectId);
+    if (pending) return pending;
+  }
 
+  const task = fetchActiveByokProxyStreams(projectId).finally(() => {
+    inflightByProjectId.delete(projectId);
+  });
+  inflightByProjectId.set(projectId, task);
+  return task;
+}
+
+async function fetchActiveByokProxyStreams(
+  projectId: string,
+): Promise<ActiveByokProxyStreamSummary[]> {
   const qs = new URLSearchParams({ projectId });
   let resp: Response;
   try {
@@ -82,7 +112,9 @@ export async function listActiveByokProxyStreams(
     throw err;
   }
   if (resp.status === 404) {
-    return [];
+    const streams: ActiveByokProxyStreamSummary[] = [];
+    recentByProjectId.set(projectId, { at: Date.now(), streams });
+    return streams;
   }
   if (resp.status === 401) {
     noteByokProxyAuthBackoff();
@@ -92,5 +124,7 @@ export async function listActiveByokProxyStreams(
     throw new Error(`active_byok_proxy_streams_failed:${resp.status}`);
   }
   const body = (await resp.json()) as { streams?: ActiveByokProxyStreamSummary[] };
-  return body.streams ?? [];
+  const streams = body.streams ?? [];
+  recentByProjectId.set(projectId, { at: Date.now(), streams });
+  return streams;
 }

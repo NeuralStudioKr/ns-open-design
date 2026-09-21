@@ -95,7 +95,7 @@ function parseColorValue(
   tokens: Map<string, string>,
   depth = 0,
 ): ParsedColor | null {
-  const value = String(raw ?? '').trim();
+  const value = String(raw ?? '').replace(/\s*!important\s*$/i, '').trim();
   if (!value || depth > 3) return null;
 
   const varMatch = /^var\(\s*--([a-z0-9-]+)\s*(?:,([^)]*))?\)$/i.exec(value);
@@ -420,5 +420,141 @@ export function conformInlinePaletteToOfficialLook(html: string): string {
       }
     }
     return `${open}${healSlideInner(inner, rootLum, look)}${close}`;
+  });
+}
+
+type SimpleCssRule = { selectors: string[]; declarations: string; order: number };
+
+function readSimpleCssRules(source: string): SimpleCssRule[] {
+  const css = Array.from(source.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi))
+    .map((match) => match[1] ?? '')
+    .join('\n')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/@(?:media|supports|layer|keyframes)[^{]*\{[\s\S]*?\}\s*\}/gi, ' ');
+  const rules: SimpleCssRule[] = [];
+  const re = /([^{}]+)\{([^{}]*)\}/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(css))) {
+    if (match[1]!.trim().startsWith('@')) continue;
+    rules.push({
+      selectors: match[1]!.split(',').map((selector) => selector.trim()).filter(Boolean),
+      declarations: match[2] ?? '',
+      order: rules.length,
+    });
+  }
+  return rules;
+}
+
+function simpleSelectorMatches(selector: string, tag: string, classes: string[]): boolean {
+  const compound = selector.trim().split(/\s+|>|\+|~/).filter(Boolean).at(-1) ?? '';
+  if (!compound || /[:#\[]/.test(compound)) return false;
+  const tagMatch = /^([a-z][a-z0-9-]*)/i.exec(compound)?.[1]?.toLowerCase();
+  if (tagMatch && tagMatch !== tag.toLowerCase()) return false;
+  const requiredClasses = Array.from(compound.matchAll(/\.([a-z0-9_-]+)/gi))
+    .map((match) => match[1]!.toLowerCase());
+  return requiredClasses.every((className) => classes.includes(className));
+}
+
+function simpleRuleValue(
+  rules: SimpleCssRule[],
+  tag: string,
+  classes: string[],
+  prop: string,
+): string | null {
+  let winner: { value: string; specificity: number; order: number } | null = null;
+  for (const rule of rules) {
+    for (const selector of rule.selectors) {
+      if (!simpleSelectorMatches(selector, tag, classes)) continue;
+      const value = declarationValue(rule.declarations, prop);
+      if (!value) continue;
+      const compound = selector.trim().split(/\s+|>|\+|~/).filter(Boolean).at(-1) ?? '';
+      const specificity = (compound.match(/\./g)?.length ?? 0) * 10
+        + (/^[a-z]/i.test(compound) ? 1 : 0);
+      if (!winner || specificity > winner.specificity
+        || (specificity === winner.specificity && rule.order >= winner.order)) {
+        winner = { value, specificity, order: rule.order };
+      }
+    }
+  }
+  return winner?.value ?? null;
+}
+
+function setInlineReadableColor(attrs: string, color: string): string {
+  const style = styleAttrValue(attrs);
+  const next = /(?:^|;)\s*color\s*:/i.test(style)
+    ? style.replace(
+      /(^|;)(\s*color\s*:\s*)([^;]+)/gi,
+      (_whole, lead: string, prop: string) => `${lead}${prop}${color}!important`,
+    )
+    : `${style}${style.trim() && !style.trim().endsWith(';') ? ';' : ''}color:${color}!important`;
+  if (style) return replaceStyleAttr(attrs, next);
+  return `${attrs} style="color:${color}!important"`;
+}
+
+/**
+ * Repair the common freeform failure where a dark generated heading is placed
+ * on a dark slide (or the inverse) without official-look metadata. This is
+ * deliberately limited to h1-h3 and simple solid/gradient CSS colors.
+ */
+export function repairLowContrastDeckHeadings(html: string): string {
+  const source = String(html ?? '');
+  if (!source.trim()) return source;
+  const rules = readSimpleCssRules(source);
+  const tokens = readLookTokens(source);
+  const bodyOpen = /<body\b([^>]*)>/i.exec(source)?.[1] ?? '';
+  const bodyStyle = styleAttrValue(bodyOpen);
+  const bodyClasses = attrClassTokens(bodyOpen);
+  const bodyBgRaw = declarationValue(bodyStyle, 'background-color')
+    ?? declarationValue(bodyStyle, 'background')
+    ?? simpleRuleValue(rules, 'body', bodyClasses, 'background-color')
+    ?? simpleRuleValue(rules, 'body', bodyClasses, 'background');
+  const bodyBg = bodyBgRaw ? parseColorValue(bodyBgRaw, tokens) : null;
+  const bodyBgLum = bodyBg ? compositeLuminance(bodyBg, 1) : 1;
+
+  return source.replace(SLIDE_SECTION_RE, (whole, open: string, inner: string, close: string) => {
+    if (!/\bclass\s*=\s*(['"])[^'"]*\bslide\b/i.test(open)
+      && !/\bdata-screen-label\b/i.test(open)) return whole;
+    const sectionAttrs = open.replace(/^<section\b|>$/gi, '');
+    const sectionStyle = styleAttrValue(sectionAttrs);
+    const sectionClasses = attrClassTokens(sectionAttrs);
+    const bgRaw = declarationValue(sectionStyle, 'background-color')
+      ?? declarationValue(sectionStyle, 'background')
+      ?? simpleRuleValue(rules, 'section', sectionClasses, 'background-color')
+      ?? simpleRuleValue(rules, 'section', sectionClasses, 'background')
+      ?? simpleRuleValue(rules, 'div', sectionClasses, 'background-color')
+      ?? simpleRuleValue(rules, 'div', sectionClasses, 'background')
+      ?? bodyBgRaw;
+    const gradient = bgRaw ? gradientLuminance(bgRaw, tokens, bodyBgLum) : null;
+    const bg = bgRaw ? parseColorValue(bgRaw, tokens) : null;
+    const bgLum = gradient ?? (bg ? compositeLuminance(bg, bodyBgLum) : bodyBgLum);
+    const sectionColorRaw = declarationValue(sectionStyle, 'color')
+      ?? simpleRuleValue(rules, 'section', sectionClasses, 'color')
+      ?? simpleRuleValue(rules, 'div', sectionClasses, 'color')
+      ?? declarationValue(bodyStyle, 'color')
+      ?? simpleRuleValue(rules, 'body', bodyClasses, 'color');
+
+    const healedInner = inner.replace(
+      /<(h[1-3])\b((?:"[^"]*"|'[^']*'|[^>"'])*)>/gi,
+      (headingOpen, tag: string, attrs: string) => {
+        if (/\bdata-od-official-motif-html\b/i.test(attrs)) return headingOpen;
+        const headingStyle = styleAttrValue(attrs);
+        const headingClasses = attrClassTokens(attrs);
+        const colorRaw = declarationValue(headingStyle, 'color')
+          ?? simpleRuleValue(rules, tag, headingClasses, 'color')
+          ?? sectionColorRaw;
+        if (!colorRaw) return headingOpen;
+        const color = parseColorValue(colorRaw, tokens);
+        if (!color || color.alpha <= 0.5) return headingOpen;
+        const textLum = compositeLuminance(color, bgLum);
+        if (contrastRatio(textLum, bgLum) >= MIN_CONTRAST_RATIO) return headingOpen;
+        const black = relativeLuminance({ r: 17, g: 17, b: 17 });
+        const white = relativeLuminance({ r: 255, g: 255, b: 255 });
+        const readable = contrastRatio(white, bgLum) >= contrastRatio(black, bgLum)
+          ? '#ffffff'
+          : '#111111';
+        return `<${tag}${setInlineReadableColor(attrs, readable)}>`;
+      },
+    );
+    return `${open}${healedInner}${close}`;
   });
 }

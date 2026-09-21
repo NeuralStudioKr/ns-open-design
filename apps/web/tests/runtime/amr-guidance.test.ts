@@ -40,6 +40,41 @@ describe('resolveRunFailureUi', () => {
     expect(resolveRunFailureUi('AGENT_UNAVAILABLE', 'codex').showSwitchCard).toBe(false);
   });
 
+  // 루프525 — LOOK seed fallback assistants are marked `failed` and carry a
+  // `status:error` event keyed by `clone_look_seed_fallback`. ChatPane reads
+  // this event's code into `resolveRunFailureUi`, which must fall through
+  // to the plain-retry branch so the Retry dock renders and the banner
+  // copy ("우측 '다시 시도' 버튼") maps to a real button. Pinning the
+  // contract here so any future NON_RETRYABLE_CODES / PROMOTE_AMR_CODES
+  // change that would silence the retry button trips the regression.
+  it('falls through to plain retry for a LOOK seed fallback status code', () => {
+    for (const agent of ['minimax-api', 'claude', null]) {
+      const ui = resolveRunFailureUi('clone_look_seed_fallback', agent);
+      expect(ui).toMatchObject({
+        primaryAction: 'retry',
+        messageKey: null,
+        secondaryRetry: false,
+      });
+      // No AMR promotion — LOOK seed is a first-fill fill quality issue,
+      // not a model/quota routing signal.
+      expect(ui.showSwitchCard).toBe(false);
+    }
+  });
+
+  // 루프528 — Outline fallback mirrors LOOK seed: failed + error event with
+  // `outline_deck_fallback` so Retry dock matches the banner copy.
+  it('falls through to plain retry for an outline-deck fallback status code', () => {
+    for (const agent of ['minimax-api', 'claude', null]) {
+      const ui = resolveRunFailureUi('outline_deck_fallback', agent);
+      expect(ui).toMatchObject({
+        primaryAction: 'retry',
+        messageKey: null,
+        secondaryRetry: false,
+        showSwitchCard: false,
+      });
+    }
+  });
+
   it('localizes a mid-stream connection drop for any agent, no AMR promotion', () => {
     for (const agent of ['claude', 'codex', null]) {
       const ui = resolveRunFailureUi('AGENT_CONNECTION_DROPPED', agent);

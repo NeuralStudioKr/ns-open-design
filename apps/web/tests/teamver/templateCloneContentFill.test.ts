@@ -8,6 +8,7 @@ import {
   TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER,
   buildTemplateCloneContentFillSeed,
   buildTemplateClonePromptFillSeed,
+  templateCloneContentFillHardRules,
   buildTemplateCloneSlotFillRepairPrompt,
   buildWebsiteServiceIntroOutlineInstruction,
   cloneFillJsonRepairAlreadyAttempted,
@@ -17,6 +18,8 @@ import {
   ensureTemplateCloneContentFillContinuePrompt,
   extractTemplateCloneUserFacingRequest,
   getTemplateCloneFillMode,
+  isGenericTemplateCloneTopicBrief,
+  shouldExplainGenericBriefOnLookSeedFallback,
   historyHasTemplateCloneContentFill,
   historyHasTemplateCloneSlotFillRepair,
   isTemplateCloneContentFillPrompt,
@@ -38,6 +41,7 @@ import {
   shouldUsePromptTemplateCloneFill,
   shouldQueueAiTemplateCloneFill,
   shouldQueueCloneSlotFillJsonRepair,
+  deterministicCloneFilledMetadataFields,
   templateCloneFillSlideCountOverrideNotice,
   withTemplateCloneFillPluginInputs,
   withoutCanonicalDeckAttachments,
@@ -71,15 +75,15 @@ afterEach(() => {
 });
 
 describe('templateCloneContentFill', () => {
-  it('loop463 — defaults to LOOK seed + MiniMax prompt-fill; deterministic is opt-in', () => {
-    expect(normalizeTemplateCloneFillMode(undefined)).toBe('prompt');
-    expect(normalizeTemplateCloneFillMode('')).toBe('prompt');
-    expect(normalizeTemplateCloneFillMode('nonsense')).toBe('prompt');
-    expect(getTemplateCloneFillMode()).toBe('prompt');
+  it('0918-N03 — defaults to AI JSON content + deterministic host layout', () => {
+    expect(normalizeTemplateCloneFillMode(undefined)).toBe('json');
+    expect(normalizeTemplateCloneFillMode('')).toBe('json');
+    expect(normalizeTemplateCloneFillMode('nonsense')).toBe('json');
+    expect(getTemplateCloneFillMode()).toBe('json');
     expect(shouldSkipTemplateCloneSeed()).toBe(false);
-    expect(shouldUseJsonTemplateCloneFill()).toBe(false);
+    expect(shouldUseJsonTemplateCloneFill()).toBe(true);
     expect(shouldQueueAiTemplateCloneFill()).toBe(true);
-    expect(shouldUsePromptTemplateCloneFill()).toBe(true);
+    expect(shouldUsePromptTemplateCloneFill()).toBe(false);
     expect(shouldUseDeterministicTemplateCloneFill()).toBe(false);
 
     // Existing env tokens stay on HTML rewrite — remapping them to JSON
@@ -118,7 +122,7 @@ describe('templateCloneContentFill', () => {
   });
 
   it('accepts the loop401 `pure-prompt` rollback mode via env and multiple aliases', () => {
-    expect(getTemplateCloneFillMode()).toBe('prompt');
+    expect(getTemplateCloneFillMode()).toBe('json');
     expect(shouldSkipTemplateCloneSeed()).toBe(false);
     expect(normalizeTemplateCloneFillMode('pure-prompt')).toBe('pure-prompt');
     expect(normalizeTemplateCloneFillMode('no-seed')).toBe('pure-prompt');
@@ -141,7 +145,7 @@ describe('templateCloneContentFill', () => {
     expect(normalizeTemplateCloneFillMode('NO-CLONE')).toBe('pure-prompt');
   });
 
-  it('loop420/463 — Teamver embed ignores leftover localStorage fill mode', () => {
+  it('loop420/535 — Teamver embed ignores leftover localStorage fill mode', () => {
     const store = new Map<string, string>();
     store.set('od:template-clone-fill-mode', 'pure-prompt');
     const prev = globalThis.window;
@@ -159,9 +163,10 @@ describe('templateCloneContentFill', () => {
     };
     try {
       process.env.VITE_TEAMVER_EMBED = '1';
-      expect(getTemplateCloneFillMode()).toBe('prompt');
+      expect(getTemplateCloneFillMode()).toBe('json');
       expect(shouldSkipTemplateCloneSeed()).toBe(false);
       expect(shouldUseDeterministicTemplateCloneFill()).toBe(false);
+      expect(shouldUseJsonTemplateCloneFill()).toBe(true);
       expect(shouldQueueAiTemplateCloneFill()).toBe(true);
 
       process.env.VITE_TEAMVER_EMBED = '0';
@@ -214,15 +219,14 @@ describe('templateCloneContentFill', () => {
       new URL('../../../../deploy/teamver/.env.staging.example', import.meta.url),
       'utf8',
     );
-    expect(stagingEnv).toMatch(/VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=prompt/);
-    expect(stagingEnv).not.toMatch(/VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=deterministic/);
+    expect(stagingEnv).toMatch(/^VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=json$/m);
     expect(stagingEnv).not.toMatch(/VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=pure-prompt/);
     const composer = readFileSync(
       new URL('../../src/components/ChatComposer.tsx', import.meta.url),
       'utf8',
     );
-    expect(composer).toContain('LOOK seed is enough');
-    expect(composer).toContain('never MiniMax');
+    expect(composer).toContain('seeded.contentFilled === true');
+    expect(composer).toContain('buildTemplateCloneContentFillSeed');
     const projectView = readFileSync(
       new URL('../../src/components/ProjectView.tsx', import.meta.url),
       'utf8',
@@ -231,7 +235,31 @@ describe('templateCloneContentFill', () => {
     expect(projectView).toContain('isTemplateCloneHostFillQueued');
     expect(projectView).toContain('queueTemplateClonePromptFill');
     expect(app).toContain('cloneResultSuppressesAiFill');
-    expect(app).toContain('never MiniMax');
+    expect(app).toContain('queueTemplateCloneContentFill');
+    expect(app).toContain('deterministicCloneFilledMetadataFields');
+    expect(composer).toContain('deterministicCloneFilledMetadataFields');
+    expect(projectView).toContain('shouldExplainGenericBriefOnLookSeedFallback');
+    expect(projectView).toContain('observeTemplateCloneLookSeedFallback');
+    expect(projectView).toContain("source: 'persist'");
+    expect(projectView).toContain('shouldRunDeterministicSparseCheck');
+    expect(projectView).toContain('mode: "sparse-only"');
+    expect(projectView).toContain('phase: "deterministic-fill"');
+    expect(projectView).toMatch(/!sparseOnly\s*&&\s*shouldQueueThinPriorFullRewrite/);
+    expect(projectView).toMatch(/wantsCountTopUp = sparseOnly\s*\n\s*\? false/);
+    const daemonRoutes = readFileSync(
+      new URL('../../../daemon/src/project-routes.ts', import.meta.url),
+      'utf8',
+    );
+    expect(daemonRoutes).toContain('templateCloneSparseCheckPending: true');
+  });
+
+  it('loop535 — deterministic filled metadata asks for one sparse/observe pass', () => {
+    expect(deterministicCloneFilledMetadataFields()).toEqual({
+      templateCloneContentFilled: true,
+      templateCloneContentFillPending: false,
+      templateCloneFillMode: 'deterministic',
+      templateCloneSparseCheckPending: true,
+    });
   });
 
   it('loop421 — recovered LOOK/filled decks suppress MiniMax overwrite', () => {
@@ -257,7 +285,15 @@ describe('templateCloneContentFill', () => {
       slideCount: 1,
       templateId: 'html-ppt-zhangzara-capsule',
       recoveredExisting: true,
-    })).toBe(true);
+    })).toBe(false);
+    expect(cloneResultSuppressesAiFill({
+      ok: true,
+      fileName: 'deck.html',
+      slideCount: 1,
+      templateId: 'html-ppt-zhangzara-capsule',
+      recoveredExisting: true,
+      needsAiContentFill: true,
+    })).toBe(false);
     expect(cloneResultSuppressesAiFill({
       ok: true,
       fileName: 'deck.html',
@@ -275,6 +311,8 @@ describe('templateCloneContentFill', () => {
       'utf8',
     );
     expect(recoverSource).toContain('templateCloneContentFilled === true');
+    expect(recoverSource).toContain('resolveTemplateCloneLookSeedHtml');
+    expect(recoverSource).toContain('pickPromptFillLookSeedHtml');
     expect(recoverSource).toContain('contentFilled: true');
     expect(recoverSource).not.toMatch(
       /if \(json\?\.metadata\?\.templateCloneContentFilled === true\) return null/,
@@ -305,6 +343,13 @@ describe('templateCloneContentFill', () => {
         fillQueued: true,
       }),
     ).toBe(true);
+    expect(
+      shouldSkipCreateAutoSendForDeterministicClone({
+        metadata: { templateCloneContentFillPending: true },
+        seed: `${TEMPLATE_CLONE_CONTENT_FILL_MARKER}\nJSON only`,
+        fillQueued: true,
+      }),
+    ).toBe(false);
   });
 
   it('does not treat Canvas boilerplate as the visible request', () => {
@@ -334,7 +379,16 @@ describe('templateCloneContentFill', () => {
     expect(seed).toMatch(/headline, takeaway/i);
     expect(seed).toMatch(/JSON slot-fill|JSON outline only/i);
     expect(seed).toMatch(/do NOT regenerate deck HTML|Forbidden output/i);
+    expect(seed).toContain('Never emit `<artifact type="deck-patch">` — this is a JSON slot-fill turn (no artifact).');
+    expect(templateCloneContentFillHardRules().some((line) => (
+      line.includes('Never emit `<artifact type="deck-patch">`')
+    ))).toBe(true);
     expect(seed).toMatch(/roleHint/i);
+    expect(seed).toMatch(/Layout variety is mandatory/i);
+    expect(seed).toMatch(/at least 3 distinct body `roleHint` values/i);
+    expect(seed).toMatch(/Copy density must fill the chosen layout/i);
+    expect(seed).toMatch(/Brand spelling: keep Latin product\/brand spellings/i);
+    expect(seed).toMatch(/25–60 Korean-character/i);
     expect(seed).toMatch(/items\[\] with 2–4 \{title, body\}/);
     expect(seed).toMatch(/Slide count THIS TURN/i);
     expect(seed).toMatch(/default 6-slide outline/i);
@@ -367,9 +421,14 @@ describe('templateCloneContentFill', () => {
     expect(isTemplateClonePromptFillPrompt(seed)).toBe(true);
     expect(seed).toMatch(/complete final deck artifact/i);
     expect(seed).toMatch(/Do not emit JSON outline/i);
+    expect(seed).toContain('Never emit `<artifact type="deck-patch">` on this create turn');
+    expect(seed).toMatch(/Layout variety is REQUIRED/i);
+    expect(seed).toMatch(/Copy density mirrors the template preview/i);
     expect(seed).toMatch(/1920x1080/);
     expect(seed).toContain('Selected template: Html Ppt Zhangzara Daisy Days');
     expect(seed).toContain('Cover topic (use as the title, not the instruction): expo');
+    expect(seed).toMatch(/www\.example\.com 사이/);
+    expect(seed).not.toMatch(/팀버 소개|www\.teamver\.com 사이/);
     expect(seed).not.toMatch(/Quality bar:\s*Quality bar:/);
     expect(seed).not.toMatch(/Worked example — brief/i);
     expect(seed).not.toMatch(/Expo for Senior Engineers/);
@@ -418,6 +477,57 @@ describe('templateCloneContentFill', () => {
     expect(persistableUserMessageContent(seed)).toBe(
       'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
     );
+  });
+
+  it('루프546 — prompt-fill seed keeps v1.4.15 stability: no topic/unique penalty text', () => {
+    const seed = buildTemplateClonePromptFillSeed({
+      userInstruction: '글을 매력적으로 쓰는 팁 정리해줘',
+      templateTitle: 'Html Ppt Zhangzara 8-Bit Orbit',
+      slideCountHint: '6-8',
+    });
+    // 루프546 · topic/unique hard bans made models shrink 10-shell seeds to 6
+    // slides. Prompt-fill should keep v1.4.15 behavior and leave this cleanup to
+    // post-fill merge/heal/gates.
+    expect(seed).not.toMatch(/Topic-lock \(brief-tethered content\)/);
+    expect(seed).not.toContain('개념 / 구조 / 영향');
+    expect(seed).not.toMatch(/prefer a distinct angle per slot/);
+    expect(seed).not.toMatch(/Do not repeat the slide title as its body/);
+    expect(seed).not.toMatch(/Bare one-word labels \(핵심, 개념, 요약/);
+    expect(seed).not.toMatch(/failed deliverable/i);
+    expect(seed).not.toMatch(/majority of body slides share the same body sentence/i);
+    expect(seed).toMatch(/Deliver the same number of `<section class="slide">` slides as the seed/);
+    // 기존 pin 유지 — CONTENT_EXPANSION은 prompt-fill seed에 노출되지 않음.
+    expect(seed).not.toMatch(/Content expansion contract/i);
+  });
+
+  it('루프546 — JSON slot-fill hard rules keep count without topic/unique penalty text', () => {
+    const rules = templateCloneContentFillHardRules();
+    const joined = rules.join('\n');
+    expect(joined).not.toMatch(/Topic-lock \(brief-tethered content\)/);
+    expect(joined).not.toMatch(/prefer a distinct angle per slot/);
+    expect(joined).not.toContain('개념 / 구조 / 영향');
+    expect(joined).toMatch(/Deliver the same number of `<section class="slide">` slides as the seed/);
+    // JSON slot-fill은 원래대로 CONTENT_EXPANSION도 유지.
+    expect(joined).toMatch(/Content expansion contract/i);
+    // unique/topic penalty framing 제거. `Content expansion contract` still
+    // contains its long-standing "Failed deliverables" section for JSON mode.
+    expect(joined).not.toMatch(/majority of body slides share the same body sentence/i);
+  });
+
+  it('루프546 — "장 수 유지"는 별도 상수로 분리되어 prompt seed / hard rules 양쪽에 emit', () => {
+    // penalty framing과 상충 표현이 한 상수 안에 공존하지 않도록 v1.4.15 회귀
+    // 원복 슬라이스에서 분리됨.
+    const seed = buildTemplateClonePromptFillSeed({
+      userInstruction: '글을 매력적으로 쓰는 팁 정리해줘',
+      templateTitle: 'Html Ppt Zhangzara Block Frame',
+      slideCountHint: '10',
+    });
+    expect(seed).toMatch(/Deliver the same number of `<section class="slide">` slides as the seed/);
+    expect(seed).toMatch(/do not merge or drop slides/);
+
+    const rules = templateCloneContentFillHardRules().join('\n');
+    expect(rules).toMatch(/Deliver the same number of `<section class="slide">` slides as the seed/);
+    expect(rules).toMatch(/do not merge or drop slides/);
   });
 
   it('binds website-analysis outline anchors from headings/preview in the brief', () => {
@@ -581,6 +691,43 @@ describe('templateCloneContentFill', () => {
     expect(seed).toMatch(/user prompt may be empty/i);
     expect(seed).not.toMatch(/any attached source materials/);
     expect(seed.startsWith('슬라이드 내용을 채워줘.')).toBe(true);
+  });
+
+  // 루프529 — soft defer MiniMax when Home brief has no usable topic.
+  it('isGenericTemplateCloneTopicBrief detects empty / boilerplate / title-only briefs', () => {
+    expect(isGenericTemplateCloneTopicBrief('')).toBe(true);
+    expect(isGenericTemplateCloneTopicBrief('슬라이드')).toBe(true);
+    expect(isGenericTemplateCloneTopicBrief('만들어줘')).toBe(true);
+    expect(isGenericTemplateCloneTopicBrief('첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.')).toBe(true);
+    expect(
+      isGenericTemplateCloneTopicBrief(
+        'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+      ),
+    ).toBe(false);
+    expect(
+      isGenericTemplateCloneTopicBrief('expo에 대해서 설명하는 피피티 만들어줘.'),
+    ).toBe(false);
+    // Canvas/Drive with source material never defer.
+    expect(
+      isGenericTemplateCloneTopicBrief('', { hasSourceMaterial: true }),
+    ).toBe(false);
+  });
+
+  it('loop536 — LOOK seed generic-brief copy only when no topic and no source', () => {
+    expect(shouldExplainGenericBriefOnLookSeedFallback({
+      brief: '슬라이드 만들어줘',
+    })).toBe(true);
+    expect(shouldExplainGenericBriefOnLookSeedFallback({
+      brief: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
+    })).toBe(false);
+    expect(shouldExplainGenericBriefOnLookSeedFallback({
+      brief: '만들어줘',
+      userContent: 'Fill REAL presentation CONTENT for this request and any attached source materials (Canvas/Drive/files).',
+    })).toBe(false);
+    expect(shouldExplainGenericBriefOnLookSeedFallback({
+      brief: '만들어줘',
+      attachments: [{ path: 'canvas.png' }],
+    })).toBe(false);
   });
 
   it('extracts topic from full run prompt with [User instruction] block', () => {
@@ -882,6 +1029,12 @@ describe('templateCloneContentFill', () => {
     expect(isTemplateCloneContentFillPrompt(repair)).toBe(true);
     expect(repair).toMatch(/Emit ONE JSON outline only/i);
     expect(repair).toMatch(/FORBIDDEN:.*section class="slide"/i);
+    // 루프522 — JSON slot-fill repair turns must not open an artifact wrapper.
+    // MiniMax sometimes tries to \"patch\" the LOOK seed with an empty
+    // deck-patch instead of returning the JSON outline → `incomplete_output`.
+    expect(repair).toMatch(
+      /Never emit `<artifact type="deck-patch">` or `<artifact type="element-patch">`/,
+    );
     expect(historyHasTemplateCloneSlotFillRepair([
       { role: 'user', content: 'hello' },
       { role: 'assistant', content: '<section class="slide">' },

@@ -35,15 +35,22 @@ import {
   isProjectRawFileKnownMissing,
 } from '../utils/projectFileFetchCache';
 import { loadAuthenticatedProjectFileBlob } from '../hooks/useAuthenticatedProjectFileObjectUrl';
+import { looksLikeHeadOpenedDeckPreamble } from '../artifacts/deck-html-content';
 
 /** No *content* SSE events for this long → stall (keepalive comments ignored). */
 export const PROXY_STREAM_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 /**
  * Slide/deck BYOK (minOutputTokens floor): MiniMax often pauses mid-artifact
- * while planning the next section. 5 minutes cut live decks as AGENT_EXECUTION_STALLED.
+ * while planning the next section. 5 minutes cut live decks as AGENT_EXECUTION_STALLED;
+ * 10 minutes left quiet hangs feeling endless (루프508). Midpoint: 6 minutes.
  * Idle is measured from the last real event (delta/thinking/…), not TCP keepalives.
  */
-export const PROXY_STREAM_IDLE_TIMEOUT_DECK_MS = 10 * 60 * 1000;
+export const PROXY_STREAM_IDLE_TIMEOUT_DECK_MS = 6 * 60 * 1000;
+/**
+ * After MiniMax opens `<artifact>`/`<head>` with no titled slide, further
+ * silence is a hang — not mid-deck planning. Do not wait the full deck idle.
+ */
+export const PROXY_STREAM_HEAD_PREAMBLE_IDLE_MS = 60 * 1000;
 
 /** @internal vitest + ProjectView deck runs */
 export function resolveProxyStreamIdleTimeoutMs(context?: ProxyContext): number {
@@ -55,6 +62,18 @@ export function resolveProxyStreamIdleTimeoutMs(context?: ProxyContext): number 
     return PROXY_STREAM_IDLE_TIMEOUT_DECK_MS;
   }
   return PROXY_STREAM_IDLE_TIMEOUT_MS;
+}
+
+/** @internal vitest — shorten idle once the stream is a head-only preamble. */
+export function resolveAdaptiveProxyStreamIdleTimeoutMs(
+  streamedText: string,
+  context?: ProxyContext,
+): number {
+  const base = resolveProxyStreamIdleTimeoutMs(context);
+  if (looksLikeHeadOpenedDeckPreamble(streamedText)) {
+    return Math.min(base, PROXY_STREAM_HEAD_PREAMBLE_IDLE_MS);
+  }
+  return base;
 }
 
 /** Daemon `: keepalive` comments must not reset the stall clock (loop423). */
@@ -188,7 +207,10 @@ export async function streamProxyEndpoint(
 
   // Soft-retry transient LLM/network/access failures before substantive
   // tokens stream (mirrors export soft-retry). Avoids intermittent hard failures.
-  const maxAttempts = 3;
+  // Stall idle uses a tighter budget (2 attempts) so 6m deck silence cannot
+  // stack to ~18 minutes (루프512).
+  const maxAttempts = PROXY_STREAM_SOFT_RETRY_MAX_ATTEMPTS;
+  let lastError: (Error & { code?: string; retryable?: boolean }) | null = null;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     if (signal.aborted) return;
     // Warm X-Teamver-S3-Prefix before BYOK materialization so daemon sync-down
@@ -198,18 +220,25 @@ export async function streamProxyEndpoint(
         quick: attempt > 0,
       }).catch(() => null);
     }
+    // 루프519 — retry thinking would append to the first card. Deck tokens
+    // still go through onDelta/onDone unchanged.
+    const attemptHandlers: StreamHandlers =
+      attempt === 0
+        ? handlers
+        : { ...handlers, onThinkingDelta: undefined };
     const outcome = await streamProxyEndpointOnce(
       endpoint,
       cfg,
       system,
       history,
       signal,
-      handlers,
+      attemptHandlers,
       context,
     );
     if (outcome === 'ok' || outcome === 'aborted') return;
+    lastError = outcome.error;
     const canRetry =
-      attempt < maxAttempts - 1
+      attempt < maxProxySoftRetryAttempts(outcome.error) - 1
       && !signal.aborted
       && shouldSoftRetryProxyFailure(outcome.error);
     if (!canRetry) {
@@ -222,10 +251,24 @@ export async function streamProxyEndpoint(
       return;
     }
   }
+  if (lastError) handlers.onError(lastError);
 }
 
 /** @internal vitest — delay between pre-token stall soft-retries */
 export const PROXY_SOFT_RETRY_DELAY_MS = 600;
+/** Network / 502 budget. Stall idle uses {@link PROXY_STREAM_STALL_MAX_ATTEMPTS}. */
+export const PROXY_STREAM_SOFT_RETRY_MAX_ATTEMPTS = 3;
+/** 루프512 — one retry after a silent stall (2 attempts total). */
+export const PROXY_STREAM_STALL_MAX_ATTEMPTS = 2;
+
+/** @internal vitest */
+export function maxProxySoftRetryAttempts(
+  err: Error & { code?: string },
+): number {
+  const code = (err.code || '').trim().toUpperCase();
+  if (code === 'AGENT_EXECUTION_STALLED') return PROXY_STREAM_STALL_MAX_ATTEMPTS;
+  return PROXY_STREAM_SOFT_RETRY_MAX_ATTEMPTS;
+}
 
 function delayMs(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -282,6 +325,49 @@ export function shouldSoftRetryProxyFailure(
   return false;
 }
 
+/**
+ * Soft-retry after painted *content* would duplicate the assistant card.
+ * Thinking-only silence on AGENT_EXECUTION_STALLED still retries once (루프512) —
+ * MiniMax often thinks before any HTML, and that used to skip both retry and salvage.
+ */
+function applyStreamedOutputRetryableGate(
+  error: Error & { code?: string; retryable?: boolean },
+  receivedSubstantiveDelta: boolean,
+  receivedThinkingDelta: boolean,
+): void {
+  if (receivedSubstantiveDelta) {
+    error.retryable = false;
+    return;
+  }
+  if (!receivedThinkingDelta) return;
+  if (!isProxyStallErrorCode(error.code)) {
+    error.retryable = false;
+  }
+}
+
+function isProxyStallErrorCode(code?: string): boolean {
+  return (code || '').trim().toUpperCase() === 'AGENT_EXECUTION_STALLED';
+}
+
+function finishProxyStreamError(
+  error: Error & { code?: string; retryable?: boolean; resumable?: boolean },
+  receivedSubstantiveDelta: boolean,
+  receivedThinkingDelta: boolean,
+  releaseStalledUpstream: () => void,
+): void {
+  applyStreamedOutputRetryableGate(
+    error,
+    receivedSubstantiveDelta,
+    receivedThinkingDelta,
+  );
+  if (isProxyStallErrorCode(error.code)) {
+    // Idle errors already set this; daemon SSE stalls must match so the
+    // continue dock appears after a partial turn (루프519).
+    error.resumable = true;
+    releaseStalledUpstream();
+  }
+}
+
 async function streamProxyEndpointOnce(
   endpoint: string,
   cfg: AppConfig,
@@ -294,9 +380,26 @@ async function streamProxyEndpointOnce(
   const managed = shouldUseManagedProxyApiKey(cfg);
   let acc = '';
   let receivedSubstantiveDelta = false;
-  /** Thinking frames already painted — soft-retry would duplicate the thinking UI. */
+  /** Thinking frames already painted — non-stall errors stay non-retryable. */
   let receivedThinkingDelta = false;
   let sawEndEvent = false;
+  let proxyStreamId = '';
+  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+
+  const releaseStalledUpstream = () => {
+    // Stall is an explicit FE kill, not a page-exit drain. Abort so a
+    // soft-retry does not stack a second MiniMax job on the first connection.
+    if (proxyStreamId) {
+      requestProxyAbort(proxyStreamId, {
+        conversationId: context?.conversationId ?? null,
+      });
+    }
+    try {
+      void reader?.cancel()?.catch(() => undefined);
+    } catch {
+      // leaked reader must not throw out of the stall path
+    }
+  };
 
   try {
     const messages = await buildProxyMessages(endpoint, history, context);
@@ -361,7 +464,7 @@ async function streamProxyEndpointOnce(
     // `resp.headers` is missing on some test mocks (Response shape is
     // partially stubbed). Treat that as "no streamId" so the abort hook
     // is a no-op and the body-streaming code path is unaffected.
-    const proxyStreamId =
+    proxyStreamId =
       (typeof resp.headers?.get === 'function'
         && (resp.headers.get('x-stream-id') || resp.headers.get('X-Stream-Id')))
       || '';
@@ -381,21 +484,22 @@ async function streamProxyEndpointOnce(
       }
     }
 
-    const reader = resp.body.getReader();
+    const activeReader = resp.body.getReader();
+    reader = activeReader;
     const decoder = new TextDecoder();
     let buf = '';
     // 루프423 — Stall on content silence. Daemon `: keepalive` every 25s must
     // not reset the clock or Working UI hangs forever mid-<head>.
-    const contentIdleTimeoutMs = resolveProxyStreamIdleTimeoutMs(context);
     let lastContentAt = Date.now();
 
     while (true) {
+      const contentIdleTimeoutMs = resolveAdaptiveProxyStreamIdleTimeoutMs(acc, context);
       const remainingMs = contentIdleTimeoutMs - (Date.now() - lastContentAt);
       if (remainingMs <= 0) {
         throw createProxyStreamIdleError();
       }
       const { value, done } = await readProxyStreamChunk(
-        reader,
+        activeReader,
         remainingMs,
         signal,
       );
@@ -452,9 +556,12 @@ async function streamProxyEndpointOnce(
           if (typeof retryableCandidate === 'boolean') {
             err.retryable = retryableCandidate;
           }
-          // Do not soft-retry after substantive tokens or thinking were streamed
-          // (would duplicate UI).
-          if (receivedSubstantiveDelta || receivedThinkingDelta) err.retryable = false;
+          finishProxyStreamError(
+            err,
+            receivedSubstantiveDelta,
+            receivedThinkingDelta,
+            releaseStalledUpstream,
+          );
           return { error: err };
         }
 
@@ -538,7 +645,12 @@ async function streamProxyEndpointOnce(
           if (typeof retryableCandidate === 'boolean') {
             err.retryable = retryableCandidate;
           }
-          if (receivedSubstantiveDelta || receivedThinkingDelta) err.retryable = false;
+          finishProxyStreamError(
+            err,
+            receivedSubstantiveDelta,
+            receivedThinkingDelta,
+            releaseStalledUpstream,
+          );
           return { error: err };
         } else if (parsed.event === 'usage') {
           const inputTokens = Number(parsed.data.input_tokens ?? parsed.data.inputTokens ?? 0);
@@ -599,11 +711,12 @@ async function streamProxyEndpointOnce(
       error.code = 'UPSTREAM_UNAVAILABLE';
       error.retryable = true;
     }
-    // Same gate as SSE error frames — soft-retry after painted tokens/thinking
-    // would duplicate UI content across attempts.
-    if (receivedSubstantiveDelta || receivedThinkingDelta) {
-      error.retryable = false;
-    }
+    finishProxyStreamError(
+      error,
+      receivedSubstantiveDelta,
+      receivedThinkingDelta,
+      releaseStalledUpstream,
+    );
     return { error };
   }
 }

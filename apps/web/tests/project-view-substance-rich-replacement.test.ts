@@ -205,6 +205,118 @@ describe('findClientSlideCountRegression · 루프279 substance-rich exemption',
     });
     expect(result).toMatchObject({ priorCount: 8, newCount: 3 });
   });
+
+  /**
+   * 루프545 · block-frame LOOK seed prior에서 슬라이드 수가 줄어드는 fill을
+   * regression으로 잡던 문제.
+   *
+   * (1) prior가 progress-placeholder / low-substance인 경우 (block-frame
+   *     LOOK seed가 manifest 마커를 잃고 다시 저장된 뒤 사용자가 재요청) →
+   *     substance-rich 4장 fill로 대체가 허용되어야 한다.
+   * (2) 반면 이미 topic sentence가 찬 substance-rich prior를 절반으로 줄이면
+   *     여전히 regression이 유지되어야 한다 (사용자 원칙: 완성된 덱을 짧은
+   *     초안으로 덮지 않는다).
+   */
+  it('루프545 · low-substance prior(진행중 문구 반복)를 substance-rich 4장 fill로 대체 허용', () => {
+    const lowSubstancePriorTenSlides = [
+      '<!doctype html><html lang="ko"><body>',
+      ...Array.from(
+        { length: 10 },
+        (_, i) =>
+          `<section class="slide"><h1>발표 개요 ${i + 1}</h1><p>발표 개요를 만들고 있어요…</p></section>`,
+      ),
+      '</body></html>',
+    ].join('');
+    const result = findClientSlideCountRegression({
+      fileName: 'deck.html',
+      htmlBody: substanceRichFive,
+      priorHtml: lowSubstancePriorTenSlides,
+      healBrief: '삼각함수를 처음 배우는 학생을 위한 발표',
+      healTitle: '삼각함수 소개',
+    });
+    expect(result).toBeNull();
+  });
+
+  it('루프545 · substance-rich prior 8장 → thin 3장 fill은 여전히 regression 유지', () => {
+    // 사용자 원칙: 이미 채워진 substance-rich prior를 얇은 초안(3장 이하)으로
+    // 덮는 것은 여전히 거절. loop279 substance-rich-exemption도 3장 이하 thin
+    // fill은 통과시키지 않음.
+    const thinThreeSlide = [
+      '<!doctype html><html lang="ko"><body>',
+      '<section class="slide"><h1>표지</h1><p>짧은 표지</p></section>',
+      '<section class="slide"><h2>본문</h2><p>한 문장.</p></section>',
+      '<section class="slide"><h2>끝</h2><p>마무리.</p></section>',
+      '</body></html>',
+    ].join('');
+    const result = findClientSlideCountRegression({
+      fileName: 'deck.html',
+      htmlBody: thinThreeSlide,
+      priorHtml: priorFullEightSlides,
+    });
+    expect(result).toMatchObject({ priorCount: 8, newCount: 3 });
+  });
+
+  /**
+   * 루프547 · severity 분리 pin.
+   *
+   * substance-rich prior 위에 짧지만 온전한 다중-slide fill이 왔을 때:
+   * - non-strict + newCount≥2 → severity='warn' (저장 진행 · notice 배너)
+   * - non-strict + newCount≤1 → severity='reject' (기존 거절 유지)
+   * - strict 모드 · 어떤 drop이든 → severity='reject'
+   * - low-substance prior → null (bypass 유지 · severity 없음)
+   */
+  it('루프547 · non-strict + substance-rich prior + newCount≥2 → severity=warn', () => {
+    // 8-slide substance-rich prior → 4-slide fill (loop279 substance-rich-
+    // exemption을 벗어난 얇은 4장 · dropped=4≥3 hard collapse).
+    const thinFourSlide = [
+      '<!doctype html><html lang="ko"><body>',
+      '<section class="slide"><h1>표지</h1><p>짧은 표지</p></section>',
+      '<section class="slide"><h2>문제</h2><p>한 문장.</p></section>',
+      '<section class="slide"><h2>해결</h2><p>한 문장.</p></section>',
+      '<section class="slide"><h2>다음</h2><p>마무리.</p></section>',
+      '</body></html>',
+    ].join('');
+    const result = findClientSlideCountRegression({
+      fileName: 'deck.html',
+      htmlBody: thinFourSlide,
+      priorHtml: priorFullEightSlides,
+    });
+    expect(result).toMatchObject({ priorCount: 8, newCount: 4, severity: 'warn' });
+  });
+
+  it('루프547 · non-strict + substance-rich prior + newCount≤1 → severity=reject', () => {
+    // 완전 collapse — 1장으로 줄어들면 여전히 저장 거절.
+    const oneSlideCover = [
+      '<!doctype html><html lang="ko"><body>',
+      '<section class="slide"><h1>표지</h1><p>한 줄 표지.</p></section>',
+      '</body></html>',
+    ].join('');
+    const result = findClientSlideCountRegression({
+      fileName: 'deck.html',
+      htmlBody: oneSlideCover,
+      priorHtml: priorFullEightSlides,
+    });
+    expect(result).toMatchObject({ priorCount: 8, newCount: 1, severity: 'reject' });
+  });
+
+  it('루프547 · strict(image-embed) + substance-rich prior + newCount≥2 → severity=reject', () => {
+    // 이미지·comment scoped 턴은 스코프가 극도로 좁아 어떤 slide drop도 reject.
+    const thinFourSlide = [
+      '<!doctype html><html lang="ko"><body>',
+      '<section class="slide"><h1>표지</h1><p>짧은 표지</p></section>',
+      '<section class="slide"><h2>문제</h2><p>한 문장.</p></section>',
+      '<section class="slide"><h2>해결</h2><p>한 문장.</p></section>',
+      '<section class="slide"><h2>다음</h2><p>마무리.</p></section>',
+      '</body></html>',
+    ].join('');
+    const result = findClientSlideCountRegression({
+      fileName: 'deck.html',
+      htmlBody: thinFourSlide,
+      priorHtml: priorFullEightSlides,
+      strict: true,
+    });
+    expect(result).toMatchObject({ priorCount: 8, newCount: 4, severity: 'reject' });
+  });
 });
 
 describe('shouldSkipDaemonArtifactStubGuard · 루프280', () => {

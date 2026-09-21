@@ -7,9 +7,11 @@
  *      demo phrase / number denylist
  *   3) Canvas — fixed 1920×1080 style is present (width:1920px + min-height 1080)
  *   4) Slide count — `listTemplateCloneSlideShells(cloned).length === expected`
- *      + brief-derived topic (`팀버` / `Teamver`)
+ *      + brief-derived topic (host→Latin brand from the gate brief URL)
  *   5) Layout (루프472) — class-like motif tokens appear as live tags, and the
  *      first shell still has a heading. Pixel screenshots stay out of this gate.
+ *   6) Content density (루프543) — card copy / CTA slots must not be empty or
+ *      left as stock template UI chrome after deterministic fill.
  *
  * The helper delegates deck build to `buildTemplateClonedDeckHtml` with a
  * deterministic outline from `resolveTemplateCloneSlidesForDeterministicFill`
@@ -22,6 +24,7 @@ import { expect } from 'vitest';
 
 import {
   buildTemplateClonedDeckHtml,
+  latinBrandLabelFromHost,
   listTemplateCloneSlideShells,
   looksLikeLeftoverTemplateDemoDeck,
   resolveTemplateCloneSlidesForDeterministicFill,
@@ -124,7 +127,7 @@ export async function runDeterministicTemplateQualityGate(
     slideCount: requested,
   });
   const cloned = buildTemplateClonedDeckHtml(html, slides, {
-    title: slides[0]?.title || '팀버',
+    title: slides[0]?.title || '슬라이드',
     templateId: spec.templateId,
     maxSlides: requested,
     brief,
@@ -164,6 +167,26 @@ const LAYOUT_SKIP_LIVE_TOKENS = new Set([
 const COVER_HEADING_RE =
   /<h[1-3]\b[^>]*>[\s\S]*?\S[\s\S]*?<\/h[1-3]>|<(?:div|span)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:title|display|headline|lockup|hero-title|cover-headline|title-main|main-title|t-display|wordmark|brand)\b[^>]*>[\s\S]*?\S/i;
 
+const EMPTY_CARD_COPY_SLOT_RE =
+  /<(?:p|div|span)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:card-text|team-bio|member-role|step-desc|flow-desc|cycle-desc|kb-step-body)\b[^"']*["'][^>]*>\s*<\/(?:p|div|span)>/i;
+
+const GENERIC_STOCK_CTA_RE =
+  /<(?:a|button)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:btn|cta|button|nb-btn|pixel-btn|hero-cta)\b[^"']*["'][^>]*>\s*(?:Get Started|Learn More|Read More|View Process|View Documentation|Initialize Deck|Enterprise Demo|Enterprise 데모)\s*<\/(?:a|button)>/i;
+
+const TOO_THIN_CARD_RE =
+  /<(?:article|div|li)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:feature-card|intro-card|nb-card|team-card|info-card|pillar-card|timeline-card|step-card|member-card)\b[^"']*["'][^>]*>(?:(?!<\/(?:article|div|li)>)[\s\S]){0,260}<\/(?:article|div|li)>/gi;
+
+function visibleTextLength(html: string): number {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .length;
+}
+
 /**
  * Assert the 4-axis quality gate on an already-built cloned deck.
  * Failures include the template name and axis so a red spec points to the
@@ -199,10 +222,19 @@ export function assertDeterministicTemplateQualityGate(
   expect(cloned, `${tag} (min-)height:1080px missing`)
     .toMatch(/(?:min-)?height:\s*1080px/i);
 
-  // Axis 4 — slide count + topic.
+  // Axis 4 — slide count + host-derived Latin brand from the gate brief URL.
   const shells = listTemplateCloneSlideShells(cloned);
   expect(shells.length, `${tag} slide count`).toBe(spec.expectedSlideCount);
-  expect(cloned, `${tag} 팀버/Teamver topic`).toMatch(/팀버|Teamver/i);
+  const briefForTopic = spec.brief ?? TEAMVER_SERVICE_INTRO_BRIEF;
+  const host = briefForTopic.match(
+    /(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+)\.(?:com|co\.kr|kr|io|net|ai|app)\b/i,
+  )?.[1];
+  const expectedBrand = host ? latinBrandLabelFromHost(host) : '';
+  if (expectedBrand) {
+    expect(cloned, `${tag} host brand ${expectedBrand}`).toMatch(
+      new RegExp(escapeRegExp(expectedBrand), 'i'),
+    );
+  }
 
   // Axis 5 — 루프472 layout: live motif tags + a title host.
   const layoutTag = `[루프472:${spec.name}]`;
@@ -222,6 +254,22 @@ export function assertDeterministicTemplateQualityGate(
     `${titleHost!.full}\n${cloned}`,
     `${layoutTag} cover heading missing`,
   ).toMatch(COVER_HEADING_RE);
+
+  // Axis 6 — 루프543 content density: no empty card copy slots, no stock CTA
+  // labels, and live card peers should carry enough visible text to be useful.
+  const densityTag = `[루프543:${spec.name}]`;
+  expect(cloned, `${densityTag} empty card copy slot`).not.toMatch(EMPTY_CARD_COPY_SLOT_RE);
+  expect(cloned, `${densityTag} stock CTA slot`).not.toMatch(GENERIC_STOCK_CTA_RE);
+  const thinCards = [...cloned.matchAll(TOO_THIN_CARD_RE)]
+    .map((match) => match[0] ?? '')
+    .filter((block) => {
+      // Decorative cards without a heading/body slot are allowed; content cards are not.
+      if (!/<h[3-5]\b|class\s*=\s*["'][^"']*\b(?:card-title|team-name|member-name|step-title|flow-title)\b/i.test(block)) {
+        return false;
+      }
+      return visibleTextLength(block) < 18;
+    });
+  expect(thinCards, `${densityTag} thin content card peers`).toHaveLength(0);
 }
 
 /**

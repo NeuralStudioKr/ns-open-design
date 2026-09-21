@@ -152,11 +152,14 @@ function renderUiLocalePrompt(locale: string | undefined): string {
     ? 'Simplified Chinese'
     : normalized === 'zh-TW'
       ? 'Traditional Chinese'
-      : normalized;
+      : normalized === 'ko' || normalized.toLowerCase() === 'ko-kr'
+        ? 'Korean'
+        : normalized;
   const lines = [
     '# UI locale override',
     '',
     `The UI locale for this run is \`${normalized}\` (${languageName}). All user-visible chat prose and generated UI controls must follow this locale, especially \`<question-form>\` titles, descriptions, labels, placeholders, helper text, and option labels. Keep machine-readable ids and object option \`value\` fields exact and unlocalized.`,
+    'Never put internal patch planning into chat prose: no slide indices (`slide 9 (index 8)`), no HTML/CSS class walkthroughs (`.slide--…`, `<span>` labels), and no first-person monologues like "I\'m checking the slide" / "I\'ll patch that slide". Emit element-patch / artifact quietly; user-visible chat is only a short outcome sentence in this locale.',
     'Exception: for the default task-type form, keep the `taskType` option labels as the canonical routing choices: `Prototype`, `Live artifact`, `Slide deck`, `Image`, `Video`, `HyperFrames`, `Audio`, `Other`. Do not translate, reorder, or rewrite those option labels.',
   ];
   if (normalized === 'zh-CN') {
@@ -203,12 +206,17 @@ function renderTeamverSlideUiLocalePrompt(
     ? 'Simplified Chinese'
     : normalized === 'zh-TW'
       ? 'Traditional Chinese'
-      : normalized;
+      : normalized === 'ko' || normalized.toLowerCase() === 'ko-kr'
+        ? 'Korean'
+        : normalized;
   const lines = [
     '# UI locale override (slide-only)',
     '',
     `UI locale: \`${normalized}\` (${languageName}). Localize user-visible chat status prose and any \`<question-form>\` labels to this locale. Keep machine-readable ids / option \`value\` fields in English.`,
+    'Never narrate internal deck patch plans in chat: no slide indices, HTML/CSS class inspection, or "I\'m checking the slide" / "I\'ll patch that slide" monologues. Emit patches quietly; chat is a short UI-locale outcome only.',
     'This project is always a slide deck — never emit Prototype / Live artifact / Image / Video / Audio task-type routing.',
+    // 루프511 — locale ko must not force phonetic Hangul for Latin brands in the brief/URL.
+    'Keep Latin product/brand spellings from the user brief or URL (derive from the host label). Do not phonetic-Hangulize proper nouns.',
   ];
   if (options.discoveryActive && (normalized === 'ko' || normalized === 'ko-KR')) {
     lines.push(
@@ -820,7 +828,7 @@ When the user asks for a slide deck, presentation, PPT, pitch deck, or slide edi
 
 If the request contains enough information to proceed, your same response MUST include exactly one complete \`<artifact type="deck" identifier="deck">...</artifact>\` block. The artifact type must be \`deck\` (never \`text/html\`); the identifier MUST be \`deck\`. The host writes that artifact into the workspace automatically — never tell the user to save a file. Never copy or save an attached Canvas/Drive source HTML from \`refs/...\` into the project root. The artifact body must start with \`<!doctype html>\` and end with \`</html>\`.
 
-Before the artifact, optional: one tiny user-visible UI-locale status sentence tailored to the brief — **present or future tense only**. For a **new** deck: e.g. "작성 중", "making your deck". For a **follow-up edit** of an existing deck: e.g. "수정 반영 중", "Applying your edits" — never imply a brand-new draft ("초안 생성", "creating the deck"). Never past tense or completion claims ("만들었", "완성", "done", "created", "생성되었습니다") until the artifact is fully closed. Then start the artifact immediately. Artifact-only is OK for speed/tokens. Do not use a generic promise-only line, a slide outline, a task list, or a partial HTML head. If information is truly missing, ask one concise \`<question-form>\` instead of claiming completion.
+Before the artifact, optional: one tiny user-visible UI-locale status sentence tailored to the brief — **present or future tense only**. For a **new** deck: e.g. "작성 중", "making your deck". For a **follow-up edit** of an existing deck: e.g. "수정 반영 중", "Applying your edits" — never imply a brand-new draft ("초안 생성", "creating the deck"). Never past tense or completion claims ("만들었", "완성", "done", "created", "생성되었습니다") until the artifact is fully closed. Never narrate patch internals (slide index, HTML/CSS classes, "I'm checking the slide"). Then start the artifact immediately. Artifact-only is OK for speed/tokens. Do not use a generic promise-only line, a slide outline, a task list, or a partial HTML head. If information is truly missing, ask one concise \`<question-form>\` instead of claiming completion.
 
 ### Anti-patterns that keep breaking slide runs (do NOT do these)
 
@@ -837,6 +845,7 @@ Before the artifact, optional: one tiny user-visible UI-locale status sentence t
 When the user message includes \`[Existing deck edit]\` and/or \`[Attached image embed]\` (or attaches the current \`deck.html\`):
 
 - The preferred final answer is a non-empty \`<artifact type="deck-patch">\` or \`<artifact type="element-patch">\` that changes only the requested slide/element.
+- If you emit \`<artifact type="deck-patch">\`, at least one \`<section class="slide">\` block is REQUIRED.
 - Emitting a full \`<artifact type="deck">\` that drops slides from the attached on-disk deck (e.g. rewriting an 8-slide deck as 2 slides) is a **critical failure**.
 - Do NOT treat the compact 2-slide wireframe example as a literal template for edit turns — preserve the attached deck's slide count and content.
 `;
@@ -847,7 +856,7 @@ const TEAMVER_API_DECK_FRAMEWORK_OVERRIDE = `
 
 The deck framework workflow above assumes TodoWrite and filesystem copies. **In this API run, override it:**
 
-- Stream promptly: optional tiny status sentence, then open \`<artifact type="deck">\` early and write filled slides. Do **not** wait until a private full draft is finished before opening the artifact.
+- Stream promptly: optional tiny status sentence, then open \`<artifact type="deck">\` early and write filled slides. Emit slides immediately; do not stop after \`</head>\`. Do **not** wait until a private full draft is finished before opening the artifact.
 - Still close \`</html></artifact>\` in this same turn — truncated head-only shells are always rejected.
 - Do NOT paste the long canonical skeleton / scale-to-fit JS / print CSS. Prefer visible \`<body><section class="slide">...\` content first. When a Selected deck template kit requires fonts, emit the kit \`<link rel="stylesheet" href="…fonts.googleapis.com…">\` after \`<body>\` (or after slide 1) — never Google Fonts as \`@import\` inside Motif \`<style>\` (css2 \`;\` truncation breaks Motif CSS). A short body \`<style>\` for kit tokens/Motif/Layout after slide 1 is OK.
 - Your response should contain exactly ONE \`<artifact type="deck" identifier="deck">...</artifact>\` block with every \`<section class="slide">\` filled with real copy (never \`<!-- SLOT: ... -->\` placeholders).
@@ -1448,6 +1457,8 @@ If the turn carries \`<attached-preview-comments>\`, prefer a structured element
 
 **Non-empty element-patch is required.** If you open \`<artifact type="element-patch">\`, you MUST emit at least one \`<patch target-id="…" slide-index="…" kind="…">…body…</patch>\` block before closing \`</artifact>\`. An empty artifact wrapper is a critical failure — the client cannot recover it, and the user loses the requested edit. If you cannot express the requested change as any of the allowed \`kind\`s, switch to \`<artifact type="deck-patch">\` with a full \`<section class="slide" data-slide-index="{N}">\` replacement in this same turn.
 
+**Non-empty deck-patch is required.** If you open \`<artifact type="deck-patch">\`, you MUST emit at least one \`<section class="slide" data-slide-index="{N}">…</section>\` block before closing \`</artifact>\`. An empty wrapper is a critical failure — on an unscoped run the client rejects it with \`incomplete_output\` and there is no auto-continue path that can recover it. If you cannot produce any slide section, emit prose (or a \`<question-form>\`) instead — never a bare \`<artifact type="deck-patch"></artifact>\`.
+
 Fallback for multi-element / slide-structure changes:
 
 \`<artifact type="deck-patch" identifier="deck"><section class="slide" data-slide-index="{N}">…full replacement outer HTML…</section></artifact>\`
@@ -1532,6 +1543,7 @@ Emit ONE complete \`<artifact type="deck" identifier="deck">\` HTML document thi
 - Every slide is 1920×1080, overflow hidden, navigable as a deck.
 - Slide count: if the user or Plugin inputs request 1–${COMPACT_FIRST_FILL_HONOR_MAX} slides/range (for example 8–10), emit that requested count/range now with a hard cap at the range max (8–10 → 10). Emitting 15 slides is a failed overshoot. The default ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN}-slide compact deck is only for unspecified counts; it is incomplete for an 8–10 request. Never copy the LOOK seed's demo page count when it exceeds the requested max.
 - Content depth: website/product briefs need a real service deck (problem/context, product promise, core workflow, features, use cases, integration/security/operation notes, adoption path, closing), not a one-line brand intro.
+- **Brand spelling:** Keep Latin product/brand spellings from the brief or URL (derive from the host, e.g. \`www.acme.com\` → \`Acme\`). Do not phonetic-Hangulize proper nouns.
 - **Layout variety is REQUIRED (mirror the template preview).** The template's example.html ships multiple slide shells (cover, cards grid, stat/data, team, timeline, process, quote, closing). When the deck has 4+ content slides, rotate through ≥ 4 distinct shells — never reuse the same list/body shell for every slide while the team/stat/timeline shells sit unused. The scaffold map above lists each shell's role and item slots; copy those shells verbatim rather than inventing a generic one-column body page.
 - **Card/grid slots must be filled** — when the template's shell hosts a card grid, populate every card with a real title AND a real body (2–4 sentence description); leaving cards title-only or half-empty looks broken next to the preview. Do the same for team, stat, timeline shells.
 - **Copy density mirrors the template preview.** Every non-cover, non-closing slide MUST carry a full-sentence \`lead\` (or opening \`<p>\` block) and card/list entries with concrete 1-sentence descriptions (~12–28 Korean chars or 6–16 English words each). Bare labels (\`핵심\`, \`개념\`, \`요약\`), single-noun bullets, and 1-word card titles fail — the template preview reads at ~2–3 sentences per card.
@@ -1551,6 +1563,7 @@ This is the first content fill after a LOOK seed.
 - **Match \`items\` count to scaffold slots.** When a scaffold-map row lists \`items~=N\`, provide roughly N items on that slide (never fewer than N/2 — half-filled card grids look broken). If no \`items~=\` hint is present, use 3 items for \`cards\`/\`team\`, 3–4 for \`stat\`/\`process\`/\`timeline\`, 3–5 bullets in \`body\` for \`list\`.
 - Cards / list / stat / process / team / timeline slides MUST include real \`items[]\` with a concrete \`body\` on each entry (or matching numbered bullets in \`body\`). Do not emit title-only cards. Do not repeat the same one-line item four times to fill a grid.
 - **Copy density mirrors the template preview.** Every non-cover, non-closing slide MUST carry: (a) a \`title\` that is a 2–6 word phrase (not a one-word label like \`핵심\`, \`개념\`, \`요약\`), (b) a \`lead\` — one full sentence introducing the slide's thesis, and (c) each \`items[]\` entry's \`body\` is one full sentence (roughly 12–28 Korean characters or 6–16 English words). Half-sentences, bare labels, or single nouns are a failed deliverable — the template preview reads at ~2–3 sentences per card, not fragment lists. \`stat\` slides are the only exception: their \`items[].title\` is the metric (\`+18%\`, \`92\`) and \`items[].body\` is the short label (2–5 words).
+- **Brand spelling:** Keep Latin product/brand spellings from the brief or URL (derive from the host; do not phonetic-Hangulize proper nouns).
 - ${COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE}
 - FORBIDDEN: \`<!doctype\`, \`<section class="slide"\`, Motif \`<svg>\`, full example rewrite, empty pillar cards to pad columns, Neutral \`#0f172a\`, terracotta \`#c96442\`.
 - If any earlier rule asks for HTML deck artifacts or Motif dumps, **IGNORE** — finish the JSON outline this turn.
@@ -1779,6 +1792,8 @@ export function composeTeamverSlideApiPrompt({
           + '- Do NOT dump/rewrite full example.html. Ignore SKILL.md "Clone example.html" in API mode.\n'
           + '- Bind kit Slide surface on html/body AND every `.slide`; use kit font names exactly.\n'
           + '- Follow scaffold map/Layout CSS roles. Keep compact motif/deco density via CSS shapes first. If SVG exists, use at most one short snippet AFTER title/body copy starts; never open Motif `<svg>` before cover copy; skip huge SVG/style payloads. No emoji ornaments.\n'
+          + '- **Layout variety** — 4+ content slides must rotate through ≥ 4 distinct scaffold-map shells. Do not stamp the same list/body layout on every page.\n'
+          + '- **Copy density** — every non-cover, non-closing slide needs a full-sentence lead and 1-sentence card/list bodies (~12–28 Korean chars or 6–16 English words). Bare labels and title-only cards fail.\n'
           + '- Do not paste a long `<head>` before slide 1; first produce visible slide sections and finish the deck.\n'
           + '- Active design system is secondary brand context only; template look wins.\n\n'
         )

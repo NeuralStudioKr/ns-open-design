@@ -15,6 +15,7 @@ import {
   parseTemplateCloneDeckOutline,
   recoverPartialTemplateCloneOutline,
   resolveTemplateCloneSlidesForDeterministicFill,
+  resolveTemplateCloneSlidesForDeterministicFillWithProvenance,
   stripTemplateCloneOutlineNoise,
   synthesizeTemplateCloneOutlineFromBrief,
   synthesizeTemplateCloneCoverLead,
@@ -476,6 +477,18 @@ describe('루프373 synthesizeTemplateCloneOutlineFromBrief', () => {
 });
 
 describe('루프419 resolveTemplateCloneSlidesForDeterministicFill', () => {
+  it('marks generic synthesis as a LOOK preview that still needs real content', () => {
+    const resolution = resolveTemplateCloneSlidesForDeterministicFillWithProvenance({
+      userInstruction: 'Teamver 소개 슬라이드를 만들어줘. 8~10장',
+      deckTitle: 'Teamver 소개',
+      slideCount: 10,
+    });
+
+    expect(['synthetic', 'densified']).toContain(resolution.source);
+    expect(resolution.needsAiContentFill).toBe(true);
+    expect(resolution.slides).toHaveLength(10);
+  });
+
   it('turns a short URL brief + 8-10 hint into a dense 10-slide outline', () => {
     const slides = resolveTemplateCloneSlidesForDeterministicFill({
       userInstruction: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장',
@@ -483,32 +496,32 @@ describe('루프419 resolveTemplateCloneSlidesForDeterministicFill', () => {
       slideCount: 10,
     });
     expect(slides).toHaveLength(10);
-    expect(slides[0]?.title).toMatch(/팀버|Teamver|teamver/i);
+    expect(slides[0]?.title).toMatch(/Teamver|teamver/i);
     expect(slides[0]?.kicker).toBe('OVERVIEW');
     expect(slides.slice(1).every((slide) => (slide.items?.length ?? 0) >= 2)).toBe(true);
     expect(slides.some((slide) => slide.body === '…')).toBe(false);
     const joined = JSON.stringify(slides);
-    expect(joined).not.toMatch(/팀버이|팀버은/);
-    expect(joined).toContain('팀버가 풀어야 하는 문제');
-    expect(joined).toContain('서비스 가치 제안');
+    expect(joined).not.toMatch(/팀버이|팀버은|Teamver이|Teamver은/);
+    expect(joined).toContain('Teamver가 풀어야 하는 문제');
+    expect(joined).toMatch(/보드|초안/);
     expect(joined).not.toContain('한눈에');
     expect(slides[0]?.lead).toBe(
-      synthesizeTemplateCloneCoverLead('팀버', 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장'),
+      synthesizeTemplateCloneCoverLead('Teamver', 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장'),
     );
   });
 
   it('루프473 — service-intro cover lead is a promise sentence, not 한눈에', () => {
     const brief = 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장';
-    const lead = synthesizeTemplateCloneCoverLead('팀버 소개', brief);
-    expect(lead).toContain('팀버');
-    expect(lead).not.toMatch(/한눈에|팀버은|팀버이/);
-    expect(synthesizeTemplateCloneCoverLead('팀버 소개')).not.toContain('한눈에');
+    const lead = synthesizeTemplateCloneCoverLead('Teamver 소개', brief);
+    expect(lead).toMatch(/Teamver/i);
+    expect(lead).not.toMatch(/한눈에|팀버은|팀버이|Teamver은|Teamver이/);
+    expect(synthesizeTemplateCloneCoverLead('Teamver 소개')).not.toContain('한눈에');
   });
 
   it('루프474 — service-intro lead does not invent a Teamver workflow claim', () => {
     const brief = 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장';
-    const lead = synthesizeTemplateCloneCoverLead('팀버 소개', brief);
-    expect(lead).toContain('팀버');
+    const lead = synthesizeTemplateCloneCoverLead('Teamver 소개', brief);
+    expect(lead).toMatch(/Teamver/i);
     expect(lead).toMatch(/문제|가치|사이트/);
     expect(lead).not.toContain('파일·대화·템플릿');
     expect(lead).not.toMatch(/한눈에|\d+%/);
@@ -520,7 +533,7 @@ describe('루프419 resolveTemplateCloneSlidesForDeterministicFill', () => {
 
   it('루프474 — source preview wins over the service-intro fallback lead', () => {
     expect(synthesizeTemplateCloneCoverLead(
-      '팀버 소개',
+      'Teamver 소개',
       [
         'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
         'Source preview: AI가 만드는 슬라이드',
@@ -537,7 +550,7 @@ describe('루프419 resolveTemplateCloneSlidesForDeterministicFill', () => {
       'Teamver — Smarter & Faster',
       'AI workspace for teams',
     ].join('\n');
-    const lead = synthesizeTemplateCloneCoverLead('팀버', brief);
+    const lead = synthesizeTemplateCloneCoverLead('Teamver', brief);
     expect(lead).toMatch(/Smarter|Faster|Teamver/i);
     expect(lead).not.toMatch(/한눈에|표지|파일·대화·템플릿/);
   });
@@ -565,14 +578,17 @@ describe('루프419 resolveTemplateCloneSlidesForDeterministicFill', () => {
     expect(outline?.slides[1]?.items?.every((item) => item.title && item.body)).toBe(true);
   });
 
-  it('루프425/479 — generic free-form stays dense, never ellipsis cards', () => {
+  it('루프425/479/516 — generic free-form stays dense without Expo essay preset', () => {
     const outline = synthesizeTemplateCloneOutlineFromBrief({
       userBrief: 'Expo 개발 도구에 대해 시니어 개발자용 발표 자료를 만들어 주세요',
       deckTitle: '슬라이드',
     });
     expect(outline?.slides).toHaveLength(6);
     expect(outline?.slides.some((slide) => slide.body === '…')).toBe(false);
-    expect(JSON.stringify(outline?.slides)).toMatch(/EAS|OTA|Expo Router|Native Modules/);
+    const text = JSON.stringify(outline?.slides);
+    expect(text).toMatch(/Expo/);
+    expect(text).toMatch(/배경|핵심 개념|실행 체크리스트/);
+    expect(text).not.toMatch(/EAS Build|Expo Router|Native Modules|Managed Workflow/);
   });
 });
 
@@ -734,9 +750,26 @@ describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
     if (decision.kind === 'seed-fallback') {
       expect(listTemplateCloneSlideShells(decision.html).length).toBe(10);
       expect(decision.html).toContain('성과 지표');
-      expect(decision.html).toContain('서비스 가치 제안');
+      expect(decision.html).toMatch(/Teamver|보드|초안/);
       expect(decision.html).toContain('도입 로드맵');
       expect(decision.html).not.toContain('Demo');
+    }
+  });
+
+  it('synthesizes from the brief even when the model output is empty', () => {
+    const decision = decideTemplateCloneSlotFillTerminal({
+      rawFinalText: '',
+      seedHtml: seed,
+      repairAlreadyAttempted: true,
+      userBrief: 'NeuralStudio 회사 사이트를 분석해서 서비스 소개 슬라이드 만들어줘. 6장',
+      deckTitle: '슬라이드',
+      slideCount: 6,
+    });
+    expect(decision.kind).toBe('seed-fallback');
+    if (decision.kind === 'seed-fallback') {
+      expect(decision.html).not.toBe(seed);
+      expect(decision.html).not.toContain('Demo');
+      expect(decision.html).toMatch(/NeuralStudio|서비스 가치 제안|핵심 포인트/);
     }
   });
 

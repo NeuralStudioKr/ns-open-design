@@ -415,16 +415,40 @@ export function salvageTemplateFillShellAsCoverDraft(
   return build1920CoverDraftHtml(heading);
 }
 
+export type IncompleteShellPersistOptions = SalvageCoverDraftOptions & {
+  /**
+   * Clone LOOK is already on disk. Invented 1920 covers would overwrite it
+   * and hide seed-fallback / body-first auto-continue (루프548).
+   */
+  preserveLookSeed?: boolean;
+};
+
+/**
+ * Clone first-fill already seeded `deck.html`. Do not invent a kit-shell /
+ * last-resort cover that would replace that LOOK.
+ */
+export function shouldPreserveLookSeedOverInventedCover(
+  cloneFillTurn: boolean,
+): boolean {
+  return Boolean(cloneFillTurn);
+}
+
 /**
  * Persist last mile for MiniMax/BYOK head-kit aborts. Cover draft returns
  * null when unclosed `<style>` CSS looks like body copy, or the fragment is
  * shorter than 24 chars. Always emit a 1920 cover so top-up can append
  * instead of `skipped-incomplete` / `incomplete-html-document-shell`.
+ *
+ * When `preserveLookSeed` is set, return null so persist skips and LOOK
+ * fallback / auto-continue own the miss.
  */
 export function resolveDeckHtmlForIncompleteShellPersist(
   html: string,
-  options?: SalvageCoverDraftOptions,
+  options?: IncompleteShellPersistOptions,
 ): string | null {
+  if (shouldPreserveLookSeedOverInventedCover(Boolean(options?.preserveLookSeed))) {
+    return null;
+  }
   const cover = salvageTemplateFillShellAsCoverDraft(html, {
     fallbackTitle: options?.fallbackTitle,
     lastResortTitle: options?.lastResortTitle || LAST_RESORT_DECK_COVER_TITLE,

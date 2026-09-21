@@ -10,6 +10,7 @@ import {
   repairArtifactDocumentHead,
 } from '@open-design/contracts';
 import { seedTemplateClonedDeckOnServer } from './template-clone-deck.js';
+import { schedulePresentationCompletedFromRequest } from './teamver-presentation-usage.js';
 import { createProjectArtifactFile } from './artifact-create.js';
 import { ArtifactPublicationBlockedError } from './artifact-publication-guard.js';
 import { ArtifactRegressionError } from './artifact-stub-guard.js';
@@ -3779,6 +3780,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
                   ? {
                       templateCloneContentFilled: true,
                       templateCloneFillMode: 'deterministic',
+                      templateCloneSparseCheckPending: true,
                     }
                   : {}),
                 selectedDeckTemplateId: seededPluginId,
@@ -3839,6 +3841,14 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
           );
         }
       }
+      // prompt-fill LOOK 시드는 내용 완료가 아니다. 이후 files POST 가 채운 deck.html 을 센다.
+      // deterministic-fill 은 이 응답이 곧 완료본이므로 여기서 1회 emit.
+      if (deterministicContentFill && result.fileName) {
+        schedulePresentationCompletedFromRequest(req, {
+          projectId,
+          fileName: result.fileName,
+        });
+      }
       return res.json(result);
     } catch (err) {
       if (err instanceof ArtifactRegressionError) {
@@ -3885,6 +3895,10 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             uploadProject?.metadata,
           );
           fs.promises.unlink(req.file.path).catch(() => {});
+          schedulePresentationCompletedFromRequest(req, {
+            projectId: req.params.id,
+            fileName: desiredName,
+          });
           /** @type {import('@open-design/contracts').ProjectFileResponse} */
           const body = { file: meta };
           return res.json(body);
@@ -3937,6 +3951,12 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
               },
               uploadProject?.metadata,
             );
+        schedulePresentationCompletedFromRequest(req, {
+          projectId: req.params.id,
+          fileName: name,
+          artifactManifest,
+          jobId: typeof req.body?.job_id === 'string' ? req.body.job_id : null,
+        });
         /** @type {import('@open-design/contracts').ProjectFileResponse} */
         const body = { file: meta };
         res.json(body);

@@ -149,6 +149,61 @@ describe('parseDeckPatch', () => {
     expect(applied.html).toContain('data-screen-label="03 역사"');
   });
 
+  it('recovers missing data-slide-index via a unique template slide class on the current deck', () => {
+    const current = [
+      '<!doctype html><html><body>',
+      '<section class="slide slide-1" data-slide-index="0"><h1>Intro</h1></section>',
+      '<section class="slide slide-2" data-slide-index="1"><h2>Before</h2></section>',
+      '<section class="slide slide-3" data-slide-index="2"><h2>After</h2></section>',
+      '</body></html>',
+    ].join('');
+    const result = parseDeckPatch(
+      '<section class="slide slide-2" style="width:1920px;height:1080px"><h2>Updated</h2></section>',
+      { currentHtml: current },
+    );
+    expect(result.ok, result.ok ? '' : result.reason).toBe(true);
+    if (!result.ok) return;
+    expect(result.patch.ops[0]?.slideIndex).toBe(1);
+    expect(result.patch.ops[0]?.html).toContain('data-slide-index="1"');
+    const applied = applyDeckPatch({ currentHtml: current, patch: result.patch, allowedSlideIndexes: [1] });
+    expect(applied.ok, JSON.stringify(applied)).toBe(true);
+    if (!applied.ok) return;
+    expect(applied.html).toContain('Updated');
+    expect(applied.html).toContain('slide-1');
+    expect(applied.html).toContain('slide-3');
+  });
+
+  // 루프530 — Current deck lost slide-N classes; still infer from patch class.
+  it('infers data-slide-index from slide-N class when current deck has no matching classes', () => {
+    const current = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0"><h1>Intro</h1></section>',
+      '<section class="slide" data-slide-index="1"><h2>Before</h2></section>',
+      '<section class="slide" data-slide-index="2"><h2>After</h2></section>',
+      '</body></html>',
+    ].join('');
+    const patch =
+      '<section class="slide slide-2" style="width:1920px;height:1080px;box-sizing:border-box"><h2>Updated</h2></section>';
+    const noFallback = parseDeckPatch(patch, { currentHtml: current, fallbackSlideIndexes: [] });
+    expect(noFallback.ok, noFallback.ok ? '' : noFallback.reason).toBe(true);
+    if (!noFallback.ok) return;
+    expect(noFallback.patch.ops[0]?.slideIndex).toBe(1);
+
+    const multiFallback = parseDeckPatch(patch, {
+      currentHtml: current,
+      fallbackSlideIndexes: [0, 1],
+    });
+    expect(multiFallback.ok, multiFallback.ok ? '' : multiFallback.reason).toBe(true);
+    if (!multiFallback.ok) return;
+    expect(multiFallback.patch.ops[0]?.slideIndex).toBe(1);
+
+    const rejectedByScope = parseDeckPatch(patch, {
+      currentHtml: current,
+      fallbackSlideIndexes: [0, 2],
+    });
+    expect(rejectedByScope.ok).toBe(false);
+  });
+
   it('keeps data-slide-index that appears after a quoted attr containing ">"', () => {
     const result = parseDeckPatch(
       '<section class="slide" style="width:calc(100% > 50%)" data-slide-index="1"><h2>Ok</h2></section>',

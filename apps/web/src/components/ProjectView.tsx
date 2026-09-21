@@ -9,6 +9,7 @@ import {
   isIncompleteHtmlDocumentShell,
   isIncompleteParsedDeckForBestArtifactRestore,
   isLowSubstanceSlideDeckArtifact,
+  isNotHtmlDeliverableValidationReason,
   validateHtmlArtifact,
 } from '../artifacts/validate';
 import {
@@ -78,6 +79,7 @@ import {
   shouldAbortStreamForHeadOnlyKitDump,
   shouldAbortStreamForMotifSvgDump,
   stripAbandonedHeadKitDumpFromStreamedText,
+  stripAbandonedHeadPreambleFromStreamedText,
   stripAbandonedMotifSvgDumpFromStreamedText,
 } from '../artifacts/deck-html-content';
 import {
@@ -87,6 +89,7 @@ import {
   resolveDeckHtmlForIncompleteShellPersist,
   salvageTemplateFillShellAsCoverDraft,
   salvageTruncatedHtmlDocument,
+  shouldPreserveLookSeedOverInventedCover,
 } from '../artifacts/recover';
 import {
   artifactPreviewFromInFlightContent,
@@ -183,6 +186,8 @@ import {
   looksLikeScrubbedCatalogExampleShell,
   sanitizePersistedDeckHostLeaks,
   decideTemplateCloneSlotFillTerminal,
+  applyTemplateClonePromptFillLookMerge,
+  listTemplateCloneSlideShells,
   prepareTemplateCloneSlotFillAssistantText,
   type AudioVoiceOption,
   type MemorySystemPromptResponse,
@@ -205,9 +210,12 @@ import {
   emitRevisionUndo,
 } from '../runtime/revision-analytics';
 import {
-  enrichChatSendMetaWithProjectDeckTemplate,
+  deckTemplateSendMetaFromPin,
+  ensureChatSendMetaHasDurableDeckTemplate,
   formatSelectedDeckTemplateChipLabel,
+  projectMetadataNeedsDeckTemplatePin,
   resolveDeckTemplateSkillId,
+  resolveDurableDeckTemplatePin,
   resolveScenarioPluginIdForLocalSkill,
   selectedDeckTemplateMetadata,
   selectedDeckTemplateTitleStub,
@@ -230,6 +238,9 @@ import {
   isTemplateCloneContentFillPrompt,
   isTemplateCloneHostFillPrompt,
   isTemplateClonePromptFillPrompt,
+  extractTemplateCloneUserFacingRequest,
+  isGenericTemplateCloneTopicBrief,
+  shouldExplainGenericBriefOnLookSeedFallback,
   templateCloneFillModeFromUserMessage,
   templateCloneAutoContinueFlags,
   isTemplateCloneContentFillQueued,
@@ -241,16 +252,37 @@ import {
   shouldSkipCreateAutoSendForDeterministicClone,
   shouldUseDeterministicTemplateCloneFill,
   shouldUseJsonTemplateCloneFill,
+  getTemplateCloneFillMode,
+  applyQuantitativeSlideCountInstruction,
   templateCloneContentFillHardRules,
   templateCloneFillSlideCountOverrideNotice,
   withTemplateCloneFillPluginInputs,
   withoutCanonicalDeckAttachments,
 } from '../teamver/templateCloneContentFill';
 import {
+  classifyTooShortHtmlSnippet,
+  isShortResponseAutoRetryPrompt,
+  parseTooShortHtmlCharCount,
+  renderShortResponseAutoRetryPrompt,
+  renderTooShortHtmlAutoRetryPrompt,
+  shouldAutoRetryShortSlideResponse,
+} from '../teamver/shortResponseAutoRetry';
+import { resolveTooShortHtmlArtifactPersist } from '../teamver/tooShortHtmlPersist';
+import { resolveIncompleteHtmlShellPersist } from '../teamver/incompleteHtmlShellPersist';
+import {
   anonymizeArtifactId,
   artifactKindToTracking,
 } from '@open-design/contracts/analytics';
 import { projectListTrackingKind } from '../teamver/projectListCardCategory';
+import {
+  beginFirstConversationTurn,
+  releaseFirstConversationTurn,
+  claimCreateAutoSend,
+  createAutoSendClaimHeld,
+  releaseCreateAutoSendClaim,
+  shouldRearmCreateAutoSend,
+  shouldRetryFailedCreateAutoSend,
+} from '../teamver/createAutoSendLatch';
 import type {
   TrackingArtifactKind,
   TrackingDesignSystemApplyTargetKind,
@@ -501,7 +533,9 @@ import {
   userFacingRunErrorDetail,
   formatAutoContinueIncompleteOutputNotice,
   formatCloneLookSeedFallbackNotice,
+  formatCloneLookSeedFallbackErrorDetail,
   formatEmergencyDeckFallbackNotice,
+  formatGenericBriefDeferFillNotice,
   formatOutlineDeckFallbackNotice,
   formatPersistedProjectRunError,
   formatPersistedEmptyApiResponseError,
@@ -510,10 +544,22 @@ import {
   formatProjectForkConversationError,
 } from '../teamver/projectErrorMessages';
 import {
+  STALLED_HEAD_PREAMBLE_STATUS_CODE,
   STALLED_PARTIAL_DECK_STATUS_CODE,
+  formatStalledHeadPreambleNotice,
   formatStalledPartialDeckNotice,
+  stalledRunHeadPreambleText,
   stalledRunPartialDeckText,
 } from '../teamver/stalledRunDeckSalvage';
+import {
+  buildHeadPreambleContinuePrompt,
+  countHeadPreambleBannerEmits,
+  countHeadPreambleContinueAttempts,
+  decideHeadPreambleRecovery,
+  isHeadPreambleContinuePrompt,
+  looksLikeAbandonedHeadPreambleStub,
+  shouldEmitHeadPreambleBanner,
+} from '../teamver/headPreambleContinue';
 import { resolvePersistDeckDisplayTitle } from '../teamver/persistDeckDisplayTitle';
 import { subscribeTeamverWorkspaceChanged } from '../teamver/teamverWorkspaceEvents';
 import { shouldSkipWorkspaceSwitchSideEffects } from '../teamver/workspaceSwitchGuards';
@@ -568,7 +614,10 @@ import {
   buildSparseContentTopUpPrompt,
   buildThinPriorFullRewritePrompt,
   formatSoftImprovementTurnFailureNotice,
+  formatSlideAutomationBusyDropNotice,
+  formatThinPriorRewriteExhaustedNotice,
   isSoftImprovementAutomationEntryFrom,
+  shouldSoftCancelEmptyDeckPatchPersist,
   applyHonorSlideCeilingToHtml,
   countSparseContentTopUpAttemptsInConversation,
   countThinPriorFullRewriteAttemptsInConversation,
@@ -583,7 +632,11 @@ import {
   shouldBlockSlideCountAppendOntoThinPrior,
   shouldQueueSparseContentTopUp,
   shouldQueueThinPriorFullRewrite,
+  shouldRunDeterministicSparseCheck,
+  deterministicSparseCheckSessionKey,
+  claimDeterministicSparseCheck,
   syncSlideCountTopUpCountFromMessages,
+  type SlideAutomationPhase,
 } from '../teamver/slideCountTopUp';
 import {
   looksLikeDeckDeliverablePromiseProse,
@@ -596,6 +649,10 @@ import {
   shouldNotifyTemplateVisualKitMiss,
   skillBodyHasTemplateVisualKit,
 } from '../teamver/fetchPluginLocalSkill';
+import { resolveTemplateCloneLookSeedHtml } from '../teamver/seedTemplateClonedDeck';
+import { observeTemplateClonePersistQuality } from '../teamver/templateClonePersistQuality';
+import { observeTemplateCloneOutlineQuality } from '../teamver/templateCloneOutlineQuality';
+import { observeTemplateCloneLookSeedFallback } from '../teamver/templateCloneLookSeedFallbackQuality';
 import { throwIfProjectCommentUploadIncomplete } from '../teamver/projectUploadErrors';
 import { stripLeakedPseudoToolXml } from '../utils/stripLeakedPseudoToolXml';
 import {
@@ -643,6 +700,7 @@ import {
   artifactBaseNameForPersist,
   artifactVersionTabsToClose,
   collapseArtifactVersionOpenTabs,
+  htmlArtifactValidationFailureShouldAutoContinue,
   normalizeSlideOnlyArtifactContractType,
   resolveArtifactPersistFileName,
   resolveSlideOnlySkipDiscoveryBrief,
@@ -697,6 +755,8 @@ type ProjectChatSendMeta = ChatSendMeta & {
   templateCloneContentFill?: boolean;
   /** Prompt-mode HTML fill — system prompt owns the host contract. */
   templateClonePromptFill?: boolean;
+  /** 루프550 — 짧은 응답 자동 재시도 1회. 무한 루프 방지. */
+  autoRetryForShortResponse?: boolean;
 };
 
 const DAEMON_REATTACH_MISSING_RUN_GRACE_MS = 90_000;
@@ -957,7 +1017,10 @@ export function mergeMissingActiveRunAssistantMessages(
   }[],
 ): ChatMessage[] {
   if (runs.length === 0) return messages;
-  let working = [...messages];
+  // Copy only after a real mutation. A no-op copy used to retrigger the
+  // proxy/active probe and loop the GET.
+  let working = messages;
+  let changed = false;
   const seen = new Set(working.map((message) => message.id));
   const recovered: ChatMessage[] = [];
   for (const run of runs) {
@@ -983,6 +1046,7 @@ export function mergeMissingActiveRunAssistantMessages(
     const patched = patchInFlightAssistantForActiveRun(working, run, runs);
     if (patched) {
       working = patched;
+      changed = true;
       seen.clear();
       for (const message of working) seen.add(message.id);
       continue;
@@ -992,6 +1056,7 @@ export function mergeMissingActiveRunAssistantMessages(
     seen.add(assistantMessageId);
     recovered.push(message);
   }
+  if (!changed && recovered.length === 0) return messages;
   const merged =
     recovered.length > 0 ? [...working, ...recovered] : working;
   return dedupeConversationAssistantRows(merged);
@@ -1756,15 +1821,20 @@ function slideExistingDeckEditInstruction(
   return lines.join('\n');
 }
 
-/** First AI turn after daemon template Clone — JSON outline, host slot-fills LOOK seed. */
+/**
+ * First AI turn after daemon template Clone — JSON outline, host slot-fills LOOK seed.
+ * 루프550 — seedShellCount가 있으면 hard rules에 정량 slide-count 요구를 emit.
+ */
 function slideTemplateCloneContentFillInstruction(
   imagePaths: readonly string[] = [],
+  options: { seedShellCount?: number | null } = {},
 ): string {
+  const seedShellCount = options.seedShellCount ?? null;
   const lines = [
     TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
     'Daemon Clone seeded a LOOK preview at `deck.html`. This turn emits a JSON outline only — the host slot-fills that seed.',
     'Do NOT emit <!doctype / <section class="slide"> / Motif SVG. Titles and bodies only.',
-    ...templateCloneContentFillHardRules(),
+    ...templateCloneContentFillHardRules({ seedShellCount }),
   ];
   if (imagePaths.length > 0) {
     lines.push(
@@ -2134,8 +2204,11 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
       reason: 'current deck file unreadable',
     };
   }
+  const allowedSlideIndexes = input.allowedSlideIndexes?.length
+    ? input.allowedSlideIndexes
+    : scopedCommentSlideIndexesFromAttachments(input.commentAttachments ?? []);
   const parsed = parseDeckPatchWithSalvage(input.patchBody, {
-    fallbackSlideIndexes: input.allowedSlideIndexes,
+    fallbackSlideIndexes: allowedSlideIndexes,
     currentHtml,
   });
   if (!parsed.ok) {
@@ -2157,14 +2230,14 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
       : null;
     if (visualTemplate) {
       const salvaged = parseDeckPatchWithSalvage(visualTemplate, {
-        fallbackSlideIndexes: input.allowedSlideIndexes,
+        fallbackSlideIndexes: allowedSlideIndexes,
         currentHtml,
       });
       if (salvaged.ok) {
         const salvagedResult = applyScopedDeckPatchToHtml({
           currentHtml,
           patch: salvaged.patch,
-          allowedSlideIndexes: input.allowedSlideIndexes,
+          allowedSlideIndexes,
           commentAttachments: input.commentAttachments,
           instructionText: input.instructionText,
           currentSlides: input.currentSlides,
@@ -2194,7 +2267,7 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
         projectId: input.projectId,
         fileName: input.fileName,
         patchBody: input.patchBody,
-        allowedSlideIndexes: input.allowedSlideIndexes,
+        allowedSlideIndexes,
         commentAttachments: input.commentAttachments,
         instructionText: input.instructionText,
         currentHtml,
@@ -2207,7 +2280,7 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
   const result = applyScopedDeckPatchToHtml({
     currentHtml,
     patch: parsed.patch,
-    allowedSlideIndexes: input.allowedSlideIndexes,
+    allowedSlideIndexes,
     commentAttachments: input.commentAttachments,
     instructionText: input.instructionText,
     currentSlides: input.currentSlides,
@@ -2217,7 +2290,7 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
       fileName: input.fileName,
       code: result.code,
       reason: result.reason,
-      allowedSlideIndexes: input.allowedSlideIndexes,
+      allowedSlideIndexes,
     });
   }
   return result;
@@ -2902,7 +2975,16 @@ type ArtifactPersistResult =
   | { kind: 'rejected'; fileName: string; reason: string }
   | { kind: 'save-failed'; fileName: string; status?: number; code?: string; message?: string }
   | { kind: 'auth-replay-queued'; fileName: string }
-  | { kind: 'skipped-discovery-turn'; fileName: string };
+  | { kind: 'skipped-discovery-turn'; fileName: string }
+  | {
+    kind: 'needs-short-response-retry';
+    fileName: string;
+    producedCount: number;
+    expectedCount: number;
+    reason?: string;
+    retryKind?: 'slide-count' | 'too-short-html' | 'head-preamble';
+    previousSnippet?: string;
+  };
 
 export function shouldFailRunForArtifactPersistResult(
   result: ArtifactPersistResult | null,
@@ -2916,6 +2998,7 @@ export function shouldFailRunForArtifactPersistResult(
   // can retry instead of painting "완료됨" over an unchanged slide.
   // skipped-noop is intentionally excluded: the edit was a calm no-op.
   return result?.kind === 'skipped-incomplete'
+    || result?.kind === 'needs-short-response-retry'
     || result?.kind === 'rejected'
     || result?.kind === 'save-failed'
     || result?.kind === 'scope-rejected'
@@ -2934,10 +3017,14 @@ const ARTIFACT_REGRESSION_MIN_RATIO = 0.35;
 export function priorDeckAllowsCompactReplacement(
   priorHtml: string | null | undefined,
   brief?: string | null,
+  replacementHtml?: string | null,
 ): boolean {
   const html = String(priorHtml ?? '').trim();
   if (!html) return false;
+  const autoPaddedSlides = (html.match(/\bdata-teamver-pad\s*=\s*["']short-response["']/gi) ?? []).length;
   return (
+    (autoPaddedSlides >= 3 && isSubstanceRichDeckReplacement(replacementHtml ?? '', brief, null))
+    ||
     deckLooksLikeUnfilledCatalogExample(html, brief)
     || looksLikeLeftoverTemplateDemoDeck(html)
     || looksLikeScrubbedCatalogExampleShell(html, brief)
@@ -3004,7 +3091,7 @@ export function findClientArtifactRegression(input: {
   healTitle?: string | null;
 }): { fileName: string; priorSize: number; newSize: number; reason: string } | null {
   if (input.allowCompactReplacement) return null;
-  if (priorDeckAllowsCompactReplacement(input.priorHtml, input.healBrief)) return null;
+  if (priorDeckAllowsCompactReplacement(input.priorHtml, input.healBrief, input.htmlBody)) return null;
   const fileName = input.fileName.trim();
   if (!fileName.toLowerCase().endsWith('.html')) return null;
   const newSize = new Blob([input.htmlBody]).size;
@@ -3076,23 +3163,61 @@ export function findClientSlideCountRegression(input: {
   htmlBody: string;
   priorHtml: string | null | undefined;
   /**
-   * Existing-deck / image-embed / comment-scoped turns: reject ANY slide drop
-   * (8→6 still destroys content). Greenfield generates keep the hard-collapse
-   * threshold so intentional shorter drafts are not over-blocked.
+   * Existing-deck regenerates stay non-strict so substance-rich shrink
+   * (루프279) can replace an 8-slide prior. Image-embed / comment-scoped
+   * turns: reject ANY slide drop (8→6 still destroys content).
    */
   strict?: boolean;
   /** Clone fill replaces a multi-slide LOOK seed with a capped content deck. */
   allowSlideCountReduction?: boolean;
+  /**
+   * 루프524 — Direct bypass when the on-disk deck is a Clone LOOK seed
+   * (identified via artifactManifest.metadata.templateClonedDeckSeeded).
+   * Sibling `findClientArtifactRegression` already respects this via its
+   * `projectFiles` lookup. Passing the resolved file here removes the
+   * asymmetry so a fresh brief re-send after the LOOK seed banner is not
+   * rejected as an `artifact_regression` (reason=slide-count).
+   */
+  priorProjectFile?:
+    | { artifactManifest?: { metadata?: Record<string, unknown> | null } | null }
+    | null;
   /** Same brief leftover-catalog detection uses on persist. */
   healBrief?: string | null;
   healTitle?: string | null;
-}): { fileName: string; priorCount: number; newCount: number; reason: string } | null {
+}): {
+  fileName: string;
+  priorCount: number;
+  newCount: number;
+  reason: string;
+  /**
+   * 루프547 — severity separator:
+   * - `reject`: 완전 collapse(newCount ≤ 1) 또는 strict(이미지/comment scoped)
+   *   턴의 어떤 drop이든. 저장 거절 + 배너 (기존 동작 유지).
+   * - `warn`: substance-rich prior 위에 짧지만 온전한 다중-slide fill이 왔을
+   *   때. 저장은 진행하고 사용자에게 "슬라이드 수가 줄었으니 필요 시 다시 시도"
+   *   notice 배너로 안내. 사용자에게 결과물이 나오도록.
+   */
+  severity: 'reject' | 'warn';
+} | null {
   if (input.allowSlideCountReduction) return null;
-  if (priorDeckAllowsCompactReplacement(input.priorHtml, input.healBrief)) return null;
+  if (isTemplateCloneLookSeedFile(input.priorProjectFile)) return null;
+  if (priorDeckAllowsCompactReplacement(input.priorHtml, input.healBrief, input.htmlBody)) return null;
   const fileName = input.fileName.trim();
   if (!fileName.toLowerCase().endsWith('.html')) return null;
   const priorHtml = input.priorHtml?.trim();
   if (!priorHtml) return null;
+  // 루프545 — Sibling byte-size guard (`findClientArtifactRegression`)
+  // already spares a compact fill when the on-disk prior is
+  // low-substance (line 3081). Slide-count guard historically missed
+  // that bypass, so a fresh block-frame LOOK seed that stripped its
+  // manifest marker (or a same-turn synth-outline prior that hasn't
+  // been touched by real topic copy) would reject the next 6-slide
+  // MiniMax turn as `slide-count` regression even though the "prior"
+  // was catalog leftover + generic outline. Substance-rich prior
+  // (real topic sentences) still gates below.
+  if (isLowSubstanceSlideDeckArtifact(priorHtml, input.healBrief, input.healTitle)) {
+    return null;
+  }
   const priorCount = countDeckSlideSections(priorHtml);
   const newCount = countDeckSlideSections(input.htmlBody);
   if (priorCount < 3 || newCount <= 0) return null;
@@ -3111,13 +3236,24 @@ export function findClientSlideCountRegression(input: {
     ? dropped >= 1
     : newCount <= Math.floor(priorCount * 0.5) || dropped >= 3;
   if (!collapsedHard) return null;
+  // 루프547 · severity 결정.
+  // - strict(이미지/comment scoped) 턴은 어떤 drop도 reject: 스코프가 극도로
+  //   좁아 슬라이드 하나라도 사라지면 스포일러급 데이터 손실.
+  // - non-strict에서 newCount≤1은 여전히 reject (완전 collapse).
+  // - 그 외 substance-rich prior 위 부분 collapse는 warn — 저장은 진행하고
+  //   사용자에게 알림.
+  const severity: 'reject' | 'warn' =
+    input.strict || newCount <= 1 ? 'reject' : 'warn';
   return {
     fileName,
     priorCount,
     newCount,
+    severity,
     reason:
       `New artifact for "${fileName}" has ${newCount} slides, but the current deck has ${priorCount}. ` +
-      'Slide-count collapse was blocked so the existing deck is preserved.',
+      (severity === 'reject'
+        ? 'Slide-count collapse was blocked so the existing deck is preserved.'
+        : 'Slide-count shrank; preserve the existing deck unless an explicit replacement is allowed.'),
   };
 }
 
@@ -3126,32 +3262,42 @@ export function findClientSlideCountRegression(input: {
  *
  * Loop404 allowed every short explicit request through so hidden top-up could append,
  * but that also let a one-slide cover overwrite `deck.html` for an 8-10 request.
- * Keep small explicit/unspecified decks allowed, but for explicit 5+ requests require
- * at least min(requestedMin, FIRST_FILL_SLIDE_COUNT_THIS_TURN) closed slides before
- * saving over the current deck. A 6-of-8-10 first fill can still persist and top-up;
- * 1-4/5 slide truncations are treated as incomplete and preserve the prior file.
+ * Keep explicit 1–4 slide requests allowed. For explicit 5+ requests and unspecified
+ * first fills, require a resolved first-fill floor before saving over the current deck.
+ * A 6-of-8-10 first fill can still persist and top-up; 1–5 slide truncations from an
+ * unspecified run are retried instead of becoming the final deliverable.
  */
 export function findTemplateCloneFillSlideCountIncomplete(input: {
   fileName: string;
   htmlBody: string;
   requestedSlideCount: number | null;
   requestedSlideCountMin?: number | null;
+  defaultFirstFillSlideCount?: number | null;
 }): { fileName: string; producedCount: number; expectedCount: number; reason: string } | null {
   const fileName = input.fileName.trim();
   if (!fileName.toLowerCase().endsWith('.html')) return null;
-  const requestedMin =
+  const explicitRequestedMin =
     typeof input.requestedSlideCountMin === 'number' && Number.isFinite(input.requestedSlideCountMin)
       ? Math.floor(input.requestedSlideCountMin)
       : typeof input.requestedSlideCount === 'number' && Number.isFinite(input.requestedSlideCount)
         ? Math.floor(input.requestedSlideCount)
         : null;
+  const requestedMin = explicitRequestedMin
+    ?? (
+      typeof input.defaultFirstFillSlideCount === 'number'
+      && Number.isFinite(input.defaultFirstFillSlideCount)
+        ? Math.floor(input.defaultFirstFillSlideCount)
+        : null
+    );
   if (requestedMin == null || requestedMin <= 4) return null;
   const producedCount = countDeckSlideSections(input.htmlBody);
   if (producedCount <= 0) return {
     fileName,
     producedCount,
     expectedCount: requestedMin,
-    reason: `template clone fill produced no slides for an explicit ${requestedMin}-slide request`,
+    reason: explicitRequestedMin != null
+      ? `template clone fill produced no slides for an explicit ${requestedMin}-slide request`
+      : `template clone fill produced no slides; ${requestedMin} slides are required for the first fill`,
   };
   const firstFillFloor = Math.min(requestedMin, FIRST_FILL_SLIDE_COUNT_THIS_TURN);
   if (producedCount >= firstFillFloor) return null;
@@ -3159,9 +3305,11 @@ export function findTemplateCloneFillSlideCountIncomplete(input: {
     fileName,
     producedCount,
     expectedCount: firstFillFloor,
-    reason:
-      `template clone fill produced only ${producedCount} slides for an explicit ${requestedMin}-slide request; ` +
-      `at least ${firstFillFloor} slides are required before saving over deck.html`,
+    reason: explicitRequestedMin != null
+      ? `template clone fill produced only ${producedCount} slides for an explicit ${requestedMin}-slide request; `
+        + `at least ${firstFillFloor} slides are required before saving over deck.html`
+      : `template clone fill produced only ${producedCount} slides; `
+        + `at least ${firstFillFloor} slides are required for an unspecified first fill before saving over deck.html`,
   };
 }
 
@@ -3184,6 +3332,63 @@ export function findTemplateCloneFillStructureIncomplete(input: {
     }
   }
   return null;
+}
+
+export function templateCloneSeedFallbackShouldWarn(input: {
+  seedHtml: string | null | undefined;
+  decisionHtml: string | null | undefined;
+}): boolean {
+  const seed = String(input.seedHtml ?? '').trim();
+  const decision = String(input.decisionHtml ?? '').trim();
+  return decision.length === 0 || decision === seed;
+}
+
+function templateCloneBriefLooksUsable(text: string | null | undefined): text is string {
+  const value = String(text ?? '').trim();
+  if (!value) return false;
+  if (/^(?:슬라이드|프레젠테이션|발표자료|deck|presentation)$/i.test(value)) return false;
+  if (/^슬라이드\s*(?:초안|덱)?\s*(?:작성|생성|만들기|채우기)?$/i.test(value)) return false;
+  if (/^(?:create|make|build|generate)\s+(?:a\s+)?(?:slide\s*)?(?:deck|presentation)$/i.test(value)) {
+    return false;
+  }
+  if (/^슬라이드 채우기에 실패해/i.test(value)) return false;
+  if (/^\[?FINAL RETRY\]?/i.test(value)) return false;
+  if (/^<!--od:auto_continue_incomplete_output-->/i.test(value)) return false;
+  return true;
+}
+
+export function resolveTemplateCloneRunBrief(input: {
+  prompt: string | null | undefined;
+  persistedUserContent?: string | null;
+  retryUserContent?: string | null;
+  pendingPrompt?: string | null;
+  projectName?: string | null;
+}): string {
+  const prompt = String(input.prompt ?? '');
+  const persistedUserContent = String(input.persistedUserContent ?? '');
+  const retryUserContent = String(input.retryUserContent ?? '');
+  const pendingPrompt = String(input.pendingPrompt ?? '');
+  const projectName = String(input.projectName ?? '').trim();
+  const candidates = [
+    stripUserVisibleUserMessageText(retryUserContent).trim(),
+    stripUserVisibleUserMessageText(persistedUserContent).trim(),
+    extractTemplateCloneUserFacingRequest({
+      userInstruction: retryUserContent || persistedUserContent || prompt,
+      sourceBrief: pendingPrompt,
+      pendingPrompt: prompt,
+    }).trim(),
+    stripUserVisibleUserMessageText(prompt).trim(),
+    extractTemplateCloneUserFacingRequest({
+      userInstruction: pendingPrompt,
+      sourceBrief: prompt,
+      pendingPrompt,
+    }).trim(),
+    projectName,
+  ];
+  for (const candidate of candidates) {
+    if (templateCloneBriefLooksUsable(candidate)) return candidate;
+  }
+  return stripUserVisibleUserMessageText(prompt).trim();
 }
 
 export { tryRecoverCloneContentFillLookSeed } from '../runtime/slide-deliverable-recovery';
@@ -3308,6 +3513,12 @@ export function ProjectView({
   const [conversationLoadRetryNonce, setConversationLoadRetryNonce] = useState(0);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const messagesRef = useRef<ChatMessage[]>([]);
+  const apiRecoveryPollGuardRef = useRef({
+    key: '',
+    polls: 0,
+    lastAt: 0,
+    stopped: false,
+  });
   messagesRef.current = messages;
   const [forkingMessageId, setForkingMessageId] = useState<string | null>(null);
   const [activePluginActionPaths, setActivePluginActionPaths] = useState<Set<string>>(() => new Set());
@@ -3606,6 +3817,12 @@ export function ProjectView({
   const runTemplateClonePromptFillRef = useRef(false);
   /** 0901-N02 B5/D — persist metadata when slot-fill fell back to LOOK seed. */
   const runTemplateCloneSlotFillFallbackRef = useRef(false);
+  /** 루프550 — 이 턴이 짧은 응답 자동 재시도인지. persist가 pad 대신 재시도를 막을 때 사용. */
+  const runAutoRetryForShortResponseRef = useRef(false);
+  /** 0917-N25 — head-preamble continue 턴. persist는 retry 대신 즉시 forcePad. */
+  const runHeadPreambleContinueRef = useRef(false);
+  /** 루프550 — 모델에 보낸 원본 fill prompt. 재시도 때 뒤에 정량 문구를 붙인다. */
+  const runModelPromptRef = useRef('');
   /** Hidden / user slide-count append — persist merges new sections onto disk. */
   const runSlideCountTopUpRef = useRef(false);
   /**
@@ -3657,7 +3874,12 @@ export function ProjectView({
   const conversationSlideCountTopUpCountRef = useRef<Map<string, number>>(new Map());
   const slideCountTopUpTimerRef = useRef<number | null>(null);
   const pendingSlideCountTopUpConversationIdRef = useRef<string | null>(null);
-  const requestSlideCountTopUpRef = useRef<(htmlPath: string | null) => void>(() => {});
+  /** 루프508 — Armed rewrite/top-up/sparse timer → ChatPane Working 단계 문구. */
+  const [pendingSlideAutomationKind, setPendingSlideAutomationKind] =
+    useState<SlideAutomationPhase | null>(null);
+  const requestSlideCountTopUpRef = useRef<
+    (htmlPath: string | null, options?: { mode?: "full" | "sparse-only" }) => void
+  >(() => {});
   /**
    * Live streaming buffer mutator for the in-flight assistant row. `surfaceChatVisibleError`
    * updates React `messages` + saves, but the stream scheduler persists from a separate
@@ -3672,12 +3894,14 @@ export function ProjectView({
   const clearPendingSlideCountTopUpTimer = useCallback((options?: { rollback?: boolean }) => {
     if (slideCountTopUpTimerRef.current === null) {
       pendingSlideCountTopUpConversationIdRef.current = null;
+      setPendingSlideAutomationKind(null);
       return;
     }
     window.clearTimeout(slideCountTopUpTimerRef.current);
     slideCountTopUpTimerRef.current = null;
     const scheduledId = pendingSlideCountTopUpConversationIdRef.current;
     pendingSlideCountTopUpConversationIdRef.current = null;
+    setPendingSlideAutomationKind(null);
     if (options?.rollback && scheduledId) {
       rollbackSlideCountTopUpCount(conversationSlideCountTopUpCountRef.current, scheduledId);
     }
@@ -4394,8 +4618,19 @@ export function ProjectView({
         }
         throw lastError;
       };
-      if (freshAutoSend) {
+      if (
+        freshAutoSend
+        && messagesRef.current.length === 0
+        && !createAutoSendClaimHeld(project.id)
+      ) {
         setMessages([]);
+        setMessagesInitialized(true);
+        messagesConversationIdRef.current = activeConversationId;
+        setMessagesConversationId(activeConversationId);
+        setFailedMessagesConversationId(null);
+      } else if (freshAutoSend) {
+        // A create send already pushed the user bubble. Wiping it here used
+        // to look like a second empty conversation and re-armed auto-send.
         setMessagesInitialized(true);
         messagesConversationIdRef.current = activeConversationId;
         setMessagesConversationId(activeConversationId);
@@ -4653,6 +4888,11 @@ export function ProjectView({
               return;
             }
             if (!incompleteAssistant) return;
+            const recoveryHeadDecision = decideHeadPreambleRecovery({
+              streamedText: incompleteAssistant.content ?? '',
+              priorHeadPreambleContinues: countHeadPreambleContinueAttempts(mergedMessages),
+            });
+            if (recoveryHeadDecision === 'fallback') return;
             conversationAutoContinueCountRef.current.set(
               activeConversationId,
               autoContinueCount + 1,
@@ -4757,7 +4997,9 @@ export function ProjectView({
                 autoContinueCommentAttachments,
               );
               const autoContinueFill = templateCloneAutoContinueFlags(autoContinueOriginUser);
-              const autoContinuePromptRaw = resolveAutoContinuePrompt({
+              const autoContinuePromptRaw = recoveryHeadDecision === 'continue'
+                ? buildHeadPreambleContinuePrompt()
+                : resolveAutoContinuePrompt({
                 commentAttachmentCount: autoContinueCommentAttachments.length,
                 visualMarkOnly: autoContinueVisualFlags.visualMarkOnly,
                 visualAnnotationEdit: autoContinueVisualFlags.visualAnnotationEdit,
@@ -4799,6 +5041,11 @@ export function ProjectView({
                   entryFrom: AUTO_CONTINUE_ENTRY_FROM,
                   ...(autoContinueFill.jsonFill ? { templateCloneContentFill: true } : {}),
                   ...(autoContinueFill.promptFill ? { templateClonePromptFill: true } : {}),
+                  ...deckTemplateSendMetaFromPin(resolveDurableDeckTemplatePin({
+                    project: project.metadata,
+                    retryUser: autoContinueOriginUser,
+                    messages: messagesRef.current,
+                  })),
                 },
               );
               void Promise.resolve(started).then((ok) => {
@@ -5210,6 +5457,10 @@ export function ProjectView({
                   inferred: false,
                   templateCloneContentFilled: true,
                   templateClonedDeckSeeded: false,
+                  ...deckTemplateSendMetaFromPin(resolveDurableDeckTemplatePin({
+                    project: project.metadata,
+                    messages: messagesRef.current,
+                  })),
                 },
               }),
             });
@@ -5422,8 +5673,11 @@ export function ProjectView({
       {
         const artifactHtml = typeof art.html === 'string' ? art.html.trim() : '';
         const selectedTemplateId =
-          selectedDeckTemplateMetadata(project.metadata)?.id
-          ?? project.metadata?.selectedDeckTemplateId
+          resolveDurableDeckTemplatePin({
+            project: project.metadata,
+            runRef: runSelectedDeckTemplateIdRef.current,
+            messages: messagesRef.current,
+          })?.id
           ?? null;
         if (
           shouldDeferSlideOnlyDiscoveryArtifactPersist(messagesRef.current, {
@@ -5635,6 +5889,15 @@ export function ProjectView({
                 'The model emitted an empty deck-patch artifact on a run without a scoped comment target. Retry with a clearer request or use full deck generation.',
             };
           }
+          // 루프530 — Unscoped parse failures are not comment-scope violations.
+          // Returning scope-rejected paints the misleading "선택 대상 밖" banner.
+          if (!runIsScoped && merged.code === 'deck_patch_parse_failed') {
+            return {
+              kind: 'rejected',
+              fileName: targetFileName,
+              reason: merged.reason,
+            };
+          }
           return routeScopedCommentPersistFailure({
             fileName: targetFileName,
             code: merged.code,
@@ -5770,9 +6033,12 @@ export function ProjectView({
           project.name || '슬라이드',
         );
         const incomingBeforeSalvage = artifactToPersist.html;
+        const preserveLookSeedOverInventedCover = shouldPreserveLookSeedOverInventedCover(
+          runTemplateCloneContentFillRef.current || runTemplateClonePromptFillRef.current,
+        );
         const salvaged = salvageTruncatedHtmlDocument(artifactToPersist.html)
           ?? (
-            runSlideCountTopUpRef.current
+            runSlideCountTopUpRef.current || preserveLookSeedOverInventedCover
               ? null
               : salvageTemplateFillShellAsCoverDraft(artifactToPersist.html, {
                 fallbackTitle: coverFallbackTitle,
@@ -5894,6 +6160,7 @@ export function ProjectView({
         };
         const persistHealBrief = runVisiblePromptRef.current || '';
         const persistHealTitle = project.name || '슬라이드';
+        let incompleteShellPaddedToSeed = false;
         // Truncation salvage can close a CSS-only / unclosed-`<style>` dump
         // and still look like an incomplete shell. Kit CSS in `<body>` also
         // blocks cover draft (text looks salvageable). Replace those with a
@@ -5901,6 +6168,7 @@ export function ProjectView({
         // instead of skipped-incomplete / incomplete-html-document-shell.
         if (
           !runSlideCountTopUpRef.current
+          && !preserveLookSeedOverInventedCover
           && isIncompleteHtmlDocumentShell(
             artifactToPersist.html,
             persistHealBrief,
@@ -5918,6 +6186,7 @@ export function ProjectView({
             {
               fallbackTitle: coverFallbackTitle,
               lastResortTitle: LAST_RESORT_DECK_COVER_TITLE,
+              preserveLookSeed: preserveLookSeedOverInventedCover,
             },
           );
           if (lastResortCover) {
@@ -5934,8 +6203,8 @@ export function ProjectView({
             persistHealTitle,
           );
         // Empty scaffolds can pass the 64-char length gate once a charset
-        // meta is present — still skip silently so we never write phantoms
-        // or flash 「저장을 거부했습니다」 during deck generation.
+        // meta is present. Create/full fill + LOOK seed must continue or
+        // forcePad before skipped_incomplete_retry — 32자/빈 셸만 seed skip.
         if (
           !trustSoftTruncationSalvage
           && isIncompleteHtmlDocumentShell(
@@ -5944,16 +6213,49 @@ export function ProjectView({
             persistHealTitle,
           )
         ) {
-          // Quiet skip — do NOT setError here. The terminal auto-open path
-          // owns user-facing messaging (deliverable-missing banner and/or
-          // the automatic-continue notice). Flashing 「저장을 거부했습니다:
-          // incomplete HTML document shell」 mid/end-turn contradicted the
-          // auto-continue banner and looked like a product failure during demos.
-          return {
-            kind: 'skipped-incomplete',
+          const persistTemplateIdForShell = firstOfficialDeckTemplateId(
+            resolveDurableDeckTemplatePin({
+              project: project.metadata,
+              runRef: runSelectedDeckTemplateIdRef.current,
+              messages: messagesRef.current,
+            })?.id,
+          );
+          const shellPersist = await resolveIncompleteHtmlShellPersist({
+            html: artifactToPersist.html,
             fileName,
-            reason: 'incomplete-html-document-shell',
-          };
+            brief: persistHealBrief,
+            deckTitle: persistHealTitle,
+            scopedEdit:
+              persistCommentAttachments.length > 0
+              || imageAttachmentPathsForSlideEmbed(runAttachmentsRef.current).length > 0,
+            isCreateOrFullFill:
+              runTemplateCloneContentFillRef.current
+              || runTemplateClonePromptFillRef.current,
+            alreadyHeadPreambleContinue: runHeadPreambleContinueRef.current,
+            priorHeadPreambleContinues: countHeadPreambleContinueAttempts(
+              messagesRef.current,
+            ),
+            templateId: persistTemplateIdForShell,
+            readSeedHtml: () => resolveTemplateCloneLookSeedHtml({
+              templateId: persistTemplateIdForShell,
+              readProjectHtml,
+            }),
+          });
+          if (shellPersist?.kind === 'needs-short-response-retry') {
+            return shellPersist;
+          }
+          if (shellPersist?.kind === 'padded' && shellPersist.html) {
+            artifactToPersist = { ...artifactToPersist, html: shellPersist.html };
+            incompleteShellPaddedToSeed = true;
+          } else {
+            // Quiet skip — pad/continue already failed. Seed fallback owns
+            // the Retry dock. Do not flash 「저장을 거부했습니다」.
+            return {
+              kind: 'skipped-incomplete',
+              fileName,
+              reason: 'incomplete-html-document-shell',
+            };
+          }
         }
         const persistDisplayTitle = resolvePersistDeckDisplayTitle(
           art,
@@ -6005,6 +6307,8 @@ export function ProjectView({
           }
         }
         if (
+          !incompleteShellPaddedToSeed
+          && (
           motifSvgDump
           || failedGenerateHeadings
           || leftoverCatalogExample
@@ -6017,6 +6321,7 @@ export function ProjectView({
               persistHealTitle,
             )
           )
+          )
         ) {
           return {
             kind: 'skipped-incomplete',
@@ -6028,6 +6333,46 @@ export function ProjectView({
         }
         const validation = validateHtmlArtifact(artifactToPersist.html);
         if (!validation.ok) {
+          const tooShortPersist = await resolveTooShortHtmlArtifactPersist({
+            reason: validation.reason,
+            html: artifactToPersist.html,
+            fileName,
+            artifactType: normalizedArtifactType,
+            scopedEdit:
+              persistCommentAttachments.length > 0
+              || imageAttachmentPathsForSlideEmbed(runAttachmentsRef.current).length > 0,
+            isCreateOrFullFill:
+              runTemplateCloneContentFillRef.current
+              || runTemplateClonePromptFillRef.current,
+            alreadyRetried: runAutoRetryForShortResponseRef.current,
+            readSeedHtml: () => resolveTemplateCloneLookSeedHtml({
+              templateId: firstOfficialDeckTemplateId(
+                resolveDurableDeckTemplatePin({
+                  project: project.metadata,
+                  runRef: runSelectedDeckTemplateIdRef.current,
+                  messages: messagesRef.current,
+                })?.id,
+              ),
+              readProjectHtml,
+            }),
+            readPriorHtml: () => readDiskHtml(fileName),
+            countSeedSlides: (html) => (
+              listTemplateCloneSlideShells(html).length || countDeckSlideSections(html)
+            ),
+          });
+          if (tooShortPersist) return tooShortPersist;
+          if (
+            htmlArtifactValidationFailureShouldAutoContinue({
+              artifactType: normalizedArtifactType,
+              reason: validation.reason,
+            })
+          ) {
+            return {
+              kind: 'skipped-incomplete',
+              fileName,
+              reason: validation.reason,
+            };
+          }
           surfaceChatVisibleError(
             formatProjectArtifactRejectedError(
               persistDisplayTitle,
@@ -6068,6 +6413,13 @@ export function ProjectView({
         }
       }
       const htmlBodyBeforeSanitize = htmlBody;
+      const persistTemplateId = firstOfficialDeckTemplateId(
+        resolveDurableDeckTemplatePin({
+          project: project.metadata,
+          runRef: runSelectedDeckTemplateIdRef.current,
+          messages: messagesRef.current,
+        })?.id,
+      );
       if (ext === '.html' && !patchHtmlAlreadySanitized) {
         // Single terminal scrub after salvage/repair/stabilize — avoids
         // 2–4× DOMParser passes on the same multi-KB deck per persist.
@@ -6091,11 +6443,6 @@ export function ProjectView({
         htmlBody = rewriteAttachmentImageSrcs(htmlBody, projectPaths, {
           preferredPaths: attachmentPaths,
         });
-        const persistTemplateId = firstOfficialDeckTemplateId(
-          runSelectedDeckTemplateIdRef.current,
-          selectedDeckTemplateMetadata(project.metadata)?.id,
-          project.metadata?.selectedDeckTemplateId,
-        );
         // Look/Motif/fonts first, then surface bleed — so cream !important
         // does not win over official dark identity (Hermes) or Motif washes.
         htmlBody = await mergeOfficialLookCssForTemplate(htmlBody, persistTemplateId);
@@ -6133,16 +6480,50 @@ export function ProjectView({
             htmlBody,
             requestedSlideCount: requestedSpec?.max ?? null,
             requestedSlideCountMin: requestedSpec?.min ?? null,
+            defaultFirstFillSlideCount: requestedSpec == null
+              ? FIRST_FILL_SLIDE_COUNT_THIS_TURN
+              : null,
           });
           if (slideCountIncomplete) {
-            devLog.warn('[teamver] blocked incomplete template fill before save', {
-              fileName: slideCountIncomplete.fileName,
-              producedCount: slideCountIncomplete.producedCount,
-              expectedCount: slideCountIncomplete.expectedCount,
+            const producedCount = slideCountIncomplete.producedCount;
+            const expectedCount = slideCountIncomplete.expectedCount;
+            devLog.warn('[teamver] incomplete template fill detected', {
+              fileName,
+              producedCount,
+              expectedCount,
             });
+            if (producedCount > 0) {
+              const runImagePaths = imageAttachmentPathsForSlideEmbed(runAttachmentsRef.current);
+              if (
+                !runHeadPreambleContinueRef.current
+                && shouldAutoRetryShortSlideResponse({
+                  seedCount: expectedCount,
+                  returnedCount: producedCount,
+                  requestedSlideCount:
+                    requestedSpec?.min
+                    ?? requestedSpec?.max
+                    ?? expectedCount,
+                  alreadyRetried: runAutoRetryForShortResponseRef.current,
+                  scopedEdit:
+                    persistCommentAttachments.length > 0
+                    || runImagePaths.length > 0,
+                  isCreateOrFullFill:
+                    runTemplateCloneContentFillRef.current
+                    || runTemplateClonePromptFillRef.current,
+                })
+              ) {
+                return {
+                  kind: 'needs-short-response-retry',
+                  fileName,
+                  producedCount,
+                  expectedCount,
+                  reason: slideCountIncomplete.reason,
+                };
+              }
+            }
             return {
               kind: 'skipped-incomplete',
-              fileName: slideCountIncomplete.fileName,
+              fileName,
               reason: slideCountIncomplete.reason,
             };
           }
@@ -6223,6 +6604,9 @@ export function ProjectView({
               ...(runTemplateCloneSlotFillFallbackRef.current
                 ? { templateCloneSlotFillFallback: true }
                 : {}),
+              ...(persistTemplateId
+                ? { selectedDeckTemplateId: persistTemplateId }
+                : {}),
             }
           : {}),
       };
@@ -6247,12 +6631,31 @@ export function ProjectView({
               },
             });
       const priorDiskHtml = ext === '.html' ? await readDiskHtml(fileName) : null;
+      // 루프524 — Find the on-disk project entry that matches the persist
+      // target so the LOOK seed manifest guard (below) can bypass
+      // regression checks that would otherwise reject a legitimate short
+      // fill against a multi-shell Clone LOOK seed prior. `findClientArtifactRegression`
+      // already recognizes LOOK seed via its own `projectFiles` lookup,
+      // but `findClientSlideCountRegression` and the daemon stub-guard
+      // depend on the composite `allowReplaceSeedOrLeftover` flag below.
+      const priorProjectFile = ext === '.html'
+        ? currentProjectFiles.find((file) => {
+          const name = (file.path ?? file.name).trim();
+          return name === fileName || file.name.trim() === fileName;
+        }) ?? null
+        : null;
+      const priorIsCloneLookSeedFile = isTemplateCloneLookSeedFile(priorProjectFile);
       const allowReplaceSeedOrLeftover =
         runTemplateCloneContentFillRef.current
         || runTemplateClonePromptFillRef.current
+        // 루프524 — LOOK seed on disk is not a user deliverable. Any
+        // compact fresh fill (fresh brief re-send after seed banner)
+        // must be allowed to replace it regardless of slide-count drop.
+        || priorIsCloneLookSeedFile
         || priorDeckAllowsCompactReplacement(
           priorDiskHtml,
           runVisiblePromptRef.current || '',
+          htmlBody,
         );
       const regression = findClientArtifactRegression({
         fileName,
@@ -6281,10 +6684,6 @@ export function ProjectView({
         // what happened + reassures about the preserved deck + names
         // the escape-hatch env var, so users don't stare at a mixed-
         // language "저장을 거부: New artifact body …" reason.
-        surfaceChatVisibleError(
-          formatProjectArtifactRegressionRejectedError(regression.fileName),
-          'artifact_regression',
-        );
         return {
           kind: 'artifact-regression',
           fileName: regression.fileName,
@@ -6294,40 +6693,83 @@ export function ProjectView({
       // Dense 2-slide rewrites can pass the byte-size check while destroying
       // an 8-slide deck after an image-insert turn. Block slide-count collapse
       // even on comment-scoped persists (image+pin turns previously skipped
-      // this guard and still collapsed 8→2). Existing-deck / image-embed turns
-      // use strict mode so soft shrink (8→6) is also rejected.
+      // this guard and still collapsed 8→2). Comment / image-embed turns stay
+      // strict; a normal regenerate onto existing deck.html must NOT — otherwise
+      // 루프279 substance-rich 8→5 never applies (루프508).
       if (ext === '.html') {
         try {
           const priorHtml = priorDiskHtml ?? await readDiskHtml(fileName);
           const runImagePaths = imageAttachmentPathsForSlideEmbed(runAttachmentsRef.current);
           const strictSlideCount =
             persistCommentAttachments.length > 0
-            || runImagePaths.length > 0
-            || Boolean(runPersistTargetFileRef.current);
+            || runImagePaths.length > 0;
           const slideRegression = findClientSlideCountRegression({
             fileName,
             htmlBody,
             priorHtml,
             strict: strictSlideCount,
             allowSlideCountReduction: allowReplaceSeedOrLeftover,
+            // 루프524 — Double protection: even if a future caller forgets
+            // to fold LOOK seed metadata into `allowReplaceSeedOrLeftover`,
+            // the function's own bypass will still spare a legitimate short
+            // fresh fill from being rejected against a Clone LOOK seed prior.
+            priorProjectFile,
             healBrief: runVisiblePromptRef.current || '',
             healTitle: project.name || '슬라이드',
           });
           if (slideRegression) {
-            devLog.warn('[teamver] blocked slide-count collapse before save', {
+            devLog.warn('[teamver] slide-count regression detected', {
               fileName: slideRegression.fileName,
               priorCount: slideRegression.priorCount,
               newCount: slideRegression.newCount,
+              severity: slideRegression.severity,
               commentScoped: persistCommentAttachments.length > 0,
               strict: strictSlideCount,
             });
-            surfaceChatVisibleError(
-              formatProjectArtifactRegressionRejectedError(
-                slideRegression.fileName,
-                'slide-count',
-              ),
-              'artifact_regression',
-            );
+            if (slideRegression.severity === 'reject') {
+              return {
+                kind: 'artifact-regression',
+                fileName: slideRegression.fileName,
+                reason: slideRegression.reason,
+                bannerKind: 'slide-count',
+              };
+            }
+            const requestedSpec = extractRequestedSlideCountSpecFromMessages(messagesRef.current);
+            const requestedCount =
+              requestedSpec?.min
+              ?? requestedSpec?.max
+              ?? null;
+            const warnSeedCount = requestedCount ?? slideRegression.priorCount;
+            if (
+              requestedCount != null
+              && !runHeadPreambleContinueRef.current
+              && shouldAutoRetryShortSlideResponse({
+                seedCount: warnSeedCount,
+                returnedCount: slideRegression.newCount,
+                requestedSlideCount: requestedCount,
+                alreadyRetried: runAutoRetryForShortResponseRef.current,
+                scopedEdit: strictSlideCount,
+                isCreateOrFullFill:
+                  runTemplateCloneContentFillRef.current
+                  || runTemplateClonePromptFillRef.current
+                  || slideOnlyMvp,
+              })
+            ) {
+              devLog.warn('[teamver] slide-count short response auto-retry armed', {
+                fileName: slideRegression.fileName,
+                priorCount: slideRegression.priorCount,
+                newCount: slideRegression.newCount,
+                requested: requestedCount,
+              });
+              return {
+                kind: 'needs-short-response-retry',
+                fileName: slideRegression.fileName,
+                producedCount: slideRegression.newCount,
+                expectedCount: warnSeedCount,
+                reason: slideRegression.reason,
+                retryKind: 'slide-count',
+              };
+            }
             return {
               kind: 'artifact-regression',
               fileName: slideRegression.fileName,
@@ -8732,9 +9174,11 @@ export function ProjectView({
                         const withLook = await mergeOfficialLookCssForTemplate(
                           withHeadings,
                           firstOfficialDeckTemplateId(
-                            runSelectedDeckTemplateIdRef.current,
-                            selectedDeckTemplateMetadata(project.metadata)?.id,
-                            project.metadata?.selectedDeckTemplateId,
+                            resolveDurableDeckTemplatePin({
+                              project: project.metadata,
+                              runRef: runSelectedDeckTemplateIdRef.current,
+                              messages: messagesRef.current,
+                            })?.id,
                           ),
                         );
                         const withSalvage = sanitizePersistedDeckHostLeaks(withLook);
@@ -9064,8 +9508,10 @@ export function ProjectView({
 
   useEffect(() => {
     if (config.mode !== 'api' || !daemonLive || !activeConversationId) return;
+    if (!messagesInitialized || messagesConversationId !== activeConversationId) return;
     if (streaming && abortRef.current) return;
-    if (findInFlightAssistantMessages(messages).length > 0) return;
+    const snapshot = messagesRef.current;
+    if (findInFlightAssistantMessages(snapshot).length > 0) return;
     let cancelled = false;
     let retryTimer: number | null = null;
     const recoveryConversationId = activeConversationId;
@@ -9108,13 +9554,13 @@ export function ProjectView({
           return false;
         }
         if (assistantMessageId) {
-          const existing = messages.find((message) => message.id === assistantMessageId);
+          const existing = snapshot.find((message) => message.id === assistantMessageId);
           if (existing && isLocallyTerminalAssistantMessage(existing)) return false;
         }
         return true;
       });
       const nextMessages = mergeMissingActiveRunAssistantMessages(
-        messages,
+        snapshot,
         matchingStreams.map((stream) => ({
           id: null,
           assistantMessageId: stream.assistantMessageId,
@@ -9122,7 +9568,7 @@ export function ProjectView({
           createdAt: stream.registeredAt,
         })),
       );
-      if (nextMessages === messages) return;
+      if (nextMessages === snapshot) return;
       setMessages(nextMessages);
       for (const message of findInFlightAssistantMessages(nextMessages)) {
         dispatchTeamverBackgroundChat({
@@ -9138,12 +9584,15 @@ export function ProjectView({
       if (retryTimer !== null) window.clearTimeout(retryTimer);
     };
   }, [
+    // Do not depend on inFlightAssistantSignature. Recovery's server refresh
+    // can drop a synthesized stub; re-probing on that change re-inserts it
+    // and loops GET /files + /messages.
     config.mode,
     daemonLive,
     activeConversationId,
     streaming,
-    inFlightAssistantSignature,
-    messages,
+    messagesInitialized,
+    messagesConversationId,
     project.id,
     reattachNonce,
   ]);
@@ -9176,8 +9625,19 @@ export function ProjectView({
     let cancelled = false;
     let pollTimer: number | null = null;
     let idlePollsWithoutProxy = 0;
+    let idlePollsWithStaleProxy = 0;
     let recoveryStreamingArmed = false;
     const recoveryConversationId = activeConversationId;
+    const recoveryKey = `${project.id}:${recoveryConversationId}:${initialInflightMessages[0]?.id ?? ''}`;
+    if (apiRecoveryPollGuardRef.current.key !== recoveryKey) {
+      apiRecoveryPollGuardRef.current = {
+        key: recoveryKey,
+        polls: 0,
+        lastAt: 0,
+        stopped: false,
+      };
+    }
+    if (apiRecoveryPollGuardRef.current.stopped) return;
     const trackedAssistantIds = new Set(initialInflightMessages.map((message) => message.id));
     const activatedAssistantIds = new Set<string>();
     apiRecoveryBannerRef.current = {
@@ -9248,6 +9708,7 @@ export function ProjectView({
     };
 
     const finishRecovery = () => {
+      apiRecoveryPollGuardRef.current.stopped = true;
       apiBackgroundRecoveryRef.current = false;
       if (abortRef.current && cancelRef.current) {
         clearCurrentRunStreamingMarker(
@@ -9271,6 +9732,22 @@ export function ProjectView({
 
     const pollRecovery = async () => {
       if (cancelled) return;
+      const guard = apiRecoveryPollGuardRef.current;
+      const now = Date.now();
+      // Effect restarts (project identity, callback identity) must not
+      // immediately re-hit files + messages. A leaked in-flight row used to
+      // reset the idle counter on every restart and never stop.
+      if (guard.polls > 0 && now - guard.lastAt < 8_000) {
+        scheduleNextPoll(8_000 - (now - guard.lastAt));
+        return;
+      }
+      if (guard.polls >= 8) {
+        guard.stopped = true;
+        finishRecovery();
+        return;
+      }
+      guard.lastAt = now;
+      guard.polls += 1;
       // Soft/hard sticky / BYOK auth backoff: do not keep hitting proxy/active
       // + listMessages while C1 owns recovery.
       if (isDesignAuthRefreshDeclined() || shouldSkipByokProxyActivePoll()) {
@@ -9594,6 +10071,11 @@ export function ProjectView({
                 entryFrom: AUTO_CONTINUE_ENTRY_FROM,
                 ...(autoContinueFill.jsonFill ? { templateCloneContentFill: true } : {}),
                 ...(autoContinueFill.promptFill ? { templateClonePromptFill: true } : {}),
+                ...deckTemplateSendMetaFromPin(resolveDurableDeckTemplatePin({
+                  project: project.metadata,
+                  retryUser: autoContinueOriginUser,
+                  messages: messagesRef.current,
+                })),
               },
             );
             void Promise.resolve(started).then((ok) => {
@@ -9611,6 +10093,17 @@ export function ProjectView({
       if (trackedAssistantIds.size === 0 && !proxyStillActive) {
         finishRecovery();
         return;
+      }
+      if (!stillInflight && proxyStillActive) {
+        // Daemon still lists a stream, but this conversation has no in-flight
+        // assistant. Do not keep GET /api/proxy/active alive for that leak.
+        idlePollsWithStaleProxy += 1;
+        if (idlePollsWithStaleProxy >= 3) {
+          finishRecovery();
+          return;
+        }
+      } else if (stillInflight) {
+        idlePollsWithStaleProxy = 0;
       }
       if (!proxyStillActive && stillInflight) {
         idlePollsWithoutProxy += 1;
@@ -9950,14 +10443,56 @@ export function ProjectView({
         onEmbedSubmitBlocked?.();
         return false;
       }
-      meta = enrichChatSendMetaWithProjectDeckTemplate(meta, project.metadata);
       if (!activeConversationId) return false;
       if (messagesConversationIdRef.current !== activeConversationId) return false;
+      const localUserCount = messagesRef.current.filter((message) => message.role === 'user').length;
+      if (!beginFirstConversationTurn({
+        projectId: project.id,
+        entryFrom: meta?.entryFrom ?? null,
+        localUserCount,
+      })) {
+        // Already started this create turn. Return true so auto-send latches
+        // and does not restore the session flag into a second stream.
+        return true;
+      }
       const runSessionMode = meta?.sessionMode ?? activeSessionMode;
       const retryTarget = meta?.retryOfAssistantId
         ? resolveRetryTarget(messages, meta.retryOfAssistantId)
         : null;
       if (meta?.retryOfAssistantId && !retryTarget) return false;
+      // 루프529 — Retry/auto-continue/follow-up share one durable pin.
+      // Recover from turn meta, retry user, history, then write it back to
+      // project.metadata so persist LOOK / LOOK-seed do not fall back to
+      // simple-deck after runSelectedDeckTemplateIdRef is cleared.
+      meta = ensureChatSendMetaHasDurableDeckTemplate(meta, {
+        project: project.metadata,
+        retryUser: retryTarget?.userMsg,
+        messages,
+      });
+      const durablePin = resolveDurableDeckTemplatePin({
+        turn: meta,
+        project: project.metadata,
+        retryUser: retryTarget?.userMsg,
+        messages,
+      });
+      if (projectMetadataNeedsDeckTemplatePin(project.metadata, durablePin) && durablePin) {
+        const nextMetadata = {
+          ...(project.metadata ?? {}),
+          selectedDeckTemplateId: durablePin.id,
+          ...(durablePin.title
+            ? { selectedDeckTemplateTitle: durablePin.title }
+            : {}),
+        };
+        onProjectChange({ ...project, metadata: nextMetadata });
+        void patchProject(project.id, {
+          metadata: nextMetadata,
+          updatedAt: project.updatedAt,
+        }).then((patched) => {
+          if (patched) onProjectChange(patched);
+        }).catch(() => {
+          // Local metadata already holds the recovered pin.
+        });
+      }
       if (retryTarget && config.mode === 'api') {
         try {
           const deleted = await cleanupByokRetryArtifacts(
@@ -10106,6 +10641,20 @@ export function ProjectView({
       runTemplateCloneContentFillRef.current = isCloneContentFillTurn;
       runTemplateClonePromptFillRef.current = isClonePromptFillTurn;
       runTemplateCloneSlotFillFallbackRef.current = false;
+      runAutoRetryForShortResponseRef.current =
+        meta?.autoRetryForShortResponse === true
+        || isShortResponseAutoRetryPrompt(prompt);
+      runHeadPreambleContinueRef.current = isHeadPreambleContinuePrompt(prompt)
+        || (
+          isAutoContinueSend
+          && (
+            countHeadPreambleContinueAttempts(historyBase) > 0
+            || historyBase.some((message) => (
+              message.role === 'assistant'
+              && looksLikeAbandonedHeadPreambleStub(message.content)
+            ))
+          )
+        );
       const fillSlideCountHint =
         extractTemplateCloneFillSlideCountHintFromPrompt(
           retryTarget ? retryTarget.userMsg.content || prompt : prompt,
@@ -10324,6 +10873,19 @@ export function ProjectView({
           'Status tone: "슬라이드 추가 중" — NEVER "수정 반영 중" / "Applying your edits".',
         ].join('\n');
       }
+      if (isCloneHostFillTurn && slideOnlyMvp) {
+        try {
+          const seedPath = resolveCanonicalDeckEntryPath(filesSnapshot) ?? 'deck.html';
+          const seedHtml = seedPath ? await readProjectHtml(seedPath) : null;
+          const seedShellCount = seedHtml ? listTemplateCloneSlideShells(seedHtml).length : 0;
+          if (seedShellCount > 0) {
+            modelPrompt = applyQuantitativeSlideCountInstruction(modelPrompt, seedShellCount);
+          }
+        } catch {
+          // LOOK seed not on disk yet — keep fallback keep-slide-count constant.
+        }
+      }
+      runModelPromptRef.current = modelPrompt;
       if (!retryTarget && meta?.queueOnly) {
         queueChatSendForCurrentConversation({
           conversationId: activeConversationId,
@@ -10344,7 +10906,8 @@ export function ProjectView({
           || meta?.entryFrom === SLIDE_COUNT_TOP_UP_ENTRY_FROM
           || meta?.entryFrom === SPARSE_CONTENT_TOP_UP_ENTRY_FROM
           || meta?.entryFrom === THIN_PRIOR_FULL_REWRITE_ENTRY_FROM
-          || meta?.entryFrom === CLONE_SLOT_FILL_REPAIR_ENTRY_FROM)
+          || meta?.entryFrom === CLONE_SLOT_FILL_REPAIR_ENTRY_FROM
+          || meta?.autoRetryForShortResponse === true)
         && !abortRef.current;
       const bypassBusyForQueuedDrain = meta?.drainQueuedSend === true;
       // Home create auto-send: never queue+false — that pairs with retry nonce
@@ -10377,7 +10940,11 @@ export function ProjectView({
       // Manual retries and fresh user turns get a full auto-continue budget.
       // Without this reset, a conversation that exhausted the cap on earlier
       // incomplete_output rows would never auto-recover on the next real send.
-      if (!isAutoContinueSend && !isSlideCountTopUpSend) {
+      if (
+        !isAutoContinueSend
+        && !isSlideCountTopUpSend
+        && meta?.autoRetryForShortResponse !== true
+      ) {
         conversationAutoContinueCountRef.current.set(runConversationId, 0);
         conversationSlideCountTopUpCountRef.current.set(runConversationId, 0);
       }
@@ -10424,7 +10991,15 @@ export function ProjectView({
           };
       const runCommentAttachments = scopedCommentAttachments;
       runCommentAttachmentsRef.current = runCommentAttachments;
-      runVisiblePromptRef.current = stripUserVisibleUserMessageText(prompt).trim();
+      runVisiblePromptRef.current = isCloneHostFillTurn
+        ? resolveTemplateCloneRunBrief({
+            prompt,
+            persistedUserContent,
+            retryUserContent: retryTarget?.userMsg.content ?? null,
+            pendingPrompt: project.pendingPrompt ?? null,
+            projectName: project.name,
+          })
+        : stripUserVisibleUserMessageText(prompt).trim();
       const runAttachmentsRaw = mergeChatAttachments(
         userMsg.attachments ?? [],
         ...runCommentAttachments.map((attachment) =>
@@ -10454,16 +11029,22 @@ export function ProjectView({
         projectSkipDiscoveryBrief: project.metadata?.skipDiscoveryBrief === true,
         projectKind: project.metadata?.kind ?? null,
         selectedDeckTemplateId:
-          selectedDeckTemplateMetadata(project.metadata, meta)?.id
-          ?? meta?.selectedDeckTemplateId
-          ?? project.metadata?.selectedDeckTemplateId
+          resolveDurableDeckTemplatePin({
+            turn: meta,
+            project: project.metadata,
+            retryUser: retryTarget?.userMsg,
+            messages,
+          })?.id
           ?? null,
         runSkipDiscoveryBrief: meta?.skipDiscoveryBrief === true,
       });
       runSelectedDeckTemplateIdRef.current =
-        selectedDeckTemplateMetadata(project.metadata, meta)?.id
-        ?? meta?.selectedDeckTemplateId
-        ?? project.metadata?.selectedDeckTemplateId
+        resolveDurableDeckTemplatePin({
+          turn: meta,
+          project: project.metadata,
+          retryUser: retryTarget?.userMsg,
+          messages,
+        })?.id
         ?? null;
       const commentPersistTarget = resolveCommentEditPersistTargetFileName(
         runCommentAttachments,
@@ -10667,7 +11248,9 @@ export function ProjectView({
       const nextVisibleMessages = retryTarget
         ? [...nextHistory, ...retryTarget.preservedAttempts, assistantMsg]
         : [...nextHistory, assistantMsg];
-      setMessages(dedupeConversationAssistantRows(nextVisibleMessages));
+      const visibleAfterSend = dedupeConversationAssistantRows(nextVisibleMessages);
+      messagesRef.current = visibleAfterSend;
+      setMessages(visibleAfterSend);
       markStreamingConversation(runConversationId);
       if (config.mode === 'api') {
         dispatchTeamverBackgroundChat({
@@ -10823,6 +11406,7 @@ export function ProjectView({
             // so the user sees the fallback banner + Retry instead of a
             // blank incomplete_output. Non-Clone runs never set this flag.
             let cloneLookSeedFallbackRecovered = false;
+            let cloneLookSeedFallbackReason = 'look_seed_fallback';
             const cloneFillMessageHistory = retryTarget
               ? [...historyBase, retryTarget.userMsg]
               : [...historyBase, userMsg];
@@ -10862,7 +11446,62 @@ export function ProjectView({
                 deckTitle: project.name || '슬라이드',
               },
             );
-            const recoverCloneLookSeedFallback = async (): Promise<boolean> => {
+            const recoverCloneLookSeedFallback = async (
+              options: { prepareArtifact?: boolean; reason?: string } = {},
+            ): Promise<boolean> => {
+              if (options.reason) {
+                cloneLookSeedFallbackReason = options.reason.slice(0, 240);
+              }
+              if (options.prepareArtifact !== false) {
+                try {
+                  const templateId = firstOfficialDeckTemplateId(
+                    resolveDurableDeckTemplatePin({
+                      project: project.metadata,
+                      runRef: runSelectedDeckTemplateIdRef.current,
+                      messages: messagesRef.current,
+                    })?.id,
+                  );
+                  const seedHtml = await resolveTemplateCloneLookSeedHtml({
+                    templateId,
+                    readProjectHtml,
+                  });
+                  const requestedSlideCountSpec =
+                    extractRequestedSlideCountSpecFromMessages(messagesRef.current);
+                  const honorCeiling = honorSlideCountCeiling(requestedSlideCountSpec);
+                  const decision = decideTemplateCloneSlotFillTerminal({
+                    rawFinalText: '',
+                    seedHtml,
+                    repairAlreadyAttempted: true,
+                    templateId:
+                      templateId
+                      ?? (project.metadata as { selectedDeckTemplateId?: string } | undefined)
+                        ?.selectedDeckTemplateId
+                      ?? null,
+                    userBrief: runVisiblePromptRef.current || '',
+                    deckTitle: project.name || '슬라이드',
+                    slideCount: requestedSlideCountSpec?.max ?? null,
+                    ...(honorCeiling != null ? { maxSlides: honorCeiling } : {}),
+                  });
+                  if (
+                    decision.kind === 'seed-fallback'
+                    && !templateCloneSeedFallbackShouldWarn({
+                      seedHtml,
+                      decisionHtml: decision.html,
+                    })
+                  ) {
+                    runTemplateCloneSlotFillFallbackRef.current = false;
+                    artifactToPersist = {
+                      identifier: 'deck',
+                      artifactType: 'deck',
+                      title: decision.title,
+                      html: decision.html,
+                    };
+                    return true;
+                  }
+                } catch (error) {
+                  devLog.warn('[teamver] template clone deterministic LOOK recovery failed', error);
+                }
+              }
               const recovered = await tryRecoverCloneContentFillLookSeed({ readProjectHtml });
               if (!recovered) return false;
               cloneLookSeedFallbackRecovered = true;
@@ -10875,7 +11514,16 @@ export function ProjectView({
             // 0901-N02 B4/B5/D — JSON → LOOK seed slot-fill; else seed-fallback (no model HTML).
             if (runTemplateCloneContentFillRef.current) {
               try {
-                const seedHtml = await readProjectHtml('deck.html');
+                const seedHtml = await resolveTemplateCloneLookSeedHtml({
+                  templateId: firstOfficialDeckTemplateId(
+                    resolveDurableDeckTemplatePin({
+                      project: project.metadata,
+                      runRef: runSelectedDeckTemplateIdRef.current,
+                      messages: messagesRef.current,
+                    })?.id,
+                  ),
+                  readProjectHtml,
+                });
                 const requestedSlideCountSpec =
                   extractRequestedSlideCountSpecFromMessages(messagesRef.current);
                 const honorCeiling = honorSlideCountCeiling(requestedSlideCountSpec);
@@ -10895,6 +11543,33 @@ export function ProjectView({
                   slideCount: requestedSlideCountSpec?.max ?? null,
                   ...(honorCeiling != null ? { maxSlides: honorCeiling } : {}),
                 });
+                if (decision.kind === 'slot-fill' || decision.kind === 'seed-fallback') {
+                  observeTemplateCloneOutlineQuality({
+                    rawFinalText,
+                    kind: decision.kind,
+                    templateId:
+                      firstOfficialDeckTemplateId(
+                        resolveDurableDeckTemplatePin({
+                          project: project.metadata,
+                          runRef: runSelectedDeckTemplateIdRef.current,
+                          messages: messagesRef.current,
+                        })?.id,
+                      ),
+                  });
+                  observeTemplateClonePersistQuality({
+                    phase: 'json-slot-fill',
+                    html: decision.html,
+                    applied: decision.kind === 'slot-fill',
+                    templateId:
+                      firstOfficialDeckTemplateId(
+                        resolveDurableDeckTemplatePin({
+                          project: project.metadata,
+                          runRef: runSelectedDeckTemplateIdRef.current,
+                          messages: messagesRef.current,
+                        })?.id,
+                      ),
+                  });
+                }
                 if (decision.kind === 'slot-fill') {
                   runTemplateCloneSlotFillFallbackRef.current = false;
                   artifactToPersist = {
@@ -10904,30 +11579,38 @@ export function ProjectView({
                     html: decision.html,
                   };
                 } else if (decision.kind === 'seed-fallback') {
-                  runTemplateCloneSlotFillFallbackRef.current = true;
                   // Loop373 — when the terminal decision applied a partial
                   // recovery or brief-synth outline to the seed (decision.html
                   // differs from the raw LOOK seed on disk), persist that
-                  // topical version. Otherwise point at the untouched disk
-                  // seed to keep the earlier recovery behavior.
+                  // topical version as a completed host fill. Otherwise point
+                  // at the untouched disk seed to keep the earlier recovery
+                  // behavior and show the LOOK seed fallback notice.
                   const rawSeed = String(seedHtml ?? '').trim();
                   const decisionHtml = String(decision.html ?? '').trim();
-                  const decisionIsTopical =
-                    decisionHtml.length > 0 && decisionHtml !== rawSeed;
-                  if (decisionIsTopical) {
+                  const shouldWarnSeedFallback = templateCloneSeedFallbackShouldWarn({
+                    seedHtml: rawSeed,
+                    decisionHtml,
+                  });
+                  if (!shouldWarnSeedFallback) {
+                    runTemplateCloneSlotFillFallbackRef.current = false;
                     artifactToPersist = {
                       identifier: 'deck',
                       artifactType: 'deck',
                       title: decision.title,
                       html: decision.html,
                     };
-                  } else if (!(await recoverCloneLookSeedFallback())) {
-                    artifactToPersist = {
-                      identifier: 'deck',
-                      artifactType: 'deck',
-                      title: decision.title,
-                      html: decision.html,
-                    };
+                  } else {
+                    runTemplateCloneSlotFillFallbackRef.current = true;
+                    if (!(await recoverCloneLookSeedFallback({
+                      reason: 'seed_fallback_untouched_look',
+                    }))) {
+                      artifactToPersist = {
+                        identifier: 'deck',
+                        artifactType: 'deck',
+                        title: decision.title,
+                        html: decision.html,
+                      };
+                    }
                   }
                 } else {
                   artifactToPersist = null;
@@ -10936,9 +11619,82 @@ export function ProjectView({
               } catch (error) {
                 devLog.warn('[teamver] template clone slot-fill failed; keeping LOOK seed', error);
                 runTemplateCloneSlotFillFallbackRef.current = true;
-                if (!(await recoverCloneLookSeedFallback())) {
+                if (!(await recoverCloneLookSeedFallback({
+                  reason: `slot_fill_exception:${error instanceof Error ? error.message : String(error)}`.slice(0, 240),
+                }))) {
                   artifactToPersist = null;
                 }
+              }
+            } else if (runTemplateClonePromptFillRef.current && artifactToPersist?.html) {
+              // Staging default is prompt-fill (MiniMax JSON turns historically
+              // AGENT_EXECUTION_FAILED). Canvas/Home/Drive still LOOK-seed first;
+              // merge model HTML back through the same host slot-fill so variety
+              // + sparse enrichment are not JSON-only.
+              try {
+                const seedHtml = await resolveTemplateCloneLookSeedHtml({
+                  templateId: firstOfficialDeckTemplateId(
+                    resolveDurableDeckTemplatePin({
+                      project: project.metadata,
+                      runRef: runSelectedDeckTemplateIdRef.current,
+                      messages: messagesRef.current,
+                    })?.id,
+                  ),
+                  readProjectHtml,
+                });
+                const requestedSlideCountSpec =
+                  extractRequestedSlideCountSpecFromMessages(messagesRef.current);
+                const honorCeiling = honorSlideCountCeiling(requestedSlideCountSpec);
+                const merged = applyTemplateClonePromptFillLookMerge(
+                  seedHtml,
+                  artifactToPersist.html,
+                  {
+                    templateId:
+                      firstOfficialDeckTemplateId(
+                        resolveDurableDeckTemplatePin({
+                          project: project.metadata,
+                          runRef: runSelectedDeckTemplateIdRef.current,
+                          messages: messagesRef.current,
+                        })?.id,
+                      ),
+                    brief: runVisiblePromptRef.current || '',
+                    deckTitle: project.name || '슬라이드',
+                    padToSeedSlideCount: false,
+                    // 0918-N03 — Prompt mode is an explicit rollback path, but
+                    // its free-form HTML must still be treated as content only.
+                    // Always rebuild through official seed shells; otherwise a
+                    // leftover-heavy or malformed 10-slide response bypasses
+                    // the merge and is persisted verbatim.
+                    forcePad: true,
+                    ...(honorCeiling != null ? { maxSlides: honorCeiling } : {}),
+                  },
+                );
+                observeTemplateClonePersistQuality({
+                  phase: 'prompt-fill-look-merge',
+                  beforeHtml: artifactToPersist.html,
+                  html: merged?.html ?? artifactToPersist.html,
+                  applied: Boolean(merged?.html),
+                  templateId:
+                    firstOfficialDeckTemplateId(
+                      resolveDurableDeckTemplatePin({
+                        project: project.metadata,
+                        runRef: runSelectedDeckTemplateIdRef.current,
+                        messages: messagesRef.current,
+                      })?.id,
+                    ),
+                });
+                if (merged?.html) {
+                  artifactToPersist = {
+                    identifier: 'deck',
+                    artifactType: 'deck',
+                    title: merged.title || artifactToPersist.title,
+                    html: merged.html,
+                  };
+                }
+              } catch (error) {
+                devLog.warn(
+                  '[teamver] template clone prompt-fill look merge failed',
+                  error,
+                );
               }
             }
             if (artifactToPersist?.html) {
@@ -10979,9 +11735,11 @@ export function ProjectView({
                     const withLook = await mergeOfficialLookCssForTemplate(
                       withHeadings,
                       firstOfficialDeckTemplateId(
-                        runSelectedDeckTemplateIdRef.current,
-                        selectedDeckTemplateMetadata(project.metadata)?.id,
-                        project.metadata?.selectedDeckTemplateId,
+                        resolveDurableDeckTemplatePin({
+                          project: project.metadata,
+                          runRef: runSelectedDeckTemplateIdRef.current,
+                          messages: messagesRef.current,
+                        })?.id,
                       ),
                     );
                     const withSalvage = sanitizePersistedDeckHostLeaks(withLook);
@@ -11050,6 +11808,11 @@ export function ProjectView({
                               inferred: false,
                               templateCloneContentFilled: true,
                               templateClonedDeckSeeded: false,
+                              ...deckTemplateSendMetaFromPin(resolveDurableDeckTemplatePin({
+                                project: project.metadata,
+                                runRef: runSelectedDeckTemplateIdRef.current,
+                                messages: messagesRef.current,
+                              })),
                             },
                           }),
                         },
@@ -11078,14 +11841,60 @@ export function ProjectView({
                 terminalPersistResultKind = persistResult?.kind ?? null;
                 terminalPersistResult = persistResult;
                 nextFiles = await refreshProjectFiles();
+                if (persistResult?.kind === 'needs-short-response-retry') {
+                  const retryPrompt = persistResult.retryKind === 'head-preamble'
+                    ? buildHeadPreambleContinuePrompt()
+                    : [
+                    runModelPromptRef.current.trim() || prompt,
+                    '',
+                    persistResult.retryKind === 'too-short-html'
+                      ? renderTooShortHtmlAutoRetryPrompt({
+                          charCount: parseTooShortHtmlCharCount(persistResult.reason)
+                            || classifyTooShortHtmlSnippet(artifactToPersist?.html ?? '').length,
+                          seedCount: persistResult.expectedCount,
+                          previousSnippet: persistResult.previousSnippet,
+                        })
+                      : renderShortResponseAutoRetryPrompt({
+                          returnedCount: persistResult.producedCount,
+                          seedCount: persistResult.expectedCount,
+                        }),
+                  ].join('\n');
+                  const scheduledProjectId = project.id;
+                  const scheduledConversationId = activeConversationId;
+                  const fillMeta = {
+                    ...(persistResult.retryKind === 'head-preamble'
+                      ? {}
+                      : { autoRetryForShortResponse: true as const }),
+                    ...(runTemplateCloneContentFillRef.current
+                      ? { templateCloneContentFill: true as const }
+                      : {}),
+                    ...(runTemplateClonePromptFillRef.current
+                      ? { templateClonePromptFill: true as const }
+                      : {}),
+                    ...deckTemplateSendMetaFromPin(resolveDurableDeckTemplatePin({
+                      project: project.metadata,
+                      runRef: runSelectedDeckTemplateIdRef.current,
+                      messages: messagesRef.current,
+                    })),
+                  };
+                  window.setTimeout(() => {
+                    if (project.id !== scheduledProjectId) return;
+                    if (messagesConversationIdRef.current !== scheduledConversationId) return;
+                    const sendNow = handleSendRef.current;
+                    if (!sendNow) return;
+                    void sendNow(retryPrompt, [], [], fillMeta);
+                  }, 400);
+                }
               }
             }
 
             // 루프362/364/365 — Clone first-fill LOOK seed recovery.
-            // Any skipped-incomplete (e.g. structure gate) with a LOOK seed on
-            // disk → succeeded on the seed (warning notice). Loop404: include
-            // prompt-fill — count shortfalls now save+top-up, but structure
-            // skips still need the same seed path content-fill already had.
+            // Any skipped-incomplete (e.g. structure gate) or slide-count
+            // artifact-regression with a LOOK seed on disk first tries a
+            // host-filled deterministic deck before falling back to the raw
+            // seed notice. Loop404: include prompt-fill — model count
+            // shortfalls must not strand users on a failed row when the host
+            // can still fill the selected template safely.
             // 루프468 — slide-count top-up turns drop fill markers; still recover
             // when the conversation has Clone host-fill lineage.
             if (
@@ -11098,12 +11907,66 @@ export function ProjectView({
                   && conversationHasTemplateCloneHostFill(cloneFillMessageHistory)
                 )
               )
-              && terminalPersistResult?.kind === 'skipped-incomplete'
+              && (
+                terminalPersistResult?.kind === 'skipped-incomplete'
+                || terminalPersistResult?.kind === 'artifact-regression'
+                || (
+                  terminalPersistResult?.kind === 'rejected'
+                  && isNotHtmlDeliverableValidationReason(terminalPersistResult.reason)
+                )
+              )
             ) {
-              if (await recoverCloneLookSeedFallback()) {
+              const failedPersistResult = terminalPersistResult;
+              const failedPersistPrefix =
+                failedPersistResult.kind === 'artifact-regression'
+                  ? `artifact_regression:${failedPersistResult.bannerKind ?? 'unknown'}`
+                  : failedPersistResult.kind === 'rejected'
+                    ? `rejected:${String(failedPersistResult.reason ?? 'unknown').slice(0, 180)}`
+                    : `skipped_incomplete:${String(failedPersistResult.reason ?? 'unknown').slice(0, 180)}`;
+              artifactToPersist = null;
+              if (await recoverCloneLookSeedFallback({
+                reason: failedPersistPrefix,
+              }) && artifactToPersist?.html) {
+                const retryPersistResult = await persistArtifact(
+                  artifactToPersist,
+                  nextFiles,
+                  '',
+                  startedAt,
+                );
+                terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(
+                  retryPersistResult,
+                  { scopedCommentEdit: false },
+                );
+                terminalPersistResultKind = retryPersistResult?.kind ?? null;
+                terminalPersistResult = retryPersistResult;
+                nextFiles = await refreshProjectFiles();
+              }
+              if (
+                !cloneLookSeedFallbackRecovered
+                && (
+                  terminalPersistResult?.kind === 'skipped-incomplete'
+                  || terminalPersistResult?.kind === 'artifact-regression'
+                  || terminalPersistResult?.kind === 'rejected'
+                  || terminalPersistResult == null
+                )
+              ) {
+                terminalPersistResult = failedPersistResult;
+                terminalPersistResultKind = failedPersistResult.kind;
+                if (await recoverCloneLookSeedFallback({
+                  prepareArtifact: false,
+                  reason:
+                    failedPersistResult.kind === 'artifact-regression'
+                      ? `artifact_regression_retry:${failedPersistResult.bannerKind ?? 'unknown'}`
+                      : failedPersistResult.kind === 'rejected'
+                        ? `rejected_retry:${String(failedPersistResult.reason ?? 'unknown').slice(0, 160)}`
+                        : `skipped_incomplete_retry:${String(failedPersistResult.reason ?? 'unknown').slice(0, 160)}`,
+                })) {
+                  runTemplateCloneSlotFillFallbackRef.current = true;
+                } else {
+                  devLog.warn('[teamver] clone fill LOOK seed recovery failed; seed missing');
+                }
+              } else if (cloneLookSeedFallbackRecovered) {
                 runTemplateCloneSlotFillFallbackRef.current = true;
-              } else {
-                devLog.warn('[teamver] clone fill LOOK seed recovery failed; seed missing');
               }
             }
 
@@ -11149,15 +12012,20 @@ export function ProjectView({
               healBrief: runVisiblePromptRef.current || '',
               healTitle: project.name || '슬라이드',
             });
-            if (shouldFailMissingSlideHtml) {
+            const shortResponseRetryArmed =
+              terminalPersistResult?.kind === 'needs-short-response-retry';
+            if (shouldFailMissingSlideHtml && !shortResponseRetryArmed) {
               terminalArtifactPersistFailed = true;
             }
             // Persist already failed ⇒ shouldFailSlideRunForMissingHtmlDeliverable
             // returns false (double-count guard). Still treat "no HTML on disk"
             // as a missing-slide signal so rejected / discovery-skip can arm AC.
             const missingSlideDeliverableForAutoContinue =
-              shouldFailMissingSlideHtml
-              || (slideOnlyMvp && !producedHtmlToOpen && terminalArtifactPersistFailed);
+              !shortResponseRetryArmed
+              && (
+                shouldFailMissingSlideHtml
+                || (slideOnlyMvp && !producedHtmlToOpen && terminalArtifactPersistFailed)
+              );
 
             if (producedHtmlToOpen && runIsVisible()) {
               maybeArmTeamverPublishMenuAfterRunSuccess(project.id, producedHtmlToOpen);
@@ -11178,7 +12046,40 @@ export function ProjectView({
             if (!isLatestTerminalAutoOpen()) return;
 
             const endedAt = Date.now();
-            if (terminalArtifactPersistFailed) {
+            if (terminalPersistResult?.kind === 'needs-short-response-retry') {
+              // 루프550 — pad 대신 MiniMax 1회 재호출. 첫 턴은 조용히 닫고
+              // 재시도 턴이 저장/notice를 책임진다.
+              updateAssistant((prev) => ({
+                ...prev,
+                endedAt: prev.endedAt ?? endedAt,
+                runStatus: 'canceled',
+              }));
+              updateConversationLatestRun('canceled', endedAt);
+            } else if (
+              terminalArtifactPersistFailed
+              && shouldSoftCancelEmptyDeckPatchPersist({
+                persistKind: terminalPersistResult?.kind,
+                persistReason:
+                  terminalPersistResult && 'reason' in terminalPersistResult
+                    ? terminalPersistResult.reason ?? null
+                    : null,
+                entryFrom: meta?.entryFrom,
+                userContent: userMsg.content,
+              })
+            ) {
+              // 루프521 — Sparse-repair empty deck-patch: saved deck is untouched.
+              // No 저장 거부 banner, Retry dock, auto-continue, or LOOK seed.
+              updateAssistant((prev) => ({
+                ...appendWarningStatusEvent(
+                  prev,
+                  formatSoftImprovementTurnFailureNotice(),
+                  SOFT_IMPROVEMENT_TURN_STATUS_CODE,
+                ),
+                endedAt: prev.endedAt ?? endedAt,
+                runStatus: 'canceled',
+              }));
+              updateConversationLatestRun('canceled', endedAt);
+            } else if (terminalArtifactPersistFailed) {
               // 루프491 — Always encode ops tails (status/code/message/reason) so
               // copy-diagnostics is not stuck on reason=unavailable.
               const encodeDeliverable = (
@@ -11289,7 +12190,12 @@ export function ProjectView({
               const terminalAutoContinueVisualFlags = visualAnnotationAutoContinueFlags(
                 terminalAutoContinueCommentAttachments,
               );
-              const canAutoContinue = shouldAutoContinueForIncompleteOutput({
+              const terminalHeadDecision = decideHeadPreambleRecovery({
+                streamedText: rawFinalText || latestAssistantMsg.content || '',
+                priorHeadPreambleContinues: countHeadPreambleContinueAttempts(messagesRef.current),
+              });
+              const canAutoContinue = terminalHeadDecision !== 'fallback'
+                && shouldAutoContinueForIncompleteOutput({
                 runIsVisible: runIsVisible(),
                 autoContinueCount,
                 scopedCommentAttachmentCount: terminalAutoContinueCommentAttachments.length,
@@ -11427,24 +12333,35 @@ export function ProjectView({
                 }));
                 updateConversationLatestRun('succeeded', endedAt);
               } else if (outlineFallbackRecovered) {
-                // Outline-only fallback: mark the run as SUCCEEDED (never
-                // "실패") with a warning notice + resumable retry, so the
-                // user sees a saved deck instead of a hard failure card.
-                // Keep `resumable: true` so the failed-run retry dock still
-                // renders and users can regenerate a full deck.
+                // Outline-only fallback: a temporary TOC deck was saved, not a
+                // finished deliverable. 루프528 — Mirror LOOK seed (루프525):
+                // mark failed + attach warning AND error events so ChatPane's
+                // Retry dock (requires runStatus === 'failed') matches the
+                // banner copy that asks for "다시 시도". `resumable: false`
+                // because MiniMax BYOK has no daemon session to Continue —
+                // Retry re-plays the original brief. Emergency salvage stays
+                // succeeded (authored HTML recovered; review, don't retry).
                 const outlineNotice = formatOutlineDeckFallbackNotice();
-                updateAssistant((prev) => ({
-                  ...appendWarningStatusEvent(
+                updateAssistant((prev) => {
+                  const withWarning = appendWarningStatusEvent(
                     clearDurableDeliverableErrorsAfterRecovery(prev),
                     outlineNotice,
                     OUTLINE_DECK_FALLBACK_STATUS_CODE,
-                  ),
-                  producedFiles: outlineFallbackProduced,
-                  runStatus: resolveSucceededRunStatus(prev.runStatus),
-                  resumable: true,
-                  endedAt: prev.endedAt ?? endedAt,
-                }));
-                updateConversationLatestRun('succeeded', endedAt);
+                  );
+                  const withError = appendErrorStatusEvent(
+                    withWarning,
+                    outlineNotice,
+                    OUTLINE_DECK_FALLBACK_STATUS_CODE,
+                  );
+                  return {
+                    ...withError,
+                    producedFiles: outlineFallbackProduced,
+                    runStatus: 'failed',
+                    resumable: false,
+                    endedAt: prev.endedAt ?? endedAt,
+                  };
+                });
+                updateConversationLatestRun('failed', endedAt);
               } else {
               // Decide whether to fire the capped automatic continue BEFORE
               // we finalize the assistant card, so the status event we append
@@ -11596,7 +12513,9 @@ export function ProjectView({
                     autoContinueCommentAttachments,
                   );
                   const autoContinueFill = templateCloneAutoContinueFlags(originatingUserMsg);
-                  const autoContinuePromptRaw = resolveAutoContinuePrompt({
+                  const autoContinuePromptRaw = terminalHeadDecision === 'continue'
+                    ? buildHeadPreambleContinuePrompt()
+                    : resolveAutoContinuePrompt({
                     commentAttachmentCount: autoContinueCommentAttachments.length,
                     visualMarkOnly: autoContinueVisualFlags.visualMarkOnly,
                     visualAnnotationEdit: autoContinueVisualFlags.visualAnnotationEdit,
@@ -11644,6 +12563,11 @@ export function ProjectView({
                       ...(autoContinueFill.promptFill
                         ? { templateClonePromptFill: true }
                         : {}),
+                      ...deckTemplateSendMetaFromPin(resolveDurableDeckTemplatePin({
+                        project: project.metadata,
+                        retryUser: originatingUserMsg,
+                        messages: messagesRef.current,
+                      })),
                     },
                   );
                   void Promise.resolve(started).then((ok) => {
@@ -11659,24 +12583,76 @@ export function ProjectView({
               }
             } else if (cloneLookSeedFallbackRecovered) {
               // 루프362 — Clone content-fill low-substance recovery. The LOOK
-              // seed lives on disk, so we mark succeeded with a warning notice
-              // that mirrors the emergency / outline fallback pattern (Retry
-              // stays available via `resumable`). Persisting the succeeded
-              // state below prevents hard reload from resurfacing the durable
-              // deliverable-missing error.
-              const lookSeedNotice = formatCloneLookSeedFallbackNotice();
-              updateAssistant((prev) => ({
-                ...appendWarningStatusEvent(
+              // seed lives on disk with the CLONE_LOOK_SEED_FALLBACK notice.
+              //
+              // 루프525 — Persist as `failed + resumable: false` + attach
+              // BOTH warning and error events keyed by
+              // CLONE_LOOK_SEED_FALLBACK_STATUS_CODE. ChatPane's
+              // `retryableAssistantMessage` requires `runStatus === 'failed'`,
+              // and `resolveRunFailureUi(CLONE_LOOK_SEED_FALLBACK_STATUS_CODE, ...)`
+              // falls through to `primaryAction: 'retry'`, so the Retry dock
+              // finally matches the banner copy. `resumable: false` because
+              // MiniMax BYOK has no daemon session to resume — Retry re-plays
+              // the original brief; `retryTarget.userMsg` still carries the
+              // Clone fill mode marker, so the retry send flips
+              // `runTemplateCloneContentFillRef.current` back to true and
+              // loop524's `allowReplaceSeedOrLeftover` composite lets the
+              // compact fresh fill land without tripping regression guards.
+              // `hasPersistedRunErrorEvent` already excludes this code (line
+              // 161 of chat-events.ts), so reload reconciliation is safe.
+              const lookSeedGenericBrief = shouldExplainGenericBriefOnLookSeedFallback({
+                brief: runVisiblePromptRef.current,
+                userContent: userMsg.content,
+                attachments: userMsg.attachments ?? effectiveAttachments,
+              });
+              const lookSeedNotice = formatCloneLookSeedFallbackNotice({
+                genericBrief: lookSeedGenericBrief,
+              });
+              const lookSeedFillMode =
+                templateCloneFillModeFromUserMessage(userMsg)
+                || getTemplateCloneFillMode();
+              const lookSeedTemplateId = firstOfficialDeckTemplateId(
+                resolveDurableDeckTemplatePin({
+                  project: project.metadata,
+                  runRef: runSelectedDeckTemplateIdRef.current,
+                  messages: messagesRef.current,
+                })?.id,
+              );
+              observeTemplateCloneLookSeedFallback({
+                source: 'persist',
+                reason: cloneLookSeedFallbackReason,
+                genericBrief: lookSeedGenericBrief,
+                fillMode: lookSeedFillMode,
+                templateId: lookSeedTemplateId,
+              });
+              const lookSeedErrorDetail = formatCloneLookSeedFallbackErrorDetail(
+                cloneLookSeedFallbackReason,
+                {
+                  genericBrief: lookSeedGenericBrief,
+                  source: 'persist',
+                  fillMode: lookSeedFillMode,
+                },
+              );
+              updateAssistant((prev) => {
+                const withWarning = appendWarningStatusEvent(
                   clearDurableDeliverableErrorsAfterRecovery(prev),
                   lookSeedNotice,
                   CLONE_LOOK_SEED_FALLBACK_STATUS_CODE,
-                ),
-                producedFiles: produced,
-                runStatus: resolveSucceededRunStatus(prev.runStatus),
-                resumable: true,
-                endedAt: prev.endedAt ?? endedAt,
-              }));
-              updateConversationLatestRun('succeeded', endedAt);
+                );
+                const withError = appendErrorStatusEvent(
+                  withWarning,
+                  lookSeedErrorDetail,
+                  CLONE_LOOK_SEED_FALLBACK_STATUS_CODE,
+                );
+                return {
+                  ...withError,
+                  producedFiles: produced,
+                  runStatus: 'failed',
+                  resumable: false,
+                  endedAt: prev.endedAt ?? endedAt,
+                };
+              });
+              updateConversationLatestRun('failed', endedAt);
               if (runIsVisible()) {
                 requestOpenFile('deck.html');
               }
@@ -12260,22 +13236,48 @@ export function ProjectView({
           // dropped for a bare failure card. Run refs are intentionally left
           // alone here: the finalize pipeline's `finally` owns them, and
           // clearing them early would erase the persist target.
+          const stallStreamInput = {
+            errorCode:
+              (err as Error & { code?: string }).code
+              ?? persisted.code,
+            errorDetail: err.message,
+            slideOnlyMvp,
+            streamedText: latestAssistantMsg.content,
+          };
           const stalledPartialDeck = runMayFinalize
-            ? stalledRunPartialDeckText({
-                errorCode:
-                  (err as Error & { code?: string }).code
-                  ?? persisted.code,
-                errorDetail: err.message,
-                slideOnlyMvp,
-                streamedText: latestAssistantMsg.content,
-              })
+            ? stalledRunPartialDeckText(stallStreamInput)
             : null;
-          if (stalledPartialDeck) {
+          const stalledHeadPreamble = runMayFinalize && !stalledPartialDeck
+            ? stalledRunHeadPreambleText(stallStreamInput)
+            : null;
+          if (stalledPartialDeck || stalledHeadPreamble) {
+            const finalizeText = stalledPartialDeck
+              ?? stripAbandonedHeadPreambleFromStreamedText(stalledHeadPreamble ?? '');
+            // Always replay the stripped snapshot. Leaving `<html>`/`<head>` in
+            // the live parser lets persist invent a last-resort cover over LOOK.
+            if (stalledHeadPreamble && finalizeText) {
+              streamedText = finalizeText;
+              rewriteLiveContent(finalizeText);
+            }
+            const priorHeadPreambleBanners = countHeadPreambleBannerEmits(
+              messagesRef.current,
+            );
+            const emitHeadPreambleBanner =
+              Boolean(stalledHeadPreamble)
+              && shouldEmitHeadPreambleBanner(priorHeadPreambleBanners);
             updateAssistant((prev) => ({
               ...appendWarningStatusEvent(
                 prev,
-                formatStalledPartialDeckNotice(),
-                STALLED_PARTIAL_DECK_STATUS_CODE,
+                stalledPartialDeck
+                  ? formatStalledPartialDeckNotice()
+                  : emitHeadPreambleBanner
+                    ? formatStalledHeadPreambleNotice()
+                    : '',
+                stalledPartialDeck
+                  ? STALLED_PARTIAL_DECK_STATUS_CODE
+                  : emitHeadPreambleBanner
+                    ? STALLED_HEAD_PREAMBLE_STATUS_CODE
+                    : undefined,
               ),
               resumable: true,
             }));
@@ -12296,7 +13298,7 @@ export function ProjectView({
                 active: false,
               });
             }
-            scheduleStreamRunHtmlAutoOpen(stalledPartialDeck);
+            scheduleStreamRunHtmlAutoOpen(finalizeText);
             onProjectsRefresh();
             releaseOwnedDaemonRun();
             return;
@@ -12832,7 +13834,7 @@ export function ProjectView({
   const handleSendRef = useRef(handleSend);
   useLayoutEffect(() => {
     handleSendRef.current = handleSend;
-    requestSlideCountTopUpRef.current = (htmlPath) => {
+    requestSlideCountTopUpRef.current = (htmlPath, options) => {
       void (async () => {
         if (!htmlPath || !activeConversationId || !slideOnlyMvp) return;
         if (runCommentAttachmentsRef.current.length > 0) return;
@@ -12842,6 +13844,22 @@ export function ProjectView({
         if (slideCountTopUpTimerRef.current !== null) return;
         const html = await readProjectHtml(htmlPath);
         if (!html) return;
+        const sparseOnly = options?.mode === "sparse-only";
+        if (sparseOnly) {
+          // 루프535 — observe deterministic persist without rewriting HTML.
+          observeTemplateClonePersistQuality({
+            phase: "deterministic-fill",
+            html,
+            applied: true,
+            templateId: firstOfficialDeckTemplateId(
+              resolveDurableDeckTemplatePin({
+                project: project.metadata,
+                runRef: runSelectedDeckTemplateIdRef.current,
+                messages: messagesRef.current,
+              })?.id,
+            ),
+          });
+        }
         const produced = countDeckSlideSections(html);
         const conversationMessages = messagesRef.current;
         if (findIncompleteSlideAssistantForRecovery(conversationMessages)) return;
@@ -12858,7 +13876,8 @@ export function ProjectView({
           conversationMessages,
         );
         if (
-          shouldQueueThinPriorFullRewrite({
+          !sparseOnly
+          && shouldQueueThinPriorFullRewrite({
             hostCount: produced,
             thinPrior,
             rewriteCount: rewriteAlready,
@@ -12885,6 +13904,7 @@ export function ProjectView({
           const fireRewrite = () => {
             slideCountTopUpTimerRef.current = null;
             pendingSlideCountTopUpConversationIdRef.current = null;
+            setPendingSlideAutomationKind(null);
             if (project.id !== scheduledProjectId) return;
             if (messagesConversationIdRef.current !== scheduledConversationId) return;
             if (autoContinueTimerRef.current !== null) return;
@@ -12901,12 +13921,18 @@ export function ProjectView({
               if (busyRetries < SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX) {
                 busyRetries += 1;
                 pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
+                setPendingSlideAutomationKind("rewrite");
                 slideCountTopUpTimerRef.current = window.setTimeout(
                   fireRewrite,
                   SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
                 );
                 return;
               }
+              // 루프507 — Do not leave the user on a thin seed with no notice.
+              surfaceChatVisibleError(
+                formatSlideAutomationBusyDropNotice("rewrite"),
+                "slide_automation_busy_drop",
+              );
               return;
             }
             const sendNow = handleSendRef.current;
@@ -12918,15 +13944,24 @@ export function ProjectView({
               }),
             );
           };
+          setPendingSlideAutomationKind("rewrite");
           slideCountTopUpTimerRef.current = window.setTimeout(fireRewrite, 600);
           return;
         }
         // 루프505 — Rewrite already spent and deck is still thin: APPEND would
         // hit thin-prior-no-append and leave the shortfall silent.
-        if (shouldBlockSlideCountAppendOntoThinPrior({
-          thinPrior,
-          rewriteCount: rewriteAlready,
-        })) {
+        // 루프535 — deterministic landing never rewrites or APPEND-expands.
+        if (
+          !sparseOnly
+          && shouldBlockSlideCountAppendOntoThinPrior({
+            thinPrior,
+            rewriteCount: rewriteAlready,
+          })
+        ) {
+          surfaceChatVisibleError(
+            formatThinPriorRewriteExhaustedNotice(),
+            "thin_prior_rewrite_exhausted",
+          );
           return;
         }
         const already = syncSlideCountTopUpCountFromMessages(
@@ -12934,14 +13969,17 @@ export function ProjectView({
           activeConversationId,
           conversationMessages,
         );
-        const wantsCountTopUp = shouldQueueSlideCountTopUp({
-          produced,
-          requested,
-          requestedMin: requestedSpec?.min,
-          defaultRequested: allowDefaultShortDeckTopUp ? 6 : undefined,
-          topUpCount: already,
-          commentAttachmentCount: runCommentAttachmentsRef.current.length,
-        });
+        const wantsCountTopUp = sparseOnly
+          ? false
+          : shouldQueueSlideCountTopUp({
+            produced,
+            requested,
+            requestedMin: requestedSpec?.min,
+            defaultRequested: allowDefaultShortDeckTopUp ? 6 : undefined,
+            topUpCount: already,
+            commentAttachmentCount: runCommentAttachmentsRef.current.length,
+            rewriteCount: rewriteAlready,
+          });
         // 루프505 — Explicit page shortfall beats sparse card repair so a
         // 4-of-8–10 miss is not consumed by a deck-patch of incomplete cards.
         if (!wantsCountTopUp) {
@@ -12968,6 +14006,7 @@ export function ProjectView({
               if (slideCountTopUpTimerRef.current !== null) return false;
               busyRetries += 1;
               pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
+              setPendingSlideAutomationKind("sparse_repair");
               slideCountTopUpTimerRef.current = window.setTimeout(
                 fireRepair,
                 SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
@@ -12977,6 +14016,7 @@ export function ProjectView({
             function fireRepair() {
               slideCountTopUpTimerRef.current = null;
               pendingSlideCountTopUpConversationIdRef.current = null;
+              setPendingSlideAutomationKind(null);
               if (project.id !== scheduledProjectId) return;
               if (messagesConversationIdRef.current !== scheduledConversationId) return;
               if (autoContinueTimerRef.current !== null) return;
@@ -13007,6 +14047,7 @@ export function ProjectView({
                 retryRepair();
               });
             }
+            setPendingSlideAutomationKind("sparse_repair");
             slideCountTopUpTimerRef.current = window.setTimeout(fireRepair, 600);
           }
           return;
@@ -13032,6 +14073,7 @@ export function ProjectView({
         const fireTopUp = () => {
           slideCountTopUpTimerRef.current = null;
           pendingSlideCountTopUpConversationIdRef.current = null;
+          setPendingSlideAutomationKind(null);
           if (project.id !== scheduledProjectId) {
             rollbackSlideCountTopUpCount(
               conversationSlideCountTopUpCountRef.current,
@@ -13069,6 +14111,7 @@ export function ProjectView({
             if (busyRetries < SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX) {
               busyRetries += 1;
               pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
+              setPendingSlideAutomationKind("top_up");
               slideCountTopUpTimerRef.current = window.setTimeout(
                 fireTopUp,
                 SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
@@ -13079,6 +14122,10 @@ export function ProjectView({
               conversationSlideCountTopUpCountRef.current,
               scheduledConversationId,
             );
+            surfaceChatVisibleError(
+              formatSlideAutomationBusyDropNotice("top_up"),
+              "slide_automation_busy_drop",
+            );
             return;
           }
           const sendNow = handleSendRef.current;
@@ -13086,6 +14133,10 @@ export function ProjectView({
             rollbackSlideCountTopUpCount(
               conversationSlideCountTopUpCountRef.current,
               scheduledConversationId,
+            );
+            surfaceChatVisibleError(
+              formatSlideAutomationBusyDropNotice("top_up"),
+              "slide_automation_busy_drop",
             );
             return;
           }
@@ -13103,6 +14154,7 @@ export function ProjectView({
             ) {
               busyRetries += 1;
               pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
+              setPendingSlideAutomationKind("top_up");
               slideCountTopUpTimerRef.current = window.setTimeout(
                 fireTopUp,
                 SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
@@ -13113,12 +14165,26 @@ export function ProjectView({
               conversationSlideCountTopUpCountRef.current,
               scheduledConversationId,
             );
+            surfaceChatVisibleError(
+              formatSlideAutomationBusyDropNotice("top_up"),
+              "slide_automation_busy_drop",
+            );
           });
         };
+        setPendingSlideAutomationKind("top_up");
         slideCountTopUpTimerRef.current = window.setTimeout(fireTopUp, 700);
       })();
     };
-  }, [handleSend, activeConversationId, project.id, readProjectHtml, slideOnlyMvp, clearApiBackgroundRecoveryBanner, clearStreamingMarker]);
+  }, [
+    handleSend,
+    activeConversationId,
+    project.id,
+    readProjectHtml,
+    slideOnlyMvp,
+    clearApiBackgroundRecoveryBanner,
+    clearStreamingMarker,
+    surfaceChatVisibleError,
+  ]);
 
   // Cancel every in-flight run for the current conversation (the user's own
   // streaming turn plus any reattached runs), mark their assistant messages
@@ -13138,7 +14204,7 @@ export function ProjectView({
       // Streams missing a conversationId (legacy or race) are skipped —
       // they'll drain naturally per the "page exit → background" policy.
       const conversationForStop = activeConversationId;
-      void listActiveByokProxyStreams(project.id)
+      void listActiveByokProxyStreams(project.id, { bypassCache: true })
         .then((streams) => {
           for (const stream of streams) {
             if (!conversationForStop) continue;
@@ -13349,9 +14415,25 @@ export function ProjectView({
     (assistantMessage: ChatMessage) => {
       if (currentConversationActionDisabled) return;
       if (currentConversationHasActiveRun) return;
-      void handleSend('', [], [], { retryOfAssistantId: assistantMessage.id });
+      const originUser = findPrecedingUserMessage(
+        messagesRef.current,
+        assistantMessage.id,
+      );
+      void handleSend('', [], [], {
+        retryOfAssistantId: assistantMessage.id,
+        ...deckTemplateSendMetaFromPin(resolveDurableDeckTemplatePin({
+          project: project.metadata,
+          retryUser: originUser,
+          messages: messagesRef.current,
+        })),
+      });
     },
-    [currentConversationActionDisabled, currentConversationHasActiveRun, handleSend],
+    [
+      currentConversationActionDisabled,
+      currentConversationHasActiveRun,
+      handleSend,
+      project.metadata,
+    ],
   );
 
   // "Continue" on a resumable failed run: send a fresh turn in the same
@@ -13395,10 +14477,15 @@ export function ProjectView({
           entryFrom: 'resume_continue',
           ...(resumeFill.jsonFill ? { templateCloneContentFill: true } : {}),
           ...(resumeFill.promptFill ? { templateClonePromptFill: true } : {}),
+          ...deckTemplateSendMetaFromPin(resolveDurableDeckTemplatePin({
+            project: project.metadata,
+            retryUser: resumeOriginUser,
+            messages: messagesRef.current,
+          })),
         },
       );
     },
-    [currentConversationActionDisabled, handleSend],
+    [currentConversationActionDisabled, handleSend, project.metadata],
   );
 
   // "Switch to AMR & retry" from the failed-run card: switch the run to AMR,
@@ -14886,6 +15973,64 @@ export function ProjectView({
     return () => window.removeEventListener('keydown', onKeyDown, { capture: true });
   }, [designMdState.exists, handleContinueInCli]);
 
+  // 루프535 — Deterministic Home/Canvas/Drive persist never reaches MiniMax
+  // persist, so observe + sparse-repair must run once on landing. Thin rewrite
+  // and slide-count APPEND stay off this path.
+  useEffect(() => {
+    if (!slideOnlyMvp) return;
+    if (!messagesInitialized) return;
+    if (!activeConversationId) return;
+    if (streaming) return;
+    if (abortRef.current) return;
+    if (
+      !shouldRunDeterministicSparseCheck({
+        sparseCheckPending: (
+          project.metadata as { templateCloneSparseCheckPending?: boolean } | undefined
+        )?.templateCloneSparseCheckPending,
+        fillMode: (
+          project.metadata as { templateCloneFillMode?: string } | undefined
+        )?.templateCloneFillMode,
+        contentFilled: (
+          project.metadata as { templateCloneContentFilled?: boolean } | undefined
+        )?.templateCloneContentFilled,
+        contentFillPending: (
+          project.metadata as { templateCloneContentFillPending?: boolean } | undefined
+        )?.templateCloneContentFillPending,
+      })
+    ) {
+      return;
+    }
+    const latchKey = deterministicSparseCheckSessionKey(project.id);
+    try {
+      if (window.sessionStorage.getItem(latchKey) === "1") return;
+      window.sessionStorage.setItem(latchKey, "1");
+    } catch {
+      /* memory claim below still blocks a same-tab double start */
+    }
+    if (!claimDeterministicSparseCheck(project.id)) return;
+    const nextMetadata = {
+      ...(project.metadata ?? {}),
+      templateCloneSparseCheckPending: false,
+    };
+    onProjectChange({ ...project, metadata: nextMetadata });
+    void patchProject(project.id, {
+      metadata: nextMetadata,
+      updatedAt: project.updatedAt,
+    }).catch(() => {
+      // Local flag is already cleared; a later reload may re-check once.
+    });
+    const htmlPath = resolveCanonicalDeckEntryPath(projectFiles) ?? "deck.html";
+    requestSlideCountTopUpRef.current(htmlPath, { mode: "sparse-only" });
+  }, [
+    slideOnlyMvp,
+    messagesInitialized,
+    activeConversationId,
+    streaming,
+    project,
+    projectFiles,
+    onProjectChange,
+  ]);
+
   // PluginLoopHome auto-send: when the user submits on Home, app.tsx
   // sets `sessionStorage['od:auto-send-first:<projectId>']` and routes
   // through createProject. Once the conversation id resolves and the
@@ -14896,6 +16041,7 @@ export function ProjectView({
   // immediately after the first dispatch.
   useEffect(() => {
     if (autoSentRef.current || autoSendInFlightRef.current) return;
+    if (createAutoSendClaimHeld(project.id)) return;
     if (!activeConversationId) return;
     // Wait for the initial listMessages DB read to land. Without this gate
     // the auto-send fires before the in-flight DB response, which then
@@ -14954,11 +16100,33 @@ export function ProjectView({
       clearTemplateCloneContentFillQueue(project.id);
       return;
     }
+    // 루프529 — Safety net: if a fill was queued with no usable topic, skip
+    // MiniMax (LOOK seed already on disk) and surface the defer notice.
+    if (
+      fillQueued
+      && isGenericTemplateCloneTopicBrief(
+        extractTemplateCloneUserFacingRequest({
+          pendingPrompt: project.pendingPrompt,
+          userInstruction: seed,
+        }),
+      )
+    ) {
+      autoSentRef.current = true;
+      clearAutoSendSession(project.id);
+      clearTemplateCloneContentFillQueue(project.id);
+      surfaceChatVisibleError(formatGenericBriefDeferFillNotice(), 'generic_brief_defer_fill');
+      return;
+    }
     // Cross-remount lock (StrictMode): clear the session flag early, but do
     // NOT set autoSentRef until handleSend succeeds — otherwise a false
     // return after waitPendingTemplateClone permanently skips the first stream.
+    // Claim before the async gap. Cleanup must not restore the flag once
+    // handleSend has been entered — abortRef is still empty until much later,
+    // and restoring the flag there sends the same user bubble twice.
+    if (!claimCreateAutoSend(project.id)) return;
     autoSendInFlightRef.current = true;
     clearAutoSendSession(project.id);
+    let autoSendDispatched = false;
     if (isDesignSystemWorkspaceMetadata(project.metadata)) {
       markDesignSystemAuditAutoRepairEligible(project.id);
     }
@@ -14982,6 +16150,8 @@ export function ProjectView({
         messagesConversationIdRef.current = conversationIdAtStart;
         setMessagesConversationId(conversationIdAtStart);
       }
+      if (cancelled) return;
+      autoSendDispatched = true;
       const ok = await handleSend(seed, attachments, [], {
         entryFrom: 'new_project',
         skipDiscoveryBrief:
@@ -15011,6 +16181,12 @@ export function ProjectView({
       });
       // Latch success even if StrictMode cleanup set cancelled — otherwise
       // remount restores the flag and fires a second first stream.
+      if (ok === false) {
+        // Failed before a user row. Drop the create-turn lock so the retry
+        // path below can start one stream. A duplicate in-flight call returns
+        // true and must not reach here.
+        releaseFirstConversationTurn(project.id);
+      }
       if (ok !== false) {
         autoSentRef.current = true;
         autoSendInFlightRef.current = false;
@@ -15032,37 +16208,44 @@ export function ProjectView({
         }
         return;
       }
+      const retryFailedCreate = shouldRetryFailedCreateAutoSend({
+        messageCount: messagesRef.current.length,
+        abortActive: Boolean(abortRef.current),
+        streamingThisConversation: Boolean(streamingConversationIdRef.current)
+          && streamingConversationIdRef.current === conversationIdAtStart,
+        embedSubmitDisabled,
+        retryCount: autoSendRetryNonce,
+        maxRetries: MAX_CREATE_AUTO_SEND_RETRIES,
+      });
+      if (!retryFailedCreate) {
+        // A visible user row, a live stream, or a hard block means the
+        // request already left or must not leave again. Do not restore
+        // od:auto-send-first — that flag survives reload, the claim does not.
+        autoSentRef.current = true;
+        autoSendInFlightRef.current = false;
+        clearAutoSendSession(project.id);
+        clearTemplateCloneContentFillQueue(project.id);
+        return;
+      }
       if (cancelled) {
+        autoSendInFlightRef.current = false;
+        releaseCreateAutoSendClaim(project.id);
+        try {
+          window.sessionStorage.setItem(autoSendFirstMessageKey(project.id), '1');
+          if (attachments.length > 0) {
+            window.sessionStorage.setItem(
+              autoSendAttachmentsKey(project.id),
+              JSON.stringify(attachments),
+            );
+          }
+        } catch {
+          /* ignore */
+        }
+        setAutoSendRetryNonce((value) => value + 1);
         return;
       }
       autoSendInFlightRef.current = false;
-      // embed blocked permanently — do not restore flag / spin.
-      if (embedSubmitDisabled) {
-        autoSentRef.current = true;
-        clearAutoSendSession(project.id);
-        clearTemplateCloneContentFillQueue(project.id);
-        return;
-      }
-      // A live stream already owns this conversation (first StrictMode send
-      // won the race). Latch — do not retry into a duplicate stream.
-      if (
-        abortRef.current
-        || (
-          Boolean(streamingConversationIdRef.current)
-          && streamingConversationIdRef.current === conversationIdAtStart
-        )
-      ) {
-        autoSentRef.current = true;
-        clearAutoSendSession(project.id);
-        clearTemplateCloneContentFillQueue(project.id);
-        return;
-      }
-      if (autoSendRetryNonce >= MAX_CREATE_AUTO_SEND_RETRIES) {
-        autoSentRef.current = true;
-        clearAutoSendSession(project.id);
-        clearTemplateCloneContentFillQueue(project.id);
-        return;
-      }
+      releaseCreateAutoSendClaim(project.id);
       try {
         window.sessionStorage.setItem(autoSendFirstMessageKey(project.id), '1');
         if (attachments.length > 0) {
@@ -15094,40 +16277,42 @@ export function ProjectView({
     })();
     return () => {
       cancelled = true;
-      // StrictMode remount: release in-flight + restore flag so the second
-      // effect can dispatch — unless handleSend already owns a live abort
-      // (restoring would double the first stream). Completed sends latch
-      // autoSentRef even when cancelled.
-      if (!autoSentRef.current && autoSendInFlightRef.current) {
-        autoSendInFlightRef.current = false;
-        if (abortRef.current) {
-          return;
+      // Restore the session flag only when handleSend has not started.
+      // abortRef is set long after the user bubble is pushed, so using it
+      // alone re-arms a second identical create send.
+      if (!shouldRearmCreateAutoSend({
+        autoSent: autoSentRef.current,
+        dispatched: autoSendDispatched,
+        abortActive: Boolean(abortRef.current),
+      })) {
+        return;
+      }
+      autoSendInFlightRef.current = false;
+      releaseCreateAutoSendClaim(project.id);
+      try {
+        window.sessionStorage.setItem(autoSendFirstMessageKey(project.id), '1');
+        if (attachments.length > 0) {
+          window.sessionStorage.setItem(
+            autoSendAttachmentsKey(project.id),
+            JSON.stringify(attachments),
+          );
         }
-        try {
-          window.sessionStorage.setItem(autoSendFirstMessageKey(project.id), '1');
-          if (attachments.length > 0) {
-            window.sessionStorage.setItem(
-              autoSendAttachmentsKey(project.id),
-              JSON.stringify(attachments),
-            );
-          }
-        } catch {
-          /* ignore */
-        }
-        if (fillQueued && seed && !shouldUseDeterministicTemplateCloneFill()) {
-          if (isTemplateCloneContentFillPrompt(seed) || shouldUseJsonTemplateCloneFill()) {
-            queueTemplateCloneContentFill({
-              projectId: project.id,
-              seed,
-              attachments,
-            });
-          } else if (isTemplateClonePromptFillPrompt(seed)) {
-            queueTemplateClonePromptFill({
-              projectId: project.id,
-              seed,
-              attachments,
-            });
-          }
+      } catch {
+        /* ignore */
+      }
+      if (fillQueued && seed && !shouldUseDeterministicTemplateCloneFill()) {
+        if (isTemplateCloneContentFillPrompt(seed) || shouldUseJsonTemplateCloneFill()) {
+          queueTemplateCloneContentFill({
+            projectId: project.id,
+            seed,
+            attachments,
+          });
+        } else if (isTemplateClonePromptFillPrompt(seed)) {
+          queueTemplateClonePromptFill({
+            projectId: project.id,
+            seed,
+            attachments,
+          });
         }
       }
     };
@@ -15272,6 +16457,7 @@ export function ProjectView({
               onRetry={handleRetry}
               onResumeRun={handleResumeRun}
               autoContinuePending={autoContinuePending}
+              pendingSlideAutomationKind={pendingSlideAutomationKind}
               onStop={handleStop}
               onRemoveQueuedSend={removeQueuedChatSend}
               onUpdateQueuedSend={updateQueuedChatSend}

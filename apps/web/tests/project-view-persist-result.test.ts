@@ -147,6 +147,24 @@ describe('shouldFailRunForArtifactPersistResult', () => {
     ).toBeNull();
   });
 
+  it('allows replacing a legacy deck with several auto-padded slides', () => {
+    const paddedPrior = [
+      '<!doctype html><html lang="ko"><body>',
+      ...Array.from({ length: 20 }, (_, index) =>
+        `<section class="slide"${index >= 11 ? ' data-teamver-pad="short-response"' : ''}>`
+        + `<h2>Teamver ${index + 1}</h2><p>팀의 업무 맥락을 연결합니다.</p></section>`,
+      ),
+      '</body></html>',
+    ].join('');
+    expect(priorDeckAllowsCompactReplacement(paddedPrior, null, fullEight)).toBe(true);
+    expect(priorDeckAllowsCompactReplacement(paddedPrior, null, compactThree)).toBe(false);
+    expect(findClientSlideCountRegression({
+      fileName: 'deck.html',
+      htmlBody: fullEight,
+      priorHtml: paddedPrior,
+    })).toBeNull();
+  });
+
   it('allows a compact topical fill to replace a scrubbed IB catalog shell', () => {
     const pad = `/* ${'ib-chassis '.repeat(500)} */`;
     const scrubbedIb = [

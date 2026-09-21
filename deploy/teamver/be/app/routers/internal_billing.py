@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 from ..services import run_lifecycle
 from ..services.byok_billing import finalize_byok_run_billing
 from ..services.credit_meter import estimate_design_run_reserve
+from ..services.workspace_plan import plan_id_for_workspace
 from ..teamver_sdk import get_internal_api_key_dependency
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ class RefundBody(BaseModel):
 
 class EstimateReserveBody(BaseModel):
     model_name: str = Field(default="default", min_length=1)
+    workspace_id: Optional[str] = Field(default=None)
 
 
 class EstimateReserveResponse(BaseModel):
@@ -96,7 +98,16 @@ async def estimate_reserve(
     body: EstimateReserveBody,
     _: Literal[True] = Depends(get_internal_api_key_dependency()),
 ) -> EstimateReserveResponse:
-    metered = estimate_design_run_reserve(model_name=body.model_name)
+    if run_lifecycle.billing_kill_switch_on():
+        return EstimateReserveResponse(
+            amount_t=0,
+            policy="billing_disabled",
+            model_name=body.model_name,
+        )
+    metered = estimate_design_run_reserve(
+        model_name=body.model_name,
+        plan_id=plan_id_for_workspace(body.workspace_id),
+    )
     return EstimateReserveResponse(
         amount_t=metered.amount_t,
         policy=metered.policy,

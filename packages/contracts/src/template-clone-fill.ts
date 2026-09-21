@@ -27,6 +27,7 @@ export {
   PLAYFUL_SLOT_MAP,
   EIGHT_BIT_ORBIT_SLOT_MAP,
   MAT_SLOT_MAP,
+  RAW_GRID_PITCH_SLOT_MAP,
   TEMPLATE_CLONE_SLOT_MAPS,
   resolveTemplateCloneSlotMap,
 } from './template-clone-slot-maps.js';
@@ -547,7 +548,13 @@ export function parseTemplateCloneDeckOutline(
 export function applyTemplateCloneSlotFill(
   seedHtml: string,
   rawOutline: unknown,
-  options: { templateId?: string | null; brief?: string | null; maxSlides?: number } = {},
+  options: {
+    templateId?: string | null;
+    brief?: string | null;
+    maxSlides?: number;
+    /** Keep the LOOK seed page count when a provider returns a short outline. */
+    padToSeedSlideCount?: boolean;
+  } = {},
 ): { html: string; title: string } | null {
   const outline = parseTemplateCloneDeckOutline(rawOutline);
   if (!outline) return null;
@@ -556,9 +563,681 @@ export function applyTemplateCloneSlotFill(
     ...(options.templateId != null ? { templateId: options.templateId } : {}),
     ...(options.brief != null ? { brief: options.brief } : {}),
     ...(options.maxSlides != null ? { maxSlides: options.maxSlides } : {}),
+    padToSeedSlideCount: options.padToSeedSlideCount !== false,
   });
   if (!html?.trim()) return null;
   return { html, title: outline.title };
+}
+
+const PROMPT_FILL_LOOK_MERGE_MIN_SLIDES = 2;
+/** Skip merge only when leftover unparsed sentences look like real copy. */
+const PROMPT_FILL_LOOK_MERGE_MIN_UNPARSED = 280;
+const PROMPT_FILL_ITEM_BODY_MIN = 12;
+const PROMPT_FILL_EXTRACTED_COPY_MAX = 400;
+
+const PROMPT_FILL_CARD_PEER_RE_SOURCE =
+  '<(article|div|li)\\b([^>]*\\b(?:info-card|nb-card|feature-card|intro-card|team-card|stat-card|price-card|pricing-card|pillar-card|timeline-card|step-card|member-card|metric-card|hc-card|oc-card|kb-card|xp-card|kpi-card|day-card|weekly-card|feature-postit|col-postit|compare-postit)\\b[^>]*)>([\\s\\S]*?)<\\/\\1>';
+
+function promptFillCardPeerRe(): RegExp {
+  return new RegExp(PROMPT_FILL_CARD_PEER_RE_SOURCE, 'gi');
+}
+
+function templateCloneItemBodyLooksDense(body: string | null | undefined): boolean {
+  return String(body ?? '').trim().length >= PROMPT_FILL_ITEM_BODY_MIN;
+}
+
+function sanitizePromptFillExtractedCopy(
+  raw: string,
+  kind: 'title' | 'lead' | 'body' | 'item-title' | 'item-body',
+): string {
+  const normalized = String(raw ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return '';
+  const stripped = stripLeftoverCatalogDemoPhrases(
+    stripProductLaunchCatalogDemoCopy(
+      stripEightBitOrbitCatalogDemoCopy(
+        stripStudioCreativeCatalogDemoCopy(
+          stripBlueProfessionalCatalogDemoCopy(
+            stripBlockFrameNeoCatalogDemoCopy(
+              stripCapsuleCatalogDemoCopy(normalized),
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+    .replace(/\s+/g, ' ')
+    .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}.!?]+$/gu, '')
+    .trim();
+  if (!stripped) return '';
+  if (looksLikeLeftoverTemplateDemoDeck(stripped)) return '';
+  const max =
+    kind === 'title' || kind === 'item-title'
+      ? TEMPLATE_CLONE_ITEM_TITLE_MAX
+      : kind === 'lead'
+        ? TEMPLATE_CLONE_LEAD_MAX
+        : PROMPT_FILL_EXTRACTED_COPY_MAX;
+  return stripped.slice(0, max);
+}
+
+function leftoverUnparsedSentenceChars(
+  modelHtml: string,
+  outline: TemplateCloneDeckOutline,
+): number {
+  let visible = visibleDeckCopy(
+    stripLeftoverCatalogDemoPhrases(
+      stripProductLaunchCatalogDemoCopy(
+        stripEightBitOrbitCatalogDemoCopy(
+          stripStudioCreativeCatalogDemoCopy(
+            stripBlueProfessionalCatalogDemoCopy(
+              stripBlockFrameNeoCatalogDemoCopy(
+                stripCapsuleCatalogDemoCopy(modelHtml),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  for (const slide of outline.slides) {
+    for (const piece of [
+      slide.title,
+      slide.lead,
+      slide.body,
+      ...(slide.items ?? []).flatMap((item) => [item.title, item.body]),
+    ]) {
+      const token = String(piece ?? '').trim();
+      if (token.length < 2) continue;
+      visible = visible.split(token).join(' ');
+    }
+  }
+  return visible
+    .split(/[\n.。!?！？]+/)
+    .map((chunk) => chunk.replace(/\s+/g, ' ').trim())
+    .filter((chunk) => {
+      if (chunk.length < 16) return false;
+      const withoutChrome = chunk
+        .replace(/\d+\s*\/\s*\d+/g, ' ')
+        .replace(/\b(?:next|prev|previous|slide|page|nav)\b/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      return withoutChrome.length >= 16;
+    })
+    .join(' ').length;
+}
+
+function extractSlideTitleFromHtmlBody(body: string): string {
+  const heading = /<(h[1-3])\b[^>]*>([\s\S]*?)<\/\1>/i.exec(body);
+  const rawHeading = heading ? stripTagsToText(heading[2] ?? '') : '';
+  const classTitle = /<(?:div|p|span)\b[^>]*\b(?:title-main|hero-title|headline|font-display|display|disp|ttl|title)\b[^>]*>([\s\S]*?)<\//i
+    .exec(body);
+  const rawClass = classTitle ? stripTagsToText(classTitle[1] ?? '') : '';
+  const raw = sanitizePromptFillExtractedCopy(rawHeading || rawClass, 'title');
+  if (!raw) return '';
+  return sanitizeTemplateCloneDeckTitle(raw) ?? raw.slice(0, 80);
+}
+
+function extractSlideLeadFromHtmlBody(body: string, title: string): string {
+  const preferred = /<(p|div|span)\b[^>]*\b(?:subtitle|lead|lede|dek|deck|stmt|qbody|quote|ed|subkicker)\b[^>]*>([\s\S]*?)<\/\1>/i
+    .exec(body);
+  const preferredText = sanitizePromptFillExtractedCopy(
+    preferred ? stripTagsToText(preferred[2] ?? '') : '',
+    'lead',
+  );
+  if (preferredText && preferredText !== title && preferredText.length >= 8) {
+    return preferredText.slice(0, 240);
+  }
+  const withoutCards = body.replace(promptFillCardPeerRe(), ' ');
+  const paragraphs = [...withoutCards.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)]
+    .map((match) => sanitizePromptFillExtractedCopy(stripTagsToText(match[1] ?? ''), 'lead'))
+    .filter((text) => text && text !== title && text.length >= 8);
+  return (paragraphs[0] ?? '').slice(0, 240);
+}
+
+function itemFromExtractedInner(inner: string): TemplateCloneSlideItem | null {
+  const heading = /<(h[1-6]|strong|b)\b[^>]*>([\s\S]*?)<\/\1>/i.exec(inner);
+  const paragraph = /<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(inner);
+  const title = sanitizePromptFillExtractedCopy(stripTagsToText(heading?.[2] ?? ''), 'item-title')
+    || sanitizePromptFillExtractedCopy(stripTagsToText(inner), 'item-title').slice(0, 40);
+  const itemBody = sanitizePromptFillExtractedCopy(stripTagsToText(paragraph?.[1] ?? ''), 'item-body');
+  if (!title) return null;
+  if (title === itemBody) {
+    const visible = sanitizePromptFillExtractedCopy(stripTagsToText(inner), 'item-body');
+    if (!visible) return null;
+    const split = visible.split(/[.—–:]\s+/).map((part) => part.trim()).filter(Boolean);
+    return {
+      title: (split[0] ?? visible).slice(0, 40),
+      ...(split[1] ? { body: split.slice(1).join(' ').slice(0, 160) } : {}),
+    };
+  }
+  return {
+    title: title.slice(0, 40),
+    ...(itemBody && itemBody !== title ? { body: itemBody.slice(0, 160) } : {}),
+  };
+}
+
+function extractSlideItemsFromStructuredHosts(body: string): TemplateCloneSlideItem[] {
+  const items: TemplateCloneSlideItem[] = [];
+  const openRe = /<(div|li|article)\b([^>]*)>/gi;
+  let openMatch: RegExpExecArray | null;
+  while ((openMatch = openRe.exec(body)) !== null && items.length < 8) {
+    const attrs = openMatch[2] ?? '';
+    if (/\bheadrow\b/i.test(attrs)) continue;
+    if (!/\bclass\s*=\s*["'][^"']*\b(?:row|stmt)\b/i.test(attrs)) continue;
+    const tag = (openMatch[1] ?? 'div').toLowerCase();
+    const openEnd = openMatch.index + openMatch[0].length;
+    const closeEnd = findMatchingClose(body, openEnd, tag);
+    if (closeEnd < 0) continue;
+    const closeTag = new RegExp(`</${tag}\\s*>$`, 'i').exec(body.slice(0, closeEnd))?.[0]
+      ?? `</${tag}>`;
+    const inner = body.slice(openEnd, closeEnd - closeTag.length);
+    const item = itemFromExtractedInner(inner);
+    if (!item) continue;
+    items.push(item);
+  }
+  return items.length >= 2 ? items : [];
+}
+
+function extractSlideItemsFromGenericCopy(body: string): TemplateCloneSlideItem[] {
+  const items: TemplateCloneSlideItem[] = [];
+  const copyRe = /<(div|p|span)\b[^>]*\b(?:copy|body-tx|desc|caption)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = copyRe.exec(body)) !== null && items.length < 8) {
+    const visible = sanitizePromptFillExtractedCopy(stripTagsToText(match[2] ?? ''), 'item-body');
+    if (visible.length < 8) continue;
+    const split = visible.split(/[.—–:]\s+/).map((part) => part.trim()).filter(Boolean);
+    if (split.length >= 2) {
+      items.push({
+        title: split[0]!.slice(0, 40),
+        body: split.slice(1).join(' ').slice(0, 160),
+      });
+      continue;
+    }
+    items.push({
+      title: visible.slice(0, 40),
+      body: visible.slice(0, 160),
+    });
+  }
+  return items.length >= 2 ? items : [];
+}
+
+function extractSlideItemsFromHtmlBody(body: string): TemplateCloneSlideItem[] {
+  const cards: TemplateCloneSlideItem[] = [];
+  const cardRe = promptFillCardPeerRe();
+  let cardMatch: RegExpExecArray | null;
+  while ((cardMatch = cardRe.exec(body)) !== null && cards.length < 6) {
+    const item = itemFromExtractedInner(cardMatch[3] ?? '');
+    if (item) cards.push(item);
+  }
+  if (cards.length >= 2) return cards;
+
+  const fromRows = extractSlideItemsFromStructuredHosts(body);
+  if (fromRows.length >= 2) return fromRows;
+
+  const items: TemplateCloneSlideItem[] = [];
+  const listRe = /<li\b[^>]*>([\s\S]*?)<\/li>/gi;
+  let listMatch: RegExpExecArray | null;
+  while ((listMatch = listRe.exec(body)) !== null && items.length < 8) {
+    const inner = listMatch[1] ?? '';
+    const heading = /<(h[1-6]|strong|b)\b[^>]*>([\s\S]*?)<\/\1>/i.exec(inner);
+    const paragraph = /<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(inner);
+    const title = sanitizePromptFillExtractedCopy(stripTagsToText(heading?.[2] ?? ''), 'item-title');
+    const itemBody = sanitizePromptFillExtractedCopy(stripTagsToText(paragraph?.[1] ?? ''), 'item-body');
+    const visible = sanitizePromptFillExtractedCopy(stripTagsToText(inner), 'item-body');
+    if (!visible) continue;
+    if (title && itemBody && itemBody !== title) {
+      items.push({ title: title.slice(0, 40), body: itemBody.slice(0, 160) });
+      continue;
+    }
+    const split = visible.split(/\s+[—–-]\s+/).map((part) => part.trim()).filter(Boolean);
+    if (split.length >= 2) {
+      items.push({ title: split[0]!.slice(0, 40), body: split.slice(1).join(' — ').slice(0, 160) });
+      continue;
+    }
+    items.push({ title: visible.slice(0, 40), ...(visible.length > 40 ? { body: visible.slice(0, 160) } : {}) });
+  }
+  if (items.length >= 2) return items;
+  return extractSlideItemsFromGenericCopy(body);
+}
+
+function extractSlideBodyFromHtmlBody(
+  body: string,
+  title: string,
+  lead: string,
+  items: TemplateCloneSlideItem[],
+): string | undefined {
+  if (items.length >= 2) return undefined;
+  const withoutCards = body.replace(promptFillCardPeerRe(), ' ');
+  const classCopy = [...withoutCards.matchAll(
+    /<(?:p|div|span|blockquote)\b[^>]*\b(?:stmt|qbody|quote|copy|body-tx|desc)\b[^>]*>([\s\S]*?)<\//gi,
+  )]
+    .map((match) => sanitizePromptFillExtractedCopy(stripTagsToText(match[1] ?? ''), 'body'))
+    .filter((text) => text && text !== title && text !== lead && text.length >= 8);
+  const lines = [
+    ...classCopy,
+    ...[...withoutCards.matchAll(/<(?:p|li)\b[^>]*>([\s\S]*?)<\/(?:p|li)>/gi)]
+      .map((match) => sanitizePromptFillExtractedCopy(stripTagsToText(match[1] ?? ''), 'body'))
+      .filter((text) => {
+        if (!text || text === title || text === lead) return false;
+        return text.length >= 8;
+      }),
+  ].filter((text, index, all) => all.indexOf(text) === index);
+  if (lines.length === 0) return undefined;
+  return lines.slice(0, 6).join('\n');
+}
+
+/**
+ * Recover a JSON-shaped outline from model-written deck HTML so prompt-fill
+ * can reuse the same LOOK-seed host merge as JSON slot-fill.
+ */
+export function extractTemplateCloneOutlineFromDeckHtml(
+  html: string,
+): TemplateCloneDeckOutline | null {
+  const shells = listTemplateCloneSlideShells(String(html ?? ''));
+  if (shells.length === 0) return null;
+  const slides: TemplateCloneSlideContent[] = [];
+  for (const shell of shells) {
+    const title = extractSlideTitleFromHtmlBody(shell.body);
+    if (!title) continue;
+    const lead = extractSlideLeadFromHtmlBody(shell.body, title);
+    const items = extractSlideItemsFromHtmlBody(shell.body);
+    const body = extractSlideBodyFromHtmlBody(shell.body, title, lead, items);
+    const next: TemplateCloneSlideContent = { title };
+    if (lead) next.lead = lead;
+    if (body) next.body = body;
+    if (items.length >= 2) next.items = items;
+    // Do not copy the model's own shell role. Prompt-fill often stamps the
+    // same layout on every page; host variety + content inference pick LOOK
+    // seed shells instead.
+    slides.push(next);
+  }
+  if (slides.length === 0) return null;
+  return { title: slides[0]!.title, slides };
+}
+
+function promptFillOutlineKeepsModelSubstance(
+  outline: TemplateCloneDeckOutline,
+  modelHtml: string,
+): boolean {
+  return leftoverUnparsedSentenceChars(modelHtml, outline) < PROMPT_FILL_LOOK_MERGE_MIN_UNPARSED;
+}
+
+/**
+ * Canvas / Home / Drive prompt-fill persist: treat model HTML as content,
+ * then slot-fill the LOOK seed so layout variety + sparse enrichment run
+ * on the same host path as JSON fill.
+ *
+ * Returns null when the seed has no shells, the outline is too thin, or
+ * extraction would drop most of the model's real copy — caller keeps model HTML.
+ */
+export function applyTemplateClonePromptFillLookMerge(
+  seedHtml: string,
+  modelHtml: string,
+  options: {
+    templateId?: string | null;
+    brief?: string | null;
+    maxSlides?: number;
+    deckTitle?: string | null;
+    /**
+     * 루프547 — Auto-pad the merged deck up to the seed shell count when
+     * the model outline is shorter. Defaults to `true` so the persist
+     * pipeline never surfaces a legitimate short fill as
+     * `artifact_regression / slide-count`. Callers that want the raw
+     * (short) merge behavior can pass `false` explicitly.
+     */
+    padToSeedSlideCount?: boolean;
+    /**
+     * 루프554 — leftover unparsed ≥280자여도 merge를 포기하지 않는다.
+     * 기본 merge는 모델 문장 보존을 위해 null을 반환하고 호출부가 2장
+     * HTML을 그대로 persist했다. seed가 더 길면 pad가 우선이다.
+     */
+    forcePad?: boolean;
+  } = {},
+): { html: string; title: string } | null {
+  const seed = String(seedHtml ?? '').trim();
+  const model = String(modelHtml ?? '').trim();
+  if (!seed || !model) return null;
+  if (listTemplateCloneSlideShells(seed).length === 0) return null;
+  const outline = extractTemplateCloneOutlineFromDeckHtml(model);
+  if (!outline) return null;
+  const padToSeedSlideCount = options.padToSeedSlideCount !== false;
+  // 루프549 — Short-response pad recovery는 outline이 1 slide여도 seed로
+  // 부족분을 채워 저장 가능한 결과를 만들어야 한다. min-slides gate는 pad를
+  // 원하지 않는 legacy 호출부(padToSeedSlideCount=false)에만 적용.
+  const minOutlineSlides = padToSeedSlideCount
+    ? 1
+    : PROMPT_FILL_LOOK_MERGE_MIN_SLIDES;
+  if (outline.slides.length < minOutlineSlides) return null;
+  if (
+    !options.forcePad
+    && !promptFillOutlineKeepsModelSubstance(outline, model)
+  ) {
+    return null;
+  }
+  const title =
+    sanitizeTemplateCloneDeckTitle(options.deckTitle)
+    || outline.title;
+  const html = buildTemplateClonedDeckHtml(seed, outline.slides, {
+    title,
+    ...(options.templateId != null ? { templateId: options.templateId } : {}),
+    ...(options.brief != null ? { brief: options.brief } : {}),
+    ...(options.maxSlides != null ? { maxSlides: options.maxSlides } : {}),
+    padToSeedSlideCount,
+  });
+  if (!html?.trim()) return null;
+  return { html, title };
+}
+
+/**
+ * 루프554 — 킷 CSS `.slide-1`…`.slide-N` 만으로 seed shell 수를 추정.
+ * body section이 2장이어도 스타일 블록이 10장 킷이면 pad 목표를 10으로 둔다.
+ */
+export function inferKitSlideCountFromCss(html: string): number | null {
+  let max = 0;
+  for (const match of String(html ?? '').matchAll(/\.slide-(\d+)\b/gi)) {
+    const n = Number(match[1]);
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+  return max >= 2 ? max : null;
+}
+
+/**
+ * 루프554 — seed/킷 장수보다 짧은 모델 HTML을 pad. merge substance gate가
+ * null을 내도 forcePad로 10장까지 채운다. pad 불가면 null (호출부가 seed 유지).
+ */
+export function recoverShortDeckByPaddingToSeed(input: {
+  seedHtml: string;
+  modelHtml: string;
+  brief?: string | null;
+  deckTitle?: string | null;
+  templateId?: string | null;
+  /** Persist 직전 강제 pad. 기본 true — continue 경로가 빼면 10→2가 다시 샌다. */
+  forcePad?: boolean;
+}): { html: string; seedCount: number; producedCount: number; paddedCount: number } | null {
+  const seed = String(input.seedHtml ?? '').trim();
+  const model = String(input.modelHtml ?? '').trim();
+  if (!seed || !model) return null;
+  const seedCount = Math.max(
+    listTemplateCloneSlideShells(seed).length,
+    inferKitSlideCountFromCss(seed) ?? 0,
+    inferKitSlideCountFromCss(model) ?? 0,
+  );
+  const producedCount = listTemplateCloneSlideShells(model).length;
+  if (seedCount < 2) return null;
+  // Head-only / incomplete shell: forcePad may persist the complete seed
+  // document. Refuse empty/32-char collapse (`<64`) so garbage never lands
+  // on deck.html — callers keep LOOK seed via fallback instead.
+  if (producedCount <= 0) {
+    const forcePad = input.forcePad !== false;
+    const documentShaped = /^(?:<!doctype(?:\s+html)?\b|<html\b)/i.test(model);
+    if (
+      forcePad
+      && documentShaped
+      && model.length >= 64
+      && /<\/html\s*>/i.test(seed)
+      && listTemplateCloneSlideShells(seed).length >= 2
+    ) {
+      const synthesized = synthesizeTemplateCloneOutlineFromBrief({
+        ...(input.brief !== undefined ? { userBrief: input.brief } : {}),
+        ...(input.deckTitle !== undefined ? { deckTitle: input.deckTitle } : {}),
+        slideCount: seedCount,
+      });
+      const synthesizedHtml = synthesized
+        ? buildTemplateClonedDeckHtml(seed, synthesized.slides, {
+            title: synthesized.title,
+            ...(input.templateId != null ? { templateId: input.templateId } : {}),
+            ...(input.brief != null ? { brief: input.brief } : {}),
+            maxSlides: seedCount,
+            padToSeedSlideCount: true,
+          })
+        : null;
+      return {
+        html: synthesizedHtml ?? seed,
+        seedCount,
+        producedCount: 0,
+        paddedCount: seedCount,
+      };
+    }
+    return null;
+  }
+  if (producedCount >= seedCount) {
+    return { html: model, seedCount, producedCount, paddedCount: producedCount };
+  }
+  const merged = applyTemplateClonePromptFillLookMerge(seed, model, {
+    ...(input.templateId != null ? { templateId: input.templateId } : {}),
+    ...(input.brief != null ? { brief: input.brief } : {}),
+    ...(input.deckTitle != null ? { deckTitle: input.deckTitle } : {}),
+    // The only disk fallback can itself be the provider's short deck: two
+    // section shells may still carry the original 10-layout kit CSS.
+    maxSlides: seedCount,
+    padToSeedSlideCount: true,
+    forcePad: input.forcePad !== false,
+  });
+  const paddedCount = merged?.html ? listTemplateCloneSlideShells(merged.html).length : 0;
+  if (!merged?.html || paddedCount < seedCount) return null;
+  return {
+    html: merged.html,
+    seedCount,
+    producedCount,
+    paddedCount,
+  };
+}
+
+/**
+ * Persist must not treat MiniMax-overwritten `deck.html` as the LOOK host.
+ * Prefer the official plugin preview (example.html) whenever it still has
+ * slide shells; fall back to disk only when the plugin look is unavailable.
+ */
+export function pickPromptFillLookSeedHtml(input: {
+  pluginPreviewHtml?: string | null;
+  diskDeckHtml?: string | null;
+}): string {
+  const plugin = String(input.pluginPreviewHtml ?? '').trim();
+  if (plugin && listTemplateCloneSlideShells(plugin).length > 0) return plugin;
+  const disk = String(input.diskDeckHtml ?? '').trim();
+  if (disk && listTemplateCloneSlideShells(disk).length > 0) return disk;
+  return plugin || disk || '';
+}
+
+/** Observe-only persist quality. Never used to reject or rewrite HTML. */
+export type TemplateClonePersistQualitySnapshot = {
+  slideCount: number;
+  distinctShellRoles: TemplateCloneShellRole[];
+  distinctShellCount: number;
+  cardItemCount: number;
+  titleOnlyCardCount: number;
+  titleOnlyCardRate: number;
+};
+
+export type TemplateClonePersistQualityPhase =
+  | 'prompt-fill-look-merge'
+  | 'json-slot-fill'
+  | 'deterministic-fill';
+
+export type TemplateClonePersistQualityObserve = {
+  phase: TemplateClonePersistQualityPhase;
+  applied: boolean;
+  templateId: string | null;
+  before: TemplateClonePersistQualitySnapshot | null;
+  after: TemplateClonePersistQualitySnapshot | null;
+  distinctShellDelta: number | null;
+  titleOnlyRateDelta: number | null;
+};
+
+function sortTemplateCloneShellRoles(
+  roles: Iterable<TemplateCloneShellRole>,
+): TemplateCloneShellRole[] {
+  return [...new Set(roles)].sort(
+    (left, right) => (
+      TEMPLATE_CLONE_SHELL_ROLES.indexOf(left) - TEMPLATE_CLONE_SHELL_ROLES.indexOf(right)
+    ),
+  );
+}
+
+export function summarizeTemplateClonePersistQuality(
+  html: string | null | undefined,
+): TemplateClonePersistQualitySnapshot | null {
+  const shells = listTemplateCloneSlideShells(String(html ?? ''));
+  if (shells.length === 0) return null;
+  const roles = sortTemplateCloneShellRoles(
+    shells.map((shell) => classifyTemplateCloneShellRole(shell)),
+  );
+  let cardItemCount = 0;
+  let titleOnlyCardCount = 0;
+  for (const shell of shells) {
+    const items = extractSlideItemsFromHtmlBody(shell.body);
+    if (items.length < 2) continue;
+    for (const item of items) {
+      cardItemCount += 1;
+      if (!templateCloneItemBodyLooksDense(item.body)) titleOnlyCardCount += 1;
+    }
+  }
+  return {
+    slideCount: shells.length,
+    distinctShellRoles: roles,
+    distinctShellCount: roles.length,
+    cardItemCount,
+    titleOnlyCardCount,
+    titleOnlyCardRate: cardItemCount === 0
+      ? 0
+      : Number((titleOnlyCardCount / cardItemCount).toFixed(4)),
+  };
+}
+
+export function buildTemplateClonePersistQualityObserve(input: {
+  phase: TemplateClonePersistQualityPhase;
+  html?: string | null;
+  beforeHtml?: string | null;
+  applied?: boolean;
+  templateId?: string | null;
+}): TemplateClonePersistQualityObserve {
+  const before = summarizeTemplateClonePersistQuality(input.beforeHtml);
+  const after = summarizeTemplateClonePersistQuality(input.html);
+  return {
+    phase: input.phase,
+    applied: input.applied === true,
+    templateId: String(input.templateId ?? '').trim() || null,
+    before,
+    after,
+    distinctShellDelta:
+      before && after ? after.distinctShellCount - before.distinctShellCount : null,
+    titleOnlyRateDelta:
+      before && after
+        ? Number((after.titleOnlyCardRate - before.titleOnlyCardRate).toFixed(4))
+        : null,
+  };
+}
+
+/** Observe-only JSON outline quality. Never used to reject or rewrite HTML. */
+export type TemplateCloneOutlineQualitySnapshot = {
+  slideCount: number;
+  roleHintedSlideCount: number;
+  distinctRoleHints: TemplateCloneShellRole[];
+  distinctRoleHintCount: number;
+  titleOnlySlideCount: number;
+  titleOnlySlideRate: number;
+  cardItemCount: number;
+  titleOnlyCardCount: number;
+  titleOnlyCardRate: number;
+};
+
+export type TemplateCloneOutlineQualitySource = 'model' | 'partial' | 'none';
+
+export type TemplateCloneOutlineQualityObserve = {
+  source: TemplateCloneOutlineQualitySource;
+  kind: string | null;
+  templateId: string | null;
+  outline: TemplateCloneOutlineQualitySnapshot | null;
+};
+
+function slideOutlineLooksTitleOnly(slide: TemplateCloneSlideContent): boolean {
+  if (templateCloneItemBodyLooksDense(slide.body)) return false;
+  if (templateCloneItemBodyLooksDense(slide.lead)) return false;
+  const items = Array.isArray(slide.items) ? slide.items : [];
+  return !items.some((item) => templateCloneItemBodyLooksDense(item.body));
+}
+
+export function summarizeTemplateCloneOutlineQuality(
+  outline: TemplateCloneDeckOutline | null | undefined,
+): TemplateCloneOutlineQualitySnapshot | null {
+  const slides = outline?.slides ?? [];
+  if (slides.length === 0) return null;
+  const hinted = slides
+    .map((slide) => slide.roleHint)
+    .filter((role): role is TemplateCloneShellRole => isTemplateCloneShellRole(role));
+  const roles = sortTemplateCloneShellRoles(hinted);
+  let cardItemCount = 0;
+  let titleOnlyCardCount = 0;
+  let titleOnlySlideCount = 0;
+  for (const slide of slides) {
+    if (slideOutlineLooksTitleOnly(slide)) titleOnlySlideCount += 1;
+    const items = Array.isArray(slide.items) ? slide.items : [];
+    if (items.length < 2) continue;
+    for (const item of items) {
+      cardItemCount += 1;
+      if (!templateCloneItemBodyLooksDense(item.body)) titleOnlyCardCount += 1;
+    }
+  }
+  return {
+    slideCount: slides.length,
+    roleHintedSlideCount: hinted.length,
+    distinctRoleHints: roles,
+    distinctRoleHintCount: roles.length,
+    titleOnlySlideCount,
+    titleOnlySlideRate: Number((titleOnlySlideCount / slides.length).toFixed(4)),
+    cardItemCount,
+    titleOnlyCardCount,
+    titleOnlyCardRate: cardItemCount === 0
+      ? 0
+      : Number((titleOnlyCardCount / cardItemCount).toFixed(4)),
+  };
+}
+
+/** Observe-only LOOK seed banner. Never used to reject persist or rewrite HTML. */
+export type TemplateCloneLookSeedFallbackSource = 'persist' | 'reload';
+
+export type TemplateCloneLookSeedFallbackObserve = {
+  source: TemplateCloneLookSeedFallbackSource;
+  reason: string | null;
+  genericBrief: boolean;
+  fillMode: string | null;
+  templateId: string | null;
+};
+
+export function buildTemplateCloneLookSeedFallbackObserve(input: {
+  source?: string | null;
+  reason?: string | null;
+  genericBrief?: boolean;
+  fillMode?: string | null;
+  templateId?: string | null;
+}): TemplateCloneLookSeedFallbackObserve {
+  return {
+    source: input.source === 'reload' ? 'reload' : 'persist',
+    reason: String(input.reason ?? '').trim().slice(0, 240) || null,
+    genericBrief: input.genericBrief === true,
+    fillMode: String(input.fillMode ?? '').trim() || null,
+    templateId: String(input.templateId ?? '').trim() || null,
+  };
+}
+
+export function buildTemplateCloneOutlineQualityObserve(input: {
+  rawFinalText?: string | null;
+  outline?: TemplateCloneDeckOutline | null;
+  kind?: string | null;
+  templateId?: string | null;
+}): TemplateCloneOutlineQualityObserve {
+  const parsed = input.outline ?? parseTemplateCloneDeckOutline(input.rawFinalText);
+  const partial = parsed
+    ? null
+    : recoverPartialTemplateCloneOutline(String(input.rawFinalText ?? ''));
+  const outline = parsed ?? partial;
+  return {
+    source: parsed ? 'model' : partial ? 'partial' : 'none',
+    kind: String(input.kind ?? '').trim() || null,
+    templateId: String(input.templateId ?? '').trim() || null,
+    outline: summarizeTemplateCloneOutlineQuality(outline),
+  };
 }
 
 export type TemplateCloneSlotFillTerminalDecision =
@@ -681,11 +1360,375 @@ function topicKeywordForSynthBody(title: string): string {
     || '핵심 주제';
 }
 
+const GENERIC_SYNTH_TOPIC_NOUN_RE =
+  /^(?:핵심 주제|주제|개요|핵심(?:\s*\d+)?|핵심 포인트|근거와 사례|실행 방안|고객 경험|운영과 보안|도입 로드맵|성과 지표|요약|슬라이드|표지|커버|소개|overview)$/i;
+
+/** 0918-N03 — leftover heading / card title / body. Shared by synth + healers. */
+const SERVICE_INTRO_LEFTOVER_HEADING_RE =
+  /^(?:개요|핵심 포인트|근거와 사례|실행 방안|고객 경험|운영과 보안|도입 로드맵|성과 지표|요약|핵심 주제|핵심\s+\d+|대상 고객별 메시지|서비스 가치 제안|사용 흐름|신뢰를 만드는 증거|측정해야 할 지표|다음 액션)$/;
+
+const SERVICE_INTRO_LEFTOVER_CARD_TITLE_RE =
+  /^(?:핵심 가치|사용 장면|차별점|탐색|실행|확장|전환|활성|품질|전환율|문제|사용자|맥락|실무자|리더|운영자|파일럿|확대|정착|제품|사례|운영)$/;
+
+const SERVICE_INTRO_LEFTOVER_BODY_RE =
+  /사용자가 즉시 얻는 시간 절감|첫 방문에서 문제와 해결|방문에서 문의[·,]?\s*가입까지|도입 전 탐색,\s*팀 협업|기존 대안 대비 더 적은 단계|주요 기능을 체험하거나 문의|팀 규모,\s*권한,\s*반복 작업|시간 절감,\s*품질 개선|다루는 문제와 제공 가치|핵심 맥락과 다음 단계|핵심 메시지와 청중이 얻는 가치|가장 먼저 이해해야 할 개념·근거|의미와 적용 기준을 한 문장으로|반복해서 겪는 핵심 불편|방문자가 처음 보는 순간|사이트에서 확인되는 메시지|결과물 완성도,\s*수정 횟수|핵심 기능 반복 사용|화면,\s*워크플로우,\s*결과물 예시|고객 유형별 문제 해결 사례|지원,\s*보안,\s*개인정보,\s*도입 프로세스|작은 팀이나 단일 업무에서 빠르게 파일럿|반복 사용 패턴을 기준으로 템플릿과 권한|성과 지표와 운영 책임을 정해|반복 작업을 줄이고 결과물 완성도|팀 속도,\s*품질,\s*비용|권한,\s*저장,\s*(?:감사,\s*)?보안 요구/;
+
+const SERVICE_INTRO_PROCESS_TRIO = ['탐색', '실행', '확장'] as const;
+
+function isGenericSynthTopicNoun(topic: string): boolean {
+  const text = String(topic ?? '').replace(/\s+/g, ' ').trim();
+  if (!text) return true;
+  // A failed outline parse can leave punctuation-only fragments (`:`, `-`,
+  // `/`) in a title/lead slot. Treating one of those as the deck topic
+  // produces broken Korean such as `기존 문서를 : 보드로 옮기고`.
+  if (!/[A-Za-z0-9가-힣]/u.test(text)) return true;
+  if (GENERIC_SYNTH_TOPIC_NOUN_RE.test(text)) return true;
+  if (/핵심\s+주제/.test(text)) return true;
+  if (/^핵심\s+\d+/.test(text)) return true;
+  return false;
+}
+
+function looksLikeServiceIntroLeftoverTitle(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!value) return false;
+  return SERVICE_INTRO_LEFTOVER_HEADING_RE.test(value)
+    || SERVICE_INTRO_LEFTOVER_CARD_TITLE_RE.test(value);
+}
+
+function looksLikeBlockedOverviewOrTrioTitle(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  return /^(?:개요|핵심 포인트|탐색|실행|확장)$/.test(value);
+}
+
+/** Copy-pattern leftover titles — kit class names are not required. */
+function looksLikeGenericLeftoverTitle(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!value) return false;
+  if (looksLikeBlockedOverviewOrTrioTitle(value)) return true;
+  if (/^(?:실무자|리더|운영자)$/.test(value)) return true;
+  if (/^(?:Overview|Pricing|YoY|No\.)$/i.test(value)) return true;
+  if (/^\d+\s*\/\s*Overview$/i.test(value)) return true;
+  return false;
+}
+
+const GENERIC_SLIDE_ROLES = [
+  'cover',
+  'statement',
+  'list',
+  'cards',
+  'quote',
+  'timeline',
+  'stats',
+  'team',
+  'process',
+  'close',
+] as const;
+
+type GenericSlideRole = (typeof GENERIC_SLIDE_ROLES)[number];
+
+type GenericRoleCopy = {
+  heading: string;
+  lead: string;
+  items: Array<{ title: string; body: string }>;
+};
+
+function genericSlideCopyPack(topic: string): Record<GenericSlideRole, GenericRoleCopy> {
+  const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : (topic.trim() || 'Teamver');
+  const line = (heading: string, lead: string, items: Array<{ title: string; body: string }> = []): GenericRoleCopy => (
+    { heading, lead, items }
+  );
+  return {
+    cover: line(brand, `${brand}는 초안과 수정을 같은 보드에서 끝낸다.`, [
+      { title: '같은 화면', body: `${brand}에서 초안을 열고 바로 고친다.` },
+      { title: '같은 맥락', body: `${brand}에서 파일 밖으로 대화를 보내지 않는다.` },
+    ]),
+    statement: line(
+      `${brand}가 묶는 일`,
+      `${brand}는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.`,
+      [
+        { title: '초안', body: `${brand} 보드에 붙일 초안이 같은 자리에서 열린다.` },
+        { title: '수정', body: `${brand}에서는 보낸 뒤에도 문장과 칸을 고친다.` },
+      ],
+    ),
+    list: line(`${brand}가 다루는 칸`, `${brand}에서 보드·권한·이력을 한 흐름으로 본다.`, [
+      { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
+      { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+    ]),
+    cards: line(`${brand}에서 바로 쓰는 것`, `${brand}에서 초안·수정·공유가 한 흐름이다.`, [
+      { title: '초안', body: `${brand} 보드에 바로 붙일 수 있는 초안이 열린다.` },
+      { title: '수정', body: `${brand}에서는 보낸 뒤에도 같은 화면에서 문장과 레이아웃을 고친다.` },
+      { title: '공유', body: `${brand}에 필요한 사람만 초대해 보기와 고치기를 나눈다.` },
+    ]),
+    quote: line(
+      `${brand}가 남기는 증거`,
+      `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.`,
+      [
+        { title: '댓글', body: `${brand}에서 피드백이 슬라이드 옆에 남는다.` },
+        { title: '버전', body: `${brand}에서 바꾼 시점을 되짚을 수 있다.` },
+      ],
+    ),
+    timeline: line('도입 단계', `한 팀 보드를 ${brand}로 옮긴 뒤 리뷰 습관과 조직 기준을 고정한다.`, [
+      { title: '한 팀 보드', body: `기존 문서를 ${brand} 보드로 옮기고 보기·고치기 권한을 나눈다.` },
+      { title: '리뷰 습관', body: `${brand}에서 댓글과 버전을 같은 화면에서 고정한다.` },
+      { title: '조직 기준', body: `${brand} 워크스페이스 기본값으로 감사와 보내기 규칙을 둔다.` },
+    ]),
+    stats: line(`${brand} 운영`, `${brand}가 한 화면에서 남기는 세 가지.`, [
+      { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
+      { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+    ]),
+    team: line(`${brand}를 쓰는 자리`, `${brand}에서 실무는 초안을 붙이고 리뷰는 권한을 나눈다.`, [
+      { title: '혼자 시작', body: `${brand}에서 한 보드를 열고 초안을 붙인다.` },
+      { title: '팀과 고치기', body: `${brand}에서 보기와 고치기를 나눠 같이 고친다.` },
+      { title: '리뷰', body: `${brand}에서 댓글과 버전을 같은 화면에서 본다.` },
+    ]),
+    process: line(`${brand} 작업 흐름`, `${brand}에서 보드를 열고 권한을 나눈 뒤 이력을 남긴다.`, [
+      { title: '연다', body: `흩어진 메모를 ${brand}로 옮긴다.` },
+      { title: '나눈다', body: `${brand}에서 보기와 고치기를 정한다.` },
+      { title: '남긴다', body: `${brand} 보드에 바꾼 시점을 고정한다.` },
+    ]),
+    close: line(
+      '보드에서 이어 쓰기',
+      `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.`,
+      [
+        { title: '방 열기', body: `${brand}에서 쓸 워크스페이스를 만든다.` },
+        { title: '초대', body: `${brand} 첫 보드에 같이 고칠 사람을 부른다.` },
+      ],
+    ),
+  };
+}
+
+function genericRoleCopyForIndex(
+  cover: string,
+  brief: string | null | undefined,
+  index: number,
+): GenericRoleCopy {
+  const topic = resolveLockedTopicNoun(cover, brief);
+  const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : (String(cover ?? '').trim() || 'Teamver');
+  const pack = genericSlideCopyPack(brand);
+  const role = GENERIC_SLIDE_ROLES[Math.max(0, index - 1) % GENERIC_SLIDE_ROLES.length]!;
+  return pack[role];
+}
+
+const GENERIC_LEFTOVER_PHRASE_RE =
+  /(?<![가-힣A-Za-z])(?:실무자|파일럿)(?![가-힣A-Za-z])|\bPricing\b|\bYoY\b|Halo v2|\$179|\$279|\$399/g;
+
+const GENERIC_LEFTOVER_LEAF_RE =
+  /^(?:개요|핵심 포인트|탐색|실행|확장|실무자|리더|운영자|Overview|Pricing|YoY)$/i;
+
+function stripGenericLeftoverCopyPhrases(html: string): string {
+  return String(html ?? '')
+    .replace(GENERIC_LEFTOVER_PHRASE_RE, '');
+}
+
+function deckLooksLikeTemplateCloneSlideHost(html: string): boolean {
+  return /<(?:section|div)\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b/i.test(html);
+}
+
+/**
+ * 0921-N02 — kit key / official LOOK miss여도 `.slide` 덱의 leftover
+ * 카피 패턴을 지우고 슬라이드마다 다른 topic 문장을 넣는다.
+ * 기존 kit healer 뒤에 호출. 구체 한국어 ≥20자는 유지.
+ */
+export function healGenericTemplateCloneLeftover(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !deckLooksLikeTemplateCloneSlideHost(dest)) return dest;
+  const briefText = String(brief ?? '');
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) {
+    return stripGenericLeftoverCopyPhrases(dest);
+  }
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    let body = out.slice(span.bodyStart, span.bodyEnd);
+    const heading = visibleDeckCopy(body.match(/<h[1-3]\b[^>]*>([\s\S]*?)<\/h[1-3]>/i)?.[1] ?? '');
+    const visible = visibleDeckCopy(body);
+    const needsHeal = looksLikeGenericLeftoverTitle(heading)
+      || GENERIC_LEFTOVER_LEAF_RE.test(heading)
+      || /(?<![가-힣])개요(?![가-힣])|핵심\s*포인트|탐색[\s\S]{0,80}실행[\s\S]{0,80}확장/.test(visible)
+      || /(?<![가-힣])실무자(?![가-힣])|(?<![가-힣])리더(?![가-힣])|(?<![가-힣])운영자(?![가-힣])/.test(visible)
+      || /Halo v2|\$179|\$279|\$399|\bPricing\b|\bYoY\b/.test(visible);
+    if (!needsHeal) continue;
+    const role = genericRoleCopyForIndex(briefText || heading, briefText, i + 1);
+    if (looksLikeGenericLeftoverTitle(heading) || GENERIC_LEFTOVER_LEAF_RE.test(heading)) {
+      body = body.replace(
+        /(<h[1-3]\b[^>]*>)([\s\S]*?)(<\/h[1-3]>)/i,
+        `$1${escapeHtml(role.heading)}$3`,
+      );
+    }
+    let itemIndex = 0;
+    body = body.replace(
+      /(<(?:h[3-4]|li)\b[^>]*>)([\s\S]*?)(<\/(?:h[3-4]|li)>)/gi,
+      (full, open: string, inner: string, close: string) => {
+        const plain = visibleDeckCopy(inner);
+        if (eightBitCapsuleCopyIsKeepable(plain)) return full;
+        if (
+          !looksLikeGenericLeftoverTitle(plain)
+          && !GENERIC_LEFTOVER_LEAF_RE.test(plain)
+        ) {
+          return full;
+        }
+        const item = role.items[itemIndex] ?? role.items[role.items.length - 1];
+        itemIndex += 1;
+        const next = item?.title || role.heading;
+        return `${open}${escapeHtml(next)}${close}`;
+      },
+    );
+    body = body.replace(
+      /(<p\b[^>]*>)([\s\S]*?)(<\/p>)/gi,
+      (full, open: string, inner: string, close: string) => {
+        const plain = visibleDeckCopy(inner);
+        if (eightBitCapsuleCopyIsKeepable(plain)) return full;
+        if (
+          looksLikeGenericLeftoverTitle(plain)
+          || GENERIC_LEFTOVER_LEAF_RE.test(plain)
+          || /핵심\s*맥락과\s*다음\s*단계/.test(plain)
+          || /Halo v2|\$179|\$279|\$399/.test(plain)
+        ) {
+          return `${open}${escapeHtml(role.lead)}${close}`;
+        }
+        return full;
+      },
+    );
+    if (!/[가-힣]/.test(visibleDeckCopy(body)) && role.lead) {
+      if (/<p\b/i.test(body)) {
+        body = body.replace(/(<p\b[^>]*>)([\s\S]*?)(<\/p>)/i, `$1${escapeHtml(role.lead)}$3`);
+      } else {
+        body = `${body}<p>${escapeHtml(role.lead)}</p>`;
+      }
+    }
+    out = `${out.slice(0, span.bodyStart)}${body}${out.slice(span.bodyEnd)}`;
+  }
+  return stripGenericLeftoverCopyPhrases(out);
+}
+
+function serviceIntroSynthTitleFallback(topic: string, index: number): string {
+  const noun = topic && !isGenericSynthTopicNoun(topic) ? topic : '';
+  const titles = noun
+    ? [`${noun} 범위`, `${noun} 판단`, `${noun} 쓰는 길`, `${noun} 다음`]
+    : ['범위', '판단', '쓰는 길', '다음'];
+  return titles[Math.max(0, index) % titles.length]!;
+}
+
+function itemTitlesLookLikeProcessTrio(titles: readonly string[]): boolean {
+  if (titles.length < 3) return false;
+  for (let i = 0; i <= titles.length - 3; i += 1) {
+    if (
+      titles[i] === SERVICE_INTRO_PROCESS_TRIO[0]
+      && titles[i + 1] === SERVICE_INTRO_PROCESS_TRIO[1]
+      && titles[i + 2] === SERVICE_INTRO_PROCESS_TRIO[2]
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function sanitizeServiceIntroSynthResult(
+  result: Pick<TemplateCloneSlideContent, 'body' | 'roleHint' | 'items' | 'lead'>,
+  cover: string,
+  label: string,
+  brief?: string | null,
+): Pick<TemplateCloneSlideContent, 'body' | 'roleHint' | 'items' | 'lead'> {
+  const topic = resolveLockedTopicNoun(cover, brief, label);
+  const noun = topic && !isGenericSynthTopicNoun(topic) ? topic : '';
+  let lead = String(result.lead ?? '').replace(/\s+/g, ' ').trim();
+  if (!lead || looksLikeBlockedOverviewOrTrioTitle(lead)) {
+    lead = noun
+      ? `${attachKoreanJosa(noun, '을/를')} 같은 보드에서 점검합니다`
+      : '같은 보드에서 다음 결정을 점검합니다';
+  }
+  const rawItems = Array.isArray(result.items) ? result.items : [];
+  const rawTitles = rawItems.map((item) => String(item.title ?? '').replace(/\s+/g, ' ').trim());
+  const remapTrio = itemTitlesLookLikeProcessTrio(rawTitles);
+  const items = rawItems.map((item, itemIndex) => {
+    const title = String(item.title ?? '').replace(/\s+/g, ' ').trim();
+    const nextTitle = remapTrio
+      || looksLikeBlockedOverviewOrTrioTitle(title)
+      || /^(?:실무자|리더|운영자)$/.test(title)
+      ? serviceIntroSynthTitleFallback(noun, itemIndex)
+      : title;
+    const body = String(item.body ?? '').replace(/\s+/g, ' ').trim();
+    const next: TemplateCloneSlideItem = { title: nextTitle };
+    if (body) next.body = body;
+    return next;
+  });
+  const body = items.length > 0
+    ? items.map((item) => item.body ? `${item.title}: ${item.body}` : item.title).join('\n')
+    : String(result.body ?? '').trim() || lead;
+  const next: Pick<TemplateCloneSlideContent, 'body' | 'roleHint' | 'items' | 'lead'> = {
+    lead,
+    body,
+    items,
+  };
+  if (result.roleHint) next.roleHint = result.roleHint;
+  return next;
+}
+
+function hangulSyllableHasBatchim(ch: string): boolean {
+  const code = ch.charCodeAt(0);
+  if (code < 0xac00 || code > 0xd7a3) return false;
+  return (code - 0xac00) % 28 !== 0;
+}
+
+function lastHangulSyllable(text: string): string | null {
+  const chars = [...String(text ?? '')];
+  for (let i = chars.length - 1; i >= 0; i -= 1) {
+    if (/[가-힣]/.test(chars[i]!)) return chars[i]!;
+  }
+  return null;
+}
+
+/**
+ * 루프553 — 받침 있으면 이/을/은, 없으면 가/를/는.
+ * Latin-only 브랜드(Teamver)는 한글 받침이 없어 가/를/는.
+ */
+export function attachKoreanJosa(
+  noun: string,
+  pair: '이/가' | '을/를' | '은/는',
+): string {
+  const topic = String(noun ?? '').replace(/\s+/g, ' ').trim();
+  if (!topic) return topic;
+  const [withBatchim, without] = pair.split('/') as [string, string];
+  const last = lastHangulSyllable(topic);
+  const particle = last && hangulSyllableHasBatchim(last) ? withBatchim : without;
+  return `${topic}${particle}`;
+}
+
+function resolveLockedTopicNoun(
+  ...candidates: Array<string | null | undefined>
+): string {
+  for (const raw of candidates) {
+    const text = String(raw ?? '').trim();
+    if (!text) continue;
+    if (
+      /첨부(?:한|된)?\s*(?:자료|파일)|(?:만들|작성|생성)(?:어|해|하여)?\s*(?:줘|주세요|달라)|슬라이드\s*덱/i.test(text)
+      && !/(?:https?:\/\/|www\.)[a-z0-9.-]+/i.test(text)
+    ) {
+      continue;
+    }
+    const derived = text.length > 48
+      ? topicKeywordForSynthBody(deriveDeckCoverTitleFromBrief(text, null))
+      : topicKeywordForSynthBody(text);
+    if (
+      derived
+      && !isGenericSynthTopicNoun(derived)
+      && derived.length <= 32
+      && !looksLikeTemplateMarketingTitle(derived)
+      && !/html-ppt|zhangzara|daisy days/i.test(derived)
+    ) {
+      return derived;
+    }
+  }
+  return '주제';
+}
+
 type SynthTemplateTopicPreset =
-  | 'trigonometry'
-  | 'cloud-native'
-  | 'monorepo'
-  | 'expo'
   | 'service-intro'
   | 'generic';
 
@@ -701,24 +1744,17 @@ type SynthTemplateBodyTemplate = {
   lines: string[];
 };
 
+/**
+ * Classify only structural brief shapes (URL service-intro vs free-form).
+ * Never branch on domain topics (삼각함수 / monorepo / expo / …) — those used
+ * to inject canned essays that looked like QA fixtures leaked into production
+ * (루프516).
+ */
 function classifySynthTemplateTopicProfile(
   cover: string,
   brief?: string | null,
 ): SynthTemplateTopicProfile {
-  const topic = topicKeywordForSynthBody(cover);
-  const context = [cover, brief].filter(Boolean).join('\n').toLowerCase();
-  if (/삼각함수|trigonometry|\bsin\b|\bcos\b|\btan\b|sine|cosine|단위원|라디안/u.test(context)) {
-    return { topic, preset: 'trigonometry' };
-  }
-  if (/cloud\s*native|클라우드\s*네이티브|kubernetes|쿠버네티스|컨테이너|마이크로서비스|msa\b|서비스\s*메시/u.test(context)) {
-    return { topic, preset: 'cloud-native' };
-  }
-  if (/monorepo|모노레포|터보레포|turborepo|pnpm\s*workspace|nx\b|changesets|workspace\s*graph/u.test(context)) {
-    return { topic, preset: 'monorepo' };
-  }
-  if (/\bexpo\b|react\s*native|eas\s*build|eas\s*update|expo\s*router|ota|native\s*modules|config\s*plugins/u.test(context)) {
-    return { topic, preset: 'expo' };
-  }
+  const topic = resolveLockedTopicNoun(cover, brief);
   if (looksLikeServiceIntroCoverLeadContext(cover, brief)) {
     return { topic, preset: 'service-intro' };
   }
@@ -743,265 +1779,11 @@ function templatesForSynthTemplateTopic(
   profile: SynthTemplateTopicProfile,
 ): SynthTemplateBodyTemplate[] {
   const topic = profile.topic;
-  if (profile.preset === 'trigonometry') {
-    return [
-      {
-        roleHint: 'list',
-        lead: '각을 길이의 비율로 읽는 출발점',
-        itemTitles: ['직각삼각형', '단위원', '실전 의미'],
-        lines: [
-          'sin·cos·tan은 한 각이 만드는 세 변의 비율을 이름 붙인 개념',
-          '단위원으로 확장하면 0도부터 360도 이후까지 같은 규칙으로 설명 가능',
-          '높이, 거리, 파동, 회전 운동을 계산하는 공통 언어로 쓰임',
-        ],
-      },
-      {
-        roleHint: 'cards',
-        lead: '세 함수가 맡는 역할을 분리하기',
-        itemTitles: ['sin', 'cos', 'tan'],
-        lines: [
-          'sin θ: y좌표와 높이 변화, 주기 현상에서 진폭을 읽는 기준',
-          'cos θ: x좌표와 수평 변화, 위상 차이를 비교할 때의 기준',
-          'tan θ: 기울기와 방향 변화, 직선의 경사 해석으로 연결',
-        ],
-      },
-      {
-        roleHint: 'process',
-        lead: '단위원에서 그래프로 이어지는 흐름',
-        itemTitles: ['각도', '좌표', '그래프'],
-        lines: [
-          '각도와 라디안을 같은 회전량으로 대응시킨다',
-          '회전한 점의 x·y좌표를 cos·sin 값으로 읽는다',
-          '좌표 변화를 시간축에 펼치면 사인·코사인 그래프가 된다',
-        ],
-      },
-      {
-        roleHint: 'cards',
-        lead: '그래프를 볼 때 놓치기 쉬운 네 가지',
-        itemTitles: ['주기', '진폭', '평행이동'],
-        lines: [
-          '주기: 같은 모양이 반복되는 간격, 기본 sin·cos는 2π',
-          '진폭: 중심선에서 위아래로 흔들리는 최대 거리',
-          '평행이동과 위상: 그래프가 좌우·상하로 이동해도 구조는 유지',
-        ],
-      },
-      {
-        roleHint: 'list',
-        lead: '공식 암기보다 관계를 먼저 잡기',
-        itemTitles: ['피타고라스', '덧셈정리', '변환'],
-        lines: [
-          'sin²θ + cos²θ = 1은 단위원의 반지름에서 바로 나온다',
-          '덧셈정리는 두 회전을 합칠 때 좌표가 어떻게 변하는지 설명한다',
-          '그래프 변환은 y=a sin b(x-c)+d의 각 파라미터 역할로 정리한다',
-        ],
-      },
-      {
-        roleHint: 'closing',
-        lead: '문제 풀이 순서',
-        itemTitles: ['정의', '그림', '검산'],
-        lines: [
-          '먼저 각이 어느 사분면에 있는지 보고 부호를 결정한다',
-          '단위원이나 그래프를 그려 값의 범위를 검산한다',
-          '공식은 마지막에 적용해 계산량을 줄인다',
-        ],
-      },
-    ];
-  }
-  if (profile.preset === 'cloud-native') {
-    return [
-      {
-        roleHint: 'list',
-        lead: '애플리케이션을 인프라 변화에 맞게 설계하는 방식',
-        itemTitles: ['컨테이너', '오케스트레이션', '자동화'],
-        lines: [
-          '컨테이너는 실행 환경을 이미지로 고정해 배포 차이를 줄인다',
-          'Kubernetes는 배치, 복구, 확장, 서비스 발견을 운영 단위로 묶는다',
-          'CI/CD와 선언형 인프라는 변경을 작게 자주 배포하게 만든다',
-        ],
-      },
-      {
-        roleHint: 'cards',
-        lead: '클라우드 네이티브를 구성하는 핵심 축',
-        itemTitles: ['서비스', '데이터', '관측'],
-        lines: [
-          '마이크로서비스: 팀 경계와 배포 경계를 맞춰 독립성을 높인다',
-          '상태 관리: DB, 캐시, 메시지 큐의 장애 범위를 분리한다',
-          'Observability: 로그·메트릭·트레이스로 장애 원인을 빠르게 좁힌다',
-        ],
-      },
-      {
-        roleHint: 'process',
-        lead: '개발에서 운영까지 이어지는 배포 흐름',
-        itemTitles: ['빌드', '릴리스', '운영'],
-        lines: [
-          '소스 변경이 컨테이너 이미지와 SBOM으로 만들어진다',
-          'Argo CD나 Flux가 Git 상태를 클러스터에 동기화한다',
-          '롤아웃, 롤백, 오토스케일링이 운영 정책으로 자동화된다',
-        ],
-      },
-      {
-        roleHint: 'cards',
-        lead: '시니어 엔지니어가 봐야 할 트레이드오프',
-        itemTitles: ['복잡도', '비용', '신뢰성'],
-        lines: [
-          '서비스 분리는 조직 속도를 높이지만 네트워크 장애면을 넓힌다',
-          '오토스케일링은 피크 대응에 강하지만 관측 없는 비용 증가를 만든다',
-          '플랫폼 추상화는 생산성을 높이지만 표준과 예외 관리가 필요하다',
-        ],
-      },
-      {
-        roleHint: 'list',
-        lead: '도입 판단 체크리스트',
-        itemTitles: ['조직', '시스템', '운영'],
-        lines: [
-          '팀이 독립 배포와 장애 소유권을 감당할 수 있는지 확인',
-          '모놀리스 분리보다 먼저 배포 자동화와 관측 체계를 갖춘다',
-          '보안, 네트워크, 비용 정책을 플랫폼 기본값으로 만든다',
-        ],
-      },
-      {
-        roleHint: 'closing',
-        lead: '성공 기준',
-        itemTitles: ['속도', '안정', '학습'],
-        lines: [
-          '배포 빈도와 변경 실패율을 함께 낮추는 것이 목표',
-          '장애를 숨기는 자동화가 아니라 빠르게 복구하는 체계를 만든다',
-          '플랫폼 팀은 도구 제공보다 제품 팀의 반복 실행을 돕는 역할에 집중한다',
-        ],
-      },
-    ];
-  }
-  if (profile.preset === 'monorepo') {
-    return [
-      {
-        roleHint: 'list',
-        lead: '하나의 저장소에서 여러 제품과 패키지를 함께 운영하는 전략',
-        itemTitles: ['경계', '그래프', '정책'],
-        lines: [
-          '앱과 패키지의 의존 관계를 workspace graph로 명시한다',
-          '공유 코드는 소유권, API 안정성, 변경 승인 기준을 함께 둔다',
-          '저장소 통합보다 빌드·테스트 범위 축소가 성패를 좌우한다',
-        ],
-      },
-      {
-        roleHint: 'cards',
-        lead: '시니어가 먼저 설계해야 할 운영 단위',
-        itemTitles: ['패키지', '태스크', '릴리스'],
-        lines: [
-          '패키지 경계: 재사용성과 결합도를 동시에 관리한다',
-          '태스크 캐시: 변경된 부분만 빌드·테스트해 CI 시간을 줄인다',
-          '버전 전략: Changesets나 release train으로 배포 책임을 분리한다',
-        ],
-      },
-      {
-        roleHint: 'process',
-        lead: '도입 순서',
-        itemTitles: ['통합', '최적화', '거버넌스'],
-        lines: [
-          '먼저 pnpm workspace, Nx, Turborepo 중 조직에 맞는 기본 구조를 정한다',
-          'affected test와 remote cache로 반복 빌드 비용을 낮춘다',
-          'CODEOWNERS, lint boundary, package policy로 무분별한 결합을 막는다',
-        ],
-      },
-      {
-        roleHint: 'cards',
-        lead: '흔한 실패 모드',
-        itemTitles: ['숨은 결합', '느린 CI', '릴리스 혼선'],
-        lines: [
-          '공유 유틸이 모든 앱을 끌어당기면 변경 영향 범위가 폭발한다',
-          '캐시 키와 affected graph가 부정확하면 전체 테스트로 되돌아간다',
-          '독립 버전과 고정 버전을 섞으면 배포 책임이 불명확해진다',
-        ],
-      },
-      {
-        roleHint: 'list',
-        lead: '운영 지표',
-        itemTitles: ['변경 범위', '시간', '품질'],
-        lines: [
-          'PR당 affected package 수와 cross-team 변경 비율',
-          'cold build, cached build, CI critical path 소요 시간',
-          '공유 패키지 회귀율과 릴리스 롤백 빈도',
-        ],
-      },
-      {
-        roleHint: 'closing',
-        lead: '결론',
-        itemTitles: ['원칙', '다음 단계'],
-        lines: [
-          '모노레포의 목표는 코드를 한곳에 넣는 것이 아니라 변경의 영향을 계산 가능하게 만드는 것',
-          '작게 시작해 graph, cache, ownership을 먼저 안정화한 뒤 릴리스 자동화를 확장한다',
-        ],
-      },
-    ];
-  }
-  if (profile.preset === 'expo') {
-    return [
-      {
-        roleHint: 'list',
-        lead: 'React Native 제품을 빠르게 만들고 안전하게 배포하는 플랫폼',
-        itemTitles: ['Managed Workflow', 'EAS', 'OTA'],
-        lines: [
-          'Managed Workflow는 네이티브 설정을 Expo config로 표준화한다',
-          'EAS Build와 Submit은 앱스토어 배포 파이프라인을 서비스화한다',
-          'EAS Update는 JS 번들을 OTA로 배포해 긴급 수정 시간을 줄인다',
-        ],
-      },
-      {
-        roleHint: 'cards',
-        lead: '시니어 관점의 핵심 판단',
-        itemTitles: ['생산성', '네이티브 확장', '릴리스'],
-        lines: [
-          '프로토타입 속도와 장기 운영 표준화를 동시에 얻을 수 있는지 본다',
-          'Native Modules와 config plugin으로 필요한 플랫폼 기능을 확장한다',
-          '채널, 런타임 버전, 롤백 정책으로 OTA 사고 범위를 통제한다',
-        ],
-      },
-      {
-        roleHint: 'process',
-        lead: '실무 배포 흐름',
-        itemTitles: ['개발', '검증', '배포'],
-        lines: [
-          'Expo Router로 화면 구조와 deep link를 파일 시스템에 맞춘다',
-          'development build에서 네이티브 의존성을 실제 환경으로 검증한다',
-          'preview channel과 production channel을 나눠 점진적으로 릴리스한다',
-        ],
-      },
-      {
-        roleHint: 'cards',
-        lead: 'Eject가 필요한 순간',
-        itemTitles: ['제약', '비용', '대안'],
-        lines: [
-          '지원되지 않는 네이티브 SDK나 빌드 단계 제어가 필수인 경우',
-          '플랫폼별 디버깅과 CI 비용이 Managed 이점보다 커지는 경우',
-          'config plugin, custom dev client로 해결 가능한지 먼저 검토',
-        ],
-      },
-      {
-        roleHint: 'list',
-        lead: '운영 체크리스트',
-        itemTitles: ['버전', '보안', '관측'],
-        lines: [
-          'runtimeVersion 정책을 정해 호환되지 않는 OTA 배포를 막는다',
-          '환경 변수와 secret은 EAS credential 경계에서 관리한다',
-          'Crashlytics, Sentry, analytics로 릴리스 품질을 추적한다',
-        ],
-      },
-      {
-        roleHint: 'closing',
-        lead: '결론',
-        itemTitles: ['적합', '다음 단계'],
-        lines: [
-          'Expo는 빠른 시작 도구가 아니라 모바일 제품 운영 플랫폼에 가깝다',
-          '팀의 네이티브 요구, 릴리스 빈도, OTA 위험 관리 수준으로 도입 여부를 판단한다',
-        ],
-      },
-    ];
-  }
   if (profile.preset === 'service-intro') {
     return [
       {
         roleHint: 'list',
-        lead: `${topic}가 풀어야 하는 문제`,
+        lead: `${attachKoreanJosa(topic, '이/가')} 풀어야 하는 문제`,
         itemTitles: ['문제', '사용자', '맥락'],
         lines: [
           '사용자가 반복해서 겪는 핵심 불편과 전환 비용을 먼저 정의',
@@ -1022,7 +1804,7 @@ function templatesForSynthTemplateTopic(
       {
         roleHint: 'process',
         lead: '사용 흐름',
-        itemTitles: ['탐색', '실행', '확장'],
+        itemTitles: ['첫 방문', '쓰는 길', '팀으로 넓히기'],
         lines: [
           '첫 방문에서 문제와 해결 방식을 한 문장으로 이해',
           '주요 기능을 체험하거나 문의로 연결되는 명확한 행동 경로',
@@ -1080,64 +1862,70 @@ function templatesForSynthTemplateTopic(
       },
     ];
   }
+  // Free-form topics: topic-parameterized skeleton only — no domain essays.
+  // 루프543 — 사용자가 "글을 매력적으로 쓰는 팁" 같은 free-form 주제로 create
+  // 하면 pad/synthesize가 이 6개 template를 순환하며 채운다. 이전에는 카드
+  // body가 topic 문자열 없이 `개념/구조/영향`, `용어와 원리를 짧고 정확하게…`
+  // 같은 하드코딩 문장만 나와서 어떤 주제든 같은 덱처럼 보였다. 각 line에
+  // `${topic}`을 삽입해 최소한 주제 명사가 카드마다 스며들도록 정정.
   return [
     {
       roleHint: 'list',
-      lead: `왜 ${topic}을 지금 다뤄야 하는가`,
+      lead: `왜 ${attachKoreanJosa(topic, '을/를')} 지금 다뤄야 하는가`,
       itemTitles: ['배경', '핵심 질문', '판단 기준'],
       lines: [
-        `${topic}의 배경과 현재 논의가 필요한 이유`,
-        '청중이 이 주제에서 가장 먼저 이해해야 할 핵심 질문',
-        '뒤 슬라이드에서 검증할 개념, 사례, 실행 기준',
+        `${topic}의 배경과 현재 논의가 필요한 이유를 한두 문장으로 정리`,
+        `${topic}에서 청중이 가장 먼저 이해해야 할 핵심 질문을 제시`,
+        `뒤 슬라이드에서 검증할 ${topic}의 개념·사례·실행 기준을 예고`,
       ],
     },
     {
       roleHint: 'cards',
-      lead: '핵심 개념을 세 갈래로 나누기',
+      lead: `${attachKoreanJosa(topic, '을/를')} 세 갈래로 나눠 보기`,
       itemTitles: ['개념', '구조', '영향'],
       lines: [
-        '개념: 용어와 원리를 짧고 정확하게 정의',
-        '구조: 구성 요소와 서로 연결되는 방식을 설명',
-        '영향: 실제 의사결정이나 업무에 생기는 변화를 정리',
+        `개념: ${topic}에서 자주 쓰이는 용어와 원리를 짧고 정확하게 정의`,
+        `구조: ${attachKoreanJosa(topic, '을/를')} 이루는 구성 요소와 서로 연결되는 방식을 설명`,
+        `영향: ${attachKoreanJosa(topic, '이/가')} 실제 의사결정이나 업무에 만드는 변화를 정리`,
       ],
     },
     {
       roleHint: 'process',
-      lead: '이해에서 적용까지의 순서',
+      lead: `${attachKoreanJosa(topic, '을/를')} 이해에서 적용까지 잇는 순서`,
       itemTitles: ['이해', '비교', '적용'],
       lines: [
-        '먼저 전체 지도를 잡고 세부 개념을 위치시킨다',
-        '대안, 사례, 실패 패턴을 비교해 차이를 드러낸다',
-        '실제 상황에 적용할 기준과 다음 행동을 제안한다',
+        `${topic}의 전체 지도를 먼저 그리고 세부 개념을 그 위에 위치시킨다`,
+        `${topic}의 대안·사례·실패 패턴을 비교해 차이를 명확히 드러낸다`,
+        `${attachKoreanJosa(topic, '을/를')} 실제 상황에 적용할 기준과 다음 행동을 한 문장으로 제안`,
       ],
     },
     {
       roleHint: 'cards',
-      lead: '사례로 보는 차이',
+      lead: `사례로 보는 ${topic}의 차이`,
       itemTitles: ['좋은 사례', '주의 사례', '전환점'],
       lines: [
-        '좋은 사례: 핵심 원리가 실제 문제를 줄이는 장면',
-        '주의 사례: 겉보기엔 비슷하지만 성과가 낮은 접근',
-        '전환점: 적용 여부를 결정하는 비용, 리스크, 기대 효과',
+        `좋은 사례: ${topic}의 핵심 원리가 실제 문제를 줄여 준 장면`,
+        `주의 사례: 겉보기엔 ${topic}과 비슷하지만 성과가 낮은 접근`,
+        `전환점: ${attachKoreanJosa(topic, '을/를')} 적용할지 결정하는 비용·리스크·기대 효과`,
       ],
     },
     {
       roleHint: 'list',
-      lead: '실행 체크리스트',
+      lead: `${topic} 실행 체크리스트`,
       itemTitles: ['준비', '운영', '검증'],
       lines: [
-        '필요한 자료, 이해관계자, 현재 상태를 먼저 확인',
-        '작은 범위에서 실행하고 피드백을 빠르게 반영',
-        '성과 지표와 실패 신호를 함께 정의해 다음 단계를 결정',
+        `${topic}에 필요한 자료·이해관계자·현재 상태를 먼저 확인`,
+        `${attachKoreanJosa(topic, '을/를')} 작은 범위에서 실행하고 피드백을 빠르게 반영`,
+        `${topic}의 성과 지표와 실패 신호를 함께 정의해 다음 단계를 결정`,
       ],
     },
     {
       roleHint: 'closing',
-      lead: '정리와 다음 단계',
+      lead: `${topic} 정리와 다음 단계`,
       itemTitles: ['핵심 메시지', '다음 행동'],
       lines: [
-        `${topic}은 한 번에 설명하기보다 배경, 구조, 사례, 실행 기준으로 나누면 이해도가 높아진다`,
-        '다음 단계는 청중 수준에 맞춰 예시와 실습 또는 의사결정 기준을 보강하는 것이다',
+        `${attachKoreanJosa(topic, '은/는')} 한 번에 설명하기보다 배경·구조·사례·실행 기준으로 나누면 이해도가 높아진다`,
+        `다음 단계는 청중 수준에 맞춰 ${topic}의 예시·실습 또는 의사결정 기준을 보강하는 것`,
       ],
     },
   ];
@@ -1243,33 +2031,344 @@ export function synthesizeTemplateCloneCoverLead(
   cover: string,
   brief?: string | null,
 ): string {
-  const topic = topicKeywordForSynthBody(cover);
+  const topic = resolveLockedTopicNoun(cover, brief);
   if (looksLikeServiceIntroCoverLeadContext(cover, brief)) {
     const fromSource = extractServiceIntroCoverLeadFromBrief(
       String(brief ?? cover),
       topic,
     );
     if (fromSource) return fromSource;
-    return `${topic}가 다루는 문제와 제공 가치`;
+    return `${attachKoreanJosa(topic, '이/가')} 다루는 문제와 제공 가치`;
   }
   return `${topic} — 핵심 맥락과 다음 단계를 정리합니다`;
 }
 
-function synthesizeTemplateCloneSlideBody(
+function bindTemplateCloneSynthItemBody(input: {
+  itemTitle: string;
+  slideTitle: string;
+  topic: string;
+  fallback?: string | null | undefined;
+}): string {
+  const item = String(input.itemTitle ?? '').trim();
+  const slide = String(input.slideTitle ?? '').trim();
+  const topic = topicKeywordForSynthBody(input.topic || slide || item);
+  const fallback = String(input.fallback ?? '').trim();
+  if (item && slide && item !== slide) {
+    return `${item}: ${slide} 관점에서 이 항목이 왜 중요한지와 어떻게 판단할지 정리한다.`;
+  }
+  if (item) {
+    return `${item} — ${topic}에서 의미와 적용 기준을 한 문장으로 정리한다.`;
+  }
+  if (fallback.length >= PROMPT_FILL_ITEM_BODY_MIN) return fallback;
+  return `${topic}의 핵심을 한 문장으로 정리한다.`;
+}
+
+/**
+ * 루프543에서 반복 방지용 rotation salt(`(요약)`, `· 요약`, `— 요약` 등)
+ * 를 body/items/lead에 붙였는데, 루프545에서 사용자에게 그 salt가 그대로
+ * 노출된다는 리포트가 들어와 salt를 완전히 제거했다. 반복 방지는
+ * `templatesForSynthTemplateTopic`가 이미 topic을 각 문장에 스며들게
+ * 만들어서(글쓰기 팁 → "글을 매력적으로 쓰는 팁"이 body에 등장) 충분히
+ * 확보된다. targetCount > templates.length(6)일 때 template array 순환이
+ * 일어나 100% 동일 body가 생기더라도, template pool은 topic이 이미 안에
+ * 있어 카피가 자연스럽고 사용자 UX 손해가 salt 노출보다 훨씬 작다.
+ */
+const RAW_GRID_SYNTH_FINANCIAL_RE =
+  /\$\d+(?:\.\d+)?[MBK]\+?|\bSeries\s+[A-E]\+?\b|[+\-]?\d+(?:\.\d+)?%/gi;
+
+/** Wipe pitch-kit financial cliches from synth text. Never invents a number. */
+export function scrubRawGridFinancialClicheText(
+  text: string,
+  ordinal?: string | null,
+): string {
+  const source = String(text ?? '');
+  if (!source) return source;
+  const replacement = ordinal == null || ordinal === '' ? '' : String(ordinal);
+  return source.replace(RAW_GRID_SYNTH_FINANCIAL_RE, replacement);
+}
+
+function looksLikeRawGridPitchSynthContext(
+  kitKey?: string | null,
+  cover?: string | null,
+  brief?: string | null,
+): boolean {
+  if (kitKey === RAW_GRID_PITCH_KIT_KEY) return true;
+  const hay = `${cover ?? ''}\n${brief ?? ''}`;
+  return officialLookIsRawGridPitch(hay);
+}
+
+export function synthesizeTemplateCloneSlideBody(
   cover: string,
   label: string,
   index: number,
   brief?: string | null,
+  kitKey?: string | null,
 ): Pick<TemplateCloneSlideContent, 'body' | 'roleHint' | 'items' | 'lead'> {
+  if (kitKey === COBALT_GRID_KIT_KEY) {
+    // 루프557 — never inject service-intro biennale outline
+    // (개요 / 핵심 포인트 / 탐색·실행·확장) into Cobalt Grid.
+    const topic = resolveCobaltGridTopicNoun(cover, brief);
+    const pack = cobaltGridSlideCopyPack(topic);
+    const roles = [
+      'cover', 'manifesto', 'index', 'chapter', 'data', 'quote', 'table', 'colophon',
+    ] as const;
+    const role = roles[Math.max(0, index - 1) % roles.length]!;
+    const items =
+      role === 'index' ? pack.index.items
+        : role === 'table'
+          ? pack.table.rows.map((row) => ({ title: row.name, body: row.desc }))
+          : role === 'data'
+            ? pack.data.stats.map((stat) => ({ title: stat.lab, body: stat.desc }))
+            : [];
+    const lead =
+      role === 'cover' ? pack.cover.value
+        : role === 'manifesto' ? pack.manifesto.stmt
+          : role === 'index' ? pack.index.heading
+            : role === 'chapter' ? pack.chapter.lede
+              : role === 'data' ? pack.data.heading
+                : role === 'quote' ? pack.quote.body
+                  : role === 'table' ? pack.table.heading
+                    : pack.colophon.title;
+    return {
+      roleHint: role === 'index' || role === 'table' ? 'list' : 'cards',
+      lead,
+      body: items.length > 0
+        ? items.map((item) => `${item.title}: ${item.body}`).join('\n')
+        : lead,
+      items,
+    };
+  }
+  if (kitKey === BLOCK_FRAME_NEO_KIT_KEY) {
+    const topic = resolveBlockFrameTopicNoun(cover, brief);
+    const pack = blockFrameSlideCopyPack(topic);
+    const roles = [
+      'cover', 'intro', 'features', 'chart', 'quote', 'split', 'timeline', 'stats', 'team', 'close',
+    ] as const;
+    const role = roles[Math.max(0, index - 1) % roles.length]!;
+    const picked = pack[role];
+    return sanitizeServiceIntroSynthResult({
+      roleHint: role === 'timeline' || role === 'split' ? 'process' : 'cards',
+      lead: picked.lead,
+      body: picked.items.length > 0
+        ? picked.items.map((item) => `${item.title}: ${item.body}`).join('\n')
+        : picked.lead,
+      items: picked.items,
+    }, cover, label, brief);
+  }
+  if (kitKey === GROVE_KIT_KEY || kitKey === STUDIO_KIT_KEY) {
+    const topic = resolveLockedTopicNoun(cover, brief, label);
+    const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
+    const pack = kitKey === GROVE_KIT_KEY
+      ? groveSlideCopyPack(brand)
+      : studioSlideCopyPack(brand);
+    const roles = GROVE_STUDIO_SLIDE_ROLES;
+    const role = roles[Math.max(0, index - 1) % roles.length]!;
+    const picked = pack[role];
+    return sanitizeServiceIntroSynthResult({
+      roleHint: role === 'list' || role === 'compare' ? 'list' : 'cards',
+      lead: picked.lead,
+      body: picked.items.length > 0
+        ? picked.items.map((item) => `${item.title}: ${item.body}`).join('\n')
+        : picked.lead,
+      items: picked.items,
+    }, cover, picked.heading || label, brief);
+  }
+  if (kitKey === EIGHTBIT_ORBIT_KIT_KEY) {
+    const topic = resolveLockedTopicNoun(cover, brief, label);
+    const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
+    const pack = eightBitSlideCopyPack(brand);
+    const role = EIGHTBIT_SLIDE_ROLES[Math.max(0, index - 1) % EIGHTBIT_SLIDE_ROLES.length]!;
+    const picked = pack[role];
+    return sanitizeServiceIntroSynthResult({
+      roleHint: role === 'timeline' ? 'process' : role === 'quote' ? 'quote' : 'cards',
+      lead: picked.lead,
+      body: picked.items.length > 0
+        ? picked.items.map((item) => `${item.title}: ${item.body}`).join('\n')
+        : picked.lead,
+      items: picked.items,
+    }, cover, picked.heading || label, brief);
+  }
+  if (kitKey === CAPSULE_KIT_KEY) {
+    const topic = resolveLockedTopicNoun(cover, brief, label);
+    const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
+    const pack = capsuleSlideCopyPack(brand);
+    const role = CAPSULE_SLIDE_ROLES[Math.max(0, index - 1) % CAPSULE_SLIDE_ROLES.length]!;
+    const picked = pack[role];
+    return sanitizeServiceIntroSynthResult({
+      roleHint: role === 'timeline' ? 'process' : role === 'quote' ? 'quote' : 'cards',
+      lead: picked.lead,
+      body: picked.items.length > 0
+        ? picked.items.map((item) => `${item.title}: ${item.body}`).join('\n')
+        : picked.lead,
+      items: picked.items,
+    }, cover, picked.heading || label, brief);
+  }
+  if (kitKey === DAISY_DAYS_KIT_KEY) {
+    const topic = resolveLockedTopicNoun(cover, brief, label);
+    const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
+    const pack = daisyDaysSlideCopyPack(brand);
+    const role = DAISY_SLIDE_ROLES[Math.max(0, index - 1) % DAISY_SLIDE_ROLES.length]!;
+    const picked = pack[role];
+    return sanitizeServiceIntroSynthResult({
+      roleHint: role === 'timeline' || role === 'process' ? 'process' : role === 'quote' ? 'quote' : 'cards',
+      lead: picked.lead,
+      body: picked.items.length > 0
+        ? picked.items.map((item) => `${item.title}: ${item.body}`).join('\n')
+        : picked.lead,
+      items: picked.items,
+    }, cover, picked.heading || label, brief);
+  }
+  if (kitKey === BROADSIDE_KIT_KEY) {
+    const topic = resolveLockedTopicNoun(cover, brief, label);
+    const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
+    const pack = broadsideSlideCopyPack(brand);
+    const role = BROADSIDE_SLIDE_ROLES[Math.max(0, index - 1) % BROADSIDE_SLIDE_ROLES.length]!;
+    const picked = pack[role];
+    return sanitizeServiceIntroSynthResult({
+      roleHint: role === 'list' || role === 'compare' ? 'list' : role === 'quote' ? 'quote' : 'cards',
+      lead: picked.lead,
+      body: picked.items.length > 0
+        ? picked.items.map((item) => `${item.title}: ${item.body}`).join('\n')
+        : picked.lead,
+      items: picked.items,
+    }, cover, picked.heading || label, brief);
+  }
+  if (kitKey === PLAYFUL_KIT_KEY) {
+    const topic = resolveLockedTopicNoun(cover, brief, label);
+    const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
+    const pack = playfulSlideCopyPack(brand);
+    const role = PLAYFUL_SLIDE_ROLES[Math.max(0, index - 1) % PLAYFUL_SLIDE_ROLES.length]!;
+    const picked = pack[role];
+    return sanitizeServiceIntroSynthResult({
+      roleHint: role === 'timeline' ? 'process' : role === 'toc' ? 'list' : 'cards',
+      lead: picked.lead,
+      body: picked.items.length > 0
+        ? picked.items.map((item) => `${item.title}: ${item.body}`).join('\n')
+        : picked.lead,
+      items: picked.items,
+    }, cover, picked.heading || label, brief);
+  }
+  if (kitKey === CORAL_KIT_KEY) {
+    const topic = resolveLockedTopicNoun(cover, brief, label);
+    const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
+    const pack = coralSlideCopyPack(brand);
+    const role = CORAL_SLIDE_ROLES[Math.max(0, index - 1) % CORAL_SLIDE_ROLES.length]!;
+    const picked = pack[role];
+    return sanitizeServiceIntroSynthResult({
+      roleHint: role === 'timeline' ? 'process' : role === 'quote' ? 'quote' : 'cards',
+      lead: picked.lead,
+      body: picked.items.length > 0
+        ? picked.items.map((item) => `${item.title}: ${item.body}`).join('\n')
+        : picked.lead,
+      items: picked.items,
+    }, cover, picked.heading || label, brief);
+  }
+  if (kitKey === MAT_KIT_KEY) {
+    const topic = resolveLockedTopicNoun(cover, brief, label);
+    const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
+    const pack = matSlideCopyPack(brand);
+    const role = MAT_SLIDE_ROLES[Math.max(0, index - 1) % MAT_SLIDE_ROLES.length]!;
+    const picked = pack[role];
+    return sanitizeServiceIntroSynthResult({
+      roleHint: role === 'list' || role === 'compare' ? 'list' : role === 'quote' ? 'quote' : 'cards',
+      lead: picked.lead,
+      body: picked.items.length > 0
+        ? picked.items.map((item) => `${item.title}: ${item.body}`).join('\n')
+        : picked.lead,
+      items: picked.items,
+    }, cover, picked.heading || label, brief);
+  }
+  if (kitKey === BIENNALE_YELLOW_KIT_KEY) {
+    const topic = resolveLockedTopicNoun(cover, brief, label);
+    const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
+    const pack = biennaleYellowSlideCopyPack(brand);
+    const role = BIENNALE_SLIDE_ROLES[Math.max(0, index - 1) % BIENNALE_SLIDE_ROLES.length]!;
+    const picked = pack[role];
+    return sanitizeServiceIntroSynthResult({
+      roleHint: role === 'programme' || role === 'calendar' ? 'list' : role === 'quote' ? 'quote' : 'cards',
+      lead: picked.lead,
+      body: picked.items.length > 0
+        ? picked.items.map((item) => `${item.title}: ${item.body}`).join('\n')
+        : picked.lead,
+      items: picked.items,
+    }, cover, picked.heading || label, brief);
+  }
+  if (looksLikeGenericLeftoverTitle(label)) {
+    const picked = genericRoleCopyForIndex(cover, brief, index);
+    return sanitizeServiceIntroSynthResult({
+      roleHint: picked.items.length > 0 ? 'cards' : 'body',
+      lead: picked.lead,
+      body: picked.items.length > 0
+        ? picked.items.map((item) => `${item.title}: ${item.body}`).join('\n')
+        : picked.lead,
+      items: picked.items,
+    }, cover, picked.heading || label, brief);
+  }
+  if (kitKey === PRODUCT_LAUNCH_HALO_KIT_KEY) {
+    // These kits previously returned an almost empty slide to avoid
+    // inventing product metrics/personas. During short-response padding that
+    // degraded into visible "Slide 3" pages. Keep the no-invention policy,
+    // but provide topic-bound decision copy that can safely fill list/card
+    // shells without fabricated facts.
+    const topic = resolveLockedTopicNoun(cover, brief);
+    const roles = ['list', 'cards', 'process', 'timeline'] as const;
+    const roleHint = roles[Math.max(0, index - 1) % roles.length]!;
+    const topicObject = attachKoreanJosa(topic, '을/를');
+    const safeLabel = looksLikeServiceIntroLeftoverTitle(label) ? topic : label;
+    const linesByRole: Record<'list' | 'cards' | 'process' | 'timeline', string[]> = {
+      list: [
+        `${topic}의 ${safeLabel} 범위와 현재 상태를 먼저 정의한다`,
+        `${safeLabel}에서 우선순위를 가르는 판단 기준을 정리한다`,
+        `${topicObject} 검증할 질문과 필요한 근거를 연결한다`,
+      ],
+      cards: [
+        `${topic}의 ${safeLabel}에서 관찰한 사실을 구분한다`,
+        `대안별 차이를 같은 기준으로 비교한다`,
+        `비교 결과가 ${topic}의 다음 결정에 주는 의미를 정리한다`,
+      ],
+      process: [
+        `${topicObject} 실행하기 전에 필요한 입력과 책임을 확인한다`,
+        `${safeLabel}을 작은 범위에서 적용하고 피드백을 수집한다`,
+        `결과를 검증해 유지·수정·확대 여부를 결정한다`,
+      ],
+      timeline: [
+        `${topic}의 현재 상태와 해결해야 할 간극을 기록한다`,
+        `${safeLabel}의 다음 단계와 완료 조건을 합의한다`,
+        `실행 이후 변화와 후속 과제를 같은 지표로 점검한다`,
+      ],
+    };
+    return sanitizeServiceIntroSynthResult({
+      roleHint,
+      lead: `${topicObject} 같은 화면에서 점검합니다`,
+      body: linesByRole[roleHint].join('\n'),
+      items: [],
+    }, cover, label, brief);
+  }
   const templates = templatesForSynthTemplateTopic(
     classifySynthTemplateTopicProfile(cover, brief),
   );
   const picked = templates[(index - 1) % templates.length]!;
-  return {
+  const result = sanitizeServiceIntroSynthResult({
     roleHint: picked.roleHint,
     lead: picked.lead || label,
     body: picked.lines.join('\n'),
     items: synthTemplateItems(picked.itemTitles, picked.lines),
+  }, cover, label, brief);
+  if (!looksLikeRawGridPitchSynthContext(kitKey, cover, brief)) return result;
+  return {
+    ...result,
+    lead: scrubRawGridFinancialClicheText(result.lead ?? ''),
+    body: scrubRawGridFinancialClicheText(result.body ?? ''),
+    items: (result.items ?? []).map((item, itemIndex) => {
+      const next: TemplateCloneSlideItem = {
+        title: scrubRawGridFinancialClicheText(
+          item.title,
+          String(itemIndex + 1).padStart(2, '0'),
+        ),
+      };
+      if (item.body) next.body = scrubRawGridFinancialClicheText(item.body);
+      return next;
+    }),
   };
 }
 
@@ -1286,9 +2385,12 @@ function padDeterministicTemplateCloneSlides(
   while (out.length < targetCount) {
     let label = TEMPLATE_CLONE_GENERIC_SECTION_LABELS[sectionIdx] ?? `핵심 ${out.length + 1}`;
     sectionIdx += 1;
+    if (looksLikeGenericLeftoverTitle(label) || /^핵심\s+\d+$/.test(label)) {
+      label = genericRoleCopyForIndex(cover, brief, out.length + 1).heading;
+    }
     if (used.has(label.toLowerCase())) {
-      label = `핵심 ${out.length + 1}`;
-      if (used.has(label.toLowerCase())) label = `핵심 ${sectionIdx}`;
+      label = genericRoleCopyForIndex(cover, brief, out.length + 1).heading;
+      if (used.has(label.toLowerCase())) label = `${cover} · ${out.length + 1}`;
     }
     used.add(label.toLowerCase());
     out.push({
@@ -1383,6 +2485,7 @@ export function decideTemplateCloneSlotFillTerminal(input: {
       ? { brief: input.userBrief }
       : {}),
     ...(honorCeiling != null ? { maxSlides: honorCeiling } : {}),
+    padToSeedSlideCount: false,
   };
   const filled = applyTemplateCloneSlotFill(seed, raw, templateOpts);
   if (filled) return { kind: 'slot-fill', html: filled.html, title: filled.title };
@@ -1487,6 +2590,12 @@ export function classifyTemplateCloneShellRole(shell: {
 }): TemplateCloneShellRole {
   const hay = `${shell.attrs}\n${shell.body.slice(0, 800)}`;
   if (/\bslide-title\b|\bcover\b|\bhero\b|\btitle-box\b/i.test(hay)) return 'cover';
+  // CTA shells can contain decorative telemetry/chart chrome. Classify the
+  // semantic CTA wrapper first or a closing outline is incorrectly routed to
+  // a data slide and ships demo labels such as System Load / Compute.
+  if (/\bslide-closing\b|\bthanks\b|\bend\b|\bclosing\b|\bcta-content\b|\bpixel-btn\b/i.test(hay)) {
+    return 'closing';
+  }
   if (/\bslide-quote\b|\bquote-text\b|\bquote-mark\b/i.test(hay)) return 'quote';
   if (/\bslide-timeline\b|\btimeline\b/i.test(hay)) return 'timeline';
   if (
@@ -1511,7 +2620,6 @@ export function classifyTemplateCloneShellRole(shell: {
     return 'cards';
   }
   if (/\bslide-welcome\b|\bwelcome-list\b|<[uo]l\b/i.test(hay)) return 'list';
-  if (/\bslide-closing\b|\bthanks\b|\bend\b|\bclosing\b/i.test(hay)) return 'closing';
   return 'body';
 }
 
@@ -1524,6 +2632,14 @@ export function inferTemplateCloneContentRole(
   if (slide.roleHint && isTemplateCloneShellRole(slide.roleHint)) {
     return slide.roleHint;
   }
+  return inferTemplateCloneContentRoleFromText(slide, index, total);
+}
+
+function inferTemplateCloneContentRoleFromText(
+  slide: TemplateCloneSlideContent,
+  index: number,
+  total: number,
+): TemplateCloneShellRole {
   if (index === 0) return 'cover';
   const title = slide.title.trim();
   const body = slide.body?.trim() ?? '';
@@ -1579,6 +2695,77 @@ export function inferTemplateCloneContentRole(
   if (body.length >= 100 && lines.length <= 1) return 'quote';
   if (lines.length === 1 && body.length < 100) return 'cards';
   return 'body';
+}
+
+const TEMPLATE_CLONE_DIVERSE_ROLE_SEQUENCE: readonly TemplateCloneShellRole[] = [
+  'list',
+  'cards',
+  'stat',
+  'timeline',
+  'quote',
+  'process',
+  'body',
+  'closing',
+];
+
+function templateCloneShellRoleSet(shells: SlideShell[]): Set<TemplateCloneShellRole> {
+  const out = new Set<TemplateCloneShellRole>();
+  for (const shell of shells) out.add(classifyTemplateCloneShellRole(shell));
+  return out;
+}
+
+function mostFrequentTemplateCloneRole(roles: TemplateCloneShellRole[]): TemplateCloneShellRole | null {
+  const counts = new Map<TemplateCloneShellRole, number>();
+  for (const role of roles) counts.set(role, (counts.get(role) ?? 0) + 1);
+  let best: TemplateCloneShellRole | null = null;
+  let bestCount = 0;
+  for (const [role, count] of counts) {
+    if (count > bestCount) {
+      best = role;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+function resolveTemplateCloneContentRolesForShellVariety(
+  shells: SlideShell[],
+  slides: TemplateCloneSlideContent[],
+): TemplateCloneShellRole[] {
+  const roles = slides.map((slide, index) => inferTemplateCloneContentRole(slide, index, slides.length));
+  if (slides.length < 5 || roles.length < 5) return roles;
+
+  const available = templateCloneShellRoleSet(shells);
+  const availableBodyRoles = TEMPLATE_CLONE_DIVERSE_ROLE_SEQUENCE.filter((role) => available.has(role));
+  if (availableBodyRoles.length < 3) return roles;
+
+  const bodyIndexes = roles
+    .map((role, index) => ({ role, index }))
+    .filter(({ role, index }) => index > 0 && role !== 'cover')
+    .map(({ index }) => index);
+  if (bodyIndexes.length < 4) return roles;
+
+  const bodyRoles = bodyIndexes.map((index) => roles[index]!);
+  const targetDistinct = Math.min(4, availableBodyRoles.length, bodyIndexes.length);
+  const currentDistinct = new Set(bodyRoles).size;
+  if (currentDistinct >= Math.min(3, targetDistinct)) return roles;
+
+  const dominant = mostFrequentTemplateCloneRole(bodyRoles);
+  const used = new Set(bodyRoles);
+  const nextRoles = [...roles];
+  for (const index of bodyIndexes) {
+    if (used.size >= targetDistinct) break;
+    const current = nextRoles[index]!;
+    const textInferred = inferTemplateCloneContentRoleFromText(slides[index]!, index, slides.length);
+    const isClearlyClosing = current === 'closing' || textInferred === 'closing';
+    if (isClearlyClosing && index === slides.length - 1) continue;
+    if (current !== dominant && current !== 'body') continue;
+    const desired = availableBodyRoles.find((candidate) => !used.has(candidate));
+    if (!desired || desired === current) continue;
+    nextRoles[index] = desired;
+    used.add(desired);
+  }
+  return nextRoles;
 }
 
 function leastUsedShell(pool: SlideShell[], usage: Map<SlideShell, number>): SlideShell | null {
@@ -1843,6 +3030,14 @@ const VARIETY_SAFE_ROLE_PREFERENCE: readonly TemplateCloneShellRole[] = [
   'stat',
 ];
 
+function templateCloneContentFillLineCount(slide: TemplateCloneSlideContent): number {
+  if (slide.items && slide.items.length > 0) return slide.items.length;
+  return String(slide.body ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean).length;
+}
+
 /** Pick layout shells by content role — never mirror template page order/count. */
 export function pickTemplateShellsForContent(
   shells: SlideShell[],
@@ -1871,14 +3066,12 @@ export function pickTemplateShellsForContent(
   const hasVariedBodyPool = bodyRoleTypeCount >= 5;
   const usage = new Map<SlideShell, number>();
   const picked: SlideShell[] = [];
+  const plannedRoles = resolveTemplateCloneContentRolesForShellVariety(shells, slides);
 
   for (let i = 0; i < slides.length; i += 1) {
     const slide = slides[i]!;
-    const role = inferTemplateCloneContentRole(slide, i, slides.length);
-    const lineCount = String(slide.body ?? '')
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean).length;
+    const role = plannedRoles[i] ?? inferTemplateCloneContentRole(slide, i, slides.length);
+    const lineCount = templateCloneContentFillLineCount(slide);
     let shell = pickShellByRole(role, byRole, cover, bodyPool, usage, lineCount);
     // 루프480 — Prefer unused shells only when they can actually host this
     // content role. The older unconditional "any unused shell" rule pushed
@@ -2202,6 +3395,179 @@ export function officialLookIsEightBitOrbit(html: string): boolean {
     && /(?:#0A0E27|--dark-void|--neon-pink)/i.test(source);
 }
 
+/**
+ * 루프550 — Raw Grid (Zhangzara neobrutalist pitch) kit fingerprint.
+ *
+ * Highly specific compound class chrome (`s3-bar-fill`, `s3-stat-number`,
+ * `s7-donut-value`, `s7-metric-num`, `s8-stat-num`, `s10-rb-block`,
+ * `s9-table`) only ships in this pitch kit. The `--pink:#f2d4cf` +
+ * `--green:#e5edd6` palette combined with `.slide-deck` provides the
+ * secondary CSS-side signal. Fingerprint must NOT fire on Broadside /
+ * Grove / Mat / EightBitOrbit / Cobalt / Studio kits — each of those has
+ * its own chrome names and is exclusive with the `sN-*` compound above.
+ */
+export function officialLookIsRawGridPitch(html: string): boolean {
+  const source = String(html ?? '');
+  if (!source.trim()) return false;
+  // Exclusive deny — none of these kits use `s3-bar-fill` / `s7-donut-value`
+  // / `s8-stat-num` compound chrome, but keep an explicit gate so a fixture
+  // that happens to duplicate raw-grid classes inside another look does not
+  // trigger this healer.
+  if (officialLookIsCreativeMode(source)) return false;
+  if (officialLookIsBroadside(source)) return false;
+  if (officialLookIsGrove(source)) return false;
+  if (officialLookIsMat(source)) return false;
+  if (officialLookIsEightBitOrbit(source)) return false;
+  const chrome =
+    /\b(?:s3-bar-fill|s3-stat-number|s7-donut-value|s7-metric-num|s8-stat-num|s10-rb-block|s9-table|s1-brand-text|s4-card-top|s6-step-num)\b/i
+      .test(source);
+  if (!chrome) return false;
+  const css = lookCssWithoutNeutralize(source);
+  const hay = `${css}\n${source}`;
+  const palette =
+    /--pink\s*:\s*#f2d4cf/i.test(hay)
+    && /--green\s*:\s*#e5edd6/i.test(hay);
+  if (palette) return true;
+  // Cover / brand mark fallback: neobrutalist Raw Grid decks carry the
+  // literal brand text plus the `slide-deck` shell used only by this kit.
+  return /\bRAW\s+GRID\b/i.test(source)
+    && /\bslide-deck\b/i.test(source);
+}
+
+/** Stable kit key for Raw Grid pitch (resolver + synth guard). */
+export const RAW_GRID_PITCH_KIT_KEY = 'raw-grid-pitch' as const;
+
+/**
+ * 루프551 — Product Launch (Halo v2 earbuds) kit fingerprint.
+ *
+ * Official `html-ppt-product-launch` ships `body.tpl-product-launch` plus
+ * `.hero-shot` / `.price-card` / `.feature-card` chrome. Exclusive deny
+ * keeps Broadside / Grove / RawGrid / EightBit / Creative from matching
+ * a stray `hero-shot` deco token. `price-card` + `hero-shot` is unique
+ * to this kit; `feature-card` alone is shared with Block Frame.
+ */
+export function officialLookIsProductLaunchHalo(html: string): boolean {
+  const source = String(html ?? '');
+  if (!source.trim()) return false;
+  if (officialLookIsCreativeMode(source)) return false;
+  if (officialLookIsBroadside(source)) return false;
+  if (officialLookIsGrove(source)) return false;
+  if (officialLookIsMat(source)) return false;
+  if (officialLookIsEightBitOrbit(source)) return false;
+  if (officialLookIsRawGridPitch(source)) return false;
+  if (/\btpl-product-launch\b/i.test(source)) return true;
+  return /\bhero-shot\b/i.test(source) && /\bprice-card\b/i.test(source);
+}
+
+/** Stable kit key for Product Launch Halo catalog (resolver + heal). */
+export const PRODUCT_LAUNCH_HALO_KIT_KEY = 'product-launch-halo' as const;
+
+/** Stable kit key for Zhangzara Block Frame / neo-brutal. */
+export const BLOCK_FRAME_NEO_KIT_KEY = 'block-frame-neo' as const;
+
+/** Stable kit key for Zhangzara Cobalt Grid (Field Office Quarterly). */
+export const COBALT_GRID_KIT_KEY = 'cobalt-grid' as const;
+
+/** Stable kit key for Zhangzara Grove forest editorial. */
+export const GROVE_KIT_KEY = 'grove' as const;
+
+/** Stable kit key for Zhangzara Studio acid-yellow poster. */
+export const STUDIO_KIT_KEY = 'studio' as const;
+
+/** Stable kit key for Zhangzara 8-Bit Orbit. */
+export const EIGHTBIT_ORBIT_KIT_KEY = 'eightbit-orbit' as const;
+
+/** Stable kit key for Zhangzara Capsule (Bodoni + coral pills). */
+export const CAPSULE_KIT_KEY = 'capsule' as const;
+
+/** Stable kit key for Zhangzara Daisy Days (Fredoka + cream paper). */
+export const DAISY_DAYS_KIT_KEY = 'daisy-days' as const;
+
+/** Stable kit key for Zhangzara Broadside (orange protest poster). */
+export const BROADSIDE_KIT_KEY = 'broadside' as const;
+
+/** Stable kit key for Zhangzara Playful (Syne + peach doodle). */
+export const PLAYFUL_KIT_KEY = 'playful' as const;
+
+/** Stable kit key for Zhangzara Coral (Bebas + zigzag / brand-mark). */
+export const CORAL_KIT_KEY = 'coral' as const;
+
+/** Stable kit key for Zhangzara Mat (wood + Bricolage + cover-headline). */
+export const MAT_KIT_KEY = 'mat' as const;
+
+/** Stable kit key for Zhangzara Biennale Yellow (sunglow + --sun). */
+export const BIENNALE_YELLOW_KIT_KEY = 'biennale-yellow' as const;
+
+const GROVE_STUDIO_SLIDE_ROLES = [
+  'cover',
+  'chapter',
+  'statement',
+  'split',
+  'stats',
+  'list',
+  'quote',
+  'compare',
+  'chapter2',
+  'statement2',
+  'chart',
+  'end',
+] as const;
+
+type GroveStudioSlideRole = (typeof GROVE_STUDIO_SLIDE_ROLES)[number];
+
+type GroveStudioRoleCopy = {
+  heading: string;
+  lead: string;
+  items: Array<{ title: string; body: string }>;
+};
+
+type GroveStudioCopyPack = Record<GroveStudioSlideRole, GroveStudioRoleCopy>;
+
+/**
+ * 루프557 — Cobalt Grid leftover heal gate.
+ * `.s-cover` + `.s-colophon` or `pixel-glitch` + `.pagenum`.
+ * Deny Sakura / Long Table / Biennale / Product Launch / Block Frame.
+ */
+export function cobaltGridLeftoverHealShouldRun(html: string): boolean {
+  const source = String(html ?? '');
+  if (!source.trim()) return false;
+  if (officialLookIsSakuraChroma(source)) return false;
+  if (officialLookIsLongTable(source)) return false;
+  if (officialLookIsProductLaunchHalo(source)) return false;
+  if (officialLookIsNeoBrutalBlockFrame(source)) return false;
+  if (officialLookIsBiennaleYellow(source)) return false;
+  if (/\bsunglow\b/i.test(source)) return false;
+  if (/\bs-catalogue\b/i.test(source)) return false;
+  const hasCoverColophon = /\bs-cover\b/i.test(source) && /\bs-colophon\b/i.test(source);
+  const hasGlitchPagenum = /\bpixel-glitch\b/i.test(source) && /\bpagenum\b/i.test(source);
+  return hasCoverColophon || hasGlitchPagenum || officialLookIsCobaltGrid(source);
+}
+
+/**
+ * 루프550 — look HTML → kit key. Raw Grid is first so its `s1`/`s8`
+ * chrome does not fall through to Creative / other numeric-sN kits.
+ * Other official looks keep using `resolveOfficialPosterKit`.
+ */
+export function resolveTemplateCloneKitKey(html: string): string | null {
+  const source = String(html ?? '');
+  if (!source.trim()) return null;
+  if (officialLookIsRawGridPitch(source)) return RAW_GRID_PITCH_KIT_KEY;
+  if (officialLookIsProductLaunchHalo(source)) return PRODUCT_LAUNCH_HALO_KIT_KEY;
+  if (officialLookIsNeoBrutalBlockFrame(source)) return BLOCK_FRAME_NEO_KIT_KEY;
+  if (officialLookIsBiennaleYellow(source)) return BIENNALE_YELLOW_KIT_KEY;
+  if (cobaltGridLeftoverHealShouldRun(source)) return COBALT_GRID_KIT_KEY;
+  if (officialLookIsGrove(source)) return GROVE_KIT_KEY;
+  if (officialLookIsStudio(source)) return STUDIO_KIT_KEY;
+  if (officialLookIsEightBitOrbit(source)) return EIGHTBIT_ORBIT_KIT_KEY;
+  if (officialLookIsCapsule(source)) return CAPSULE_KIT_KEY;
+  if (officialLookIsDaisyDays(source)) return DAISY_DAYS_KIT_KEY;
+  if (officialLookIsBroadside(source)) return BROADSIDE_KIT_KEY;
+  if (officialLookIsPlayful(source)) return PLAYFUL_KIT_KEY;
+  if (officialLookIsCoral(source)) return CORAL_KIT_KEY;
+  if (officialLookIsMat(source)) return MAT_KIT_KEY;
+  return null;
+}
+
 function formatEightBitCoverTitle(title: string): string {
   const parts = String(title ?? '').split(/\s+/).filter(Boolean);
   if (parts.length === 2) {
@@ -2326,10 +3692,14 @@ export function officialLookIsDaisyDays(html: string): boolean {
 }
 
 function officialLookIsBiennaleYellow(html: string): boolean {
-  const css = lookCssWithoutNeutralize(html);
-  if (/\.sunglow\b/i.test(css) && /\.s-cover\b/i.test(css)) return true;
+  const source = String(html ?? '');
+  if (!source.trim()) return false;
+  const css = lookCssWithoutNeutralize(source);
+  const hay = `${css}\n${source}`;
+  if (/\.sunglow\b/i.test(hay) && /\bs-cover\b/i.test(hay)) return true;
   // MiniMax / reduced look sheets keep the sun token before `.sunglow` lands.
-  return /--sun\s*:\s*#F1EE2E/i.test(css) && /--paper\s*:/i.test(css);
+  if (/--sun\s*:\s*#F1EE2E/i.test(hay) && /--paper\s*:/i.test(hay)) return true;
+  return /\bsunglow\b/i.test(source) && /\bs-cover\b/i.test(source);
 }
 
 /**
@@ -2454,7 +3824,8 @@ export function officialLookIsBoldPoster(html: string): boolean {
 /**
  * 루프389 — Rewrite raw URL / truncated-site crumbs in headings (and cover
  * leaf chrome) even when preview/salvage never received a full brief.
- * `www.teamver.com 사이` → `팀버` / `팀버 소개` without inventing kit shape.
+ * `www.example.com 사이` → Latin brand (`Example` / `Example 소개`) without inventing kit shape.
+ * Never phonetic-Hangulize the host (루프511/513 — brand spelling is host-derived Latin, not a per-product map).
  */
 export function rewriteRawUrlSiteCoverTitles(
   html: string,
@@ -2529,19 +3900,25 @@ function rewriteUrlTitlesInFragment(
  * 루프387 — Zhangzara Block Frame / neo-brutal look (or Motif deco sheet).
  * IB magazine chrome must not be stamped onto these kits.
  */
-function officialLookIsNeoBrutalBlockFrame(html: string): boolean {
+export function officialLookIsNeoBrutalBlockFrame(html: string): boolean {
   const source = String(html ?? '');
   // Capsule / Playful / Coral share slide-1/slide-10 hosts — their chrome wins there.
   if (officialLookIsCapsule(source)) return false;
   if (officialLookIsPlayful(source)) return false;
   if (officialLookIsCoral(source)) return false;
   const css = lookCssWithoutNeutralize(source);
-  if (css.trim()) {
-    if (/\.slide-1\s+\.hero-frame\b/i.test(css)) return true;
-    if (/--pink\s*:\s*#FE90E8/i.test(css) && /\.nb-heading-(?:xl|lg)\b/i.test(css)) {
-      return true;
-    }
-    if (/--pink\s*:\s*#FE90E8/i.test(css) && /\.feature-card\b/i.test(css)) return true;
+  const hay = `${css}\n${source}`;
+  if (/\.slide-1\s+\.hero-frame\b/i.test(hay)) return true;
+  if (/--pink\s*:\s*#FE90E8/i.test(hay) && /\.nb-heading-(?:xl|lg)\b/i.test(hay)) {
+    return true;
+  }
+  if (/--pink\s*:\s*#FE90E8/i.test(hay) && /\.feature-card\b/i.test(hay)) return true;
+  if (
+    /#FE90E8|--pink\s*:\s*#FE90E8/i.test(hay)
+    && /\bhero-frame\b|\.hero-frame\b/i.test(hay)
+    && /\b(?:timeline-step|intro-card|nb-heading-lg|nb-label)\b/i.test(hay)
+  ) {
+    return true;
   }
   const deco = [...source.matchAll(
     /<style\b[^>]*\bdata-od-official-motif-deco-css\b[^>]*>([\s\S]*?)<\/style>/gi,
@@ -2898,7 +4275,31 @@ function magazineLeftoverRibbonLabel(text: string): boolean {
 /**
  * Brief/title salvage for URL + "사이트 …" prompts. Completes truncated
  * Hangul (`사이` → `사이트`) and prefers a brand label over a raw host crumb.
+ *
+ * Brand labels are always Latin, derived from the host (루프513). Do not add
+ * per-product Hangul phonetic fallbacks — `teamver`→`팀버` was the anti-pattern.
  */
+export function latinBrandLabelFromHost(host: string): string {
+  const h = String(host ?? '').trim().toLowerCase();
+  if (!h) return '';
+  // Title-Case each hyphen segment. No per-product CamelCase / Hangul maps —
+  // unknown brands in production must follow the same rule.
+  return h
+    .split('-')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join('-');
+}
+
+function brandCoverTitleFromHost(host: string, source: string): string {
+  const brand = latinBrandLabelFromHost(host);
+  if (!brand) return '';
+  if (/서비스\s*소개|소개\s*슬라이드|product\s*intro|(?:^|[\s/])회사(?:\s|$)/i.test(source)) {
+    return /[가-힣]/.test(source) ? `${brand} 소개` : `${brand} Intro`;
+  }
+  return brand;
+}
+
 export function polishUrlSiteCoverTitle(title: string, brief?: string | null): string {
   let next = String(title ?? '').replace(/\s+/g, ' ').trim();
   const source = `${String(brief ?? '')}\n${next}`;
@@ -2917,27 +4318,15 @@ export function polishUrlSiteCoverTitle(title: string, brief?: string | null): s
     && /사이트/u.test(`${source}\n${next}`)
     && /^(?:https?:\/\/)?(?:www\.)?[a-z0-9.-]+\s*사이트/i.test(next)
   ) {
-    if (/^teamver$/i.test(host)) {
-      if (/서비스\s*소개|소개\s*슬라이드|product\s*intro/i.test(source)) {
-        return /[가-힣]/.test(source) ? '팀버 소개' : 'Teamver Intro';
-      }
-      return /[가-힣]/.test(source) ? '팀버' : 'Teamver';
-    }
-    return host.charAt(0).toUpperCase() + host.slice(1).toLowerCase();
+    return brandCoverTitleFromHost(host, source) || next;
   }
   // 루프403 — bare host crumb titles: `neuralstudio.kr 회사` → brand label.
   const hostCrumb = next.match(
     /^(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+)\.(?:com|co\.kr|kr|io|net|ai|app)(?:\s+회사|\s+소개)?$/i,
   );
   if (hostCrumb?.[1]) {
-    const brand = hostCrumb[1];
-    if (/^neuralstudio$/i.test(brand)) {
-      return /회사|소개/u.test(next) && /[가-힣]/.test(next)
-        ? 'NeuralStudio 소개'
-        : 'NeuralStudio';
-    }
-    const titled = brand.charAt(0).toUpperCase() + brand.slice(1).toLowerCase();
-    return /회사/u.test(next) ? `${titled} 소개` : titled;
+    const brand = latinBrandLabelFromHost(hostCrumb[1]);
+    return /회사|소개/u.test(next) ? `${brand} 소개` : brand;
   }
   return next;
 }
@@ -4002,14 +5391,19 @@ export function absorbOrphanFlexStepDescriptions(html: string): string {
     const nextKids: string[] = [];
     for (let k = 0; k < kids.length; k += 1) {
       const kid = kids[k]!.trim();
-      const kidOpen = /^<div\b[^>]*>/i.exec(kid)?.[0] ?? '';
+      const kidOpen = /^<(div|p)\b[^>]*>/i.exec(kid)?.[0] ?? '';
       const isFlexCard = /flex\s*:\s*1\b/i.test(kidOpen);
       if (!isFlexCard && nextKids.length > 0) {
         const prev = nextKids[nextKids.length - 1]!;
         const prevOpen = /^<div\b[^>]*>/i.exec(prev)?.[0] ?? '';
         if (/flex\s*:\s*1\b/i.test(prevOpen) && !/flex\s*:\s*1\b/i.test(kidOpen)) {
           const text = stripTagsToText(kid);
-          if (text.length >= 12 && !/flex\s*:\s*1\b/i.test(kid)) {
+          // 루프506 — also reparent bare `<p>` orphans after early card close.
+          if (
+            text.length >= 12
+            && !/flex\s*:\s*1\b/i.test(kid)
+            && !/^(?:다음\s*단계|next\s*steps?)\b/i.test(text)
+          ) {
             const prevClose = /<\/div\s*>$/i.exec(prev)?.[0] ?? '</div>';
             const prevInner = prev.slice(prevOpen.length, prev.length - prevClose.length);
             nextKids[nextKids.length - 1] = `${prevOpen}${prevInner}${kid}${prevClose}`;
@@ -4283,6 +5677,13 @@ export function dropEmptyDeckSlides(html: string): string {
     const span = spans[i]!;
     const body = out.slice(span.bodyStart, span.bodyEnd);
     if (!slideBodyLooksEmpty(body)) continue;
+    // 루프547 · pad marker gate — short-response auto-pad section은 synth
+    // 문장이 채워져 있어야 정상이지만, 특정 kit에서 fillSlideShell이 슬롯을
+    // 잃어 body가 빈 것처럼 판정되어도 drop되면 저장 후 client 가드가 다시
+    // slide-count 회귀를 발생시킨다. 명시적으로 pad marker가 있으면 유지.
+    if (new RegExp(`${TEAMVER_SHORT_RESPONSE_PAD_ATTR}\\s*=\\s*"${TEAMVER_SHORT_RESPONSE_PAD_VALUE}"`, 'i').test(span.attrs)) {
+      continue;
+    }
     // Never delete the sole remaining slide.
     const remaining = listHealSlideHostSpans(out);
     if (remaining.length <= 1) break;
@@ -4818,6 +6219,11 @@ const BROADSIDE_POSTER_LAYOUT_CSS = [
   '.slide--end .display{font-size:clamp(56px,min(8vw,14vh),140px);max-width:90%;line-height:0.95}',
 ].join('');
 
+/** 루프550 — Raw Grid pitch: keep cover/closing horizontal; no size rewrite. */
+const RAW_GRID_PITCH_POSTER_LAYOUT_CSS = [
+  '.s1 .t-display,.s1 .s1-headline,.s10 .t-title,.s10 .s10-r-top{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}',
+].join('');
+
 /** 루프492 — Long Table: no kit vertical writing; cover/featured/closing title bands stay horizontal. */
 const LONG_TABLE_POSTER_LAYOUT_CSS = [
   '.s-cover .title,.s-cover .left,.s-featured .ttl,.s-featured .left,.s-closing .h,.s-closing .footer-line{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}',
@@ -4894,7 +6300,8 @@ type OfficialPosterKit =
   | 'daisy'
   | 'eightbit'
   | 'blockframe'
-  | 'broadside';
+  | 'broadside'
+  | 'raw-grid-pitch';
 
 type OfficialPosterKitPlan = {
   kind: OfficialPosterKit;
@@ -4969,6 +6376,12 @@ const BROADSIDE_COVER_KIT_SLOT_RE =
 
 const BROADSIDE_CLOSING_KIT_SLOT_RE =
   /\b(?:broadside-top-chrome|broadside-num|corner-label|display|lead|data-od-official-motif-html)\b/i;
+
+const RAW_GRID_COVER_KIT_SLOT_RE =
+  /\b(?:s1-left|s1-right|s1-brand|s1-headline|s1-cta|s1-brand-text|t-display|slide-content|data-od-official-motif-html)\b/i;
+
+const RAW_GRID_CLOSING_KIT_SLOT_RE =
+  /\b(?:s10-right|s10-r-top|s10-r-bottom|s10-rb-block|t-title|t-body|slide-content|data-od-official-motif-html)\b/i;
 
 const LONG_TABLE_COVER_KIT_SLOT_RE =
   /\b(?:grid|ed-row|ed-badge|ed-label|title|actions|stats|bottom-block|tagline|big-edition|big-edition-lab|big-edition-meta|frame|ttl|lede|info-row|pill|nav-hint|pagenum|data-od-official-motif-html)\b/i;
@@ -5093,6 +6506,19 @@ function resolveOfficialPosterKit(html: string): OfficialPosterKitPlan | null {
       coverPrimarySlotRe: /\btitle\b/i,
       preserveVerticalSlotRe: null,
       layoutCss: CREATIVE_POSTER_LAYOUT_CSS,
+      layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
+    };
+  }
+  if (officialLookIsRawGridPitch(dest)) {
+    return {
+      kind: 'raw-grid-pitch',
+      coverHostRe: /\bs1\b/i,
+      closingHostRe: /\bs10\b/i,
+      coverSlotRe: RAW_GRID_COVER_KIT_SLOT_RE,
+      colophonSlotRe: RAW_GRID_CLOSING_KIT_SLOT_RE,
+      coverPrimarySlotRe: /\b(?:s1-headline|t-display)\b/i,
+      preserveVerticalSlotRe: null,
+      layoutCss: RAW_GRID_PITCH_POSTER_LAYOUT_CSS,
       layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
     };
   }
@@ -5549,6 +6975,11 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   // shapes from painting into the dark letterbox between slides.
   next = reparentEscapedDecoIntoSlideFlow(next);
   next = healOrphanRadialCircles(next);
+  next = healDaisyDaysLeftoverCatalogCopy(next, brief);
+  next = healPlayfulLeftoverCatalogCopy(next, brief);
+  next = healCoralLeftoverCatalogCopy(next, brief);
+  next = healMatLeftoverCatalogCopy(next, brief);
+  next = healBiennaleYellowLeftoverCatalogCopy(next, brief);
   next = dropEmptyDeckSlides(next);
   next = restyleForeignIbMagazineCover(next);
   next = scrubGenericTitlePills(next);
@@ -5559,20 +6990,45 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = healSakuraLeftoverCatalogCopy(next, brief);
   next = healLongTableLeftoverCatalogCopy(next, brief);
   next = healStudioLeftoverCatalogCopy(next, brief);
+  next = healBroadsideLeftoverCatalogCopy(next, brief);
+  next = healGroveLeftoverCatalogCopy(next, brief);
   next = healCreativeLeftoverCatalogCopy(next, brief);
+  next = healBlockFrameInventedHeroShells(next);
+  next = healBlockFrameLeftoverCatalogCopy(next, brief);
+  // 루프557 — Structural repairs for Block Frame slides that ship without
+  // a proper 2-col split or with a decorative fake chart-svg squeezing the
+  // real .data-column. See the two exported functions' docstrings.
+  next = wrapBlockFrameOrphanTwoColumnHeader(next);
+  next = stripBlockFrameNonMetricChartFrame(next);
+  // 루프540 — 8-Bit Orbit tier/timeline/stat leftover 카탈로그 카피
+  // (English $29/mo / Rookie / Studio Orbital 등)까지 청소.
+  next = healEightBitOrbitLeftoverCatalogCopy(next, brief);
+  next = healCapsuleLeftoverCatalogCopy(next, brief);
+  // 루프550 — Raw Grid pitch 킷의 하드코딩 재무 KPI(`$27.6M` / `$4.5M` /
+  // `$42M` / `$1B+` / `+47%`)를 wipe. 킷 지문(`s3-bar-fill` / `s7-donut-value`
+  // / `--pink:#f2d4cf`)이 있는 슬라이드에서만 발동. 다른 킷의 정상 % 표기
+  // (예: Grove `73%` real fill)를 건드리지 않도록 shell-scoped 로만 동작.
+  next = healRawGridLeftoverCatalogCopy(next, brief);
+  // 루프551 — Product Launch Halo v2 leftover (`Halo v2` / `halo.audio` /
+  // `$179` / Marques Lin / generic 핵심 포인트). Kit fingerprint 에서만
+  // 발동. Broadside / EightBit / Raw-Grid healer 순서는 그대로.
+  next = healProductLaunchLeftoverCatalogCopy(next, brief);
+  // 루프548 — Retro-Windows 로드맵 표의 Q1–Q4 2026 / $1.2M–$2.1M 만.
+  // 전역 regex 로 지우면 정상 분기 표기까지 날아가므로 킷 지문 + 데모 클러스터일 때만.
+  next = healRetroWindowsRoadmapDemo(next, brief);
+  // 루프545 — synth rotation salt (`(요약)`, `· 요약`, `— 요약` 등)가 이미
+  // 저장된 HTML에 남아 있으면 사용자에게 그대로 노출되므로 여기서 벗긴다.
+  // 라벨 8종만 매치해 사용자가 자유롭게 쓴 텍스트는 보존.
+  next = stripSynthRotationSaltLeaks(next);
   next = healCobaltOrphanDataStats(next);
-  // 루프510 — Capsule leaves English decorative demo copy inside .orbit-pill
-  // / .deco-pill / .f-pill / .c-pill / .diagram-node / .mini-pill even on
-  // Korean decks because the salvage pipeline only rewrites main content
-  // slots. Blank the demo labels; keep the pill shape.
+  // 루프557 — after orphan reparent so pixel-stack chart does not block
+  // `.col-a` + sibling `.stat` absorption.
+  next = healCobaltGridLeftoverCatalogCopy(next, brief);
+  // 0921-N03 — Capsule decorative/specialty English chrome can survive
+  // role-pack fill. Blank demo pills/slots, then refill semantic empties
+  // from outline. Must run after healCapsuleLeftoverCatalogCopy above.
   next = scrubCapsuleLeftoverDecorativeChrome(next, { deckLang: 'auto' });
-  // 루프511 — Capsule specialty slots (chart/timeline/quote/stats/diagram
-  // /header-pill/closing-pill) similarly leak English demo copy through
-  // salvage. Blank the known catalog phrases on Korean decks.
   next = scrubCapsuleLeftoverSpecialtySlotCopy(next, { deckLang: 'auto' });
-  // 루프512 — After scrubbing, refill Capsule specialty shells with synth
-  // Korean copy so sparse outlines do not ship half-empty chart/timeline/
-  // statement/closing slides.
   next = refillCapsuleEmptyStructuredSlots(next, { deckLang: 'auto' });
   next = enrichSparseCobaltCover(next, brief);
   next = restyleBiennaleSparseChapterBodies(next);
@@ -5585,6 +7041,9 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = injectBiennaleSparseFillCss(next);
   next = injectCobaltAbsoluteSlotCss(next);
   next = salvageOrphan2x2GridCards(next);
+  // 0921-N02 — kit healer 뒤에만 공통 leftover. catalog demo strip은
+  // IB/Hartfield chrome을 지우므로 여기서 호출하지 않는다.
+  next = healGenericTemplateCloneLeftover(next, brief);
   return next;
 }
 
@@ -6105,6 +7564,85 @@ const NON_SLOT_WRAPPER_TAGS =
   'div|span|p|header|footer|small|blockquote|figure|figcaption|aside|table|section|article|dl|dt|dd|ul|ol|pre|code';
 
 /**
+ * 루프558 — Kit-owned chrome / deco slot allowlist. These class names identify
+ * template-owned visual chrome (Block Frame hero/close/deco shells, Neo cards,
+ * corner brackets, chart axes, stat pills, official Motif deco layers).
+ *
+ * When a slide's model output is title-only, the placeholder branch previously
+ * ran `stripLeftoverTemplateDemoCopy` → `stripNonSlotWrappers`, which treated
+ * `<div class="nb-label hero-label">Presentation Template</div>` and
+ * `<div class="deco-yellow-bar">Get Started</div>` as "wrappers whose visible
+ * prose doesn't own a fill slot" and dropped them entirely — even though the
+ * kit's own `fillBlockFrameNeoSlots` refill pass (which runs AFTER strip) is
+ * specifically meant to swap chrome text into those slots. The refill then
+ * finds nothing to replace and the cover ships as label-less, subtitle-less,
+ * CTA-less blank frame with only the h1 remaining (user report 2026-09-17).
+ *
+ * Treat any wrapper whose `class=` contains one of these tokens as a kit slot
+ * that MUST survive `stripNonSlotWrappers`, regardless of visible prose.
+ */
+const KIT_OWNED_CHROME_SLOT_TOKENS: readonly string[] = [
+  'hero-frame',
+  'hero-label',
+  'hero-title',
+  'hero-subtitle',
+  'hero-tagline',
+  'hero-badge',
+  'hero-badges',
+  'hero-title-group',
+  'hero-meta',
+  'nb-label',
+  'nb-btn',
+  'nb-body',
+  'close-frame',
+  'close-title',
+  'close-subtitle',
+  'close-btn',
+  'corner-bracket',
+  'deco-pink-rect',
+  'deco-green-circle',
+  'deco-yellow-bar',
+  'deco-dots',
+  'deco-dots-bottom',
+  'deco-star',
+  'title-pill',
+  'main-title',
+  'stat-pill',
+  'stat-pills',
+  'pixel-hero-text',
+  'pixel-label',
+  'pixel-btn',
+  'pixel-particles',
+  'starfield',
+  'scanlines',
+  'grain',
+  'crt-glow',
+  'slide-content',
+  'chart-svg',
+  'chart-legend',
+  'card-deco',
+] as const;
+
+const KIT_OWNED_CHROME_SLOT_RE = new RegExp(
+  `\\bclass\\s*=\\s*["'][^"']*\\b(?:${KIT_OWNED_CHROME_SLOT_TOKENS.join('|')})\\b[^"']*["']`,
+  'i',
+);
+
+/**
+ * 루프558 — True when the wrapper's open tag carries a class token that is a
+ * template-kit chrome or deco slot. Those slots are the templates' own visual
+ * identity (Block Frame `hero-frame` + brackets + deco squares + yellow bar)
+ * and must survive `stripNonSlotWrappers` so `fillBlockFrameNeoSlots` /
+ * `fillEightBitOrbitKitSlide` / `restyleForeignIbMagazineCover` can refill
+ * them with topic-aware copy on a later pass.
+ */
+function wrapperIsKitOwnedChromeSlot(html: string): boolean {
+  const openMatch = /^<[^>]+>/.exec(String(html ?? ''));
+  if (!openMatch) return false;
+  return KIT_OWNED_CHROME_SLOT_RE.test(openMatch[0]);
+}
+
+/**
  * Drop block wrappers that do not own a fill slot. Slots and their
  * ancestors stay so `.slide-inner` / `.body` layout around a title
  * survives; sibling demo cards (`alts-grid`, unknown `.weird-grid`, …)
@@ -6121,7 +7659,13 @@ export function stripNonSlotWrappers(html: string): string {
       const rel = spanRelation(wrap, slot);
       return rel === 'same' || rel === 'ancestor' || rel === 'descendant';
     });
-    if (!keep && wrapperLooksLikeLeftoverContent(source.slice(wrap.start, wrap.end))) {
+    if (keep) continue;
+    const wrapHtml = source.slice(wrap.start, wrap.end);
+    // 루프558 — Kit-owned chrome / deco slots are refill targets, not
+    // wrapper leftovers. Preserve them so the kit-specific fill pass can
+    // rewrite them with topic-aware copy instead of losing them entirely.
+    if (wrapperIsKitOwnedChromeSlot(wrapHtml)) continue;
+    if (wrapperLooksLikeLeftoverContent(wrapHtml)) {
       drop.push(wrap);
     }
   }
@@ -6140,7 +7684,10 @@ export function stripNonSlotWrappers(html: string): string {
 
 const CAPSULE_CATALOG_DEMO_COPY_RE =
   /A Framework for Bold Ideas|Clarity of Purpose|The Journey Continues|Thank You for Your Attention|Questions and conversation welcome|Key Metrics at a Glance|Every Great Endeavor Begins with a Single Thought|Where Vision Meets Execution|System Architecture Overview|Visual Placeholder|This template exists to give shape[\s\S]{0,120}?matters most\.?/gi;
-const CAPSULE_CATALOG_DEMO_METRIC_RE = /\b340%|\b12\.4M\b|\b98\.2%|\b4\.9\b(?=\s*<)/g;
+const CAPSULE_OWNED_DEMO_COPY_RE =
+  /Structured Flexibility|Measured Impact|Presentation Template|Core Principles|The Foundation of Every Decision|Performance Indicators|Phased Implementation|We believe in the power of structured creativity[\s\S]{0,80}?imagination|A Philosophy of Action|Map the terrain before you traverse it|Sharpen the question to find the answer|Build with intent, iterate with care|Ship the work, then make it better|Growth is a process, not a destination|Input Layer|Processing Core|Decision Engine|Output Stream/gi;
+const CAPSULE_CATALOG_DEMO_METRIC_RE =
+  /\b340%|\b12\.4M\b|\b98\.2%|\b4\.9\b(?=\s*<)|\b82%|\b8\.2M\b|\b67%|\b4\.5M\b|\b45%|\b2\.1M\b|\b91%|\b7\.8M\b|\b74%|\b6\.3M\b/g;
 
 function stripCapsuleCatalogDemoCopy(html: string): string {
   return String(html ?? '')
@@ -6854,6 +8401,358 @@ function fillEmptyClassOnce(
   void fallbackTag; // reserved for future callers
 }
 
+function stripCapsuleOwnedDemoCopy(html: string): string {
+  return stripCapsuleCatalogDemoCopy(html).replace(CAPSULE_OWNED_DEMO_COPY_RE, '');
+}
+
+function capsuleSlideHasKitChrome(html: string): boolean {
+  if (/\b(?:title-pill|pillar-card|header-pill|deco-pills|floating-pills|statement-box|closing-content|orbit-pill|stat-pill|diagram-node)\b/i.test(html)) {
+    return true;
+  }
+  if (/\bstep-label\b/i.test(html) && /\bstep-desc\b/i.test(html) && /\bstep-node\b/i.test(html)) {
+    return true;
+  }
+  if (/\bchart-row\b/i.test(html) && /\bchart-bar-fill\b/i.test(html)) return true;
+  if (/\btext-side\b/i.test(html) && /\bvisual-side\b/i.test(html)) return true;
+  if (/\bleft-content\b/i.test(html) && /\borbit-center\b/i.test(html)) return true;
+  return false;
+}
+
+function capsuleSlideNeedsHeal(body: string, heading: string): boolean {
+  if (looksLikeLeftoverTemplateDemoDeck(body)) return true;
+  if (CAPSULE_CATALOG_DEMO_COPY_RE.test(body) || CAPSULE_CATALOG_DEMO_METRIC_RE.test(body)) {
+    CAPSULE_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+    CAPSULE_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+    return true;
+  }
+  CAPSULE_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+  CAPSULE_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+  if (looksLikeServiceIntroLeftoverTitle(heading) || looksLikeBlockedOverviewOrTrioTitle(heading)) {
+    return true;
+  }
+  const visible = visibleDeckCopy(body);
+  if (SERVICE_INTRO_LEFTOVER_BODY_RE.test(visible)) return true;
+  if (/(?<![가-힣])개요(?![가-힣])|핵심\s*포인트|파일럿/.test(visible)) return true;
+  return false;
+}
+
+function replaceCapsuleLeafCopy(
+  full: string,
+  open: string,
+  inner: string,
+  close: string,
+  next: string,
+): string {
+  const plain = visibleDeckCopy(inner);
+  if (eightBitCapsuleCopyIsKeepable(plain)) return full;
+  if (!next) return full;
+  return `${open}${escapeHtml(next)}${close}`;
+}
+
+export function fillCapsuleKitSlide(
+  body: string,
+  attrs: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    kicker: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  const src = String(body ?? '');
+  if (!capsuleSlideHasKitChrome(src)) return src;
+  const topic = resolveLockedTopicNoun(input.title, input.lead, input.bodyText, input.kicker);
+  const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
+  const pack = capsuleSlideCopyPack(brand);
+  const role = capsulePackForBody(src, attrs, pack);
+  const heading = rewriteLeftoverKitSlideTitle(input.title, role.heading);
+  const lead = looksLikeEightBitCapsuleLeftoverCopy(input.lead)
+    ? role.lead
+    : (eightBitCapsuleCopyIsKeepable(input.lead) ? input.lead : (input.lead || role.lead));
+  const bodyText = looksLikeEightBitCapsuleLeftoverCopy(input.bodyText)
+    ? role.lead
+    : (eightBitCapsuleCopyIsKeepable(input.bodyText) ? input.bodyText : (input.bodyText || role.lead));
+  const leftoverInput = looksLikeEightBitCapsuleLeftoverCopy(input.title)
+    || looksLikeEightBitCapsuleLeftoverCopy(input.kicker || '')
+    || looksLikeEightBitCapsuleLeftoverCopy(input.lead)
+    || looksLikeEightBitCapsuleLeftoverCopy(input.bodyText);
+  const seeded = {
+    ...input,
+    title: heading,
+    lead,
+    bodyText,
+    fillLines: leftoverInput && role.items.length > 0 ? role.items : input.fillLines,
+  };
+  const lines = biennaleFillLines(seeded, 6);
+  let next = src;
+
+  if (/\btitle-pill\b/i.test(next)) {
+    const pill = visibleDeckCopy(
+      /<(?:div|span)\b[^>]*\btitle-pill\b[^>]*>([\s\S]*?)<\/(?:div|span)>/i.exec(next)?.[1] ?? '',
+    );
+    if (!pill || /Presentation Template/i.test(pill) || looksLikeServiceIntroLeftoverTitle(pill)) {
+      next = replaceFirstExactClassText(next, 'title-pill', heading);
+    }
+  }
+  if (/\bsubtitle\b/i.test(next)) {
+    const sub = visibleDeckCopy(
+      /<(?:span|div|p)\b[^>]*\bsubtitle\b[^>]*>([\s\S]*?)<\/(?:span|div|p)>/i.exec(next)?.[1] ?? '',
+    );
+    if (!sub || /A Framework for Bold Ideas/i.test(sub) || !eightBitCapsuleCopyIsKeepable(sub)) {
+      next = replaceFirstExactClassText(next, 'subtitle', lead);
+    }
+  }
+
+  if (/\bslide-1\b/i.test(attrs) && /\bmain-title\b/i.test(next)) {
+    const pillLabel = input.kicker && input.kicker.trim() !== heading
+      ? input.kicker.trim()
+      : 'OVERVIEW';
+    next = replaceFirstExactClassText(next, 'title-pill', pillLabel);
+    const subtitle = lead && lead !== heading ? lead : bodyText;
+    next = next.replace(
+      /(<h1\b[^>]*\bmain-title\b[^>]*>)[\s\S]*?(<\/h1>)/i,
+      (_match, open: string, close: string) =>
+        `${open}${escapeHtml(heading)}<span class="subtitle">${escapeHtml(subtitle)}</span>${close}`,
+    );
+  }
+
+  const visibleHeading = visibleDeckCopy(
+    next.match(/<h2\b[^>]*>([\s\S]*?)<\/h2>/i)?.[1] ?? '',
+  );
+  if (
+    visibleHeading
+    && (
+      looksLikeServiceIntroLeftoverTitle(visibleHeading)
+      || looksLikeBlockedOverviewOrTrioTitle(visibleHeading)
+      || CAPSULE_CATALOG_DEMO_COPY_RE.test(visibleHeading)
+      || SERVICE_INTRO_LEFTOVER_BODY_RE.test(visibleHeading)
+      || /파일럿/.test(visibleHeading)
+    )
+  ) {
+    CAPSULE_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+    next = next.replace(
+      /(<h2\b[^>]*>)([\s\S]*?)(<\/h2>)/i,
+      (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(heading)}${close}`,
+    );
+  }
+
+  if (/\bpillar-card\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'pillar-card', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = block.replace(
+        /(<h3\b[^>]*>)([\s\S]*?)(<\/h3>)/i,
+        (full, open: string, inner: string, close: string) => (
+          replaceCapsuleLeafCopy(full, open, inner, close, resolved.title)
+        ),
+      );
+      filled = filled.replace(
+        /(<p\b[^>]*>)([\s\S]*?)(<\/p>)/i,
+        (full, open: string, inner: string, close: string) => (
+          replaceCapsuleLeafCopy(full, open, inner, close, resolved.body || resolved.title)
+        ),
+      );
+      return filled;
+    });
+  }
+
+  if (/\bchart-row\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'chart-row', lines, (block, line, index) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = block.replace(
+        /(<(?:div|span)\b[^>]*\bchart-label\b[^>]*>)([\s\S]*?)(<\/(?:div|span)>)/i,
+        (full, open: string, inner: string, close: string) => (
+          replaceCapsuleLeafCopy(full, open, inner, close, resolved.title || resolved.body)
+        ),
+      );
+      const ordinal = String(index + 1).padStart(2, '0');
+      filled = filled.replace(
+        /(<(?:div|span)\b[^>]*\bchart-bar-fill\b[^>]*>)([\s\S]*?)(<\/(?:div|span)>)/i,
+        (full, open: string, inner: string, close: string) => {
+          const plain = visibleDeckCopy(inner);
+          if (!plain || CAPSULE_CATALOG_DEMO_METRIC_RE.test(plain)) {
+            CAPSULE_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+            return `${open}${close}`;
+          }
+          return full;
+        },
+      );
+      filled = filled.replace(
+        /(<(?:div|span)\b[^>]*\bchart-value\b[^>]*>)([\s\S]*?)(<\/(?:div|span)>)/i,
+        (full, open: string, inner: string, close: string) => {
+          const plain = visibleDeckCopy(inner);
+          if (!plain || CAPSULE_CATALOG_DEMO_METRIC_RE.test(plain) || titleLooksLikeMetric(plain)) {
+            CAPSULE_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+            if (titleLooksLikeMetric(resolved.title) || titleLooksLikeMetric(resolved.body)) {
+              return `${open}${escapeHtml(resolved.title || resolved.body)}${close}`;
+            }
+            return `${open}${escapeHtml(ordinal)}${close}`;
+          }
+          return full;
+        },
+      );
+      return filled;
+    });
+  }
+
+  if (/\bstatement-box\b/i.test(next) || /<blockquote\b/i.test(next)) {
+    next = next.replace(
+      /(<blockquote\b[^>]*>)([\s\S]*?)(<\/blockquote>)/i,
+      (full, open: string, inner: string, close: string) => (
+        replaceCapsuleLeafCopy(full, open, inner, close, lead)
+      ),
+    );
+    next = next.replace(
+      /(<(?:div|span)\b[^>]*\battribution\b[^>]*>)([\s\S]*?)(<\/(?:div|span)>)/i,
+      (_m, open: string, _inner: string, close: string) => `${open}${close}`,
+    );
+  }
+
+  if (/\btimeline-step\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'timeline-step', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = block.replace(
+        /(<(?:div|span)\b[^>]*\bstep-label\b[^>]*>)([\s\S]*?)(<\/(?:div|span)>)/i,
+        (full, open: string, inner: string, close: string) => (
+          replaceCapsuleLeafCopy(full, open, inner, close, resolved.title)
+        ),
+      );
+      filled = filled.replace(
+        /(<(?:div|span)\b[^>]*\bstep-desc\b[^>]*>)([\s\S]*?)(<\/(?:div|span)>)/i,
+        (full, open: string, inner: string, close: string) => (
+          replaceCapsuleLeafCopy(full, open, inner, close, resolved.body || resolved.title)
+        ),
+      );
+      return filled;
+    });
+  }
+
+  if (/\bstat-pill\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'stat-pill', lines, (block, line, index) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      const ordinal = String(index + 1).padStart(2, '0');
+      let filled = block.replace(
+        /(<(?:div|span)\b[^>]*\bstat-number\b[^>]*>)([\s\S]*?)(<\/(?:div|span)>)/i,
+        (full, open: string, inner: string, close: string) => {
+          const plain = visibleDeckCopy(inner);
+          if (titleLooksLikeMetric(resolved.title) || titleLooksLikeMetric(resolved.body)) {
+            return `${open}${escapeHtml(resolved.title || resolved.body)}${close}`;
+          }
+          if (!plain || CAPSULE_CATALOG_DEMO_METRIC_RE.test(plain) || titleLooksLikeMetric(plain)) {
+            CAPSULE_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+            return `${open}${escapeHtml(ordinal)}${close}`;
+          }
+          return full;
+        },
+      );
+      filled = filled.replace(
+        /(<(?:div|span)\b[^>]*\bstat-label\b[^>]*>)([\s\S]*?)(<\/(?:div|span)>)/i,
+        (full, open: string, inner: string, close: string) => (
+          replaceCapsuleLeafCopy(full, open, inner, close, resolved.title || resolved.body)
+        ),
+      );
+      return filled;
+    });
+  }
+
+  if (/\bdiagram-node\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'diagram-node', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      const plain = visibleDeckCopy(block);
+      if (eightBitCapsuleCopyIsKeepable(plain)) return block;
+      return block.replace(
+        /(>)([^<]*)(<\/)/,
+        (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(resolved.title)}${close}`,
+      );
+    });
+  }
+
+  if (/\btext-side\b/i.test(next)) {
+    next = next.replace(
+      /(<p\b[^>]*>)([\s\S]*?)(<\/p>)/gi,
+      (full, open: string, inner: string, close: string) => (
+        replaceCapsuleLeafCopy(full, open, inner, close, lead)
+      ),
+    );
+  }
+
+  if (/\bclosing-pill\b/i.test(next)) {
+    next = replaceFirstExactClassText(next, 'closing-pill', heading);
+  }
+  if (/\bclosing-sub\b/i.test(next)) {
+    const sub = visibleDeckCopy(
+      /<(?:div|p|span)\b[^>]*\bclosing-sub\b[^>]*>([\s\S]*?)<\/(?:div|p|span)>/i.exec(next)?.[1] ?? '',
+    );
+    if (!sub || !eightBitCapsuleCopyIsKeepable(sub) || SERVICE_INTRO_LEFTOVER_BODY_RE.test(sub)) {
+      next = replaceFirstExactClassText(next, 'closing-sub', lead);
+    }
+  }
+
+  return wipeEightBitCapsuleLeftoverPhrases(stripCapsuleOwnedDemoCopy(next));
+}
+
+export function healCapsuleLeftoverCatalogCopy(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim()) return dest;
+  if (!officialLookIsCapsule(dest)) return dest;
+  const briefText = String(brief ?? '');
+  const destHasHangul = /[가-힣]/.test(visibleDeckCopy(dest));
+  const briefHasHangul = /[가-힣]/.test(briefText);
+  if (!destHasHangul && !briefHasHangul && !briefText.trim()) return dest;
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) {
+    return stripCapsuleCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(dest));
+  }
+  const harvested = [...dest.matchAll(/<(?:h[1-3]|div)\b[^>]*>([\s\S]*?)<\/(?:h[1-3]|div)>/gi)]
+    .map((match) => visibleDeckCopy(match[1] ?? ''))
+    .filter((text) => text.length >= 2 && text.length <= 40 && !CAPSULE_CATALOG_DEMO_COPY_RE.test(text));
+  CAPSULE_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+  const outline = resolveTemplateCloneSlidesForDeterministicFill({
+    userInstruction: briefText || harvested.join('\n') || '',
+    deckTitle: harvested[0] ?? null,
+    slideCount: spans.length,
+  });
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    if (!capsuleSlideHasKitChrome(body)) continue;
+    const heading = visibleDeckCopy(
+      body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
+    );
+    if (!capsuleSlideNeedsHeal(body, heading)) continue;
+    const slide = outline[i] ?? outline[Math.min(i, outline.length - 1)];
+    const topic = resolveLockedTopicNoun(briefText, harvested[0], slide?.title);
+    const pack = capsuleSlideCopyPack(topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver');
+    const role = capsulePackForBody(body, span.attrs, pack);
+    const title = rewriteLeftoverKitSlideTitle(
+      slide?.title || harvested[i] || harvested[0] || '',
+      role.heading,
+    );
+    const nextBody = fillCapsuleKitSlide(body, span.attrs, {
+      title,
+      lead: looksLikeEightBitCapsuleLeftoverCopy(slide?.lead ?? '')
+        ? role.lead
+        : (slide?.lead || role.lead),
+      bodyText: slide?.body && !looksLikeEightBitCapsuleLeftoverCopy(slide.body)
+        ? slide.body
+        : role.lead,
+      kicker: slide?.kicker ?? '',
+      fillLines: role.items.length > 0 ? role.items : templateCloneSlideFillLines(slide ?? { title }),
+    });
+    if (nextBody === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
+  }
+  return wipeEightBitCapsuleLeftoverPhrases(
+    stripCapsuleOwnedDemoCopy(stripLeftoverCatalogDemoPhrases(out)),
+  );
+}
+
+}
+
 /** 루프434 / 루프461 — Block-frame / Neo catalog marketing leftovers on Hangul LOOK seeds. */
 const BLOCK_FRAME_NEO_DEMO_COPY_RE =
   /Neobrutalist Presentation Template|Presentation Template|Quarterly Growth Metrics|What We\s*<br\s*\/?>\s*Deliver|What We Deliver|Modular Layouts|Responsive Ready|Data Friendly|Strategy First|Design System|Launch Ready|Core Features|Performance Data|Every project follows a rigorous process[\s\S]{0,160}?fully functional\.|Image Placeholder|Visual System|Get Started|View Process|By The Numbers|The Team|Methodology|Roadmap|Revenue Growth|Active Users|Retention Rate|12\+\s*Years|500\+\s*Projects|J\.\s*Doe|A\.\s*Smith|Creative Lead|Tech Director|Oversees visual direction[\s\S]{0,120}?narrative\.?|Translates s into scalable technical architectures and workflows\.?/gi;
@@ -6884,13 +8783,73 @@ function stripBlueProfessionalCatalogDemoCopy(html: string): string {
 }
 
 const LEFTOVER_CATALOG_PHRASE_RE =
-/Hartfield(?:\s*&(?:amp;)?\s*Co\.?)?|NorthPeak Industries|WACC\s*\(\s*base\s*\)|Revenue CAGR|Filebase|Northwind Studios|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Maya Chen|pnpm vitest auth|MMXXVI|Team Structure(?:\s*(?:&|&amp;)?\s*(?:Resource Allocation|Leadership))?|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|Composed in kami|52\.5200°\s*N|\[?\[Author Name\]\]?|\[Year\]|this is the broadside style|Aurora Institute|Aurora Programme|Aurora Charter|Public Form|Public attendance|Open programme|Field Notes|Quiet Editions|Open Conversations|The Long Yellow|Pavilion of Quiet Form|Reading Garden|A field study of light,\s*matter and atmosphere|Six months of exhibitions[\s\S]{0,160}?palette of yellow\.?|A room is a slow argument with the sun[\s\S]{0,160}?answers\.?|Curator-at-large[\s\S]{0,120}?January 2026|Visitors\s*·\s*Year four|Returning audience|Three quarters of last year[\s\S]{0,120}?twice\.?|A 2\.4× rise[\s\S]{0,120}?audience\.?|Strands\s*·\s*2026|Slow Atmospheres|Selected dates|Sector context(?:\s*&(?:amp;)?\s*market dynamics)?|Trading comparables analysis|Precedent transactions|Industrial automation cycle, capital flows, trading multiples|12 selected listed peers, EV\/EBITDA(?:\s*&(?:amp;)?\s*EV\/Revenue 2026E)?|M&amp;A transactions \$0\.5–5\.0B, 2022–2025|Selection criteria|Fictional illustrative sample|38\s*[×x]|Apache-2\.0|\bBYOK\b|Your agent reads a folder of\s*<code>SKILL\.md<\/code> files\.?|Open Design is the\s*(?:<strong>)?\s*(?:<\/strong>)?\s*\.?|Neobrutalist Presentation Template|Quarterly Growth Metrics|Field Office Quarterly|Field Office Editorial|field-office\.co|Lin Ito(?:\s*&(?:amp;)?\s*Anya Mehrotra)?|Anya Mehrotra|the field-office collective|In Newsreader, Hanken Grotesk\s*(?:&(?:amp;)?)?\s*DM Mono|quiet, paid, and read slowly|The next issue ships October 20\d{2}[\s\S]{0,120}?Monday morning\.?|A trend is a quiet question that several rooms started asking(?:\s+(?:<[^>]+>)?[^<]{0,80}?(?:<\/[^>]+>)?)?|at roughly the same time\.?|From the editor's note|Index 20\d{2}\s*·\s*opening pages|Colophon\s*·\s*Index 20\d{2}|The index, in six entries\.?|Trend ledger, in long\.?|Spring 20\d{2}(?:\s*·\s*selected trends)?|Newsletter opens\s*·\s*20\d{2}\s*Q\d\s*—\s*20\d{2}\s*Q\d|Chapter one\s*—\s*the case for slow software|Software is a room, and rooms are designed to be lived in slowly\.?|In its first chapter the Index[\s\S]{0,240}?read first\.?|Slow software|Domestic interfaces|Hand-set print(?:\s+again)?|Quietly weird type|Receipts (?:and|&(?:amp;)?)\s*ledgers|Public weather|Long-form receipts|Pre-loved objects|Tools that opt out of[\s\S]{0,160}?on by default\.?|Screens designed to live in living rooms[\s\S]{0,200}?willingness to be ignored\.?|A return to letterpress[\s\S]{0,160}?digital-feeling clients\.?|Display type with one slightly off detail[\s\S]{0,160}?looking twice\.?|Information designed to be filed, not consumed\.[\s\S]{0,160}?the favour\.?|Brand and product writing that includes[\s\S]{0,200}?unfinished thought\.?|Tools that opt out of urgency by default\.?|Screens designed to live in living rooms\.?|Letterpress and risograph paired with digital briefs\.?|Display faces with one slightly off detail\.?|Brand voice that admits the day's actual mood\.?|Newsletters that read like printed pamphlets\.?|Resale and repair as the front of the brand\.?|Information designed to be filed, not consumed\.?|A field report on the state of things\.?|Look for the cobalt envelope on a Monday morning\.?|issue\.0\d|spring\s+20\d{2}|autumn\s+20\d{2}|All ten\s*·\s*with our reading on each|A 2\.1× lift on the inaugural issue[\s\S]{0,160}?Sunday mornings\.?|Quiet, mostly-not-on-social[\s\S]{0,140}?referral programme\.?|We started the bulletin[\s\S]{0,220}?rereading\.?"?|To subscribers[\s\S]{0,80}?twice a year|Reader response, by quarter\.?|A note from the studio|Open rate\s*·\s*Q1 20\d{2}|Active subscribers|Tape Garden|tape garden|SUPERCATALOG|CATALOGUE NO\.\s*[78]|Catalogue No\.\s*[78]|We make small\s+(?:<em>)?analog(?:<\/em>)?\s+things[\s\S]{0,160}?desks\.?|SUPER(?:\s|&nbsp;)+TAPE|MIX(?:\s|&nbsp;)+CHAIR|Bloom Pedal|BLOOM(?:\s|&nbsp;)+PEDAL|CHROMA(?:\s|&nbsp;)+DECK|Chroma Deck|Ren Kobayashi|Mei Tanaka|See you in\s+(?:<em>)?volume eight|made in matsumoto|Matsumoto workshop|A short letter from the studio|A note pinned above the workbench|A reader writes|The 2026\s+(?:<em>)?Catalogue|Four products\s*·\s*spring|Output, by year|Units shipped|Repeat customers|Release schedule|Colophon\s*·\s*Catalogue|It feels less like a\s+(?:<em>)?gadget|Build the\s+(?:<em>)?thing[\s\S]{0,80}?spec sheet\.?|A tape-saturation pedal|A studio cassette deck|A box of seven C-60|A listening chair|\bT-26\b|\bSC-0[1-4]b?\b|Key Metrics|Visuals first|We started Long Table|long-table\.co|Iris\s*(?:&|&amp;)\s*Theo|Hana Brennan|A Plate(?:<br\s*\/?>|\s)+of Quiet|A Soup(?:<br\s*\/?>|\s)+of Letters|Roasted chestnut soup|Not a meal, an evening|22 seats only|Bairro Alto|See you(?:<br\s*\/?>|\s)+at the table|An evening I keep|December edition|a letter from the table|come and sit with us|More than dinner|Twice a month, by application|Placeholder lede|The Editorial Desk|Studio\s*(?:&|&amp;)\s*Salon|Editorial Brief|Eight principles|Twelve weeks of after-hours behavior\.?|Three rules we'?re keeping\.?|User Research Synthesis(?:\s*\/\s*\[[^\]]+\])?|WHO WE ARE|GREAT WORK DOESN'T HAPPEN BY ACCIDENT|WE BUILD WHAT OTHERS PLAN|Our studio pairs strategic thinking|Years of practice|Projects delivered|Continents active|GENERIC IDENTITY|A DISTINCTIVE VOICE PEOPLE RECOGNIZE|BOLD IDEAS DESERVE BOLD EXECUTION|\[Studio Name\]|\[Client Name\]|\[Presentation Title\]|WHAT WE OFFER|Ownable visual and verbal territory|Campaigns that created lasting recall|Lift In Engagement|Throughput Multiplier|Active Placeholders|Total Sample Value|Placeholder caption describing the metric|Layer alpha|Layer beta|VALUES ARE PLACEHOLDER|PLACEHOLDER METRIC|eight pages, eight layouts|Replace freely|Generic placeholder|Filler text|Filler descriptor|FY PLACEHOLDER|CHAPTER OPENER|A PRESENTATION TEMPLATE|A FOUR-STEP PROCESS|PRESS\s*(?:&nbsp;)?\s*PLAY/gi;
+/The landscape has shifted|The brands that will lead the next decade|Strategy\s*[·•]\s*Presentation|Three numbers that define the|Of consumers distrust brand-created content|The most radical thing a brand can do|\[Prepared by\]|\[Confidential\]|\[IMAGE PLACEHOLDER\]|Grove Presentation|\[Studio\s*X\]\s*Guidelines|TOTAL\s+MARKET\s*:\s*\$?\[X\]B|Hartfield(?:\s*&(?:amp;)?\s*Co\.?)?|NorthPeak Industries|WACC\s*\(\s*base\s*\)|Revenue CAGR|Filebase|Northwind Studios|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Maya Chen|pnpm vitest auth|MMXXVI|Team Structure(?:\s*(?:&|&amp;)?\s*(?:Resource Allocation|Leadership))?|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|Composed in kami|52\.5200°\s*N|\[?\[Author Name\]\]?|\[Year\]|this is the broadside style|Aurora Institute|Aurora Programme|Aurora Charter|Public Form|Public attendance|Open programme|Field Notes|Quiet Editions|Open Conversations|The Long Yellow|Pavilion of Quiet Form|Reading Garden|A field study of light,\s*matter and atmosphere|Six months of exhibitions[\s\S]{0,160}?palette of yellow\.?|A room is a slow argument with the sun[\s\S]{0,160}?answers\.?|Curator-at-large[\s\S]{0,120}?January 2026|Visitors\s*·\s*Year four|Returning audience|Three quarters of last year[\s\S]{0,120}?twice\.?|A 2\.4× rise[\s\S]{0,120}?audience\.?|Strands\s*·\s*2026|Slow Atmospheres|Selected dates|Sector context(?:\s*&(?:amp;)?\s*market dynamics)?|Trading comparables analysis|Precedent transactions|Industrial automation cycle, capital flows, trading multiples|12 selected listed peers, EV\/EBITDA(?:\s*&(?:amp;)?\s*EV\/Revenue 2026E)?|M&amp;A transactions \$0\.5–5\.0B, 2022–2025|Selection criteria|Fictional illustrative sample|38\s*[×x]|Apache-2\.0|\bBYOK\b|Your agent reads a folder of\s*<code>SKILL\.md<\/code> files\.?|Open Design is the\s*(?:<strong>)?\s*(?:<\/strong>)?\s*\.?|Neobrutalist Presentation Template|(?:Analog|Editorial|Modern|Retro|Studio|Design|Brand|Business|Pixel|Product)\s+Presentation Template|(?<![가-힣A-Za-z])Presentation\s+Template(?![가-힣A-Za-z])|Pixel Perfect Presentation System|THANK YOU FOR WATCHING|NEXUS(?:\s*(?:<br\s*\/?>)?\s*)VENTURES|8-?BIT(?:\s*(?:<br\s*\/?>)?\s*)ORBIT|Q3\s+Strategic\s+Overview|\+1\s*\(?555\)?[-\s]?\d{3}[-\s]?\d{4}|hello@(?:example|venture|hello|studio)\.(?:studio|com|io)|HELLO@[A-Z][A-Z0-9]+\.(?:IO|COM|STUDIO)|www\.example\.(?:studio|com|io)|SEATTLE,\s*WA|AGENDA\.TXT|All systems operational|API Calls\s*\/\s*Day|Avg\.?\s*Response Time|Concept development and prototype validation|Full implementation and iterative refinement|Expansion and long-term optimization|Complex problems deserve simple explanations\.?|Every partnership is built on radical transparency\.?|Connecting Founders With Opportunity|Advanced Analytics Suite|API marketplace|Quarterly Growth Metrics|Field Office Quarterly|Field Office Editorial|field-office\.co|Lin Ito(?:\s*&(?:amp;)?\s*Anya Mehrotra)?|Anya Mehrotra|the field-office collective|In Newsreader, Hanken Grotesk\s*(?:&(?:amp;)?)?\s*DM Mono|quiet, paid, and read slowly|The next issue ships October 20\d{2}[\s\S]{0,120}?Monday morning\.?|A trend is a quiet question that several rooms started asking(?:\s+(?:<[^>]+>)?[^<]{0,80}?(?:<\/[^>]+>)?)?|at roughly the same time\.?|From the editor's note|Index 20\d{2}\s*·\s*opening pages|Colophon\s*·\s*Index 20\d{2}|The index, in six entries\.?|Trend ledger, in long\.?|Spring 20\d{2}(?:\s*·\s*selected trends)?|Newsletter opens\s*·\s*20\d{2}\s*Q\d\s*—\s*20\d{2}\s*Q\d|Chapter one\s*—\s*the case for slow software|Software is a room, and rooms are designed to be lived in slowly\.?|In its first chapter the Index[\s\S]{0,240}?read first\.?|Slow software|Domestic interfaces|Hand-set print(?:\s+again)?|Quietly weird type|Receipts (?:and|&(?:amp;)?)\s*ledgers|Public weather|Long-form receipts|Pre-loved objects|Tools that opt out of[\s\S]{0,160}?on by default\.?|Screens designed to live in living rooms[\s\S]{0,200}?willingness to be ignored\.?|A return to letterpress[\s\S]{0,160}?digital-feeling clients\.?|Display type with one slightly off detail[\s\S]{0,160}?looking twice\.?|Information designed to be filed, not consumed\.[\s\S]{0,160}?the favour\.?|Brand and product writing that includes[\s\S]{0,200}?unfinished thought\.?|Tools that opt out of urgency by default\.?|Screens designed to live in living rooms\.?|Letterpress and risograph paired with digital briefs\.?|Display faces with one slightly off detail\.?|Brand voice that admits the day's actual mood\.?|Newsletters that read like printed pamphlets\.?|Resale and repair as the front of the brand\.?|Information designed to be filed, not consumed\.?|A field report on the state of things\.?|Look for the cobalt envelope on a Monday morning\.?|issue\.0\d|spring\s+20\d{2}|autumn\s+20\d{2}|All ten\s*·\s*with our reading on each|A 2\.1× lift on the inaugural issue[\s\S]{0,160}?Sunday mornings\.?|Quiet, mostly-not-on-social[\s\S]{0,140}?referral programme\.?|We started the bulletin[\s\S]{0,220}?rereading\.?"?|To subscribers[\s\S]{0,80}?twice a year|Reader response, by quarter\.?|A note from the studio|Open rate\s*·\s*Q1 20\d{2}|Active subscribers|Tape Garden|tape garden|SUPERCATALOG|CATALOGUE NO\.\s*[78]|Catalogue No\.\s*[78]|We make small\s+(?:<em>)?analog(?:<\/em>)?\s+things[\s\S]{0,160}?desks\.?|SUPER(?:\s|&nbsp;)+TAPE|MIX(?:\s|&nbsp;)+CHAIR|Bloom Pedal|BLOOM(?:\s|&nbsp;)+PEDAL|CHROMA(?:\s|&nbsp;)+DECK|Chroma Deck|Ren Kobayashi|Mei Tanaka|See you in\s+(?:<em>)?volume eight|made in matsumoto|Matsumoto workshop|A short letter from the studio|A note pinned above the workbench|A reader writes|The 2026\s+(?:<em>)?Catalogue|Four products\s*·\s*spring|Output, by year|Units shipped|Repeat customers|Release schedule|Colophon\s*·\s*Catalogue|It feels less like a\s+(?:<em>)?gadget|Build the\s+(?:<em>)?thing[\s\S]{0,80}?spec sheet\.?|A tape-saturation pedal|A studio cassette deck|A box of seven C-60|A listening chair|\bT-26\b|\bSC-0[1-4]b?\b|Key Metrics|Visuals first|We started Long Table|long-table\.co|Iris\s*(?:&|&amp;)\s*Theo|Hana Brennan|A Plate(?:<br\s*\/?>|\s)+of Quiet|A Soup(?:<br\s*\/?>|\s)+of Letters|Roasted chestnut soup|Not a meal, an evening|22 seats only|Bairro Alto|See you(?:<br\s*\/?>|\s)+at the table|An evening I keep|December edition|a letter from the table|come and sit with us|More than dinner|Twice a month, by application|Placeholder lede|The Editorial Desk|Studio\s*(?:&|&amp;)\s*Salon|Editorial Brief|Eight principles|Twelve weeks of after-hours behavior\.?|Three rules we'?re keeping\.?|User Research Synthesis(?:\s*\/\s*\[[^\]]+\])?|WHO WE ARE|GREAT WORK DOESN'T HAPPEN BY ACCIDENT|WE BUILD WHAT OTHERS PLAN|Our studio pairs strategic thinking|Years of practice|Projects delivered|Continents active|GENERIC IDENTITY|A DISTINCTIVE VOICE PEOPLE RECOGNIZE|BOLD IDEAS DESERVE BOLD EXECUTION|\[Studio Name\]|\[Client Name\]|\[Presentation Title\]|WHAT WE OFFER|Ownable visual and verbal territory|Campaigns that created lasting recall|Lift In Engagement|Throughput Multiplier|Active Placeholders|Total Sample Value|Placeholder caption describing the metric|Layer alpha|Layer beta|VALUES ARE PLACEHOLDER|PLACEHOLDER METRIC|eight pages, eight layouts|Replace freely|Generic placeholder|Filler text|Filler descriptor|FY PLACEHOLDER|CHAPTER OPENER|A PRESENTATION TEMPLATE|A FOUR-STEP PROCESS|PRESS\s*(?:&nbsp;)?\s*PLAY|Halo v2|Studio-grade spatial audio in the lightest open-ear earbuds ever made\.?|Four years of research\.\s*Three generations of silicon\.\s*One product you(?:'|&#39;|&#x27;|\u2019)ll forget you(?:'|&#39;|&#x27;|\u2019)re wearing\.?|halo\.audio|◎\s*Halo|I forgot I was wearing them[\s\S]{0,120}?take them off\.?"?|Marques Lin|Pre-order Halo(?:\s+v2)?|AAC \+ SBC|Hi-Res Lossless|32-bit binaural capture|XLR dongle included|Live translate\s*[·•]\s*41 lang|Wireless \+ MagSafe charging|Ships May 14|Free shipping\s*[·•]\s*45-day return/gi;
 
-function stripLeftoverCatalogDemoPhrases(html: string): string {
+export function stripLeftoverCatalogDemoPhrases(html: string): string {
   return String(html ?? '')
     .replace(LEFTOVER_CATALOG_PHRASE_RE, '')
     .replace(/<p\b[^>]*>\s*(?:<strong>\s*<\/strong>)?\s*<\/p>/gi, '')
     .replace(/<span\b[^>]*>\s*<\/span>/gi, '');
+}
+
+/**
+ * 루프545 — 루프543 rotation salt(`(요약)`, `· 요약`, `— 요약` 등)가 사용자
+ * visible copy에 그대로 노출됐다는 리포트를 수신해 (a) synth 소스에서 salt
+ * 를 제거하고 (b) 이미 저장된 HTML에서도 벗겨낸다. 라벨은
+ * `TEMPLATE_CLONE_GENERIC_SECTION_LABELS` 8개만 매치해 사용자가 실제로
+ * "요약" / "핵심 포인트"를 슬라이드 제목이나 문장 안에서 자유롭게 쓴 경우
+ * (앞에 middot/emdash/opening-paren이 없는 케이스)는 보존한다.
+ *
+ * decorate 패턴:
+ *   - `${head}: (${label}) ${rest}`  (line에 콜론 있는 경우)
+ *   - `${line} (${label})`            (line에 콜론 없는 경우)
+ *   - `${title} · ${label}`           (item title decorate)
+ *   - `${picked.lead} — ${cleanLabel}` (lead decorate)
+ */
+const SYNTH_ROTATION_SALT_LABELS_RAW = TEMPLATE_CLONE_GENERIC_SECTION_LABELS
+  .map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  .join('|');
+const SYNTH_ROTATION_SALT_MID_PAREN_RE = new RegExp(
+  `([:\uFF1A])(\\s*)\\((?:${SYNTH_ROTATION_SALT_LABELS_RAW})\\)\\s*`,
+  'gu',
+);
+const SYNTH_ROTATION_SALT_TRAILING_PAREN_RE = new RegExp(
+  `[ \\t\\u00A0]*\\((?:${SYNTH_ROTATION_SALT_LABELS_RAW})\\)(?=\\s|<|$|[.。!?])`,
+  'gu',
+);
+const SYNTH_ROTATION_SALT_MIDDOT_RE = new RegExp(
+  `\\s+[·・]\\s+(?:${SYNTH_ROTATION_SALT_LABELS_RAW})(?=\\s|<|$|[.。!?,])`,
+  'gu',
+);
+const SYNTH_ROTATION_SALT_EMDASH_RE = new RegExp(
+  `\\s+[—–]\\s+(?:${SYNTH_ROTATION_SALT_LABELS_RAW})(?=\\s|<|$|[.。!?,])`,
+  'gu',
+);
+
+/** 루프545 · stripSynthRotationSaltLeaks pattern export for prompt/heal tests. */
+const SYNTH_ROTATION_SALT_CORE_N_PAREN_RE =
+  /[ \t\u00A0]*\(\s*핵심\s+\d+\s*\)(?=\s|<|$|[.。!?])/gu;
+const SYNTH_ROTATION_SALT_CORE_N_MIDDOT_RE =
+  /\s+[·・]\s+핵심\s+\d+(?=\s|<|$|[.。!?,])/gu;
+const SYNTH_ROTATION_SALT_CORE_N_EMDASH_RE =
+  /\s+[—–]\s+핵심\s+\d+(?=\s|<|$|[.。!?,])/gu;
+
+export function stripSynthRotationSaltLeaks(html: string): string {
+  if (!html) return html;
+  let next = String(html);
+  // 콜론 뒤 `(<label>) ` 삽입 → 콜론+space만 남김.
+  next = next.replace(SYNTH_ROTATION_SALT_MID_PAREN_RE, '$1$2');
+  // 문장 끝에 붙은 ` (<label>)` → 제거.
+  next = next.replace(SYNTH_ROTATION_SALT_TRAILING_PAREN_RE, '');
+  // item title 뒤 ` · <label>` → 제거.
+  next = next.replace(SYNTH_ROTATION_SALT_MIDDOT_RE, '');
+  // lead 뒤 ` — <label>` → 제거.
+  next = next.replace(SYNTH_ROTATION_SALT_EMDASH_RE, '');
+  // 루프553 — pad 라벨 `핵심 N` salt 누수.
+  next = next.replace(SYNTH_ROTATION_SALT_CORE_N_PAREN_RE, '');
+  next = next.replace(SYNTH_ROTATION_SALT_CORE_N_MIDDOT_RE, '');
+  next = next.replace(SYNTH_ROTATION_SALT_CORE_N_EMDASH_RE, '');
+  return next;
 }
 
 function stripLeftoverTemplateDemoCopy(html: string): string {
@@ -7263,7 +9222,7 @@ function rebuildHostWithPeers(
     if (!keepPeerStarts.has(child.start)) continue;
     const peerIndex = peers.findIndex((peer) => peer.start === child.start);
     const line = lines[peerIndex] ?? '';
-    rebuilt.push(fillOneCardPeer(source.slice(child.start, child.end), line));
+    rebuilt.push(fillOneCardPeer(source.slice(child.start, child.end), line, peerIndex));
   }
   const nextHost = `${openTag}${rebuilt.join('')}${closeTag}`;
   return source.slice(0, openStart) + nextHost + source.slice(closeEnd);
@@ -7436,7 +9395,7 @@ function fillAndTrimCardPeersOnce(
       }
       if (!keepPeerStarts.has(child.start)) continue;
       const peerIndex = topPeers.findIndex((peer) => peer.start === child.start);
-      rebuilt.push(fillOneCardPeer(source.slice(child.start, child.end), lines[peerIndex] ?? ''));
+      rebuilt.push(fillOneCardPeer(source.slice(child.start, child.end), lines[peerIndex] ?? '', peerIndex));
     }
     const next = rebuilt.join('');
     if (next !== source) return next;
@@ -7551,18 +9510,31 @@ function biennaleFillLines(input: {
     const split = splitDenseTemplateCloneTitleBodyLine(line);
     out.push(split ? { title: split.title, body: split.body } : { title: line, body: '' });
   }
-  const fallbacks = [
-    { title: `${input.title} 개요`, body: '핵심 메시지와 사용자가 얻는 가치를 먼저 정리합니다.' },
-    { title: '주요 기능', body: '협업, 파일, AI 작업 흐름을 한 화면에서 연결합니다.' },
-    { title: '활용 흐름', body: '요청부터 결과물 공유까지 필요한 단계를 줄입니다.' },
-    { title: '기대 효과', body: '반복 업무를 줄이고 팀의 실행 속도를 높입니다.' },
-    { title: '다음 단계', body: '도입 검토와 실행 계획을 명확하게 제안합니다.' },
+  // 루프543 — 예전에는 fallback body가 Teamver-특화 하드코딩("협업, 파일,
+  // AI 작업 흐름을 한 화면에서 연결합니다")이라서 free-form 주제(예:
+  // 글을 매력적으로 쓰는 팁)에서도 그 문장이 그대로 카드에 등장했다.
+  // topic을 body 문장에 스며들게 해서 최소 주제 명사가 유지되도록 정정.
+  const topic = topicKeywordForSynthBody(input.title || input.lead || input.bodyText || '');
+  const fallbacks: Array<{ title: string; body: string }> = [
+    { title: `${topic} 범위`, body: `${topic}의 핵심 메시지와 청중이 얻는 가치를 먼저 정리합니다.` },
+    { title: `${topic} 판단`, body: `${topic}에서 가장 먼저 이해해야 할 개념·근거를 짧게 정리합니다.` },
+    { title: `${topic} 쓰는 길`, body: `${topic}을 실제로 적용할 때의 순서와 판단 기준을 제시합니다.` },
+    { title: `${topic}이 바꾸는 것`, body: `${topic}이 성공했을 때 청중·팀·사용자에게 생기는 변화를 정리합니다.` },
+    { title: `${topic} 다음`, body: `${topic}을 이어가기 위한 다음 행동과 필요한 자원을 제안합니다.` },
   ];
   for (const fallback of fallbacks) {
     if (out.length >= minimum) break;
     out.push(fallback);
   }
-  return out.slice(0, Math.max(minimum, out.length));
+  const topicNoun = topic && !isGenericSynthTopicNoun(topic) ? topic : '';
+  return out.slice(0, Math.max(minimum, out.length)).map((line, lineIndex) => {
+    const title = String(line.title ?? '').replace(/\s+/g, ' ').trim();
+    if (!looksLikeBlockedOverviewOrTrioTitle(title) && !/(?:^|\s)개요$/.test(title)) return line;
+    return {
+      title: serviceIntroSynthTitleFallback(topicNoun, lineIndex),
+      body: line.body,
+    };
+  });
 }
 
 function biennaleFooterRows(input: {
@@ -7582,11 +9554,15 @@ function biennaleFooterRows(input: {
     }));
   if (cards.length >= 2) return cards;
   const lines = compactTextLines(input.lead, input.bodyText);
+  // 루프543 — 이전에는 '핵심 흐름과 사용자 가치 정리' / '팀 단위 실행과
+  // 다음 단계까지 연결' 하드코딩이 사용자 주제(예: 글을 매력적으로 쓰는 팁)와
+  // 무관하게 footer에 그대로 등장했다. topic 명사를 문장에 스며들게 한다.
+  const topic = topicKeywordForSynthBody(input.title || input.lead || input.bodyText || '');
   return [
     { label: input.kicker || '주제', text: input.title },
     { label: '방향', text: lines[0] || input.lead || synthesizeTemplateCloneCoverLead(input.title) },
-    { label: '구성', text: lines[1] || '핵심 흐름과 사용자 가치 정리' },
-    { label: '메모', text: lines[2] || '팀 단위 실행과 다음 단계까지 연결' },
+    { label: '구성', text: lines[1] || `${topic}의 핵심 흐름과 사용자가 얻는 가치를 정리` },
+    { label: '메모', text: lines[2] || `${topic} 실행과 다음 단계까지 이어지는 관점 정리` },
   ];
 }
 
@@ -7762,7 +9738,13 @@ function fillCobaltRowPeers(
       filled = replaceFirstExactClassText(filled, 'nm', resolved.title);
       filled = replaceFirstExactClassText(filled, 'desc', resolved.body || resolved.title);
       filled = replaceFirstExactClassText(filled, 'mood-tag', input.title);
-      filled = replaceFirstExactClassText(filled, 'delta-tag', `${String(index + 1).padStart(2, '0')} / ${rows.length}`);
+      // 루프557 — never stamp pagenum-shaped deltas (`02 / 2`).
+      const existingDelta = visibleDeckCopy(
+        /<[^>]*\bdelta-tag\b[^>]*>([\s\S]*?)<\//i.exec(filled)?.[1] ?? '',
+      );
+      if (!existingDelta || /^\d{2}\s*\/\s*\d+$/.test(existingDelta)) {
+        filled = replaceFirstExactClassText(filled, 'delta-tag', '');
+      }
     }
     return filled;
   });
@@ -7856,6 +9838,721 @@ export function healCobaltLeftoverCatalogCopy(
     out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
   }
   return stripLeftoverCatalogDemoPhrases(out);
+}
+
+const COBALT_GRID_GENERIC_HEADING_RE = SERVICE_INTRO_LEFTOVER_HEADING_RE;
+const COBALT_GRID_GENERIC_CARD_TITLE_RE = SERVICE_INTRO_LEFTOVER_CARD_TITLE_RE;
+const COBALT_GRID_LEFTOVER_BODY_RE = SERVICE_INTRO_LEFTOVER_BODY_RE;
+
+const COBALT_GRID_ENGLISH_HEAD_RE = /^(?:No\.?|Trend|Reading|Mood|YoY)$/i;
+
+const COBALT_GRID_KEEPABLE_KO_MIN = 20;
+
+const COBALT_QR_PIXELS = [
+  '10110101',
+  '01101010',
+  '10010111',
+  '11101101',
+  '01010010',
+  '10111101',
+  '11001011',
+  '10110110',
+].flatMap((row) => [...row].map((bit) => (
+  `<span class="px${bit === '1' ? ' on' : ''}"></span>`
+))).join('');
+
+const COBALT_PIXEL_STACK_CHART = `<div class="chart"><div class="bars">${
+  [4, 5, 5, 6, 7, 7, 8, 6].map((on) => {
+    const cells = Array.from({ length: 10 }, (_, index) => (
+      `<div class="cell${index < on ? ' on' : ''}"></div>`
+    )).join('');
+    return `<div class="stack">${cells}</div>`;
+  }).join('')
+}</div></div>`;
+
+function resolveCobaltGridTopicNoun(
+  ...candidates: Array<string | null | undefined>
+): string {
+  for (const raw of candidates) {
+    let text = String(raw ?? '').replace(/\s+/g, ' ').trim();
+    if (!text) continue;
+    text = text.replace(/\s*소개\s+\d+\s*$/u, '').trim();
+    if (/teamver/i.test(text)) {
+      const derived = topicKeywordForSynthBody(text);
+      if (
+        derived
+        && !isGenericSynthTopicNoun(derived)
+        && derived !== '주제'
+        && derived !== '핵심 주제'
+      ) {
+        return /teamver/i.test(derived) ? 'Teamver' : derived;
+      }
+      return 'Teamver';
+    }
+    const derived = topicKeywordForSynthBody(text);
+    if (
+      derived
+      && !isGenericSynthTopicNoun(derived)
+      && derived !== '주제'
+      && derived !== '핵심 주제'
+      && derived.length <= 32
+    ) {
+      return derived;
+    }
+  }
+  return '';
+}
+
+function looksLikeCobaltBlockedServiceIntroCopy(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!value) return false;
+  if (COBALT_GRID_GENERIC_HEADING_RE.test(value)) return true;
+  if (COBALT_GRID_GENERIC_CARD_TITLE_RE.test(value)) return true;
+  if (COBALT_GRID_LEFTOVER_BODY_RE.test(value)) return true;
+  if (/소개\s+\d+\s*$/u.test(value)) return true;
+  if (/^대상 고객별 메시지/.test(value)) return true;
+  return false;
+}
+
+function cobaltGridCopyIsKeepable(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (value.length < COBALT_GRID_KEEPABLE_KO_MIN) return false;
+  if (!/[가-힣]/.test(value)) return false;
+  if (looksLikeCobaltBlockedServiceIntroCopy(value)) return false;
+  return true;
+}
+
+function stripCobaltGridIntroNumberSuffix(text: string): string {
+  return String(text ?? '')
+    .replace(/\s*소개\s+\d+\s*$/u, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function cobaltGridSlideCopyPack(topic: string): {
+  brand: string;
+  cover: {
+    title: string;
+    kicker: string;
+    value: string;
+    footerTag: string;
+    footerText: string;
+    footerTag2: string;
+    footerText2: string;
+    vrows: [string, string, string];
+  };
+  manifesto: { stmt: string; who: string; meta: string };
+  index: { heading: string; items: Array<{ title: string; body: string }> };
+  chapter: { tag: string; title: string; lede: string };
+  data: { heading: string; stats: Array<{ lab: string; desc: string }> };
+  quote: { kicker: string; body: string; who: string; role: string };
+  table: {
+    heading: string;
+    heads: string[];
+    rows: Array<{ name: string; desc: string; mood: string }>;
+  };
+  colophon: { ktag: string; title: string; cells: Array<{ tag: string; text: string }> };
+} {
+  const brand = topic || 'Teamver';
+  return {
+    brand,
+    cover: {
+      title: brand,
+      kicker: '팀 작업공간',
+      value: `${brand}는 초안과 수정을 같은 보드에서 끝낸다.`,
+      footerTag: '쓰는 법',
+      footerText: '보드를 열고 초안을 붙인 뒤 권한을 나눈다.',
+      footerTag2: '다음',
+      footerText2: '한 팀을 초대해 첫 보드를 공유한다.',
+      vrows: [brand, '워크스페이스', '보드'],
+    },
+    manifesto: {
+      stmt: `흩어진 메모가 ${brand} 보드에 모이면, 고치는 속도가 회의보다 빨라진다.`,
+      who: brand,
+      meta: '선언',
+    },
+    index: {
+      heading: `${brand}가 묶는 작업`,
+      items: [
+        { title: '워크스페이스', body: '파일과 대화를 한 보드에 두고 같은 맥락으로 연다.' },
+        { title: '권한', body: '누가 보고 고칠 수 있는지 보드와 슬라이드마다 정한다.' },
+        { title: '협업', body: '댓글과 수정이 같은 화면에서 끊기지 않고 이어진다.' },
+        { title: '산출물', body: '초안·버전·보내기 이력을 찾아 헤매지 않게 한곳에 둔다.' },
+        { title: '감사', body: '누가 언제 바꿨는지 남기고 필요하면 되돌린다.' },
+        { title: '온보딩', body: '첫 방문에 빈 화면이 아니라 바로 쓸 수 있는 방이 열린다.' },
+      ],
+    },
+    chapter: {
+      tag: '쓰는 자리',
+      title: '회의가 아니라 보드 위에서 고친다',
+      lede: '실무는 초안을 붙이고, 리더는 권한을 나누며, 운영은 이력을 남긴다.',
+    },
+    data: {
+      heading: `${brand} 운영`,
+      stats: [
+        { lab: '같은 보드', desc: '초안과 피드백이 파일 밖으로 흩어지지 않는다.' },
+        { lab: '권한 경계', desc: '보기·고치기·보내기를 역할마다 나눈다.' },
+      ],
+    },
+    quote: {
+      kicker: '보드에서',
+      body: '초안을 보낸 뒤에도 같은 화면에서 고칠 수 있어야 일이 끝난다.',
+      who: brand,
+      role: '쓰는 사람',
+    },
+    table: {
+      heading: '도입 단계',
+      heads: ['번호', '항목', '설명', '상태'],
+      rows: [
+        { name: '한 팀 보드', desc: '기존 문서를 옮기고 보기·고치기 권한을 나눈다.', mood: '시작' },
+        { name: '리뷰 습관', desc: '댓글과 버전을 같은 화면에서 고정한다.', mood: '정착' },
+        { name: '조직 기준', desc: '감사와 보내기 규칙을 워크스페이스 기본값으로 둔다.', mood: '표준' },
+        { name: '초대', desc: '첫 보드에 필요한 사람만 불러 맥락을 공유한다.', mood: '공유' },
+        { name: '이력', desc: '바꾼 사람과 시점을 남겨 되돌릴 수 있게 한다.', mood: '기록' },
+        { name: '기본값', desc: '새 보드가 열릴 때 권한과 감사 규칙을 따라가게 한다.', mood: '유지' },
+      ],
+    },
+    colophon: {
+      ktag: brand,
+      title: '보드에서 이어 쓰기',
+      cells: [
+        { tag: '닫기', text: '초안·권한·이력이 한 워크스페이스에 남는다.' },
+        { tag: '다음', text: '쓸 방을 열고 첫 보드에 팀을 초대한다.' },
+        { tag: '남기는 것', text: '버전과 보낸 기록을 보드에서 다시 연다.' },
+        { tag: '약속', text: `${brand}는 회의록이 아니라 고칠 수 있는 보드를 남긴다.` },
+      ],
+    },
+  };
+}
+
+function cobaltGridRoleFromAttrs(attrs: string, body: string):
+  | 'cover' | 'manifesto' | 'index' | 'chapter' | 'data' | 'quote' | 'table' | 'colophon'
+  | null {
+  const hay = `${attrs}\n${body}`;
+  if (/\bs-cover\b/i.test(hay)) return 'cover';
+  if (/\bs-manifesto\b/i.test(hay)) return 'manifesto';
+  if (/\bs-index\b/i.test(hay)) return 'index';
+  if (/\bs-chapter\b/i.test(hay)) return 'chapter';
+  if (/\bs-data\b/i.test(hay)) return 'data';
+  if (/\bs-quote\b/i.test(hay)) return 'quote';
+  if (/\bs-table\b/i.test(hay)) return 'table';
+  if (/\bs-colophon\b/i.test(hay)) return 'colophon';
+  return null;
+}
+
+function rewriteCobaltGridTextSlot(
+  html: string,
+  className: string,
+  nextText: string,
+  force = false,
+): string {
+  const span = firstExactClassRange(html, className);
+  if (!span) return html;
+  const block = html.slice(span.start, span.end);
+  const existing = visibleDeckCopy(block);
+  if (!force && existing && cobaltGridCopyIsKeepable(existing) && !/소개\s+\d+/.test(existing)) {
+    return html;
+  }
+  if (
+    !force
+    && existing
+    && !looksLikeCobaltBlockedServiceIntroCopy(existing)
+    && !/소개\s+\d+/.test(existing)
+    && existing.length >= 2
+    && className !== 'qbody'
+  ) {
+    return html;
+  }
+  return replaceFirstExactClassText(html, className, nextText);
+}
+
+function rebuildCobaltCoverCfooter(
+  body: string,
+  pack: ReturnType<typeof cobaltGridSlideCopyPack>,
+): string {
+  if (!/\b(?:cfooter|colf)\b/i.test(body)) return body;
+  const colfs = exactClassBlocks(body, 'colf');
+  const kept: Array<{ tag: string; text: string }> = [];
+  for (const colf of colfs) {
+    const tag = visibleDeckCopy(
+      /<[^>]*\bftag\b[^>]*>([\s\S]*?)<\//i.exec(colf.html)?.[1] ?? '',
+    );
+    const text = visibleDeckCopy(
+      colf.html.replace(/<[^>]*\bftag\b[^>]*>[\s\S]*?<\/[^>]+>/i, ''),
+    );
+    kept.push({
+      tag: tag && !looksLikeCobaltBlockedServiceIntroCopy(tag) && !/edited by|distributed/i.test(tag)
+        ? tag
+        : '',
+      text: cobaltGridCopyIsKeepable(text) ? text : '',
+    });
+  }
+  const rows = [
+    {
+      tag: kept[0]?.tag || pack.cover.footerTag,
+      text: kept[0]?.text || pack.cover.footerText,
+    },
+    {
+      tag: kept[1]?.tag || pack.cover.footerTag2,
+      text: kept[1]?.text || pack.cover.footerText2,
+    },
+  ];
+  if (rows[0]!.tag === pack.cover.kicker) rows[0]!.tag = pack.cover.footerTag;
+  if (rows[1]!.tag === pack.cover.kicker) rows[1]!.tag = pack.cover.footerTag2;
+  if (rows[0]!.text === pack.cover.value) rows[0]!.text = pack.cover.footerText;
+  const rebuilt = `<div class="cfooter">${rows.map((row) => (
+    `<div class="colf"><div class="ftag caption">${escapeHtml(row.tag)}</div>`
+    + `<div>${escapeHtml(row.text)}</div></div>`
+  )).join('')}</div>`;
+  let next = body;
+  const allColfs = exactClassBlocks(next, 'colf');
+  for (let i = allColfs.length - 1; i >= 0; i -= 1) {
+    const colf = allColfs[i]!;
+    next = `${next.slice(0, colf.start)}${next.slice(colf.end)}`;
+  }
+  const cfooter = findFirstClassDiv(next, 'cfooter');
+  if (cfooter) {
+    next = `${next.slice(0, cfooter.start)}${rebuilt}${next.slice(cfooter.start + cfooter.block.length)}`;
+  } else if (/\bpagenum\b/i.test(next)) {
+    next = next.replace(/(<div\b[^>]*\bpagenum\b)/i, `${rebuilt}$1`);
+  } else {
+    next += rebuilt;
+  }
+  return next
+    .replace(/(<\/div>)\s*[·•]+\s*(<(?:div|section))/g, '$1$2')
+    .replace(/(<\/div>)\s*[·•]+\s*$/g, '$1');
+}
+
+function fillCobaltGridEmptyVrows(
+  body: string,
+  pack: ReturnType<typeof cobaltGridSlideCopyPack>,
+): string {
+  let index = 0;
+  return body.replace(
+    /(<div\b[^>]*\bv-row\b[^>]*>)([\s\S]*?)(<\/div>)/gi,
+    (_full, open: string, inner: string, close: string) => {
+      const plain = visibleDeckCopy(inner);
+      const next = pack.cover.vrows[index] ?? '';
+      index += 1;
+      if (plain && !/issue\.|spring\s+20|field-office|개요|핵심 포인트/i.test(plain)
+        && !looksLikeCobaltBlockedServiceIntroCopy(plain)) {
+        return `${open}${inner}${close}`;
+      }
+      return `${open}${escapeHtml(next)}${close}`;
+    },
+  );
+}
+
+function healCobaltGridQuoteQbody(
+  body: string,
+  pack: ReturnType<typeof cobaltGridSlideCopyPack>,
+): string {
+  const span = firstExactClassRange(body, 'qbody');
+  if (!span) return body;
+  const block = body.slice(span.start, span.end);
+  const open = /^<[^>]+>/.exec(block)?.[0];
+  if (!open) return body;
+  const inner = block.slice(open.length).replace(/<\/(?:p|div|span)\s*>$/i, '');
+  const close = /<\/(?:p|div|span)\s*>$/i.exec(block)?.[0] ?? '';
+  const raw = String(inner).replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '');
+  const sentences = raw
+    .split(/\n+/)
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  const first = sentences[0] ?? '';
+  const rest = sentences.slice(1);
+  const quote = looksLikeCobaltBlockedServiceIntroCopy(first) || !first
+    ? pack.quote.body
+    : first;
+  let next = `${body.slice(0, span.start)}${open}${escapeHtml(quote)}${close}${body.slice(span.end)}`;
+  const restKeep = rest.filter((line) => cobaltGridCopyIsKeepable(line));
+  const compact = restKeep.length > 0
+    ? (restKeep.join(' ').length > 120 ? restKeep.join(' · ') : restKeep.join(' '))
+    : '';
+  if (compact) {
+    if (/\brole-meta\b/i.test(next)) {
+      const existing = visibleDeckCopy(
+        /<[^>]*\brole-meta\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+      );
+      if (!existing || looksLikeCobaltBlockedServiceIntroCopy(existing)) {
+        next = replaceFirstExactClassText(next, 'role-meta', compact);
+      }
+    } else if (/\bqattr\b/i.test(next)) {
+      next = next.replace(
+        /(<div\b[^>]*\bqattr\b[^>]*>)/i,
+        `$1<div class="role-meta caption">${escapeHtml(compact)}</div>`,
+      );
+    }
+  } else {
+    next = rewriteCobaltGridTextSlot(next, 'role-meta', pack.quote.role, true);
+  }
+  next = rewriteCobaltGridTextSlot(next, 'qkicker', pack.quote.kicker);
+  next = rewriteCobaltGridTextSlot(next, 'who-tag', pack.quote.who);
+  return next;
+}
+
+function rewriteCobaltGridHeadrow(block: string): string {
+  const open = /^<div\b[^>]*>/.exec(block)?.[0] ?? '';
+  const close = /<\/div\s*>$/i.exec(block)?.[0] ?? '</div>';
+  if (!open) return block;
+  const innerStart = open.length;
+  const innerEnd = block.length - close.length;
+  const children = listDirectChildRanges(block, innerStart, innerEnd);
+  const roleOrder = ['번호', '항목', '설명', '상태'];
+  const cells: string[] = [];
+  let roleIndex = 0;
+  for (const range of children) {
+    const html = block.slice(range.start, range.end);
+    const tag = /^<div\b[^>]*>/.exec(html)?.[0] ?? '';
+    const plain = visibleDeckCopy(html);
+    if (
+      openHasClass(tag, 'desc')
+      || openHasClass(tag, 'nm')
+      || openHasClass(tag, 'mood-tag')
+      || openHasClass(tag, 'delta-tag')
+      || openHasClass(tag, 'num-tag')
+    ) {
+      continue;
+    }
+    if (COBALT_GRID_ENGLISH_HEAD_RE.test(plain)) {
+      const key = plain.toLowerCase().replace(/\s+/g, '');
+      const mapped = key === 'no' || key === 'no.' ? '번호'
+        : key === 'trend' ? '항목'
+          : key === 'reading' ? '설명'
+            : key === 'mood' ? '상태'
+              : '';
+      if (mapped) {
+        cells.push(`<div class="caption">${escapeHtml(mapped)}</div>`);
+        roleIndex += 1;
+      }
+      continue;
+    }
+    if (!plain || looksLikeCobaltBlockedServiceIntroCopy(plain)) {
+      const label = roleOrder[roleIndex] ?? '';
+      if (label) cells.push(`<div class="caption">${escapeHtml(label)}</div>`);
+      roleIndex += 1;
+      continue;
+    }
+    cells.push(html);
+    roleIndex += 1;
+  }
+  if (cells.length === 0) {
+    for (const label of roleOrder) {
+      cells.push(`<div class="caption">${escapeHtml(label)}</div>`);
+    }
+  }
+  return `${open}${cells.join('')}${close}`;
+}
+
+function healCobaltGridTable(
+  body: string,
+  pack: ReturnType<typeof cobaltGridSlideCopyPack>,
+): string {
+  let next = body
+    .replace(/(<div\b[^>]*\bledger\b[^>]*>)\s*파일럿\s*/gi, '$1')
+    .replace(/(<\/div>)\s*파일럿\s*(<div\b[^>]*\brow\b)/gi, '$1$2');
+  const heads = exactClassBlocks(next, 'headrow');
+  for (let i = heads.length - 1; i >= 0; i -= 1) {
+    const block = heads[i]!;
+    next = `${next.slice(0, block.start)}${rewriteCobaltGridHeadrow(block.html)}${next.slice(block.end)}`;
+  }
+  const dataRows = exactClassBlocks(next, 'row').filter((span) => !/\bheadrow\b/i.test(span.html));
+  if (dataRows.length > 0) {
+    let dataIndex = 0;
+    next = replaceExactClassBlocksBySequence(
+      next,
+      'row',
+      pack.table.rows.map((row) => ({ title: row.name, body: row.desc })),
+      (block) => {
+        if (/\bheadrow\b/i.test(block)) return block;
+        const index = dataIndex++;
+        const existingName = visibleDeckCopy(
+          /<[^>]*\bnm\b[^>]*>([\s\S]*?)<\//i.exec(block)?.[1] ?? '',
+        );
+        const existingDesc = visibleDeckCopy(
+          /<[^>]*\bdesc\b[^>]*>([\s\S]*?)<\//i.exec(block)?.[1] ?? '',
+        );
+        const row = pack.table.rows[index] ?? pack.table.rows[index % pack.table.rows.length]!;
+        let filled = replaceFirstExactClassText(block, 'num-tag', `${String(index + 1).padStart(2, '0')}.`);
+        if (!existingName || looksLikeCobaltBlockedServiceIntroCopy(existingName)) {
+          filled = replaceFirstExactClassText(filled, 'nm', row.name);
+        }
+        if (!cobaltGridCopyIsKeepable(existingDesc)) {
+          filled = replaceFirstExactClassText(filled, 'desc', row.desc);
+        }
+        const mood = visibleDeckCopy(
+          /<[^>]*\bmood-tag\b[^>]*>([\s\S]*?)<\//i.exec(filled)?.[1] ?? '',
+        );
+        if (!mood || looksLikeCobaltBlockedServiceIntroCopy(mood)) {
+          filled = replaceFirstExactClassText(filled, 'mood-tag', row.mood);
+        }
+        const delta = visibleDeckCopy(
+          /<[^>]*\bdelta-tag\b[^>]*>([\s\S]*?)<\//i.exec(filled)?.[1] ?? '',
+        );
+        if (!delta || /^\d{2}\s*\/\s*\d+$/.test(delta)) {
+          filled = replaceFirstExactClassText(filled, 'delta-tag', '');
+        }
+        return filled;
+      },
+    );
+  }
+  next = rewriteCobaltGridTextSlot(next, 'h', pack.table.heading);
+  next = rewriteCobaltGridTextSlot(next, 'lab-tag', pack.table.heading);
+  return next.replace(
+    /(<(?:div|span)\b[^>]*\bdelta-tag\b[^>]*>)([\s\S]*?)(<\/(?:div|span)>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const plain = visibleDeckCopy(inner);
+      if (/^\d{2}\s*\/\s*\d+$/.test(plain)) return `${open}${close}`;
+      return full;
+    },
+  );
+}
+
+function ensureCobaltGridPixelStackChart(body: string): string {
+  if (/\b(?:bars|stack)\b/i.test(body) && /\bcell\b/i.test(body)) return body;
+  const bodySlot = findFirstClassDiv(body, 'body');
+  if (!bodySlot) return body;
+  const chart = findFirstClassDiv(bodySlot.block, 'chart');
+  if (chart) {
+    const nextBlock = (
+      `${bodySlot.block.slice(0, chart.start)}${COBALT_PIXEL_STACK_CHART}`
+      + `${bodySlot.block.slice(chart.start + chart.block.length)}`
+    );
+    return `${body.slice(0, bodySlot.start)}${nextBlock}${body.slice(bodySlot.start + bodySlot.block.length)}`;
+  }
+  const open = /^<div\b[^>]*>/.exec(bodySlot.block)?.[0] ?? '';
+  const closeMatch = /<\/div\s*>$/i.exec(bodySlot.block);
+  if (!open || !closeMatch) return body;
+  const inner = bodySlot.block.slice(open.length, bodySlot.block.length - closeMatch[0].length);
+  const nextBlock = `${open}${inner}${COBALT_PIXEL_STACK_CHART}</div>`;
+  return `${body.slice(0, bodySlot.start)}${nextBlock}${body.slice(bodySlot.start + bodySlot.block.length)}`;
+}
+
+function ensureCobaltGridQrBlock(body: string): string {
+  return body.replace(
+    /(<div\b[^>]*\bqr-block\b[^>]*>)([\s\S]*?)(<\/div>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      if (/\bpx\b/i.test(inner)) return full;
+      return `${open}${COBALT_QR_PIXELS}${close}`;
+    },
+  );
+}
+
+function fillCobaltGridKitSlide(
+  body: string,
+  pack: ReturnType<typeof cobaltGridSlideCopyPack>,
+  attrs: string,
+): string {
+  const role = cobaltGridRoleFromAttrs(attrs, body);
+  let next = body;
+  next = next.replace(
+    /(<(?:h[12])\b[^>]*>)([\s\S]*?)(<\/h[12]>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const plain = visibleDeckCopy(inner);
+      if (!plain) return full;
+      if (cobaltGridCopyIsKeepable(plain) && !/소개\s+\d+/.test(plain)) return full;
+      if (!looksLikeCobaltBlockedServiceIntroCopy(plain) && !/소개\s+\d+/.test(plain)) {
+        return full;
+      }
+      const replacement =
+        role === 'cover' ? pack.cover.title
+          : role === 'manifesto' ? pack.manifesto.stmt
+            : role === 'index' ? pack.index.heading
+              : role === 'chapter' ? pack.chapter.title
+                : role === 'data' ? pack.data.heading
+                  : role === 'table' ? pack.table.heading
+                    : role === 'colophon' ? pack.colophon.title
+                      : pack.brand;
+      return `${open}${escapeHtml(/소개\s+\d+/.test(plain) ? pack.cover.title : replacement)}${close}`;
+    },
+  );
+
+  if (role === 'cover' || /\b(?:cfooter|colf|v-row|subkicker)\b/i.test(next)) {
+    next = rewriteCobaltGridTextSlot(next, 'l', pack.cover.kicker);
+    next = rewriteCobaltGridTextSlot(next, 'ed', pack.cover.value);
+    next = rebuildCobaltCoverCfooter(next, pack);
+    next = fillCobaltGridEmptyVrows(next, pack);
+    const titlePlain = visibleDeckCopy(
+      next.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '',
+    );
+    if (!titlePlain || /소개\s+\d+/.test(titlePlain) || looksLikeCobaltBlockedServiceIntroCopy(titlePlain)) {
+      next = replaceCobaltTitleHeading(next, pack.cover.title);
+    }
+  }
+
+  if (role === 'manifesto' || /\bstmt\b/i.test(next)) {
+    const stmt = visibleDeckCopy(
+      /<[^>]*\bstmt\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (!stmt || looksLikeCobaltBlockedServiceIntroCopy(stmt) || /소개\s+\d+/.test(stmt)) {
+      next = next.replace(
+        /(<p\b[^>]*\bclass\s*=\s*["'][^"']*\bstmt\b[^"']*["'][^>]*>)[\s\S]*?(<\/p>)/i,
+        (_m, open: string, close: string) => `${open}${escapeHtml(pack.manifesto.stmt)}${close}`,
+      );
+    }
+    next = rewriteCobaltGridTextSlot(next, 'who', pack.manifesto.who);
+    next = rewriteCobaltGridTextSlot(next, 'meta-tag', pack.manifesto.meta);
+  }
+
+  if (role === 'index' || (/\blist\b/i.test(next) && /\brow\b/i.test(next) && /\bnum-tag\b/i.test(next))) {
+    next = rewriteCobaltGridTextSlot(next, 'h', pack.index.heading);
+    next = rewriteCobaltGridTextSlot(next, 'lab-tag', pack.brand);
+    if (exactClassBlocks(next, 'row').some((span) => !/\bheadrow\b/i.test(span.html))) {
+      next = replaceExactClassBlocksBySequence(next, 'row', pack.index.items, (block, line, index) => {
+        if (/\bheadrow\b/i.test(block)) return block;
+        const existingTitle = visibleDeckCopy(
+          block.match(/<h[1-4]\b[^>]*>([\s\S]*?)<\/h[1-4]>/i)?.[1] ?? '',
+        );
+        const existingBody = visibleDeckCopy(
+          block.match(/<p\b[^>]*>([\s\S]*?)<\/p>/i)?.[1] ?? '',
+        );
+        const item = pack.index.items[index] ?? pack.index.items[index % pack.index.items.length]!;
+        let filled = replaceFirstExactClassText(
+          block,
+          'num-tag',
+          `${String(index + 1).padStart(2, '0')}.`,
+        );
+        if (!existingTitle || looksLikeCobaltBlockedServiceIntroCopy(existingTitle)) {
+          filled = replaceFirstHeadingText(filled, item.title);
+        }
+        if (!cobaltGridCopyIsKeepable(existingBody)) {
+          filled = replaceFirstTagText(filled, 'p', item.body);
+        }
+        return filled;
+      });
+    }
+  }
+
+  if (role === 'chapter' || /\bnm-tag\b/i.test(next)) {
+    const tag = visibleDeckCopy(
+      /<[^>]*\bnm-tag\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    const lede = visibleDeckCopy(
+      /<[^>]*\blede\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (!tag || looksLikeCobaltBlockedServiceIntroCopy(tag) || tag === lede) {
+      next = replaceFirstExactClassText(next, 'nm-tag', pack.chapter.tag);
+    }
+    const ttl = visibleDeckCopy(
+      /<[^>]*\bttl\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (!ttl || looksLikeCobaltBlockedServiceIntroCopy(ttl) || /소개\s+\d+/.test(ttl)) {
+      next = replaceFirstExactClassText(next, 'ttl', pack.chapter.title);
+    }
+    if (!lede || looksLikeCobaltBlockedServiceIntroCopy(lede) || tag === lede) {
+      next = replaceFirstExactClassText(next, 'lede', pack.chapter.lede);
+    }
+  }
+
+  if (role === 'data' || /\bvbig\b/i.test(next)) {
+    next = rewriteCobaltGridTextSlot(next, 'h', pack.data.heading);
+    let ordinal = 1;
+    next = next.replace(
+      /(<div\b[^>]*\bvbig\b[^>]*>)([\s\S]*?)(<\/div>)/gi,
+      (full, open: string, inner: string, close: string) => {
+        const plain = visibleDeckCopy(inner);
+        if (plain) return full;
+        return `${open}${escapeHtml(String(ordinal++).padStart(2, '0'))}${close}`;
+      },
+    );
+    const stats = pack.data.stats;
+    let labIndex = 0;
+    next = next.replace(
+      /(<div\b[^>]*\blab2\b[^>]*>)([\s\S]*?)(<\/div>)/gi,
+      (full, open: string, inner: string, close: string) => {
+        const plain = visibleDeckCopy(inner);
+        const stat = stats[labIndex] ?? stats[labIndex % stats.length]!;
+        labIndex += 1;
+        if (plain && !looksLikeCobaltBlockedServiceIntroCopy(plain) && cobaltGridCopyIsKeepable(plain)) {
+          return full;
+        }
+        return `${open}${escapeHtml(stat.lab)}${close}`;
+      },
+    );
+    let descIndex = 0;
+    next = next.replace(
+      /(<div\b[^>]*\bdesc\b[^>]*>)([\s\S]*?)(<\/div>)/gi,
+      (full, open: string, inner: string, close: string) => {
+        const plain = visibleDeckCopy(inner);
+        const stat = stats[descIndex] ?? stats[descIndex % stats.length]!;
+        descIndex += 1;
+        if (cobaltGridCopyIsKeepable(plain)) return full;
+        return `${open}${escapeHtml(stat.desc)}${close}`;
+      },
+    );
+    next = ensureCobaltGridPixelStackChart(next);
+  }
+
+  if (role === 'quote' || /\bqbody\b/i.test(next)) {
+    next = healCobaltGridQuoteQbody(next, pack);
+  }
+
+  if (role === 'table' || /\bheadrow\b|\bledger\b/i.test(next)) {
+    next = healCobaltGridTable(next, pack);
+  }
+
+  if (role === 'colophon' || /\bcol-footer\b|\bktag\b/i.test(next)) {
+    next = rewriteCobaltGridTextSlot(next, 'ktag', pack.colophon.ktag);
+    next = rewriteCobaltGridTextSlot(next, 'ttl', pack.colophon.title);
+    if (/\bftag\b/i.test(next)) {
+      const tags = pack.colophon.cells.map((cell) => cell.tag);
+      const texts = pack.colophon.cells.map((cell) => cell.text);
+      next = replaceClassTextBySequence(next, 'ftag', tags);
+      next = replaceClassTextBySequence(next, 'ftxt', texts);
+    }
+  }
+
+  if (/\bqr-block\b/i.test(next)) {
+    next = ensureCobaltGridQrBlock(next);
+  }
+  return next;
+}
+
+/**
+ * 루프557 — Cobalt Grid leftover + cover/table layout + role-specific
+ * Teamver copy. Catalog leftover only is stripped; empty slots are filled
+ * from the kit role pack, never the shared service-intro outline.
+ * Official English example.html without Hangul is a no-op.
+ */
+export function healCobaltGridLeftoverCatalogCopy(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !cobaltGridLeftoverHealShouldRun(dest)) return dest;
+  if (!/[가-힣]/.test(visibleDeckCopy(dest)) && !/[가-힣]/.test(String(brief ?? ''))) {
+    return dest;
+  }
+  const topic = resolveCobaltGridTopicNoun(
+    deriveDeckCoverTitleFromBrief(String(brief ?? ''), null),
+    brief,
+    visibleDeckCopy(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(dest)?.[1] ?? ''),
+    visibleDeckCopy(/<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(dest)?.[1] ?? ''),
+  );
+  const pack = cobaltGridSlideCopyPack(topic);
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) {
+    return fillCobaltGridKitSlide(dest, pack, '');
+  }
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    const nextBody = fillCobaltGridKitSlide(body, pack, span.attrs);
+    if (nextBody === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
+  }
+  out = out.replace(
+    /(<title\b[^>]*>)([\s\S]*?)(<\/title>)/i,
+    (full, open: string, inner: string, close: string) => {
+      const plain = visibleDeckCopy(inner);
+      if (!/소개\s+\d+/.test(plain) && !looksLikeCobaltBlockedServiceIntroCopy(plain)) {
+        return full;
+      }
+      return `${open}${escapeHtml(stripCobaltGridIntroNumberSuffix(plain) || pack.brand)}${close}`;
+    },
+  );
+  return out;
 }
 
 /** 루프459 — Cobalt Grid `.s-colophon .col-footer` cells (4 flat divs). */
@@ -8443,12 +11140,44 @@ const STUDIO_LEFTOVER_BODY_RE =
 const CREATIVE_LEFTOVER_BODY_RE =
   /FLIP THE|eight pages|Replace freely|Lift In Engagement|Throughput Multiplier|Active Placeholders|Total Sample Value|Placeholder caption|Layer alpha|VALUES ARE PLACEHOLDER|PLACEHOLDER METRIC|Generic placeholder|Filler (?:text|descriptor)|FY PLACEHOLDER|CHAPTER OPENER|A PRESENTATION TEMPLATE|PRESS\s*(?:&nbsp;)?\s*PLAY|FOUR FIGURES|A FOUR-STEP PROCESS/i;
 
+/**
+ * 루프536 — Broadside example.html seeds `.stat-value` with these fake KPIs.
+ * Match the LITERAL demo strings so real numeric seeds (12, 340%, etc.) stay.
+ */
+const BROADSIDE_STAT_VALUE_DEMO_RE =
+  /^(?:\$[\d.,]+\s*[BMK]|\$?\[X\]\s*B?|#\d+|3\s*[×xX]|\dx|3x)$/i;
+
+/**
+ * 루프538 — Grove example.html seeds `.grove-stat-val` with these fake KPIs.
+ * Literal match only so real seeds (`12`, `99`) stay.
+ */
+const GROVE_STAT_VALUE_DEMO_RE = /^(?:73\s*%|4\.8\s*[×xX]|#1)$/i;
+
+/**
+ * 루프538 — Grove forest kit catalog leftover. Do not put lone `73%` in the
+ * global phrase strip — other kits use real percentages.
+ */
+const GROVE_LEFTOVER_BODY_RE =
+  /The landscape has shifted|The brands that will lead the next decade|Strategy\s*[·•]\s*Presentation|Three numbers that define the|Of consumers distrust brand-created content|Higher engagement for community-driven campaigns|The most radical thing a brand can do|\[Prepared by\]|\[Confidential\]|\[IMAGE PLACEHOLDER\]|Grove Presentation|A \[type of work\] for \[audience|73\s*%[\s\S]{0,240}?4\.8\s*[×xX]|Brand as broadcaster|\[Presentation Title Goes|The Thesis|The Argument|Core Insight|What We Found|The Path Forward|Market\s*[·•]\s*Metrics|Consumer trust by category|An honest assessment of where the market|Stop managing perception|The work begins when the presentation/i;
+
+const GROVE_SIDEBAR_LEFTOVER_RE =
+  /Strategy\s*[·•]\s*Presentation|The Thesis|The Evidence|By The Numbers|Our Approach|Before\s*\/\s*After|The Recommendation/i;
+
+/**
+ * 루프536 — Broadside carries SPACE10-style catalog demo copy. When a fill
+ * completes and body slots still contain fadelist chrome / pie legend defaults /
+ * mock KPI digits, treat the slide as demo-leftover and force a heal pass.
+ */
+const BROADSIDE_LEFTOVER_BODY_RE =
+  /Broadside|\[Studio X\]\s*Guidelines|Before[\s\S]{0,240}?During[\s\S]{0,240}?After|the\s*<br\s*\/?>\s*session|TOTAL\s+MARKET\s*:\s*\$?\[X\]B|\bLeader\b\s*[\s\S]{0,60}?\bChallenger\b|Followers[\s\S]{0,80}?Other|A brand built by committee|Studio Presentation|\$3\.5B|\bStudio X\b/i;
+
 type StudioCreativeFillInput = {
   title: string;
   lead: string;
   bodyText: string;
   kicker: string;
   fillLines: TemplateCloneCardFillLine[];
+  topic?: string;
 };
 
 function fillStudioKitSlide(
@@ -8486,7 +11215,7 @@ function fillStudioKitSlide(
     }
   }
   if (/\bslide--stats\b/i.test(attrs) && /\bstat-card\b/i.test(next)) {
-    next = replaceExactClassBlocksBySequence(next, 'stat-card', lines, (block, line) => {
+    next = replaceExactClassBlocksBySequence(next, 'stat-card', lines, (block, line, index) => {
       const resolved = resolveTemplateCloneCardFill(line);
       let filled = replaceFirstExactClassText(block, 'stat-label', resolved.title);
       filled = replaceFirstExactClassText(
@@ -8494,8 +11223,110 @@ function fillStudioKitSlide(
         'stat-note',
         resolved.body || resolved.title,
       );
+      // 루프536 — Broadside example.html seeds `.stat-value` with fake KPIs
+      // (`$3.5B` / `3×` / `#1` / `[X]B`). If the fill line does not carry
+      // metric-looking title/body, replace those Broadside demo digits with
+      // the card ordinal so the giant number slot degrades into a numbered
+      // marker instead of a fake statistic. Real seeds like `12` on Studio
+      // catalog remain untouched.
+      const metricSource = titleLooksLikeMetric(resolved.title)
+        ? resolved.title
+        : titleLooksLikeMetric(resolved.body)
+          ? resolved.body
+          : '';
+      if (metricSource) {
+        filled = replaceFirstExactClassText(filled, 'stat-value', metricSource);
+      } else {
+        const statValueInner =
+          /<[^>]*\bstat-value\b[^>]*>([\s\S]*?)<\//i.exec(filled)?.[1] ?? '';
+        const statValueText = statValueInner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (BROADSIDE_STAT_VALUE_DEMO_RE.test(statValueText)) {
+          const ordinal = String(index + 1).padStart(2, '0');
+          filled = replaceFirstExactClassText(filled, 'stat-value', ordinal);
+        }
+      }
       return filled;
     });
+  }
+  // 루프536 — Broadside `.slide--diagram` renders three `.flow-step`s with
+  // `.flow-num`+`.flow-title`+`.flow-desc`. Studio kit does not have this
+  // shell but the fill runs Broadside through the same routine.
+  if (/\bslide--diagram\b/i.test(attrs) && /\bflow-step\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'flow-step', lines, (block, line, index) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = replaceFirstExactClassText(
+        block,
+        'flow-num',
+        String(index + 1).padStart(2, '0'),
+      );
+      filled = replaceFirstExactClassText(filled, 'flow-title', resolved.title);
+      filled = replaceFirstExactClassText(
+        filled,
+        'flow-desc',
+        resolved.body || resolved.title,
+      );
+      return filled;
+    });
+  }
+  // 루프536 — Broadside `.slide--pie` renders a conic-gradient donut with
+  // `.pie-item` legend rows (Leader/Challenger/Followers/Other + demo %).
+  // Without real market share data, replace the labels with fill lines and
+  // wipe the fabricated percentages + `TOTAL MARKET: $[X]B` chrome so the
+  // legend degrades into a category list.
+  if (/\bslide--pie\b/i.test(attrs) && /\bpie-item\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'pie-item', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = replaceFirstExactClassText(block, 'pie-item-label', resolved.title);
+      const metricSource = titleLooksLikeMetric(resolved.title)
+        ? resolved.title
+        : titleLooksLikeMetric(resolved.body)
+          ? resolved.body
+          : '';
+      // Blank the demo percentage; keep the swatch/label pair readable.
+      filled = replaceFirstExactClassText(filled, 'pie-item-val', metricSource);
+      return filled;
+    });
+    // Wipe `TOTAL MARKET: $[X]B` chrome (no bracketed placeholder should ship).
+    next = next.replace(
+      /(<[^>]*\bpie-total\b[^>]*>)([\s\S]*?)(<\/[^>]+>)/i,
+      (full, open: string, inner: string, close: string) => {
+        const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (/\[X\]|TOTAL\s+MARKET|placeholder/i.test(plain)) {
+          return `${open}${close}`;
+        }
+        return full;
+      },
+    );
+  }
+  // 루프536 — Broadside `.slide--fadelist` renders three `.fadelist-item`
+  // spans ("Before / During / After") + a two-line `.fadelist-title`
+  // ("the / session") + right-corner `[Studio X] Guidelines` and `06 / 10`
+  // chrome. Substitute real content and blank the SPACE10 chrome.
+  if (/\bslide--fadelist\b/i.test(attrs) && /\bfadelist-item\b/i.test(next)) {
+    const fadelistTitles = lines
+      .slice(0, 3)
+      .map((line) => resolveTemplateCloneCardFill(line).title || resolveTemplateCloneCardFill(line).body)
+      .filter(Boolean);
+    if (fadelistTitles.length > 0) {
+      next = replaceClassTextBySequence(next, 'fadelist-item', fadelistTitles);
+    }
+    next = next.replace(
+      /(<[^>]*\bfadelist-title\b[^>]*>)([\s\S]*?)(<\/[^>]+>)/i,
+      `$1${escapeHtml(input.title)}$3`,
+    );
+    // Blank fadelist chrome tokens ("[Studio X] Guidelines", "06 / 10", "01" corner).
+    next = next.replace(
+      /(<span\b[^>]*\bbroadside-num\b[^>]*>)([\s\S]*?)(<\/span\s*>)/gi,
+      (full, open: string, inner: string, close: string) => {
+        const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (
+          /Studio\s*X|\[Studio\s*[A-Z0-9]?\]\s*Guidelines|Guidelines|^\d+\s*\/\s*\d+$/i.test(plain)
+        ) {
+          return `${open}${close}`;
+        }
+        return full;
+      },
+    );
   }
   if (/\bslide--compare\b/i.test(attrs)) {
     next = replaceExactClassBlocksBySequence(
@@ -8537,16 +11368,40 @@ function fillStudioKitSlide(
       (full, open: string, inner: string, close: string) => {
         const plain = visibleDeckCopy(inner);
         if (
-          /^(?:Our Work|APPROACH|Services|Before\s*\/\s*After|THE STUDIO|By the Numbers|\d+\s*\/\s*\d+)$/i
+          // 루프536 — Broadside footer runs `<span class="label muted">Broadside</span>`
+          // on every dark/orange slide as a running header. Also blank when the
+          // fill left the raw kit brand name as a chrome tag.
+          /^(?:Our Work|APPROACH|Services|Before\s*\/\s*After|THE STUDIO|By the Numbers|\d+\s*\/\s*\d+|Broadside)$/i
             .test(plain)
-          || /\[Studio Name\]|\[Date\]|\[Caption/i.test(plain)
+          || /\[Studio Name\]|\[Date\]|\[Caption|\[Studio\s*[A-Z0-9]?\]/i.test(plain)
         ) {
           return `${open}${close}`;
         }
         return full;
       },
     );
+    next = next.replace(
+      /(<span\b[^>]*\bbroadside-num\b[^>]*>)([\s\S]*?)(<\/span\s*>)/gi,
+      (full, open: string, inner: string, close: string) => {
+        const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (/Broadside|Studio\s*X|Guidelines|^\d+\s*\/\s*\d+$/i.test(plain)) {
+          return `${open}${close}`;
+        }
+        return full;
+      },
+    );
   }
+  const visibleHeading = visibleDeckCopy(
+    next.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
+  );
+  if (visibleHeading && (
+    looksLikeServiceIntroLeftoverTitle(visibleHeading)
+    || STUDIO_LEFTOVER_BODY_RE.test(visibleHeading)
+    || GROVE_LEFTOVER_BODY_RE.test(visibleHeading)
+  )) {
+    next = replaceFirstHeadingText(next, input.title);
+  }
+  next = fillGroveStudioChartBars(next, lines);
   return next;
 }
 
@@ -8714,15 +11569,239 @@ export function healStudioLeftoverCatalogCopy(
       continue;
     }
     const body = out.slice(span.bodyStart, span.bodyEnd);
-    if (
-      !looksLikeLeftoverTemplateDemoDeck(body)
-      && !STUDIO_LEFTOVER_BODY_RE.test(body)
-    ) {
+    const heading = visibleDeckCopy(
+      body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
+    );
+    if (!groveStudioSlideNeedsHeal(body, heading)) {
       continue;
     }
     const slide = outline[i] ?? outline[Math.min(i, outline.length - 1)];
-    const title = slide?.title || harvested[i] || harvested[0] || '슬라이드';
+    const topic = resolveLockedTopicNoun(brief, harvested[0], slide?.title);
+    const pack = studioSlideCopyPack(topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver');
+    const role = groveStudioPackForRole(pack, span.attrs, i);
+    const title = rewriteLeftoverKitSlideTitle(
+      slide?.title || harvested[i] || harvested[0] || '',
+      role.heading,
+    );
     const nextBody = fillStudioKitSlide(body, span.attrs, {
+      title,
+      lead: looksLikeServiceIntroLeftoverTitle(slide?.lead ?? '')
+        || SERVICE_INTRO_LEFTOVER_BODY_RE.test(slide?.lead ?? '')
+        ? role.lead
+        : (slide?.lead || role.lead),
+      bodyText: slide?.body && !SERVICE_INTRO_LEFTOVER_BODY_RE.test(slide.body)
+        ? slide.body
+        : role.lead,
+      kicker: slide?.kicker ?? '',
+      fillLines: role.items.length > 0 ? role.items : templateCloneSlideFillLines(slide ?? { title }),
+      topic,
+    });
+    if (nextBody === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
+  }
+  return wipeGroveStudioLeftoverPhrases(
+    stripStudioCreativeCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out)),
+  );
+}
+
+const RETRO_WINDOWS_DEMO_QUARTERS = ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'] as const;
+const RETRO_WINDOWS_DEMO_DOLLARS = ['$1.2M', '$1.5M', '$1.9M', '$2.1M'] as const;
+const RETRO_WINDOWS_DEMO_LIST_ITEMS = [
+  'Platform v2.0 release',
+  'Mobile app launch',
+  'Partner integrations',
+  'Analytics dashboard',
+  'API marketplace',
+  'Regional expansion EU',
+  'AI assistant beta',
+  'Enterprise security',
+  'Team expansion',
+  'Global data centers',
+  'Advanced reporting',
+  'Series C prep',
+  'Q3 exceeded projections by 18%',
+  'Enterprise segment grew 24% YoY',
+  'Recurring revenue now at 62% of total',
+] as const;
+
+function replaceExactTextNode(html: string, token: string, label: string): string {
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return html.replace(new RegExp(`>${escaped}<`, 'g'), `>${escapeHtml(label)}<`);
+}
+
+function retroWindowsTopicLabel(brief: string | null | undefined, html: string): string {
+  const briefLine = String(brief ?? '').replace(/\s+/g, ' ').trim().split(/[.\n]/)[0]?.trim() ?? '';
+  if (briefLine.length >= 2) return briefLine.slice(0, 24);
+  const heading = /<h[1-2]\b[^>]*>([\s\S]*?)<\/h[1-2]>/i.exec(html);
+  const fromHeading = visibleDeckCopy(heading?.[1] ?? '');
+  if (fromHeading && !/roadmap|timeline|agenda/i.test(fromHeading)) return fromHeading.slice(0, 24);
+  return '진행';
+}
+
+/**
+ * Retro-Windows catalog ships `Q1 2026`–`Q4 2026` titlebars and a
+ * `$1.2M`–`$2.1M` revenue table. Those tokens also appear in real decks,
+ * so this healer fires only when both the kit chrome and the demo cluster
+ * are still intact.
+ */
+export function healRetroWindowsRoadmapDemo(html: string, brief?: string | null): string {
+  const dest = String(html ?? '');
+  if (!/\bwin-titlebar\b/i.test(dest)) return dest;
+  const quarterHits = RETRO_WINDOWS_DEMO_QUARTERS.filter((token) => dest.includes(`>${token}<`)).length;
+  if (quarterHits < 3 || !dest.includes('>$1.2M<')) return dest;
+  const topic = retroWindowsTopicLabel(brief, dest);
+  const phase = ['도입', '전개', '검증', '정리'];
+  let out = dest;
+  RETRO_WINDOWS_DEMO_QUARTERS.forEach((token, index) => {
+    out = replaceExactTextNode(out, token, `${topic} · ${phase[index]}`);
+  });
+  const money = ['기준', '확장', '점검', '다음'];
+  RETRO_WINDOWS_DEMO_DOLLARS.forEach((token, index) => {
+    out = replaceExactTextNode(out, token, `${topic} ${money[index]}`);
+  });
+  out = replaceExactTextNode(out, 'Project Roadmap 2026', `${topic} 로드맵`);
+  out = out.replace(/Current Milestone:\s*Q3 2026/g, escapeHtml(`${topic} 현재 단계`));
+  RETRO_WINDOWS_DEMO_LIST_ITEMS.forEach((item, index) => {
+    out = replaceExactTextNode(out, item, `${topic} ${index + 1}`);
+  });
+  return out;
+}
+
+/**
+ * 루프536 — Broadside persist leftover: SPACE10-inspired orange kit ships
+ * fadelist chrome ("Before / During / After / the session / [Studio X]
+ * Guidelines / 06 / 10"), pie legend ("Leader / Challenger / Followers /
+ * Other / TOTAL MARKET: $[X]B"), stat KPIs ("$3.5B / 3× / #1"), and a
+ * "Broadside" footer label on every dark slide. Home create leaves those
+ * tokens intact when MiniMax skips a slot or the deterministic fill routes
+ * synth text into the `.stat-label` / `.stat-note` only. Fill the specialized
+ * slots first, then wipe residual chrome. Non-Broadside HTML is a no-op.
+ */
+export function healBroadsideLeftoverCatalogCopy(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsBroadside(dest)) return dest;
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) {
+    return stripStudioCreativeCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(dest));
+  }
+  const harvested = [...dest.matchAll(/<(?:h[1-3]|div)\b[^>]*>([\s\S]*?)<\/(?:h[1-3]|div)>/gi)]
+    .map((match) => visibleDeckCopy(match[1] ?? ''))
+    .filter((text) => text.length >= 2 && text.length <= 40 && !BROADSIDE_LEFTOVER_BODY_RE.test(text));
+  const outline = resolveTemplateCloneSlidesForDeterministicFill({
+    userInstruction: brief || harvested.join('\n') || '',
+    deckTitle: harvested[0] ?? null,
+    slideCount: spans.length,
+  });
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    // Broadside layout classes we know how to fill via fillStudioKitSlide.
+    if (!/\bslide--(?:cover|chapter|split|stats|list|quote|compare|statement|chart|end|diagram|pie|fadelist)\b/i.test(span.attrs)) {
+      continue;
+    }
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    const heading = visibleDeckCopy(
+      body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
+    );
+    if (!broadsideSlideNeedsHeal(body, heading)) {
+      continue;
+    }
+    const slide = outline[i] ?? outline[Math.min(i, outline.length - 1)];
+    const topic = resolveLockedTopicNoun(brief, harvested[0], slide?.title);
+    const pack = broadsideSlideCopyPack(topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver');
+    const role = broadsidePackForBody(body, span.attrs, pack);
+    const title = rewriteLeftoverKitSlideTitle(
+      slide?.title || harvested[i] || harvested[0] || '',
+      role.heading,
+    );
+    const nextBody = fillBroadsideKitSlide(body, span.attrs, {
+      title,
+      lead: looksLikeDaisyPlayfulLeftoverCopy(slide?.lead ?? '')
+        || looksLikeEightBitCapsuleLeftoverCopy(slide?.lead ?? '')
+        ? role.lead
+        : (slide?.lead || role.lead),
+      bodyText: slide?.body && !looksLikeEightBitCapsuleLeftoverCopy(slide.body)
+        ? slide.body
+        : role.lead,
+      kicker: slide?.kicker ?? '',
+      fillLines: role.items.length > 0 ? role.items : templateCloneSlideFillLines(slide ?? { title }),
+      topic,
+    });
+    if (nextBody === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
+  }
+  return wipeEightBitCapsuleLeftoverPhrases(
+    stripStudioCreativeCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out)),
+  );
+}
+
+/**
+ * 루프540 — 8-Bit Orbit healer.
+ *
+ * MiniMax가 fill 단계에서 놓친 leftover 카탈로그 카피 (English tier
+ * pricing, timeline dates, Studio Orbital quote, hero badges 등)를 heal
+ * 파이프라인에서 다시 청소한다. `stripEightBitOrbitCatalogDemoCopy`가
+ * 문자열 기반 스크럽, 이 헬퍼는 슬라이드 스팬을 다시 돌면서 남은
+ * shell에 대해 `fillEightBitOrbitKitSlide`를 재적용한다.
+ */
+export function healEightBitOrbitLeftoverCatalogCopy(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim()) return dest;
+  // Fire on either official look fingerprint OR the presence of 8-bit
+  // structural markers anywhere in the deck. `officialLookIsEightBitOrbit`
+  // returns false when `<style data-od-official-...>` is absent (e.g. a
+  // fixture with plain `<style>` tags), so structural markers are the
+  // safer per-shell gate. `fillEightBitOrbitKitSlide` itself no-ops on
+  // shells without markers.
+  if (
+    !officialLookIsEightBitOrbit(dest)
+    && !/\b(?:pixel-hero-text|pixel-label|pixel-box|tier-card|timeline-event|stat-block|quote-author|hero-badge|pixel-btn|pixel-bar-chart|chart-bar-group|pixel-hbar-chart|hbar-row)\b/i.test(dest)
+  ) {
+    return dest;
+  }
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) {
+    return wipeEightBitCapsuleLeftoverPhrases(
+      stripEightBitOrbitCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(dest)),
+    );
+  }
+  const harvested = [...dest.matchAll(/<(?:h[1-3]|div)\b[^>]*>([\s\S]*?)<\/(?:h[1-3]|div)>/gi)]
+    .map((match) => visibleDeckCopy(match[1] ?? ''))
+    .filter((text) => text.length >= 2 && text.length <= 40)
+    .filter((text) => !EIGHTBIT_DEMO_COPY_RE.test(text));
+  // Reset lastIndex — /g regex is stateful.
+  EIGHTBIT_DEMO_COPY_RE.lastIndex = 0;
+  const outline = resolveTemplateCloneSlidesForDeterministicFill({
+    userInstruction: brief || harvested.join('\n') || '',
+    deckTitle: harvested[0] ?? null,
+    slideCount: spans.length,
+  });
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    if (
+      !/\b(?:tier-card|timeline-event|stat-block|quote-author|hero-badge|hero-subtitle|pixel-label|pixel-btn|cta-content|split-layout|feature-card|pixel-bar-chart|chart-bar-group|pixel-hbar-chart|hbar-row)\b/i.test(body)
+    ) {
+      continue;
+    }
+    const visible = visibleDeckCopy(body);
+    const leftoverTitle = looksLikeEightBitCapsuleLeftoverCopy(visible)
+      || /(?<![가-힣])개요(?![가-힣])/.test(visible);
+    if (!EIGHTBIT_DEMO_COPY_RE.test(body) && !/\btier-card\b/i.test(body) && !leftoverTitle) {
+      EIGHTBIT_DEMO_COPY_RE.lastIndex = 0;
+      continue;
+    }
+    EIGHTBIT_DEMO_COPY_RE.lastIndex = 0;
+    const slide = outline[i] ?? outline[Math.min(i, outline.length - 1)];
+    const title = slide?.title || harvested[i] || harvested[0] || '슬라이드';
+    const nextBody = fillEightBitOrbitKitSlide(body, span.attrs, {
       title,
       lead: slide?.lead ?? '',
       bodyText: slide?.body ?? '',
@@ -8732,7 +11811,3361 @@ export function healStudioLeftoverCatalogCopy(
     if (nextBody === body) continue;
     out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
   }
-  return stripStudioCreativeCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out));
+  return wipeEightBitCapsuleLeftoverPhrases(
+    stripEightBitOrbitCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out)),
+  );
+}
+
+/**
+ * 루프550 — Raw Grid pitch kit catalog leftover. Neobrutalist s{N}-* chrome
+ * ships fake financial KPIs ($27.6M / $4.5M / $42M / $1B+ / +47% / 98%) in
+ * `.s3-bar-fill` / `.s3-stat-number` / `.s7-donut-value` / `.s7-metric-num`
+ * / `.s8-stat-num` and English pitch catalog copy ("Discover All Startups",
+ * "Connecting Founders With Opportunity", "The Founders Lab", "Plan
+ * Comparison / Pricing Tiers", "Get In Touch", "hello@rawgrid.studio").
+ * Fill pipeline does not know how to rewrite pitch KPIs so the demo digits
+ * survive to persist. This healer wipes the KPI text INSIDE the numeric
+ * shells (bar-fill / stat-number / metric-num / donut-value / stat-num)
+ * and strips the English pitch catalog phrases, while leaving the shell
+ * markup + chart geometry (svg viewBox, `.s3-bar-track`, `.s7-donut-container`,
+ * `.s7-legend-swatch`, `.s9-table` grid) intact. NEVER invents replacement
+ * numbers — real user KPIs must not be forged.
+ */
+const RAW_GRID_KIT_INNER_KPI_CLASSES =
+  /(<(?:div|span)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:s3-bar-fill|s3-stat-number|s7-donut-value|s7-metric-num|s8-stat-num)\b[^"']*["'][^>]*>)([\s\S]*?)(<\/(?:div|span)>)/gi;
+
+/**
+ * Numeric KPI shells inside Raw Grid demo shells. Financial money tokens
+ * (`$27.6M`, `$1B+`), demo growth percentages (`+47%`), and mock counts
+ * (`12.4K`, `500+`, `3.2x`, `4.9`, `156`) all match. Applied INSIDE the
+ * shell only — global text is untouched. `Series [A-E]` is added even
+ * though the current Raw Grid example lacks it, because pitch kits often
+ * bake round labels and the parent task calls it out as a scrub target.
+ */
+const RAW_GRID_KPI_VALUE_RE =
+  /^\s*(?:[+\-]?\$?\d+(?:\.\d+)?\s*[MBK]\+?|[+\-]?\$?\d+(?:\.\d+)?[×xX]|[+\-]?\d+(?:\.\d+)?\s*%|Series\s+[A-E]\+?|\$\d+(?:\.\d+)?\+?|\d{2,}(?:\.\d+)?|\d\.\d+|\d+(?:\.\d+)?\+)\s*$/;
+
+const RAW_GRID_MONEY_OR_SERIES_RE =
+  /\$\d+(?:\.\d+)?[MBK]\+?|\bSeries\s+[A-E]\+?/gi;
+
+const RAW_GRID_TABLE_KPI_CELL_RE =
+  /(<(?:td|th)\b[^>]*>)(\s*(?:\$\d+(?:\.\d+)?[MBK]\+?|Series\s+[A-E]\+?|[+\-]?\d+(?:\.\d+)?\s*%)\s*)(<\/(?:td|th)>)/gi;
+
+/**
+ * Raw Grid demo copy phrases. Match plain-text (`>phrase<`) with word
+ * boundaries so shells that already got user fill are left alone.
+ */
+const RAW_GRID_DEMO_COPY_RE =
+  /Discover All Startups|Connecting Founders With Opportunity|Quarterly Growth Metrics|Fiscal Year\s*20\d\d|Revenue by Quarter(?:\s*\(\$M\))?|Total Annual Revenue|Year over Year Growth|New User Signups|Core Services|What We Provide|Venture Funding|The Founders Lab|Cohots launch every quarter|Application Process|Non-Profit|Retention Rate|Founders who renew after year one|Average ROI|Return on capital invested|Jobs Created|Net new positions this quarter|Capital Deployed|Total funding distributed to date|Plan Comparison|Pricing Tiers|Shared Desk|Dedicated Desk|Private Office|Mentor Hours|Investor Introductions|Legal (?:&|&amp;) Accounting|Basic Templates|Guided Support|Full Service|Event Access|Online Only|VIP (?:&|&amp;) Speaker|Support Response|We don(?:'|&#39;|&#x27;|\u2019)t incubate ideas\.?\s*We accelerate the people bold enough to build them\.?|Avg Rating|hello@rawgrid\.studio|\+1\s*\(555\)\s*000-0000|123 Innovation Drive[^<]*|Monday\s*[—–-]\s*Friday,\s*9:00\s*[—–-]\s*18:00|Get In Touch|Get Started Now|Let(?:'|&#39;|&#x27;|\u2019)s\s*<br\s*\/?>\s*Build\.?|Cities\.\s*(?:<br\s*\/?>\s*)?Startups\.?|Ready to take your venture to the next level\?\s*Join the Raw Grid community and start scaling today\.?|Raw Grid Presentation|RAW GRID|Active Startups|Cities Covered|Fiscal Year\b|Market Share|Alumni|Valuation|Satisfaction/gi;
+
+/**
+ * Leftover body detector — text that ONLY appears in raw-grid catalog demo
+ * copy. Used to gate the heal: if a slide body still has these strings AND
+ * still ships the raw-grid chrome, treat it as unrepaired demo shell.
+ */
+const RAW_GRID_LEFTOVER_BODY_RE =
+  /Cities\.\s*(?:<br\s*\/?>\s*)?Startups\.?|Discover All Startups|Connecting Founders With Opportunity|Quarterly Growth Metrics|The Founders Lab|Plan Comparison|Pricing Tiers|hello@rawgrid\.studio|Ready to take your venture to the next level|We don(?:'|&#39;|&#x27;|\u2019)t incubate ideas|RAW GRID|Get In Touch/i;
+
+/**
+ * Blank inner text of KPI shells (`s3-bar-fill`, `s3-stat-number`,
+ * `s7-donut-value`, `s7-metric-num`, `s8-stat-num`) when the current inner
+ * text matches a financial-KPI cliche or a hard-coded pitch number. Never
+ * invents a replacement digit — the shell just becomes empty (`<div
+ * class="s3-stat-number"></div>`), preserving the visual card slot for
+ * fill or CSS-only styling.
+ */
+function wipeRawGridKpiInnerText(html: string): string {
+  return String(html ?? '').replace(
+    RAW_GRID_KIT_INNER_KPI_CLASSES,
+    (full, open: string, inner: string, close: string) => {
+      const plain = String(inner ?? '')
+        .replace(/<br\s*\/?>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&(?:amp|nbsp|#\d+|#x[0-9a-f]+);/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (!plain) return full;
+      // Real user fill (with Hangul or long text) is never wiped.
+      if (/[가-힣]/.test(plain)) return full;
+      if (plain.length > 12) return full;
+      if (!RAW_GRID_KPI_VALUE_RE.test(plain)) return full;
+      return `${open}${close}`;
+    },
+  );
+}
+
+/**
+ * String-level scrub of raw-grid catalog demo phrases and inner KPI cell
+ * text. Kept separate from `healRawGridLeftoverCatalogCopy` so callers
+ * (e.g. persist-quality assertions, template audit tools) can invoke a
+ * pure scrub without kit detection.
+ */
+export function stripRawGridCatalogDemoCopy(html: string): string {
+  let out = wipeRawGridKpiInnerText(String(html ?? ''));
+  out = out.replace(RAW_GRID_TABLE_KPI_CELL_RE, '$1$3');
+  out = out.replace(RAW_GRID_MONEY_OR_SERIES_RE, '');
+  out = out.replace(RAW_GRID_DEMO_COPY_RE, '');
+  return out
+    .replace(/<p\b[^>]*>\s*(?:<strong>\s*<\/strong>)?\s*<\/p>/gi, '')
+    .replace(/<span\b[^>]*>\s*<\/span>/gi, '')
+    .replace(/<(?:td|th)\b[^>]*>\s*<\/(?:td|th)>/gi, (full) => full.replace(/>\s*</, '><'));
+}
+
+/**
+ * 루프550 — Raw Grid heal pass. Fires only on raw-grid pitch fingerprint.
+ * Walks slide host spans; for each body still carrying pitch KPI shells or
+ * catalog phrases, wipes the KPI inner text and strips the pitch phrases.
+ * Never invents replacement numbers or English copy — user-authored Hangul
+ * or long text inside a KPI shell is preserved. The `slide-deck`, `.s3-bar-
+ * track`, `.s7-donut-container` svg, and `.s9-table` layout survive.
+ */
+export function healRawGridLeftoverCatalogCopy(
+  html: string,
+  brief?: string | null,
+): string {
+  void brief; // kept for symmetry with other kit healers; not consulted yet.
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsRawGridPitch(dest)) return dest;
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) return stripRawGridCatalogDemoCopy(dest);
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    const hasKpiShell = /\b(?:s3-bar-fill|s3-stat-number|s7-donut-value|s7-metric-num|s8-stat-num)\b/i.test(body);
+    const hasDemoPhrase = RAW_GRID_LEFTOVER_BODY_RE.test(body) || RAW_GRID_DEMO_COPY_RE.test(body);
+    // Reset lastIndex — /gi regex is stateful.
+    RAW_GRID_DEMO_COPY_RE.lastIndex = 0;
+    if (!hasKpiShell && !hasDemoPhrase) continue;
+    const scrubbed = stripRawGridCatalogDemoCopy(body);
+    if (scrubbed === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${scrubbed}${out.slice(span.bodyEnd)}`;
+  }
+  return stripRawGridCatalogDemoCopy(out);
+}
+
+/**
+ * 루프551 — Product Launch Halo leftover phrases that are safe as a
+ * kit-scoped strip (earbuds feature bullets, dollar amounts, CTA chrome).
+ * Distinctive Halo slogans also live in `LEFTOVER_CATALOG_PHRASE_RE`.
+ */
+const PRODUCT_LAUNCH_DEMO_COPY_RE =
+  /Halo v2|Meet Halo|Pick your Halo|◎\s*Halo|halo\.audio|Studio-grade spatial audio[\s\S]{0,80}?earbuds ever made\.?|Four years of research[\s\S]{0,80}?wearing\.?|I forgot I was wearing them[\s\S]{0,120}?take them off\.?"?|Marques Lin|The Verge|Pre-order Halo(?:\s+v2)?|Ships May 14|Free shipping\s*[·•]\s*45-day return(?:\s*[·•]\s*2-year warranty)?|AAC \+ SBC|Single-tap controls|USB-C charging|Hi-Res Lossless|Live translate\s*[·•]\s*41 lang|Wireless \+ MagSafe charging|Adaptive EQ|32-bit binaural capture|XLR dongle included|Lifetime firmware|Open-ear (?:spatial|audio)|Lossless 24-bit|Hear the room|All-day forgettable|An AI that listens|Three taps\. You're in/gi;
+
+const PRODUCT_LAUNCH_LEFTOVER_BODY_RE =
+  /Halo v2|halo\.audio|Studio-grade spatial|Four years of research|Marques Lin|Pre-order Halo|Pick your Halo|◎\s*Halo|\$179|\$279|\$399|AAC \+ SBC|Hi-Res Lossless/i;
+
+const PRODUCT_LAUNCH_GENERIC_HEADING_RE = SERVICE_INTRO_LEFTOVER_HEADING_RE;
+const PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE = SERVICE_INTRO_LEFTOVER_CARD_TITLE_RE;
+const PRODUCT_LAUNCH_GENERIC_CARD_BODY_RE = SERVICE_INTRO_LEFTOVER_BODY_RE;
+
+const PRODUCT_LAUNCH_BROKEN_COPY_RE =
+  /주제이|주제을|핵심\s+주제|핵심\s+\d+|—\s*,|의미와 적용 기준을 한 문장으로/;
+
+const PRODUCT_LAUNCH_KEEPABLE_KO_MIN = 20;
+
+const PRODUCT_LAUNCH_HEALER_TITLE_ARTIFACT_RE =
+  /주제가 해결|쓰는 순서를 쓰는 순서|다음 단계 다음 단계|핵심 맥락과 다음 단계|대상 고객별 메시지|(?:소개|한눈에|다음 단계)\s+\d+\s*$/;
+
+function resolveProductLaunchTopicNoun(
+  ...candidates: Array<string | null | undefined>
+): string {
+  const locked = resolveLockedTopicNoun(...candidates);
+  if (!locked || isGenericSynthTopicNoun(locked)) return '';
+  return locked;
+}
+
+function harvestProductLaunchTopicFromHtml(html: string): string {
+  const title = visibleDeckCopy(/<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1] ?? '');
+  const brand = visibleDeckCopy(
+    /<[^>]*\bbrand\b[^>]*>([\s\S]*?)<\//i.exec(html)?.[1] ?? '',
+  ).replace(/◎\s*/g, '').trim();
+  const heading = visibleDeckCopy(
+    /<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(html)?.[1] ?? '',
+  );
+  return resolveProductLaunchTopicNoun(title, brand, heading);
+}
+
+function stripProductLaunchBrandMarkText(text: string): string {
+  return String(text ?? '').replace(/◎\s*/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function productLaunchHasHealerTitleArtifact(text: string): boolean {
+  const value = stripProductLaunchBrandMarkText(text);
+  if (!value) return false;
+  if (PRODUCT_LAUNCH_HEALER_TITLE_ARTIFACT_RE.test(value)) return true;
+  if (/^주제[이가을를은는의]/.test(value)) return true;
+  if (/핵심\s+주제/.test(value)) return true;
+  if (/주제이|주제을/.test(value)) return true;
+  if (/^핵심(?:\s+\d+)?$/.test(value)) return true;
+  if (/주제를 쓰기 시작/.test(value)) return true;
+  if (/Teamver을/.test(value)) return true;
+  if (/◎/.test(String(text ?? ''))) return true;
+  if (/^Pricing$/i.test(value)) return true;
+  if (/Halo/i.test(value)) return true;
+  return false;
+}
+
+function productLaunchCopyIsKeepable(text: string): boolean {
+  const value = stripProductLaunchBrandMarkText(text).replace(/Teamver을/g, 'Teamver를');
+  if (value.length < PRODUCT_LAUNCH_KEEPABLE_KO_MIN) return false;
+  if (!/[가-힣]/.test(value)) return false;
+  if (productLaunchHasHealerTitleArtifact(value)) return false;
+  if (PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(value)) return false;
+  if (PRODUCT_LAUNCH_DEMO_COPY_RE.test(value)) {
+    PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+    return false;
+  }
+  PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+  if (/의미와 적용 기준을 한 문장으로/.test(value)) return false;
+  if (PRODUCT_LAUNCH_GENERIC_CARD_BODY_RE.test(value)) return false;
+  return true;
+}
+
+function sanitizeProductLaunchHeading(rawTitle: string): string {
+  let title = stripProductLaunchBrandMarkText(rawTitle).replace(/Teamver을/g, 'Teamver를');
+  if (/^핵심\s+\d+$/.test(title) || PRODUCT_LAUNCH_GENERIC_HEADING_RE.test(title)) {
+    return '';
+  }
+  title = title.replace(/\s+\d+\s*$/u, '').trim();
+  title = title.replace(/(다음 단계)(?:\s*다음 단계)+/g, '$1');
+  title = title.replace(/(쓰는 순서)(?:를\s*쓰는 순서)+/g, '$1');
+  if (
+    /^주제[이가을를은는의]/.test(title)
+    || /핵심\s+주제/.test(title)
+    || /쓰는 순서를 쓰는 순서/.test(title)
+    || /다음 단계 다음 단계/.test(title)
+    || /^대상 고객별 메시지/.test(title)
+    || PRODUCT_LAUNCH_GENERIC_HEADING_RE.test(title)
+    || /^핵심\s+\d+$/.test(title)
+    || title === '핵심 주제'
+    || /Halo|Pick your Halo|Meet Halo/i.test(title)
+    || PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(title)
+  ) {
+    return '';
+  }
+  return title;
+}
+
+const PRODUCT_LAUNCH_GENERIC_CARD_TITLE_MAP: Record<string, (topic: string) => string> = {
+  '핵심 가치': (topic) => `${topic} 핵심`,
+  '사용 장면': (topic) => `${topic} 장면`,
+  차별점: (topic) => `${topic} 차이`,
+  탐색: (topic) => `${topic} 탐색`,
+  실행: (topic) => `${topic} 실행`,
+  확장: (topic) => `${topic} 확장`,
+  실무자: (topic) => `${topic} 실무`,
+  리더: (topic) => `${topic} 리더`,
+  운영자: (topic) => `${topic} 운영`,
+};
+
+const PRODUCT_LAUNCH_PRICE_PLAN_TITLES = ['실무', '리더', '운영'] as const;
+const PRODUCT_LAUNCH_PRICE_PLAN_BULLETS: readonly string[][] = [
+  [
+    '반복 작업을 한 화면에서 끝내고 초안을 바로 공유한다',
+    '리뷰·권한 요청을 같은 워크스페이스에서 처리한다',
+    '결과물 완성도를 기능 나열보다 먼저 본다',
+  ],
+  [
+    '팀 속도와 품질, 비용을 한 기준으로 맞춘다',
+    '역할별 권한과 책임을 첫 화면에서 보여 준다',
+    '반복 손실을 줄이는 쪽으로 도입 범위를 정한다',
+  ],
+  [
+    '권한·저장·감사 로그를 기본 운영으로 둔다',
+    '게스트와 조직 확장을 같은 정책으로 받는다',
+    '보안·개인정보 요구를 도입 체크리스트에 남긴다',
+  ],
+];
+
+function productLaunchShortBrand(brief?: string | null, topic?: string | null): string {
+  const fromTopic = String(topic ?? '').replace(/\s+/g, ' ').trim();
+  if (fromTopic && !isGenericSynthTopicNoun(fromTopic) && fromTopic.length <= 16) return fromTopic;
+  const fromBrief = resolveLockedTopicNoun(brief, topic);
+  if (fromBrief && !isGenericSynthTopicNoun(fromBrief)) return fromBrief.slice(0, 16);
+  return '';
+}
+
+function rewriteProductLaunchLeakedHeading(rawTitle: string): string {
+  return sanitizeProductLaunchHeading(rawTitle);
+}
+
+function productLaunchSlotNeedsRefill(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!value) return true;
+  if (productLaunchCopyIsKeepable(value)) return false;
+  if (PRODUCT_LAUNCH_BROKEN_COPY_RE.test(value)) return true;
+  if (PRODUCT_LAUNCH_GENERIC_CARD_BODY_RE.test(value)) return true;
+  if (/Halo/i.test(value)) return true;
+  if (/^실행 방안(?:\s*(?:실무|리더|운영)|[이가을를은는])/.test(value)) return true;
+  if (productLaunchHasHealerTitleArtifact(value)) return true;
+  if (PRODUCT_LAUNCH_GENERIC_CARD_BODY_RE.test(value)) return true;
+  if (PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(value)) return true;
+  if (PRODUCT_LAUNCH_DEMO_COPY_RE.test(value)) {
+    PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+    return true;
+  }
+  PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+  if (/[가-힣]/.test(value) && value.length >= PRODUCT_LAUNCH_KEEPABLE_KO_MIN) return false;
+  return false;
+}
+
+function productLaunchKitAwareCardTitle(rawTitle: string, topic: string, index: number): string {
+  let title = stripProductLaunchBrandMarkText(rawTitle);
+  title = title.replace(/^대상 고객별 메시지\s*/, '').trim();
+  if (/핵심\s+주제|주제이|주제을/.test(title)) {
+    if (/핵심$/.test(title)) return topic ? `${topic} 핵심` : '핵심';
+    if (/장면$/.test(title)) return topic ? `${topic} 장면` : '장면';
+    if (/차이$/.test(title)) return topic ? `${topic} 차이` : '차이';
+  }
+  const plan = /(?:실행 방안\s*)?(실무|리더|운영)$/.exec(title)?.[1];
+  if (plan && /실행 방안|대상 고객별/.test(rawTitle)) {
+    return topic ? `${topic} ${plan}` : plan;
+  }
+  if (PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(title)) {
+    if (topic && PRODUCT_LAUNCH_GENERIC_CARD_TITLE_MAP[title]) {
+      return PRODUCT_LAUNCH_GENERIC_CARD_TITLE_MAP[title]!(topic);
+    }
+    return title;
+  }
+  if (productLaunchCopyIsKeepable(title)) return title;
+  if (title && !productLaunchSlotNeedsRefill(title) && !productLaunchHasHealerTitleArtifact(title)) {
+    return title;
+  }
+  if (!title || productLaunchSlotNeedsRefill(title) || productLaunchHasHealerTitleArtifact(title)) {
+    const fallback = PRODUCT_LAUNCH_PRICE_PLAN_TITLES[index] ?? '';
+    return topic && fallback ? `${topic} ${fallback}` : fallback;
+  }
+  return title;
+}
+
+function productLaunchConcreteCardBody(cardTitle: string, topic: string, index: number): string {
+  if (/실무/.test(cardTitle)) {
+    return '반복 작업을 줄이고 결과물 완성도를 한 화면에서 높인다.';
+  }
+  if (/리더/.test(cardTitle)) {
+    return '팀 속도, 품질, 비용을 같은 기준으로 맞춘다.';
+  }
+  if (/운영/.test(cardTitle)) {
+    return '권한, 저장, 감사, 보안 요구를 운영 기본값으로 둔다.';
+  }
+  if (/핵심$/.test(cardTitle)) {
+    return `${topic}에서 바로 얻는 시간 절감과 의사결정 기준을 한 문장으로 말한다.`;
+  }
+  if (/장면$/.test(cardTitle)) {
+    return '탐색, 협업, 결과물, 운영이 같은 워크스페이스에서 이어진다.';
+  }
+  if (/차이$/.test(cardTitle)) {
+    return '기존 도구를 오가는 단계 없이 같은 결과를 만든다.';
+  }
+  const bullets = PRODUCT_LAUNCH_PRICE_PLAN_BULLETS[index] ?? PRODUCT_LAUNCH_PRICE_PLAN_BULLETS[0]!;
+  return bullets[0] ?? `${topic}의 핵심을 한 문장으로 정리한다.`;
+}
+
+function productLaunchKitAwareCardBody(
+  cardTitle: string,
+  rawBody: string,
+  topic: string,
+  index = 0,
+): string {
+  const body = String(rawBody ?? '').replace(/\s+/g, ' ').trim();
+  if (!productLaunchSlotNeedsRefill(body) && !/의미와 적용 기준을 한 문장으로/.test(body)) {
+    return body;
+  }
+  return productLaunchConcreteCardBody(cardTitle, topic, index);
+}
+
+function slideLooksLikeProductLaunchKit(attrs: string, body: string): boolean {
+  const hay = `${attrs}\n${body}`;
+  return /\btpl-product-launch\b/i.test(hay)
+    || /\bhero-shot\b/i.test(hay)
+    || /\bprice-card\b/i.test(hay)
+    || /\btestimonial\b/i.test(hay);
+}
+
+function wipeProductLaunchDemoAmounts(html: string, ordinal?: string | null): string {
+  return String(html ?? '').replace(
+    /(<(?:div|span)\b[^>]*\bclass\s*=\s*["'][^"']*\bamount\b[^"']*["'][^>]*>)([\s\S]*?)(<\/(?:div|span)>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const plain = String(inner ?? '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (!plain) return full;
+      if (/[가-힣]/.test(plain)) return full;
+      if (!/^\$\d+/.test(plain)) return full;
+      const replacement = ordinal == null || ordinal === '' ? '' : String(ordinal);
+      return `${open}${replacement}${close}`;
+    },
+  );
+}
+
+function replaceProductLaunchHeroShotCssBrand(html: string, brand: string): string {
+  const safe = String(brand ?? '').replace(/["'\\<>]/g, '').trim().slice(0, 16);
+  const next = safe ? `"${safe}"` : '""';
+  return String(html ?? '').replace(/content\s*:\s*(["'])Halo v2\1/gi, `content:${next}`);
+}
+
+function productLaunchDistinctLede(
+  topic: string,
+  kicker: string,
+  brief?: string | null,
+): string {
+  const primary = synthesizeTemplateCloneCoverLead(topic, brief);
+  if (primary && /핵심 맥락과 다음 단계/.test(primary)) return '';
+  if (primary && primary !== kicker && !productLaunchHasHealerTitleArtifact(primary)) {
+    return primary;
+  }
+  return '';
+}
+
+function ensureProductLaunchCenterLede(
+  body: string,
+  attrs: string,
+  _topic: string,
+  lead: string,
+  kicker: string,
+): string {
+  if (!/\bcenter\b/i.test(attrs)) return body;
+  const existing = visibleDeckCopy(
+    /<[^>]*\blede\b[^>]*>([\s\S]*?)<\//i.exec(body)?.[1] ?? '',
+  );
+  if (existing) {
+    if (productLaunchCopyIsKeepable(existing) && existing !== kicker) return body;
+    if (productLaunchHasHealerTitleArtifact(existing) || existing === kicker) {
+      const keep = lead && lead !== kicker && productLaunchCopyIsKeepable(lead) ? lead : '';
+      return replaceFirstExactClassText(body, 'lede', keep);
+    }
+    return body;
+  }
+  if (lead && lead !== kicker && productLaunchCopyIsKeepable(lead)) {
+    if (!/<h1\b/i.test(body)) return body;
+    return body.replace(
+      /(<\/h1>)/i,
+      `$1<p class="lede">${escapeHtml(lead)}</p>`,
+    );
+  }
+  return body;
+}
+
+function restoreProductLaunchShipLayout(body: string, topic: string): string {
+  let next = body.replace(
+    /<p\b[^>]*>\s*(?:—|&mdash;|–|-)\s*,\s*<\/p>/gi,
+    '',
+  );
+  if (!/\btestimonial\b/i.test(next) && !/\bcta-btn\b/i.test(next)) return next;
+  if (/\bcta-btn\b/i.test(next)) return next;
+  const label = topic ? `${topic} 시작하기` : '지금 시작하기';
+  const cta = `<div class="ship-cta"><p class="dim">지금 시작</p><a class="cta-btn" href="#">${escapeHtml(label)}</a></div>`;
+  const row = firstExactClassRange(next, 'row');
+  if (row) {
+    const block = next.slice(row.start, row.end);
+    const filled = block.replace(/<\/div>\s*$/i, `${cta}</div>`);
+    return `${next.slice(0, row.start)}${filled}${next.slice(row.end)}`;
+  }
+  return `${next}${cta}`;
+}
+
+function productLaunchSlideNeedsHeal(body: string, _attrs: string): boolean {
+  const heading = visibleDeckCopy(
+    body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
+  );
+  const kicker = visibleDeckCopy(
+    /<[^>]*\bkicker\b[^>]*>([\s\S]*?)<\//i.exec(body)?.[1] ?? '',
+  );
+  const lede = visibleDeckCopy(
+    /<[^>]*\blede\b[^>]*>([\s\S]*?)<\//i.exec(body)?.[1] ?? '',
+  );
+  if (PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(body)) return true;
+  if (PRODUCT_LAUNCH_DEMO_COPY_RE.test(body)) {
+    PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+    return true;
+  }
+  PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+  if (/◎/.test(body) || /Teamver을/.test(body)) return true;
+  if (productLaunchHasHealerTitleArtifact(heading) || productLaunchHasHealerTitleArtifact(lede)) {
+    return true;
+  }
+  if (/^Pricing$/i.test(kicker)) return true;
+  if (PRODUCT_LAUNCH_BROKEN_COPY_RE.test(body)) return true;
+  if (PRODUCT_LAUNCH_GENERIC_HEADING_RE.test(heading)) return true;
+  if (/핵심\s+주제|주제이|주제을/.test(body)) return true;
+  if (/주제를 쓰기 시작/.test(body)) return true;
+  if (/—\s*,/.test(body)) return true;
+  if (/\bcta-btn\b/i.test(body) && />\s*시작하기\s*</.test(body)) return true;
+  return false;
+}
+
+function fillProductLaunchKitSlide(
+  body: string,
+  input: StudioCreativeFillInput,
+  attrs = '',
+): string {
+  let next = String(body ?? '').replace(/◎\s*/g, '').replace(/Teamver을/g, 'Teamver를');
+  const topic = resolveProductLaunchTopicNoun(
+    input.topic,
+    input.title,
+    input.lead,
+    input.kicker,
+  );
+  const heading = visibleDeckCopy(
+    next.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
+  );
+  const kickerText = visibleDeckCopy(
+    /<[^>]*\bkicker\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? input.kicker ?? '',
+  );
+  const resolvedTitle = rewriteProductLaunchLeakedHeading(heading || input.title);
+  const suppliedLines = Array.isArray(input.fillLines) ? input.fillLines : [];
+  const lines = suppliedLines.length > 0
+    ? biennaleFillLines({ ...input, title: resolvedTitle || input.title }, 6)
+      .map((line, index) => {
+        const title = productLaunchKitAwareCardTitle(line.title, topic, index);
+        return {
+          title,
+          body: productLaunchKitAwareCardBody(title, line.body, topic, index),
+        };
+      })
+    : [];
+  if (heading && resolvedTitle !== heading) {
+    next = replaceFirstHeadingText(next, resolvedTitle);
+  }
+  if (/^Pricing$/i.test(kickerText)) {
+    next = replaceFirstExactClassText(next, 'kicker', '');
+  }
+  if (/\blede\b/i.test(next)) {
+    const lede = visibleDeckCopy(
+      /<[^>]*\blede\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (
+      productLaunchHasHealerTitleArtifact(lede)
+      || (kickerText && lede && kickerText === lede)
+      || PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(lede)
+      || PRODUCT_LAUNCH_DEMO_COPY_RE.test(lede)
+    ) {
+      PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+      const nextLede = input.lead
+        && input.lead !== kickerText
+        && productLaunchCopyIsKeepable(input.lead)
+        ? input.lead
+        : productLaunchDistinctLede(topic, kickerText);
+      next = replaceFirstExactClassText(next, 'lede', nextLede);
+    }
+    PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+  }
+  next = ensureProductLaunchCenterLede(
+    next,
+    attrs,
+    topic,
+    input.lead ?? '',
+    kickerText,
+  );
+  if (/\bfeature-card\b/i.test(next)) {
+    const featureLines = lines.length > 0
+      ? lines
+      : exactClassBlocks(next, 'feature-card').map(() => ({ title: '', body: '' }));
+    next = replaceExactClassBlocksBySequence(next, 'feature-card', featureLines, (block, line) => {
+      const existingTitle = visibleDeckCopy(
+        block.match(/<h[3-5]\b[^>]*>([\s\S]*?)<\/h[3-5]>/i)?.[1] ?? '',
+      );
+      const existingBody = visibleDeckCopy(
+        /<[^>]*\bdim\b[^>]*>([\s\S]*?)<\//i.exec(block)?.[1] ?? '',
+      );
+      if (
+        productLaunchCopyIsKeepable(existingBody)
+        && !productLaunchHasHealerTitleArtifact(existingTitle)
+        && !PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(existingTitle)
+      ) {
+        return block;
+      }
+      let filled = block;
+      if (
+        productLaunchHasHealerTitleArtifact(existingTitle)
+        || productLaunchSlotNeedsRefill(existingTitle)
+        || PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(existingTitle)
+      ) {
+        const nextTitle = productLaunchKitAwareCardTitle(existingTitle, topic, 0)
+          || (line ? resolveTemplateCloneCardFill(line).title : '');
+        if (nextTitle && nextTitle !== existingTitle) {
+          filled = filled.replace(
+            /(<h[3-5]\b[^>]*>)([\s\S]*?)(<\/h[3-5]>)/i,
+            `$1${escapeHtml(nextTitle)}$3`,
+          );
+        } else if (!nextTitle && productLaunchHasHealerTitleArtifact(existingTitle)) {
+          filled = filled.replace(
+            /(<h[3-5]\b[^>]*>)([\s\S]*?)(<\/h[3-5]>)/i,
+            `$1$3`,
+          );
+        }
+      }
+      if (productLaunchSlotNeedsRefill(existingBody)) {
+        const resolved = line ? resolveTemplateCloneCardFill(line) : { title: '', body: '' };
+        const nextBody = resolved.body
+          || productLaunchConcreteCardBody(
+            productLaunchKitAwareCardTitle(existingTitle, topic, 0),
+            topic,
+            0,
+          );
+        if (nextBody) {
+          filled = replaceFirstExactClassText(filled, 'dim', nextBody);
+        }
+      }
+      return filled;
+    });
+  }
+  if (/\bprice-card\b/i.test(next)) {
+    const priceLines = lines.length > 0
+      ? lines
+      : exactClassBlocks(next, 'price-card').map(() => ({ title: '', body: '' }));
+    next = replaceExactClassBlocksBySequence(next, 'price-card', priceLines, (block, line, index) => {
+      const existingTitle = visibleDeckCopy(
+        block.match(/<h[3-5]\b[^>]*>([\s\S]*?)<\/h[3-5]>/i)?.[1] ?? '',
+      );
+      const existingBody = visibleDeckCopy(
+        /<[^>]*\bdim\b[^>]*>([\s\S]*?)<\//i.exec(block)?.[1] ?? '',
+      );
+      const listText = visibleDeckCopy(
+        /<[uo]l\b[^>]*>([\s\S]*?)<\/[uo]l>/i.exec(block)?.[1] ?? '',
+      );
+      const resolvedTitle = productLaunchKitAwareCardTitle(existingTitle, topic, index);
+      let filled = block;
+      if (existingTitle !== resolvedTitle) {
+        filled = filled.replace(
+          /(<h[3-5]\b[^>]*>)([\s\S]*?)(<\/h[3-5]>)/i,
+          `$1${escapeHtml(resolvedTitle)}$3`,
+        );
+      }
+      filled = wipeProductLaunchDemoAmounts(
+        filled,
+        String(index + 1).padStart(2, '0'),
+      );
+      if (productLaunchSlotNeedsRefill(existingBody)) {
+        filled = replaceFirstExactClassText(
+          filled,
+          'dim',
+          productLaunchConcreteCardBody(resolvedTitle, topic, index),
+        );
+      }
+      if (/<[uo]l\b/i.test(filled) && productLaunchSlotNeedsRefill(listText)) {
+        const bullets = PRODUCT_LAUNCH_PRICE_PLAN_BULLETS[index]
+          ?? compactTextLines(
+            typeof line === 'string' ? line : line.body,
+            resolvedTitle,
+          ).slice(0, 3);
+        filled = replaceListItems(filled, [...bullets]);
+      }
+      return filled;
+    });
+  }
+  if (/\bstep\b/i.test(next) && /<div\b[^>]*\bstep\b/i.test(next)) {
+    const stepLines = lines.length > 0
+      ? lines
+      : exactClassBlocks(next, 'step').map(() => ({ title: '', body: '' }));
+    next = replaceExactClassBlocksBySequence(next, 'step', stepLines, (block, line) => {
+      const existingTitle = visibleDeckCopy(
+        block.match(/<h[3-5]\b[^>]*>([\s\S]*?)<\/h[3-5]>/i)?.[1] ?? '',
+      );
+      const existingBody = visibleDeckCopy(
+        /<[^>]*\bdim\b[^>]*>([\s\S]*?)<\//i.exec(block)?.[1] ?? '',
+      );
+      if (
+        productLaunchCopyIsKeepable(existingBody)
+        && !productLaunchHasHealerTitleArtifact(existingTitle)
+        && !PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(existingTitle)
+      ) {
+        return block;
+      }
+      if (!productLaunchSlotNeedsRefill(existingTitle) && !productLaunchSlotNeedsRefill(existingBody)
+        && !PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(existingTitle)) {
+        return block;
+      }
+      const resolved = line ? resolveTemplateCloneCardFill(line) : { title: '', body: '' };
+      let filled = block;
+      if (
+        productLaunchSlotNeedsRefill(existingTitle)
+        || productLaunchHasHealerTitleArtifact(existingTitle)
+        || PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(existingTitle)
+      ) {
+        const nextTitle = productLaunchKitAwareCardTitle(existingTitle, topic, 0) || resolved.title;
+        filled = filled.replace(
+          /(<h[3-5]\b[^>]*>)([\s\S]*?)(<\/h[3-5]>)/i,
+          `$1${escapeHtml(nextTitle)}$3`,
+        );
+      }
+      if (productLaunchSlotNeedsRefill(existingBody)) {
+        const nextBody = resolved.body
+          || productLaunchConcreteCardBody(
+            productLaunchKitAwareCardTitle(existingTitle, topic, 0),
+            topic,
+            0,
+          );
+        if (nextBody) {
+          filled = replaceFirstExactClassText(filled, 'dim', nextBody);
+        }
+      }
+      return filled;
+    });
+  }
+  if (/\btestimonial\b/i.test(next)) {
+    const quote = visibleDeckCopy(
+      /<[^>]*\btestimonial\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (
+      /주제를 쓰기 시작/.test(quote)
+      || PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(quote)
+      || PRODUCT_LAUNCH_DEMO_COPY_RE.test(quote)
+      || /운영과 보안/.test(quote)
+    ) {
+      PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+      next = replaceFirstExactClassText(
+        next,
+        'testimonial',
+        topic
+          ? `${attachKoreanJosa(topic, '을/를')} 쓰기 시작한 뒤, 작업이 한곳으로 모이기 시작했다.`
+          : '',
+      );
+    }
+    PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+  }
+  next = restoreProductLaunchShipLayout(next, topic);
+  if (/\bbrand\b/i.test(next)) {
+    const brand = visibleDeckCopy(
+      /<[^>]*\bbrand\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (/Halo/i.test(brand) || /◎/.test(brand)) {
+      const short = productLaunchShortBrand(null, topic);
+      next = replaceFirstExactClassText(next, 'brand', short);
+    }
+  }
+  next = next.replace(
+    /(<a\b[^>]*\bcta-btn\b[^>]*>)([\s\S]*?)(<\/a>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const label = visibleDeckCopy(inner);
+      if (/Halo|Pre-order/i.test(label) || /^(?:시작하기|Get Started)$/i.test(label)) {
+        return `${open}${escapeHtml(topic ? `${topic} 시작하기` : '지금 시작하기')}${close}`;
+      }
+      return full;
+    },
+  );
+  return next;
+}
+
+/**
+ * String-level Product Launch Halo catalog scrub. Kept separate from
+ * `healProductLaunchLeftoverCatalogCopy` so callers can invoke a pure
+ * strip without kit detection.
+ */
+export function stripProductLaunchCatalogDemoCopy(html: string): string {
+  let out = wipeProductLaunchDemoAmounts(String(html ?? ''));
+  out = out.replace(PRODUCT_LAUNCH_DEMO_COPY_RE, '');
+  out = out.replace(/\$\s*(?:179|279|399)\b/g, '');
+  return out
+    .replace(/<p\b[^>]*>\s*(?:<strong>\s*<\/strong>)?\s*<\/p>/gi, '')
+    .replace(/<span\b[^>]*>\s*<\/span>/gi, '');
+}
+
+/**
+ * 루프551/554 — Product Launch leftover heal. Catalog leftover only
+ * (Halo / $179 / Pricing kicker). Does not rewrite keepable Korean copy
+ * with topic templates. Dense Fit workspace/권한 stays. Never invents KPIs.
+ */
+export function healProductLaunchLeftoverCatalogCopy(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsProductLaunchHalo(dest)) return dest;
+  const topic = resolveProductLaunchTopicNoun(
+    deriveDeckCoverTitleFromBrief(String(brief ?? ''), null),
+    brief,
+    harvestProductLaunchTopicFromHtml(dest),
+  );
+  const brand = productLaunchShortBrand(brief, topic);
+  let out = replaceProductLaunchHeroShotCssBrand(dest, brand);
+  const spans = listHealSlideHostSpans(out);
+  if (spans.length === 0) {
+    return stripLeftoverCatalogDemoPhrases(stripProductLaunchCatalogDemoCopy(out))
+      .replace(/◎\s*/g, '')
+      .replace(/Teamver을/g, 'Teamver를');
+  }
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    if (
+      !productLaunchSlideNeedsHeal(body, span.attrs)
+      && !PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(body)
+      && !PRODUCT_LAUNCH_DEMO_COPY_RE.test(body)
+    ) {
+      PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+      continue;
+    }
+    PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+    const heading = visibleDeckCopy(
+      body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
+    );
+    const kicker = visibleDeckCopy(
+      /<[^>]*\bkicker\b[^>]*>([\s\S]*?)<\//i.exec(body)?.[1] ?? '',
+    );
+    const title = rewriteProductLaunchLeakedHeading(heading);
+    const nextBody = fillProductLaunchKitSlide(body, {
+      title,
+      lead: '',
+      bodyText: '',
+      kicker: /^Pricing$/i.test(kicker) ? '' : kicker,
+      fillLines: [],
+      topic,
+    }, span.attrs);
+    const scrubbed = stripProductLaunchCatalogDemoCopy(nextBody);
+    if (scrubbed === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${scrubbed}${out.slice(span.bodyEnd)}`;
+  }
+  return stripLeftoverCatalogDemoPhrases(stripProductLaunchCatalogDemoCopy(out))
+    .replace(/◎\s*/g, '')
+    .replace(/Teamver을/g, 'Teamver를');
+}
+
+function groveStudioRoleCopy(
+  heading: string,
+  lead: string,
+  items: Array<{ title: string; body: string }> = [],
+): GroveStudioRoleCopy {
+  return { heading, lead, items };
+}
+
+function groveSlideCopyPack(topic: string): GroveStudioCopyPack {
+  const brand = topic || 'Teamver';
+  return {
+    cover: groveStudioRoleCopy('표지', `${brand}는 초안과 수정을 같은 보드에서 끝낸다.`),
+    chapter: groveStudioRoleCopy(
+      `${brand}가 묶는 일`,
+      `${brand}는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.`,
+    ),
+    statement: groveStudioRoleCopy(
+      '보드 위에서 고친다',
+      `흩어진 메모가 ${brand} 보드에 모이면, 고치는 속도가 회의보다 빨라진다.`,
+    ),
+    split: groveStudioRoleCopy(`${brand}가 남기는 증거`, `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.`, [
+      { title: '같은 보드', body: `${brand}에서 파일과 대화를 한 맥락으로 연다.` },
+      { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+    ]),
+    stats: groveStudioRoleCopy(`${brand} 운영`, `${brand}가 한 화면에서 남기는 세 가지.`, [
+      { title: '같은 화면', body: `${brand}에서 초안과 리뷰가 한 보드에 남는다.` },
+      { title: '나뉜 권한', body: `${brand}에서 누가 고칠 수 있는지 분명하다.` },
+      { title: '되돌리기', body: `${brand}에서 바꾼 기록을 열어 이전으로 돌린다.` },
+    ]),
+    list: groveStudioRoleCopy(`${brand}에서 바로 쓰는 것`, `${brand} 보드에 초안을 붙이고 같은 화면에서 고친다.`, [
+      { title: '초안', body: `${brand} 보드에 바로 붙일 수 있는 초안이 열린다.` },
+      { title: '수정', body: `${brand}에서는 보낸 뒤에도 같은 화면에서 문장과 레이아웃을 고친다.` },
+      { title: '공유', body: `${brand}에 필요한 사람만 초대해 보기와 고치기를 나눈다.` },
+    ]),
+    quote: groveStudioRoleCopy(
+      '보드에서',
+      `${brand}에서는 초안을 보낸 뒤에도 같은 화면에서 고칠 수 있어야 일이 끝난다.`,
+    ),
+    compare: groveStudioRoleCopy('바꾸기 전과 후', `${brand}로 옮기면 파일이 흩어지지 않는다.`, [
+      { title: '흩어진 파일', body: '초안과 댓글이 메일과 폴더로 갈라진다.' },
+      { title: '같은 보드', body: `${brand}에서 초안·권한·이력이 한 화면에 남는다.` },
+    ]),
+    chapter2: groveStudioRoleCopy(
+      '도입 단계',
+      `한 팀 보드를 ${brand}로 옮긴 뒤 리뷰 습관과 조직 기준을 고정한다.`,
+    ),
+    statement2: groveStudioRoleCopy(
+      '다음으로',
+      `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.`,
+    ),
+    chart: groveStudioRoleCopy(`${brand} 작업 흐름`, `${brand}에서 보드를 열고 권한을 나눈 뒤 이력을 남긴다.`, [
+      { title: '보드를 연다', body: `흩어진 메모를 ${brand} 워크스페이스로 옮긴다.` },
+      { title: '권한을 나눈다', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '이력을 남긴다', body: `${brand} 보드에 바꾼 사람과 시점을 고정한다.` },
+      { title: '리뷰한다', body: `${brand}에서 댓글과 버전을 같은 화면에서 본다.` },
+      { title: '보낸다', body: `${brand}에서 필요한 사람만 초대해 결과를 넘긴다.` },
+    ]),
+    end: groveStudioRoleCopy(
+      '보드에서 이어 쓰기',
+      `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.`,
+    ),
+  };
+}
+
+function studioSlideCopyPack(topic: string): GroveStudioCopyPack {
+  const brand = topic || 'Teamver';
+  return {
+    cover: groveStudioRoleCopy(brand, `${brand}는 초안과 수정을 같은 보드에서 끝낸다.`),
+    chapter: groveStudioRoleCopy(
+      `${brand}가 하는 일`,
+      `${brand}는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.`,
+    ),
+    statement: groveStudioRoleCopy(
+      '회의가 아니라 보드에서',
+      `흩어진 메모가 ${brand} 보드에 모이면 고치는 속도가 회의보다 빨라진다.`,
+    ),
+    split: groveStudioRoleCopy('작업 방식', `${brand}에서 초안을 붙이고 권한을 나눈다.`, [
+      { title: '붙인다', body: `${brand} 보드에 초안을 바로 연다.` },
+      { title: '나눈다', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '남긴다', body: `${brand}에서 바꾼 기록을 같은 화면에 둔다.` },
+    ]),
+    stats: groveStudioRoleCopy(`${brand}가 남기는 것`, `${brand}에서 초안과 리뷰가 한 보드에 남는다.`, [
+      { title: '같은 화면', body: `${brand}에서 초안과 리뷰가 흩어지지 않는다.` },
+      { title: '나뉜 권한', body: `${brand}에서 누가 고칠 수 있는지 분명하다.` },
+      { title: '되돌리기', body: `${brand}에서 이전 버전을 다시 연다.` },
+    ]),
+    list: groveStudioRoleCopy('바로 쓰는 세 가지', `${brand}에서 초안·수정·공유가 한 흐름이다.`, [
+      { title: '초안', body: `${brand} 보드에 바로 붙일 수 있는 초안이 열린다.` },
+      { title: '수정', body: `${brand}에서는 보낸 뒤에도 같은 화면에서 고친다.` },
+      { title: '공유', body: `${brand}에 필요한 사람만 초대해 보기와 고치기를 나눈다.` },
+    ]),
+    quote: groveStudioRoleCopy(
+      '한 줄',
+      `${brand}에서는 초안을 보낸 뒤에도 같은 화면에서 고칠 수 있어야 일이 끝난다.`,
+    ),
+    compare: groveStudioRoleCopy('전과 후', `${brand}로 옮기면 파일이 한곳에 모인다.`, [
+      { title: '이전', body: '초안과 댓글이 메일과 폴더로 갈라진다.' },
+      { title: '이후', body: `${brand}에서 초안·권한·이력이 한 화면에 남는다.` },
+    ]),
+    chapter2: groveStudioRoleCopy('쓰는 자리', `${brand}에서 실무는 초안을 붙이고 리더는 권한을 나눈다.`),
+    statement2: groveStudioRoleCopy(
+      '이어서 고친다',
+      `${brand}에서 댓글과 수정이 같은 화면에서 끊기지 않는다.`,
+    ),
+    chart: groveStudioRoleCopy('한 해의 작업', `${brand}에서 보드를 열고 권한을 나눈 뒤 이력을 남긴다.`, [
+      { title: '연다', body: `흩어진 메모를 ${brand}로 옮긴다.` },
+      { title: '나눈다', body: `${brand}에서 보기와 고치기를 정한다.` },
+      { title: '남긴다', body: `${brand} 보드에 바꾼 시점을 고정한다.` },
+      { title: '본다', body: `${brand}에서 댓글과 버전을 연다.` },
+      { title: '보낸다', body: `${brand}에서 필요한 사람만 초대한다.` },
+    ]),
+    end: groveStudioRoleCopy('다음에', `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.`),
+  };
+}
+
+const EIGHTBIT_SLIDE_ROLES = [
+  'cover',
+  'intro',
+  'features',
+  'chart',
+  'chart2',
+  'timeline',
+  'stats',
+  'quote',
+  'tiers',
+  'close',
+] as const;
+
+type EightBitSlideRole = (typeof EIGHTBIT_SLIDE_ROLES)[number];
+
+type EightBitRoleCopy = {
+  heading: string;
+  lead: string;
+  items: Array<{ title: string; body: string }>;
+};
+
+type EightBitCopyPack = Record<EightBitSlideRole, EightBitRoleCopy>;
+
+const CAPSULE_SLIDE_ROLES = [
+  'cover',
+  'intro',
+  'pillars',
+  'chart',
+  'quote',
+  'timeline',
+  'stats',
+  'diagram',
+  'split',
+  'close',
+] as const;
+
+type CapsuleSlideRole = (typeof CAPSULE_SLIDE_ROLES)[number];
+
+type CapsuleRoleCopy = {
+  heading: string;
+  lead: string;
+  items: Array<{ title: string; body: string }>;
+};
+
+type CapsuleCopyPack = Record<CapsuleSlideRole, CapsuleRoleCopy>;
+
+const EIGHTBIT_CAPSULE_KEEPABLE_KO_MIN = 20;
+
+function eightBitRoleCopy(
+  heading: string,
+  lead: string,
+  items: Array<{ title: string; body: string }> = [],
+): EightBitRoleCopy {
+  return { heading, lead, items };
+}
+
+function eightBitSlideCopyPack(topic: string): EightBitCopyPack {
+  const brand = topic || 'Teamver';
+  return {
+    cover: eightBitRoleCopy('표지', `${brand}는 초안과 수정을 같은 보드에서 끝낸다.`),
+    intro: eightBitRoleCopy(
+      `${brand}가 묶는 일`,
+      `${brand}는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.`,
+    ),
+    features: eightBitRoleCopy(`${brand}에서 바로 쓰는 것`, `${brand}에서 초안·수정·공유가 한 흐름이다.`, [
+      { title: '초안', body: `${brand} 보드에 바로 붙일 수 있는 초안이 열린다.` },
+      { title: '수정', body: `${brand}에서는 보낸 뒤에도 같은 화면에서 문장과 레이아웃을 고친다.` },
+      { title: '공유', body: `${brand}에 필요한 사람만 초대해 보기와 고치기를 나눈다.` },
+      { title: '이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+    ]),
+    chart: eightBitRoleCopy(`${brand} 작업 흐름`, `${brand}에서 보드를 열고 권한을 나눈 뒤 이력을 남긴다.`, [
+      { title: '보드를 연다', body: `흩어진 메모를 ${brand} 워크스페이스로 옮긴다.` },
+      { title: '권한을 나눈다', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '이력을 남긴다', body: `${brand} 보드에 바꾼 사람과 시점을 고정한다.` },
+      { title: '리뷰한다', body: `${brand}에서 댓글과 버전을 같은 화면에서 본다.` },
+      { title: '보낸다', body: `${brand}에서 필요한 사람만 초대해 결과를 넘긴다.` },
+    ]),
+    chart2: eightBitRoleCopy(`${brand}가 남기는 것`, `${brand}에서 초안과 리뷰가 한 보드에 남는다.`, [
+      { title: '같은 화면', body: `${brand}에서 초안과 리뷰가 흩어지지 않는다.` },
+      { title: '나뉜 권한', body: `${brand}에서 누가 고칠 수 있는지 분명하다.` },
+      { title: '되돌리기', body: `${brand}에서 이전 버전을 다시 연다.` },
+      { title: '같은 맥락', body: `${brand}에서 파일과 대화가 한곳으로 모인다.` },
+      { title: '이어서 고치기', body: `${brand}에서는 보낸 뒤에도 같은 화면에서 고친다.` },
+    ]),
+    timeline: eightBitRoleCopy('도입 단계', `한 팀 보드를 ${brand}로 옮긴 뒤 리뷰 습관과 조직 기준을 고정한다.`, [
+      { title: '한 팀 보드', body: `기존 문서를 ${brand} 보드로 옮기고 보기·고치기 권한을 나눈다.` },
+      { title: '리뷰 습관', body: `${brand}에서 댓글과 버전을 같은 화면에서 고정한다.` },
+      { title: '조직 기준', body: `${brand} 워크스페이스 기본값으로 감사와 보내기 규칙을 둔다.` },
+      { title: '이어서 쓰기', body: `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.` },
+    ]),
+    stats: eightBitRoleCopy(`${brand} 운영`, `${brand}가 한 화면에서 남기는 네 가지.`, [
+      { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
+      { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+      { title: '같은 맥락', body: `${brand}에서 파일과 대화가 한 화면으로 열린다.` },
+    ]),
+    quote: eightBitRoleCopy(
+      '보드에서',
+      `${brand}에서는 초안을 보낸 뒤에도 같은 화면에서 고칠 수 있어야 일이 끝난다.`,
+    ),
+    tiers: eightBitRoleCopy(`${brand}를 쓰는 자리`, `${brand}에서 실무는 초안을 붙이고 리더는 권한을 나눈다.`, [
+      { title: '혼자 시작', body: `${brand}에서 한 보드를 열고 초안을 붙인다.` },
+      { title: '팀과 고치기', body: `${brand}에서 보기와 고치기를 나눠 같이 고친다.` },
+      { title: '조직으로', body: `${brand} 워크스페이스 기준으로 이력과 보내기를 고정한다.` },
+    ]),
+    close: eightBitRoleCopy(
+      '보드에서 이어 쓰기',
+      `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.`,
+    ),
+  };
+}
+
+function eightBitPackForBody(body: string, pack: EightBitCopyPack): EightBitRoleCopy {
+  if (/\bpixel-hero-text\b|\bhero-badges\b/i.test(body)) return pack.cover;
+  if (/\bsplit-layout\b/i.test(body)) return pack.intro;
+  if (/\bfeature-grid\b|\bfeature-card\b/i.test(body)) return pack.features;
+  if (/\bpixel-hbar-chart\b|\bhbar-row\b/i.test(body)) return pack.chart2;
+  if (/\bpixel-bar-chart\b|\bchart-bar-group\b/i.test(body)) return pack.chart;
+  if (/\btimeline-event\b/i.test(body)) return pack.timeline;
+  if (/\bstat-block\b/i.test(body)) return pack.stats;
+  if (/\bquote-text\b|\bquote-container\b/i.test(body)) return pack.quote;
+  if (/\btier-card\b|\btier-grid\b/i.test(body)) return pack.tiers;
+  if (/\bcta-content\b|\bpixel-btn\b/i.test(body)) return pack.close;
+  return pack.intro;
+}
+
+function capsuleSlideCopyPack(topic: string): CapsuleCopyPack {
+  const brand = topic || 'Teamver';
+  return {
+    cover: eightBitRoleCopy('표지', `${brand}는 초안과 수정을 같은 보드에서 끝낸다.`),
+    intro: eightBitRoleCopy(
+      `${brand}가 묶는 일`,
+      `${brand}는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.`,
+    ),
+    pillars: eightBitRoleCopy(`${brand}에서 바로 쓰는 것`, `${brand}에서 초안·수정·공유가 한 흐름이다.`, [
+      { title: '초안', body: `${brand} 보드에 바로 붙일 수 있는 초안이 열린다.` },
+      { title: '수정', body: `${brand}에서는 보낸 뒤에도 같은 화면에서 문장과 레이아웃을 고친다.` },
+      { title: '공유', body: `${brand}에 필요한 사람만 초대해 보기와 고치기를 나눈다.` },
+    ]),
+    chart: eightBitRoleCopy(`${brand} 작업 흐름`, `${brand}에서 보드를 열고 권한을 나눈 뒤 이력을 남긴다.`, [
+      { title: '보드를 연다', body: `흩어진 메모를 ${brand} 워크스페이스로 옮긴다.` },
+      { title: '권한을 나눈다', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '이력을 남긴다', body: `${brand} 보드에 바꾼 사람과 시점을 고정한다.` },
+      { title: '리뷰한다', body: `${brand}에서 댓글과 버전을 같은 화면에서 본다.` },
+      { title: '보낸다', body: `${brand}에서 필요한 사람만 초대해 결과를 넘긴다.` },
+    ]),
+    quote: eightBitRoleCopy(
+      '보드에서',
+      `${brand}에서는 초안을 보낸 뒤에도 같은 화면에서 고칠 수 있어야 일이 끝난다.`,
+    ),
+    timeline: eightBitRoleCopy('도입 단계', `한 팀 보드를 ${brand}로 옮긴 뒤 리뷰 습관과 조직 기준을 고정한다.`, [
+      { title: '한 팀 보드', body: `기존 문서를 ${brand} 보드로 옮기고 보기·고치기 권한을 나눈다.` },
+      { title: '리뷰 습관', body: `${brand}에서 댓글과 버전을 같은 화면에서 고정한다.` },
+      { title: '조직 기준', body: `${brand} 워크스페이스 기본값으로 감사와 보내기 규칙을 둔다.` },
+      { title: '이어서 쓰기', body: `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.` },
+      { title: '같은 화면', body: `${brand}에서 초안과 리뷰가 한 보드에 남는다.` },
+    ]),
+    stats: eightBitRoleCopy(`${brand} 운영`, `${brand}가 한 화면에서 남기는 네 가지.`, [
+      { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
+      { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+      { title: '같은 맥락', body: `${brand}에서 파일과 대화가 한 화면으로 열린다.` },
+    ]),
+    diagram: eightBitRoleCopy(`${brand} 흐름`, `${brand}에서 초안을 붙이고 권한을 나눈 뒤 이력을 남긴다.`, [
+      { title: '붙인다', body: `${brand} 보드에 초안을 바로 연다.` },
+      { title: '나눈다', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '남긴다', body: `${brand}에서 바꾼 기록을 같은 화면에 둔다.` },
+      { title: '보낸다', body: `${brand}에서 필요한 사람만 초대한다.` },
+    ]),
+    split: eightBitRoleCopy(
+      `${brand}가 남기는 증거`,
+      `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.`,
+      [
+        { title: '같은 보드', body: `${brand}에서 파일과 대화를 한 맥락으로 연다.` },
+        { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+        { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+      ],
+    ),
+    close: eightBitRoleCopy(
+      '보드에서 이어 쓰기',
+      `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.`,
+    ),
+  };
+}
+
+function capsulePackForBody(body: string, attrs: string, pack: CapsuleCopyPack): CapsuleRoleCopy {
+  if (/\bslide-1\b/i.test(attrs) || /\btitle-pill\b|\bmain-title\b/i.test(body)) return pack.cover;
+  if (/\bslide-10\b/i.test(attrs) || /\bclosing-content\b/i.test(body)) return pack.close;
+  if (/\bpillar-card\b/i.test(body)) return pack.pillars;
+  if (/\bchart-row\b|\bchart-container\b/i.test(body)) return pack.chart;
+  if (/\bstatement-box\b|\bquote-highlight\b/i.test(body)) return pack.quote;
+  if (/\btimeline-step\b/i.test(body)) return pack.timeline;
+  if (/\bstat-pill\b/i.test(body)) return pack.stats;
+  if (/\bdiagram-node\b|\bdiagram-container\b/i.test(body)) return pack.diagram;
+  if (/\btext-side\b|\bvisual-side\b/i.test(body)) return pack.split;
+  if (/\bslide-2\b/i.test(attrs) || /\bleft-content\b/i.test(body)) return pack.intro;
+  return pack.intro;
+}
+
+function looksLikeEightBitCapsuleLeftoverCopy(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!value) return false;
+  if (looksLikeServiceIntroLeftoverTitle(value) || looksLikeBlockedOverviewOrTrioTitle(value)) {
+    return true;
+  }
+  if (SERVICE_INTRO_LEFTOVER_BODY_RE.test(value)) return true;
+  return /파일럿|확대\s*[—\-]|정착\s*[—\-]|핵심\s*포인트/.test(value);
+}
+
+function eightBitCapsuleCopyIsKeepable(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (value.length < EIGHTBIT_CAPSULE_KEEPABLE_KO_MIN) return false;
+  if (!/[가-힣]/.test(value)) return false;
+  if (looksLikeEightBitCapsuleLeftoverCopy(value)) return false;
+  return true;
+}
+
+function wipeEightBitCapsuleLeftoverPhrases(html: string): string {
+  return String(html ?? '')
+    .replace(SERVICE_INTRO_LEFTOVER_BODY_RE, '')
+    .replace(/파일럿\s*[:—\-]\s*작은 팀이나 단일 업무에서 빠르게 파일럿을 시작/g, '')
+    .replace(/확대\s*[:—\-]\s*반복 사용 패턴을 기준으로 템플릿과 권한 정책을 확장/g, '')
+    .replace(/정착\s*[:—\-]\s*성과 지표와 운영 책임을 정해 조직 표준으로 정착/g, '')
+    .replace(/파일럿/g, '');
+}
+
+const DAISY_SLIDE_ROLES = [
+  'cover',
+  'welcome',
+  'weekly',
+  'timeline',
+  'chart',
+  'cards',
+  'quote',
+  'team',
+  'process',
+  'donut',
+] as const;
+
+type DaisySlideRole = (typeof DAISY_SLIDE_ROLES)[number];
+type DaisyRoleCopy = EightBitRoleCopy;
+type DaisyCopyPack = Record<DaisySlideRole, DaisyRoleCopy>;
+
+const BROADSIDE_SLIDE_ROLES = [
+  'cover',
+  'chapter',
+  'statement',
+  'split',
+  'stats',
+  'fadelist',
+  'list',
+  'quote',
+  'compare',
+  'chart',
+  'diagram',
+  'pie',
+  'end',
+] as const;
+
+type BroadsideSlideRole = (typeof BROADSIDE_SLIDE_ROLES)[number];
+type BroadsideRoleCopy = EightBitRoleCopy;
+type BroadsideCopyPack = Record<BroadsideSlideRole, BroadsideRoleCopy>;
+
+const PLAYFUL_SLIDE_ROLES = [
+  'cover',
+  'toc',
+  'statement',
+  'chart',
+  'team',
+  'services',
+  'timeline',
+  'stats',
+  'gallery',
+  'close',
+] as const;
+
+type PlayfulSlideRole = (typeof PLAYFUL_SLIDE_ROLES)[number];
+type PlayfulRoleCopy = EightBitRoleCopy;
+type PlayfulCopyPack = Record<PlayfulSlideRole, PlayfulRoleCopy>;
+
+const DAISY_CATALOG_DEMO_COPY_RE =
+  /Daisy Days|A cheerful presentation template for bright moments|Welcome to Today|Review the materials on your desk|Prepare your notes and supplies|Take a moment to settle in comfortably|Reach out if you need any assistance|A Look at the Week|Today'?s Schedule|Morning Gathering|Welcome circle and daily intentions|Learning Block|Core concepts and guided practice|Creative Time|Hands-on projects and exploration|Refreshments and outdoor play|Share learnings and closing circle|Activity Breakdown|Key Focus Areas|Creative Expression|Explore imagination through hands-on|Critical Thinking|Develop problem-solving skills|Build teamwork through group activities|Curiosity\s*(?:&|&amp;)\s*Wonder|Nurture a love of learning|Every day is a fresh beginning|A Wise Educator|Our Team|Alex Rivera|Sam Chen|Jordan Park|Taylor Kim|Lead Guide|Co-Teacher|How It Works|Explore new topics through guided introductions|Apply concepts with hands-on activities|Share insights and celebrate progress|Topic Distribution|Literacy\s*-\s*33%|Numeracy\s*-\s*27%|Science\s*-\s*20%|Arts\s*-\s*13%|Movement\s*-\s*7%/gi;
+
+const DAISY_CATALOG_DEMO_METRIC_RE =
+  /\b(?:100%|33%|27%|20%|13%|7%|Literacy|Numeracy)\b/g;
+
+const PLAYFUL_CATALOG_DEMO_COPY_RE =
+  /Creative Direction\s*(?:&|&amp;)\s*Visual Systems|A template presentation for bold ideas|unfiltered storytelling|Built with expressive typography|SCROLL DOWN|What We Will Cover Today|Vision\s*(?:&|&amp;)\s*Mission Statement|Market Analysis\s*(?:&|&amp;)\s*Data Insights|Team Structure\s*(?:&|&amp;)\s*Leadership|Core Services\s*(?:&|&amp;)\s*Offerings|Process\s*(?:&|&amp;)\s*Workflow Timeline|Results,\s*Metrics\s*(?:&|&amp;)\s*Impact|We believe in raw expression over polished perfection|Our approach combines strategic thinking|Founded in 2019|Growth Metrics Over Four Quarters|The Collective|Four perspectives, one shared obsession|Alex Chen|Mira Okafor|Jonas Weber|Suki Tanaka|Creative Director|Strategy Lead|Visual Designer|Motion Artist|What We Do Best|Brand Identity|Visual systems that capture essence|Art Direction|Creative vision for campaigns|Motion Design|Animation and kinetic identity|Digital Experiences|Websites and interactive platforms|Custom letterforms and type systems|Our Process in Five Steps|Research, interviews, and competitive landscape|Strategic positioning and core narrative|Visual exploration, prototyping|Production, asset creation|Launch support and ongoing performance|Impact by the Numbers|Projects delivered across three continents|Industry awards and recognitions|Client retention rate with ongoing partnerships|Selected Works|A glimpse into recent collaborations|Thank You|Let Us Talk|hello@example\.studio|\+1\s*\(555\)\s*000 1234|www\.example\.studio/gi;
+
+const PLAYFUL_CATALOG_DEMO_METRIC_RE = /\b(?:47|12|98%)\b/g;
+
+function daisyDaysSlideCopyPack(topic: string): DaisyCopyPack {
+  const brand = topic || 'Teamver';
+  return {
+    cover: eightBitRoleCopy('표지', `${brand}는 초안과 수정을 같은 보드에서 끝낸다.`),
+    welcome: eightBitRoleCopy(
+      `${brand}가 묶는 일`,
+      `${brand}는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.`,
+      [
+        { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
+        { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+        { title: '이어서 고치기', body: `${brand}에서는 보낸 뒤에도 같은 화면에서 문장을 고친다.` },
+        { title: '같은 맥락', body: `${brand}에서 파일과 대화가 한 화면으로 열린다.` },
+      ],
+    ),
+    weekly: eightBitRoleCopy(`${brand} 한 주의 일`, `${brand}에서 보드를 열고 권한을 나눈 뒤 이력을 남긴다.`, [
+      { title: '연다', body: `흩어진 메모를 ${brand} 보드로 옮긴다.` },
+      { title: '나눈다', body: `${brand}에서 보기와 고치기를 정한다.` },
+      { title: '남긴다', body: `${brand} 보드에 바꾼 시점을 고정한다.` },
+      { title: '본다', body: `${brand}에서 댓글과 버전을 연다.` },
+      { title: '보낸다', body: `${brand}에서 필요한 사람만 초대한다.` },
+    ]),
+    timeline: eightBitRoleCopy('도입 단계', `한 팀 보드를 ${brand}로 옮긴 뒤 리뷰 습관과 조직 기준을 고정한다.`, [
+      { title: '한 팀 보드', body: `기존 문서를 ${brand} 보드로 옮기고 보기·고치기 권한을 나눈다.` },
+      { title: '리뷰 습관', body: `${brand}에서 댓글과 버전을 같은 화면에서 고정한다.` },
+      { title: '조직 기준', body: `${brand} 워크스페이스 기본값으로 감사와 보내기 규칙을 둔다.` },
+      { title: '이어서 쓰기', body: `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.` },
+      { title: '같은 화면', body: `${brand}에서 초안과 리뷰가 한 보드에 남는다.` },
+    ]),
+    chart: eightBitRoleCopy(`${brand} 작업 흐름`, `${brand}에서 보드를 열고 권한을 나눈 뒤 이력을 남긴다.`, [
+      { title: '보드를 연다', body: `흩어진 메모를 ${brand} 워크스페이스로 옮긴다.` },
+      { title: '권한을 나눈다', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '이력을 남긴다', body: `${brand} 보드에 바꾼 사람과 시점을 고정한다.` },
+      { title: '리뷰한다', body: `${brand}에서 댓글과 버전을 같은 화면에서 본다.` },
+      { title: '보낸다', body: `${brand}에서 필요한 사람만 초대해 결과를 넘긴다.` },
+      { title: '이어 쓴다', body: `${brand}에서 다음 보드를 같은 맥락으로 연다.` },
+    ]),
+    cards: eightBitRoleCopy(`${brand}에서 바로 쓰는 것`, `${brand}에서 초안·수정·공유가 한 흐름이다.`, [
+      { title: '초안', body: `${brand} 보드에 바로 붙일 수 있는 초안이 열린다.` },
+      { title: '수정', body: `${brand}에서는 보낸 뒤에도 같은 화면에서 문장과 레이아웃을 고친다.` },
+      { title: '공유', body: `${brand}에 필요한 사람만 초대해 보기와 고치기를 나눈다.` },
+      { title: '이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+    ]),
+    quote: eightBitRoleCopy(
+      '보드에서',
+      `${brand}에서는 초안을 보낸 뒤에도 같은 화면에서 고칠 수 있어야 일이 끝난다.`,
+    ),
+    team: eightBitRoleCopy(`${brand}를 쓰는 자리`, `${brand}에서 실무는 초안을 붙이고 리뷰는 권한을 나눈다.`, [
+      { title: '혼자 시작', body: `${brand}에서 한 보드를 열고 초안을 붙인다.` },
+      { title: '팀과 고치기', body: `${brand}에서 보기와 고치기를 나눠 같이 고친다.` },
+      { title: '리뷰', body: `${brand}에서 댓글과 버전을 같은 화면에서 본다.` },
+      { title: '조직으로', body: `${brand} 워크스페이스 기준으로 이력과 보내기를 고정한다.` },
+    ]),
+    process: eightBitRoleCopy(`${brand} 흐름`, `${brand}에서 초안을 붙이고 권한을 나눈 뒤 이력을 남긴다.`, [
+      { title: '붙인다', body: `${brand} 보드에 초안을 바로 연다.` },
+      { title: '나눈다', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '남긴다', body: `${brand}에서 바꾼 기록을 같은 화면에 둔다.` },
+    ]),
+    donut: eightBitRoleCopy(`${brand} 운영`, `${brand}가 한 화면에서 남기는 네 가지.`, [
+      { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
+      { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+      { title: '같은 맥락', body: `${brand}에서 파일과 대화가 한 화면으로 열린다.` },
+      { title: '보내기', body: `${brand}에서 필요한 사람만 초대한다.` },
+    ]),
+  };
+}
+
+function broadsideSlideCopyPack(topic: string): BroadsideCopyPack {
+  const brand = topic || 'Teamver';
+  return {
+    cover: eightBitRoleCopy('표지', `${brand}는 초안과 수정을 같은 보드에서 끝낸다.`),
+    chapter: eightBitRoleCopy(
+      `${brand}가 묶는 일`,
+      `${brand}는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.`,
+    ),
+    statement: eightBitRoleCopy(
+      '보드에서',
+      `${brand}에서는 초안을 보낸 뒤에도 같은 화면에서 고칠 수 있어야 일이 끝난다.`,
+    ),
+    split: eightBitRoleCopy(
+      `${brand}가 남기는 증거`,
+      `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.`,
+      [
+        { title: '같은 보드', body: `${brand}에서 파일과 대화를 한 맥락으로 연다.` },
+        { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+        { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+      ],
+    ),
+    stats: eightBitRoleCopy(`${brand} 운영`, `${brand}가 한 화면에서 남기는 세 가지.`, [
+      { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
+      { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+    ]),
+    fadelist: eightBitRoleCopy(`${brand}에서 바로 쓰는 것`, `${brand}에서 초안·수정·공유가 한 흐름이다.`, [
+      { title: '초안', body: `${brand} 보드에 바로 붙일 수 있는 초안이 열린다.` },
+      { title: '수정', body: `${brand}에서는 보낸 뒤에도 같은 화면에서 문장과 레이아웃을 고친다.` },
+      { title: '공유', body: `${brand}에 필요한 사람만 초대해 보기와 고치기를 나눈다.` },
+    ]),
+    list: eightBitRoleCopy(`${brand}에서 지키는 규칙`, `${brand}에서 보드를 열고 권한을 나눈 뒤 이력을 남긴다.`, [
+      { title: '보드를 연다', body: `흩어진 메모를 ${brand} 워크스페이스로 옮긴다.` },
+      { title: '권한을 나눈다', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '이력을 남긴다', body: `${brand} 보드에 바꾼 사람과 시점을 고정한다.` },
+      { title: '보낸다', body: `${brand}에서 필요한 사람만 초대해 결과를 넘긴다.` },
+    ]),
+    quote: eightBitRoleCopy(
+      '이어서 고치기',
+      `${brand}에서는 초안을 보낸 뒤에도 같은 화면에서 고칠 수 있어야 일이 끝난다.`,
+    ),
+    compare: eightBitRoleCopy(`${brand} 전후`, `${brand}로 옮기면 파일 밖으로 흩어지던 수정이 한 보드에 남는다.`, [
+      { title: '흩어진 파일', body: `초안과 피드백이 메일과 폴더로 갈라져 ${brand} 밖을 떠돈다.` },
+      { title: '같은 보드', body: `${brand}에서 초안·댓글·버전이 한 화면으로 열린다.` },
+    ]),
+    chart: eightBitRoleCopy(`${brand} 작업 흐름`, `${brand}에서 보드를 열고 권한을 나눈 뒤 이력을 남긴다.`, [
+      { title: '연다', body: `흩어진 메모를 ${brand}로 옮긴다.` },
+      { title: '나눈다', body: `${brand}에서 보기와 고치기를 정한다.` },
+      { title: '남긴다', body: `${brand} 보드에 바꾼 시점을 고정한다.` },
+      { title: '보낸다', body: `${brand}에서 필요한 사람만 초대한다.` },
+    ]),
+    diagram: eightBitRoleCopy(`${brand} 흐름`, `${brand}에서 초안을 붙이고 권한을 나눈 뒤 이력을 남긴다.`, [
+      { title: '붙인다', body: `${brand} 보드에 초안을 바로 연다.` },
+      { title: '나눈다', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '남긴다', body: `${brand}에서 바꾼 기록을 같은 화면에 둔다.` },
+      { title: '보낸다', body: `${brand}에서 필요한 사람만 초대한다.` },
+    ]),
+    pie: eightBitRoleCopy(`${brand}가 남기는 칸`, `${brand}에서 초안과 권한이 한 화면으로 모인다.`, [
+      { title: '초안', body: `${brand} 보드에 바로 붙일 수 있는 초안이 열린다.` },
+      { title: '권한', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '이력', body: `${brand}에서 누가 언제 바꿨는지 남긴다.` },
+      { title: '보내기', body: `${brand}에서 필요한 사람만 초대한다.` },
+    ]),
+    end: eightBitRoleCopy(
+      '보드에서 이어 쓰기',
+      `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.`,
+    ),
+  };
+}
+
+function playfulSlideCopyPack(topic: string): PlayfulCopyPack {
+  const brand = topic || 'Teamver';
+  return {
+    cover: eightBitRoleCopy('표지', `${brand}는 초안과 수정을 같은 보드에서 끝낸다.`),
+    toc: eightBitRoleCopy(`${brand}가 다루는 칸`, `${brand}에서 보드·권한·이력·보내기를 한 흐름으로 본다.`, [
+      { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
+      { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+      { title: '같은 맥락', body: `${brand}에서 파일과 대화가 한 화면으로 열린다.` },
+      { title: '작업 흐름', body: `${brand}에서 보드를 열고 권한을 나눈 뒤 이력을 남긴다.` },
+      { title: '이어서 쓰기', body: `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.` },
+    ]),
+    statement: eightBitRoleCopy(
+      `${brand}가 묶는 일`,
+      `${brand}는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.`,
+    ),
+    chart: eightBitRoleCopy(`${brand} 작업 흐름`, `${brand}에서 보드를 열고 권한을 나눈 뒤 이력을 남긴다.`, [
+      { title: '연다', body: `흩어진 메모를 ${brand}로 옮긴다.` },
+      { title: '나눈다', body: `${brand}에서 보기와 고치기를 정한다.` },
+      { title: '남긴다', body: `${brand} 보드에 바꾼 시점을 고정한다.` },
+      { title: '본다', body: `${brand}에서 댓글과 버전을 연다.` },
+      { title: '보낸다', body: `${brand}에서 필요한 사람만 초대한다.` },
+    ]),
+    team: eightBitRoleCopy(`${brand}를 쓰는 자리`, `${brand}에서 실무는 초안을 붙이고 리뷰는 권한을 나눈다.`, [
+      { title: '혼자 시작', body: `${brand}에서 한 보드를 열고 초안을 붙인다.` },
+      { title: '팀과 고치기', body: `${brand}에서 보기와 고치기를 나눠 같이 고친다.` },
+      { title: '리뷰', body: `${brand}에서 댓글과 버전을 같은 화면에서 본다.` },
+      { title: '조직으로', body: `${brand} 워크스페이스 기준으로 이력과 보내기를 고정한다.` },
+    ]),
+    services: eightBitRoleCopy(`${brand}에서 바로 쓰는 것`, `${brand}에서 초안·수정·공유가 한 흐름이다.`, [
+      { title: '초안', body: `${brand} 보드에 바로 붙일 수 있는 초안이 열린다.` },
+      { title: '수정', body: `${brand}에서는 보낸 뒤에도 같은 화면에서 문장과 레이아웃을 고친다.` },
+      { title: '공유', body: `${brand}에 필요한 사람만 초대해 보기와 고치기를 나눈다.` },
+      { title: '이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+      { title: '권한', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+    ]),
+    timeline: eightBitRoleCopy('도입 단계', `한 팀 보드를 ${brand}로 옮긴 뒤 리뷰 습관과 조직 기준을 고정한다.`, [
+      { title: '한 팀 보드', body: `기존 문서를 ${brand} 보드로 옮기고 보기·고치기 권한을 나눈다.` },
+      { title: '리뷰 습관', body: `${brand}에서 댓글과 버전을 같은 화면에서 고정한다.` },
+      { title: '조직 기준', body: `${brand} 워크스페이스 기본값으로 감사와 보내기 규칙을 둔다.` },
+      { title: '이어서 쓰기', body: `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.` },
+      { title: '같은 화면', body: `${brand}에서 초안과 리뷰가 한 보드에 남는다.` },
+    ]),
+    stats: eightBitRoleCopy(`${brand} 운영`, `${brand}가 한 화면에서 남기는 세 가지.`, [
+      { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
+      { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+    ]),
+    gallery: eightBitRoleCopy(
+      `${brand}가 남기는 증거`,
+      `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.`,
+      [
+        { title: '같은 보드', body: `${brand}에서 파일과 대화를 한 맥락으로 연다.` },
+        { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+        { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+        { title: '보내기', body: `${brand}에서 필요한 사람만 초대한다.` },
+      ],
+    ),
+    close: eightBitRoleCopy(
+      '보드에서 이어 쓰기',
+      `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.`,
+    ),
+  };
+}
+
+function looksLikeDaisyPlayfulLeftoverCopy(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!value) return false;
+  if (looksLikeEightBitCapsuleLeftoverCopy(value)) return true;
+  if (DAISY_CATALOG_DEMO_COPY_RE.test(value) || PLAYFUL_CATALOG_DEMO_COPY_RE.test(value)) {
+    DAISY_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+    PLAYFUL_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+    return true;
+  }
+  DAISY_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+  PLAYFUL_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+  return /Overview|What We Will Cover Today|Daisy Days|Creative Direction/i.test(value);
+}
+
+function daisyDaysKeepable(text: string): boolean {
+  return eightBitCapsuleCopyIsKeepable(text) && !looksLikeDaisyPlayfulLeftoverCopy(text);
+}
+
+function replaceKeepableLeaf(
+  full: string,
+  open: string,
+  inner: string,
+  close: string,
+  next: string,
+): string {
+  const plain = visibleDeckCopy(inner);
+  if (daisyDaysKeepable(plain)) return full;
+  if (!next) return full;
+  return `${open}${escapeHtml(next)}${close}`;
+}
+
+function daisyPackForBody(body: string, attrs: string, pack: DaisyCopyPack): DaisyRoleCopy {
+  if (/\bslide-title\b|\btitle-box\b/i.test(`${attrs}\n${body}`)) return pack.cover;
+  if (/\bslide-welcome\b|\bwelcome-frame\b/i.test(`${attrs}\n${body}`)) return pack.welcome;
+  if (/\bslide-weekly\b|\bday-card\b/i.test(`${attrs}\n${body}`)) return pack.weekly;
+  if (/\bslide-timeline\b|\btimeline-row\b/i.test(`${attrs}\n${body}`)) return pack.timeline;
+  if (/\bslide-chart-bar\b|\bchart-legend\b/i.test(`${attrs}\n${body}`)) return pack.chart;
+  if (/\bslide-cards\b|\binfo-card\b/i.test(`${attrs}\n${body}`)) return pack.cards;
+  if (/\bslide-quote\b|\bquote-box\b/i.test(`${attrs}\n${body}`)) return pack.quote;
+  if (/\bslide-team\b|\bteam-member\b/i.test(`${attrs}\n${body}`)) return pack.team;
+  if (/\bslide-process\b|\bprocess-step\b/i.test(`${attrs}\n${body}`)) return pack.process;
+  if (/\bslide-donut\b|\bdonut-legend-side\b/i.test(`${attrs}\n${body}`)) return pack.donut;
+  return pack.welcome;
+}
+
+function playfulPackForBody(body: string, attrs: string, pack: PlayfulCopyPack): PlayfulRoleCopy {
+  if (/\bslide-1\b|\btitle-main\b/i.test(`${attrs}\n${body}`)) return pack.cover;
+  if (/\bslide-10\b|\bclosing-big\b/i.test(`${attrs}\n${body}`)) return pack.close;
+  if (/\bslide-2\b|\btoc-grid\b/i.test(`${attrs}\n${body}`)) return pack.toc;
+  if (/\bslide-3\b|\bbig-statement\b/i.test(`${attrs}\n${body}`)) return pack.statement;
+  if (/\bslide-4\b|\bchart-bars\b/i.test(`${attrs}\n${body}`)) return pack.chart;
+  if (/\bslide-5\b|\bteam-card\b/i.test(`${attrs}\n${body}`)) return pack.team;
+  if (/\bslide-6\b|\bservice-block\b/i.test(`${attrs}\n${body}`)) return pack.services;
+  if (/\bslide-7\b|\btimeline-track\b/i.test(`${attrs}\n${body}`)) return pack.timeline;
+  if (/\bslide-8\b|\bstat-item\b/i.test(`${attrs}\n${body}`)) return pack.stats;
+  if (/\bslide-9\b|\bgallery-collage\b/i.test(`${attrs}\n${body}`)) return pack.gallery;
+  return pack.statement;
+}
+
+function broadsidePackForBody(body: string, attrs: string, pack: BroadsideCopyPack): BroadsideRoleCopy {
+  if (/\bslide--cover\b/i.test(attrs)) return pack.cover;
+  if (/\bslide--chapter\b/i.test(attrs)) return pack.chapter;
+  if (/\bslide--statement\b/i.test(attrs)) return pack.statement;
+  if (/\bslide--split\b/i.test(attrs)) return pack.split;
+  if (/\bslide--stats\b/i.test(attrs)) return pack.stats;
+  if (/\bslide--fadelist\b/i.test(attrs)) return pack.fadelist;
+  if (/\bslide--list\b/i.test(attrs)) return pack.list;
+  if (/\bslide--quote\b/i.test(attrs)) return pack.quote;
+  if (/\bslide--compare\b/i.test(attrs)) return pack.compare;
+  if (/\bslide--chart\b/i.test(attrs)) return pack.chart;
+  if (/\bslide--diagram\b/i.test(attrs)) return pack.diagram;
+  if (/\bslide--pie\b/i.test(attrs)) return pack.pie;
+  if (/\bslide--end\b/i.test(attrs)) return pack.end;
+  if (/\bslide--(?:pyramid|vtimeline|cycle)\b/i.test(attrs)) return pack.list;
+  return pack.statement;
+}
+
+function daisyDaysSlideHasKitChrome(html: string): boolean {
+  return /\b(?:deco-daisy|title-box|welcome-frame|day-card|donut-legend-side|slide-welcome|slide-weekly|slide-chart-bar|slide-donut)\b/i.test(html);
+}
+
+function playfulSlideHasKitChrome(html: string, attrs = ''): boolean {
+  const hay = `${attrs}\n${html}`;
+  return /\b(?:title-main|doodle-blob|doodle-frame|toc-grid|big-statement|chart-bars|team-card|service-block|timeline-track|stat-item|gallery-collage|closing-big)\b/i.test(hay)
+    || (/\bslide-(?:[1-9]|10)\b/i.test(hay) && /\bdoodle\b/i.test(hay));
+}
+
+function broadsideSlideHasKitChrome(html: string): boolean {
+  return /\b(?:broadside-num|cover-body|slide--fadelist|slide--pie|slide--diagram|--c-bg-orange)\b/i.test(html)
+    || /\bslide--(?:cover|chapter|split|stats|list|quote|compare|statement|chart|end)\b/i.test(html);
+}
+
+function daisyDaysSlideNeedsHeal(body: string, heading: string): boolean {
+  if (!visibleDeckCopy(body).trim()) return true;
+  if (looksLikeLeftoverTemplateDemoDeck(body)) return true;
+  if (DAISY_CATALOG_DEMO_COPY_RE.test(body) || DAISY_CATALOG_DEMO_METRIC_RE.test(body)) {
+    DAISY_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+    DAISY_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+    return true;
+  }
+  DAISY_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+  DAISY_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+  if (looksLikeDaisyPlayfulLeftoverCopy(heading) || looksLikeBlockedOverviewOrTrioTitle(heading)) {
+    return true;
+  }
+  const visible = visibleDeckCopy(body);
+  if (SERVICE_INTRO_LEFTOVER_BODY_RE.test(visible)) return true;
+  if (/(?<![가-힣])개요(?![가-힣])|핵심\s*포인트|파일럿/.test(visible)) return true;
+  return false;
+}
+
+function playfulSlideNeedsHeal(body: string, heading: string): boolean {
+  if (!visibleDeckCopy(body).trim()) return true;
+  if (looksLikeLeftoverTemplateDemoDeck(body)) return true;
+  if (PLAYFUL_CATALOG_DEMO_COPY_RE.test(body) || PLAYFUL_CATALOG_DEMO_METRIC_RE.test(body)) {
+    PLAYFUL_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+    PLAYFUL_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+    return true;
+  }
+  PLAYFUL_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+  PLAYFUL_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+  if (looksLikeDaisyPlayfulLeftoverCopy(heading) || looksLikeBlockedOverviewOrTrioTitle(heading)) {
+    return true;
+  }
+  const visible = visibleDeckCopy(body);
+  if (SERVICE_INTRO_LEFTOVER_BODY_RE.test(visible)) return true;
+  if (/(?<![가-힣])개요(?![가-힣])|핵심\s*포인트|파일럿|Overview/.test(visible)) return true;
+  return false;
+}
+
+function broadsideSlideNeedsHeal(body: string, heading: string): boolean {
+  if (looksLikeLeftoverTemplateDemoDeck(body)) return true;
+  if (BROADSIDE_LEFTOVER_BODY_RE.test(body)) return true;
+  if (looksLikeServiceIntroLeftoverTitle(heading) || looksLikeBlockedOverviewOrTrioTitle(heading)) {
+    return true;
+  }
+  const visible = visibleDeckCopy(body);
+  if (SERVICE_INTRO_LEFTOVER_BODY_RE.test(visible)) return true;
+  if (/(?<![가-힣])개요(?![가-힣])|핵심\s*포인트|파일럿|\$3\.5B|\b3\s*[×xX]\b/.test(visible)) return true;
+  return false;
+}
+
+function stripDaisyDaysCatalogDemoCopy(html: string): string {
+  return String(html ?? '')
+    .replace(DAISY_CATALOG_DEMO_COPY_RE, '')
+    .replace(DAISY_CATALOG_DEMO_METRIC_RE, '');
+}
+
+function stripPlayfulCatalogDemoCopy(html: string): string {
+  return String(html ?? '')
+    .replace(PLAYFUL_CATALOG_DEMO_COPY_RE, '')
+    .replace(PLAYFUL_CATALOG_DEMO_METRIC_RE, '');
+}
+
+function seedKitSlideInput(
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    kicker: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+  role: EightBitRoleCopy,
+): {
+  title: string;
+  lead: string;
+  bodyText: string;
+  kicker: string;
+  fillLines: TemplateCloneCardFillLine[];
+} {
+  const heading = rewriteLeftoverKitSlideTitle(input.title, role.heading);
+  const leftoverLines = (input.fillLines ?? []).some((line) => {
+    const resolved = resolveTemplateCloneCardFill(line);
+    return looksLikeEightBitCapsuleLeftoverCopy(resolved.title)
+      || looksLikeEightBitCapsuleLeftoverCopy(resolved.body)
+      || looksLikeDaisyPlayfulLeftoverCopy(resolved.title);
+  });
+  const leftoverInput = leftoverLines
+    || looksLikeDaisyPlayfulLeftoverCopy(input.title)
+    || looksLikeDaisyPlayfulLeftoverCopy(input.kicker || '')
+    || looksLikeDaisyPlayfulLeftoverCopy(input.lead)
+    || looksLikeDaisyPlayfulLeftoverCopy(input.bodyText)
+    || looksLikeEightBitCapsuleLeftoverCopy(input.title)
+    || looksLikeEightBitCapsuleLeftoverCopy(input.lead)
+    || looksLikeEightBitCapsuleLeftoverCopy(input.bodyText);
+  const lead = leftoverInput || looksLikeEightBitCapsuleLeftoverCopy(input.lead)
+    ? role.lead
+    : (daisyDaysKeepable(input.lead) ? input.lead : (input.lead || role.lead));
+  const bodyText = leftoverInput || looksLikeEightBitCapsuleLeftoverCopy(input.bodyText)
+    ? role.lead
+    : (daisyDaysKeepable(input.bodyText) ? input.bodyText : (input.bodyText || role.lead));
+  return {
+    ...input,
+    title: heading,
+    lead,
+    bodyText,
+    fillLines: leftoverInput && role.items.length > 0 ? role.items : input.fillLines,
+  };
+}
+
+export function fillDaisyDaysKitSlide(
+  body: string,
+  attrs: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    kicker: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  const src = String(body ?? '');
+  if (!daisyDaysSlideHasKitChrome(src)) return src;
+  const topic = resolveLockedTopicNoun(input.title, input.lead, input.bodyText, input.kicker);
+  const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
+  const pack = daisyDaysSlideCopyPack(brand);
+  const role = daisyPackForBody(src, attrs, pack);
+  const seeded = seedKitSlideInput(input, role);
+  const lines = biennaleFillLines(seeded, 6);
+  let next = src;
+
+  if (/\btitle-box\b/i.test(next)) {
+    const h1 = visibleDeckCopy(next.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '');
+    if (!h1 || looksLikeDaisyPlayfulLeftoverCopy(h1) || !daisyDaysKeepable(h1)) {
+      next = next.replace(
+        /(<h1\b[^>]*>)([\s\S]*?)(<\/h1>)/i,
+        (full, open: string, inner: string, close: string) => (
+          replaceKeepableLeaf(full, open, inner, close, seeded.title)
+        ),
+      );
+    }
+    next = replaceFirstExactClassText(next, 'subtitle', seeded.lead);
+  }
+
+  const visibleHeading = visibleDeckCopy(next.match(/<h2\b[^>]*>([\s\S]*?)<\/h2>/i)?.[1] ?? '');
+  if (
+    visibleHeading
+    && (
+      looksLikeDaisyPlayfulLeftoverCopy(visibleHeading)
+      || looksLikeBlockedOverviewOrTrioTitle(visibleHeading)
+      || SERVICE_INTRO_LEFTOVER_BODY_RE.test(visibleHeading)
+    )
+  ) {
+    next = next.replace(
+      /(<h2\b[^>]*>)([\s\S]*?)(<\/h2>)/i,
+      (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(seeded.title)}${close}`,
+    );
+  }
+
+  if (/\bwelcome-list\b/i.test(next)) {
+    next = replaceListItems(next, lines.map((line) => line.body || line.title).filter(Boolean));
+  }
+
+  if (/\bday-card\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'day-card', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = block.replace(
+        /(<(?:div|span)\b[^>]*\bday-header\b[^>]*>)([\s\S]*?)(<\/(?:div|span)>)/i,
+        (full, open: string, inner: string, close: string) => (
+          replaceKeepableLeaf(full, open, inner, close, resolved.title)
+        ),
+      );
+      return replaceListItems(filled, [resolved.body || resolved.title]);
+    });
+  }
+
+  if (/\btimeline-card\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'timeline-card', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = block.replace(
+        /(<h4\b[^>]*>)([\s\S]*?)(<\/h4>)/i,
+        (full, open: string, inner: string, close: string) => (
+          replaceKeepableLeaf(full, open, inner, close, resolved.title)
+        ),
+      );
+      return filled.replace(
+        /(<p\b[^>]*>)([\s\S]*?)(<\/p>)/i,
+        (full, open: string, inner: string, close: string) => (
+          replaceKeepableLeaf(full, open, inner, close, resolved.body || resolved.title)
+        ),
+      );
+    });
+  }
+
+  if (/\blegend-item\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'legend-item', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      const plain = visibleDeckCopy(block);
+      if (daisyDaysKeepable(plain) && !/Reading|Writing|Science|Art|Music|Games/i.test(plain)) {
+        return block;
+      }
+      return block.replace(
+        /(>)([^<]*)(<\/)/,
+        (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(resolved.title)}${close}`,
+      );
+    });
+  }
+
+  if (/\binfo-card\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'info-card', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = block.replace(
+        /(<h4\b[^>]*>)([\s\S]*?)(<\/h4>)/i,
+        (full, open: string, inner: string, close: string) => (
+          replaceKeepableLeaf(full, open, inner, close, resolved.title)
+        ),
+      );
+      return filled.replace(
+        /(<p\b[^>]*>)([\s\S]*?)(<\/p>)/i,
+        (full, open: string, inner: string, close: string) => (
+          replaceKeepableLeaf(full, open, inner, close, resolved.body || resolved.title)
+        ),
+      );
+    });
+  }
+
+  if (/\bquote-text\b/i.test(next)) {
+    next = replaceFirstExactClassText(next, 'quote-text', seeded.lead);
+    next = replaceFirstExactClassText(next, 'quote-author', '');
+  }
+
+  if (/\bteam-member\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'team-member', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = replaceFirstExactClassText(block, 'team-name', resolved.title);
+      return replaceFirstExactClassText(filled, 'team-role', resolved.body || resolved.title);
+    });
+  }
+
+  if (/\bprocess-step\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'process-step', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = replaceFirstExactClassText(block, 'step-title', resolved.title);
+      return replaceFirstExactClassText(filled, 'step-desc', resolved.body || resolved.title);
+    });
+  }
+
+  if (/\bd-legend-item\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'd-legend-item', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      return block.replace(
+        /(>)([^<]*?)(<\/)/,
+        (full, open: string, inner: string, close: string) => {
+          const plain = String(inner).replace(/\s+/g, ' ').trim();
+          if (daisyDaysKeepable(plain)) return full;
+          return `${open}${escapeHtml(resolved.title)}${close}`;
+        },
+      );
+    });
+    next = next.replace(
+      /(<h3\b[^>]*>)([\s\S]*?)(<\/h3>)/i,
+      (full, open: string, inner: string, close: string) => (
+        replaceKeepableLeaf(full, open, inner, close, seeded.title)
+      ),
+    );
+  }
+
+  return wipeEightBitCapsuleLeftoverPhrases(stripDaisyDaysCatalogDemoCopy(next));
+}
+
+export function fillPlayfulKitSlide(
+  body: string,
+  attrs: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    kicker: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  const src = String(body ?? '');
+  if (!playfulSlideHasKitChrome(src, attrs)) return src;
+  const topic = resolveLockedTopicNoun(input.title, input.lead, input.bodyText, input.kicker);
+  const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
+  const pack = playfulSlideCopyPack(brand);
+  const role = playfulPackForBody(src, attrs, pack);
+  const seeded = seedKitSlideInput(input, role);
+  const lines = biennaleFillLines(seeded, 6);
+  let next = src;
+
+  if (/\btitle-main\b/i.test(next)) {
+    const main = visibleDeckCopy(
+      /<(?:h1|div|p)\b[^>]*\btitle-main\b[^>]*>([\s\S]*?)<\/(?:h1|div|p)>/i.exec(next)?.[1] ?? '',
+    );
+    if (!main || looksLikeDaisyPlayfulLeftoverCopy(main) || !daisyDaysKeepable(main)) {
+      next = replaceFirstExactClassText(next, 'title-main', seeded.title);
+    }
+    next = replaceFirstExactClassText(next, 'subtitle', seeded.lead);
+    const vertical = visibleDeckCopy(
+      /<(?:div|span|p)\b[^>]*\bvertical-text\b[^>]*>([\s\S]*?)<\/(?:div|span|p)>/i.exec(next)?.[1] ?? '',
+    );
+    if (!vertical || looksLikeDaisyPlayfulLeftoverCopy(vertical)) {
+      next = replaceFirstExactClassText(next, 'vertical-text', seeded.title);
+    }
+  }
+
+  if (/\bsection-label\b/i.test(next)) {
+    const label = visibleDeckCopy(
+      /<(?:div|span|p)\b[^>]*\bsection-label\b[^>]*>([\s\S]*?)<\/(?:div|span|p)>/i.exec(next)?.[1] ?? '',
+    );
+    if (!label || looksLikeDaisyPlayfulLeftoverCopy(label) || /Overview/i.test(label)) {
+      next = replaceFirstExactClassText(next, 'section-label', seeded.title);
+    }
+  }
+
+  const visibleHeading = visibleDeckCopy(
+    next.match(/<(?:h[12]|div)\b[^>]*\b(?:toc-title|chart-title|team-title|services-title|timeline-title|stats-title|gallery-title|closing-big)\b[^>]*>([\s\S]*?)<\//i)?.[1]
+    ?? next.match(/<h2\b[^>]*>([\s\S]*?)<\/h2>/i)?.[1]
+    ?? '',
+  );
+  if (visibleHeading && (looksLikeDaisyPlayfulLeftoverCopy(visibleHeading) || looksLikeBlockedOverviewOrTrioTitle(visibleHeading))) {
+    for (const cls of ['toc-title', 'chart-title', 'team-title', 'services-title', 'timeline-title', 'stats-title', 'gallery-title', 'closing-big']) {
+      if (new RegExp(`\\b${cls}\\b`, 'i').test(next)) {
+        next = replaceFirstExactClassText(next, cls, seeded.title);
+        break;
+      }
+    }
+  }
+
+  if (/\btoc-item\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'toc-item', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      return replaceFirstExactClassText(block, 'toc-title', resolved.title);
+    });
+  }
+
+  if (/\bbig-statement\b/i.test(next)) {
+    next = replaceFirstExactClassText(next, 'big-statement', seeded.lead);
+  }
+  if (/\bbody-text\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(
+      next,
+      'body-text',
+      lines.length > 0 ? lines : [{ title: seeded.lead, body: seeded.bodyText }],
+      (block, line) => {
+        const resolved = resolveTemplateCloneCardFill(line);
+        const plain = visibleDeckCopy(block);
+        if (daisyDaysKeepable(plain)) return block;
+        return block.replace(
+          /(>)([\s\S]*?)(<\/)/,
+          `$1${escapeHtml(resolved.body || resolved.title)}$3`,
+        );
+      },
+    );
+  }
+
+  if (/\bbar-label\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'bar-label', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      const plain = visibleDeckCopy(block);
+      if (daisyDaysKeepable(plain)) return block;
+      return replaceFirstExactClassText(block, 'bar-label', resolved.title);
+    });
+  }
+
+  if (/\bteam-card\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'team-card', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = replaceFirstExactClassText(block, 'name', resolved.title);
+      return replaceFirstExactClassText(filled, 'role', resolved.body || resolved.title);
+    });
+    if (/\bteam-sub\b/i.test(next)) {
+      next = replaceFirstExactClassText(next, 'team-sub', seeded.lead);
+    }
+  }
+
+  if (/\bservice-block\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'service-block', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = replaceFirstExactClassText(block, 'block-title', resolved.title);
+      return replaceFirstExactClassText(filled, 'block-desc', resolved.body || resolved.title);
+    });
+  }
+
+  if (/\btimeline-step\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'timeline-step', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = replaceFirstExactClassText(block, 'step-title', resolved.title);
+      return replaceFirstExactClassText(filled, 'step-desc', resolved.body || resolved.title);
+    });
+  }
+
+  if (/\bstat-item\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'stat-item', lines, (block, line, index) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      const ordinal = String(index + 1).padStart(2, '0');
+      let filled = block.replace(
+        /(<(?:div|span)\b[^>]*\bstat-num\b[^>]*>)([\s\S]*?)(<\/(?:div|span)>)/i,
+        (full, open: string, inner: string, close: string) => {
+          const plain = visibleDeckCopy(inner);
+          if (titleLooksLikeMetric(resolved.title) || titleLooksLikeMetric(resolved.body)) {
+            return `${open}${escapeHtml(resolved.title || resolved.body)}${close}`;
+          }
+          if (!plain || PLAYFUL_CATALOG_DEMO_METRIC_RE.test(plain) || titleLooksLikeMetric(plain)) {
+            PLAYFUL_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+            return `${open}${escapeHtml(ordinal)}${close}`;
+          }
+          return full;
+        },
+      );
+      return replaceFirstExactClassText(filled, 'stat-label', resolved.title || resolved.body);
+    });
+  }
+
+  if (/\bgallery-item\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'gallery-item', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      return replaceFirstExactClassText(block, 'gallery-tag', resolved.title);
+    });
+    if (/\bgallery-sub\b/i.test(next)) {
+      next = replaceFirstExactClassText(next, 'gallery-sub', seeded.lead);
+    }
+  }
+
+  if (/\bclosing-sub\b/i.test(next)) {
+    next = replaceFirstExactClassText(next, 'closing-sub', seeded.lead);
+  }
+  if (!/\bbig-statement\b/i.test(next) && (/\bslide-3\b/i.test(attrs) || !visibleDeckCopy(next).trim())) {
+    next = `${next}<p class="big-statement">${escapeHtml(seeded.lead)}</p>`;
+  }
+
+  if (/\bcontact-line\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(
+      next,
+      'contact-line',
+      [{ title: seeded.lead, body: seeded.lead }],
+      (block) => {
+        const plain = visibleDeckCopy(block);
+        if (daisyDaysKeepable(plain)) return block;
+        return block.replace(
+          /(>)([^<]*)(<\/)/,
+          `$1${escapeHtml(seeded.lead)}$3`,
+        );
+      },
+    );
+  }
+
+  return wipeEightBitCapsuleLeftoverPhrases(stripPlayfulCatalogDemoCopy(next));
+}
+
+export function fillBroadsideKitSlide(
+  body: string,
+  attrs: string,
+  input: StudioCreativeFillInput,
+): string {
+  const src = String(body ?? '');
+  if (!broadsideSlideHasKitChrome(`${attrs}\n${src}`)) return src;
+  const topic = resolveLockedTopicNoun(input.topic, input.title, input.lead, input.bodyText);
+  const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
+  const pack = broadsideSlideCopyPack(brand);
+  const role = broadsidePackForBody(src, attrs, pack);
+  const seeded = seedKitSlideInput({
+    title: input.title,
+    lead: input.lead,
+    bodyText: input.bodyText,
+    kicker: input.kicker,
+    fillLines: input.fillLines,
+  }, role);
+  return wipeEightBitCapsuleLeftoverPhrases(fillStudioKitSlide(src, attrs, {
+    ...input,
+    title: seeded.title,
+    lead: seeded.lead,
+    bodyText: seeded.bodyText,
+    fillLines: seeded.fillLines,
+    topic: brand,
+  }));
+}
+
+export function healDaisyDaysLeftoverCatalogCopy(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsDaisyDays(dest)) return dest;
+  const briefText = String(brief ?? '');
+  if (!/[가-힣]/.test(visibleDeckCopy(dest)) && !/[가-힣]/.test(briefText) && !briefText.trim()) {
+    return dest;
+  }
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) {
+    return stripDaisyDaysCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(dest));
+  }
+  const harvested = [...dest.matchAll(/<(?:h[1-3]|div)\b[^>]*>([\s\S]*?)<\/(?:h[1-3]|div)>/gi)]
+    .map((match) => visibleDeckCopy(match[1] ?? ''))
+    .filter((text) => text.length >= 2 && text.length <= 40 && !DAISY_CATALOG_DEMO_COPY_RE.test(text));
+  DAISY_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+  const outline = resolveTemplateCloneSlidesForDeterministicFill({
+    userInstruction: briefText || harvested.join('\n') || '',
+    deckTitle: harvested[0] ?? null,
+    slideCount: spans.length,
+  });
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    if (!daisyDaysSlideHasKitChrome(body)) continue;
+    const heading = visibleDeckCopy(body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '');
+    if (!daisyDaysSlideNeedsHeal(body, heading)) continue;
+    const slide = outline[i] ?? outline[Math.min(i, outline.length - 1)];
+    const topic = resolveLockedTopicNoun(briefText, harvested[0], slide?.title);
+    const pack = daisyDaysSlideCopyPack(topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver');
+    const role = daisyPackForBody(body, span.attrs, pack);
+    const title = rewriteLeftoverKitSlideTitle(slide?.title || harvested[i] || harvested[0] || '', role.heading);
+    const nextBody = fillDaisyDaysKitSlide(body, span.attrs, {
+      title,
+      lead: looksLikeDaisyPlayfulLeftoverCopy(slide?.lead ?? '') ? role.lead : (slide?.lead || role.lead),
+      bodyText: slide?.body && !looksLikeDaisyPlayfulLeftoverCopy(slide.body) ? slide.body : role.lead,
+      kicker: slide?.kicker ?? '',
+      fillLines: role.items.length > 0 ? role.items : templateCloneSlideFillLines(slide ?? { title }),
+    });
+    if (nextBody === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
+  }
+  return wipeEightBitCapsuleLeftoverPhrases(
+    stripDaisyDaysCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out)),
+  );
+}
+
+export function healPlayfulLeftoverCatalogCopy(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsPlayful(dest)) return dest;
+  const briefText = String(brief ?? '');
+  if (!/[가-힣]/.test(visibleDeckCopy(dest)) && !/[가-힣]/.test(briefText) && !briefText.trim()) {
+    return dest;
+  }
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) {
+    return stripPlayfulCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(dest));
+  }
+  const harvested = [...dest.matchAll(/<(?:h[1-3]|div)\b[^>]*>([\s\S]*?)<\/(?:h[1-3]|div)>/gi)]
+    .map((match) => visibleDeckCopy(match[1] ?? ''))
+    .filter((text) => text.length >= 2 && text.length <= 40 && !PLAYFUL_CATALOG_DEMO_COPY_RE.test(text));
+  PLAYFUL_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+  const outline = resolveTemplateCloneSlidesForDeterministicFill({
+    userInstruction: briefText || harvested.join('\n') || '',
+    deckTitle: harvested[0] ?? null,
+    slideCount: spans.length,
+  });
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    if (!playfulSlideHasKitChrome(body, span.attrs)) continue;
+    const heading = visibleDeckCopy(
+      body.match(/<(?:h[12]|div)\b[^>]*\b(?:title-main|section-label|closing-big)\b[^>]*>([\s\S]*?)<\//i)?.[1]
+      ?? body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1]
+      ?? '',
+    );
+    if (!playfulSlideNeedsHeal(body, heading)) continue;
+    const slide = outline[i] ?? outline[Math.min(i, outline.length - 1)];
+    const topic = resolveLockedTopicNoun(briefText, harvested[0], slide?.title);
+    const pack = playfulSlideCopyPack(topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver');
+    const role = playfulPackForBody(body, span.attrs, pack);
+    const title = rewriteLeftoverKitSlideTitle(slide?.title || harvested[i] || harvested[0] || '', role.heading);
+    const nextBody = fillPlayfulKitSlide(body, span.attrs, {
+      title,
+      lead: looksLikeDaisyPlayfulLeftoverCopy(slide?.lead ?? '') ? role.lead : (slide?.lead || role.lead),
+      bodyText: slide?.body && !looksLikeDaisyPlayfulLeftoverCopy(slide.body) ? slide.body : role.lead,
+      kicker: slide?.kicker ?? '',
+      fillLines: role.items.length > 0 ? role.items : templateCloneSlideFillLines(slide ?? { title }),
+    });
+    if (nextBody === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
+  }
+  return wipeEightBitCapsuleLeftoverPhrases(
+    stripPlayfulCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out)),
+  );
+}
+
+const CORAL_SLIDE_ROLES = [
+  'cover',
+  'statement',
+  'pillars',
+  'stats',
+  'impact',
+  'cards',
+  'quote',
+  'timeline',
+  'team',
+  'close',
+] as const;
+
+type CoralSlideRole = (typeof CORAL_SLIDE_ROLES)[number];
+type CoralRoleCopy = EightBitRoleCopy;
+type CoralCopyPack = Record<CoralSlideRole, CoralRoleCopy>;
+
+const MAT_SLIDE_ROLES = [
+  'cover',
+  'statement',
+  'split',
+  'stats',
+  'quote',
+  'list',
+  'compare',
+  'chart',
+  'end',
+] as const;
+
+type MatSlideRole = (typeof MAT_SLIDE_ROLES)[number];
+type MatRoleCopy = EightBitRoleCopy;
+type MatCopyPack = Record<MatSlideRole, MatRoleCopy>;
+
+const BIENNALE_SLIDE_ROLES = [
+  'cover',
+  'manifesto',
+  'programme',
+  'chapter',
+  'data',
+  'quote',
+  'calendar',
+  'colophon',
+] as const;
+
+type BiennaleSlideRole = (typeof BIENNALE_SLIDE_ROLES)[number];
+type BiennaleRoleCopy = EightBitRoleCopy;
+type BiennaleCopyPack = Record<BiennaleSlideRole, BiennaleRoleCopy>;
+
+const CORAL_CATALOG_DEMO_COPY_RE =
+  /VENTURE|QUARTERLY[\s\S]{0,40}STRATEGY[\s\S]{0,40}SESSION|REDEFINING THE BOUNDARIES|CORE\s*<br\s*\/?>?\s*PILLARS|CORE PILLARS|GROWTH METRICS|GLOBAL INITIATIVE|KEY OBJECTIVES|PROJECT TIMELINE|Alexandra Chen|Jordan Davis|Morgan Kim|Sam Rivera|Taylor Wong|HELLO@VENTURE\.IO|7TH FLOOR|Year Over Year|Total Reach|Retention Rate|New Partners|EXPAND REACH|DEEPEN ENGAGEMENT|OPTIMIZE FLOW|Let's build something extraordinary|THANK[\s\S]{0,12}YOU/gi;
+
+const CORAL_CATALOG_DEMO_METRIC_RE =
+  /\+147%|2\.4M|\b89%|\b156\b|\+45%|3\.2x|3\.2\s*[×xX]/gi;
+
+const MAT_CATALOG_DEMO_COPY_RE =
+  /\[Studio Name\]|Craft\s*<br\s*\/?>?\s*Matters|Craft Matters|The Thesis|The Object|By the Numbers|Dieter Rams|The Old Way|The New Way|hello@\[studio|Good design is as little design|precision studio tools lab|Studio Supply Journal|\[product category\]|\[Product Name\]|\[Product Image\]|\[Tagline goes here\]/gi;
+
+const MAT_CATALOG_DEMO_METRIC_RE =
+  /4\.7\s*<em>k<\/em>|4\.7\s*k|3\.2\s*<em>[×xX]<\/em>|3\.2\s*[×xX]|#\s*<em>1<\/em>|#\s*1/gi;
+
+const BIENNALE_CATALOG_DEMO_COPY_RE =
+  /Aurora Programme|Aurora Institute|Aurora Charter|Public attendance|Open programme|Field Notes|Quiet Editions|The Long Yellow|Idun Reijners|Pavilion of Quiet Form|Reading Garden|Returning audience|A field study of light|Slow Atmospheres|Fourth annual open programme/gi;
+
+const BIENNALE_CATALOG_DEMO_METRIC_RE =
+  /76,400|112,800|141,200|164,900|182,300|182\s*k|7\s*4%/gi;
+
+function coralSlideCopyPack(topic: string): CoralCopyPack {
+  const brand = topic || 'Teamver';
+  return {
+    cover: eightBitRoleCopy(brand, `${brand}는 초안과 수정을 같은 보드에서 끝낸다.`),
+    statement: eightBitRoleCopy(
+      `${brand}가 묶는 일`,
+      `${brand}는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.`,
+    ),
+    pillars: eightBitRoleCopy(`${brand}가 다루는 칸`, `${brand}에서 보드·권한·이력을 한 흐름으로 본다.`, [
+      { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
+      { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+    ]),
+    stats: eightBitRoleCopy(`${brand} 운영`, `${brand}가 한 화면에서 남기는 세 가지.`, [
+      { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
+      { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+    ]),
+    impact: eightBitRoleCopy(
+      `${brand}가 남기는 칸`,
+      `${brand}에서 초안과 권한이 한 화면으로 모인다.`,
+    ),
+    cards: eightBitRoleCopy(`${brand}에서 바로 쓰는 것`, `${brand}에서 초안·수정·공유가 한 흐름이다.`, [
+      { title: '초안', body: `${brand} 보드에 바로 붙일 수 있는 초안이 열린다.` },
+      { title: '수정', body: `${brand}에서는 보낸 뒤에도 같은 화면에서 문장과 레이아웃을 고친다.` },
+      { title: '공유', body: `${brand}에 필요한 사람만 초대해 보기와 고치기를 나눈다.` },
+    ]),
+    quote: eightBitRoleCopy(
+      `${brand}가 남기는 증거`,
+      `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.`,
+    ),
+    timeline: eightBitRoleCopy('도입 단계', `한 팀 보드를 ${brand}로 옮긴 뒤 리뷰 습관과 조직 기준을 고정한다.`, [
+      { title: '한 팀 보드', body: `기존 문서를 ${brand} 보드로 옮기고 보기·고치기 권한을 나눈다.` },
+      { title: '리뷰 습관', body: `${brand}에서 댓글과 버전을 같은 화면에서 고정한다.` },
+      { title: '조직 기준', body: `${brand} 워크스페이스 기본값으로 감사와 보내기 규칙을 둔다.` },
+      { title: '이어서 쓰기', body: `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.` },
+      { title: '같은 화면', body: `${brand}에서 초안과 리뷰가 한 보드에 남는다.` },
+    ]),
+    team: eightBitRoleCopy(`${brand}를 쓰는 자리`, `${brand}에서 실무는 초안을 붙이고 리뷰는 권한을 나눈다.`, [
+      { title: '혼자 시작', body: `${brand}에서 한 보드를 열고 초안을 붙인다.` },
+      { title: '팀과 고치기', body: `${brand}에서 보기와 고치기를 나눠 같이 고친다.` },
+      { title: '리뷰', body: `${brand}에서 댓글과 버전을 같은 화면에서 본다.` },
+      { title: '조직으로', body: `${brand} 워크스페이스 기준으로 이력과 보내기를 고정한다.` },
+    ]),
+    close: eightBitRoleCopy(
+      '보드에서 이어 쓰기',
+      `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.`,
+    ),
+  };
+}
+
+function matSlideCopyPack(topic: string): MatCopyPack {
+  const brand = topic || 'Teamver';
+  return {
+    cover: eightBitRoleCopy(brand, `${brand}는 초안과 수정을 같은 보드에서 끝낸다.`),
+    statement: eightBitRoleCopy(
+      `${brand}가 묶는 일`,
+      `${brand}는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.`,
+    ),
+    split: eightBitRoleCopy(`${brand}가 다루는 칸`, `${brand}에서 보드·권한·이력을 한 흐름으로 본다.`, [
+      { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
+      { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+    ]),
+    stats: eightBitRoleCopy(`${brand} 운영`, `${brand}가 한 화면에서 남기는 세 가지.`, [
+      { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
+      { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+    ]),
+    quote: eightBitRoleCopy(
+      `${brand}가 남기는 증거`,
+      `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.`,
+    ),
+    list: eightBitRoleCopy(`${brand}에서 바로 쓰는 것`, `${brand}에서 초안·수정·공유가 한 흐름이다.`, [
+      { title: '초안', body: `${brand} 보드에 바로 붙일 수 있는 초안이 열린다.` },
+      { title: '수정', body: `${brand}에서는 보낸 뒤에도 같은 화면에서 문장과 레이아웃을 고친다.` },
+      { title: '공유', body: `${brand}에 필요한 사람만 초대해 보기와 고치기를 나눈다.` },
+      { title: '이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+    ]),
+    compare: eightBitRoleCopy(`${brand} 전후`, `흩어진 파일 대신 ${brand} 보드에서 초안과 권한을 같이 둔다.`, [
+      { title: '흩어진 파일', body: `초안과 피드백이 메일과 폴더로 갈라진다.` },
+      { title: '같은 보드', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+    ]),
+    chart: eightBitRoleCopy(`${brand} 작업 흐름`, `${brand}에서 보드를 열고 권한을 나눈 뒤 이력을 남긴다.`, [
+      { title: '연다', body: `흩어진 메모를 ${brand}로 옮긴다.` },
+      { title: '나눈다', body: `${brand}에서 보기와 고치기를 정한다.` },
+      { title: '남긴다', body: `${brand} 보드에 바꾼 시점을 고정한다.` },
+      { title: '보낸다', body: `${brand}에서 필요한 사람만 초대한다.` },
+    ]),
+    end: eightBitRoleCopy(
+      '보드에서 이어 쓰기',
+      `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.`,
+    ),
+  };
+}
+
+function biennaleYellowSlideCopyPack(topic: string): BiennaleCopyPack {
+  const brand = topic || 'Teamver';
+  return {
+    cover: eightBitRoleCopy(brand, `${brand}는 초안과 수정을 같은 보드에서 끝낸다.`),
+    manifesto: eightBitRoleCopy(
+      `${brand}가 묶는 일`,
+      `${brand}는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.`,
+    ),
+    programme: eightBitRoleCopy(`${brand}가 다루는 칸`, `${brand}에서 보드·권한·이력·보내기를 한 흐름으로 본다.`, [
+      { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
+      { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+      { title: '같은 맥락', body: `${brand}에서 파일과 대화가 한 화면으로 열린다.` },
+      { title: '작업 흐름', body: `${brand}에서 보드를 열고 권한을 나눈 뒤 이력을 남긴다.` },
+    ]),
+    chapter: eightBitRoleCopy(
+      `${brand}가 남기는 칸`,
+      `${brand}에서 초안과 권한이 한 화면으로 모인다.`,
+    ),
+    data: eightBitRoleCopy(`${brand} 운영`, `${brand}가 한 화면에서 남기는 세 가지.`, [
+      { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
+      { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+      { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
+    ]),
+    quote: eightBitRoleCopy(
+      `${brand}가 남기는 증거`,
+      `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.`,
+    ),
+    calendar: eightBitRoleCopy('도입 단계', `한 팀 보드를 ${brand}로 옮긴 뒤 리뷰 습관과 조직 기준을 고정한다.`, [
+      { title: '한 팀 보드', body: `기존 문서를 ${brand} 보드로 옮기고 보기·고치기 권한을 나눈다.` },
+      { title: '리뷰 습관', body: `${brand}에서 댓글과 버전을 같은 화면에서 고정한다.` },
+      { title: '조직 기준', body: `${brand} 워크스페이스 기본값으로 감사와 보내기 규칙을 둔다.` },
+      { title: '이어서 쓰기', body: `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.` },
+    ]),
+    colophon: eightBitRoleCopy(
+      '보드에서 이어 쓰기',
+      `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.`,
+    ),
+  };
+}
+
+function looksLikeCoralLeftoverCopy(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!value) return false;
+  if (looksLikeEightBitCapsuleLeftoverCopy(value) || looksLikeDaisyPlayfulLeftoverCopy(value)) {
+    return true;
+  }
+  if (CORAL_CATALOG_DEMO_COPY_RE.test(value) || CORAL_CATALOG_DEMO_METRIC_RE.test(value)) {
+    CORAL_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+    CORAL_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+    return true;
+  }
+  CORAL_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+  CORAL_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+  return /01\s*\/\s*Overview|VENTURE|GROWTH METRICS/i.test(value);
+}
+
+function looksLikeMatLeftoverCopy(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!value) return false;
+  if (looksLikeEightBitCapsuleLeftoverCopy(value) || looksLikeDaisyPlayfulLeftoverCopy(value)) {
+    return true;
+  }
+  if (MAT_CATALOG_DEMO_COPY_RE.test(value) || MAT_CATALOG_DEMO_METRIC_RE.test(value)) {
+    MAT_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+    MAT_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+    return true;
+  }
+  MAT_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+  MAT_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+  return /\[Studio Name\]|Craft Matters|The Thesis|By the Numbers/i.test(value);
+}
+
+function looksLikeBiennaleLeftoverCopy(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!value) return false;
+  if (looksLikeEightBitCapsuleLeftoverCopy(value) || looksLikeDaisyPlayfulLeftoverCopy(value)) {
+    return true;
+  }
+  if (BIENNALE_CATALOG_DEMO_COPY_RE.test(value) || BIENNALE_CATALOG_DEMO_METRIC_RE.test(value)) {
+    BIENNALE_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+    BIENNALE_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+    return true;
+  }
+  BIENNALE_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+  BIENNALE_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+  return /Aurora|Public attendance|The Long Yellow/i.test(value);
+}
+
+function coralKeepable(text: string): boolean {
+  return eightBitCapsuleCopyIsKeepable(text) && !looksLikeCoralLeftoverCopy(text);
+}
+
+function matKeepable(text: string): boolean {
+  return eightBitCapsuleCopyIsKeepable(text) && !looksLikeMatLeftoverCopy(text);
+}
+
+function biennaleKeepable(text: string): boolean {
+  return eightBitCapsuleCopyIsKeepable(text) && !looksLikeBiennaleLeftoverCopy(text);
+}
+
+function coralPackForBody(body: string, attrs: string, pack: CoralCopyPack): CoralRoleCopy {
+  if (/\bslide-1\b|\bmain-title\b|\bbrand-mark\b/i.test(`${attrs}\n${body}`)) return pack.cover;
+  if (/\bslide-10\b|\bclosing-title\b/i.test(`${attrs}\n${body}`)) return pack.close;
+  if (/\bslide-2\b|\bbig-statement\b/i.test(`${attrs}\n${body}`)) return pack.statement;
+  if (/\bslide-3\b|\bcol-title\b|\bitem-label\b/i.test(`${attrs}\n${body}`)) return pack.pillars;
+  if (/\bslide-4\b|\bsidebar-item\b|\bstat-number\b/i.test(`${attrs}\n${body}`)) return pack.stats;
+  if (/\bslide-5\b|\binfo-bar\b|\bbar-title\b/i.test(`${attrs}\n${body}`)) return pack.impact;
+  if (/\bslide-6\b|\bcolumn-card\b/i.test(`${attrs}\n${body}`)) return pack.cards;
+  if (/\bslide-7\b|\bquote-text\b/i.test(`${attrs}\n${body}`)) return pack.quote;
+  if (/\bslide-8\b|\bt-point\b/i.test(`${attrs}\n${body}`)) return pack.timeline;
+  if (/\bslide-9\b|\bteam-member\b/i.test(`${attrs}\n${body}`)) return pack.team;
+  return pack.statement;
+}
+
+function matPackForBody(body: string, attrs: string, pack: MatCopyPack): MatRoleCopy {
+  if (/\bslide--cover\b/i.test(attrs)) return pack.cover;
+  if (/\bslide--statement\b/i.test(attrs)) return pack.statement;
+  if (/\bslide--split\b/i.test(attrs)) return pack.split;
+  if (/\bslide--stats\b/i.test(attrs)) return pack.stats;
+  if (/\bslide--quote\b/i.test(attrs)) return pack.quote;
+  if (/\bslide--list\b/i.test(attrs)) return pack.list;
+  if (/\bslide--compare\b/i.test(attrs)) return pack.compare;
+  if (/\bslide--chart\b/i.test(attrs)) return pack.chart;
+  if (/\bslide--end\b/i.test(attrs)) return pack.end;
+  return pack.statement;
+}
+
+function biennalePackForBody(body: string, attrs: string, pack: BiennaleCopyPack): BiennaleRoleCopy {
+  if (/\bs-cover\b/i.test(attrs)) return pack.cover;
+  if (/\bs-manifesto\b/i.test(attrs)) return pack.manifesto;
+  if (/\bs-programme\b/i.test(attrs)) return pack.programme;
+  if (/\bs-chapter\b/i.test(attrs)) return pack.chapter;
+  if (/\bs-data\b/i.test(attrs)) return pack.data;
+  if (/\bs-quote\b/i.test(attrs)) return pack.quote;
+  if (/\bs-cal\b/i.test(attrs)) return pack.calendar;
+  if (/\bs-colophon\b/i.test(attrs)) return pack.colophon;
+  return pack.manifesto;
+}
+
+function coralSlideHasKitChrome(html: string, attrs = ''): boolean {
+  const hay = `${attrs}\n${html}`;
+  // slide-N on a Coral deck is enough — pad merge can strip inner chrome
+  // (big-statement) while leaving the host class. CSS tokens live on <style>,
+  // not on the empty slide body.
+  return /\b(?:main-title|brand-mark|zigzag-layer|zigzag-deco|big-statement|col-title|sidebar-item|info-bar|column-card|closing-title|slide-(?:[1-9]|10))\b/i.test(hay)
+    || /--coral\s*:|#E85D5D|Bebas Neue/i.test(hay);
+}
+
+function matSlideHasKitChrome(html: string, attrs = ''): boolean {
+  const hay = `${attrs}\n${html}`;
+  return /\b(?:cover-headline|stmt-headline|mat-stat|end-main|--c-wood)\b/i.test(hay)
+    || (/\bslide--(?:cover|statement|split|stats|quote|list|compare|chart|end)\b/i.test(hay)
+      && /\b(?:mat-stat|cover-headline|end-main|Bricolage)\b/i.test(hay));
+}
+
+function biennaleSlideHasKitChrome(html: string, attrs = ''): boolean {
+  const hay = `${attrs}\n${html}`;
+  return /\b(?:s-cover|s-manifesto|s-programme|s-chapter|s-data|s-quote|s-cal|s-colophon|sunglow)\b/i.test(hay);
+}
+
+function coralSlideNeedsHeal(body: string, heading: string): boolean {
+  if (!visibleDeckCopy(body).trim()) return true;
+  if (looksLikeLeftoverTemplateDemoDeck(body)) return true;
+  if (CORAL_CATALOG_DEMO_COPY_RE.test(body) || CORAL_CATALOG_DEMO_METRIC_RE.test(body)) {
+    CORAL_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+    CORAL_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+    return true;
+  }
+  CORAL_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+  CORAL_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+  if (looksLikeCoralLeftoverCopy(heading) || looksLikeBlockedOverviewOrTrioTitle(heading)) {
+    return true;
+  }
+  const visible = visibleDeckCopy(body);
+  if (SERVICE_INTRO_LEFTOVER_BODY_RE.test(visible)) return true;
+  if (/(?<![가-힣])개요(?![가-힣])|핵심\s*포인트|파일럿|Overview/.test(visible)) return true;
+  return false;
+}
+
+function matSlideNeedsHeal(body: string, heading: string): boolean {
+  if (!visibleDeckCopy(body).trim()) return true;
+  if (looksLikeLeftoverTemplateDemoDeck(body)) return true;
+  if (MAT_CATALOG_DEMO_COPY_RE.test(body) || MAT_CATALOG_DEMO_METRIC_RE.test(body)) {
+    MAT_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+    MAT_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+    return true;
+  }
+  MAT_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+  MAT_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+  if (looksLikeMatLeftoverCopy(heading) || looksLikeBlockedOverviewOrTrioTitle(heading)) {
+    return true;
+  }
+  const visible = visibleDeckCopy(body);
+  if (SERVICE_INTRO_LEFTOVER_BODY_RE.test(visible)) return true;
+  if (/(?<![가-힣])개요(?![가-힣])|핵심\s*포인트|파일럿|\[Studio Name\]/.test(visible)) return true;
+  return false;
+}
+
+function biennaleSlideNeedsHeal(body: string, heading: string): boolean {
+  if (!visibleDeckCopy(body).trim()) return true;
+  if (looksLikeLeftoverTemplateDemoDeck(body)) return true;
+  if (BIENNALE_CATALOG_DEMO_COPY_RE.test(body) || BIENNALE_CATALOG_DEMO_METRIC_RE.test(body)) {
+    BIENNALE_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+    BIENNALE_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+    return true;
+  }
+  BIENNALE_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+  BIENNALE_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+  if (looksLikeBiennaleLeftoverCopy(heading) || looksLikeBlockedOverviewOrTrioTitle(heading)) {
+    return true;
+  }
+  const visible = visibleDeckCopy(body);
+  if (SERVICE_INTRO_LEFTOVER_BODY_RE.test(visible)) return true;
+  if (/(?<![가-힣])개요(?![가-힣])|핵심\s*포인트|파일럿|Aurora/.test(visible)) return true;
+  return false;
+}
+
+function stripCoralCatalogDemoCopy(html: string): string {
+  return String(html ?? '')
+    .replace(CORAL_CATALOG_DEMO_COPY_RE, '')
+    .replace(CORAL_CATALOG_DEMO_METRIC_RE, '');
+}
+
+function stripMatCatalogDemoCopy(html: string): string {
+  return String(html ?? '')
+    .replace(MAT_CATALOG_DEMO_COPY_RE, '')
+    .replace(MAT_CATALOG_DEMO_METRIC_RE, '');
+}
+
+function stripBiennaleCatalogDemoCopy(html: string): string {
+  return String(html ?? '')
+    .replace(BIENNALE_CATALOG_DEMO_COPY_RE, '')
+    .replace(BIENNALE_CATALOG_DEMO_METRIC_RE, '');
+}
+
+function seedCoralKitSlideInput(
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    kicker: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+  role: CoralRoleCopy,
+) {
+  const leftoverInput = looksLikeCoralLeftoverCopy(input.title)
+    || looksLikeCoralLeftoverCopy(input.kicker || '')
+    || looksLikeCoralLeftoverCopy(input.lead)
+    || looksLikeCoralLeftoverCopy(input.bodyText)
+    || (input.fillLines ?? []).some((line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      return looksLikeCoralLeftoverCopy(resolved.title) || looksLikeCoralLeftoverCopy(resolved.body);
+    });
+  return {
+    ...input,
+    title: rewriteLeftoverKitSlideTitle(input.title, role.heading),
+    lead: leftoverInput || !coralKeepable(input.lead)
+      ? (coralKeepable(input.lead) ? input.lead : role.lead)
+      : (input.lead || role.lead),
+    bodyText: leftoverInput || !coralKeepable(input.bodyText)
+      ? (coralKeepable(input.bodyText) ? input.bodyText : role.lead)
+      : (input.bodyText || role.lead),
+    fillLines: leftoverInput && role.items.length > 0 ? role.items : input.fillLines,
+  };
+}
+
+export function fillCoralKitSlide(
+  body: string,
+  attrs: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    kicker: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  const src = String(body ?? '');
+  if (!coralSlideHasKitChrome(src, attrs)) return src;
+  const topic = resolveLockedTopicNoun(input.title, input.lead, input.bodyText, input.kicker);
+  const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
+  const pack = coralSlideCopyPack(brand);
+  const role = coralPackForBody(src, attrs, pack);
+  const seeded = seedCoralKitSlideInput(input, role);
+  const lines = biennaleFillLines(seeded, 6);
+  let next = src;
+
+  if (/\bmain-title\b/i.test(next)) {
+    const main = visibleDeckCopy(
+      /<(?:div|h1)\b[^>]*\bmain-title\b[^>]*>([\s\S]*?)<\/(?:div|h1)>/i.exec(next)?.[1] ?? '',
+    );
+    if (!main || looksLikeCoralLeftoverCopy(main) || !coralKeepable(main)) {
+      next = next.replace(
+        /(<div\b[^>]*\bmain-title\b[^>]*>)([\s\S]*?)(<\/div>)/i,
+        `$1${escapeHtml(seeded.title)}$3`,
+      );
+    }
+    const brandMark = visibleDeckCopy(
+      /<(?:div|span)\b[^>]*\bbrand-mark\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (!brandMark || looksLikeCoralLeftoverCopy(brandMark)) {
+      next = replaceFirstExactClassText(next, 'brand-mark', brand);
+    }
+    const metaValue = visibleDeckCopy(
+      /<(?:div|span)\b[^>]*\bmeta-value\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (!metaValue || looksLikeCoralLeftoverCopy(metaValue)) {
+      next = replaceFirstExactClassText(next, 'meta-value', seeded.lead);
+    }
+  }
+
+  if (/\bbig-statement\b/i.test(next)) {
+    const statement = visibleDeckCopy(
+      /<(?:div|p)\b[^>]*\bbig-statement\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (!statement || looksLikeCoralLeftoverCopy(statement) || !coralKeepable(statement)) {
+      next = replaceFirstExactClassText(next, 'big-statement', seeded.lead);
+    }
+    if (/\bbody-text\b/i.test(next)) {
+      const bodyPlain = visibleDeckCopy(
+        /<(?:div|p)\b[^>]*\bbody-text\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+      );
+      if (!bodyPlain || looksLikeCoralLeftoverCopy(bodyPlain) || !coralKeepable(bodyPlain)) {
+        next = replaceFirstExactClassText(next, 'body-text', seeded.bodyText || seeded.lead);
+      }
+    }
+  }
+
+  const visibleHeading = visibleDeckCopy(
+    next.match(/<(?:div|h[12])\b[^>]*\b(?:slide-title|col-title|closing-title|bar-title)\b[^>]*>([\s\S]*?)<\//i)?.[1]
+    ?? next.match(/<h2\b[^>]*>([\s\S]*?)<\/h2>/i)?.[1]
+    ?? '',
+  );
+  if (visibleHeading && (looksLikeCoralLeftoverCopy(visibleHeading) || looksLikeBlockedOverviewOrTrioTitle(visibleHeading))) {
+    for (const cls of ['slide-title', 'col-title', 'closing-title', 'bar-title']) {
+      if (new RegExp(`\\b${cls}\\b`, 'i').test(next)) {
+        next = next.replace(
+          new RegExp(`(<(?:div|h[1-3])\\b[^>]*\\b${cls}\\b[^>]*>)([\\s\\S]*?)(<\\/(?:div|h[1-3])>)`, 'i'),
+          `$1${escapeHtml(seeded.title)}$3`,
+        );
+        break;
+      }
+    }
+  }
+
+  if (/\bsection-label\b/i.test(next)) {
+    const label = visibleDeckCopy(
+      /<(?:div|span)\b[^>]*\bsection-label\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (!label || looksLikeCoralLeftoverCopy(label) || /Overview/i.test(label)) {
+      next = replaceFirstExactClassText(next, 'section-label', seeded.title);
+    }
+  }
+
+  if (/\bitem\b/i.test(next) && /\bitem-label\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'item', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = replaceFirstExactClassText(block, 'item-label', resolved.title);
+      return replaceFirstExactClassText(filled, 'item-text', resolved.body || resolved.title);
+    });
+  }
+
+  if (/\bsidebar-item\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'sidebar-item', lines, (block, line, index) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      const ordinal = String(index + 1).padStart(2, '0');
+      let filled = block.replace(
+        /(<(?:div|span)\b[^>]*\bvalue\b[^>]*>)([\s\S]*?)(<\/(?:div|span)>)/i,
+        (full, open: string, inner: string, close: string) => {
+          const plain = visibleDeckCopy(inner);
+          if (titleLooksLikeMetric(resolved.title) || titleLooksLikeMetric(resolved.body)) {
+            return `${open}${escapeHtml(resolved.title || resolved.body)}${close}`;
+          }
+          if (!plain || CORAL_CATALOG_DEMO_METRIC_RE.test(plain) || titleLooksLikeMetric(plain)) {
+            CORAL_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+            return `${open}${escapeHtml(ordinal)}${close}`;
+          }
+          return full;
+        },
+      );
+      return replaceFirstExactClassText(filled, 'label', resolved.title || resolved.body);
+    });
+    const heroStat = visibleDeckCopy(
+      /<(?:div|span)\b[^>]*\bstat-number\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (!heroStat || CORAL_CATALOG_DEMO_METRIC_RE.test(heroStat) || titleLooksLikeMetric(heroStat)) {
+      CORAL_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+      next = replaceFirstExactClassText(next, 'stat-number', '01');
+    }
+    const heroLabel = visibleDeckCopy(
+      /<(?:div|span)\b[^>]*\bstat-label\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (!heroLabel || looksLikeCoralLeftoverCopy(heroLabel)) {
+      next = replaceFirstExactClassText(next, 'stat-label', seeded.lead);
+    }
+  }
+
+  if (/\bbar-title\b/i.test(next)) {
+    const barTitle = visibleDeckCopy(
+      /<(?:div|span)\b[^>]*\bbar-title\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (!barTitle || looksLikeCoralLeftoverCopy(barTitle)) {
+      next = replaceFirstExactClassText(next, 'bar-title', seeded.title);
+    }
+    const barMeta = visibleDeckCopy(
+      /<(?:div|span)\b[^>]*\bbar-meta\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (!barMeta || looksLikeCoralLeftoverCopy(barMeta) || !coralKeepable(barMeta)) {
+      next = next.replace(
+        /(<div\b[^>]*\bbar-meta\b[^>]*>)([\s\S]*?)(<\/div>)/i,
+        `$1${escapeHtml(seeded.lead)}$3`,
+      );
+    }
+    const center = visibleDeckCopy(
+      /<(?:div|span)\b[^>]*\bcenter-text\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (!center || looksLikeCoralLeftoverCopy(center)) {
+      next = replaceFirstExactClassText(next, 'center-text', seeded.title);
+    }
+  }
+
+  if (/\bcolumn-card\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'column-card', lines, (block, line, index) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = replaceFirstExactClassText(block, 'card-title', resolved.title);
+      filled = replaceFirstExactClassText(filled, 'card-text', resolved.body || resolved.title);
+      const statPlain = visibleDeckCopy(
+        /<(?:div|span)\b[^>]*\bcard-stat\b[^>]*>([\s\S]*?)<\//i.exec(filled)?.[1] ?? '',
+      );
+      if (!statPlain || CORAL_CATALOG_DEMO_METRIC_RE.test(statPlain) || titleLooksLikeMetric(statPlain)) {
+        CORAL_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+        filled = replaceFirstExactClassText(filled, 'card-stat', String(index + 1).padStart(2, '0'));
+      }
+      return filled;
+    });
+    if (/\bslide-subtitle\b/i.test(next)) {
+      const sub = visibleDeckCopy(
+        /<(?:div|p)\b[^>]*\bslide-subtitle\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+      );
+      if (!sub || looksLikeCoralLeftoverCopy(sub) || !coralKeepable(sub)) {
+        next = replaceFirstExactClassText(next, 'slide-subtitle', seeded.lead);
+      }
+    }
+  }
+
+  if (/\bquote-text\b/i.test(next) || /\bquote-author\b/i.test(next)) {
+    const quote = visibleDeckCopy(
+      /<(?:div|p)\b[^>]*\bquote-text\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (!quote || looksLikeCoralLeftoverCopy(quote) || !coralKeepable(quote)) {
+      next = replaceFirstExactClassText(next, 'quote-text', seeded.lead);
+    }
+    next = replaceFirstExactClassText(next, 'quote-author', '');
+    next = replaceFirstExactClassText(next, 'quote-role', '');
+  }
+
+  if (/\bt-point\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 't-point', lines, (block, line, index) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = replaceFirstExactClassText(block, 't-phase', resolved.title);
+      filled = replaceFirstExactClassText(filled, 't-desc', resolved.body || resolved.title);
+      filled = replaceFirstExactClassText(filled, 't-bubble', String(index + 1).padStart(2, '0'));
+      return filled;
+    });
+  }
+
+  if (/\bteam-member\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'team-member', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = replaceFirstExactClassText(block, 'member-name', resolved.title);
+      return replaceFirstExactClassText(filled, 'member-role', resolved.body || resolved.title);
+    });
+  }
+
+  if (/\bclosing-title\b/i.test(next)) {
+    const closing = visibleDeckCopy(
+      /<(?:div|h1)\b[^>]*\bclosing-title\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (!closing || looksLikeCoralLeftoverCopy(closing)) {
+      next = next.replace(
+        /(<div\b[^>]*\bclosing-title\b[^>]*>)([\s\S]*?)(<\/div>)/i,
+        `$1${escapeHtml(seeded.title)}$3`,
+      );
+    }
+    next = replaceFirstExactClassText(next, 'closing-subtitle', seeded.lead);
+    next = replaceExactClassBlocksBySequence(
+      next,
+      'contact-value',
+      [{ title: seeded.lead, body: seeded.lead }],
+      (block) => {
+        const plain = visibleDeckCopy(block);
+        if (coralKeepable(plain)) return block;
+        return block.replace(/(>)([^<]*)(<\/)/, `$1${escapeHtml(seeded.lead)}$3`);
+      },
+    );
+  }
+
+  if (!/\bbig-statement\b/i.test(next) && /\bslide-2\b/i.test(attrs)) {
+    next = [
+      next,
+      `<div class="section-label">${escapeHtml(seeded.title)}</div>`,
+      `<div class="big-statement">${escapeHtml(seeded.lead)}</div>`,
+      `<div class="body-text">${escapeHtml(seeded.bodyText || seeded.lead)}</div>`,
+    ].join('');
+  }
+
+  return wipeEightBitCapsuleLeftoverPhrases(stripCoralCatalogDemoCopy(next));
+}
+
+export function fillMatKitSlide(
+  body: string,
+  attrs: string,
+  input: StudioCreativeFillInput,
+): string {
+  const src = String(body ?? '');
+  if (!matSlideHasKitChrome(src, attrs)) return src;
+  const topic = resolveLockedTopicNoun(input.topic, input.title, input.lead, input.bodyText);
+  const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
+  const pack = matSlideCopyPack(brand);
+  const role = matPackForBody(src, attrs, pack);
+  const seeded = seedCoralKitSlideInput({
+    title: input.title,
+    lead: looksLikeMatLeftoverCopy(input.lead) ? role.lead : input.lead,
+    bodyText: looksLikeMatLeftoverCopy(input.bodyText) ? role.lead : input.bodyText,
+    kicker: input.kicker,
+    fillLines: input.fillLines,
+  }, role);
+  const nextSeeded = {
+    ...seeded,
+    lead: looksLikeMatLeftoverCopy(seeded.lead) || !matKeepable(seeded.lead)
+      ? (matKeepable(input.lead) ? input.lead : role.lead)
+      : seeded.lead,
+    bodyText: looksLikeMatLeftoverCopy(seeded.bodyText) || !matKeepable(seeded.bodyText)
+      ? (matKeepable(input.bodyText) ? input.bodyText : role.lead)
+      : seeded.bodyText,
+    fillLines: (looksLikeMatLeftoverCopy(input.title) || looksLikeMatLeftoverCopy(input.lead))
+      && role.items.length > 0
+      ? role.items
+      : seeded.fillLines,
+  };
+  let next = fillStudioKitSlide(src, attrs, {
+    ...input,
+    title: nextSeeded.title,
+    lead: nextSeeded.lead,
+    bodyText: nextSeeded.bodyText,
+    fillLines: nextSeeded.fillLines,
+    topic: brand,
+  });
+  const lines = biennaleFillLines({ ...nextSeeded, fillLines: nextSeeded.fillLines }, 6);
+
+  if (/\bcover-headline\b/i.test(next)) {
+    const display = visibleDeckCopy(
+      /<(?:h1|div)\b[^>]*\bdisplay\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (!display || looksLikeMatLeftoverCopy(display) || !matKeepable(display)) {
+      next = next.replace(
+        /(<h1\b[^>]*\bdisplay\b[^>]*>)([\s\S]*?)(<\/h1>)/i,
+        `$1${escapeHtml(nextSeeded.title)}$3`,
+      );
+    }
+  }
+  if (/\bstmt-headline\b/i.test(next)) {
+    const stmt = visibleDeckCopy(
+      /<h2\b[^>]*>([\s\S]*?)<\/h2>/i.exec(next)?.[1] ?? '',
+    );
+    if (stmt && (looksLikeMatLeftoverCopy(stmt) || looksLikeBlockedOverviewOrTrioTitle(stmt))) {
+      next = replaceFirstHeadingText(next, nextSeeded.title);
+    }
+  }
+  if (/\bend-main\b/i.test(next)) {
+    const endMain = visibleDeckCopy(
+      /<(?:div|h1)\b[^>]*\bend-main\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (!endMain || looksLikeMatLeftoverCopy(endMain)) {
+      next = next.replace(
+        /(<div\b[^>]*\bend-main\b[^>]*>)([\s\S]*?)(<\/div>)/i,
+        `$1${escapeHtml(nextSeeded.title)}$3`,
+      );
+    }
+  }
+  if (/\bmat-stat\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'mat-stat', lines, (block, line, index) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = replaceFirstExactClassText(block, 'mat-stat-label', resolved.body || resolved.title);
+      const metricSource = titleLooksLikeMetric(resolved.title)
+        ? resolved.title
+        : titleLooksLikeMetric(resolved.body)
+          ? resolved.body
+          : '';
+      const ordinal = String(index + 1).padStart(2, '0');
+      const nextVal = metricSource || ordinal;
+      const valInner = /<[^>]*\bmat-stat-val\b[^>]*>([\s\S]*?)<\//i.exec(filled)?.[1] ?? '';
+      const valText = visibleDeckCopy(valInner);
+      if (metricSource || !valText || MAT_CATALOG_DEMO_METRIC_RE.test(valText) || titleLooksLikeMetric(valText)) {
+        MAT_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+        return filled.replace(
+          /(<div\b[^>]*\bmat-stat-val\b[^>]*>)([\s\S]*?)(<\/div>)/i,
+          `$1${escapeHtml(nextVal)}$3`,
+        );
+      }
+      return filled;
+    });
+  }
+  next = next.replace(
+    /(<span\b[^>]*\bclass\s*=\s*["'][^"']*\blabel\b[^"']*["'][^>]*>)([\s\S]*?)(<\/span\s*>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const plain = visibleDeckCopy(inner);
+      if (/^(?:The Thesis|The Object|By the Numbers|Design Studio|Product Design|Craft Matters)$/i.test(plain)
+        || /\[Studio Name\]/i.test(plain)) {
+        return `${open}${close}`;
+      }
+      return full;
+    },
+  );
+  return wipeEightBitCapsuleLeftoverPhrases(stripMatCatalogDemoCopy(next));
+}
+
+export function fillBiennaleYellowKitSlide(
+  body: string,
+  attrs: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    kicker: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  const src = String(body ?? '');
+  if (!biennaleSlideHasKitChrome(src, attrs)) return src;
+  const topic = resolveLockedTopicNoun(input.title, input.lead, input.bodyText, input.kicker);
+  const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
+  const pack = biennaleYellowSlideCopyPack(brand);
+  const role = biennalePackForBody(src, attrs, pack);
+  const leftoverInput = looksLikeBiennaleLeftoverCopy(input.title)
+    || looksLikeBiennaleLeftoverCopy(input.lead)
+    || looksLikeBiennaleLeftoverCopy(input.bodyText);
+  const seeded = {
+    title: rewriteLeftoverKitSlideTitle(input.title, role.heading),
+    lead: leftoverInput || !biennaleKeepable(input.lead)
+      ? (biennaleKeepable(input.lead) ? input.lead : role.lead)
+      : (input.lead || role.lead),
+    bodyText: leftoverInput || !biennaleKeepable(input.bodyText)
+      ? (biennaleKeepable(input.bodyText) ? input.bodyText : role.lead)
+      : (input.bodyText || role.lead),
+    kicker: input.kicker,
+    fillLines: leftoverInput && role.items.length > 0 ? role.items : input.fillLines,
+  };
+  let next = src;
+  if (/\b(?:s-cover|s-colophon)\b/i.test(attrs) && /\bfooter-row\b/i.test(next)) {
+    next = fillBiennaleFooterSlots(next, seeded);
+  }
+  if (/\bs-programme\b/i.test(attrs)) {
+    next = fillBiennaleProgrammeSlots(next, seeded);
+  }
+  if (/\bs-data\b/i.test(attrs)) {
+    next = fillBiennaleStatSlots(next, seeded);
+    const dataHeading = visibleDeckCopy(
+      /<(?:div|h[1-3])\b[^>]*\bh\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (dataHeading && looksLikeBiennaleLeftoverCopy(dataHeading)) {
+      next = replaceFirstExactClassText(next, 'h', seeded.title);
+    }
+    const dataVal = visibleDeckCopy(
+      /<(?:div|span)\b[^>]*\bv\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (dataVal && (looksLikeBiennaleLeftoverCopy(dataVal) || BIENNALE_CATALOG_DEMO_METRIC_RE.test(dataVal))) {
+      BIENNALE_CATALOG_DEMO_METRIC_RE.lastIndex = 0;
+      next = replaceFirstExactClassText(next, 'v', '01');
+    }
+    const dataLab = visibleDeckCopy(
+      /<(?:div|span)\b[^>]*\blab2\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (dataLab && looksLikeBiennaleLeftoverCopy(dataLab)) {
+      next = replaceFirstExactClassText(next, 'lab2', seeded.lead);
+    }
+  }
+  if (/\b(?:s-quote|s-manifesto)\b/i.test(attrs)) {
+    next = fillBiennaleQuoteSlots(next, seeded);
+  }
+  if (/\bs-cal\b/i.test(attrs)) {
+    next = fillBiennaleCalendarSlots(next, seeded);
+  }
+  const heading = visibleDeckCopy(
+    next.match(/<(?:h[1-3]|div)\b[^>]*\b(?:word|h|title)\b[^>]*>([\s\S]*?)<\//i)?.[1]
+    ?? next.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1]
+    ?? '',
+  );
+  if (heading && (looksLikeBiennaleLeftoverCopy(heading) || looksLikeBlockedOverviewOrTrioTitle(heading))) {
+    next = replaceFirstHeadingText(next, seeded.title);
+  }
+  return wipeEightBitCapsuleLeftoverPhrases(stripBiennaleCatalogDemoCopy(next));
+}
+
+export function healCoralLeftoverCatalogCopy(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsCoral(dest)) return dest;
+  const briefText = String(brief ?? '');
+  if (!/[가-힣]/.test(visibleDeckCopy(dest)) && !/[가-힣]/.test(briefText) && !briefText.trim()) {
+    return dest;
+  }
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) {
+    return stripCoralCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(dest));
+  }
+  const harvested = [...dest.matchAll(/<(?:h[1-3]|div)\b[^>]*>([\s\S]*?)<\/(?:h[1-3]|div)>/gi)]
+    .map((match) => visibleDeckCopy(match[1] ?? ''))
+    .filter((text) => text.length >= 2 && text.length <= 40 && !CORAL_CATALOG_DEMO_COPY_RE.test(text));
+  CORAL_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+  const outline = resolveTemplateCloneSlidesForDeterministicFill({
+    userInstruction: briefText || harvested.join('\n') || '',
+    deckTitle: harvested[0] ?? null,
+    slideCount: spans.length,
+  });
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    if (!coralSlideHasKitChrome(body, span.attrs)) continue;
+    const heading = visibleDeckCopy(
+      body.match(/<(?:h[12]|div)\b[^>]*\b(?:main-title|slide-title|big-statement|closing-title)\b[^>]*>([\s\S]*?)<\//i)?.[1]
+      ?? body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1]
+      ?? '',
+    );
+    if (!coralSlideNeedsHeal(body, heading)) continue;
+    const slide = outline[i] ?? outline[Math.min(i, outline.length - 1)];
+    const topic = resolveLockedTopicNoun(briefText, harvested[0], slide?.title);
+    const pack = coralSlideCopyPack(topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver');
+    const role = coralPackForBody(body, span.attrs, pack);
+    const title = rewriteLeftoverKitSlideTitle(slide?.title || harvested[i] || harvested[0] || '', role.heading);
+    const nextBody = fillCoralKitSlide(body, span.attrs, {
+      title,
+      lead: looksLikeCoralLeftoverCopy(slide?.lead ?? '') ? role.lead : (slide?.lead || role.lead),
+      bodyText: slide?.body && !looksLikeCoralLeftoverCopy(slide.body) ? slide.body : role.lead,
+      kicker: slide?.kicker ?? '',
+      fillLines: role.items.length > 0 ? role.items : templateCloneSlideFillLines(slide ?? { title }),
+    });
+    if (nextBody === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
+  }
+  return wipeEightBitCapsuleLeftoverPhrases(
+    stripCoralCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out)),
+  );
+}
+
+export function healMatLeftoverCatalogCopy(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsMat(dest)) return dest;
+  const briefText = String(brief ?? '');
+  if (!/[가-힣]/.test(visibleDeckCopy(dest)) && !/[가-힣]/.test(briefText) && !briefText.trim()) {
+    return dest;
+  }
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) {
+    return stripMatCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(dest));
+  }
+  const harvested = [...dest.matchAll(/<(?:h[1-3]|div)\b[^>]*>([\s\S]*?)<\/(?:h[1-3]|div)>/gi)]
+    .map((match) => visibleDeckCopy(match[1] ?? ''))
+    .filter((text) => text.length >= 2 && text.length <= 40 && !MAT_CATALOG_DEMO_COPY_RE.test(text));
+  MAT_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+  const outline = resolveTemplateCloneSlidesForDeterministicFill({
+    userInstruction: briefText || harvested.join('\n') || '',
+    deckTitle: harvested[0] ?? null,
+    slideCount: spans.length,
+  });
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    if (!matSlideHasKitChrome(body, span.attrs)) continue;
+    const heading = visibleDeckCopy(
+      body.match(/<(?:h[12]|div)\b[^>]*\b(?:display|cover-headline|stmt-headline|end-main)\b[^>]*>([\s\S]*?)<\//i)?.[1]
+      ?? body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1]
+      ?? '',
+    );
+    if (!matSlideNeedsHeal(body, heading)) continue;
+    const slide = outline[i] ?? outline[Math.min(i, outline.length - 1)];
+    const topic = resolveLockedTopicNoun(briefText, harvested[0], slide?.title);
+    const pack = matSlideCopyPack(topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver');
+    const role = matPackForBody(body, span.attrs, pack);
+    const title = rewriteLeftoverKitSlideTitle(slide?.title || harvested[i] || harvested[0] || '', role.heading);
+    const nextBody = fillMatKitSlide(body, span.attrs, {
+      title,
+      lead: looksLikeMatLeftoverCopy(slide?.lead ?? '') ? role.lead : (slide?.lead || role.lead),
+      bodyText: slide?.body && !looksLikeMatLeftoverCopy(slide.body) ? slide.body : role.lead,
+      kicker: slide?.kicker ?? '',
+      fillLines: role.items.length > 0 ? role.items : templateCloneSlideFillLines(slide ?? { title }),
+      topic: topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver',
+    });
+    if (nextBody === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
+  }
+  return wipeEightBitCapsuleLeftoverPhrases(
+    stripMatCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out)),
+  );
+}
+
+export function healBiennaleYellowLeftoverCatalogCopy(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsBiennaleYellow(dest)) return dest;
+  const briefText = String(brief ?? '');
+  if (!/[가-힣]/.test(visibleDeckCopy(dest)) && !/[가-힣]/.test(briefText) && !briefText.trim()) {
+    return dest;
+  }
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) {
+    return stripBiennaleCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(dest));
+  }
+  const harvested = [...dest.matchAll(/<(?:h[1-3]|div)\b[^>]*>([\s\S]*?)<\/(?:h[1-3]|div)>/gi)]
+    .map((match) => visibleDeckCopy(match[1] ?? ''))
+    .filter((text) => text.length >= 2 && text.length <= 40 && !BIENNALE_CATALOG_DEMO_COPY_RE.test(text));
+  BIENNALE_CATALOG_DEMO_COPY_RE.lastIndex = 0;
+  const outline = resolveTemplateCloneSlidesForDeterministicFill({
+    userInstruction: briefText || harvested.join('\n') || '',
+    deckTitle: harvested[0] ?? null,
+    slideCount: spans.length,
+  });
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    if (!biennaleSlideHasKitChrome(body, span.attrs)) continue;
+    const heading = visibleDeckCopy(
+      body.match(/<(?:h[12]|div)\b[^>]*\b(?:word|h|title)\b[^>]*>([\s\S]*?)<\//i)?.[1]
+      ?? body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1]
+      ?? '',
+    );
+    if (!biennaleSlideNeedsHeal(body, heading)) continue;
+    const slide = outline[i] ?? outline[Math.min(i, outline.length - 1)];
+    const topic = resolveLockedTopicNoun(briefText, harvested[0], slide?.title);
+    const pack = biennaleYellowSlideCopyPack(topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver');
+    const role = biennalePackForBody(body, span.attrs, pack);
+    const title = rewriteLeftoverKitSlideTitle(slide?.title || harvested[i] || harvested[0] || '', role.heading);
+    const nextBody = fillBiennaleYellowKitSlide(body, span.attrs, {
+      title,
+      lead: looksLikeBiennaleLeftoverCopy(slide?.lead ?? '') ? role.lead : (slide?.lead || role.lead),
+      bodyText: slide?.body && !looksLikeBiennaleLeftoverCopy(slide.body) ? slide.body : role.lead,
+      kicker: slide?.kicker ?? '',
+      fillLines: role.items.length > 0 ? role.items : templateCloneSlideFillLines(slide ?? { title }),
+    });
+    if (nextBody === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
+  }
+  return wipeEightBitCapsuleLeftoverPhrases(
+    stripBiennaleCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out)),
+  );
+}
+
+function groveStudioPackForRole(
+  pack: GroveStudioCopyPack,
+  attrs: string,
+  index = 0,
+): GroveStudioRoleCopy {
+  if (/\bslide--cover\b/i.test(attrs)) return pack.cover;
+  if (/\bslide--stats\b/i.test(attrs)) return pack.stats;
+  if (/\bslide--split\b/i.test(attrs)) return pack.split;
+  if (/\bslide--list\b/i.test(attrs)) return pack.list;
+  if (/\bslide--quote\b/i.test(attrs)) return pack.quote;
+  if (/\bslide--compare\b/i.test(attrs)) return pack.compare;
+  if (/\bslide--chart\b/i.test(attrs)) return pack.chart;
+  if (/\bslide--end\b/i.test(attrs)) return pack.end;
+  if (/\bslide--chapter\b/i.test(attrs)) return index >= 8 ? pack.chapter2 : pack.chapter;
+  if (/\bslide--statement\b/i.test(attrs)) return index >= 8 ? pack.statement2 : pack.statement;
+  const role = GROVE_STUDIO_SLIDE_ROLES[Math.max(0, index) % GROVE_STUDIO_SLIDE_ROLES.length]!;
+  return pack[role];
+}
+
+function rewriteLeftoverKitSlideTitle(title: string, fallback: string): string {
+  const text = String(title ?? '').replace(/\s+/g, ' ').trim();
+  if (!text || looksLikeServiceIntroLeftoverTitle(text) || looksLikeBlockedOverviewOrTrioTitle(text)) {
+    return fallback;
+  }
+  return text;
+}
+
+function groveStudioSlideNeedsHeal(body: string, heading: string): boolean {
+  if (looksLikeLeftoverTemplateDemoDeck(body)) return true;
+  if (GROVE_LEFTOVER_BODY_RE.test(body) || STUDIO_LEFTOVER_BODY_RE.test(body)) return true;
+  if (GROVE_SIDEBAR_LEFTOVER_RE.test(body)) return true;
+  if (looksLikeServiceIntroLeftoverTitle(heading)) return true;
+  const visible = visibleDeckCopy(body);
+  if (SERVICE_INTRO_LEFTOVER_BODY_RE.test(visible)) return true;
+  if (SERVICE_INTRO_LEFTOVER_CARD_TITLE_RE.test(heading)) return true;
+  if (/파일럿|확대 —|정착 —|핵심 포인트/.test(visible)) return true;
+  if (/\b(?:Market\s*[·•]\s*Metrics|The Argument|The Thesis|Core Insight|What We Found)\b/i.test(visible)) {
+    return true;
+  }
+  return false;
+}
+
+function fillGroveStudioChartBars(
+  body: string,
+  lines: Array<{ title: string; body: string }>,
+): string {
+  if (!/\bbar-col\b/i.test(body)) return body;
+  return replaceExactClassBlocksBySequence(body, 'bar-col', lines, (block, line, index) => {
+    const resolved = resolveTemplateCloneCardFill(line);
+    let filled = replaceFirstExactClassText(
+      block,
+      'bar-x-label',
+      resolved.title || resolved.body || String(index + 1).padStart(2, '0'),
+    );
+    const metricSource = titleLooksLikeMetric(resolved.title)
+      ? resolved.title
+      : titleLooksLikeMetric(resolved.body)
+        ? resolved.body
+        : String(index + 1).padStart(2, '0');
+    return replaceFirstExactClassText(filled, 'bar-val', metricSource);
+  });
+}
+
+function replaceGroveStatValue(block: string, text: string): string {
+  return block.replace(
+    /(<[^>]*\bgrove-stat-val\b[^>]*>)([\s\S]*?)(<\/[^>]+>)/i,
+    `$1${escapeHtml(text)}$3`,
+  );
+}
+
+function fillGroveLeftoverKitSlide(
+  body: string,
+  attrs: string,
+  input: StudioCreativeFillInput,
+): string {
+  const topic = resolveLockedTopicNoun(input.topic, input.title, input.lead, input.bodyText);
+  const pack = groveSlideCopyPack(topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver');
+  const role = groveStudioPackForRole(pack, attrs);
+  const heading = rewriteLeftoverKitSlideTitle(input.title, role.heading);
+  const seeded: StudioCreativeFillInput = {
+    ...input,
+    title: heading,
+    lead: looksLikeServiceIntroLeftoverTitle(input.lead) || SERVICE_INTRO_LEFTOVER_BODY_RE.test(input.lead)
+      ? role.lead
+      : (input.lead || role.lead),
+    bodyText: SERVICE_INTRO_LEFTOVER_BODY_RE.test(input.bodyText) ? role.lead : (input.bodyText || role.lead),
+    fillLines: role.items.length > 0 ? role.items : input.fillLines,
+    topic,
+  };
+  let next = fillStudioKitSlide(body, attrs, seeded);
+  const lines = biennaleFillLines(seeded, 6);
+  if (/\bgrove-stat\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'grove-stat', lines, (block, line, index) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = replaceFirstExactClassText(
+        block,
+        'grove-stat-label',
+        resolved.title || resolved.body,
+      );
+      const metricSource = titleLooksLikeMetric(resolved.title)
+        ? resolved.title
+        : titleLooksLikeMetric(resolved.body)
+          ? resolved.body
+          : '';
+      if (metricSource) {
+        return replaceGroveStatValue(filled, metricSource);
+      }
+      const valInner =
+        /<[^>]*\bgrove-stat-val\b[^>]*>([\s\S]*?)<\//i.exec(filled)?.[1] ?? '';
+      const valText = valInner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (GROVE_STAT_VALUE_DEMO_RE.test(valText)) {
+        return replaceGroveStatValue(filled, String(index + 1).padStart(2, '0'));
+      }
+      return filled;
+    });
+  }
+  if (/\bgrove-sidebar\b/i.test(next)) {
+    const sidebar = visibleDeckCopy(
+      /<[^>]*\bgrove-sidebar\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+    );
+    if (GROVE_SIDEBAR_LEFTOVER_RE.test(sidebar)) {
+      next = replaceFirstExactClassText(
+        next,
+        'grove-sidebar',
+        seeded.kicker || seeded.title,
+      );
+    }
+  }
+  const visibleHeading = visibleDeckCopy(
+    next.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
+  );
+  if (visibleHeading && (GROVE_LEFTOVER_BODY_RE.test(visibleHeading) || looksLikeServiceIntroLeftoverTitle(visibleHeading))) {
+    next = replaceFirstHeadingText(next, seeded.title);
+  }
+  const kicker = visibleDeckCopy(
+    /<[^>]*\bkicker\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+  );
+  if (kicker && (GROVE_LEFTOVER_BODY_RE.test(kicker) || /\[Studio Name\]|\[Year\]/.test(kicker))) {
+    next = replaceFirstExactClassText(next, 'kicker', input.kicker || input.title);
+  }
+  const lead = visibleDeckCopy(
+    /<[^>]*\blead\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? '',
+  );
+  if (lead && (GROVE_LEFTOVER_BODY_RE.test(lead) || SERVICE_INTRO_LEFTOVER_BODY_RE.test(lead))) {
+    next = replaceFirstExactClassText(
+      next,
+      'lead',
+      seeded.lead || seeded.bodyText || seeded.title,
+    );
+  }
+  next = fillGroveStudioChartBars(next, role.items.length > 0 ? role.items : lines);
+  return wipeGroveStudioLeftoverPhrases(next);
+}
+
+function wipeGroveStudioLeftoverPhrases(html: string): string {
+  return String(html ?? '')
+    .replace(GROVE_LEFTOVER_BODY_RE, '')
+    .replace(SERVICE_INTRO_LEFTOVER_BODY_RE, '')
+    .replace(/파일럿\s*—\s*작은 팀이나 단일 업무에서 빠르게 파일럿을 시작/g, '')
+    .replace(/확대\s*—\s*반복 사용 패턴을 기준으로 템플릿과 권한 정책을 확장/g, '')
+    .replace(/정착\s*—\s*성과 지표와 운영 책임을 정해 조직 표준으로 정착/g, '')
+    .replace(/Market\s*[·•]\s*Metrics/gi, '')
+    .replace(/The Argument|The Thesis|Core Insight|What We Found|The Path Forward/gi, '')
+    .replace(/<(p|span|div|h[1-3])\b[^>]*>\s*<\/\1>/gi, '');
+}
+
+/**
+ * 루프538 — Grove persist leftover: forest kit ships catalog letters
+ * ("The landscape has shifted", "The brands that will lead…") and
+ * grove-stat KPIs ("73%" / "4.8×" / "#1"). Studio/Broadside healers deny
+ * Grove, so leftover example.html copy survives persist. Fill leftover
+ * slides only. Official English example without a brief is a no-op.
+ * Do not invent KPI digits.
+ */
+export function healGroveLeftoverCatalogCopy(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !officialLookIsGrove(dest)) return dest;
+  const briefText = String(brief ?? '');
+  const destHasHangul = /[가-힣]/.test(visibleDeckCopy(dest));
+  const briefHasHangul = /[가-힣]/.test(briefText);
+  if (!destHasHangul && !briefHasHangul && !briefText.trim()) return dest;
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) {
+    return stripStudioCreativeCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(dest));
+  }
+  const harvested = [...dest.matchAll(/<(?:h[1-3]|div)\b[^>]*>([\s\S]*?)<\/(?:h[1-3]|div)>/gi)]
+    .map((match) => visibleDeckCopy(match[1] ?? ''))
+    .filter((text) => (
+      text.length >= 2
+      && text.length <= 40
+      && !GROVE_LEFTOVER_BODY_RE.test(text)
+      && !GROVE_SIDEBAR_LEFTOVER_RE.test(text)
+    ));
+  const outline = resolveTemplateCloneSlidesForDeterministicFill({
+    userInstruction: briefText || harvested.join('\n') || '',
+    deckTitle: harvested[0] ?? null,
+    slideCount: spans.length,
+  });
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    if (!/\bslide--(?:cover|chapter|split|stats|list|quote|compare|statement|chart|end)\b/i.test(span.attrs)) {
+      continue;
+    }
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    const heading = visibleDeckCopy(
+      body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
+    );
+    if (!groveStudioSlideNeedsHeal(body, heading)) {
+      continue;
+    }
+    const slide = outline[i] ?? outline[Math.min(i, outline.length - 1)];
+    const topic = resolveLockedTopicNoun(briefText, harvested[0], slide?.title);
+    const pack = groveSlideCopyPack(topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver');
+    const role = groveStudioPackForRole(pack, span.attrs, i);
+    const title = rewriteLeftoverKitSlideTitle(
+      slide?.title || harvested[i] || harvested[0] || '',
+      role.heading,
+    );
+    const nextBody = fillGroveLeftoverKitSlide(body, span.attrs, {
+      title,
+      lead: looksLikeServiceIntroLeftoverTitle(slide?.lead ?? '')
+        || SERVICE_INTRO_LEFTOVER_BODY_RE.test(slide?.lead ?? '')
+        ? role.lead
+        : (slide?.lead || role.lead),
+      bodyText: slide?.body && !SERVICE_INTRO_LEFTOVER_BODY_RE.test(slide.body)
+        ? slide.body
+        : role.lead,
+      kicker: slide?.kicker ?? '',
+      fillLines: role.items.length > 0 ? role.items : templateCloneSlideFillLines(slide ?? { title }),
+      topic,
+    });
+    if (nextBody === body) continue;
+    out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
+  }
+  return wipeGroveStudioLeftoverPhrases(
+    stripStudioCreativeCatalogDemoCopy(stripLeftoverCatalogDemoPhrases(out)),
+  );
 }
 
 /**
@@ -8814,7 +15247,7 @@ function fillBiennaleCalendarSlots(
 }
 
 const BLOCK_FRAME_ENGLISH_CHROME_LABEL_RE =
-  /^(?:Overview|Methodology|By The Numbers|The Team|Roadmap|Features|Insights)$/i;
+  /^(?:Overview|Methodology|By The Numbers|The Team|Roadmap|Features|Insights|Performance Data|Core Features)$/i;
 
 const BLOCK_FRAME_ENGLISH_CHROME_LABEL_KO: Record<string, string> = {
   overview: '개요',
@@ -8824,21 +15257,670 @@ const BLOCK_FRAME_ENGLISH_CHROME_LABEL_KO: Record<string, string> = {
   roadmap: '로드맵',
   features: '기능',
   insights: '인사이트',
+  'performance data': '성과 데이터',
+  'core features': '핵심 기능',
 };
 
 /**
  * neo chrome (`nb-label` / `hero-label`) must not keep catalog English when the
  * deterministic outline still ships `kicker: 'OVERVIEW'` (루프461/462).
  */
+const GENERIC_BLOCK_FRAME_SECTION_LABEL_RE = /^(?:개요|소개|표지|overview)$/i;
+const GENERIC_SERVICE_VALUE_LEAD_RE =
+  /[가-힣A-Za-z0-9._-]+(?:가|이)? 다루는 문제와 제공 가치/;
+const GENERIC_PROBLEM_USER_CONTEXT_RE =
+  /문제\s*[\/·,]\s*사용자\s*[\/·,]\s*맥락/;
+
+function blockFrameTopicAwareCta(input: {
+  title: string;
+  lead: string;
+  bodyText: string;
+}): string {
+  const blob = `${input.title} ${input.lead} ${input.bodyText}`;
+  if (/(?:시작|도입|문의|데모|상담|지금)/.test(blob)) return '지금 시작하기';
+  const topic = topicKeywordForSynthBody(input.title || input.lead);
+  if (/teamver/i.test(blob) || /teamver/i.test(topic)) return 'Teamver 살펴보기';
+  if (topic && topic.length >= 2 && !GENERIC_BLOCK_FRAME_SECTION_LABEL_RE.test(topic)) {
+    return `${topic} 살펴보기`;
+  }
+  return '지금 시작하기';
+}
+
+function blockFrameTopicAwareLead(input: { title: string; lead: string; bodyText: string }): string {
+  const topic = topicKeywordForSynthBody(input.title || input.lead || input.bodyText);
+  if (/teamver/i.test(topic) || /teamver/i.test(`${input.title} ${input.lead}`)) {
+    return 'Teamver는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.';
+  }
+  return `${topic}이 현장에서 막는 일과 팀이 바로 얻는 결과를 한 문장으로 정리한다.`;
+}
+
 function blockFrameNeoChromeLabel(input: { title: string; kicker: string }): string {
+  const topic = topicKeywordForSynthBody(input.title);
   const kicker = String(input.kicker ?? '').trim();
   if (kicker) {
     const mapped = BLOCK_FRAME_ENGLISH_CHROME_LABEL_KO[kicker.toLowerCase()];
-    if (mapped) return mapped;
+    if (mapped) {
+      if (
+        mapped === '개요'
+        && GENERIC_BLOCK_FRAME_SECTION_LABEL_RE.test(input.title.trim())
+      ) {
+        return topic && !GENERIC_BLOCK_FRAME_SECTION_LABEL_RE.test(topic) ? topic : '표지';
+      }
+      return mapped;
+    }
     if (!BLOCK_FRAME_ENGLISH_CHROME_LABEL_RE.test(kicker)) return kicker;
   }
   const title = String(input.title ?? '').trim();
-  return title || '개요';
+  if (GENERIC_BLOCK_FRAME_SECTION_LABEL_RE.test(title)) {
+    return topic && !GENERIC_BLOCK_FRAME_SECTION_LABEL_RE.test(topic) ? topic : '표지';
+  }
+  return title || topic || '표지';
+}
+
+/**
+ * 루프558 — Cover-specific role label for the block-frame `.hero-label`
+ * pill above the h1. The original template ships a short role like
+ * "Presentation Template" (a short brand-role chrome word, uppercase pink
+ * chip). Copying the full deck title into the pill duplicates the h1 and
+ * stretches the pink chip across the frame; user reports show a short
+ * "표지" reads cleaner. Prefer an explicit kicker (short role) → mapped
+ * English chrome word → "표지" fallback. This is intentionally NOT
+ * `blockFrameNeoChromeLabel`, which is optimized for section headers that
+ * want the topic reflected.
+ */
+function blockFrameNeoCoverRoleLabel(input: { title: string; kicker: string }): string {
+  const kicker = String(input.kicker ?? '').replace(/\s+/g, ' ').trim();
+  if (kicker) {
+    const mapped = BLOCK_FRAME_ENGLISH_CHROME_LABEL_KO[kicker.toLowerCase()];
+    if (mapped) return mapped === '개요' ? '표지' : mapped;
+    if (!BLOCK_FRAME_ENGLISH_CHROME_LABEL_RE.test(kicker) && kicker.length <= 28) {
+      return kicker;
+    }
+  }
+  return '표지';
+}
+
+/**
+ * 루프554 — Block Frame leftover: `개요` 반복, `…문제와 제공 가치`,
+ * `문제/사용자/맥락` 불릿, generic `자세히 보기` CTA를 topic-aware로 덮는다.
+ */
+export function healBlockFrameGenericKoreanLeftovers(
+  html: string,
+  input: {
+    title: string;
+    lead?: string;
+    bodyText?: string;
+    kicker?: string;
+  },
+): string {
+  const title = String(input.title ?? '').trim();
+  const lead = String(input.lead ?? '').trim();
+  const bodyText = String(input.bodyText ?? '').trim();
+  const topicCta = blockFrameTopicAwareCta({ title, lead, bodyText });
+  const topicLead = blockFrameTopicAwareLead({ title, lead, bodyText });
+  const topic = topicKeywordForSynthBody(title || lead);
+  let next = String(html ?? '');
+  next = next.replace(GENERIC_SERVICE_VALUE_LEAD_RE, topicLead);
+  next = next.replace(GENERIC_PROBLEM_USER_CONTEXT_RE, `${topic} 문제 · 쓰는 사람 · 쓰이는 자리`);
+  next = next.replace(
+    /(<(?:div|span|p|h[1-3])\b[^>]*\b(?:hero-label|nb-label|hero-title|hero-subtitle)\b[^>]*>)(\s*개요\s*)(<\/(?:div|span|p|h[1-3])>)/gi,
+    (_m, open: string, _inner: string, close: string) => {
+      const isTitle = /hero-title/i.test(open);
+      const replacement = isTitle
+        ? (topic && !GENERIC_BLOCK_FRAME_SECTION_LABEL_RE.test(topic) ? topic : title || '표지')
+        : blockFrameNeoChromeLabel({ title, kicker: input.kicker ?? '' });
+      return `${open}${escapeHtml(replacement)}${close}`;
+    },
+  );
+  next = next.replace(
+    /(<(?:li|p|span|div)\b[^>]*>)\s*(문제|사용자|맥락)\s*(<\/(?:li|p|span|div)>)/gi,
+    (_m, open: string, label: string, close: string) => {
+      const mapped =
+        label === '문제' ? `${topic}이 반복해서 막는 일`
+          : label === '사용자' ? `${topic}을 쓰는 팀과 역할`
+            : `${topic}이 쓰이는 회의·작업 자리`;
+      return `${open}${escapeHtml(mapped)}${close}`;
+    },
+  );
+  next = next.replace(
+    /(<(?:a|button|div|span)\b[^>]*\b(?:nb-btn|hero-cta|cta-primary)\b[^>]*>)\s*자세히 보기\s*(<\/(?:a|button|div|span)>)/gi,
+    (_m, open: string, close: string) => `${open}${escapeHtml(topicCta)}${close}`,
+  );
+  return next;
+}
+
+const BLOCK_FRAME_KEEPABLE_KO_MIN = 20;
+
+const BLOCK_FRAME_ROLE_TITLE_RE = /^(?:실무자|리더|운영자)$/;
+const BLOCK_FRAME_METRIC_LABEL_RE = /^(?:전환율|전환|활성|품질)$/;
+
+const BLOCK_FRAME_BROKEN_TOKEN_MAP: Record<string, string> = {
+  파일떴: '파일럿',
+  희대다: '확대',
+  정척적: '정착',
+};
+
+const BLOCK_FRAME_GLUED_TITLE_PAIRS: ReadonlyArray<readonly [string, string]> = [
+  ['근거와사례', '근거와 사례'],
+  ['고객경험', '고객 경험'],
+  ['실행방안', '실행 방안'],
+  ['도입로드맵', '도입 로드맵'],
+  ['성과지표', '성과 지표'],
+  ['핵심포인트', '핵심 포인트'],
+  ['운영과보안', '운영과 보안'],
+];
+
+const BLOCK_FRAME_ROLE_BODY_RE =
+  /반복 작업을 줄이고 결과물 완성도|팀 속도,\s*품질,\s*비용|권한,\s*저장,\s*(?:감사,\s*)?보안 요구|작은 팀이나 단일 업무에서 빠르게 파일럿|방문에서 문의[·,]\s*가입까지 이어지는 전환율|핵심 기능 반복 사용,\s*팀 초대|결과물 완성도,\s*수정 횟수/;
+
+const BLOCK_FRAME_SEED_CARD_TITLES = ['Strategy First', 'Design System', 'Launch Ready'] as const;
+const BLOCK_FRAME_SEED_STEP_TITLES = ['Research', 'Concept', 'Build', 'Launch'] as const;
+
+function resolveBlockFrameTopicNoun(
+  ...candidates: Array<string | null | undefined>
+): string {
+  for (const raw of candidates) {
+    const text = String(raw ?? '');
+    if (/teamver/i.test(text)) return 'Teamver';
+  }
+  const locked = resolveLockedTopicNoun(...candidates);
+  if (locked && !isGenericSynthTopicNoun(locked) && locked !== '주제') return locked;
+  return '주제';
+}
+
+function blockFrameSlideCopyPack(topic: string): {
+  cover: { lead: string; items: Array<{ title: string; body: string }> };
+  intro: { lead: string; heading: string; items: Array<{ title: string; body: string }> };
+  features: { lead: string; items: Array<{ title: string; body: string }> };
+  chart: { lead: string; items: Array<{ title: string; body: string }> };
+  quote: { lead: string; items: Array<{ title: string; body: string }> };
+  split: { lead: string; items: Array<{ title: string; body: string }> };
+  timeline: { lead: string; items: Array<{ title: string; body: string }> };
+  stats: { lead: string; items: Array<{ title: string; body: string }> };
+  team: { lead: string; items: Array<{ title: string; body: string }> };
+  close: { lead: string; title: string; items: Array<{ title: string; body: string }> };
+} {
+  const brand = topic || 'Teamver';
+  return {
+    cover: {
+      lead: `${brand}는 초안과 수정을 같은 보드에서 끝낸다.`,
+      items: [],
+    },
+    intro: {
+      heading: `${brand}가 묶는 일`,
+      lead: `${brand}는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.`,
+      items: [
+        { title: '파일과 대화를 같은 보드에 모은다', body: `${brand}에서 초안이 파일 밖으로 흩어지지 않고 같은 맥락으로 열린다.` },
+        { title: '보기와 고치기 권한을 나눈다', body: `${brand} 보드와 슬라이드마다 누가 보고 고칠 수 있는지 정한다.` },
+        { title: '보낸 뒤에도 이어서 고친다', body: `${brand}에서는 댓글과 수정이 같은 화면에서 끊기지 않고 이어진다.` },
+      ],
+    },
+    features: {
+      lead: `${brand}에서 바로 쓰는 세 가지`,
+      items: [
+        { title: '초안', body: `${brand} 보드에 바로 붙일 수 있는 초안이 열린다.` },
+        { title: '수정', body: `${brand}에서는 보낸 뒤에도 같은 화면에서 문장과 레이아웃을 고친다.` },
+        { title: '공유', body: `${brand}에 필요한 사람만 초대해 보기와 고치기를 나눈다.` },
+      ],
+    },
+    chart: {
+      lead: `${brand} 운영`,
+      items: [
+        { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
+        { title: '권한 경계', body: `${brand}에서 보기·고치기·보내기를 역할마다 나눈다.` },
+        { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 필요하면 되돌린다.` },
+      ],
+    },
+    quote: {
+      lead: `${brand}에서는 초안을 보낸 뒤에도 같은 화면에서 고칠 수 있어야 일이 끝난다.`,
+      items: [],
+    },
+    split: {
+      lead: `${brand} 작업 흐름`,
+      items: [
+        { title: '보드를 연다', body: `흩어진 메모를 ${brand} 워크스페이스로 옮긴다.` },
+        { title: '권한을 나눈다', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
+        { title: '이력을 남긴다', body: `${brand} 보드에 바꾼 사람과 시점을 고정한다.` },
+      ],
+    },
+    timeline: {
+      lead: `${brand} 도입 단계`,
+      items: [
+        { title: '한 팀 보드', body: `기존 문서를 ${brand} 보드로 옮기고 보기·고치기 권한을 나눈다.` },
+        { title: '리뷰 습관', body: `${brand}에서 댓글과 버전을 같은 화면에서 고정한다.` },
+        { title: '조직 기준', body: `${brand} 워크스페이스 기본값으로 감사와 보내기 규칙을 둔다.` },
+      ],
+    },
+    stats: {
+      lead: `${brand}가 남기는 것`,
+      items: [
+        { title: '같은 화면', body: `${brand}에서 초안과 리뷰가 한 보드에 남는다.` },
+        { title: '나뉜 권한', body: `${brand}에서 누가 고칠 수 있는지 분명하다.` },
+        { title: '되돌리기', body: `${brand}에서 바꾼 기록을 열어 이전으로 돌린다.` },
+      ],
+    },
+    team: {
+      lead: `${brand}를 쓰는 자리`,
+      items: [
+        { title: '보드에서 쓰기', body: `${brand}에서 실무는 초안을 붙이고 같은 맥락에서 고친다.` },
+        { title: '권한 나누기', body: `${brand}에서 리더는 보기와 보내기 경계를 보드에 둔다.` },
+        { title: '이력 남기기', body: `${brand}에서 운영은 감사와 저장 규칙을 기본값으로 둔다.` },
+      ],
+    },
+    close: {
+      title: '보드에서 이어 쓰기',
+      lead: `${brand}에서 쓸 방을 열고 첫 보드에 팀을 초대한다.`,
+      items: [],
+    },
+  };
+}
+
+const BLOCK_FRAME_HANGUL_TYPE_ATTR = 'data-od-block-frame-hangul-type';
+const BLOCK_FRAME_HANGUL_ELEM_ATTR = 'data-od-hangul';
+const BLOCK_FRAME_HANGUL_TYPE_MARK = 'data-od-block-frame-hangul-type-css';
+
+const BLOCK_FRAME_HANGUL_TRACKING_SELECTORS = [
+  '.nb-label',
+  '.nb-heading-xl',
+  '.nb-heading-lg',
+  '.nb-heading-md',
+  '.nb-mono',
+  '.step-title',
+  '.intro-card h3',
+  '.intro-card p',
+  '.feature-card h3',
+  '.feature-card p',
+  '.nb-card h3',
+  '.nb-card h4',
+  '.card h3',
+  '.card h4',
+  '.quote-text',
+  '.quote-author',
+  '.data-label',
+  '.data-num',
+  '.stat-label',
+  '.legend-item',
+  '.team-name',
+  '.team-role',
+] as const;
+
+const BLOCK_FRAME_HANGUL_TYPE_CSS = [
+  ...BLOCK_FRAME_HANGUL_TRACKING_SELECTORS.flatMap((sel) => [
+    `html:lang(ko) ${sel}`,
+    `html[lang="ko"] ${sel}`,
+    `[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] ${sel}`,
+  ]),
+  `[${BLOCK_FRAME_HANGUL_ELEM_ATTR}="1"]`,
+].join(',\n') + ` {
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+/* 0918-N03 — The kit was authored with 14–15px Latin demo copy on a
+ * 1920x1080 canvas. Korean body copy became unreadably small in preview and
+ * left oversized cards visually empty. Keep headings expressive while giving
+ * actual explanatory copy a presentation-safe floor. */
+html:lang(ko) :is(.intro-card p, .feature-card p, .nb-card p, .card p, .step-desc, .team-bio, .nb-body),
+html[lang="ko"] :is(.intro-card p, .feature-card p, .nb-card p, .card p, .step-desc, .team-bio, .nb-body),
+[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] :is(.intro-card p, .feature-card p, .nb-card p, .card p, .step-desc, .team-bio, .nb-body) {
+  font-size: 18px !important;
+  line-height: 1.48 !important;
+}
+html:lang(ko) :is(.intro-card h3, .feature-card h3, .nb-card h3, .card h3, .step-title),
+html[lang="ko"] :is(.intro-card h3, .feature-card h3, .nb-card h3, .card h3, .step-title),
+[${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"] :is(.intro-card h3, .feature-card h3, .nb-card h3, .card h3, .step-title) {
+  font-size: 24px !important;
+  line-height: 1.28 !important;
+}`;
+
+function injectBlockFrameHangulTypography(
+  html: string,
+  options: { markElements?: boolean } = {},
+): string {
+  const source = String(html ?? '');
+  if ((source.match(/[가-힣]/g) ?? []).length < 2) return source;
+  let out = source.replace(
+    /<html\b([^>]*)>/i,
+    (_full, attrs: string) => {
+      let next = String(attrs ?? '');
+      if (!/\blang\s*=/i.test(next)) next += ' lang="ko"';
+      if (!new RegExp(`\\b${BLOCK_FRAME_HANGUL_TYPE_ATTR}\\b`).test(next)) {
+        next += ` ${BLOCK_FRAME_HANGUL_TYPE_ATTR}="1"`;
+      }
+      return `<html${next}>`;
+    },
+  );
+  out = injectStyleMark(out, BLOCK_FRAME_HANGUL_TYPE_MARK, BLOCK_FRAME_HANGUL_TYPE_CSS);
+  return options.markElements === false ? out : markBlockFrameHangulElements(out);
+}
+
+function blockFrameVisibleCopy(html: string): string {
+  return String(html ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function restoreBlockFrameGluedKoreanTitle(text: string): string {
+  let next = String(text ?? '');
+  for (const [glued, spaced] of BLOCK_FRAME_GLUED_TITLE_PAIRS) {
+    if (next.includes(glued)) next = next.split(glued).join(spaced);
+  }
+  return next;
+}
+
+function restoreBlockFrameBrokenTokens(text: string): string {
+  let next = String(text ?? '');
+  for (const [broken, fixed] of Object.entries(BLOCK_FRAME_BROKEN_TOKEN_MAP)) {
+    if (next.includes(broken)) next = next.split(broken).join(fixed);
+  }
+  return next;
+}
+
+function blockFrameCopyIsKeepable(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (value.length < BLOCK_FRAME_KEEPABLE_KO_MIN) return false;
+  if (!/[가-힣]/.test(value)) return false;
+  if (BLOCK_FRAME_ROLE_BODY_RE.test(value)) return false;
+  if (BLOCK_FRAME_ROLE_TITLE_RE.test(value)) return false;
+  if (BLOCK_FRAME_METRIC_LABEL_RE.test(value)) return false;
+  if (Object.keys(BLOCK_FRAME_BROKEN_TOKEN_MAP).some((token) => value.includes(token))) {
+    return false;
+  }
+  return true;
+}
+
+function blockFrameTopicAwareMetricLabel(label: string, topic: string): string {
+  const noun = String(topic ?? '').replace(/\s+/g, ' ').trim();
+  const usable = noun && !isGenericSynthTopicNoun(noun) ? noun : '';
+  if (label === '전환율' || label === '전환') return usable ? `${usable} 전환` : '전환';
+  if (label === '활성') return usable ? `${usable} 활성` : '활성 사용';
+  if (label === '품질') return usable ? `${usable} 품질` : '결과 품질';
+  return label;
+}
+
+const BLOCK_FRAME_KEPT_SECTION_LABEL_RE =
+  /^(?:근거와 사례|실행 방안|고객 경험|운영과 보안|도입 로드맵|성과 지표)$/;
+
+function rewriteBlockFrameHeadingCopy(
+  raw: string,
+  kind: 'card' | 'step' | 'title' | 'metric',
+  index: number,
+  topic = '',
+  pack?: ReturnType<typeof blockFrameSlideCopyPack>,
+): string {
+  const text = restoreBlockFrameBrokenTokens(restoreBlockFrameGluedKoreanTitle(raw)).replace(/\s+/g, ' ').trim();
+  const rolePack = pack ?? blockFrameSlideCopyPack(topic || 'Teamver');
+  if (/^(?:개요|핵심 포인트)$/.test(text)) {
+    if (kind === 'step') return rolePack.timeline.items[index % rolePack.timeline.items.length]?.title ?? '';
+    if (kind === 'metric') return rolePack.chart.items[index % rolePack.chart.items.length]?.title ?? '';
+    if (kind === 'card') return rolePack.intro.items[index % rolePack.intro.items.length]?.title ?? '';
+    return rolePack.intro.heading;
+  }
+  if (BLOCK_FRAME_KEPT_SECTION_LABEL_RE.test(text)) {
+    return text;
+  }
+  if (
+    BLOCK_FRAME_ROLE_TITLE_RE.test(text)
+    || SERVICE_INTRO_LEFTOVER_CARD_TITLE_RE.test(text)
+    || /파일떴|희대다|정척적/.test(String(raw ?? ''))
+  ) {
+    if (kind === 'step') return rolePack.timeline.items[index % rolePack.timeline.items.length]?.title ?? '';
+    if (kind === 'metric') return rolePack.chart.items[index % rolePack.chart.items.length]?.title ?? '';
+    if (kind === 'card') return rolePack.intro.items[index % rolePack.intro.items.length]?.title ?? rolePack.team.items[index % rolePack.team.items.length]?.title ?? '';
+    return rolePack.intro.heading;
+  }
+  if (BLOCK_FRAME_METRIC_LABEL_RE.test(text)) {
+    return rolePack.chart.items[index % rolePack.chart.items.length]?.title
+      ?? blockFrameTopicAwareMetricLabel(text, topic);
+  }
+  return text;
+}
+
+function blockFrameLeftoverHealShouldRun(html: string): boolean {
+  if (officialLookIsNeoBrutalBlockFrame(html)) return true;
+  return /\b(?:chart-frame|intro-card|feature-card|nb-heading|data-box|nb-label|nb-card)\b/i.test(html)
+    && ((html.match(/[가-힣]/g) ?? []).length >= 2);
+}
+
+function markBlockFrameHangulElements(html: string): string {
+  return String(html ?? '').replace(
+    /<(h[1-6]|p|span|div|li|figcaption)\b([^>]*)>([^<]*[가-힣][^<]*)</gi,
+    (full, tag: string, attrs: string, text: string) => {
+      if (new RegExp(`\\b${BLOCK_FRAME_HANGUL_ELEM_ATTR}\\b`).test(attrs)) return full;
+      return `<${tag}${attrs} ${BLOCK_FRAME_HANGUL_ELEM_ATTR}="1">${text}<`;
+    },
+  );
+}
+
+/**
+ * 루프557 — Compute the [start, end) ranges of Block Frame *native card*
+ * shells inside the given HTML.
+ *
+ * The healer's role-title / role-body wipe is designed to catch
+ * *Product Launch* demo copy that leaks onto a Block Frame kit. When
+ * the copy sits inside a Block Frame native card structure, it is the
+ * user's actual deck content (many Korean team-collab briefs legitimately
+ * name roles as `실무자` / `리더` / `운영자` with those exact descriptions),
+ * so we must preserve it.
+ *
+ * We consider a shell "native" when either of the following holds:
+ *
+ *   1. The shell's own class list includes `.intro-card`, `.nb-card`,
+ *      `.feature-card`, `.team-card`, `.stat-card`, or `.timeline-step`
+ *      (all Block Frame kit-owned card tokens).
+ *   2. The shell is a `<div class="card">` that lives as a direct child
+ *      of a Block Frame native container (`.col-right`, `.cards-row`,
+ *      `.stats-grid`, `.team-grid`, `.stats-row`, `.timeline`). A bare
+ *      `.card` peer next to `.intro-card` / `.nb-card` peers is the
+ *      user's third role card, not a Product Launch leak.
+ */
+function computeBlockFrameNativeCardRanges(html: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  const shellRe =
+    /<(article|div|section|li)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:intro-card|nb-card|feature-card|team-card|stat-card|timeline-step)\b[^"']*["'][^>]*>[\s\S]*?<\/\1>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = shellRe.exec(html)) !== null) {
+    ranges.push([match.index, match.index + match[0].length]);
+  }
+  // Also treat every direct-child `.card` inside a Block Frame native
+  // container (`.col-right`, `.cards-row`, etc.) as a native peer.
+  const containerRe =
+    /<div\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:col-right|col-left|cards-row|stats-grid|team-grid|stats-row)\b[^"']*["'][^>]*>/gi;
+  let containerMatch: RegExpExecArray | null;
+  while ((containerMatch = containerRe.exec(html)) !== null) {
+    const bodyStart = containerMatch.index + containerMatch[0].length;
+    const containerEnd = findMatchingCloseForBlockFrame(html, bodyStart, 'div');
+    if (containerEnd < 0) continue;
+    const inner = html.slice(bodyStart, containerEnd - '</div>'.length);
+    const cardRe = /<div\b[^>]*\bclass\s*=\s*["'][^"']*\bcard\b[^"']*["'][^>]*>/gi;
+    let cardMatch: RegExpExecArray | null;
+    while ((cardMatch = cardRe.exec(inner)) !== null) {
+      const cardAbsStart = bodyStart + cardMatch.index;
+      const cardBodyStart = cardAbsStart + cardMatch[0].length;
+      const cardEnd = findMatchingCloseForBlockFrame(html, cardBodyStart, 'div');
+      if (cardEnd < 0) continue;
+      ranges.push([cardAbsStart, cardEnd]);
+    }
+  }
+  return ranges;
+}
+
+function offsetFallsInsideRange(
+  ranges: ReadonlyArray<readonly [number, number]>,
+  offset: number,
+): boolean {
+  for (const [start, end] of ranges) {
+    if (offset >= start && offset < end) return true;
+  }
+  return false;
+}
+
+/**
+ * 루프555 / N28 — Block Frame leftover-only heal.
+ * 루프556 / N29 — persist 경로에서도 chart 데모 wipe, 역할/지표 leftover,
+ * lang=en 한글 tracking. Product Launch 역할 템플릿과 붙여쓴 한글 제목만 정리.
+ * 한국어 ≥20은 유지. letter-spacing/uppercase 는 한글 음절 요소에서 끈다.
+ */
+export function healBlockFrameLeftoverCatalogCopy(
+  html: string,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim() || !blockFrameLeftoverHealShouldRun(dest)) return dest;
+  const topic = resolveBlockFrameTopicNoun(brief, topicKeywordForSynthBody(String(brief ?? '')));
+  const pack = blockFrameSlideCopyPack(topic);
+  const hasHangul = ((dest.match(/[가-힣]/g) ?? []).length >= 2);
+  let out = dest;
+
+  const rewriteLeaf = (
+    full: string,
+    open: string,
+    inner: string,
+    close: string,
+    kind: 'card' | 'step' | 'title' | 'metric',
+    index: number,
+  ): string => {
+    const plain = blockFrameVisibleCopy(inner);
+    if (!plain) return full;
+    if (
+      blockFrameCopyIsKeepable(plain)
+      && !BLOCK_FRAME_ROLE_TITLE_RE.test(plain)
+      && !looksLikeServiceIntroLeftoverTitle(plain)
+      && !/^(?:개요|핵심 포인트)$/.test(plain)
+    ) {
+      const restored = restoreBlockFrameGluedKoreanTitle(inner);
+      return restored === inner ? full : `${open}${restored}${close}`;
+    }
+    if (BLOCK_FRAME_ROLE_BODY_RE.test(plain) || SERVICE_INTRO_LEFTOVER_BODY_RE.test(plain)) {
+      const filled =
+        kind === 'step' ? pack.timeline.items[index % pack.timeline.items.length]?.body
+          : kind === 'metric' ? pack.chart.items[index % pack.chart.items.length]?.body
+            : pack.intro.items[index % pack.intro.items.length]?.body;
+      return filled ? `${open}${escapeHtml(filled)}${close}` : `${open}${close}`;
+    }
+    const next = rewriteBlockFrameHeadingCopy(plain, kind, index, topic, pack);
+    if (!next || next === plain) {
+      const restored = restoreBlockFrameBrokenTokens(restoreBlockFrameGluedKoreanTitle(inner));
+      return restored === inner ? full : `${open}${restored}${close}`;
+    }
+    return `${open}${escapeHtml(next)}${close}`;
+  };
+
+  // 0918-N03 — leftover 역할(실무자/리더/운영자, 탐색/실행/확장)은 native
+  // card 안에서도 strip. 한국어 ≥20 구체 문장만 유지 (루프554).
+  const preserveKeepableCopy = (
+    full: string,
+    open: string,
+    inner: string,
+    close: string,
+  ): string => {
+    const plain = blockFrameVisibleCopy(inner);
+    if (
+      plain
+      && (BLOCK_FRAME_ROLE_TITLE_RE.test(plain)
+        || looksLikeServiceIntroLeftoverTitle(plain)
+        || BLOCK_FRAME_ROLE_BODY_RE.test(plain)
+        || SERVICE_INTRO_LEFTOVER_BODY_RE.test(plain)
+        || /^(?:개요|핵심 포인트)$/.test(plain))
+    ) {
+      return full;
+    }
+    const restored = restoreBlockFrameBrokenTokens(
+      restoreBlockFrameGluedKoreanTitle(inner),
+    );
+    return restored === inner ? full : `${open}${restored}${close}`;
+  };
+
+  let cardIndex = 0;
+  out = out.replace(
+    /(<(?:h[1-4])\b[^>]*>)([\s\S]*?)(<\/h[1-4]>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const kind = /<(?:h3|h4)\b/i.test(open) ? 'card' : 'title';
+      const index = kind === 'card' ? cardIndex++ : 0;
+      return rewriteLeaf(full, open, inner, close, kind, index);
+    },
+  );
+
+  let stepIndex = 0;
+  out = out.replace(
+    /(<(?:div|span|p)\b[^>]*\bstep-title\b[^>]*>)([\s\S]*?)(<\/(?:div|span|p)>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      return rewriteLeaf(full, open, inner, close, 'step', stepIndex++);
+    },
+  );
+
+  let headingSlotIndex = 0;
+  out = out.replace(
+    /(<(?:div|span|p)\b[^>]*(?:\bnb-heading|\bcard-title|\bdata-label|\bdata-num|\bstat-label)[^>]*>)([\s\S]*?)(<\/(?:div|span|p)>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const kind = /\bdata-(?:num|label)\b|\bstat-label\b/i.test(open) ? 'metric' : 'card';
+      return rewriteLeaf(full, open, inner, close, kind, headingSlotIndex++);
+    },
+  );
+
+  let descIndex = 0;
+  out = out.replace(
+    /(<(?:p|div|span)\b[^>]*(?:\bstep-desc\b|\bnb-body\b)[^>]*>)([\s\S]*?)(<\/(?:p|div|span)>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const plain = blockFrameVisibleCopy(inner);
+      if (!plain) return full;
+      if (blockFrameCopyIsKeepable(plain)) return full;
+      const kind = /\bstep-desc\b/i.test(open) ? 'step' : 'title';
+      const index = kind === 'step' ? descIndex++ : 0;
+      if (BLOCK_FRAME_ROLE_BODY_RE.test(plain) || SERVICE_INTRO_LEFTOVER_BODY_RE.test(plain)) {
+        return rewriteLeaf(full, open, inner, close, kind, index);
+      }
+      const restored = restoreBlockFrameBrokenTokens(inner);
+      return restored === inner ? full : `${open}${restored}${close}`;
+    },
+  );
+
+  let bodyIndex = 0;
+  out = out.replace(
+    /(<(?:p|span)\b[^>]*>)([\s\S]*?)(<\/(?:p|span)>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const plain = blockFrameVisibleCopy(inner);
+      if (!plain) return full;
+      if (blockFrameCopyIsKeepable(plain)) return preserveKeepableCopy(full, open, inner, close);
+      if (
+        BLOCK_FRAME_ROLE_TITLE_RE.test(plain)
+        || BLOCK_FRAME_ROLE_BODY_RE.test(plain)
+        || SERVICE_INTRO_LEFTOVER_BODY_RE.test(plain)
+      ) {
+        return rewriteLeaf(full, open, inner, close, 'card', bodyIndex++);
+      }
+      return full;
+    },
+  );
+
+  out = out.replace(
+    /(<(?:div|span|p|h[1-3])\b[^>]*(?:\bnb-heading|\bhero-title|\bnb-label)[^>]*>)([\s\S]*?)(<\/(?:div|span|p|h[1-3])>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const restored = restoreBlockFrameBrokenTokens(restoreBlockFrameGluedKoreanTitle(inner));
+      return restored === inner ? full : `${open}${restored}${close}`;
+    },
+  );
+
+  out = neutralizeBlockFrameChartSvgDemoMetrics(out);
+  // 0918-N03 — A sparse prompt response often leaves the cover with only a
+  // label and H1. Preserve the authored hero shell, but restore its semantic
+  // subtitle slot so the cover communicates scope instead of looking empty.
+  if (/\bhero-frame\b/i.test(out) && !/\bhero-subtitle\b/i.test(out)) {
+    const heroTitleMatch = out.match(
+      /<h[1-3]\b[^>]*\bhero-title\b[^>]*>([\s\S]*?)<\/h[1-3]>/i,
+    );
+    const heroTitle = blockFrameVisibleCopy(heroTitleMatch?.[1] ?? '') || topic;
+    const subtitle = blockFrameTopicAwareLead({
+      title: heroTitle,
+      lead: String(brief ?? ''),
+      bodyText: '',
+    });
+    out = out.replace(
+      /(<h[1-3]\b[^>]*\bhero-title\b[^>]*>[\s\S]*?<\/h[1-3]>)/i,
+      `$1<p class="hero-subtitle" ${BLOCK_FRAME_HANGUL_ELEM_ATTR}="1">${escapeHtml(subtitle)}</p>`,
+    );
+  }
+  if (hasHangul) {
+    out = injectBlockFrameHangulTypography(out);
+  }
+  return out;
 }
 
 function fillBlockFrameNeoSlots(
@@ -8854,14 +15936,56 @@ function fillBlockFrameNeoSlots(
   if (!/\b(?:hero-frame|visual-box|data-box|team-card|nb-btn|close-btn|chart-frame|nb-label|intro-card|feature-card|stat-card|timeline-step)\b/i.test(body)) {
     return body;
   }
-  const lines = biennaleFillLines(input, 4);
-  const chromeLabel = blockFrameNeoChromeLabel(input);
+  const topic = resolveBlockFrameTopicNoun(input.title, input.lead, input.bodyText);
+  const pack = blockFrameSlideCopyPack(topic);
+  const safeTitle = looksLikeServiceIntroLeftoverTitle(input.title)
+    || /^(?:개요|핵심 포인트)$/.test(String(input.title ?? '').trim())
+    ? pack.intro.heading
+    : input.title;
+  const lines = biennaleFillLines({ ...input, title: safeTitle }, 4);
+  // 루프558 — Block Frame slide-1 (`.hero-frame`) is the cover shell. Its
+  // `.hero-label` slot is a small pink pill above the title — the template
+  // originally shows "Presentation Template" (a short role label), NOT the
+  // deck title. Stamping the full deck title in the pill duplicates the h1
+  // and makes the pink chip stretch across the frame. Prefer a short role
+  // label ("표지") for Korean decks and let non-cover slides keep the
+  // topic-aware chrome label.
+  const isCoverShell = /\bhero-frame\b/i.test(body);
+  const chromeLabel = isCoverShell
+    ? blockFrameNeoCoverRoleLabel(input)
+    : blockFrameNeoChromeLabel(input);
+  const topicCta = blockFrameTopicAwareCta(input);
+  // 루프558 — `.deco-yellow-bar` is the block-frame kit's bottom-tab CTA
+  // (template ships "Get Started"). Use a short CTA on covers instead of
+  // reflecting the whole deck title back into the tab. Non-cover slides
+  // keep the topic-shortened brand keyword for continuity with the
+  // template's original shape.
+  const decoBrand = isCoverShell
+    ? topicCta.slice(0, 24)
+    : (topicKeywordForSynthBody(input.title).slice(0, 24)
+      || chromeLabel
+      || 'Brand');
   let next = body;
   next = replaceFirstExactClassText(next, 'hero-label', chromeLabel);
-  next = replaceFirstExactClassText(next, 'deco-yellow-bar', 'Teamver');
+  // Never stamp a fixed product name — deco chrome follows this deck's title/topic.
+  next = replaceFirstExactClassText(next, 'deco-yellow-bar', decoBrand);
   next = replaceFirstExactClassText(next, 'visual-label', chromeLabel || input.title);
-  next = replaceFirstExactClassText(next, 'nb-btn', '자세히 보기');
+  next = replaceFirstExactClassText(next, 'nb-btn', topicCta);
   next = replaceFirstExactClassText(next, 'close-btn', '다음 단계');
+
+  if (/\bclose-frame\b/i.test(next)) {
+    next = replaceFirstExactClassText(next, 'close-title', safeTitle === input.title ? pack.close.title : safeTitle);
+    next = replaceFirstExactClassText(
+      next,
+      'close-subtitle',
+      input.lead || input.bodyText || pack.close.lead,
+    );
+    next = replaceFirstExactClassText(next, 'close-btn', '무료로 시작하기');
+  }
+  if (/\bnb-btn\b/i.test(next)) {
+    next = replaceFirstExactClassText(next, 'nb-btn', topicCta);
+  }
+  next = healBlockFrameGenericKoreanLeftovers(next, input);
 
   if (/\bvisual-box\b/i.test(next)) {
     next = replaceExactClassBlocksBySequence(next, 'visual-box', [lines[0] ?? { title: input.title, body: input.lead }], (block) => {
@@ -8875,23 +15999,32 @@ function fillBlockFrameNeoSlots(
   }
 
   // If a chart slide has ordinary prose rather than true metrics, keep the
-  // neobrutal frame but remove demo bars/legend/values that imply fake data.
+  // neobrutal frame but remove demo legend/values that imply fake data.
+  // 루프534 — NEVER delete `.chart-svg`. `.data-column` / `.data-box` use
+  // `flex: 1; min-height: 0` and collapse into an overlapping pile when the
+  // chart sibling is missing (user report: 운영과 보안 slide). Keep the SVG
+  // shell (viewBox + class) as a flex spacer; clear demo metric glyphs inside.
   const metricLines = lines.filter((line) => (
     titleLooksLikeMetric(line.title) || titleLooksLikeMetric(line.body)
   ));
   if (/\bchart-frame\b/i.test(next) && metricLines.length === 0) {
     next = stripClassBlocks(next, 'chart-legend');
-    next = next.replace(/<svg\b[^>]*\bclass\s*=\s*["'][^"']*\bchart-svg\b[^"']*["'][^>]*>[\s\S]*?<\/svg>/gi, '');
+    next = neutralizeBlockFrameChartSvgDemoMetrics(next);
   }
 
   // 루프461 — English chrome labels on nb-label / legend that survive when
   // the structural fill above did not rewrite them (Overview / Methodology /
   // By The Numbers / The Team / Roadmap / Revenue|Users|Retention).
   // 루프462 — do not rewrite back to English `kicker: 'OVERVIEW'`.
+  // 루프534 — also rewrite "Performance Data" / "Core Features" before the
+  // catalog demo-copy strip empties those labels into floating chips.
   next = next.replace(
     /(<(?:div|span)\b[^>]*\bnb-label\b[^>]*>)([\s\S]*?)(<\/(?:div|span)>)/gi,
     (full, open: string, inner: string, close: string) => {
       const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!plain) {
+        return `${open}${escapeHtml(chromeLabel)}${close}`;
+      }
       if (!BLOCK_FRAME_ENGLISH_CHROME_LABEL_RE.test(plain)) {
         return full;
       }
@@ -8899,11 +16032,1205 @@ function fillBlockFrameNeoSlots(
     },
   );
 
+  // 루프539 — MiniMax invents block-frame 슬라이드에 없는 클래스 (`hero-title-highlight`
+  // span, `download-card`/`platform-card` platform tiles, "Enterprise 데모" CTA 등).
+  // 킷 CSS가 없어서 하이라이트가 잘리고 카드는 비어 있고 영어 chrome이 한국어 덱에 섞인다.
+  // 사용자 리포트 2026-09-16: 타이틀 pink 하이라이트 밖 글자 튀어나옴 + Desktop/Android/iOS
+  // 빈 카드 + iOS 카드에 회사 법적 고지가 본문처럼 들어감.
+  next = neutralizeBlockFrameInventedHeroTitleHighlight(next);
+  next = stripInventedBlockFramePlatformCards(next);
+  next = neutralizeBlockFrameEnglishHeroCta(next);
+  next = healBlockFrameGenericKoreanLeftovers(next, input);
+
   return next;
 }
 
-function fillOneCardPeer(cardHtml: string, line: TemplateCloneCardFillLine): string {
-  const { title, body } = resolveTemplateCloneCardFill(line);
+/**
+ * 루프539 — MiniMax invents `<span class="hero-title-highlight">지금 시작</span>`
+ * inside `.hero-title`. Kit CSS has no such rule so the span renders with
+ * ad-hoc background paint that clips wrapped characters. Unwrap the span —
+ * keep text, let the natural line-break flow.
+ */
+export function neutralizeBlockFrameInventedHeroTitleHighlight(html: string): string {
+  return String(html ?? '').replace(
+    /(<h[1-3]\b[^>]*\bhero-title\b[^>]*>)([\s\S]*?)(<\/h[1-3]>)/gi,
+    (_m, open: string, inner: string, close: string) => {
+      const rewritten = String(inner).replace(
+        /<span\b[^>]*\bhero-title-highlight\b[^>]*>([\s\S]*?)<\/span>/gi,
+        (_full, text: string) => String(text),
+      );
+      return `${open}${rewritten}${close}`;
+    },
+  );
+}
+
+/**
+ * 루프539 — MiniMax often invents platform-download shells for the hero
+ * slide (`.download-card` / `.platform-card` / `.download-cards`) that the
+ * block-frame kit never declared. The shells lack kit CSS so they render
+ * as blank cards, and MiniMax typically leaves them empty or dumps the
+ * deck footer legal-info into a single card. Strip the invented shells
+ * altogether so the hero slide falls back to the authored `.hero-frame`
+ * layout — content is never lost, only the empty invented wrapper is dropped.
+ */
+export function stripInventedBlockFramePlatformCards(html: string): string {
+  let out = String(html ?? '');
+  // Drop wrappers first (contains all invented tiles). Depth-aware so nested
+  // divs inside a card don't close the wrapper early.
+  out = stripClassBlocks(out, 'download-cards');
+  out = stripClassBlocks(out, 'platform-cards');
+  out = stripClassBlocks(out, 'download-card-row');
+  out = stripClassBlocks(out, 'platform-card-row');
+  // Individual tiles: `.download-card` / `.platform-card` never exist on
+  // block-frame slides (kit ships `.hero-frame` + `.intro-card` /
+  // `.feature-card` / `.team-card`). Any surviving download-card is a
+  // MiniMax invention — strip depth-safely.
+  out = stripClassBlocks(out, 'download-card');
+  out = stripClassBlocks(out, 'platform-card');
+  return out;
+}
+
+/**
+ * 루프539 — Block-frame kit only ships one CTA slot (`.nb-btn` / `.deco-yellow-bar`).
+ * MiniMax often adds a hero-cta pair ("무료로 시작하기 / Enterprise 데모").
+ * The English "Enterprise" reads as broken chrome on a Korean deck. Rewrite
+ * to Korean, or wipe if the whole button is generic English.
+ */
+export function neutralizeBlockFrameEnglishHeroCta(html: string): string {
+  return String(html ?? '').replace(
+    /(<(?:a|button|div|span)\b[^>]*\b(?:hero-cta|cta-primary|cta-secondary|nb-btn-cta|nb-btn-secondary)\b[^>]*>)([\s\S]*?)(<\/(?:a|button|div|span)>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!plain) return full;
+      if (/^Enterprise(?:\s*(?:데모|demo|Demo|DEMO))?$/i.test(plain)) {
+        return `${open}기업 도입 문의${close}`;
+      }
+      if (/^(?:Get Started|Start Free|Start Now|Try Free|Free Trial|Contact Sales|Book Demo)$/i.test(plain)) {
+        return `${open}자세히 보기${close}`;
+      }
+      // Mixed KR + English marketing chrome ("Enterprise 데모" 문자 그대로).
+      if (/\bEnterprise\b/i.test(plain) && /[가-힣]/.test(plain)) {
+        return `${open}${escapeHtml(plain.replace(/\bEnterprise\b/gi, '기업').trim())}${close}`;
+      }
+      return full;
+    },
+  );
+}
+
+/** Persist/preview heal: invented Block Frame hero chrome (루프539). */
+export function healBlockFrameInventedHeroShells(html: string): string {
+  let next = neutralizeBlockFrameInventedHeroTitleHighlight(html);
+  next = stripInventedBlockFramePlatformCards(next);
+  return neutralizeBlockFrameEnglishHeroCta(next);
+}
+
+/**
+ * Keep chart-svg flex sibling; blank demo number / month / quarter glyphs
+ * inside and equalize colored bar heights so the surviving axes read as an
+ * empty placeholder frame rather than a growth-implying dummy chart.
+ *
+ * 루프547 — Block Frame 예시 슬라이드 4의 X 축 `Q1..Q5` 라벨과 3-계열
+ * (분홍/파랑/초록) 성장형 막대가 non-metric 프로즈 슬라이드에 그대로 남는
+ * 회귀를 잡기 위한 확장. `chart-svg` shell은 그대로 유지하고, 축 라벨과
+ * 막대의 데모 시멘틱만 wipe한다.
+ */
+function cleanBlockFrameChartSvgInner(inner: string): string {
+  const cleaned = String(inner)
+    .replace(/>(\s*\+?\d+(?:\.\d+)?%?\s*)</g, '><')
+    .replace(/>(\s*\d+(?:\.\d+)?[MBK]\s*)</gi, '><')
+    .replace(
+      />(\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s*)</gi,
+      '><',
+    )
+    // 루프547 — Q1..Q9 (optionally followed by an FY year "Q1 2026")
+    // are demo axis labels; they never correspond to a Korean deck
+    // topic. Blank them so only the axis shell remains.
+    .replace(/>(\s*Q[1-9](?:\s*20\d{2})?\s*)</gi, '><');
+  return equalizeBlockFrameChartBars(cleaned);
+}
+
+function svgLooksLikeBlockFrameDemoChart(open: string, inner: string): boolean {
+  if (/\bchart-svg\b/i.test(open)) return true;
+  if (/>(\s*Q[1-9](?:\s*20\d{2})?\s*)</i.test(inner)) return true;
+  if (/fill\s*=\s*(["'])(?:#FE90E8|#C0F7FE|#99E885|var\(--(?:pink|blue|green)\))\1/i.test(inner)) {
+    return true;
+  }
+  return false;
+}
+
+export function neutralizeBlockFrameChartSvgDemoMetrics(html: string): string {
+  return String(html ?? '').replace(
+    /(<svg\b[^>]*>)([\s\S]*?)(<\/svg>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      if (!svgLooksLikeBlockFrameDemoChart(open, inner)) return full;
+      return `${open}${cleanBlockFrameChartSvgInner(inner)}${close}`;
+    },
+  );
+}
+
+/**
+ * 루프547 — Colored `<rect>` bars inside `chart-svg` sit at a shared
+ * baseline (`y + height` constant). When healed as a placeholder chart,
+ * equalize every colored bar to the mean height so the surviving frame
+ * no longer visually implies quarterly growth. Axes / grid lines are
+ * `<line>` elements and are untouched.
+ */
+function equalizeBlockFrameChartBars(svgInner: string): string {
+  const barRe = /<rect\b[^>]*\bfill\s*=\s*(["'])(?:#[0-9A-Fa-f]{3,8}|var\(--(?:pink|blue|green|cream|yellow)\))\1[^>]*\/?>/gi;
+  const matches = Array.from(svgInner.matchAll(barRe));
+  if (matches.length < 2) return svgInner;
+  const infos = matches
+    .map((m) => {
+      const tag = m[0];
+      const yM = /\by\s*=\s*(["'])(-?\d+(?:\.\d+)?)\1/.exec(tag);
+      const hM = /\bheight\s*=\s*(["'])(-?\d+(?:\.\d+)?)\1/.exec(tag);
+      if (!yM || !hM) return null;
+      const y = Number(yM[2]);
+      const h = Number(hM[2]);
+      if (!Number.isFinite(y) || !Number.isFinite(h) || h <= 0) return null;
+      return { y, h };
+    })
+    .filter((x): x is { y: number; h: number } => x !== null);
+  if (infos.length < 2) return svgInner;
+  // Require a shared baseline (`y + h` roughly constant) — this is the
+  // Block Frame convention. If the SVG uses some other bar layout,
+  // bail out so we don't mangle it.
+  const baselines = infos.map((i) => i.y + i.h);
+  const baseline = baselines[0] ?? 0;
+  if (!Number.isFinite(baseline)) return svgInner;
+  if (!baselines.every((b) => Math.abs(b - baseline) < 1)) return svgInner;
+  const meanH = Math.max(
+    1,
+    Math.round(infos.reduce((sum, i) => sum + i.h, 0) / infos.length),
+  );
+  const newY = baseline - meanH;
+  barRe.lastIndex = 0;
+  return svgInner.replace(barRe, (tag) => (
+    tag
+      .replace(/\by\s*=\s*(["'])-?\d+(?:\.\d+)?\1/, `y="${newY}"`)
+      .replace(/\bheight\s*=\s*(["'])-?\d+(?:\.\d+)?\1/, `height="${meanH}"`)
+  ));
+}
+
+/**
+ * 루프557 — When a Block Frame `.chart-frame` has a `chart-svg` shell
+ * but its `.data-column` carries NO real metric value (every `.data-num`
+ * is a Korean word rather than `%` / number / `Nx`), the chart is a
+ * decorative demo placeholder that squeezes the `.data-column` into a
+ * ~240px right rail and wastes half the slide on meaningless bars.
+ *
+ * Strip the `chart-svg` entirely so the kit's
+ * `.chart-body:not(:has(.chart-svg))` fallback rules stretch
+ * `.data-column` to full width, and stamp inline `flex-direction: row`
+ * on `.data-column` so its 3 `.data-box` peers spread horizontally
+ * (matching the user's actual outline shape: 3 stat cards, no chart).
+ */
+export function stripBlockFrameNonMetricChartFrame(html: string): string {
+  const source = String(html ?? '');
+  if (!source) return source;
+  if (!/\bchart-frame\b/i.test(source)) return source;
+  const openRe = /<div\b([^>]*\bchart-frame\b[^>]*)>/gi;
+  let out = source;
+  // Walk right-to-left so brace-matched replacements don't invalidate
+  // earlier indices.
+  const opens: Array<{ start: number; openLen: number; attrs: string }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = openRe.exec(out)) !== null) {
+    opens.push({ start: m.index, openLen: m[0].length, attrs: m[1] ?? '' });
+  }
+  for (let i = opens.length - 1; i >= 0; i -= 1) {
+    const entry = opens[i]!;
+    const bodyStart = entry.start + entry.openLen;
+    const closeEnd = findMatchingCloseForBlockFrame(out, bodyStart, 'div');
+    if (closeEnd < 0) continue;
+    // closeEnd is the position AFTER the closing `</div>`.
+    const closeTag = '</div>';
+    const closeStart = closeEnd - closeTag.length;
+    const body = out.slice(bodyStart, closeStart);
+    if (!/\bchart-svg\b/i.test(body)) continue;
+    if (!/\bdata-column\b/i.test(body)) continue;
+    const dataBoxes = body.match(
+      /<div\b[^>]*\bdata-box\b[^>]*>[\s\S]*?<\/div>/gi,
+    );
+    if (!dataBoxes || dataBoxes.length === 0) continue;
+    // If ANY data-box carries a real metric glyph (`%`, `Nx`, `+N`,
+    // bare number, `M/B/K` suffix), the chart-svg is a real data-viz
+    // for the deck and must stay. We only strip when every leading
+    // slot on every data-box is a non-numeric label.
+    const hasRealMetric = dataBoxes.some((box) => {
+      const numMatch = /<span\b[^>]*\bdata-num\b[^>]*>([\s\S]*?)<\/span>/i.exec(box);
+      if (!numMatch) return false;
+      const text = String(numMatch[1] ?? '').replace(/<[^>]+>/g, ' ').trim();
+      if (!text) return false;
+      return /(?:%|[+\-−]?\d|\d+[MBKmbk×xX]|\d+\s*(?:배|명|건|회|일|시간|점))/.test(text);
+    });
+    if (hasRealMetric) continue;
+    // Strip chart-svg + chart-legend (they're kit demo furniture that
+    // becomes meaningless without a real dataset), and rewrite
+    // .data-column so its data-box peers stretch horizontally.
+    let nextBody = body.replace(
+      /<svg\b[^>]*\bclass\s*=\s*["'][^"']*\bchart-svg\b[^"']*["'][^>]*>[\s\S]*?<\/svg>/gi,
+      '',
+    );
+    nextBody = nextBody.replace(
+      /<div\b[^>]*\bclass\s*=\s*["'][^"']*\bchart-legend\b[^"']*["'][^>]*>[\s\S]*?<\/div>/gi,
+      '',
+    );
+    nextBody = layoutBlockFrameDataColumnAsHorizontalRow(nextBody);
+    out = `${out.slice(0, bodyStart)}${nextBody}${out.slice(closeStart)}`;
+  }
+  return out;
+}
+
+/**
+ * 루프557 — Stamp inline `display:flex; flex-direction:row; width:100%`
+ * on `.data-column` hosts so `.data-box` peers spread horizontally when
+ * the fake chart-svg beside them has been stripped. Kit CSS ships
+ * `.slide-4 .data-column { flex-direction: column }` scoped to slide-4,
+ * so an inline override is the only reliable way to reflow (shell picker
+ * may reuse the data-column outside slide-4).
+ */
+function layoutBlockFrameDataColumnAsHorizontalRow(html: string): string {
+  return String(html ?? '').replace(
+    /(<div\b)([^>]*\bclass\s*=\s*(["'])[^"']*\bdata-column\b[^"']*\3)([^>]*)>/gi,
+    (
+      _full,
+      openHead: string,
+      classAttrChunk: string,
+      _quote: string,
+      tail: string,
+    ) => {
+      const rest = String(tail ?? '');
+      if (/\bstyle\s*=\s*["'][^"']*flex-direction\s*:\s*row/i.test(rest)) {
+        return `${openHead}${classAttrChunk}${rest}>`;
+      }
+      const inlineStyle =
+        'display:flex;flex-direction:row;gap:24px;width:100%;flex:1 1 auto;align-items:stretch';
+      if (/\bstyle\s*=\s*(["'])([^"']*)\1/i.test(rest)) {
+        const merged = rest.replace(
+          /\bstyle\s*=\s*(["'])([^"']*)\1/i,
+          (_m, q: string, existing: string) =>
+            `style=${q}${existing.replace(/;?\s*$/, '')};${inlineStyle}${q}`,
+        );
+        return `${openHead}${classAttrChunk}${merged}>`;
+      }
+      return `${openHead}${classAttrChunk}${rest} style="${inlineStyle}">`;
+    },
+  );
+}
+
+/**
+ * 루프557 — MiniMax often emits a `.slide-2` (the Block Frame 2-column
+ * intro shell) with the header nodes (`nb-label`, `nb-heading-*`,
+ * `nb-body`, `stat-pill`) as DIRECT children of `<section>` alongside
+ * a `.col-right` but no `.col-left`. Kit CSS `.slide-2 { flex-direction: row }`
+ * then paints the orphan header as inline row siblings and the cards
+ * cluster in the right column, leaving a huge empty middle band.
+ *
+ * Wrap the orphan header nodes into a synthesized `<div class="col-left">`
+ * so the 2-col layout restores its symmetric split. Any trailing
+ * `<p class="nb-body">` / `<span class="stat-pill">` after `.col-right`
+ * is also absorbed into `.col-left` (they belong on the left column per
+ * the kit's canonical slide-2).
+ */
+export function wrapBlockFrameOrphanTwoColumnHeader(html: string): string {
+  const source = String(html ?? '');
+  if (!source) return source;
+  if (!/\bcol-right\b/i.test(source)) return source;
+  return source.replace(
+    /(<section\b[^>]*\bslide(?:-\d+)?\b[^>]*>)([\s\S]*?)(<\/section>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      // Only fire when the shell has a col-right but no col-left.
+      if (!/\bcol-right\b/i.test(inner)) return full;
+      if (/\bcol-left\b/i.test(inner)) return full;
+      // The shell must be Block Frame native (either explicit `.slide-2`
+      // class or an intro-family fingerprint like `.nb-heading-lg` +
+      // `.intro-card`).
+      const isBlockFrameTwoCol =
+        /\bslide-2\b/i.test(open)
+        || /\bnb-heading-(?:lg|xl)\b/i.test(inner)
+        || /\bintro-card\b/i.test(inner);
+      if (!isBlockFrameTwoCol) return full;
+
+      // Split inner into: [leading nodes before col-right], [col-right block],
+      // [trailing nodes after col-right].
+      const colRightMatch = /<div\b[^>]*\bclass\s*=\s*(["'])[^"']*\bcol-right\b[^"']*\1[^>]*>/i.exec(inner);
+      if (!colRightMatch) return full;
+      const colRightOpenStart = colRightMatch.index;
+      const colRightOpenEnd = colRightOpenStart + colRightMatch[0].length;
+      const colRightClose = findMatchingCloseForBlockFrame(
+        inner,
+        colRightOpenEnd,
+        'div',
+      );
+      if (colRightClose < 0) return full;
+      const leading = inner.slice(0, colRightOpenStart);
+      const colRightBlock = inner.slice(colRightOpenStart, colRightClose);
+      const trailing = inner.slice(colRightClose);
+
+      // Header nodes we absorb: nb-label / heading / nb-body / stat-pill /
+      // stat-pill row (`<div style="display: flex; gap: 12px..."`).
+      // We keep semantically-empty whitespace runs where they are.
+      const HEADER_NODE_RE = /<(?:div\b[^>]*\bnb-label\b|h[1-6]\b|p\b[^>]*\bnb-body\b|span\b[^>]*\bstat-pill\b|div\b[^>]*\bstat-pills\b)[^>]*>[\s\S]*?<\/(?:div|h[1-6]|p|span)>/gi;
+      const leadingHeader = leading.match(HEADER_NODE_RE) ?? [];
+      const trailingHeader = trailing.match(HEADER_NODE_RE) ?? [];
+      if (leadingHeader.length === 0 && trailingHeader.length === 0) return full;
+
+      const leadingRest = leading.replace(HEADER_NODE_RE, '').trim();
+      const trailingRest = trailing.replace(HEADER_NODE_RE, '');
+      const colLeftInner = [...leadingHeader, ...trailingHeader]
+        .join('\n      ')
+        .trim();
+      const colLeft = `<div class="col-left">\n      ${colLeftInner}\n    </div>`;
+      return `${open}\n      ${leadingRest ? `${leadingRest}\n      ` : ''}${colLeft}\n      ${colRightBlock.trim()}${trailingRest.trim() ? `\n      ${trailingRest.trim()}` : ''}\n    ${close}`;
+    },
+  );
+}
+
+/** Local helper: find matching `</tag>` position from `from` inside `html`. */
+function findMatchingCloseForBlockFrame(
+  html: string,
+  from: number,
+  tag: string,
+): number {
+  const safe = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const token = new RegExp(
+    `<(?:(/)\\s*)?${safe}\\b(?:[^>"']|"[^"]*"|'[^']*')*>`,
+    'gi',
+  );
+  token.lastIndex = from;
+  let depth = 1;
+  let match: RegExpExecArray | null;
+  while ((match = token.exec(html)) !== null) {
+    const isClose = Boolean(match[1]);
+    if (isClose) {
+      depth -= 1;
+      if (depth === 0) return match.index + match[0].length;
+    } else if (!/\/\s*>$/.test(match[0])) {
+      depth += 1;
+    }
+  }
+  return -1;
+}
+
+/**
+ * 루프534 — Catalog demo-copy strip can empty `nb-label` text (e.g.
+ * "Performance Data") leaving a floating colored chip. Refill from title.
+ */
+function refillEmptyBlockFrameNeoLabels(html: string, chromeLabel: string): string {
+  const raw = String(chromeLabel ?? '').trim();
+  const label = !raw || looksLikeServiceIntroLeftoverTitle(raw) ? '표지' : raw;
+  return String(html ?? '').replace(
+    /(<(?:div|span)\b[^>]*\bnb-label\b[^>]*>)\s*(<\/(?:div|span)>)/gi,
+    (_m, open: string, close: string) => `${open}${escapeHtml(label)}${close}`,
+  );
+}
+
+function refillEmptyBlockFrameSlotsFromPack(
+  html: string,
+  title?: string | null,
+  brief?: string | null,
+): string {
+  const dest = String(html ?? '');
+  if (!dest.trim()) return dest;
+  const topic = resolveBlockFrameTopicNoun(title, brief);
+  const pack = blockFrameSlideCopyPack(topic);
+  let out = dest;
+  let cardIndex = 0;
+  out = out.replace(
+    /<(div|article|li)\b([^>]*\b(?:intro-card|nb-card|feature-card|team-card)\b[^>]*)>([\s\S]*?)<\/\1>/gi,
+    (full, tag: string, attrs: string, inner: string) => {
+      const item = pack.intro.items[cardIndex % pack.intro.items.length]
+        ?? pack.features.items[cardIndex % pack.features.items.length]
+        ?? pack.team.items[cardIndex % pack.team.items.length];
+      cardIndex += 1;
+      if (!item) return full;
+      let next = inner;
+      next = next.replace(
+        /(<(?:h[3-4])\b[^>]*>)([\s\S]*?)(<\/h[3-4]>)/i,
+        (leaf, open: string, text: string, close: string) => {
+          const plain = blockFrameVisibleCopy(text);
+          if (plain && blockFrameCopyIsKeepable(plain) && !looksLikeServiceIntroLeftoverTitle(plain)) {
+            return leaf;
+          }
+          if (plain && !looksLikeServiceIntroLeftoverTitle(plain) && !BLOCK_FRAME_ROLE_TITLE_RE.test(plain) && plain.length >= 2) {
+            return leaf;
+          }
+          return `${open}${escapeHtml(item.title)}${close}`;
+        },
+      );
+      next = next.replace(
+        /(<(?:p)\b[^>]*>)([\s\S]*?)(<\/p>)/i,
+        (leaf, open: string, text: string, close: string) => {
+          const plain = blockFrameVisibleCopy(text);
+          if (plain && blockFrameCopyIsKeepable(plain)) return leaf;
+          if (plain && !BLOCK_FRAME_ROLE_BODY_RE.test(plain) && !SERVICE_INTRO_LEFTOVER_BODY_RE.test(plain) && plain.length >= 12) {
+            return leaf;
+          }
+          return `${open}${escapeHtml(item.body)}${close}`;
+        },
+      );
+      return `<${tag}${attrs}>${next}</${tag}>`;
+    },
+  );
+  let stepIndex = 0;
+  out = out.replace(
+    /(<(?:div|span|p)\b[^>]*\bstep-title\b[^>]*>)([\s\S]*?)(<\/(?:div|span|p)>)/gi,
+    (full, open: string, text: string, close: string) => {
+      const item = pack.timeline.items[stepIndex % pack.timeline.items.length];
+      stepIndex += 1;
+      const plain = blockFrameVisibleCopy(text);
+      if (plain && !looksLikeServiceIntroLeftoverTitle(plain) && !/파일떴|희대다|정척적/.test(plain) && plain.length >= 2) {
+        return full;
+      }
+      return item ? `${open}${escapeHtml(item.title)}${close}` : full;
+    },
+  );
+  let stepDescIndex = 0;
+  out = out.replace(
+    /(<(?:div|span|p)\b[^>]*\bstep-desc\b[^>]*>)([\s\S]*?)(<\/(?:div|span|p)>)/gi,
+    (full, open: string, text: string, close: string) => {
+      const item = pack.timeline.items[stepDescIndex % pack.timeline.items.length];
+      stepDescIndex += 1;
+      const plain = blockFrameVisibleCopy(text);
+      if (plain && blockFrameCopyIsKeepable(plain)) return full;
+      if (plain && !SERVICE_INTRO_LEFTOVER_BODY_RE.test(plain) && !BLOCK_FRAME_ROLE_BODY_RE.test(plain) && plain.length >= 12) {
+        return full;
+      }
+      return item ? `${open}${escapeHtml(item.body)}${close}` : full;
+    },
+  );
+  let metricIndex = 0;
+  out = out.replace(
+    /<div\b([^>]*\bdata-box\b[^>]*)>([\s\S]*?)<\/div>/gi,
+    (full, attrs: string, inner: string) => {
+      const item = pack.chart.items[metricIndex % pack.chart.items.length];
+      metricIndex += 1;
+      if (!item) return full;
+      let next = inner;
+      next = next.replace(
+        /(<(?:span|div)\b[^>]*\bdata-num\b[^>]*>)([\s\S]*?)(<\/(?:span|div)>)/i,
+        (leaf, open: string, text: string, close: string) => {
+          const plain = blockFrameVisibleCopy(text);
+          if (plain && !BLOCK_FRAME_METRIC_LABEL_RE.test(plain) && !looksLikeServiceIntroLeftoverTitle(plain) && plain.length >= 2) {
+            return leaf;
+          }
+          return `${open}${escapeHtml(item.title)}${close}`;
+        },
+      );
+      next = next.replace(
+        /(<(?:span|div)\b[^>]*\bdata-label\b[^>]*>)([\s\S]*?)(<\/(?:span|div)>)/i,
+        (leaf, open: string, text: string, close: string) => {
+          const plain = blockFrameVisibleCopy(text);
+          if (plain && blockFrameCopyIsKeepable(plain)) return leaf;
+          if (plain && !SERVICE_INTRO_LEFTOVER_BODY_RE.test(plain) && !BLOCK_FRAME_ROLE_BODY_RE.test(plain) && plain.length >= 12) {
+            return leaf;
+          }
+          return `${open}${escapeHtml(item.body)}${close}`;
+        },
+      );
+      return `<div${attrs}>${next}</div>`;
+    },
+  );
+  return out;
+}
+
+/**
+ * 루프558 — Cover slot classes across kits that carry the deck's short lede
+ * beneath the hero title. Block Frame uses `.hero-subtitle`, Capsule uses
+ * `.subtitle`, 8-Bit Orbit uses `.hero-tagline`, Studio uses `.subhead`.
+ * When a title-only outline lands on a cover shell, `fillSlideShell`'s
+ * placeholder branch empties these `<p>` elements; if we do nothing more,
+ * the follow-on `stripEightBitOrbitCatalogDemoCopy` drops the whole `<p>`,
+ * leaving the cover as h1-only. Synthesize a short cover lede into ANY of
+ * these slots that is still empty so the cover ships with real chrome.
+ */
+const COVER_SUBTITLE_SLOT_CLASSES: readonly string[] = [
+  'hero-subtitle',
+  'hero-tagline',
+  'subtitle',
+  'subhead',
+  'cover-subhead',
+  'close-subtitle',
+] as const;
+
+function fillCoverSubtitleSlotsIfEmpty(html: string, lead: string): string {
+  const source = String(html ?? '');
+  if (!source) return source;
+  const value = String(lead ?? '').replace(/\s+/g, ' ').trim();
+  if (!value) return source;
+  let next = source;
+  for (const className of COVER_SUBTITLE_SLOT_CLASSES) {
+    const re = new RegExp(
+      `(<(?:p|div|span)\\b[^>]*\\bclass\\s*=\\s*["'][^"']*\\b${className}\\b[^"']*["'][^>]*>)([\\s\\S]*?)(<\\/(?:p|div|span)>)`,
+      'gi',
+    );
+    next = next.replace(re, (full, open: string, inner: string, close: string) => {
+      const visible = String(inner).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim();
+      if (visible.length > 0) return full;
+      return `${open}${escapeHtml(value)}${close}`;
+    });
+  }
+  return next;
+}
+
+/**
+ * 루프540 — 8-Bit Orbit 킷 슬롯 채우기.
+ *
+ * MiniMax는 `.tier-card` / `.timeline-event` / `.stat-block` / `.quote-author`
+ * / `.hero-badge` / `.pixel-label` 슬롯에 아무 조치도 안 하고 원본 English
+ * 카탈로그 demo copy를 그대로 두는 경우가 많다. 사용자 리포트 2026-09-16
+ * (제목 "글을 매력적으로 쓰는 팁") 참고: `$0/mo` / `Q1 2026` / `Rookie` /
+ * `Studio Orbital` / `Active Worlds` / `Pixel Perfect Presentation System`
+ * 등이 한국어 덱에 그대로 남고, `data-target="847"` 카운터는 JS가 없어서
+ * 0으로 렌더된다.
+ *
+ * 이 함수는 fill 파이프라인에서 shell 단위로 실행되고, structural marker가
+ * 있는 슬라이드에만 fire한다. slot이 채워지지 못하면 English literal이
+ * 남는 대신 아예 wipe → stripEightBitOrbitCatalogDemoCopy가 청소.
+ */
+export function fillEightBitOrbitKitSlide(
+  body: string,
+  attrs: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    kicker: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  const src = String(body ?? '');
+  if (
+    !/\b(?:pixel-hero-text|pixel-label|hero-badge|hero-tagline|tier-card|tier-features|timeline-event|timeline-text|stat-block|stat-label|stat-number|quote-author|quote-text|pixel-btn|cta-content|split-layout|pixel-bar-chart|chart-bar-group|pixel-hbar-chart|hbar-row)\b/i.test(src)
+  ) {
+    return src;
+  }
+  const topic = resolveLockedTopicNoun(input.title, input.lead, input.bodyText, input.kicker);
+  const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : 'Teamver';
+  const pack = eightBitSlideCopyPack(brand);
+  const role = eightBitPackForBody(src, pack);
+  const heading = rewriteLeftoverKitSlideTitle(input.title, role.heading);
+  const lead = looksLikeEightBitCapsuleLeftoverCopy(input.lead)
+    ? role.lead
+    : (input.lead || role.lead);
+  const bodyText = looksLikeEightBitCapsuleLeftoverCopy(input.bodyText)
+    ? role.lead
+    : (input.bodyText || role.lead);
+  const chromeLabel = normalizeTemplateCloneInlineText(
+    looksLikeServiceIntroLeftoverTitle(input.kicker || '')
+      || looksLikeBlockedOverviewOrTrioTitle(input.kicker || '')
+      ? heading
+      : (input.kicker || heading),
+  ).slice(0, 40) || heading;
+  const leftoverInput = looksLikeEightBitCapsuleLeftoverCopy(input.title)
+    || looksLikeEightBitCapsuleLeftoverCopy(input.kicker || '')
+    || looksLikeEightBitCapsuleLeftoverCopy(input.lead)
+    || looksLikeEightBitCapsuleLeftoverCopy(input.bodyText);
+  const hasAuthoredDenseLines = input.fillLines.length >= 2
+    && input.fillLines.some((line) => (
+      templateCloneItemBodyLooksDense(resolveTemplateCloneCardFill(line).body)
+    ));
+  const seeded = {
+    ...input,
+    title: heading,
+    lead,
+    bodyText,
+    fillLines: leftoverInput && !hasAuthoredDenseLines && role.items.length > 0
+      ? role.items
+      : input.fillLines,
+  };
+  const lines = biennaleFillLines(seeded, 6);
+  let next = src;
+
+  // Cover: hero-subtitle + hero-badge trio.
+  if (/\bpixel-hero-text\b/i.test(next) || /\bhero-badges\b/i.test(next)) {
+    // Keep the small eyebrow distinct from the explanatory hero tagline.
+    // Using `lead` in both slots visibly repeated the same sentence twice.
+    const kicker = normalizeTemplateCloneInlineText(input.kicker);
+    const heroSub = kicker && !looksLikeEightBitCapsuleLeftoverCopy(kicker)
+      ? kicker
+      : (role.heading || chromeLabel || 'OVERVIEW');
+    next = replaceFirstExactClassText(next, 'hero-subtitle', heroSub);
+    if (!/\bhero-tagline\b/i.test(next) && lead && lead !== heroSub) {
+      next = next.replace(
+        /(<h1\b[^>]*\bpixel-hero-text\b[^>]*>[\s\S]*?<\/h1>)/i,
+        `$1<p class="hero-tagline">${escapeHtml(lead)}</p>`,
+      );
+    }
+    // hero-badge triplet: use topic-derived short labels from lines[0..2]. If
+    // fewer lines exist, fall back to the chromeLabel / ordinal.
+    const badgeLabels = [0, 1, 2].map((i) => {
+      const line = lines[i];
+      const t = normalizeTemplateCloneInlineText(line?.title ?? '');
+      return t ? t.slice(0, 12) : `${String(i + 1).padStart(2, '0')} · ${chromeLabel.slice(0, 8)}`;
+    });
+    // `.hero-badge` is a <span> in the kit example — `exactClassBlocks` only
+    // walks div|section|article|aside|li|tr, so use a direct regex sequence
+    // to swap the badge text.
+    let badgeIdx = 0;
+    next = next.replace(
+      /(<span\b[^>]*\bhero-badge\b[^>]*>)([\s\S]*?)(<\/span>)/gi,
+      (_m, open: string, _inner: string, close: string) => {
+        const label = badgeLabels[badgeIdx] ?? badgeLabels[badgeLabels.length - 1] ?? '';
+        badgeIdx += 1;
+        return `${open}${escapeHtml(label)}${close}`;
+      },
+    );
+  }
+
+  // pixel-label chrome (Mission Brief / Core Systems / Chronology / Live
+  // Telemetry / Access Tiers) → chromeLabel.
+  if (/\bpixel-label\b/i.test(next)) {
+    next = next.replace(
+      /(<(?:div|span)\b[^>]*\bpixel-label\b[^>]*>)([\s\S]*?)(<\/(?:div|span)>)/gi,
+      (full, open: string, inner: string, close: string) => {
+        const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (!plain) return `${open}${escapeHtml(chromeLabel)}${close}`;
+        // English demo chrome literals — always rewrite.
+        if (/^(?:Mission\s+Brief|Core\s+Systems|Chronology|Live\s+Telemetry|System\s+Load|Access\s+Tiers|Loadout|Roadmap|Vision)$/i.test(plain)) {
+          return `${open}${escapeHtml(chromeLabel)}${close}`;
+        }
+        if (
+          looksLikeServiceIntroLeftoverTitle(plain)
+          || looksLikeBlockedOverviewOrTrioTitle(plain)
+        ) {
+          return `${open}${escapeHtml(chromeLabel)}${close}`;
+        }
+        return full;
+      },
+    );
+  }
+
+  if (/\bfeature-card\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(next, 'feature-card', lines, (block, line) => {
+      const resolved = resolveTemplateCloneCardFill(line);
+      let filled = block.replace(
+        /(<h3\b[^>]*>)([\s\S]*?)(<\/h3>)/i,
+        (full, open: string, inner: string, close: string) => {
+          const plain = visibleDeckCopy(inner);
+          if (eightBitCapsuleCopyIsKeepable(plain)) return full;
+          return `${open}${escapeHtml(resolved.title)}${close}`;
+        },
+      );
+      filled = filled.replace(
+        /(<p\b[^>]*>)([\s\S]*?)(<\/p>)/i,
+        (full, open: string, inner: string, close: string) => {
+          const plain = visibleDeckCopy(inner);
+          if (eightBitCapsuleCopyIsKeepable(plain)) return full;
+          return `${open}${escapeHtml(resolved.body || resolved.title)}${close}`;
+        },
+      );
+      return filled;
+    });
+  }
+
+  // Timeline (slide 6): .timeline-event × N → fill .date/h4/p from lines.
+  if (/\btimeline-event\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(
+      next,
+      'timeline-event',
+      lines,
+      (block, line, index) => {
+        const resolved = resolveTemplateCloneCardFill(line);
+        // `.date` → ordinal step label (Korean deck rarely uses Q1..Q4).
+        let filled = block.replace(
+          /(<(?:span|div)\b[^>]*\bdate\b[^>]*>)([\s\S]*?)(<\/(?:span|div)>)/i,
+          (_m, open: string, _inner: string, close: string) => (
+            `${open}${escapeHtml(`STEP ${String(index + 1).padStart(2, '0')}`)}${close}`
+          ),
+        );
+        filled = filled.replace(
+          /(<h[3-5]\b[^>]*>)([\s\S]*?)(<\/h[3-5]>)/i,
+          (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(resolved.title)}${close}`,
+        );
+        filled = filled.replace(
+          /(<p\b[^>]*>)([\s\S]*?)(<\/p>)/i,
+          (_m, open: string, _inner: string, close: string) => (
+            `${open}${escapeHtml(resolved.body || resolved.title)}${close}`
+          ),
+        );
+        return filled;
+      },
+    );
+  }
+
+  // Stats (slide 7): .stat-block × N. Zero-out data-target so a headless
+  // render (no JS) does not show `0`, and put a real number/ordinal in
+  // .stat-number. .stat-label → Korean topic label from fillLines.
+  if (/\bstat-block\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(
+      next,
+      'stat-block',
+      lines,
+      (block, line, index) => {
+        const resolved = resolveTemplateCloneCardFill(line);
+        const metricSource = titleLooksLikeMetric(resolved.title)
+          ? resolved.title
+          : titleLooksLikeMetric(resolved.body)
+            ? resolved.body
+            : `${String(index + 1).padStart(2, '0')}`;
+        let filled = block.replace(
+          /(<div\b[^>]*\bstat-number\b[^>]*)>([\s\S]*?)(<\/div>)/i,
+          (_m, open: string, _inner: string, close: string) => {
+            // Neutralize data-target / data-suffix so a headless render
+            // shows the resolved metric instead of the placeholder "0".
+            let attrsOut = open
+              .replace(/\sdata-target\s*=\s*(["'])[^"']*\1/gi, '')
+              .replace(/\sdata-suffix\s*=\s*(["'])[^"']*\1/gi, '');
+            return `${attrsOut}>${escapeHtml(metricSource)}${close}`;
+          },
+        );
+        const label = resolved.title || `${chromeLabel} ${index + 1}`;
+        filled = filled.replace(
+          /(<div\b[^>]*\bstat-label\b[^>]*>)([\s\S]*?)(<\/div>)/i,
+          (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(label)}${close}`,
+        );
+        return filled;
+      },
+    );
+  }
+
+  // Static chart shells depended on the template's JS animation to turn
+  // `height:0%` into visible bars. Clone output intentionally strips scripts,
+  // so bind the authored outline directly and materialize stable bar heights.
+  if (/\bpixel-bar-chart\b|\bchart-bar-group\b/i.test(next)) {
+    const heights = [62, 78, 88, 70, 82, 66];
+    next = replaceExactClassBlocksBySequence(
+      next,
+      'chart-bar-group',
+      lines,
+      (block, line, index) => {
+        const resolved = resolveTemplateCloneCardFill(line);
+        const height = heights[index % heights.length]!;
+        const metric = titleLooksLikeMetric(resolved.title)
+          ? resolved.title
+          : titleLooksLikeMetric(resolved.body)
+            ? resolved.body
+            : String(index + 1).padStart(2, '0');
+        let filled = block.replace(
+          /(<div\b[^>]*\bchart-value\b[^>]*>)([\s\S]*?)(<\/div>)/i,
+          (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(metric)}${close}`,
+        );
+        filled = filled.replace(
+          /(<div\b[^>]*\bchart-bar(?=[\s"'])[^>]*)(>)([\s\S]*?)(<\/div>)/i,
+          (_m, open: string, gt: string, inner: string, close: string) => {
+            const attrs = open
+              .replace(/\sdata-height\s*=\s*(["'])[^"']*\1/gi, '')
+              .replace(/\sstyle\s*=\s*(["'])[^"']*\1/gi, '');
+            return `${attrs} data-height="${height}" style="height:${height}%"${gt}${inner}${close}`;
+          },
+        );
+        return filled.replace(
+          /(<div\b[^>]*\bchart-bar-label\b[^>]*>)([\s\S]*?)(<\/div>)/i,
+          (_m, open: string, _inner: string, close: string) => (
+            `${open}${escapeHtml(resolved.title || `${chromeLabel} ${index + 1}`)}${close}`
+          ),
+        );
+      },
+    );
+  }
+
+  if (/\bpixel-hbar-chart\b|\bhbar-row\b/i.test(next)) {
+    const widths = [74, 88, 66, 80, 58, 70];
+    next = replaceExactClassBlocksBySequence(
+      next,
+      'hbar-row',
+      lines,
+      (block, line, index) => {
+        const resolved = resolveTemplateCloneCardFill(line);
+        const width = widths[index % widths.length]!;
+        const value = titleLooksLikeMetric(resolved.title)
+          ? resolved.title
+          : titleLooksLikeMetric(resolved.body)
+            ? resolved.body
+            : String(index + 1).padStart(2, '0');
+        let filled = block.replace(
+          /(<div\b[^>]*\bhbar-label\b[^>]*>)([\s\S]*?)(<\/div>)/i,
+          (_m, open: string, _inner: string, close: string) => (
+            `${open}${escapeHtml(resolved.title || `${chromeLabel} ${index + 1}`)}${close}`
+          ),
+        );
+        filled = filled.replace(
+          /(<div\b[^>]*\bhbar-fill(?=[\s"'])[^>]*)(>)([\s\S]*?)(<\/div>)/i,
+          (_m, open: string, gt: string, inner: string, close: string) => {
+            const attrs = open
+              .replace(/\sdata-width\s*=\s*(["'])[^"']*\1/gi, '')
+              .replace(/\sstyle\s*=\s*(["'])[^"']*\1/gi, '');
+            return `${attrs} data-width="${width}" style="width:${width}%"${gt}${inner}${close}`;
+          },
+        );
+        return filled.replace(
+          /(<div\b[^>]*\bhbar-value\b[^>]*>)([\s\S]*?)(<\/div>)/i,
+          (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(value)}${close}`,
+        );
+      },
+    );
+  }
+
+  // Split intro pages commonly carry a second English marketing paragraph.
+  // Replace every prose slot with the outline instead of only scrubbing the
+  // demo sentence, which otherwise leaves a visually empty right column.
+  if (/\bsplit-layout\b/i.test(next)) {
+    const prose = [
+      lead || bodyText,
+      bodyText,
+      ...lines.map((line) => resolveTemplateCloneCardFill(line).body),
+    ].map((value) => normalizeTemplateCloneInlineText(value)).filter(Boolean);
+    let proseIndex = 0;
+    next = next.replace(
+      /(<p\b[^>]*>)([\s\S]*?)(<\/p>)/gi,
+      (_m, open: string, _inner: string, close: string) => {
+        const value = prose[proseIndex] ?? prose[prose.length - 1] ?? lead ?? heading;
+        proseIndex += 1;
+        return `${open}${escapeHtml(value)}${close}`;
+      },
+    );
+  }
+
+  // Pricing is only the demo semantics; the three-card composition is part
+  // of the template identity. Keep that composition and turn each tier into
+  // a topic card instead of deleting the entire grid (which shipped a blank
+  // page in the 2026-09-18 Teamver deck).
+  if (/\btier-card\b/i.test(next) || /\btier-grid\b/i.test(next)) {
+    next = replaceExactClassBlocksBySequence(
+      next,
+      'tier-card',
+      lines,
+      (block, line, index) => {
+        const resolved = resolveTemplateCloneCardFill(line);
+        const open = block.match(/^<([a-z0-9-]+)\b[^>]*>/i)?.[0] ?? '<div class="tier-card">';
+        const close = block.match(/<\/([a-z0-9-]+)>\s*$/i)?.[0] ?? '</div>';
+        const title = resolved.title || `${chromeLabel} ${index + 1}`;
+        const description = resolved.body || lead || bodyText || heading;
+        return `${open}<div class="tier-name">${escapeHtml(title)}</div><div class="tier-desc">${escapeHtml(description)}</div>${close}`;
+      },
+    );
+  }
+
+  // Quote (slide 8): drop the demo attribution — if we don't know the
+  // author, don't fabricate one. Wipe the demo English quote-text too;
+  // caller populates .quote-text via body/lead resolver later.
+  if (/\bquote-author\b/i.test(next)) {
+    next = next.replace(
+      /(<(?:div|span|p)\b[^>]*\bquote-author\b[^>]*>)([\s\S]*?)(<\/(?:div|span|p)>)/gi,
+      (_m, open: string, _inner: string, close: string) => `${open}${close}`,
+    );
+  }
+  if (/\bquote-text\b/i.test(next)) {
+    const quoteBody = lead || bodyText || heading;
+    next = next.replace(
+      /(<(?:p|div|blockquote)\b[^>]*\bquote-text\b[^>]*>)([\s\S]*?)(<\/(?:p|div|blockquote)>)/i,
+      (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(quoteBody)}${close}`,
+    );
+  }
+
+  // CTA (slide 10): .pixel-btn text → Korean "자세히 보기" / "지금 시작하기".
+  if (/\bpixel-btn\b/i.test(next)) {
+    const labels = ['첫 보드 열기', '도입 방법 보기'];
+    let buttonIndex = 0;
+    next = next.replace(
+      /(<(?:button|a)\b[^>]*\bpixel-btn\b[^>]*>)([\s\S]*?)(<\/(?:button|a)>)/gi,
+      (full, open: string, inner: string, close: string) => {
+        const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (/^(?:Select|Initialize Deck|View Documentation|Get Started|Learn More|Start|Play)$/i.test(plain)) {
+          const label = labels[buttonIndex] ?? `다음 단계 ${buttonIndex + 1}`;
+          buttonIndex += 1;
+          return `${open}${label}${close}`;
+        }
+        return full;
+      },
+    );
+  }
+
+  if (/\bhero-tagline\b/i.test(next)) {
+    const tagline = visibleDeckCopy(
+      /<(?:p|div)\b[^>]*\bhero-tagline\b[^>]*>([\s\S]*?)<\/(?:p|div)>/i.exec(next)?.[1] ?? '',
+    );
+    if (!tagline || SERVICE_INTRO_LEFTOVER_BODY_RE.test(tagline) || !eightBitCapsuleCopyIsKeepable(tagline)) {
+      next = replaceFirstExactClassText(next, 'hero-tagline', lead);
+    }
+  }
+
+  const visibleHeading = visibleDeckCopy(
+    next.match(/<h2\b[^>]*>([\s\S]*?)<\/h2>/i)?.[1] ?? '',
+  );
+  if (
+    visibleHeading
+    && (
+      looksLikeServiceIntroLeftoverTitle(visibleHeading)
+      || looksLikeBlockedOverviewOrTrioTitle(visibleHeading)
+      || EIGHTBIT_DEMO_HEADING_RE.test(visibleHeading)
+      || SERVICE_INTRO_LEFTOVER_BODY_RE.test(visibleHeading)
+    )
+  ) {
+    next = next.replace(
+      /(<h2\b[^>]*>)([\s\S]*?)(<\/h2>)/i,
+      (_m, open: string, _inner: string, close: string) => `${open}${escapeHtml(heading)}${close}`,
+    );
+  }
+
+  return wipeEightBitCapsuleLeftoverPhrases(next);
+}
+
+const EIGHTBIT_DEMO_HEADING_RE =
+  /Rewiring How We Share Ideas|Four Engines Running|Quarterly Growth Metrics|Resource Allocation|System Load|Development Roadmap|Platform Vitals|Choose Your Loadout|Ready Player/i;
+
+const EIGHTBIT_DEMO_COPY_RE =
+  /Pixel Perfect Presentation System|Rewiring How We Share Ideas|Four Engines Running|Quarterly Growth Metrics|Resource Allocation|System Load|\bCompute\b|\bStorage\b|\bNetwork\b|\bMemory\b|\bGraphics\b|Access Tiers|Live Telemetry|Chronology|Mission Brief|Core Systems|Loadout|Ready Player(?:<br\s*\/?>|\s)+One\?|Deploy your first 8-BIT ORBIT deck[\s\S]{0,120}?power\.?|Initialize Deck|View Documentation|Wireframes,\s*palette selection[\s\S]{0,120}?established\.?|Pixel components, iconography[\s\S]{0,120}?coded\.?|Charting engine, animated counters[\s\S]{0,120}?binding\.?|Public release with full documentation[\s\S]{0,120}?support\.?|Real-time aggregate figures from active deployments|Active Worlds|Pixels Rendered|Uptime Score|Max Resolution|Concept\s*(?:&(?:amp;)?)?\s*Architecture|Asset Generation|Data Integration|Global Launch|The best presentations do not merely inform[\s\S]{0,240}?unlocked\.?|Lead Creative Technologist,\s*Studio Orbital|Studio Orbital|10\s*Slides|CSS Native|Zero Dependencies|Rookie|Arcade\b(?!\s*[가-힣])|\bBoss\b(?=\s*(?:$|<|\s*<))|\$\s*0\s*\/\s*mo|\$\s*29\s*\/\s*mo|\$\s*79\s*\/\s*mo|For solo explorers testing the waters\.?|Serious builders need serious tooling\.?|Enterprise-grade control and compliance\.?|5\s*slide\s*maximum|Standard grid themes|Community support|Static export only|Unlimited slides|All atmospheric packs|Live data binding|Priority rendering|Custom cursor sets|Everything in Arcade|White-label export|SSO\s*(?:&(?:amp;)?)?\s*audit logs|Dedicated pipeline|No canvas limits\.\s*No cookie-cutter layouts\.[\s\S]{0,140}?architecture[\s\S]{0,80}?compromise\.?|Development Roadmap|Platform Vitals|Choose Your Loadout|8-BIT(?:<br\s*\/?>|\s)+ORBIT/gi;
+
+export function stripEightBitOrbitCatalogDemoCopy(html: string): string {
+  return String(html ?? '')
+    .replace(EIGHTBIT_DEMO_COPY_RE, '')
+    .replace(/<p\b[^>]*>\s*(?:<strong>\s*<\/strong>)?\s*<\/p>/gi, '')
+    .replace(/<li\b[^>]*>\s*<\/li>/gi, '')
+    .replace(/<span\b[^>]*>\s*<\/span>/gi, '');
+}
+
+type ResolvedTemplateCloneCardFill = {
+  title: string;
+  body: string;
+  compacted: boolean;
+};
+
+const DENSE_CARD_TITLE_MAX_CHARS = 18;
+const DENSE_CARD_TITLE_TRIGGER_CHARS = 24;
+const DENSE_CARD_BODY_LEAD_TOKEN_RE =
+  /^(?:사례와?|효과와?|프로세스(?:를)?|방안(?:을)?|전략(?:을)?|구조(?:를)?|흐름(?:을)?|내용(?:을)?|정리한다|제시한다|보여준다|설명한다)$/;
+
+function normalizeTemplateCloneInlineText(value: string): string {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function textLengthForDenseCardTitle(value: string): number {
+  return Array.from(normalizeTemplateCloneInlineText(value)).length;
+}
+
+function shortenDenseCardTitle(title: string): string {
+  const raw = normalizeTemplateCloneInlineText(title);
+  if (!raw) return '';
+  const delimiterParts = raw
+    .split(/\s*(?:[,，、;；:：|/]|[—–-])\s*/g)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (delimiterParts.length >= 2) {
+    const joined = delimiterParts.slice(0, 2).join('·');
+    if (textLengthForDenseCardTitle(joined) <= DENSE_CARD_TITLE_MAX_CHARS) return joined;
+    if (textLengthForDenseCardTitle(delimiterParts[0] ?? '') >= 3) return delimiterParts[0]!;
+  }
+
+  const tokens = raw.split(/\s+/g).filter(Boolean);
+  if (tokens.length >= 2) {
+    const picked: string[] = [];
+    for (const token of tokens) {
+      if (picked.length > 0 && DENSE_CARD_BODY_LEAD_TOKEN_RE.test(token)) break;
+      const candidate = [...picked, token].join(' ');
+      if (textLengthForDenseCardTitle(candidate) > DENSE_CARD_TITLE_MAX_CHARS) break;
+      picked.push(token);
+    }
+    if (picked.length > 0) return picked.join(' ');
+  }
+
+  return Array.from(raw).slice(0, DENSE_CARD_TITLE_MAX_CHARS).join('').trim();
+}
+
+function resolveCardFillForTemplatePeer(
+  cardHtml: string,
+  line: TemplateCloneCardFillLine,
+): ResolvedTemplateCloneCardFill {
+  const resolved = resolveTemplateCloneCardFill(line);
+  const title = normalizeTemplateCloneInlineText(resolved.title);
+  const body = normalizeTemplateCloneInlineText(resolved.body);
+  const denseTemplateCard = /\b(?:feature-card|intro-card|nb-card)\b/i.test(cardHtml);
+  const titleIsDenseSentence =
+    textLengthForDenseCardTitle(title) > DENSE_CARD_TITLE_TRIGGER_CHARS
+    || (
+      textLengthForDenseCardTitle(title) > DENSE_CARD_TITLE_MAX_CHARS
+      && /[,，、;；:：—–-]|\s/.test(title)
+    );
+  if (!denseTemplateCard || !titleIsDenseSentence) {
+    return { title, body, compacted: false };
+  }
+  const shortTitle = shortenDenseCardTitle(title);
+  if (!shortTitle || shortTitle === title) {
+    return { title, body, compacted: false };
+  }
+  return {
+    title: shortTitle,
+    body: [title, body].filter(Boolean).join(' '),
+    compacted: true,
+  };
+}
+
+function appendInlineStyle(attrs: string, style: string): string {
+  const styleMatch = /\sstyle\s*=\s*(["'])([\s\S]*?)\1/i.exec(attrs);
+  if (!styleMatch) return `${attrs} style="${style}"`;
+  const quote = styleMatch[1] ?? '"';
+  const current = String(styleMatch[2] ?? '').trim().replace(/;+$/g, '');
+  // 루프540 — 힐러/피어핏이 같은 카드에 두 번 이상 실행될 때 동일한 style
+  // 조각 (font-size:36px;line-height:1.08;word-break:keep-all;overflow-wrap:break-word)이
+  // 8회까지 누적되는 회귀. property 이름 기준으로 dedupe해서 재적용해도
+  // 최종 style 문자열이 그대로 유지되게 한다.
+  const merged = mergeCssDeclarations(current, style);
+  return attrs.replace(styleMatch[0], ` style=${quote}${merged}${quote}`);
+}
+
+function mergeCssDeclarations(current: string, incoming: string): string {
+  const seen = new Map<string, string>();
+  const push = (chunk: string) => {
+    for (const decl of chunk.split(/;+/g)) {
+      const trimmed = decl.trim();
+      if (!trimmed) continue;
+      const idx = trimmed.indexOf(':');
+      if (idx <= 0) continue;
+      const prop = trimmed.slice(0, idx).trim().toLowerCase();
+      const value = trimmed.slice(idx + 1).trim();
+      if (!prop) continue;
+      // Incoming overwrites current for the same property.
+      seen.set(prop, `${prop}:${value}`);
+    }
+  };
+  push(current);
+  push(incoming);
+  return Array.from(seen.values()).join(';');
+}
+
+function markDenseCardPeerAsCompacted(html: string, compacted: boolean): string {
+  if (!compacted) return html;
+  return html.replace(/^<([a-zA-Z][\w:-]*)\b([^>]*)>/i, (full, tag: string, attrs: string) => {
+    let nextAttrs = attrs;
+    if (!/\sdata-od-card-fit\s*=/i.test(nextAttrs)) {
+      nextAttrs += ' data-od-card-fit="compact"';
+    }
+    return `<${tag}${nextAttrs}>`;
+  });
+}
+
+function fitDenseCardPeerText(html: string, compacted: boolean): string {
+  if (!compacted) return html;
+  let next = markDenseCardPeerAsCompacted(html, true);
+  next = next.replace(/<h([3-5])\b([^>]*)>/i, (_m, level: string, attrs: string) => (
+    `<h${level}${appendInlineStyle(attrs, 'font-size:36px;line-height:1.08;word-break:keep-all;overflow-wrap:break-word')}>`
+  ));
+  next = next.replace(/<p\b([^>]*)>/i, (_m, attrs: string) => (
+    `<p${appendInlineStyle(attrs, 'font-size:20px;line-height:1.35;word-break:keep-all;overflow-wrap:break-word')}>`
+  ));
+  return next;
+}
+
+const READABLE_TEMPLATE_CARD_PEER_RE =
+  /\b(?:feature-card|intro-card|nb-card|team-card|info-card|pillar-card|timeline-card|step-card|member-card|price-card|pricing-card|card-text|compare-postit|feature-postit|col-postit)\b/i;
+
+function fitTemplateCloneReadableCardPeerText(html: string): string {
+  if (!/\b(?:feature-card|intro-card|nb-card|team-card)\b/i.test(html)) return html;
+  let next = html.replace(/<h([3-5])\b([^>]*)>/i, (_m, level: string, attrs: string) => (
+    `<h${level}${appendInlineStyle(attrs, 'font-size:36px;line-height:1.08;word-break:keep-all;overflow-wrap:break-word')}>`
+  ));
+  next = next.replace(/<p\b([^>]*)>/i, (_m, attrs: string) => (
+    `<p${appendInlineStyle(attrs, 'font-size:24px;line-height:1.34;word-break:keep-all;overflow-wrap:break-word')}>`
+  ));
+  next = next.replace(/(<[^>]*\bteam-role\b[^>]*)(>)/i, (_m, open: string, close: string) => (
+    `${appendInlineStyle(open, 'font-size:22px;line-height:1.25;word-break:keep-all;overflow-wrap:break-word')}${close}`
+  ));
+  next = next.replace(/(<[^>]*\bteam-bio\b[^>]*)(>)/i, (_m, open: string, close: string) => (
+    `${appendInlineStyle(open, 'font-size:21px;line-height:1.35;word-break:keep-all;overflow-wrap:break-word')}${close}`
+  ));
+  return next;
+}
+
+function fillCommonReadableCardBodySlots(html: string, title: string, body: string): string {
+  if (!READABLE_TEMPLATE_CARD_PEER_RE.test(html)) return html;
+  const primary = normalizeTemplateCloneInlineText(body)
+    || `${normalizeTemplateCloneInlineText(title)} 항목의 역할과 기대 효과를 구체적으로 정리한다.`;
+  if (!primary) return html;
+  let next = html;
+  for (const className of [
+    'card-text',
+    'desc',
+    'description',
+    'copy',
+    'note',
+    'team-bio',
+    'member-role',
+    'step-desc',
+    'flow-desc',
+    'cycle-desc',
+    'kb-step-body',
+  ]) {
+    if (!firstExactClassRange(next, className)) continue;
+    next = replaceFirstExactClassText(next, className, primary);
+  }
+  return next;
+}
+
+function rewriteGenericTemplateCloneCtas(html: string, input: {
+  title: string;
+  lead: string;
+  bodyText: string;
+}): string {
+  const context = `${input.title} ${input.lead} ${input.bodyText}`;
+  if (!/[가-힣]/.test(context)) return html;
+  const cta = /(?:시작|도입|문의|데모|상담|전환|실행|무료)/.test(context)
+    ? '지금 시작하기'
+    : '자세히 보기';
+  return html.replace(
+    /(<(?:a|button)\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:btn|cta|button|nb-btn|pixel-btn|hero-cta)\b[^"']*["'][^>]*>)([\s\S]*?)(<\/(?:a|button)>)/gi,
+    (full: string, open: string, inner: string, close: string) => {
+      const plain = String(inner).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (/^(?:Get Started|Learn More|Read More|View Process|View Documentation|Initialize Deck|Enterprise Demo|Enterprise 데모)$/i.test(plain)) {
+        return `${open}${cta}${close}`;
+      }
+      if (/^Enterprise\s+/i.test(plain)) {
+        return `${open}${escapeHtml(plain.replace(/^Enterprise/i, '기업'))}${close}`;
+      }
+      return full;
+    },
+  );
+}
+
+function healTemplateCloneCommonQualitySlots(
+  html: string,
+  input: {
+    title: string;
+    lead: string;
+    bodyText: string;
+    fillLines: TemplateCloneCardFillLine[];
+  },
+): string {
+  let next = rewriteGenericTemplateCloneCtas(html, input);
+  const fallbackLine = input.fillLines[0] ?? input.bodyText ?? input.lead ?? input.title;
+  const resolved = resolveTemplateCloneCardFill(fallbackLine || input.title);
+  const fallbackBody = normalizeTemplateCloneInlineText(resolved.body || input.bodyText || input.lead)
+    || `${normalizeTemplateCloneInlineText(resolved.title || input.title)} 내용을 사용자가 바로 이해할 수 있게 정리한다.`;
+  if (!fallbackBody || !READABLE_TEMPLATE_CARD_PEER_RE.test(next)) return next;
+  for (const className of ['card-text', 'team-bio', 'member-role', 'step-desc', 'flow-desc', 'cycle-desc', 'kb-step-body']) {
+    const span = firstExactClassRange(next, className);
+    if (!span) continue;
+    const block = next.slice(span.start, span.end);
+    const visible = block.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (visible.length > 0 && !/^(?:Get Started|Learn More|Read More|View Process)$/i.test(visible)) continue;
+    next = replaceFirstExactClassText(next, className, fallbackBody);
+  }
+  return next;
+}
+
+function blockFrameAvatarText(title: string, index: number): string {
+  const raw = normalizeTemplateCloneInlineText(title).replace(/[^\p{L}\p{N}\s]/gu, ' ');
+  const latin = raw.match(/[A-Za-z0-9]+/g);
+  if (latin && latin.length > 0) {
+    return latin.map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+  }
+  const chars = Array.from(raw.replace(/\s+/g, ''));
+  if (chars.length > 0) return chars.slice(0, 2).join('');
+  return String(index + 1).padStart(2, '0');
+}
+
+function fillOneCardPeer(
+  cardHtml: string,
+  line: TemplateCloneCardFillLine,
+  peerIndex = 0,
+): string {
+  const { title, body, compacted } = resolveCardFillForTemplatePeer(cardHtml, line);
   const text = title;
   let next = cardHtml;
   // Daisy weekly: `.day-header` is the title slot (0901-N02-C2).
@@ -8950,6 +17277,8 @@ function fillOneCardPeer(cardHtml: string, line: TemplateCloneCardFillLine): str
   }
   // Block Frame `.team-card`: keep the avatar/card chrome, fill named slots.
   if (/\bteam-card\b/i.test(cardHtml) && /\bteam-name\b/i.test(next)) {
+    const role = body ? text : '핵심 항목';
+    const bio = body || `${text} 항목의 역할과 사용 장면을 구체적으로 정리한다.`;
     next = fillClassInner(
       next,
       /(<[^>]*\bteam-name\b[^>]*>)([\s\S]*?)(<\/)/i,
@@ -8958,19 +17287,20 @@ function fillOneCardPeer(cardHtml: string, line: TemplateCloneCardFillLine): str
     next = fillClassInner(
       next,
       /(<[^>]*\bteam-role\b[^>]*>)([\s\S]*?)(<\/)/i,
-      body || text,
+      role,
     );
     next = fillClassInner(
       next,
       /(<[^>]*\bteam-bio\b[^>]*>)([\s\S]*?)(<\/)/i,
-      body || text,
+      bio,
     );
     next = fillClassInner(
       next,
       /(<[^>]*\bteam-avatar\b[^>]*>)([\s\S]*?)(<\/)/i,
-      text.replace(/<[^>]+>/g, '').trim().slice(0, 2).toUpperCase() || 'TV',
+      blockFrameAvatarText(text, peerIndex),
     );
-    return next;
+    next = fillCommonReadableCardBodySlots(next, text, bio);
+    return fitTemplateCloneReadableCardPeerText(next);
   }
   // Block Frame `.data-box`: sample metrics must not survive when the
   // outline carries ordinary copy. Use numbered stat badges unless a real
@@ -9085,15 +17415,22 @@ function fillOneCardPeer(cardHtml: string, line: TemplateCloneCardFillLine): str
   // Capsule / metric pills: `.stat-number` + `.stat-label` (루프421).
   if (/\bstat-number\b/i.test(next) || /\bstat-pill\b/i.test(next)) {
     const slots = assignStatSlots(text, body);
+    const hasMetric = titleLooksLikeMetric(slots.value) || titleLooksLikeMetric(slots.label);
+    const value = hasMetric
+      ? (titleLooksLikeMetric(slots.value) ? slots.value : slots.label)
+      : String(Math.max(1, peerIndex + 1)).padStart(2, '0');
+    const label = hasMetric
+      ? (titleLooksLikeMetric(slots.value) ? slots.label : slots.value)
+      : [text, body].filter(Boolean).join(' — ');
     next = fillClassInner(
       next,
       /(<[^>]*\bstat-number\b[^>]*>)([\s\S]*?)(<\/)/i,
-      slots.value,
+      value,
     );
     next = fillClassInner(
       next,
       /(<[^>]*\bstat-label\b[^>]*>)([\s\S]*?)(<\/)/i,
-      slots.label,
+      label,
     );
     return next;
   }
@@ -9190,17 +17527,20 @@ function fillOneCardPeer(cardHtml: string, line: TemplateCloneCardFillLine): str
       replaced = true;
       return `${open}${body ? escapeHtml(body) : ''}${close}`;
     });
-    return next;
+    next = fillCommonReadableCardBodySlots(next, text, body);
+    return fitTemplateCloneReadableCardPeerText(fitDenseCardPeerText(next, compacted));
   }
   if (/<p\b/i.test(next)) {
     let replaced = false;
-    return next.replace(/(<p\b[^>]*>)([\s\S]*?)(<\/p>)/gi, (_match, open: string, _inner: string, close: string) => {
+    next = next.replace(/(<p\b[^>]*>)([\s\S]*?)(<\/p>)/gi, (_match, open: string, _inner: string, close: string) => {
       if (!replaced) {
         replaced = true;
         return `${open}${escapeHtml(body || text)}${close}`;
       }
       return `${open}${close}`;
     });
+    next = fillCommonReadableCardBodySlots(next, text, body);
+    return fitTemplateCloneReadableCardPeerText(next);
   }
   if (!text) return next;
   // 루프430 — idempotent prepend. `fillAndTrimCardPeers` re-runs up to 8
@@ -9245,6 +17585,28 @@ function listLinesFromCardFills(lines: TemplateCloneCardFillLine[]): string[] {
   }).filter(Boolean);
 }
 
+/**
+ * 루프547 — Stamp `data-teamver-pad="short-response"` on a filled section
+ * so downstream healers / drop-empty passes / persist diagnostics can
+ * identify auto-padded slides. Idempotent — safe to call twice.
+ */
+function stampShortResponsePadMarker(sectionHtml: string): string {
+  if (!sectionHtml) return sectionHtml;
+  if (new RegExp(`${TEAMVER_SHORT_RESPONSE_PAD_ATTR}\\s*=\\s*"${TEAMVER_SHORT_RESPONSE_PAD_VALUE}"`, 'i').test(sectionHtml)) {
+    return sectionHtml;
+  }
+  return sectionHtml.replace(
+    /<section\b/i,
+    `<section ${TEAMVER_SHORT_RESPONSE_PAD_ATTR}="${TEAMVER_SHORT_RESPONSE_PAD_VALUE}"`,
+  );
+}
+
+/** 루프547 · pad marker check — 다른 healer / drop 로직에서 gate로 사용. */
+export function slideSectionIsShortResponsePad(sectionHtml: string): boolean {
+  if (!sectionHtml) return false;
+  return new RegExp(`${TEAMVER_SHORT_RESPONSE_PAD_ATTR}\\s*=\\s*"${TEAMVER_SHORT_RESPONSE_PAD_VALUE}"`, 'i').test(sectionHtml);
+}
+
 function fillSlideShell(
   shell: SlideShell,
   content: TemplateCloneSlideContent,
@@ -9252,7 +17614,17 @@ function fillSlideShell(
   slotMap?: TemplateCloneSlotMap | null,
 ): string {
   let body = shell.body;
-  const title = content.title.trim() || `Slide ${index + 1}`;
+  const rawTitle = content.title.trim()
+    || (slideLooksLikeProductLaunchKit(shell.attrs, body) ? '' : `Slide ${index + 1}`);
+  const kitShell = /\b(?:hero-frame|feature-card|timeline-step|data-box|nb-heading|slide--cover|slide--chapter|slide--stats|slide--list|slide--quote|slide--compare|slide--chart|slide--end|slide--split|slide--statement|intro-card|grove-stat|cover-meta)\b/i
+    .test(`${shell.attrs}\n${body}`);
+  const topicNoun = resolveLockedTopicNoun(rawTitle, content.lead, content.body);
+  const title = kitShell
+    ? rewriteLeftoverKitSlideTitle(
+      rawTitle,
+      serviceIntroSynthTitleFallback(topicNoun, Math.max(0, index - 1)),
+    )
+    : rawTitle;
   const bodyText = content.body?.trim() ?? '';
   const rawLead = content.lead?.trim() ?? '';
   const lead = rawLead && !isPlaceholderCloneBody(rawLead) ? rawLead : '';
@@ -9266,16 +17638,18 @@ function fillSlideShell(
   )).filter(Boolean);
   const listLines = listLinesFromCardFills(fillLines);
 
-  if (/<h1\b/i.test(body)) {
-    body = replaceHeadingText(body, 'h1', title);
-  } else if (/<h2\b/i.test(body)) {
-    body = replaceHeadingText(body, 'h2', title);
-  } else if (/<h3\b/i.test(body)) {
-    body = replaceHeadingText(body, 'h3', title);
-  } else {
-    const titleName = firstTitleSlotClass(body);
-    if (titleName) {
-      body = replaceFirstExactClassText(body, titleName, title);
+  if (title) {
+    if (/<h1\b/i.test(body)) {
+      body = replaceHeadingText(body, 'h1', title);
+    } else if (/<h2\b/i.test(body)) {
+      body = replaceHeadingText(body, 'h2', title);
+    } else if (/<h3\b/i.test(body)) {
+      body = replaceHeadingText(body, 'h3', title);
+    } else {
+      const titleName = firstTitleSlotClass(body);
+      if (titleName) {
+        body = replaceFirstExactClassText(body, titleName, title);
+      }
     }
   }
 
@@ -9385,6 +17759,7 @@ function fillSlideShell(
   if (/\bs-cal\b/i.test(shell.attrs)) {
     body = fillBiennaleCalendarSlots(body, { title, lead, bodyText, fillLines });
   }
+  body = fillBiennaleYellowKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
   // 루프459 — Cobalt Grid dedicated slots.
   if (
     /\bs-cover\b/i.test(shell.attrs)
@@ -9426,18 +17801,114 @@ function fillSlideShell(
   if (slideLooksLikeLongTableKit(shell.attrs, body)) {
     body = fillLongTableKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
   }
-  if (/\bslide--(?:cover|chapter|split|stats|list|quote|compare|statement|chart|end)\b/i.test(shell.attrs)) {
-    body = fillStudioKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
+  if (
+    /\bslide--(?:cover|chapter|split|stats|list|quote|compare|statement|chart|end|diagram|pie|fadelist|pyramid|vtimeline|cycle)\b/i
+      .test(shell.attrs)
+    && (
+      officialLookIsBroadside(`${shell.attrs}\n${body}`)
+      || /\bbroadside-(?:num|top-chrome)\b/i.test(body)
+      || /--c-bg-orange/.test(body)
+    )
+  ) {
+    body = fillBroadsideKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
+  } else if (/\bslide--(?:cover|chapter|split|stats|list|quote|compare|statement|chart|end)\b/i.test(shell.attrs)) {
+    body = officialLookIsGrove(`${shell.attrs}\n${body}`)
+      || /\bgrove-(?:sidebar|num|stat)\b/i.test(body)
+      ? fillGroveLeftoverKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines })
+      : fillStudioKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
+  }
+  body = fillMatKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
+  body = fillDaisyDaysKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
+  body = fillPlayfulKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
+  body = fillCoralKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
+  if (playfulSlideHasKitChrome(body, shell.attrs) && !/[가-힣]/.test(visibleDeckCopy(stripPlayfulCatalogDemoCopy(body)))) {
+    body = fillPlayfulKitSlide(stripPlayfulCatalogDemoCopy(body), shell.attrs, {
+      title,
+      lead,
+      bodyText,
+      kicker,
+      fillLines,
+    });
+  }
+  if (daisyDaysSlideHasKitChrome(body) && !/[가-힣]/.test(visibleDeckCopy(stripDaisyDaysCatalogDemoCopy(body)))) {
+    body = fillDaisyDaysKitSlide(stripDaisyDaysCatalogDemoCopy(body), shell.attrs, {
+      title,
+      lead,
+      bodyText,
+      kicker,
+      fillLines,
+    });
+  }
+  if (coralSlideHasKitChrome(body, shell.attrs) && !/[가-힣]/.test(visibleDeckCopy(stripCoralCatalogDemoCopy(body)))) {
+    body = fillCoralKitSlide(stripCoralCatalogDemoCopy(body), shell.attrs, {
+      title,
+      lead,
+      bodyText,
+      kicker,
+      fillLines,
+    });
+  }
+  if (matSlideHasKitChrome(body, shell.attrs) && !/[가-힣]/.test(visibleDeckCopy(stripMatCatalogDemoCopy(body)))) {
+    body = fillMatKitSlide(stripMatCatalogDemoCopy(body), shell.attrs, {
+      title,
+      lead,
+      bodyText,
+      kicker,
+      fillLines,
+    });
+  }
+  if (biennaleSlideHasKitChrome(body, shell.attrs) && !/[가-힣]/.test(visibleDeckCopy(stripBiennaleCatalogDemoCopy(body)))) {
+    body = fillBiennaleYellowKitSlide(stripBiennaleCatalogDemoCopy(body), shell.attrs, {
+      title,
+      lead,
+      bodyText,
+      kicker,
+      fillLines,
+    });
   }
   if (/\bs[1-8]\b/i.test(shell.attrs)) {
     body = fillCreativeModeKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
   }
   body = fillBlockFrameNeoSlots(body, { title, lead, bodyText, kicker, fillLines });
+  // 루프540 — 8-Bit Orbit tier/timeline/stat/quote/badge slots.
+  body = fillEightBitOrbitKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
+  body = fillCapsuleKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
+  if (slideLooksLikeProductLaunchKit(shell.attrs, body)) {
+    body = fillProductLaunchKitSlide(body, { title, lead, bodyText, kicker, fillLines }, shell.attrs);
+  }
+  // 루프558 — Cover slide (index 0) with empty subtitle slots must get a
+  // synthesized lead BEFORE `stripEightBitOrbitCatalogDemoCopy` drops empty
+  // `<p>` elements. Otherwise a title-only cover ships as a giant blank frame
+  // with only the h1 (user report 2026-09-17). Preserve any model-provided
+  // lead; only fill when the slot is empty.
+  if (index === 0 && (content.roleHint === 'cover' || !content.roleHint)) {
+    body = fillCoverSubtitleSlotsIfEmpty(
+      body,
+      lead || bodyText || synthesizeTemplateCloneCoverLead(title),
+    );
+  }
   body = stripCapsuleCatalogDemoCopy(body);
   body = stripBlockFrameNeoCatalogDemoCopy(body);
+  body = stripEightBitOrbitCatalogDemoCopy(body);
+  body = stripDaisyDaysCatalogDemoCopy(body);
+  body = stripPlayfulCatalogDemoCopy(body);
+  body = stripCoralCatalogDemoCopy(body);
+  body = stripMatCatalogDemoCopy(body);
+  body = stripBiennaleCatalogDemoCopy(body);
+  // 루프534 — Demo-copy strip may empty nb-label chips; refill from title.
+  // 0918-N03 — leftover 개요/핵심 포인트 를 chrome 으로 되넣지 않는다.
+  const blockFrameChrome = looksLikeServiceIntroLeftoverTitle(title)
+    || looksLikeServiceIntroLeftoverTitle(kicker)
+    ? (resolveBlockFrameTopicNoun(title, kicker, lead) === '주제' ? '표지' : resolveBlockFrameTopicNoun(title, kicker, lead))
+    : (title || kicker || '표지');
+  body = refillEmptyBlockFrameNeoLabels(body, blockFrameChrome);
+  if (/\b(?:hero-frame|intro-card|feature-card|timeline-step|data-box|nb-card)\b/i.test(body)) {
+    body = refillEmptyBlockFrameSlotsFromPack(body, title, lead || bodyText);
+  }
   body = stripBlueProfessionalCatalogDemoCopy(body);
   body = stripStudioCreativeCatalogDemoCopy(body);
   body = stripLeftoverCatalogDemoPhrases(body);
+  body = healTemplateCloneCommonQualitySlots(body, { title, lead, bodyText, fillLines });
 
   // Loop376 — Empty content-list / subtitle shells left behind by the
   // placeholder / title-only wipe paths render as visible orphan pills or
@@ -9645,9 +18116,9 @@ function countPeerSlotsInShellBody(
  *   - The slide already carries items[] or a multi-line bulleted body —
  *     the model expressed intent; preserve it.
  *   - The picked shell has no card peers (< 2). Bullet-list shells
- *     intentionally drop title-only demo lists (루프376). Stat shells
- *     want number-shaped copy, not prose bodies; synth prose there would
- *     look worse than a clean empty slot.
+ *     intentionally drop title-only demo lists (루프376).
+ *   - Stat shells get labels only — never invented KPI digits (루프518).
+ *   - Quote shells get title-bound copy, never a fake attributed quote.
  */
 function enrichSparseSlideForShell(
   slide: TemplateCloneSlideContent,
@@ -9656,58 +18127,171 @@ function enrichSparseSlideForShell(
   deckTitle: string,
   brief: string | null | undefined,
   slotMap: TemplateCloneSlotMap | null | undefined,
+  kitKey?: string | null,
 ): TemplateCloneSlideContent {
   if (index === 0) return slide;
   if (slide.roleHint === 'cover' || slide.roleHint === 'closing') return slide;
   const items = Array.isArray(slide.items) ? slide.items : [];
   const bodyText = slide.body?.trim() ?? '';
   const bodyLines = bodyText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  if (items.length >= 2) return slide;
-  if (bodyLines.length >= 2) return slide;
+  const thinItems = items.filter((item) => !templateCloneItemBodyLooksDense(item.body));
+  const denseItems = items.length >= 2 && thinItems.length === 0;
+  if (denseItems) return slide;
+  if (items.length < 2 && bodyLines.length >= 2) return slide;
+
   const shellRole = classifyTemplateCloneShellRole(shell);
-  // Cover / closing hero + thanks layouts read worse with padded cards;
-  // quote shells expect a single statement, not a card list.
-  if (shellRole === 'cover' || shellRole === 'closing' || shellRole === 'quote') {
-    return slide;
-  }
   const peers = countPeerSlotsInShellBody(shell.body, slotMap);
-  if (peers < 2) return slide;
-  // 루프514 — Also enrich stat/timeline/process/team specialty shells.
-  //
-  // The prior "stat shells want number-shaped copy — synth prose looks worse
-  // than a clean empty slot" trade-off was correct in isolation, but in
-  // practice a title-only outline landing on a stats-grid ships as 1 label +
-  // 3–4 EMPTY stat-pills. That is visibly a hole, not a subtle placeholder;
-  // the deck reads as "generation failed halfway through". A page filled
-  // with 3–4 prose-shaped items derived from the title (via
-  // `synthesizeTemplateCloneSlideBody`) is a subtle placeholder — it fills
-  // the layout with rhythm-matching copy and never claims a specific
-  // number/percentage the outline did not give.
-  //
-  // The slot-fill pipeline already routes items[] into peer slots
-  // (`fillOneCardPeer` handles `.stat-label`, `.chart-label`, `.step-label`,
-  // `.tier-name`, …). Numeric slots (`.stat-number`, `.chart-value`) stay
-  // empty — that is intentional; the peer shell (border, color chip, bar)
-  // still contributes density without forging metrics.
-  const targetCount = Math.max(2, Math.min(peers, 4));
   const synth = synthesizeTemplateCloneSlideBody(
     deckTitle || slide.title,
     slide.title,
     Math.max(1, index),
     brief,
+    kitKey
+      ?? (officialLookIsRawGridPitch(shell.body) || officialLookIsRawGridPitch(String(brief ?? ''))
+        ? RAW_GRID_PITCH_KIT_KEY
+        : officialLookIsNeoBrutalBlockFrame(shell.body)
+          || officialLookIsNeoBrutalBlockFrame(`${shell.attrs}\n${shell.body}`)
+          ? BLOCK_FRAME_NEO_KIT_KEY
+          : officialLookIsEightBitOrbit(shell.body) || officialLookIsEightBitOrbit(`${shell.attrs}\n${shell.body}`)
+            ? EIGHTBIT_ORBIT_KIT_KEY
+            : officialLookIsCapsule(shell.body) || officialLookIsCapsule(`${shell.attrs}\n${shell.body}`)
+              ? CAPSULE_KIT_KEY
+              : null),
   );
+
+  // Loop517 — Prompt-fill often extracts title-only cards. Keep those titles
+  // and fill missing 1-sentence bodies so card grids are not empty labels.
+  // Loop518 — Bind the sentence to item + slide titles, not a generic preset.
+  if (items.length >= 2 && thinItems.length > 0 && shellRole !== 'stat') {
+    const filledItems = items.map((item) => {
+      if (templateCloneItemBodyLooksDense(item.body)) return item;
+      const body = bindTemplateCloneSynthItemBody({
+        itemTitle: item.title,
+        slideTitle: slide.title,
+        topic: deckTitle || brief || slide.title,
+        fallback: item.body,
+      });
+      if (!templateCloneItemBodyLooksDense(body)) return item;
+      return { ...item, body };
+    });
+    const enriched: TemplateCloneSlideContent = { ...slide, items: filledItems };
+    if (!enriched.lead && synth.lead) enriched.lead = synth.lead;
+    return enriched;
+  }
+
+  // Loop510 — List / bullet shells: title-only outlines used to hit fillSlideShell's
+  // placeholder wipe and ship an empty <ul> (loop376). Inject synth bullet lines
+  // before fill so list-capable shells get real copy without touching card grids.
+  // Preserve a non-empty single-line body the model already emitted.
+  const placeholderBody = !bodyText || isPlaceholderCloneBody(bodyText);
+  if (
+    placeholderBody
+    && (shellRole === 'list' || /<[uo]l\b/i.test(shell.body))
+    && peers < 2
+  ) {
+    const itemLines = (synth.items ?? [])
+      .map((item) => {
+        const title = String(item.title ?? '').trim();
+        const body = bindTemplateCloneSynthItemBody({
+          itemTitle: title,
+          slideTitle: slide.title,
+          topic: deckTitle || brief || slide.title,
+          fallback: item.body,
+        });
+        if (title && body) return `${title} — ${body}`;
+        return title || body;
+      })
+      .filter(Boolean);
+    const synthBodyLines = String(synth.body ?? '')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const lines = itemLines.length >= 2 ? itemLines : synthBodyLines;
+    if (lines.length < 2) return slide;
+    const enriched: TemplateCloneSlideContent = { ...slide, body: lines.join('\n') };
+    if (!enriched.lead && synth.lead) enriched.lead = synth.lead;
+    return enriched;
+  }
+
+  if (shellRole === 'cover' || shellRole === 'closing') {
+    return slide;
+  }
+
+  // Loop518 — Quote: title/lead only. Do not invent an attributed quotation.
+  if (shellRole === 'quote') {
+    const existing = String(slide.body ?? slide.lead ?? '').trim();
+    if (existing.length >= 8) return slide;
+    const quote = `${slide.title}의 핵심 메시지를 한 문장으로 정리합니다.`;
+    const enriched: TemplateCloneSlideContent = { ...slide, body: quote };
+    if (!enriched.lead) enriched.lead = quote;
+    return enriched;
+  }
+
+  // Loop518 — Stat: labels only. Never invent KPI digits / percentages.
+  if (shellRole === 'stat') {
+    const source = items.length >= 2
+      ? items
+      : (Array.isArray(synth.items) ? synth.items : []);
+    const targetCount = Math.max(2, Math.min(peers || source.length, 4));
+    if (source.length < 2 && peers < 2) return slide;
+    const safeItems = source.slice(0, Math.max(2, targetCount)).map((item) => {
+      const title = String(item.title ?? '').trim();
+      const body = String(item.body ?? '').trim();
+      if (titleLooksLikeMetric(title)) {
+        return body && !titleLooksLikeMetric(body)
+          ? { title, body }
+          : { title };
+      }
+      if (titleLooksLikeMetric(body)) return { title: body, body: title };
+      return { title: title || slide.title };
+    }).filter((item) => item.title);
+    if (safeItems.length < 2) return slide;
+    const enriched: TemplateCloneSlideContent = { ...slide, items: safeItems };
+    if (!enriched.lead && synth.lead) enriched.lead = synth.lead;
+    return enriched;
+  }
+
+  if (peers < 2) return slide;
+  const targetCount = Math.max(2, Math.min(peers, 4));
   const synthItems = Array.isArray(synth.items) ? synth.items : [];
   if (synthItems.length === 0) return slide;
-  const trimmed = synthItems.slice(0, targetCount);
+  const trimmed = synthItems.slice(0, targetCount).map((item) => ({
+    ...item,
+    body: bindTemplateCloneSynthItemBody({
+      itemTitle: item.title,
+      slideTitle: slide.title,
+      topic: deckTitle || brief || slide.title,
+      fallback: item.body,
+    }),
+  }));
   const enriched: TemplateCloneSlideContent = { ...slide, items: trimmed };
   if (!enriched.lead && synth.lead) enriched.lead = synth.lead;
   return enriched;
 }
 
+/** 루프547 · pad marker attribute for auto-padded short-response slides. */
+export const TEAMVER_SHORT_RESPONSE_PAD_ATTR = 'data-teamver-pad';
+export const TEAMVER_SHORT_RESPONSE_PAD_VALUE = 'short-response';
+
 export function buildTemplateClonedDeckHtml(
   exampleHtml: string,
   slides: TemplateCloneSlideContent[],
-  options: { title?: string; maxSlides?: number; templateId?: string | null; brief?: string | null } = {},
+  options: {
+    title?: string;
+    maxSlides?: number;
+    templateId?: string | null;
+    brief?: string | null;
+    /**
+     * 루프547 — Short-response auto-pad. When the model outline has fewer
+     * slides than the seed shells (e.g. 6 outline vs 10 seed), extend
+     * workingSlides up to the seed shell count so `client
+     * findClientSlideCountRegression` (`substance-rich prior`) doesn't
+     * reject a legitimate short fill. Padded slides receive
+     * `data-teamver-pad="short-response"` so downstream healers /
+     * diagnostics can distinguish them from real fill.
+     */
+    padToSeedSlideCount?: boolean;
+  } = {},
 ): string | null {
   const source = stripScriptsAndNav(String(exampleHtml ?? '').trim());
   if (!source) return null;
@@ -9736,8 +18320,20 @@ export function buildTemplateClonedDeckHtml(
   //   outlines — 15 is not a deliverable when the user asked for 8–10.
   // - Explicit user maxSlides may expand a short outline.
   // - Never default to the template's natural page count/order.
-  const hint = options.maxSlides != null
-    ? Math.min(20, Math.max(1, options.maxSlides))
+  // 루프547 — Short-response auto-pad. When the caller opted in and
+  // outline length falls below seed shell count, treat seed shell count as
+  // the implicit hint. Preserves explicit `maxSlides` when higher/lower.
+  const seedTargetSlideCount = Math.max(
+    shells.length,
+    inferKitSlideCountFromCss(source) ?? 0,
+  );
+  const effectiveMaxSlides = options.padToSeedSlideCount === true
+    && options.maxSlides == null
+    && seedTargetSlideCount > 0
+    ? seedTargetSlideCount
+    : options.maxSlides;
+  const hint = effectiveMaxSlides != null
+    ? Math.min(20, Math.max(1, effectiveMaxSlides))
     : null;
   const honorShrink = hint != null && hint >= 5;
   const deckTitle =
@@ -9746,6 +18342,9 @@ export function buildTemplateClonedDeckHtml(
     || '슬라이드';
 
   let workingSlides: TemplateCloneSlideContent[];
+  // 루프547 · pad start index — marker attribute를 이 index 이후 filled
+  // section에만 삽입한다. -1이면 pad 없음.
+  let padStartIndex = -1;
   if (cleanedSlides.length > 0) {
     workingSlides = rewriteInstructionParrotingSlideTitles(
       cleanedSlides.slice(0, honorShrink ? hint : 20),
@@ -9757,20 +18356,54 @@ export function buildTemplateClonedDeckHtml(
     if (
       hint != null
       && hint > workingSlides.length
-      && !workingSlides.every((slide) => isPlaceholderCloneBody(slide.body))
+      && options.padToSeedSlideCount !== false
+      // 루프547 · slide.body가 undefined여도 items/lead가 있으면 substance로
+      // 인정. 이전 검사(`every(slide => isPlaceholderCloneBody(slide.body))`)는
+      // items-only cards outline(body 없음)을 empty placeholder로 오판해 pad
+      // 조건을 통과하지 못했다. items·lead·kicker 중 하나라도 substance면 pad
+      // 진행.
+      && !workingSlides.every((slide) => {
+        if (!isPlaceholderCloneBody(slide.body)) return false;
+        if (Array.isArray(slide.items) && slide.items.length > 0) return false;
+        if (typeof slide.lead === 'string' && slide.lead.trim()) return false;
+        if (typeof slide.kicker === 'string' && slide.kicker.trim()) return false;
+        return true;
+      })
     ) {
+      padStartIndex = workingSlides.length;
       while (workingSlides.length < hint) {
-        const n = workingSlides.length + 1;
-        const label = n === 1 ? deckTitle : `${deckTitle} · ${n}`;
-        workingSlides.push({
-          title: label,
-          ...synthesizeTemplateCloneSlideBody(
-            deckTitle,
-            label,
-            Math.max(1, n - 1),
-            options.brief,
-          ),
-        });
+        if (officialLookIsProductLaunchHalo(source) || officialLookIsNeoBrutalBlockFrame(source)) {
+          const n = workingSlides.length + 1;
+          const rawLabel = TEMPLATE_CLONE_GENERIC_SECTION_LABELS[
+            Math.min(TEMPLATE_CLONE_GENERIC_SECTION_LABELS.length - 1, Math.max(0, n - 2))
+          ] ?? `핵심 ${n - 1}`;
+          const label = looksLikeGenericLeftoverTitle(rawLabel) || /^핵심\s+\d+$/.test(rawLabel)
+            ? genericRoleCopyForIndex(deckTitle, options.brief, Math.max(1, n - 1)).heading
+            : rawLabel;
+          workingSlides.push({
+            title: label,
+            ...synthesizeTemplateCloneSlideBody(
+              deckTitle,
+              label,
+              Math.max(1, n - 1),
+              options.brief,
+              resolveTemplateCloneKitKey(source),
+            ),
+          });
+        } else {
+          const n = workingSlides.length + 1;
+          const label = n === 1 ? deckTitle : `${deckTitle} · ${n}`;
+          workingSlides.push({
+            title: label,
+            ...synthesizeTemplateCloneSlideBody(
+              deckTitle,
+              label,
+              Math.max(1, n - 1),
+              options.brief,
+              resolveTemplateCloneKitKey(source),
+            ),
+          });
+        }
       }
     }
     if (honorShrink && workingSlides.length > hint) {
@@ -9787,6 +18420,17 @@ export function buildTemplateClonedDeckHtml(
     ) {
       workingSlides = workingSlides.slice(0, shells.length);
     }
+    // 루프555 — Overflow safety for shell reuse. Non-unique-role kits
+    // (product-launch / pitch / most Zhangzara) reuse shells to reach the
+    // requested slide count. That is intentional (Mat/Pink Script/Vellum
+    // ship 7–9 shells but the deterministic quality gate expects 10 slides).
+    // What we DO block is *identical outline titles* being placed on reused
+    // shells — the 2026-09-17 user report had slide 3 and slide 9 both
+    // carrying `주제의 쓰임과 근거`, producing near-duplicate Fit slides.
+    // `dedupeIdenticalOutlineTitles` keeps the first occurrence and rewrites
+    // later duplicates to indexed fallback labels so the reused shell gets
+    // distinct copy.
+    workingSlides = dedupeIdenticalOutlineTitles(workingSlides, deckTitle);
   } else {
     // Empty brief: short starter deck with role-diverse shells — not all
     // template demo pages in demo order.
@@ -9803,7 +18447,13 @@ export function buildTemplateClonedDeckHtml(
       }
       return {
         title: label,
-        ...synthesizeTemplateCloneSlideBody(deckTitle, label, index, options.brief),
+        ...synthesizeTemplateCloneSlideBody(
+          deckTitle,
+          label,
+          index,
+          options.brief,
+          resolveTemplateCloneKitKey(source),
+        ),
       };
     });
   }
@@ -9816,12 +18466,21 @@ export function buildTemplateClonedDeckHtml(
     deckTitle,
     options.brief ?? null,
     slotMap,
+    resolveTemplateCloneKitKey(source),
   ));
   const filled = picked.map((shell, index) => {
     const content = enrichedSlides[index] ?? {
       title: index === 0 ? deckTitle : `${deckTitle} · ${index + 1}`,
     };
-    return fillSlideShell(shell, content, index, slotMap);
+    const section = fillSlideShell(shell, content, index, slotMap);
+    // 루프547 · pad marker · outline이 seed shell 개수보다 짧아서 auto-pad된
+    // slide만 `data-teamver-pad="short-response"`로 표시. leftover healer /
+    // dropEmptyDeckSlides가 이 마커를 보면 스크럽 대상에서 제외한다 (아래
+    // stampShortResponsePadMarker에서 attribute 삽입).
+    if (padStartIndex >= 0 && index >= padStartIndex) {
+      return stampShortResponsePadMarker(section);
+    }
+    return section;
   });
 
   let out = replaceSlideBlocks(source, shells, filled);
@@ -9865,11 +18524,14 @@ export function buildTemplateClonedDeckHtml(
   // `looksLikeCompactApiStackedDeck` expects (see 0826-N01-2 §F1-b).
   out = hoistCloneSlidesOutOfFlexTrack(out);
   out = injectTeamverSizeStyle(out);
-  // 루프512 — restore Capsule vertical centering that LOOK_NEUTRALIZE_CSS
-  // (`min-height: 100%` on `.slide-inner`) unintentionally breaks. Only
-  // fires on decks that look like Capsule (title-pill + deco-pill + one of
-  // orbit-pill / f-pill / c-pill) — safe no-op for every other kit.
+  // 0921-N03 — restore Capsule vertical centering + clip abs deco
+  // that LOOK_NEUTRALIZE_CSS (`min-height:100%` / `overflow:visible`)
+  // would otherwise leak across stacked slides.
   out = injectCapsuleLayoutFixIfNeeded(out);
+  if (officialLookIsCapsule(source)) {
+    const stackStyle = '<style data-teamver-capsule-stack>.presentation{height:auto!important}.presentation>.slide{position:relative!important;inset:auto!important;opacity:1!important;pointer-events:auto!important;transition:none!important}</style>';
+    out = out.replace(/<\/head>/i, `${stackStyle}</head>`);
+  }
   // 루프425 — leftover Capsule catalog copy can sit outside filled shells
   // (footer / unused chrome). Wipe the whole document, not just each slide.
   // 루프434 — Neo/block-frame marketing leftovers too.
@@ -9879,27 +18541,13 @@ export function buildTemplateClonedDeckHtml(
   out = stripBlockFrameNeoCatalogDemoCopy(out);
   out = stripBlueProfessionalCatalogDemoCopy(out);
   out = stripStudioCreativeCatalogDemoCopy(out);
+  out = stripProductLaunchCatalogDemoCopy(out);
   out = stripLeftoverCatalogDemoPhrases(out);
-  // 루프510 — decorative English demo pills (Capsule .orbit-pill / .f-pill /
-  // .c-pill / .deco-pill / .diagram-node / .mini-pill) survive clone-fill
-  // because the slot map only rewrites h*/p/li text. On Korean decks that
-  // leaves atmospheric chrome untranslated ("Research"/"Ideation"/"Bold"…).
-  // Blank the demo labels; keep the pill shape/color intact so the deck
-  // still carries the intended visual rhythm.
+  // 0921-N03 — decorative English demo pills / specialty slots survive
+  // slot-map fill. Blank them on Korean decks, restore empty title-pill,
+  // then refill semantic empties from the outline (not machine tags).
   out = scrubCapsuleLeftoverDecorativeChrome(out, { deckLang: 'auto' });
-  // 루프511 — Capsule specialty-slot chrome (chart labels, timeline
-  // labels+descs, quote body+attribution, stat-labels, header-pill,
-  // closing-pill/closing-sub, and the slide-8 diagram flow pill-filled
-  // captions) is not covered by the slot-map fill path. On Korean decks
-  // the English demo copy dominates those slides ("Market Reach / 8.2M",
-  // "Discovery / Map the terrain…", "The best time to plant a tree…",
-  // "Data Ingestion / Transformation / Distribution"). Blank the known
-  // English demo phrases so a Korean deck no longer leaks catalog copy
-  // through non-slot chrome.
   out = scrubCapsuleLeftoverSpecialtySlotCopy(out, { deckLang: 'auto' });
-  // 루프510 — Capsule cover's yellow `.title-pill` gets emptied by the clone
-  // fill; restore a short Korean kicker so the cover pill is not a bare
-  // blank on Korean decks.
   const firstSlideKicker =
     (workingSlides[0] as { kicker?: string | null } | undefined)?.kicker ?? null;
   out = fillCapsuleEmptyTitlePill(out, {
@@ -9907,19 +18555,6 @@ export function buildTemplateClonedDeckHtml(
     deckTitle,
     fallback: '소개',
   });
-  // 루프512 — After the scrub passes blank English demo copy inside Capsule
-  // specialty slots (chart-label, step-desc, blockquote, attribution,
-  // closing-pill/-sub, stat-label/-number, tier-name/-price, pill-filled),
-  // the deliverable ships as "구조는 있는데 내용은 다 비어 있다" for sparse
-  // outlines. Refill those empty shells with meaningful Korean copy derived
-  // from each slide's own title / body / kicker plus the deck title so the
-  // visual density matches the template's design intent.
-  // 루프513 — Pass the outline in document order so semantic slots
-  // (blockquote / attribution / closing-pill / closing-sub / header-pill)
-  // on shells whose h*/p slot the fill pipeline could not populate
-  // (Capsule slide-5 statement-box has no h1/h2 — the outline title
-  // otherwise disappears) can still surface the user's actual outline
-  // title/body instead of the deck title.
   const outlineSlidesForRefill = workingSlides.map((slide) => ({
     title: slide.title,
     body: slide.body ?? null,
@@ -9929,8 +18564,33 @@ export function buildTemplateClonedDeckHtml(
     deckTitle,
     outlineSlides: outlineSlidesForRefill,
   });
+  // 0918-N03 — JSON slot-fill is the primary path. Apply only the
+  // non-destructive Hangul typography layer here. Catalog/structure healing
+  // remains in persist salvage; running it here can erase legitimate roadmap
+  // descriptions that happen to resemble old demo labels.
+  if (officialLookIsNeoBrutalBlockFrame(out)) {
+    out = injectBlockFrameHangulTypography(out, { markElements: false });
+  }
+  // 루프555 — MiniMax token-loop 반복(예: `다음 단계 다음 단계`) 축약.
+  out = collapseAdjacentDuplicatedPhrasesInDeckText(out);
   out = renumberBiennalePagenums(out, filled.length);
   return out.trim() || null;
+}
+
+/**
+ * 루프555 — Apply `collapseAdjacentDuplicatedPhraseInText` inside heading /
+ * paragraph / list text content of the deck. HTML attributes and tag names
+ * are left untouched.
+ */
+function collapseAdjacentDuplicatedPhrasesInDeckText(html: string): string {
+  const source = String(html ?? '');
+  if (!source) return source;
+  // Walk `>text<` runs so tag markup is not altered.
+  return source.replace(/>([^<]{4,})</g, (_m, chunk: string) => {
+    if (!/[가-힣]/u.test(chunk)) return `>${chunk}<`;
+    const collapsed = collapseAdjacentDuplicatedPhraseInText(chunk);
+    return `>${collapsed}<`;
+  });
 }
 
 /**
@@ -10069,22 +18729,96 @@ function unwrapSlideOnlyContainer(source: string, wrapperOpenRe: RegExp, tag: st
   if (closeStart < 0) return source;
 
   const inner = source.slice(openEnd, closeStart);
-  const slideBlocks = collectSlideHostBlocks(inner);
+  const slideBlocks = collectSlideHostBlockRanges(inner);
   if (slideBlocks.length < 2) return source;
 
-  // Ignore native prev/next/counter chrome wrappers when deciding whether
-  // the container is "slide-only" — those are dead links after
-  // `stripScriptsAndNav`. Depth-strip them so we don't leak the raw counter
-  // text or the button HTML into `<body>` after unwrap.
-  const chromeStripped = stripInertLeftoverDecoBlocks(stripSlideNavChromeBlocks(inner));
-  let residue = chromeStripped;
-  for (const block of collectSlideHostBlocks(chromeStripped)) {
+  // 루프558 — Chrome / inert-deco stripping must apply ONLY to the
+  // container-level content that sits BETWEEN slide sections (prev/next
+  // buttons, slide-counter, page-dot chrome). The prior implementation ran
+  // strip over the whole `inner`, which ate slide-internal deco elements
+  // (`.deco-dots`, `.deco-pink-rect`, `.deco-green-circle` on Block Frame
+  // slide-1) because their empty-div signature matches the "inert deco"
+  // regex. Slice out slide sections first, chrome-strip the gaps only,
+  // then reassemble with the ORIGINAL slide-section HTML intact.
+  const gapChromeStripped = stripInterSlideChromeGaps(inner, slideBlocks);
+  let residue = gapChromeStripped;
+  for (const block of collectSlideHostBlocks(gapChromeStripped)) {
     residue = residue.replace(block, '');
   }
   residue = residue.replace(/<!--[\s\S]*?-->/g, '');
   if (/<[a-zA-Z]/.test(residue)) return source;
 
-  return `${source.slice(0, openStart)}${chromeStripped}${source.slice(closeEnd)}`;
+  return `${source.slice(0, openStart)}${gapChromeStripped}${source.slice(closeEnd)}`;
+}
+
+/**
+ * 루프558 — Apply `stripInertLeftoverDecoBlocks` + `stripSlideNavChromeBlocks`
+ * to the between-slide gaps of a slide-container's inner content while
+ * leaving every slide section byte-identical. Slide sections' own visual
+ * chrome (Block Frame `.hero-frame` deco squares, 8-Bit `.starfield`, …)
+ * must survive so kit fill / heal passes can still reason about them.
+ */
+function stripInterSlideChromeGaps(
+  inner: string,
+  slideBlocks: Array<{ start: number; end: number }>,
+): string {
+  if (slideBlocks.length === 0) {
+    return stripInertLeftoverDecoBlocks(stripSlideNavChromeBlocks(inner));
+  }
+  const chunks: string[] = [];
+  let cursor = 0;
+  for (const block of slideBlocks) {
+    if (block.start > cursor) {
+      const gap = inner.slice(cursor, block.start);
+      chunks.push(stripInertLeftoverDecoBlocks(stripSlideNavChromeBlocks(gap)));
+    }
+    chunks.push(inner.slice(block.start, block.end));
+    cursor = block.end;
+  }
+  if (cursor < inner.length) {
+    const tail = inner.slice(cursor);
+    chunks.push(stripInertLeftoverDecoBlocks(stripSlideNavChromeBlocks(tail)));
+  }
+  return chunks.join('');
+}
+
+/**
+ * 루프558 — Range-aware variant of `collectSlideHostBlocks` used by
+ * `stripInterSlideChromeGaps` to slice inter-slide gaps without re-parsing
+ * strings. Returns [start, end) offsets into the input.
+ */
+function collectSlideHostBlockRanges(
+  html: string,
+): Array<{ start: number; end: number }> {
+  const ranges: Array<{ start: number; end: number }> = [];
+  const openRe =
+    /<(section|div|article|main)\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b[^"']*["'][^>]*>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = openRe.exec(html)) !== null) {
+    const tag = m[1] ?? 'section';
+    const start = m.index;
+    const openEnd = start + m[0].length;
+    const tagRe = new RegExp(`</?${tag}\\b[^>]*>`, 'gi');
+    tagRe.lastIndex = openEnd;
+    let depth = 1;
+    let closeEnd = -1;
+    let tm: RegExpExecArray | null;
+    while ((tm = tagRe.exec(html)) !== null) {
+      if (tm[0]!.startsWith('</')) {
+        depth -= 1;
+        if (depth === 0) {
+          closeEnd = tm.index + tm[0]!.length;
+          break;
+        }
+      } else if (!tm[0]!.endsWith('/>')) {
+        depth += 1;
+      }
+    }
+    if (closeEnd < 0) break;
+    ranges.push({ start, end: closeEnd });
+    openRe.lastIndex = closeEnd;
+  }
+  return ranges;
 }
 
 function collectSlideHostBlocks(html: string): string[] {
@@ -10199,7 +18933,7 @@ function cleanCloneTitle(title: string): string {
 export function looksLikeLeftoverTemplateDemoDeck(html: string): boolean {
   const text = String(html ?? '');
   if (!text.trim()) return false;
-  return /Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Maya Chen|pnpm vitest auth|MMXXVI|Team Structure(?:\s*(?:&|&amp;)?\s*(?:Resource Allocation|Leadership))?|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|52\.5200°\s*N|Composed in kami|Apache-2\.0[\s\S]{0,800}Local-first[\s\S]{0,800}BYOK|\[?\[Author Name\]\]?|\[Year\]|this is the broadside style|Clarity of Purpose|The Journey Continues|A Framework for Bold Ideas|Neobrutalist Presentation Template|Quarterly Growth Metrics|Sentiment has shifted measurably|Bullish on three-year outlook|Aurora Institute|Field Office Quarterly|field-office\.co|Lin Ito|Slow software|Public attendance|Open programme|Domestic interfaces|The index, in six entries|A trend is a quiet question|See you in the autumn issue|Trend ledger, in long|Hand-set print|We started the bulletin|Software is a room|Tape Garden|SUPERCATALOG|CATALOGUE NO\. 7|We make small analog|Bloom Pedal|SUPER TAPE|MIX CHAIR|Ren Kobayashi|Mei Tanaka|See you in volume eight|made in matsumoto|Chroma Deck|We started Long Table|long-table\.co|Hana Brennan|Iris(?:\s|&|&amp;)+Theo|A Plate of Quiet|Roasted chestnut soup|Not a meal, an evening|Placeholder lede|The Editorial Desk|Studio & Salon|Twelve weeks of after-hours|Three rules we.?re keeping|User Research Synthesis|WHO WE ARE|GREAT WORK DOESN'T HAPPEN|Our studio pairs|Years of practice|\[Studio Name\]|A DISTINCTIVE VOICE|Lift In Engagement|Throughput Multiplier|Active Placeholders|Layer alpha|VALUES ARE PLACEHOLDER|eight pages, eight layouts|FLIP THE|PLACEHOLDER METRIC|Generic placeholder copy throughout/i.test(
+  return /The landscape has shifted|The brands that will lead the next decade|Strategy\s*[·•]\s*Presentation|Of consumers distrust brand-created|The most radical thing a brand can do|Grove Presentation|\[Prepared by\]|\[Confidential\]|\[IMAGE PLACEHOLDER\]|Hartfield|NorthPeak Industries|WACC\s*\(|Revenue CAGR|Filebase|Northwind Studios|Daisy Days|The bandwidth bill is the bug|Project Atlas|pitch-agent|Margaret Eun|Maison Nocturne|Synthetic Open Design demo dataset|Continue as standalone public company|ib-check-deck\s*\(\s*pass\s*\)|Apex Group|Lorem ipsum|Mina Kovac|OPERATION HALCYON|Quartz\. Confluence|hermes-agent|Maya Chen|pnpm vitest auth|MMXXVI|Team Structure(?:\s*(?:&|&amp;)?\s*(?:Resource Allocation|Leadership))?|open-source alternative to Anthropic's Claude Design|A local-first design studio for the agent you already trust|Open-source design studio|52\.5200°\s*N|Composed in kami|Apache-2\.0[\s\S]{0,800}Local-first[\s\S]{0,800}BYOK|\[?\[Author Name\]\]?|\[Year\]|this is the broadside style|Clarity of Purpose|The Journey Continues|A Framework for Bold Ideas|Neobrutalist Presentation Template|Quarterly Growth Metrics|Sentiment has shifted measurably|Bullish on three-year outlook|Aurora Institute|Field Office Quarterly|field-office\.co|Lin Ito|Slow software|Public attendance|Open programme|Domestic interfaces|The index, in six entries|A trend is a quiet question|See you in the autumn issue|Trend ledger, in long|Hand-set print|We started the bulletin|Software is a room|Tape Garden|SUPERCATALOG|CATALOGUE NO\. 7|We make small analog|Bloom Pedal|SUPER TAPE|MIX CHAIR|Ren Kobayashi|Mei Tanaka|See you in volume eight|made in matsumoto|Chroma Deck|We started Long Table|long-table\.co|Hana Brennan|Iris(?:\s|&|&amp;)+Theo|A Plate of Quiet|Roasted chestnut soup|Not a meal, an evening|Placeholder lede|The Editorial Desk|Studio & Salon|Twelve weeks of after-hours|Three rules we.?re keeping|User Research Synthesis|WHO WE ARE|GREAT WORK DOESN'T HAPPEN|Our studio pairs|Years of practice|\[Studio Name\]|A DISTINCTIVE VOICE|Lift In Engagement|Throughput Multiplier|Active Placeholders|Layer alpha|VALUES ARE PLACEHOLDER|eight pages, eight layouts|FLIP THE|PLACEHOLDER METRIC|Generic placeholder copy throughout|Halo v2|Studio-grade spatial audio|halo\.audio|Marques Lin|Pre-order Halo/i.test(
     text,
   );
 }
@@ -10353,7 +19087,7 @@ function extractUserFacingBrief(text: string): string {
 function deriveTitleFromBrief(brief: string, deckTitle?: string | null): string {
   const preferred = deckTitle?.trim() ?? '';
   // 루프389/390 — generic "슬라이드"/Deck must not pin cover titles when the
-  // brief still carries a URL/brand topic (e.g. www.teamver.com → 팀버).
+  // brief still carries a URL/brand topic (e.g. www.teamver.com → Teamver via host Latin).
   if (
     preferred
     && !looksLikeTemplateMarketingTitle(preferred)
@@ -10488,7 +19222,86 @@ function slideTitleParrotsBriefFragment(title: string, brief?: string | null): b
   if (b.startsWith(t)) return true;
   if (t.startsWith(b.slice(0, Math.min(b.length, t.length))) && looksLikeInstructionCopy(b)) return true;
   if (/^www\.[a-z0-9.-]+\b/i.test(t) && looksLikeInstructionCopy(b)) return true;
+  // 루프555 — MiniMax는 두 번째 슬라이드에 종종 `{brief} 2`, `{brief} · 2`,
+  // `{brief} 시리즈 2`처럼 브리프에 단순 번호/카운터만 붙인 제목을 뱉는다.
+  // 예: brief="Teamver 소개" → title="Teamver 소개 2" (product-launch
+  // example.html 슬라이드 2의 `Halo v2` 슬롯). instruction-copy 브리프가
+  // 아니어도 브리프 원문을 그대로 파롯한 뒤 번호만 더한 shape면 실패 제목.
+  if (t.length > b.length && t.startsWith(b)) {
+    const tail = t.slice(b.length).trim();
+    if (/^(?:[·•\-–—:/]|v)?\s*\d{1,3}$/u.test(tail)) return true;
+  }
   return false;
+}
+
+/**
+ * 루프555 — MiniMax often emits Korean placeholder-shaped titles when the
+ * brief is thin, e.g. `주제가 해결하는 문제`, `주제의 쓰임과 근거`,
+ * `주제를 쓰는 순서`, `주제 다음 단계`. `sanitizeTemplateCloneDeckTitle`
+ * treats these as valid because they are grammatical strings, so
+ * `rewriteInstructionParrotingSlideTitles` leaves them untouched. Result:
+ * user-facing decks with "주제" (Korean word for "topic") plastered across
+ * every heading (2026-09-17 사용자 리포트).
+ *
+ * Trigger only when the *bare* Korean placeholder word ("주제", "제목",
+ * "내용", "본문") starts the title AND is followed by a particle/verb/noun
+ * that shows it was written as a scaffold, not as a real subject reference.
+ * Real titles never lead with the standalone word "주제 " — users say
+ * "AI 주제", "환경 주제", etc.
+ */
+const KOREAN_PLACEHOLDER_TITLE_RE =
+  /^\s*(?:주제|제목|본문|내용|예시)(?:[가는을를의이에과와으로])?\s/u;
+
+function slideTitleLooksLikeKoreanPlaceholder(title: string): boolean {
+  const t = String(title ?? '').trim();
+  if (!t || t.length < 4) return false;
+  return KOREAN_PLACEHOLDER_TITLE_RE.test(t);
+}
+
+/**
+ * 루프555 — MiniMax token-loop repetition. When the model gets stuck it
+ * emits doubled phrases: `다음 단계 다음 단계`, `쓰는 순서를 쓰는 순서`,
+ * `주제를 쓰는 순서를 쓰는 순서`. Collapse them to the first occurrence,
+ * preserving the trailing Korean particle.
+ *
+ * Case 1: `X X` — same 1-3 Hangul phrase twice, separated by a space.
+ * Case 2: `X<particle> X` — first occurrence carries a Korean particle;
+ *         second is bare. Preserve the first (with particle) and drop the
+ *         tail.
+ *
+ * Only fires between full-width word boundaries so real sentences like
+ * "빠른 개발 방법론 개발" are safe (the two "개발" tokens are not identical
+ * phrases with the required separator shape).
+ */
+const KOREAN_PARTICLE_CLASS = '(?:을|를|의|이|가|과|와|으로|은|는|도|만|에|께|서|부터)';
+
+function collapseAdjacentDuplicatedPhraseInText(text: string): string {
+  let out = String(text ?? '');
+  if (!out || out.length < 6) return out;
+  for (let pass = 0; pass < 3; pass += 1) {
+    const before = out;
+    // Case 2 first — `X<particle> X` where second copy drops the particle.
+    // Bound on Hangul so English/CJK non-Korean tokens are not merged.
+    out = out.replace(
+      new RegExp(
+        `([가-힣]{1,4}(?: [가-힣]{1,4}){0,2})${KOREAN_PARTICLE_CLASS}\\s+\\1(?![가-힣])`,
+        'gu',
+      ),
+      (match, phrase: string) => {
+        // Preserve the first phrase + its particle. Match includes both
+        // copies; slice off the second copy so grammar is preserved.
+        const cutAt = match.length - phrase.length;
+        return match.slice(0, cutAt).trimEnd();
+      },
+    );
+    // Case 1 — exact `X X` doubling with no particle in between.
+    out = out.replace(
+      /(?<![가-힣])([가-힣]{1,4}(?: [가-힣]{1,4}){0,2})\s+\1(?![가-힣])/gu,
+      '$1',
+    );
+    if (out === before) break;
+  }
+  return out;
 }
 
 function synthesizeCardsBodyFromBrief(brief: string, slideTitle: string): string | undefined {
@@ -10512,13 +19325,17 @@ function rewriteInstructionParrotingSlideTitles(
     ? deriveDeckCoverTitleFromBrief(brief, options.deckTitle)
     : sanitizeTemplateCloneDeckTitle(options.deckTitle ?? '') ?? '슬라이드';
   return slides.map((slide, index) => {
-    const sanitized = sanitizeTemplateCloneDeckTitle(slide.title);
-    const parrotsBrief = slideTitleParrotsBriefFragment(slide.title, brief);
+    // 루프555 — 먼저 MiniMax token-loop 반복(`X를 X`, `X X`)을 축약한다.
+    // Sanitize / parrot 판정을 축약 이후에 돌려야 dedupe 결과가 실제 슬라이드에 반영.
+    const collapsedTitle = collapseAdjacentDuplicatedPhraseInText(slide.title ?? '');
+    const sanitized = sanitizeTemplateCloneDeckTitle(collapsedTitle);
+    const parrotsBrief = slideTitleParrotsBriefFragment(collapsedTitle, brief);
+    const koreanPlaceholder = slideTitleLooksLikeKoreanPlaceholder(collapsedTitle);
     const instructionBody = slide.body != null && looksLikeInstructionCopy(slide.body);
-    const needsTitleRewrite = !sanitized || parrotsBrief;
+    const needsTitleRewrite = !sanitized || parrotsBrief || koreanPlaceholder;
     const title = needsTitleRewrite
       ? (index === 0 ? fallbackCover : `${fallbackCover} · ${index + 1}`)
-      : slide.title;
+      : collapsedTitle;
     let body = slide.body;
     if (instructionBody && brief) {
       if (slide.roleHint === 'cards') {
@@ -10543,6 +19360,37 @@ function rewriteInstructionParrotingSlideTitles(
       if (next.lead && looksLikeInstructionCopy(next.lead)) delete next.lead;
     }
     return next;
+  });
+}
+
+/**
+ * 루프555 — Rewrite any later slide whose title exactly matches an earlier
+ * slide's title to an indexed fallback label. Non-unique-role kits reuse
+ * shells to reach the requested slide count and, when the outline itself
+ * carries duplicate titles (MiniMax often does this after
+ * `rewriteInstructionParrotingSlideTitles` funnels multiple
+ * placeholder-shaped slides through the same fallback shape), the reused
+ * shell renders two near-identical Fit/Body slides in the same deck
+ * (2026-09-17 사용자 리포트: slide 3 · slide 9 both `주제의 쓰임과 근거`).
+ * Keeping the first occurrence and appending ` · N` to later duplicates
+ * preserves the outline order while making each slide's headline distinct.
+ */
+function dedupeIdenticalOutlineTitles(
+  slides: TemplateCloneSlideContent[],
+  deckTitle: string,
+): TemplateCloneSlideContent[] {
+  if (slides.length <= 1) return slides;
+  const seen = new Map<string, number>();
+  const cover = sanitizeTemplateCloneDeckTitle(deckTitle) ?? '슬라이드';
+  return slides.map((slide, index) => {
+    const raw = String(slide.title ?? '').trim();
+    if (!raw) return slide;
+    const priorIndex = seen.get(raw);
+    if (priorIndex === undefined) {
+      seen.set(raw, index);
+      return slide;
+    }
+    return { ...slide, title: `${cover} · ${index + 1}` };
   });
 }
 
@@ -11072,16 +19920,16 @@ export function synthesizeTemplateCloneSlidesFromFreeFormBrief(options: {
       lead: synthesizeTemplateCloneCoverLead(title, brief),
     },
     {
-      title: '개요',
-      ...synthesizeTemplateCloneSlideBody(title, '개요', 1, brief),
+      title: genericRoleCopyForIndex(title, brief, 1).heading,
+      ...synthesizeTemplateCloneSlideBody(title, genericRoleCopyForIndex(title, brief, 1).heading, 1, brief),
     },
     {
-      title: '핵심 포인트',
-      ...synthesizeTemplateCloneSlideBody(title, '핵심 포인트', 2, brief),
+      title: genericRoleCopyForIndex(title, brief, 2).heading,
+      ...synthesizeTemplateCloneSlideBody(title, genericRoleCopyForIndex(title, brief, 2).heading, 2, brief),
     },
     {
-      title: '다음 단계',
-      ...synthesizeTemplateCloneSlideBody(title, '다음 단계', 3, brief),
+      title: genericRoleCopyForIndex(title, brief, 3).heading,
+      ...synthesizeTemplateCloneSlideBody(title, genericRoleCopyForIndex(title, brief, 3).heading, 3, brief),
     },
   ];
 }
@@ -11143,22 +19991,54 @@ export function resolveTemplateCloneSlidesFromBrief(options: {
   });
 }
 
-function slideNeedsDeterministicBody(slide: TemplateCloneSlideContent): boolean {
+/**
+ * 루프544 — 게이트 미변경 pin 목적으로 export. deterministic outline 경로에서
+ * 이미 items가 있거나 body가 non-placeholder인 슬라이드는 synth로 덮어쓰지
+ * 않는다. 이 경계를 느슨하게 만들면 모델이 채운 좋은 items도 함께 잡히므로,
+ * 이번 슬라이스에서는 프롬프트만 강화하고 게이트는 그대로 유지한다.
+ */
+export function slideNeedsDeterministicBody(slide: TemplateCloneSlideContent): boolean {
   if (slide.items && slide.items.length > 0) return false;
   return isPlaceholderCloneBody(slide.body);
+}
+
+export type TemplateCloneDeterministicFillSource = 'resolved' | 'densified' | 'synthetic';
+
+export type TemplateCloneDeterministicFillResolution = {
+  slides: TemplateCloneSlideContent[];
+  source: TemplateCloneDeterministicFillSource;
+  needsAiContentFill: boolean;
+};
+
+const GENERIC_DETERMINISTIC_FILL_COPY_RE =
+  /핵심\s*주제|의미와 적용 기준을 한 문장으로|반복 작업을 줄이고 결과물 완성도|핵심\s+\d+/;
+
+function outlineNeedsAiContentFill(slides: readonly TemplateCloneSlideContent[]): boolean {
+  if (slides.length === 0) return true;
+  const text = slides.map((slide) => {
+    const items = (slide.items ?? [])
+      .map((item) => `${item.title ?? ''} ${item.body ?? ''}`)
+      .join('\n');
+    return `${slide.title ?? ''}\n${slide.body ?? ''}\n${slide.lead ?? ''}\n${items}`;
+  }).join('\n');
+  if (GENERIC_DETERMINISTIC_FILL_COPY_RE.test(text)) return true;
+  return slides.every((slide) => slideNeedsDeterministicBody(slide));
 }
 
 /**
  * 루프419 — Deterministic Home fill must not leave `…` placeholders.
  * Prefer a dense topical outline (kicker/lead/items) so cards and stats
  * get title+body in one server pass.
+ *
+ * Provenance tells the daemon whether that outline is still generic synth
+ * copy (`needsAiContentFill`) or already concrete enough to skip AI fill.
  */
-export function resolveTemplateCloneSlidesForDeterministicFill(options: {
+export function resolveTemplateCloneSlidesForDeterministicFillWithProvenance(options: {
   sourceBrief?: string | null;
   userInstruction?: string | null;
   deckTitle?: string | null;
   slideCount?: number | null;
-}): TemplateCloneSlideContent[] {
+}): TemplateCloneDeterministicFillResolution {
   const brief = [options.sourceBrief ?? '', options.userInstruction ?? '']
     .filter(Boolean)
     .join('\n\n')
@@ -11175,18 +20055,28 @@ export function resolveTemplateCloneSlidesForDeterministicFill(options: {
       index === 0
       || /^(?:개요|핵심 포인트|다음 단계|핵심 \d+)$/.test(slide.title)
     ));
+  const finish = (
+    slides: TemplateCloneSlideContent[],
+    source: TemplateCloneDeterministicFillSource,
+  ): TemplateCloneDeterministicFillResolution => ({
+    slides,
+    source,
+    needsAiContentFill: outlineNeedsAiContentFill(slides),
+  });
   if (resolved.length === 0 || ellipsisStarter) {
     const synth = synthesizeTemplateCloneOutlineFromBrief({
       userBrief: brief || options.deckTitle || '',
       deckTitle: options.deckTitle ?? resolved[0]?.title ?? null,
       slideCount,
     });
-    if (synth) return synth.slides;
+    if (synth) return finish(synth.slides, 'synthetic');
   }
-  if (resolved.length === 0) return [];
+  if (resolved.length === 0) return finish([], 'resolved');
   const cover = resolved[0]?.title ?? options.deckTitle ?? '슬라이드';
+  let densifiedAny = false;
   const densified = resolved.map((slide, index) => {
     if (!slideNeedsDeterministicBody(slide)) return slide;
+    densifiedAny = true;
     if (index === 0) {
       const next: TemplateCloneSlideContent = {
         title: slide.title,
@@ -11202,7 +20092,18 @@ export function resolveTemplateCloneSlidesForDeterministicFill(options: {
       ...synthesizeTemplateCloneSlideBody(cover, slide.title, index, brief),
     };
   });
-  return slideCount != null
+  const slides = slideCount != null
     ? padDeterministicTemplateCloneSlides(densified, cover, slideCount, brief)
     : densified;
+  const padded = slides.length > densified.length;
+  return finish(slides, densifiedAny || padded ? 'densified' : 'resolved');
+}
+
+export function resolveTemplateCloneSlidesForDeterministicFill(options: {
+  sourceBrief?: string | null;
+  userInstruction?: string | null;
+  deckTitle?: string | null;
+  slideCount?: number | null;
+}): TemplateCloneSlideContent[] {
+  return resolveTemplateCloneSlidesForDeterministicFillWithProvenance(options).slides;
 }

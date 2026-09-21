@@ -34,11 +34,18 @@ class _FakeSessionMaker:
 @pytest.fixture(autouse=True)
 def _stub_db_session(monkeypatch: pytest.MonkeyPatch) -> None:
     """Default ledger lookup returns None; tests override per case."""
-    async def fake_find(db: Any, *, workspace_id: str, run_id: str) -> None:
+
+    async def fake_find(db: Any, *, workspace_id: str, run_id: str, for_update: bool = False) -> None:
         return None
+
+    async def fake_claim(**kwargs: Any) -> tuple[str, None]:
+        return "claimed", None
 
     monkeypatch.setattr(byok_billing.token_usage_crud, "afind_usage_by_run", fake_find)
     monkeypatch.setattr(byok_billing, "async_session_maker", _FakeSessionMaker())
+    monkeypatch.setattr(byok_billing, "_claim_billing_attempt", fake_claim)
+    # Hosted .env may set TEAMVER_BILLING_DISABLED=1 — default tests assume billing ON.
+    monkeypatch.setattr(byok_billing.settings, "teamver_billing_disabled", False)
 
 
 @pytest.fixture
@@ -66,8 +73,11 @@ def _enable_pricing(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         byok_billing.settings,
         "design_model_prices_json",
-        '{"claude-sonnet-4-5":{"input_per_1k_t":3,"output_per_1k_t":15}}',
+        '{"claude-sonnet-4-5":{"prompt_cost_per_1k":0.003,"completion_cost_per_1k":0.015}}',
     )
+    monkeypatch.setattr(byok_billing.settings, "design_billing_usd_krw_rate", 1550)
+    monkeypatch.setattr(byok_billing.settings, "design_billing_credit_krw_rate", 0.5)
+    monkeypatch.setattr(byok_billing.settings, "design_billing_price_to_cost_ratio", 2.0)
 
 
 @pytest.mark.asyncio
@@ -117,17 +127,17 @@ async def test_finalize_byok_run_billing_reserve_and_commit(
 
     async def fake_reserve(**kwargs: Any) -> run_lifecycle.ReservationResult:
         assert kwargs["workspace_id"] == "ws-1"
-        assert kwargs["amount"] == 33
+        assert kwargs["amount"] == 205
         return run_lifecycle.ReservationResult(ok=True, usage_id="u-byok-1")
 
     committed: list[str] = []
 
-    async def fake_commit(*, usage_id: str | None) -> bool:
+    async def fake_commit(*, usage_id: str | None) -> run_lifecycle.CommitResult:
         committed.append(usage_id or "")
-        return True
+        return run_lifecycle.CommitResult(ok=True)
 
     monkeypatch.setattr(byok_billing, "reserve_run", fake_reserve)
-    monkeypatch.setattr(byok_billing, "commit_run", fake_commit)
+    monkeypatch.setattr(byok_billing, "commit_run_detailed", fake_commit)
 
     result = await finalize_byok_run_billing(
         workspace_id="ws-1",
@@ -142,7 +152,7 @@ async def test_finalize_byok_run_billing_reserve_and_commit(
     assert result.usage_id == "u-byok-1"
     assert result.billing_status == "committed"
     assert result.credits_committed is True
-    assert result.credits_amount_t == 33
+    assert result.credits_amount_t == 205
     assert committed == ["u-byok-1"]
     # Lifecycle persists `reserved` BEFORE commit, then `committed` after —
     # this is what protects against double-charge on crash mid-commit.
@@ -165,11 +175,11 @@ async def test_finalize_byok_run_billing_persists_reserve_failed(
             ok=False, usage_id=None, error="insufficient_credits"
         )
 
-    async def must_not_commit(*, usage_id: str | None) -> bool:  # pragma: no cover
+    async def must_not_commit(*, usage_id: str | None) -> run_lifecycle.CommitResult:  # pragma: no cover
         raise AssertionError("commit must not run when reserve fails")
 
     monkeypatch.setattr(byok_billing, "reserve_run", fake_reserve)
-    monkeypatch.setattr(byok_billing, "commit_run", must_not_commit)
+    monkeypatch.setattr(byok_billing, "commit_run_detailed", must_not_commit)
 
     result = await finalize_byok_run_billing(
         workspace_id="ws-1",
@@ -199,8 +209,8 @@ async def test_finalize_byok_run_billing_refunds_on_commit_failure(
     async def fake_reserve(**kwargs: Any) -> run_lifecycle.ReservationResult:
         return run_lifecycle.ReservationResult(ok=True, usage_id="u-byok-2")
 
-    async def fake_commit(*, usage_id: str | None) -> bool:
-        return False
+    async def fake_commit(*, usage_id: str | None) -> run_lifecycle.CommitResult:
+        return run_lifecycle.CommitResult(ok=False, error="commit_boom")
 
     refunded: list[str] = []
 
@@ -209,7 +219,7 @@ async def test_finalize_byok_run_billing_refunds_on_commit_failure(
         return True
 
     monkeypatch.setattr(byok_billing, "reserve_run", fake_reserve)
-    monkeypatch.setattr(byok_billing, "commit_run", fake_commit)
+    monkeypatch.setattr(byok_billing, "commit_run_detailed", fake_commit)
     monkeypatch.setattr(byok_billing, "refund_run", fake_refund)
 
     result = await finalize_byok_run_billing(
@@ -241,14 +251,14 @@ async def test_finalize_byok_run_billing_records_refund_failed_when_refund_fails
     async def fake_reserve(**kwargs: Any) -> run_lifecycle.ReservationResult:
         return run_lifecycle.ReservationResult(ok=True, usage_id="u-stuck")
 
-    async def fake_commit(*, usage_id: str | None) -> bool:
-        return False
+    async def fake_commit(*, usage_id: str | None) -> run_lifecycle.CommitResult:
+        return run_lifecycle.CommitResult(ok=False, error="commit_boom")
 
     async def fake_refund(*, usage_id: str | None, reason: str = "design_run_failed") -> bool:
         return False
 
     monkeypatch.setattr(byok_billing, "reserve_run", fake_reserve)
-    monkeypatch.setattr(byok_billing, "commit_run", fake_commit)
+    monkeypatch.setattr(byok_billing, "commit_run_detailed", fake_commit)
     monkeypatch.setattr(byok_billing, "refund_run", fake_refund)
 
     result = await finalize_byok_run_billing(
@@ -330,12 +340,12 @@ async def test_finalize_byok_run_billing_resumes_commit_on_reserved_row(
 
     committed: list[str] = []
 
-    async def fake_commit(*, usage_id: str | None) -> bool:
+    async def fake_commit(*, usage_id: str | None) -> run_lifecycle.CommitResult:
         committed.append(usage_id or "")
-        return True
+        return run_lifecycle.CommitResult(ok=True)
 
     monkeypatch.setattr(byok_billing, "reserve_run", must_not_reserve)
-    monkeypatch.setattr(byok_billing, "commit_run", fake_commit)
+    monkeypatch.setattr(byok_billing, "commit_run_detailed", fake_commit)
 
     result = await finalize_byok_run_billing(
         workspace_id="ws-1",
@@ -380,14 +390,14 @@ async def test_finalize_byok_run_billing_resume_refund_failed(
     async def must_not_reserve(**kwargs: Any) -> Any:  # pragma: no cover - safety
         raise AssertionError("reserve must not run when already reserved")
 
-    async def fake_commit(*, usage_id: str | None) -> bool:
-        return False
+    async def fake_commit(*, usage_id: str | None) -> run_lifecycle.CommitResult:
+        return run_lifecycle.CommitResult(ok=False, error="commit_boom")
 
     async def fake_refund(*, usage_id: str | None, reason: str = "design_run_failed") -> bool:
         return False
 
     monkeypatch.setattr(byok_billing, "reserve_run", must_not_reserve)
-    monkeypatch.setattr(byok_billing, "commit_run", fake_commit)
+    monkeypatch.setattr(byok_billing, "commit_run_detailed", fake_commit)
     monkeypatch.setattr(byok_billing, "refund_run", fake_refund)
 
     result = await finalize_byok_run_billing(
@@ -427,11 +437,11 @@ async def test_finalize_byok_run_billing_terminal_failure_is_not_retried(
     async def must_not_reserve(**kwargs: Any) -> Any:  # pragma: no cover - safety
         raise AssertionError("reserve must not run on terminal failure")
 
-    async def must_not_commit(*, usage_id: str | None) -> bool:  # pragma: no cover - safety
+    async def must_not_commit(*, usage_id: str | None) -> run_lifecycle.CommitResult:  # pragma: no cover - safety
         raise AssertionError("commit must not run on terminal failure")
 
     monkeypatch.setattr(byok_billing, "reserve_run", must_not_reserve)
-    monkeypatch.setattr(byok_billing, "commit_run", must_not_commit)
+    monkeypatch.setattr(byok_billing, "commit_run_detailed", must_not_commit)
 
     result = await finalize_byok_run_billing(
         workspace_id="ws-1",
@@ -491,3 +501,182 @@ async def test_finalize_byok_run_endpoint_returns_camel_case(
         "error": None,
         "idempotent": False,
     }
+
+
+@pytest.mark.asyncio
+async def test_finalize_byok_run_billing_meter_failed_when_prices_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    ledger_writes: list[dict[str, Any]],
+) -> None:
+    """Billing ON + tokens present + no price table → fail closed (no free run)."""
+    _enable_registry(monkeypatch)
+    monkeypatch.setattr(byok_billing.settings, "design_model_prices_json", "")
+    monkeypatch.setattr(byok_billing.settings, "teamver_billing_reserve_amount", 0)
+
+    async def must_not_reserve(**kwargs: Any) -> Any:  # pragma: no cover
+        raise AssertionError("reserve must not run when meter fails")
+
+    monkeypatch.setattr(byok_billing, "reserve_run", must_not_reserve)
+
+    result = await finalize_byok_run_billing(
+        workspace_id="ws-1",
+        run_id="msg-meter-fail",
+        run_status="succeeded",
+        model_name="unknown-model",
+        input_tokens=1000,
+        output_tokens=500,
+        token_count_source="provider_usage",
+    )
+    assert result.ok is False
+    assert result.billing_status == "meter_failed"
+    assert result.error == "unmeterable_amount"
+    assert [w["billing_status"] for w in ledger_writes] == ["meter_failed"]
+
+
+@pytest.mark.asyncio
+async def test_finalize_byok_run_billing_meters_proxy_sse_staged(
+    monkeypatch: pytest.MonkeyPatch,
+    ledger_writes: list[dict[str, Any]],
+) -> None:
+    _enable_registry(monkeypatch)
+    _enable_pricing(monkeypatch)
+
+    async def fake_reserve(**kwargs: Any) -> run_lifecycle.ReservationResult:
+        assert kwargs["amount"] == 205
+        return run_lifecycle.ReservationResult(ok=True, usage_id="u-staged")
+
+    async def fake_commit(*, usage_id: str | None) -> run_lifecycle.CommitResult:
+        return run_lifecycle.CommitResult(ok=True)
+
+    monkeypatch.setattr(byok_billing, "reserve_run", fake_reserve)
+    monkeypatch.setattr(byok_billing, "commit_run_detailed", fake_commit)
+
+    result = await finalize_byok_run_billing(
+        workspace_id="ws-1",
+        run_id="msg-staged",
+        run_status="succeeded",
+        model_name="claude-sonnet-4-5",
+        input_tokens=1000,
+        output_tokens=2000,
+        token_count_source="proxy_sse_staged",
+    )
+    assert result.ok is True
+    assert result.billing_status == "committed"
+    assert result.credits_amount_t == 205
+    assert [w["billing_status"] for w in ledger_writes] == ["reserved", "committed"]
+
+
+@pytest.mark.asyncio
+async def test_finalize_byok_run_billing_resume_treats_already_finalized_as_committed(
+    monkeypatch: pytest.MonkeyPatch,
+    ledger_writes: list[dict[str, Any]],
+) -> None:
+    """Crash after Registry commit: resume sees reservation_not_found → committed."""
+    _enable_registry(monkeypatch)
+
+    row = SimpleNamespace(
+        billing_status="reserved",
+        registry_usage_id="u-already",
+        credits_committed=False,
+        credits_amount_t=21,
+    )
+
+    async def fake_find(db: Any, *, workspace_id: str, run_id: str, for_update: bool = False) -> Any:
+        return row
+
+    monkeypatch.setattr(byok_billing.token_usage_crud, "afind_usage_by_run", fake_find)
+
+    async def fake_commit(*, usage_id: str | None) -> run_lifecycle.CommitResult:
+        return run_lifecycle.CommitResult(
+            ok=False, already_finalized=True, error="billing.reservation_not_found"
+        )
+
+    async def must_not_refund(*, usage_id: str | None, reason: str = "") -> bool:  # pragma: no cover
+        raise AssertionError("refund must not run when already finalized")
+
+    monkeypatch.setattr(byok_billing, "commit_run_detailed", fake_commit)
+    monkeypatch.setattr(byok_billing, "refund_run", must_not_refund)
+
+    result = await finalize_byok_run_billing(
+        workspace_id="ws-1",
+        run_id="msg-already",
+        run_status="succeeded",
+        model_name="claude-sonnet-4-5",
+        input_tokens=10,
+        output_tokens=10,
+        token_count_source="provider_usage",
+    )
+    assert result.ok is True
+    assert result.billing_status == "committed"
+    assert result.credits_committed is True
+    assert result.idempotent is True
+    assert [w["billing_status"] for w in ledger_writes] == ["committed"]
+
+
+@pytest.mark.asyncio
+async def test_finalize_byok_run_billing_skips_when_kill_switch_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _enable_registry(monkeypatch)
+    _enable_pricing(monkeypatch)
+    monkeypatch.setattr(byok_billing.settings, "teamver_billing_disabled", True)
+
+    async def must_not_reserve(**kwargs: Any) -> Any:  # pragma: no cover
+        raise AssertionError("reserve must not run when kill switch is on")
+
+    monkeypatch.setattr(byok_billing, "reserve_run", must_not_reserve)
+
+    result = await finalize_byok_run_billing(
+        workspace_id="ws-1",
+        run_id="msg-disabled",
+        run_status="succeeded",
+        model_name="claude-sonnet-4-5",
+        input_tokens=1000,
+        output_tokens=2000,
+        token_count_source="provider_usage",
+    )
+    assert result.ok is True
+    assert result.billing_status == "disabled"
+    assert result.credits_amount_t == 205
+    assert result.credits_committed is False
+
+
+@pytest.mark.asyncio
+async def test_finalize_byok_kill_switch_blocks_reserved_resume(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DISABLED=1 must not resume-commit a leftover reserved row."""
+    _enable_registry(monkeypatch)
+    _enable_pricing(monkeypatch)
+    monkeypatch.setattr(byok_billing.settings, "teamver_billing_disabled", True)
+
+    row = SimpleNamespace(
+        billing_status="reserved",
+        registry_usage_id="u-orphan",
+        credits_committed=False,
+        credits_amount_t=21,
+    )
+
+    async def fake_find(db: Any, *, workspace_id: str, run_id: str, for_update: bool = False) -> Any:
+        return row
+
+    monkeypatch.setattr(byok_billing.token_usage_crud, "afind_usage_by_run", fake_find)
+
+    async def must_not_commit(*, usage_id: str | None) -> Any:  # pragma: no cover
+        raise AssertionError("commit must not run under kill switch")
+
+    monkeypatch.setattr(byok_billing, "commit_run_detailed", must_not_commit)
+
+    result = await finalize_byok_run_billing(
+        workspace_id="ws-1",
+        run_id="msg-orphan",
+        run_status="succeeded",
+        model_name="claude-sonnet-4-5",
+        input_tokens=1000,
+        output_tokens=2000,
+        token_count_source="provider_usage",
+    )
+    assert result.ok is True
+    assert result.billing_status == "disabled"
+    assert result.credits_committed is False
+    assert result.credits_amount_t == 205

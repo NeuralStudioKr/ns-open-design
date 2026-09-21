@@ -12,6 +12,11 @@ import type { ChatAttachment } from '../types';
 import {
   looksLikeTemplateCloneServiceIntroBrief,
   SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION,
+  SLIDE_DECK_COPY_DENSITY_INSTRUCTION,
+  SLIDE_DECK_LAYOUT_VARIETY_INSTRUCTION,
+  SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION,
+  renderSlideCountRequirementInstruction,
+  renderSlideCountSeedHeaderHint,
 } from '@open-design/contracts';
 import {
   briefLooksLikeAttachedSource,
@@ -56,12 +61,14 @@ export const CLONE_SLOT_FILL_REPAIR_ENTRY_FROM = 'clone_slot_fill_json_repair';
 /**
  * Fill mode for explicit-template deck creates.
  *
- *   `prompt` (**env-empty / staging default since loop463**): LOOK seed, then
+ *   `prompt` (**env-empty / staging default since loop535**): LOOK seed, then
  *     MiniMax HTML content fill. Template chrome stays; copy is model-written.
+ *     Loop532 briefly defaulted to `deterministic` (no MiniMax) — that made
+ *     Home create finish immediately with thin synth copy. Restored here.
  *
- *   `deterministic`: daemon seeds LOOK and fills shells on the server.
- *     Home skips MiniMax — fast, but outline/slot copy is thin (loop421).
- *     Explicit opt-in only after loop463.
+ *   `deterministic`: daemon owns LOOK/layout assembly. Concrete source copy
+ *     completes immediately; generic synthesized copy queues a JSON outline
+ *     so the model improves content without rewriting template HTML.
  *
  *   `json`: LOOK seed + AI dense JSON outline (opt-in only — MiniMax
  *     JSON-only turns often fail AGENT_EXECUTION_FAILED).
@@ -73,11 +80,13 @@ export const CLONE_SLOT_FILL_REPAIR_ENTRY_FROM = 'clone_slot_fill_json_repair';
 export type TemplateCloneFillMode = 'json' | 'prompt' | 'deterministic' | 'pure-prompt';
 
 /**
- * 루프463 — Content quality requires MiniMax after LOOK seed.
- * Deterministic slot-fill alone leaves outline-shaped copy (user report).
- * Roll back to `deterministic` only via explicit env / localStorage.
+ * 0918-N03 — AI writes a structured content outline; the host deterministically
+ * renders it into official template shells. A missing build-time env must
+ * never route the clone through free-form HTML or thin rule-based copy.
+ * `deterministic` remains an emergency no-model fallback and `prompt` remains
+ * an explicit legacy comparison path.
  */
-export const TEMPLATE_CLONE_FILL_DEFAULT_MODE: TemplateCloneFillMode = 'prompt';
+export const TEMPLATE_CLONE_FILL_DEFAULT_MODE: TemplateCloneFillMode = 'json';
 
 export function normalizeTemplateCloneFillMode(value: unknown): TemplateCloneFillMode {
   const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -127,8 +136,8 @@ export function isTemplateClonePromptFillPrompt(text: unknown): boolean {
 export function getTemplateCloneFillMode(): TemplateCloneFillMode {
   const fromEnv = readTeamverViteEnv('VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE');
   if (fromEnv) return normalizeTemplateCloneFillMode(fromEnv);
-  // 루프420 — Teamver embed: ignore leftover localStorage from deterministic
-  // experiments so staging QA cannot silently skip MiniMax auto-send.
+  // Teamver embed follows the deployment policy. Local experiments must not
+  // silently switch a production embed back to free-form prompt fill.
   if (typeof window !== 'undefined' && !isTeamverEmbedMode()) {
     try {
       const stored = window.localStorage.getItem('od:template-clone-fill-mode');
@@ -153,7 +162,22 @@ export function shouldUseDeterministicTemplateCloneFill(
   return getTemplateCloneFillMode() === 'deterministic';
 }
 
-/** LOOK seed + AI JSON outline. Explicit `json` only — not the default. */
+/** 루프535 — mark a just-filled deterministic deck for one sparse/observe pass. */
+export function deterministicCloneFilledMetadataFields(): {
+  templateCloneContentFilled: true;
+  templateCloneContentFillPending: false;
+  templateCloneFillMode: 'deterministic';
+  templateCloneSparseCheckPending: true;
+} {
+  return {
+    templateCloneContentFilled: true,
+    templateCloneContentFillPending: false,
+    templateCloneFillMode: 'deterministic',
+    templateCloneSparseCheckPending: true,
+  };
+}
+
+/** AI JSON content outline + deterministic LOOK shell rendering (default). */
 export function shouldUseJsonTemplateCloneFill(): boolean {
   return getTemplateCloneFillMode() === 'json';
 }
@@ -181,6 +205,7 @@ export function shouldSkipCreateAutoSendForDeterministicClone(input: {
     ? (input.metadata as Record<string, unknown>)
     : null;
   if (rec?.templateCloneContentFilled === true) return true;
+  if (rec?.templateCloneContentFillPending === true) return false;
   if (shouldUseDeterministicTemplateCloneFill() && isTemplateCloneHostFillPrompt(input.seed)) {
     return true;
   }
@@ -326,6 +351,11 @@ export function buildTemplateCloneSlotFillRepairPrompt(options?: {
     'Emit ONE JSON outline only this turn — plain or ```json fenced.',
     'Shape: {"title":"...","slides":[{"title":"...","body":"line\\nline","roleHint":"cover|list|cards|timeline|stat|quote|team|process|closing|body"}]}',
     'FORBIDDEN: <!doctype, <html, <head, <style, <section class="slide">, Motif <svg>.',
+    // 루프522 — Mirror templateCloneContentFillHardRules: JSON slot-fill turns
+    // have no artifact wrapper. Some MiniMax retries here try to "patch" the
+    // LOOK seed with `<artifact type="deck-patch"></artifact>` (empty) instead
+    // of returning the JSON outline, which is rejected as `incomplete_output`.
+    'Never emit `<artifact type="deck-patch">` or `<artifact type="element-patch">` — this is a JSON slot-fill turn (no artifact wrapper).',
     'Host slot-fills the LOOK seed. Do not regenerate deck HTML.',
   ];
   const brief = String(options?.userBrief ?? '').trim();
@@ -647,18 +677,89 @@ export function extractTemplateCloneUserFacingRequest(input: {
   return HOME_FILL_SLIDES_PROMPT;
 }
 
-/** Shared hard rules for Clone → first AI content fill (JSON slot-fill, 0901-N02). */
-export function templateCloneContentFillHardRules(): string[] {
+/**
+ * 루프529 — Home create without source material: empty / boilerplate / title-only
+ * briefs that would only produce LOOK-seed fallback after a wasted MiniMax turn.
+ * Canvas/Drive (`hasSourceMaterial`) always return false — source brief anchors fill.
+ */
+export function isGenericTemplateCloneTopicBrief(
+  raw: string | null | undefined,
+  options?: { hasSourceMaterial?: boolean },
+): boolean {
+  if (options?.hasSourceMaterial) return false;
+  const visible = extractTemplateCloneUserFacingRequest({
+    userInstruction: raw,
+    pendingPrompt: raw,
+  }).trim();
+  if (!visible || looksLikeCanvasCreateBoilerplate(visible)) return true;
+  // Align with contracts SYNTH_GENERIC_TITLE_RE — cover-only labels.
+  if (/^(?:슬라이드|deck|slides?|presentation|발표\s*자료|untitled|artifact)$/i.test(visible)) {
+    return true;
+  }
+  // Extractable topic ("expo에 대해서…") → not generic.
+  if (deriveTemplateCloneTopicLabel(visible)) return false;
+  // Host / URL in the brief is enough of a topic for fill.
+  if (/\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\b/i.test(visible)) {
+    return false;
+  }
+  // Short instruction-only shells ("만들어줘", "슬라이드 만들어줘").
+  if (looksLikeInstructionNotSlideCopy(visible) && visible.length <= 24) return true;
+  // Longer free-form with content beyond the verb phrase → keep auto-fill.
+  if (visible.length >= 12) return false;
+  return looksLikeInstructionNotSlideCopy(visible);
+}
+
+const LOOK_SEED_ATTACHED_SOURCE_RE =
+  /attached source materials \(Canvas\/Drive\/files\)/i;
+
+/**
+ * 루프536 — LOOK seed 배너에 N09 generic-brief 문장을 붙일지.
+ * Canvas/Drive 소스나 topical brief에는 붙이지 않는다.
+ */
+export function shouldExplainGenericBriefOnLookSeedFallback(input: {
+  brief?: string | null;
+  userContent?: string | null;
+  attachments?: readonly unknown[] | null;
+}): boolean {
+  const hasSourceMaterial =
+    (Array.isArray(input.attachments) && input.attachments.length > 0)
+    || LOOK_SEED_ATTACHED_SOURCE_RE.test(String(input.userContent ?? ''));
+  return isGenericTemplateCloneTopicBrief(input.brief ?? input.userContent, {
+    hasSourceMaterial,
+  });
+}
+
+/**
+ * Shared hard rules for Clone → first AI content fill (JSON slot-fill, 0901-N02).
+ *
+ * 루프550 — optional `seedShellCount`가 있으면 정량·강제 문구
+ * (`renderSlideCountRequirementInstruction`) 로 slide-count 순응을 못박는다.
+ * null이면 기존 `SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION` fallback (backward-compat).
+ */
+export function templateCloneContentFillHardRules(options: {
+  seedShellCount?: number | null;
+} = {}): string[] {
+  const slideCountRequirement = renderSlideCountRequirementInstruction(
+    options.seedShellCount ?? null,
+  );
   return [
     'Hard rules (READ — JSON slot-fill):',
     '- This is CREATE of real topical content, not a surgical edit. Status tone: "슬라이드 초안 작성 중" — NEVER "수정 반영 중" / "Applying your edits".',
     '- Emit ONE JSON outline only (plain or ```json fenced). The host slot-fills the LOOK seed — do NOT regenerate deck HTML.',
+    '- Never emit `<artifact type="deck-patch">` — this is a JSON slot-fill turn (no artifact).',
     '- Forbidden output: <!doctype, <html, <head, <style, <section class="slide">, Motif <svg>, full example.html rewrite.',
     `- ${SLIDE_DECK_QUALITY_BAR_INSTRUCTION}`,
     `- ${SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION}`,
+    // 루프546은 전체 원복이 아님. unique-slot/topic-lock은 여기 넣지 않는다.
+    // 루프554 — N이 있으면 짧은 정량 한 줄만 (v1.4.15 길이 + EXACTLY N).
+    `- ${slideCountRequirement}`,
     '- Expand THIS turn\'s brief only. Do not copy host-contract examples or the user instruction onto slides.',
     '- JSON shape: {"title":"...","slides":[{"title":"...","kicker":"...","lead":"...","roleHint":"cover|list|cards|timeline|stat|quote|team|process|closing|body","items":[{"title":"...","body":"..."}]}]}',
-    '- Cards / list / stat / process slides MUST use items[] with 2–4 {title, body} slots. lead = section subtitle, not a card. Do not emit title-only cards.',
+    '- Layout variety is mandatory: for 5+ slides use at least 3 distinct body `roleHint` values, and for 8–10 slides use at least 4 when the scaffold map offers them. Do not repeat the same cards/body layout for every page.',
+    '- Pick `roleHint` from the Template scaffold map roles: cover once, then mix list/cards/stat/timeline/quote/process/body/closing according to the brief. Preserve semantic fit, but avoid one-layout decks.',
+    '- Copy density must fill the chosen layout without becoming a label grid: every non-cover, non-closing slide needs a specific 25–60 Korean-character (12–30 English-word) `lead`; each `items[]` entry needs a concrete 25–60 Korean-character (12–30 English-word) `body`. Bare labels (`핵심`, `개념`, `요약`) and title-only cards fail. `stat` slides are excepted only when the metric is sourced and its label explains what the number measures.',
+    '- Brand spelling: keep Latin product/brand spellings from the brief or URL (host-derived; do not phonetic-Hangulize proper nouns).',
+    '- Cards / list / stat / process slides MUST use items[] with 2–4 {title, body} slots. lead = section subtitle, not a card. Every item body must state an actor/action, mechanism, trade-off, example, or observable result; do not emit title-only cards.',
     `- ${FIRST_FILL_SLIDE_COUNT_GUIDANCE} Outline length = requested count this turn (8-10 → 8–10, hard cap 10, never 15/20). Hidden top-up only when the user asked for ${FIRST_FILL_TOP_UP_FROM}+.`,
     '- Treat the daemon Clone seed as the visual baseline the host will keep. You only supply titles/bodies/roleHint.',
     `- If the brief is only a topic, use a default ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}-slide outline (cover, why it matters, key concepts, evidence, next steps, close). Adapt labels to the topic and audience.`,
@@ -667,7 +768,7 @@ export function templateCloneContentFillHardRules(): string[] {
     '- REPLACE every example.html proper noun, table, and metric in your outline text. Hartfield / NorthPeak / Project Atlas / WACC / EBITDA / "Demo-data notice" are forbidden unless the user brief names them.',
     '- Prefer a closed valid JSON outline this turn over Motif/HTML fidelity experiments.',
     '- Honor stated audience/level (e.g. 시니어 개발자 = architecture/internals/trade-offs, not a beginner intro).',
-    '- Each body slide needs a real title plus 2–4 concrete bullet lines or a real paragraph in `body`. No "핵심 메시지를 정리합니다" filler.',
+    '- Each body slide needs a real title plus 2–4 concrete bullet lines or a real paragraph in `body`. Across the deck include problem/context, how it works, concrete workflow/example, constraints or trade-offs, and next action. No "핵심 메시지를 정리합니다" filler.',
   ];
 }
 
@@ -828,6 +929,7 @@ export function buildTemplateCloneContentFillSeed(options: {
   templateTitle?: string | null;
   hasSourceMaterial?: boolean;
   slideCountHint?: string | number | null;
+  seedShellCount?: number | null;
 }): string {
   const visible = extractTemplateCloneUserFacingRequest(options);
   const topic = deriveTemplateCloneTopicLabel(visible);
@@ -853,7 +955,8 @@ export function buildTemplateCloneContentFillSeed(options: {
       : 'Fill REAL presentation CONTENT for this create (user prompt may be empty; invent clear topical copy — do not paste boilerplate leads into titles).',
     'The visible request above is a BRIEF/TOPIC. Expand it into a real presentation with domain knowledge. Do NOT paste the request onto the cover or body slides.',
     topic ? `Cover topic (use as the title — not the instruction): ${topic}.` : '',
-    ...templateCloneContentFillHardRules(),
+    renderSlideCountSeedHeaderHint(options.seedShellCount ?? null) ?? '',
+    ...templateCloneContentFillHardRules({ seedShellCount: options.seedShellCount ?? null }),
     websiteOutline ?? '',
   ].filter((line) => line !== '');
   if (templateTitle) {
@@ -892,6 +995,13 @@ export function buildTemplateClonePromptFillSeed(options: {
   templateTitle?: string | null;
   hasSourceMaterial?: boolean;
   slideCountHint?: string | number | null;
+  /**
+   * 루프550 — LOOK seed에 실제로 존재하는 slide shell 개수. 있으면 정량·강제
+   * slide-count 순응 문구(`renderSlideCountRequirementInstruction`)와 세션
+   * 초입 힌트(`renderSlideCountSeedHeaderHint`)를 emit해 MiniMax가 slide
+   * count를 정확히 맞추도록 유도한다.
+   */
+  seedShellCount?: number | null;
 }): string {
   const visible = extractTemplateCloneUserFacingRequest(options);
   const topic = deriveTemplateCloneTopicLabel(visible);
@@ -914,12 +1024,20 @@ export function buildTemplateClonePromptFillSeed(options: {
       : (options.slideCountHint ?? visibleSlideCount);
   const slideCountHint = normalizeTemplateCloneFillSlideCountHint(slideCountHintSource);
   const requestedLine = formatUserRequestedSlideCountLine(slideCountHintSource);
+  // 루프550 — seed 상단 정량 힌트(있으면).
+  const seedHeaderHint = renderSlideCountSeedHeaderHint(options.seedShellCount ?? null);
+  // 루프550 — hard rules 라인 (정량·강제 slide-count 요구).
+  const slideCountRequirementLine =
+    renderSlideCountRequirementInstruction(options.seedShellCount ?? null);
   const parts = [
     visible,
     '',
     TEMPLATE_CLONE_PROMPT_FILL_MARKER,
+    seedHeaderHint ?? '',
     'A visual deck template was selected. Create ONE complete final deck artifact now.',
+    'Emit slides immediately; do not stop after </head>.',
     'Emit `<artifact type="deck" identifier="deck">` with a complete HTML document and filled slides. Do not emit JSON outline.',
+    'Never emit `<artifact type="deck-patch">` on this create turn — this is a first fill, not a surgical edit. Emit ONE full `<artifact type="deck">` only.',
     'Use the selected template kit in the system prompt as visual authority: palette, typography, motif, layout rhythm, and slide chrome.',
     'Use the cloned `deck.html` only as a look reference. Do not treat it as an existing-deck edit, copy demo placeholders, or paste this host contract onto slides.',
     'Chat status may describe the deck, but the artifact must contain that many `<section class="slide">` (or equivalent slide hosts). Never claim 9 slides while emitting only a cover.',
@@ -927,15 +1045,21 @@ export function buildTemplateClonePromptFillSeed(options: {
     'Every KPI/stat cell must be a complete card (number + label inside one bordered shell). Do not leave bare .stat-number/.stat-label siblings or empty .stat-card shells.',
     'Neo / Block Frame cards (`.nb-card`, `.intro-card`, `.feature-card`): put title AND body text INSIDE the same card element. Never leave description divs as grid siblings of `.nb-card` — that breaks the 3-column layout.',
     'Diagram grids (`1fr auto 1fr`): keep left cluster + arrow + right result only. Put checklists BELOW the diagram grid, not as a fourth grid child.',
-    'Keep kit CSS variables by including the template look (:root --pink/--blue/…). Never emit var(--pink) without defining tokens.',
+    'Reuse LOOK seed :root tokens already on disk. Do not re-emit full kit CSS in <head>. Never emit var(--pink) without defining tokens.',
     'If the kit is neo-brutal Block Frame (hero-frame, .slide-1…N, --pink/--cream), keep that DOM. Do not emit IB magazine chrome (mast, ribbon, h1.display, cover-meta, foot, or 학습 노트).',
-    'Cover title must be a product/brand name (e.g. 팀버 소개), never a raw URL or truncated host crumb like "www.teamver.com 사이".',
+    'Cover title must be a product/brand name derived from the brief or URL host (keep Latin host spelling; do not phonetic-Hangulize). Never leave a raw URL or truncated host crumb like "www.example.com 사이".',
     hasAttachedSource
       ? 'Fill REAL presentation CONTENT for this request and any attached source materials (Canvas/Drive/files). Prefer facts from the source over invented numbers.'
       : 'Fill REAL presentation CONTENT for this create; expand THIS brief with concrete domain knowledge — still do not invent company metrics.',
     'The visible request above is THIS turn\'s brief/topic. Do NOT paste the user instruction, this host contract, or any system-prompt worked example onto the cover or body slides.',
     topic ? `Cover topic (use as the title, not the instruction): ${topic}.` : '',
     SLIDE_DECK_QUALITY_BAR_INSTRUCTION,
+    SLIDE_DECK_LAYOUT_VARIETY_INSTRUCTION,
+    SLIDE_DECK_COPY_DENSITY_INSTRUCTION,
+    // 루프546은 전체 원복이 아님. prompt-fill에 unique-slot/topic-lock 없음.
+    // 루프554 — N이 있으면 seed 상단 힌트만 쓰고 여기 장문 요구는 생략.
+    // 중복 "Return EXACTLY N" + quality 장문이 2장 조기 종료를 유도함.
+    seedHeaderHint ? '' : slideCountRequirementLine,
     requestedLine,
     templateClonePromptFillSlideCountInstruction({ slideCountHint, slideCountHintSource }),
     websiteOutline
@@ -952,6 +1076,43 @@ export function buildTemplateClonePromptFillSeed(options: {
     parts.push('', '[Source brief]', brief);
   }
   return parts.join('\n');
+}
+
+/**
+ * 루프550 — handleSend 시점에 디스크 LOOK seed 개수가 확정되면 fallback 상수를
+ * 정량 문구로 치환한다. Home 큐잉은 clone 전에 seed를 만들어 N을 모를 수 있다.
+ */
+export function applyQuantitativeSlideCountInstruction(
+  prompt: string,
+  seedShellCount: number | null | undefined,
+): string {
+  const next = String(prompt ?? '');
+  if (
+    seedShellCount == null
+    || !Number.isFinite(seedShellCount)
+    || seedShellCount <= 0
+  ) {
+    return next;
+  }
+  const n = Math.max(1, Math.floor(seedShellCount));
+  const requirement = renderSlideCountRequirementInstruction(n);
+  const header = renderSlideCountSeedHeaderHint(n);
+  let out = next;
+  if (out.includes(`Return EXACTLY ${n}`)) {
+    if (header && !out.includes(`Seed contains ${n}`)) {
+      out = `${header}\n${out}`;
+    }
+    return out;
+  }
+  if (out.includes(SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION)) {
+    out = out.replace(SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION, requirement);
+  } else if (!out.includes(requirement)) {
+    out = `${out.trim()}\n${requirement}`;
+  }
+  if (header && !out.includes(`Seed contains ${n}`)) {
+    out = `${header}\n${out}`;
+  }
+  return out;
 }
 
 const CANVAS_CREATE_DELIVERABLE_DUMP_RE =

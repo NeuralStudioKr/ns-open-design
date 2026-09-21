@@ -9,14 +9,14 @@
 //   - `refundTeamverBillingFromDaemon` runs on `failed` / `canceled`.
 //
 // Env knobs:
-//   - `TEAMVER_BILLING_DISABLED=1`        — kill switch, all calls no-op.
+//   - `TEAMVER_BILLING_DISABLED`          — kill switch (1/true/yes/on), all calls no-op.
 //   - `TEAMVER_BILLING_RESERVE_AMOUNT=N`  — fallback amount when caller
 //     passes amount==0 (positive int; invalid/NaN/non-positive skips billing).
 //   - `TEAMVER_BILLING_TIMEOUT_MS=ms`     — override HTTP timeout
 //     (clamped to 100..30000; default 5000).
 //
 // The bridge stays a no-op (returns `ok=true, usageId=null, skipped=true`) when:
-//   - `TEAMVER_BILLING_DISABLED=1`, or
+//   - `TEAMVER_BILLING_DISABLED` is truthy (1/true/yes/on — mirrors BE `_env_bool`), or
 //   - `TEAMVER_DESIGN_API_URL` is unset (standalone OD), or
 //   - `TEAMVER_INTERNAL_API_KEY` is unset, or
 //   - the design-api orchestrator skipped reserve because registry creds
@@ -51,8 +51,10 @@ function teamverInternalApiKey(): string | null {
   return key || null;
 }
 
+/** Mirrors design-api ``_env_bool("TEAMVER_BILLING_DISABLED")``. */
 function billingDisabledByKillSwitch(): boolean {
-  return (process.env.TEAMVER_BILLING_DISABLED ?? '').trim() === '1';
+  const v = (process.env.TEAMVER_BILLING_DISABLED ?? '').trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes' || v === 'on';
 }
 
 export function teamverBillingDisabled(): boolean {
@@ -150,6 +152,7 @@ export type ResolveTeamverBillingReserveAmountResult = {
 
 export async function resolveTeamverBillingReserveAmountFromDaemon(args: {
   modelName?: string | null;
+  workspaceId?: string | null;
 }): Promise<ResolveTeamverBillingReserveAmountResult> {
   const env = billingEnv();
   if (!env) {
@@ -157,6 +160,7 @@ export async function resolveTeamverBillingReserveAmountFromDaemon(args: {
   }
 
   const modelName = (args.modelName ?? '').trim() || 'default';
+  const workspaceId = (args.workspaceId ?? '').trim();
   const envFallback = reserveAmountEnvFallback();
 
   const finish = (
@@ -178,7 +182,7 @@ export async function resolveTeamverBillingReserveAmountFromDaemon(args: {
     }>(
       `${env.baseUrl}/api/internal/billing/estimate-reserve`,
       env.apiKey,
-      { model_name: modelName },
+      { model_name: modelName, ...(workspaceId ? { workspace_id: workspaceId } : {}) },
       billingTimeoutMs(),
     );
     if (status !== 200 || !payload) {
@@ -277,6 +281,15 @@ async function postLifecycle(
   body: { usage_id: string; reason?: string },
   context: { runId: string; usageId: string },
 ): Promise<boolean> {
+  // Kill switch with a real usage_id must NOT report success — callers would
+  // stamp ledger `committed`/`refunded` while Registry still holds reserved.
+  if (billingDisabledByKillSwitch()) {
+    emitUsage5xxMarker(`billing.${endpoint}_disabled_orphan`, {
+      runId: context.runId,
+      usageId: context.usageId,
+    });
+    return false;
+  }
   const env = billingEnv();
   if (!env) return true;
   try {

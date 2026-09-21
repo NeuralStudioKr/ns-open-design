@@ -499,10 +499,11 @@ export function applyScopedDeckPatchToHtml(input: {
   /** Pre-materialized current sections from persist reconcile — skip rematerialize. */
   currentSlides?: readonly { outerHtml: string; openTag: string }[];
 }): DeckPatchMergeResult {
+  const allowedSlideIndexes = resolveDeckPatchAllowedSlideIndexesFromInput(input);
   const parsed = input.patch
     ? { ok: true as const, patch: input.patch }
     : parseDeckPatchWithSalvage(input.patchBody ?? '', {
-        fallbackSlideIndexes: input.allowedSlideIndexes,
+        fallbackSlideIndexes: allowedSlideIndexes,
         currentHtml: input.currentHtml,
       });
   if (!parsed.ok) {
@@ -517,7 +518,7 @@ export function applyScopedDeckPatchToHtml(input: {
       : null);
   const patchForScope = coerceDeckPatchToAllowedScope(
     parsed.patch,
-    input.allowedSlideIndexes,
+    allowedSlideIndexes,
     currentHtml,
     input.commentAttachments,
     sharedCurrentSlides,
@@ -525,13 +526,13 @@ export function applyScopedDeckPatchToHtml(input: {
   const strictScopeApply = applyDeckPatch({
     currentHtml,
     patch: patchForScope,
-    allowedSlideIndexes: input.allowedSlideIndexes,
+    allowedSlideIndexes,
   });
   let merged = strictScopeApply;
   let mergedScopeRelaxed = false;
   if (
     !strictScopeApply.ok &&
-    input.allowedSlideIndexes &&
+    allowedSlideIndexes &&
     input.commentAttachments?.length &&
     scopeRejectionCanRetry(strictScopeApply.reason)
   ) {
@@ -542,7 +543,7 @@ export function applyScopedDeckPatchToHtml(input: {
     if (relaxed.ok) {
       devLog.warn('[deck-patch] strict scope apply rejected — retrying without scope guard', {
         strictReason: strictScopeApply.reason,
-        allowedSlideIndexes: input.allowedSlideIndexes,
+        allowedSlideIndexes,
       });
       merged = relaxed;
       mergedScopeRelaxed = true;
@@ -555,7 +556,7 @@ export function applyScopedDeckPatchToHtml(input: {
   const sharedPatchedSlides = input.commentAttachments?.length
     ? extractTopLevelSlideSections(extractDeckBodyContent(merged.html))
     : undefined;
-  if (input.allowedSlideIndexes && input.commentAttachments?.length) {
+  if (allowedSlideIndexes && input.commentAttachments?.length) {
     const scoped = mergeScopedCommentTargetsFromPatchedDeck({
       currentHtml,
       patchedHtml: merged.html,
@@ -580,7 +581,7 @@ export function applyScopedDeckPatchToHtml(input: {
     }
     if (mergedScopeRelaxed) {
       devLog.warn('[deck-patch] scope-relaxed apply produced no narrowed match — rejecting', {
-        allowedSlideIndexes: input.allowedSlideIndexes,
+        allowedSlideIndexes,
       });
       return {
         ok: false,
@@ -598,6 +599,20 @@ export function applyScopedDeckPatchToHtml(input: {
     currentSlides: sharedCurrentSlides ?? undefined,
     mergedSlides: sharedPatchedSlides,
   });
+}
+
+function resolveDeckPatchAllowedSlideIndexesFromInput(input: {
+  allowedSlideIndexes?: readonly number[];
+  commentAttachments?: readonly ChatCommentAttachment[];
+}): number[] | undefined {
+  const explicit = input.allowedSlideIndexes
+    ?.filter((index) => Number.isInteger(index) && index >= 0)
+    .map((index) => Math.floor(index));
+  const uniqueExplicit = explicit ? [...new Set(explicit)] : [];
+  if (uniqueExplicit.length > 0) return uniqueExplicit;
+  return input.commentAttachments?.length
+    ? scopedCommentSlideIndexesFromAttachments(input.commentAttachments)
+    : undefined;
 }
 
 /**

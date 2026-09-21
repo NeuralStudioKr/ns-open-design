@@ -3010,9 +3010,57 @@ html[data-od-compact-stacked] .keyboard-hint {
     }
     return out;
   }
+  function sortSlidesByDocumentOrder(list) {
+    list.sort(function(a, b) {
+      if (a === b) return 0;
+      var pos = a.compareDocumentPosition(b);
+      if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+      if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+      return 0;
+    });
+    return list;
+  }
+  // Body-direct pages from a broken extra </div> must not hide an earlier
+  // cover that stayed inside .presentation / .deck. Those shells are still
+  // slide hosts (Capsule / opacity-stack). Leaving the cover out makes go(0)
+  // paint the next page while the cover stays opacity 0 off the stage.
+  function shellSlidesMissingFrom(list) {
+    var seen = typeof Set === 'function' ? new Set(list) : null;
+    function has(el) {
+      if (seen) return seen.has(el);
+      for (var i = 0; i < list.length; i++) if (list[i] === el) return true;
+      return false;
+    }
+    var shells = document.querySelectorAll('.presentation, .deck, .deck-shell');
+    var extra = [];
+    for (var s = 0; s < shells.length; s++) {
+      var shell = shells[s];
+      if (!shell || shell.id === 'od-stacked-deck-stage') continue;
+      var kids = shell.children;
+      for (var c = 0; c < kids.length; c++) {
+        var el = kids[c];
+        if (!isStackedSlideCandidate(el) || has(el)) continue;
+        var insideCollected = false;
+        for (var i = 0; i < list.length; i++) {
+          if (list[i] !== el && list[i].contains && list[i].contains(el)) {
+            insideCollected = true;
+            break;
+          }
+        }
+        if (insideCollected) continue;
+        extra.push(el);
+        if (seen) seen.add(el);
+      }
+    }
+    return extra;
+  }
   function stackedSlideNodes() {
     var direct = document.querySelectorAll('body > .slide, body > .deck-slide, body > .ppt-slide, body > [data-screen-label]');
-    if (direct.length) return direct;
+    if (direct.length) {
+      var extra = shellSlidesMissingFrom(direct);
+      if (!extra.length) return direct;
+      return sortSlidesByDocumentOrder(Array.prototype.slice.call(direct).concat(extra));
+    }
     if (!document.body) return direct;
     var children = document.body.children;
     for (var i = 0; i < children.length; i++) {
@@ -3417,12 +3465,60 @@ html[data-od-compact-stacked] .keyboard-hint {
   function slides(){
     // Structured selectors first so decorative .slide markup in non-deck
     // pages (icons, badges, code samples) is not counted as deck slides;
-    // fall back to all .slide only when nothing structured matched, so
-    // freeform decks that nest slides under an extra wrapper still report
-    // the real count instead of leaving the host counter at 1 / 0.
-    var structured = document.querySelectorAll('.deck > .slide, .deck > [data-screen-label], .deck #stage > .slide, .deck .stage > .slide, .deck-stage > .slide, .deck-stage > [data-screen-label], deck-stage > .slide, deck-stage > [data-screen-label], .deck-shell > .slide, .deck-shell > [data-screen-label], #od-stacked-deck-stage > .slide, #od-stacked-deck-stage > [data-screen-label], #stage > .slide, .stage > .slide, #slides > .slide, #slidesContainer > .slide, .slides-container > .slide, body > .slide, body > .deck-slide, body > .ppt-slide, body > [data-screen-label]');
-    if (structured.length) return structured;
-    return document.querySelectorAll('.slide, .deck-slide, .ppt-slide, [data-screen-label]');
+    // fall back to all .slide when nothing structured matched (#1530).
+    // When structured matches some but not all real slides (0914-N03 —
+    // e.g. nine direct .deck children plus one nested under a wrapper),
+    // merge in the missed deck-rooted slides so the host pager matches
+    // the filmstrip HTML section count instead of locking at N/N with
+    // next disabled.
+    var all = document.querySelectorAll('.slide, .deck-slide, .ppt-slide, [data-screen-label]');
+    var structured = document.querySelectorAll('.deck > .slide, .deck > [data-screen-label], .presentation > .slide, .presentation > [data-screen-label], .deck #stage > .slide, .deck .stage > .slide, .deck-stage > .slide, .deck-stage > [data-screen-label], deck-stage > .slide, deck-stage > [data-screen-label], .deck-shell > .slide, .deck-shell > [data-screen-label], #od-stacked-deck-stage > .slide, #od-stacked-deck-stage > [data-screen-label], #stage > .slide, .stage > .slide, #slides > .slide, #slidesContainer > .slide, .slides-container > .slide, body > .slide, body > .deck-slide, body > .ppt-slide, body > [data-screen-label]');
+    if (!structured.length) return all;
+    if (all.length <= structured.length) return structured;
+    var deckRootSel = '.deck, .presentation, .deck-stage, deck-stage, .deck-shell, #od-stacked-deck-stage, #stage, .stage, #slides, #slidesContainer, .slides-container';
+    var seen = typeof Set === 'function' ? new Set(structured) : null;
+    var merged = Array.prototype.slice.call(structured);
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      if (seen) { if (seen.has(el)) continue; }
+      else {
+        var already = false;
+        for (var s = 0; s < structured.length; s++) {
+          if (structured[s] === el) { already = true; break; }
+        }
+        if (already) continue;
+      }
+      var underDeck = false;
+      try {
+        underDeck = !!(el.closest && el.closest(deckRootSel));
+      } catch (_) { underDeck = false; }
+      if (!underDeck) {
+        // Body-direct decks (no .deck root): still merge nested body descendants
+        // missed by body > .slide so filmstrip HTML count can match.
+        try {
+          if (!document.querySelector(deckRootSel) && document.body && document.body.contains(el)) {
+            underDeck = true;
+          }
+        } catch (_) {}
+      }
+      if (!underDeck) continue;
+      var decorative = false;
+      try {
+        decorative = !!(el.closest && el.closest('header, nav, footer, aside'));
+      } catch (_) { decorative = false; }
+      if (decorative) continue;
+      merged.push(el);
+      if (seen) seen.add(el);
+    }
+    if (merged.length <= structured.length) return structured;
+    merged.sort(function(a, b) {
+      if (a === b) return 0;
+      var pos = a.compareDocumentPosition(b);
+      if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+      if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+      return 0;
+    });
+    return merged;
   }
   function scrollOverflow(el){
     if (!el) return 0;

@@ -12,8 +12,15 @@ import {
   SPARSE_CONTENT_TOP_UP_PROMPT_SENTINEL,
   THIN_PRIOR_FULL_REWRITE_ENTRY_FROM,
   formatSoftImprovementTurnFailureNotice,
+  isEmptyDeckPatchPersistRejection,
   isSoftImprovementAutomationEntryFrom,
   isSoftImprovementAutomationPrompt,
+  shouldSoftCancelEmptyDeckPatchPersist,
+  formatSlideAutomationBusyDropNotice,
+  formatThinPriorRewriteExhaustedNotice,
+  formatSlideAutomationWorkingLabel,
+  resolveSlideAutomationPhaseFromUserPrompt,
+  slideCountTopUpMaxForConversation,
   buildSlideCountTopUpPrompt,
   buildSparseContentTopUpPrompt,
   buildThinPriorFullRewritePrompt,
@@ -21,6 +28,7 @@ import {
   countSparseContentTopUpAttemptsInConversation,
   isSparseContentTopUpPrompt,
   shouldQueueSparseContentTopUp,
+  shouldQueueSlideCountTopUp,
   slideCountTopUpAppendUntil,
   isSlideCountTopUpPrompt,
   isThinPriorFullRewritePrompt,
@@ -30,13 +38,15 @@ import {
   looksLikeSlideCountExpansionRequest,
   parseSlideCountSpec,
   parseSlideCountTarget,
-  shouldQueueSlideCountTopUp,
   shouldQueueThinPriorFullRewrite,
   honorSlideCountCeiling,
   honorSlideCountCeilingFromMessages,
   applyHonorSlideCeilingToHtml,
   THIN_PRIOR_FULL_REWRITE_PROMPT_SENTINEL,
   shouldBlockSlideCountAppendOntoThinPrior,
+  shouldRunDeterministicSparseCheck,
+  deterministicSparseCheckSessionKey,
+  claimDeterministicSparseCheck,
 } from "../../src/teamver/slideCountTopUp";
 
 function userMessage(id: string, content: string): ChatMessage {
@@ -411,6 +421,11 @@ describe("slideCountTopUp", () => {
     expect(buildSlideCountTopUpPrompt({ produced: 3, requested: 6 })).not.toContain(
       "Stopping after 3 new slides is a failure",
     );
+    // 루프522 — top-up must not open a deck-patch wrapper (empty wrappers on
+    // unscoped runs are rejected as `incomplete_output`).
+    expect(buildSlideCountTopUpPrompt({ produced: 1, requested: 6 })).toContain(
+      'Do NOT open `<artifact type="deck-patch">` on this top-up',
+    );
   });
 
   it("finishes a 5-6 short miss in one honored top-up and does not add a 6th page at 5", () => {
@@ -560,6 +575,7 @@ describe("slideCountTopUp", () => {
     expect(prompt).toMatch(/REWRITE the entire deck/i);
     expect(prompt).toMatch(/emit exactly 8 slides/i);
     expect(prompt).toMatch(/NEVER copy host protocol tokens/i);
+    expect(prompt).toMatch(/Never emit `<artifact type="deck-patch">` on this rewrite turn/);
     const ranged = buildThinPriorFullRewritePrompt({
       hostCount: 4,
       requested: 10,
@@ -594,6 +610,42 @@ describe("slideCountTopUp", () => {
       topUpCount: 0,
       thinPrior: false,
     })).toBe(true);
+  });
+
+  it("runs a deterministic sparse check only once on a filled pending deck (루프535)", () => {
+    expect(deterministicSparseCheckSessionKey(" proj-1 ")).toBe(
+      "od:deterministic-sparse-check:proj-1",
+    );
+    expect(shouldRunDeterministicSparseCheck({
+      sparseCheckPending: true,
+      fillMode: "deterministic",
+      contentFilled: true,
+      contentFillPending: false,
+    })).toBe(true);
+    expect(shouldRunDeterministicSparseCheck({
+      sparseCheckPending: false,
+      fillMode: "deterministic",
+      contentFilled: true,
+    })).toBe(false);
+    expect(shouldRunDeterministicSparseCheck({
+      sparseCheckPending: true,
+      fillMode: "prompt",
+      contentFilled: true,
+    })).toBe(false);
+    expect(shouldRunDeterministicSparseCheck({
+      sparseCheckPending: true,
+      fillMode: "deterministic",
+      contentFilled: false,
+    })).toBe(false);
+    expect(shouldRunDeterministicSparseCheck({
+      sparseCheckPending: true,
+      fillMode: "deterministic",
+      contentFilled: true,
+      contentFillPending: true,
+    })).toBe(false);
+    expect(claimDeterministicSparseCheck("n20-claim-a")).toBe(true);
+    expect(claimDeterministicSparseCheck("n20-claim-a")).toBe(false);
+    expect(claimDeterministicSparseCheck("n20-claim-b")).toBe(true);
   });
 
   it("queues a sparse-content repair only for a real deck with named gaps (루프480)", () => {
@@ -631,6 +683,7 @@ describe("slideCountTopUp", () => {
     // 루프481 — patch only the named slides; a full deck re-emit is what stalled.
     expect(prompt).toMatch(/type="deck-patch"/);
     expect(prompt).toMatch(/Do NOT emit `<artifact type="deck">`/);
+    expect(prompt).toMatch(/empty `<artifact type="deck-patch"><\/artifact>` will be rejected/);
     expect(prompt).not.toMatch(/Re-emit the FULL deck/i);
     expect(prompt).toMatch(/N = 2, 6/);
 
@@ -639,6 +692,20 @@ describe("slideCountTopUp", () => {
       { id: "a1", role: "assistant", content: "ok" } as ChatMessage,
     ];
     expect(countSparseContentTopUpAttemptsInConversation(messages)).toBe(1);
+  });
+
+  it("asks for substantive copy on demo-caption density card rows (루프555)", () => {
+    const prompt = buildSparseContentTopUpPrompt([
+      {
+        slideIndex: 1,
+        reason: "low_density_card_row",
+        detail: "3 cards / 31 body chars: 탐색, 실행, 확장",
+      },
+    ]);
+    expect(prompt).toMatch(/card row is only demo-caption density/);
+    expect(prompt).toMatch(/Expand EVERY card/);
+    expect(prompt).toMatch(/35–90 visible characters/);
+    expect(prompt).toMatch(/data-slide-index="1"/);
   });
 
   it("treats sparse repair as soft-improvement; slide-count top-up failure is real (루프503)", () => {
@@ -659,5 +726,101 @@ describe("slideCountTopUp", () => {
       buildSlideCountTopUpPrompt({ produced: 4, requested: 10 }),
     )).toBe(false);
     expect(formatSoftImprovementTurnFailureNotice()).toMatch(/그대로 유지/);
+    expect(formatSlideAutomationBusyDropNotice("rewrite")).toMatch(/후속 생성/);
+    expect(formatSlideAutomationBusyDropNotice("top_up")).toMatch(/장수/);
+    expect(formatThinPriorRewriteExhaustedNotice()).toMatch(/본문이 비어/);
+  });
+
+  it("soft-cancels only sparse-repair empty deck-patch persist (루프521)", () => {
+    const emptyPatchReason =
+      "The model emitted an empty deck-patch artifact on a run without a scoped comment target. Retry with a clearer request or use full deck generation.";
+    expect(isEmptyDeckPatchPersistRejection(emptyPatchReason)).toBe(true);
+    expect(isEmptyDeckPatchPersistRejection("incomplete html document")).toBe(false);
+    expect(isEmptyDeckPatchPersistRejection("")).toBe(false);
+
+    const sparsePrompt = buildSparseContentTopUpPrompt([
+      { slideIndex: 1, reason: "title_only_card", detail: "Pro" },
+    ]);
+    expect(shouldSoftCancelEmptyDeckPatchPersist({
+      persistKind: "rejected",
+      persistReason: emptyPatchReason,
+      entryFrom: SPARSE_CONTENT_TOP_UP_ENTRY_FROM,
+      userContent: sparsePrompt,
+    })).toBe(true);
+    expect(shouldSoftCancelEmptyDeckPatchPersist({
+      persistKind: "rejected",
+      persistReason: emptyPatchReason,
+      userContent: sparsePrompt,
+    })).toBe(true);
+    expect(shouldSoftCancelEmptyDeckPatchPersist({
+      persistKind: "rejected",
+      persistReason: emptyPatchReason,
+      entryFrom: "chat_composer",
+      userContent: "표지 제목만 바꿔줘",
+    })).toBe(false);
+    expect(shouldSoftCancelEmptyDeckPatchPersist({
+      persistKind: "rejected",
+      persistReason: emptyPatchReason,
+      entryFrom: SLIDE_COUNT_TOP_UP_ENTRY_FROM,
+      userContent: buildSlideCountTopUpPrompt({ produced: 4, requested: 10 }),
+    })).toBe(false);
+    expect(shouldSoftCancelEmptyDeckPatchPersist({
+      persistKind: "rejected",
+      persistReason: emptyPatchReason,
+      entryFrom: THIN_PRIOR_FULL_REWRITE_ENTRY_FROM,
+      userContent: buildThinPriorFullRewritePrompt({ hostCount: 9, requested: 8 }),
+    })).toBe(false);
+    expect(shouldSoftCancelEmptyDeckPatchPersist({
+      persistKind: "skipped-incomplete",
+      persistReason: emptyPatchReason,
+      entryFrom: SPARSE_CONTENT_TOP_UP_ENTRY_FROM,
+    })).toBe(false);
+  });
+
+  it("caps slide-count top-up after a thin rewrite (루프508)", () => {
+    expect(slideCountTopUpMaxForConversation(0)).toBe(2);
+    expect(slideCountTopUpMaxForConversation(1)).toBe(1);
+    expect(
+      shouldQueueSlideCountTopUp({
+        produced: 4,
+        requested: 10,
+        requestedMin: 8,
+        topUpCount: 0,
+        rewriteCount: 1,
+      }),
+    ).toBe(true);
+    expect(
+      shouldQueueSlideCountTopUp({
+        produced: 6,
+        requested: 10,
+        requestedMin: 8,
+        topUpCount: 1,
+        rewriteCount: 1,
+      }),
+    ).toBe(false);
+    expect(
+      shouldQueueSlideCountTopUp({
+        produced: 4,
+        requested: 10,
+        requestedMin: 8,
+        topUpCount: 1,
+        rewriteCount: 0,
+      }),
+    ).toBe(true);
+  });
+
+  it("resolves Working phase labels for hidden automation (루프508)", () => {
+    expect(resolveSlideAutomationPhaseFromUserPrompt(
+      buildThinPriorFullRewritePrompt({ hostCount: 9, requested: 8 }),
+    )).toBe("rewrite");
+    expect(resolveSlideAutomationPhaseFromUserPrompt(
+      buildSlideCountTopUpPrompt({ produced: 4, requested: 10 }),
+    )).toBe("top_up");
+    expect(resolveSlideAutomationPhaseFromUserPrompt(
+      buildSparseContentTopUpPrompt([{ slideIndex: 1, reason: "title_only_card", detail: "Pro" }]),
+    )).toBe("sparse_repair");
+    expect(formatSlideAutomationWorkingLabel("rewrite")).toMatch(/본문/);
+    expect(formatSlideAutomationWorkingLabel("top_up")).toMatch(/장수/);
+    expect(formatSlideAutomationWorkingLabel("sparse_repair")).toMatch(/보완/);
   });
 });

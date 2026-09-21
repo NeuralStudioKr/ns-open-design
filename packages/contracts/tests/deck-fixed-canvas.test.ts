@@ -765,6 +765,18 @@ describe('pinDeckSlidesToFixedCanvas', () => {
     expect(pinned).not.toMatch(/data-od-slide-flow[^>]*padding:80px/);
     expect(pinned).not.toMatch(/data-od-slide-flow[^>]*justify-content:center/);
   });
+
+  it('0918-N03 — body/content stretch while Block Frame hero remains intrinsic', () => {
+    const html = '<!doctype html><html><body><section class="slide"><div class="slide-body">Copy</div></section></body></html>';
+    const pinned = pinDeckSlidesToFixedCanvas(html);
+    // 루프536 — .slide-body stretch inside flow wrapper.
+    expect(pinned).toMatch(/\.slide\s*>\s*\[data-od-slide-flow\]\s*>\s*\.slide-body[\s\S]*?flex:\s*1\s*1\s*auto\s*!important/);
+    // 루프541 — .slide-content stretch (8-Bit Orbit hero + body slides).
+    expect(pinned).toMatch(/\.slide\s*>\s*\[data-od-slide-flow\]\s*>\s*\.slide-content[\s\S]*?flex:\s*1\s*1\s*auto\s*!important/);
+    // Block Frame cover is a centered bordered panel, not a full-height body.
+    expect(pinned).toMatch(/\.slide\s*>\s*\[data-od-slide-flow\]\s*>\s*\.hero-frame[\s\S]*?flex:\s*0\s*1\s*auto\s*!important/);
+    expect(pinned).toMatch(/\.hero-frame[\s\S]*?height:\s*auto\s*!important/);
+  });
 });
 
 describe('deck slide class tokens', () => {

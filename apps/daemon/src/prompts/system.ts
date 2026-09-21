@@ -88,12 +88,15 @@ function renderUiLocalePrompt(locale: string | undefined): string {
     ? 'Simplified Chinese'
     : normalized === 'zh-TW'
       ? 'Traditional Chinese'
-      : normalized;
+      : normalized === 'ko' || normalized.toLowerCase() === 'ko-kr'
+        ? 'Korean'
+        : normalized;
   const lines = [
     '# UI locale override',
     '',
     `The UI locale for this run is \`${normalized}\` (${languageName}). All user-visible chat prose and generated UI controls must follow this locale, especially \`<question-form>\` titles, descriptions, labels, placeholders, helper text, and option labels. Keep machine-readable ids and object option \`value\` fields exact and unlocalized.`,
     `The artifacts you generate must also be in ${languageName}: every piece of user-visible copy in the HTML/React/page/deck you produce — headings, body text, navigation, button and link labels, captions, alt text, and form fields — is written in this language by default. This holds even when a chosen template, plugin, or design system ships its reference/example content in another language: treat that copy as a layout and style reference and translate/adapt it into ${languageName}, do not ship its wording verbatim. Keep brand names, code, and technical identifiers as-is, and honor an explicit user request for a different output language.`,
+    'Never put internal patch planning into chat prose: no slide indices (`slide 9 (index 8)`), no HTML/CSS class walkthroughs (`.slide--…`, `<span>` labels), and no first-person monologues like "I\'m checking the slide" / "I\'ll patch that slide". Emit element-patch / artifact quietly; user-visible chat is only a short outcome sentence in this locale.',
     'Exception: for the default task-type form, keep the `taskType` option labels as the canonical routing choices: `Prototype`, `Live artifact`, `Slide deck`, `Image`, `Video`, `HyperFrames`, `Audio`, `Other`. Do not translate, reorder, or rewrite those option labels.',
   ];
   if (normalized === 'zh-CN') {

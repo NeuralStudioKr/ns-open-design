@@ -1,0 +1,1279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teamver 소개</title>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;600;700&display=swap');
+
+        :root {
+            --coral: #E85D5D;
+            --coral-dark: #D44A4A;
+            --cream: #F5F0E8;
+            --cream-dark: #E8E0D4;
+            --black: #1A1A1A;
+            --gray: #6B6B6B;
+            --light-gray: #B0B0B0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            background: var(--black);
+            color: var(--black);
+        }
+
+        .presentation {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        .slide {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.6s ease, visibility 0.6s ease;
+            overflow: hidden;
+        }
+
+        .slide.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        /* Navigation */
+        .nav-dots {
+            position: fixed;
+            right: 24px;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .nav-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.3);
+            border: 2px solid rgba(255,255,255,0.5);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .nav-dot.active {
+            background: var(--coral);
+            border-color: var(--coral);
+        }
+
+        .nav-dot.dark {
+            background: rgba(26,26,26,0.2);
+            border-color: rgba(26,26,26,0.4);
+        }
+
+        .nav-dot.dark.active {
+            background: var(--coral);
+            border-color: var(--coral);
+        }
+
+        .slide-counter {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 1000;
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 18px;
+            letter-spacing: 2px;
+            color: rgba(255,255,255,0.6);
+        }
+
+        .slide-counter.dark {
+            color: rgba(26,26,26,0.5);
+        }
+
+        /* Arrow Navigation */
+        .nav-arrows {
+            position: fixed;
+            bottom: 24px;
+            left: 24px;
+            z-index: 1000;
+            display: flex;
+            gap: 16px;
+        }
+
+        .nav-arrow {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.3);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 18px;
+        }
+
+        .nav-arrow:hover {
+            background: var(--coral);
+            border-color: var(--coral);
+        }
+
+        .nav-arrow.dark {
+            background: rgba(26,26,26,0.05);
+            border-color: rgba(26,26,26,0.2);
+            color: var(--black);
+        }
+
+        .nav-arrow.dark:hover {
+            background: var(--coral);
+            border-color: var(--coral);
+            color: white;
+        }
+
+        /* ===== SLIDE 1: TITLE / COVER ===== */
+        .slide-1 {
+            display: grid;
+            grid-template-rows: 32% 68%;
+        }
+
+        .slide-1 .top-section {
+            background: var(--coral);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: flex-start;
+            justify-content: flex-start;
+            padding: clamp(24px, 43.2px, 48px) clamp(40px, 153.6px, 100px);
+        }
+
+        .slide-1 .zigzag-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .slide-1 .zigzag-layer svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .slide-1 .brand-mark {
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 4px;
+            color: var(--black);
+            position: relative;
+            z-index: 2;
+            opacity: 0.7;
+        }
+
+        .slide-1 .bottom-section {
+            background: var(--cream);
+            padding: clamp(28px, 48.6px, 60px) clamp(40px, 153.6px, 100px) clamp(24px, 37.8px, 44px);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            position: relative;
+            min-height: 0;
+        }
+
+        .slide-1 .main-title {
+            font-family: 'Bebas Neue', sans-serif;
+            /* Cap by both viewport WIDTH and HEIGHT so the 3-line title
+               can never grow taller than the bottom-section can hold.
+               Without the vh cap the title overflows on short laptops. */
+            font-size: min(120px, 172.8px, 140.4px);
+            color: var(--black);
+            line-height: 0.9;
+            letter-spacing: 4px;
+        }
+
+        .slide-1 .title-rule {
+            width: 100%;
+            height: 3px;
+            background: var(--black);
+            margin-top: clamp(16px, 27px, 32px);
+            opacity: 0.15;
+        }
+
+        .slide-1 .meta-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-top: auto;
+            padding-top: clamp(16px, 27px, 32px);
+        }
+
+        .slide-1 .meta-left {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .slide-1 .meta-right {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 2px;
+        }
+
+        .slide-1 .meta-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: var(--gray);
+        }
+
+        .slide-1 .meta-value {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: min(44px, 67.2px, 59.4px);
+            color: var(--black);
+            letter-spacing: 2px;
+            line-height: 1;
+        }
+
+        .slide-1 .meta-date {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: min(38px, 57.6px, 51.84px);
+            color: var(--black);
+            letter-spacing: 2px;
+            line-height: 1;
+        }
+
+        /* ===== SLIDE 2: INTRODUCTION ===== */
+        .slide-2 {
+            background: var(--cream);
+            display: flex;
+            flex-direction: column;
+            padding: clamp(40px, 64.8px, 80px) clamp(40px, 153.6px, 100px);
+        }
+
+        .slide-2 .section-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            color: var(--coral);
+            margin-bottom: 24px;
+        }
+
+        .slide-2 .big-statement {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: clamp(42px, 134.4px, 100px);
+            color: var(--black);
+            line-height: 1.0;
+            letter-spacing: 2px;
+            max-width: 90%;
+            margin-bottom: 32px;
+        }
+
+        .slide-2 .body-text {
+            font-family: 'Inter', sans-serif;
+            font-size: clamp(15px, 26.88px, 20px);
+            line-height: 1.7;
+            color: var(--gray);
+            max-width: 600px;
+        }
+
+        .slide-2 .accent-line {
+            width: 80px;
+            height: 4px;
+            background: var(--coral);
+            margin-top: auto;
+        }
+
+        /* ===== SLIDE 3: TWO COLUMN ===== */
+        .slide-3 {
+            background: var(--black);
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .slide-3 .left-col {
+            background: var(--coral);
+            padding: clamp(40px, 64.8px, 80px) clamp(32px, 76.8px, 60px);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .slide-3 .left-col::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -30%;
+            width: 80%;
+            height: 200%;
+            background: repeating-linear-gradient(
+                45deg,
+                transparent,
+                transparent 20px,
+                rgba(0,0,0,0.06) 20px,
+                rgba(0,0,0,0.06) 40px
+            );
+        }
+
+        .slide-3 .left-col .number {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: clamp(100px, 288px, 200px);
+            color: rgba(0,0,0,0.12);
+            line-height: 1;
+            position: relative;
+        }
+
+        .slide-3 .left-col .col-title {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: clamp(36px, 96px, 72px);
+            color: var(--black);
+            line-height: 1;
+            letter-spacing: 2px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .slide-3 .right-col {
+            padding: clamp(40px, 64.8px, 80px) clamp(32px, 76.8px, 60px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .slide-3 .right-col .item {
+            margin-bottom: 28px;
+        }
+
+        .slide-3 .right-col .item:last-child {
+            margin-bottom: 0;
+        }
+
+        .slide-3 .right-col .item-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: var(--coral);
+            margin-bottom: 8px;
+        }
+
+        .slide-3 .right-col .item-text {
+            font-family: 'Inter', sans-serif;
+            font-size: clamp(14px, 23.04px, 18px);
+            color: var(--cream);
+            line-height: 1.6;
+        }
+
+        /* ===== SLIDE 4: CHART / DATA ===== */
+        .slide-4 {
+            background: var(--cream);
+            display: flex;
+            flex-direction: column;
+            padding: clamp(40px, 64.8px, 80px) clamp(40px, 153.6px, 100px);
+        }
+
+        .slide-4 .slide-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 40px;
+        }
+
+        .slide-4 .header-left .section-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            color: var(--coral);
+            margin-bottom: 12px;
+        }
+
+        .slide-4 .header-left .slide-title {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: clamp(40px, 115.2px, 80px);
+            color: var(--black);
+            line-height: 1;
+            letter-spacing: 2px;
+        }
+
+        .slide-4 .header-right {
+            text-align: right;
+        }
+
+        .slide-4 .stat-number {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: clamp(48px, 134.4px, 96px);
+            color: var(--coral);
+            line-height: 1;
+        }
+
+        .slide-4 .stat-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            color: var(--gray);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .slide-4 .chart-container {
+            flex: 1;
+            display: flex;
+            gap: 40px;
+            align-items: stretch;
+            min-height: 0;
+        }
+
+        .slide-4 .chart-wrapper {
+            flex: 2;
+            position: relative;
+            min-height: 0;
+        }
+
+        .slide-4 .chart-wrapper canvas {
+            max-height: 100%;
+        }
+
+        .slide-4 .chart-sidebar {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            justify-content: center;
+        }
+
+        .slide-4 .sidebar-item {
+            background: white;
+            padding: 20px 24px;
+            border-left: 4px solid var(--coral);
+        }
+
+        .slide-4 .sidebar-item .value {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: clamp(28px, 57.6px, 48px);
+            color: var(--black);
+            line-height: 1;
+        }
+
+        .slide-4 .sidebar-item .label {
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            color: var(--gray);
+            margin-top: 4px;
+            letter-spacing: 1px;
+        }
+
+        /* ===== SLIDE 5: FULL WIDTH FEATURE ===== */
+        .slide-5 {
+            display: grid;
+            grid-template-rows: 1fr auto;
+            background: var(--black);
+        }
+
+        .slide-5 .visual-area {
+            background: linear-gradient(135deg, var(--coral-dark) 0%, var(--coral) 100%);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .slide-5 .visual-area .pattern-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0.1;
+            background-image: repeating-linear-gradient(
+                90deg,
+                transparent,
+                transparent 60px,
+                var(--black) 60px,
+                var(--black) 62px
+            );
+        }
+
+        .slide-5 .visual-area .center-text {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: clamp(80px, 288px, 200px);
+            color: var(--black);
+            letter-spacing: 12px;
+            position: relative;
+            z-index: 2;
+            text-align: center;
+        }
+
+        .slide-5 .info-bar {
+            background: var(--cream);
+            padding: clamp(24px, 43.2px, 40px) clamp(40px, 153.6px, 100px);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .slide-5 .info-bar .bar-title {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: clamp(28px, 76.8px, 56px);
+            color: var(--black);
+            letter-spacing: 2px;
+        }
+
+        .slide-5 .info-bar .bar-meta {
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            color: var(--gray);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            text-align: right;
+        }
+
+        /* ===== SLIDE 6: THREE COLUMNS ===== */
+        .slide-6 {
+            background: var(--cream);
+            display: flex;
+            flex-direction: column;
+            padding: clamp(40px, 64.8px, 80px) clamp(40px, 153.6px, 100px);
+        }
+
+        .slide-6 .slide-title {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: clamp(40px, 115.2px, 80px);
+            color: var(--black);
+            line-height: 1;
+            letter-spacing: 2px;
+            margin-bottom: 8px;
+        }
+
+        .slide-6 .slide-subtitle {
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            color: var(--gray);
+            letter-spacing: 2px;
+            margin-bottom: 48px;
+        }
+
+        .slide-6 .columns-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 32px;
+            flex: 1;
+        }
+
+        .slide-6 .column-card {
+            background: white;
+            padding: clamp(24px, 32.4px, 40px);
+            border-top: 5px solid var(--coral);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .slide-6 .column-card .card-icon {
+            width: 48px;
+            height: 48px;
+            background: var(--coral);
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 24px;
+            color: white;
+        }
+
+        .slide-6 .column-card .card-title {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: clamp(24px, 48px, 36px);
+            color: var(--black);
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+            line-height: 1.1;
+        }
+
+        .slide-6 .column-card .card-text {
+            font-family: 'Inter', sans-serif;
+            font-size: clamp(13px, 21.12px, 16px);
+            color: var(--gray);
+            line-height: 1.6;
+            flex: 1;
+        }
+
+        .slide-6 .column-card .card-stat {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: clamp(36px, 76.8px, 56px);
+            color: var(--coral);
+            line-height: 1;
+            margin-top: auto;
+            padding-top: 20px;
+        }
+
+        /* ===== SLIDE 7: QUOTE ===== */
+        .slide-7 {
+            background: var(--black);
+            display: grid;
+            grid-template-columns: 40% 60%;
+        }
+
+        .slide-7 .quote-left {
+            background: var(--coral);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .slide-7 .quote-left::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: repeating-linear-gradient(
+                -45deg,
+                transparent,
+                transparent 30px,
+                rgba(0,0,0,0.06) 30px,
+                rgba(0,0,0,0.06) 60px
+            );
+        }
+
+        .slide-7 .quote-left .giant-mark {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: clamp(140px, 384px, 280px);
+            color: var(--black);
+            opacity: 0.35;
+            line-height: 1;
+            position: relative;
+            z-index: 2;
+        }
+
+        .slide-7 .quote-right {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: clamp(40px, 86.4px, 100px) clamp(48px, 134.4px, 100px);
+        }
+
+        .slide-7 .quote-text {
+            font-family: 'Inter', sans-serif;
+            font-size: clamp(20px, 48px, 36px);
+            font-weight: 300;
+            color: var(--cream);
+            line-height: 1.5;
+            font-style: italic;
+            margin-bottom: 40px;
+        }
+
+        .slide-7 .quote-author {
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--coral);
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+
+        .slide-7 .quote-role {
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            color: var(--gray);
+            margin-top: 4px;
+            letter-spacing: 1px;
+        }
+
+        .slide-7 .quote-accent {
+            width: 60px;
+            height: 4px;
+            background: var(--coral);
+            margin-bottom: 32px;
+        }
+
+        /* ===== SLIDE 8: TIMELINE / DIAGRAM ===== */
+        .slide-8 {
+            background: var(--cream);
+            display: flex;
+            flex-direction: column;
+            padding: clamp(40px, 64.8px, 80px) clamp(40px, 153.6px, 100px);
+        }
+
+        .slide-8 .slide-header {
+            margin-bottom: 48px;
+        }
+
+        .slide-8 .section-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            color: var(--coral);
+            margin-bottom: 12px;
+        }
+
+        .slide-8 .slide-title {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: clamp(40px, 115.2px, 80px);
+            color: var(--black);
+            line-height: 1;
+            letter-spacing: 2px;
+        }
+
+        .slide-8 .timeline-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            position: relative;
+        }
+
+        .slide-8 .timeline-line {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--black);
+            transform: translateY(-50%);
+        }
+
+        .slide-8 .timeline-line::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: repeating-linear-gradient(
+                90deg,
+                var(--black) 0px,
+                var(--black) 20px,
+                transparent 20px,
+                transparent 30px
+            );
+        }
+
+        .slide-8 .timeline-points {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            position: relative;
+            z-index: 2;
+        }
+
+        .slide-8 .t-point {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 18%;
+        }
+
+        .slide-8 .t-point:nth-child(odd) .t-bubble {
+            margin-bottom: 24px;
+            order: 1;
+        }
+
+        .slide-8 .t-point:nth-child(odd) .t-info {
+            order: 2;
+            text-align: center;
+        }
+
+        .slide-8 .t-point:nth-child(even) .t-bubble {
+            margin-top: 24px;
+            order: 2;
+        }
+
+        .slide-8 .t-point:nth-child(even) .t-info {
+            order: 1;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .slide-8 .t-bubble {
+            width: clamp(60px, 153.6px, 100px);
+            height: clamp(60px, 153.6px, 100px);
+            border-radius: 50%;
+            background: var(--coral);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: clamp(20px, 38.4px, 32px);
+            color: white;
+            border: 4px solid var(--black);
+            flex-shrink: 0;
+        }
+
+        .slide-8 .t-info .t-phase {
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--coral);
+            margin-bottom: 4px;
+        }
+
+        .slide-8 .t-info .t-desc {
+            font-family: 'Inter', sans-serif;
+            font-size: clamp(12px, 19.2px, 14px);
+            color: var(--gray);
+            line-height: 1.4;
+        }
+
+        /* ===== SLIDE 9: TEAM GRID ===== */
+        .slide-9 {
+            background: var(--black);
+            display: flex;
+            flex-direction: column;
+            padding: clamp(40px, 64.8px, 80px) clamp(40px, 153.6px, 100px);
+        }
+
+        .slide-9 .slide-title {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: clamp(40px, 115.2px, 80px);
+            color: var(--cream);
+            line-height: 1;
+            letter-spacing: 2px;
+            margin-bottom: 8px;
+        }
+
+        .slide-9 .slide-subtitle {
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            color: var(--gray);
+            letter-spacing: 2px;
+            margin-bottom: 48px;
+        }
+
+        .slide-9 .team-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 24px;
+            flex: 1;
+        }
+
+        .slide-9 .team-member {
+            background: rgba(245, 240, 232, 0.05);
+            padding: clamp(20px, 21.6px, 32px);
+            border: 1px solid rgba(245, 240, 232, 0.1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .slide-9 .team-member:hover {
+            background: rgba(232, 93, 93, 0.1);
+            border-color: var(--coral);
+        }
+
+        .slide-9 .member-avatar {
+            width: clamp(60px, 153.6px, 100px);
+            height: clamp(60px, 153.6px, 100px);
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--coral) 0%, var(--coral-dark) 100%);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: clamp(28px, 57.6px, 40px);
+            color: white;
+        }
+
+        .slide-9 .member-name {
+            font-family: 'Inter', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--cream);
+            margin-bottom: 4px;
+        }
+
+        .slide-9 .member-role {
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            color: var(--gray);
+            letter-spacing: 1px;
+        }
+
+        /* ===== SLIDE 10: CLOSING ===== */
+        .slide-10 {
+            display: grid;
+            grid-template-columns:  ;
+        }
+
+        .slide-10 .left-panel {
+            background: var(--coral);
+            padding: clamp(40px, 86.4px, 100px) clamp(40px, 115.2px, 80px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .slide-10 .left-panel .closing-title {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: clamp(48px, 153.6px, 120px);
+            color: var(--black);
+            line-height: 0.95;
+            letter-spacing: 4px;
+            margin-bottom: 24px;
+        }
+
+        .slide-10 .left-panel .closing-subtitle {
+            font-family: 'Inter', sans-serif;
+            font-size: clamp(14px, 24.96px, 20px);
+            color: rgba(0,0,0,0.7);
+            line-height: 1.6;
+            max-width: 400px;
+        }
+
+        .slide-10 .left-panel .zigzag-deco {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 60px;
+            opacity: 0.2;
+        }
+
+        .slide-10 .right-panel {
+            background: var(--cream);
+            padding: clamp(40px, 86.4px, 100px) clamp(40px, 115.2px, 80px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .slide-10 .contact-block {
+            margin-bottom: 32px;
+        }
+
+        .slide-10 .contact-block:last-child {
+            margin-bottom: 0;
+        }
+
+        .slide-10 .contact-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: var(--gray);
+            margin-bottom: 8px;
+        }
+
+        .slide-10 .contact-value {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: clamp(24px, 57.6px, 40px);
+            color: var(--black);
+            letter-spacing: 2px;
+            line-height: 1.1;
+        }
+
+        .slide-10 .social-row {
+            display: flex;
+            gap: 16px;
+            margin-top: 40px;
+        }
+
+        .slide-10 .social-icon {
+            width: 44px;
+            height: 44px;
+            border: 2px solid var(--black);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--black);
+            transition: all 0.3s ease;
+        }
+
+        .slide-10 .social-icon:hover {
+            background: var(--coral);
+            border-color: var(--coral);
+            color: white;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .slide-3 {
+                grid-template-columns: 1fr;
+                grid-template-rows: 40% 60%;
+            }
+
+            .slide-6 .columns-grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+
+            .slide-8 .timeline-container {
+                overflow-x: auto;
+            }
+
+            .slide-8 .timeline-points {
+                min-width: 600px;
+            }
+
+            .slide-9 .team-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .slide-10 {
+                grid-template-columns: 1fr;
+                grid-template-rows: 50% 50%;
+            }
+
+            .slide-4 .chart-container {
+                flex-direction: column;
+            }
+
+            .slide-7 {
+                grid-template-columns: 1fr;
+                grid-template-rows: 35% 65%;
+            }
+
+            .slide-7 .quote-left {
+                min-height: 200px;
+            }
+        }
+    </style>
+<style data-teamver-template-clone-size>html,body{margin:0;padding:0;overflow:auto}.slides-container{width:auto;height:auto;overflow:visible;scroll-snap-type:none}.slide{width:1920px;height:1080px;min-height:1080px;max-height:1080px;box-sizing:border-box;scroll-snap-align:none}.nav-dots,.slide-counter,.nav-dot{display:none!important}</style><style data-od-official-poster-layout>.slide-1 .main-title,.slide-1 .brand-mark,.slide-1 .meta-row,.slide-10 .closing-title,.slide-10 .closing-subtitle{writing-mode:horizontal-tb!important;-webkit-writing-mode:horizontal-tb!important}.slide-10 .closing-title{font-size:clamp(48px,min(8vw,14vh),120px);max-width:95%;line-height:0.95}</style></head>
+<body>
+    <div class="presentation">
+        <!-- Slide 1: Title / Cover -->
+        <div class="slide slide-4" style="width:1920px;height:1080px;box-sizing:border-box">
+            <div class="slide-header">
+                
+                <div class="header-right">
+                    <div class="stat-number">Teamver 소개</div>
+                    
+                </div>
+            </div>
+            
+        </div>
+
+<div class="slide slide-1 active" style="width:1920px;height:1080px;box-sizing:border-box">
+            <div class="top-section">
+                <div class="zigzag-layer">
+                    <svg viewBox="0 0 1200 400" preserveAspectRatio="xMidYMid slice">
+                        <polyline points="-50,320 50,120 150,320 250,120 350,320 450,120 550,320 650,120 750,320 850,120 950,320 1050,120 1150,320 1250,120" 
+                                  fill="none" stroke="A1A1A" stroke-width="18" stroke-linejoin="miter" stroke-linecap="butt" opacity="0.22"/>
+                        <polyline points="-50,380 50,180 150,380 250,180 350,380 450,180 550,380 650,180 750,380 850,180 950,380 1050,180 1150,380 1250,180" 
+                                  fill="none" stroke="A1A1A" stroke-width="" stroke-linejoin="miter" stroke-linecap="butt" opacity="0.15"/>
+                    </svg>
+                </div>
+                <div class="brand-mark">Teamver는 초안과 수정을 같은 보드에서 끝낸다.</div>
+            </div>
+            <div class="bottom-section">
+                <div>
+                    <div class="main-title">Teamver는 초안과 수정을 같은 보드에서 끝낸다.에서 바로 쓰는 것</div>
+                    <div class="title-rule"></div>
+                </div>
+                <div class="meta-row">
+                    <div class="meta-left">
+                        <div class="meta-label">Location</div>
+                        <div class="meta-value">Teamver는 초안과 수정을 같은 보드에서 끝낸다.</div>
+                    </div>
+                    <div class="meta-right">
+                        <div class="meta-label">May 15 / 09:00 Start</div>
+                        <div class="meta-date">2026</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+<div class="slide slide-2" style="width:1920px;height:1080px;box-sizing:border-box">
+            <div class="section-label">도입 단계</div>
+            <div class="big-statement">도입 단계에서 보드·권한·이력·보내기를 한 흐름으로 본다.</div>
+            <div class="body-text">기존 문서를 Teamver 보드로 옮기고 보기·고치기 권한을 나눈다.</div>
+            <div class="accent-line"></div>
+        </div>
+
+<div class="slide slide-3" style="width:1920px;height:1080px;box-sizing:border-box">
+            <div class="left-col">
+                <div class="number">사용 흐름</div>
+                
+            </div>
+            
+        </div>
+
+<div class="slide slide-5" style="width:1920px;height:1080px;box-sizing:border-box">
+            <div class="visual-area">
+                <div class="pattern-overlay"></div>
+                <div class="center-text">IMPACT</div>
+            </div>
+            <div class="info-bar">
+                <div class="bar-title">LEADERSHIP</div>
+                <div class="bar-meta">LEADERSHIP에서 초안과 권한이 화면으로 모인다.</div>
+            </div>
+        </div>
+
+<div class="slide slide-6" style="width:1920px;height:1080px;box-sizing:border-box">
+            <div class="slide-title">Teamver 소개 · 6</div>
+            <div class="slide-subtitle">Teamver에서 초안과 권한이 화면으로 모인다.</div>
+            <div class="columns-grid"><div class="column-card">
+                    <div class="card-icon">A</div>
+                    <div class="card-title">Teamver에서 초안과 권한이 화면으로 모인다.</div>
+                    <div class="card-text">Teamver에서 초안과 권한이 화면으로 모인다.</div>
+                    <div class="card-stat">01</div>
+                </div></div>
+        </div>
+
+<div class="slide slide-8" style="width:1920px;height:1080px;box-sizing:border-box">
+            <div class="slide-header">
+                <div class="section-label">03 / </div>
+                <div class="slide-title">Teamver 소개 · 7</div>
+            </div>
+            <div class="timeline-container">
+                <div class="timeline-line"></div>
+                <div class="timeline-points">
+                    <div class="t-point">
+                        <div class="t-bubble">01</div>
+                        <div class="t-info">
+                            <div class="t-phase">초안</div>
+                            <div class="t-desc">Teamver 보드에 바로 붙일 수 있는 초안이 열린다.</div>
+                        </div>
+                    </div>
+                    <div class="t-point">
+                        <div class="t-bubble">02</div>
+                        <div class="t-info">
+                            <div class="t-phase">수정</div>
+                            <div class="t-desc">Teamver에서는 보낸 뒤에도 같은 화면에서 문장과 레이아웃을 고친다.</div>
+                        </div>
+                    </div>
+                    <div class="t-point">
+                        <div class="t-bubble">03</div>
+                        <div class="t-info">
+                            <div class="t-phase">공유</div>
+                            <div class="t-desc">Teamver에 필요한 사람만 초대해 보기와 고치기를 나눈다.</div>
+                        </div>
+                    </div>
+                    <div class="t-point">
+                        <div class="t-bubble">04</div>
+                        <div class="t-info">
+                            <div class="t-phase">Teamver에서 초안·수정·공유가 한 흐름이다.</div>
+                            <div class="t-desc">Teamver에서 초안·수정·공유가 한 흐름이다.</div>
+                        </div>
+                    </div>
+                    <div class="t-point">
+                        <div class="t-bubble">05</div>
+                        <div class="t-info">
+                            <div class="t-phase">초안</div>
+                            <div class="t-desc">Teamver 보드에 바로 붙일 수 있는 초안이 열린다.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+<div class="slide slide-7" style="width:1920px;height:1080px;box-sizing:border-box">
+            <div class="quote-left">
+                <div class="giant-mark">"</div>
+            </div>
+            <div class="quote-right">
+                <div class="quote-accent"></div>
+                <div class="quote-text">Teamver에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.</div>
+                <div class="quote-author"></div>
+                <div class="quote-role"></div>
+            </div>
+        </div>
+
+<div class="slide slide-1 active" style="width:1920px;height:1080px;box-sizing:border-box">
+            <div class="top-section">
+                <div class="zigzag-layer">
+                    <svg viewBox="0 0 1200 400" preserveAspectRatio="xMidYMid slice">
+                        <polyline points="-50,320 50,120 150,320 250,120 350,320 450,120 550,320 650,120 750,320 850,120 950,320 1050,120 1150,320 1250,120" 
+                                  fill="none" stroke="A1A1A" stroke-width="18" stroke-linejoin="miter" stroke-linecap="butt" opacity="0.22"/>
+                        <polyline points="-50,380 50,180 150,380 250,180 350,380 450,180 550,380 650,180 750,380 850,180 950,380 1050,180 1150,380 1250,180" 
+                                  fill="none" stroke="A1A1A" stroke-width="" stroke-linejoin="miter" stroke-linecap="butt" opacity="0.15"/>
+                    </svg>
+                </div>
+                <div class="brand-mark">Teamver 소개 · 9</div>
+            </div>
+            <div class="bottom-section">
+                <div>
+                    <div class="main-title">Teamver 소개 · 9</div>
+                    <div class="title-rule"></div>
+                </div>
+                <div class="meta-row">
+                    <div class="meta-left">
+                        <div class="meta-label">Location</div>
+                        <div class="meta-value">한 팀 보드를 Teamver로 옮긴 뒤 리뷰 습관과 조직 기준을 고정한다.</div>
+                    </div>
+                    <div class="meta-right">
+                        <div class="meta-label">May 15 / 09:00 Start</div>
+                        <div class="meta-date">2026</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+<div class="slide slide-9" style="width:1920px;height:1080px;box-sizing:border-box">
+            <div class="slide-title">LEADERSHIP</div>
+            <div class="slide-subtitle">The people driving our vision forward</div>
+            <div class="team-grid"><div class="team-member">
+                    <div class="member-avatar">JD</div>
+                    <div class="member-name">혼자 시작</div>
+                    <div class="member-role">Teamver에서 한 보드를 열고 초안을 붙인다.</div>
+                </div><div class="team-member">
+                    <div class="member-avatar">MK</div>
+                    <div class="member-name">팀과 고치기</div>
+                    <div class="member-role">Teamver에서 보기와 고치기를 나눠 같이 고친다.</div>
+                </div><div class="team-member">
+                    <div class="member-avatar">SR</div>
+                    <div class="member-name">리뷰</div>
+                    <div class="member-role">Teamver에서 댓글과 버전을 같은 화면에서 본다.</div>
+                </div><div class="team-member">
+                    <div class="member-avatar">TW</div>
+                    <div class="member-name">조직으로</div>
+                    <div class="member-role">Teamver 워크스페이스 기준으로 이력과 보내기를 고정한다.</div>
+                </div></div>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    
+    
+    <div class="nav-arrows" id="navArrows">
+        <div class="nav-arrow" id="prevArrow">&#8592;</div>
+        <div class="nav-arrow" id="nextArrow">&#8594;</div>
+    </div>
+
+    
+</body>
+</html>

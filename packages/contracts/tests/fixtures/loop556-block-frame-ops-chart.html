@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Teamver</title>
+  <style>
+    :root { --cream:#FFDC8B; --pink:#FE90E8; --blue:#C0F7FE; --green:#99E885; --yellow:#F7CB46; --ink:#000; }
+    .slide-1 .hero-frame { border: 6px solid var(--ink); }
+    .nb-heading-xl, .nb-heading-lg, .nb-heading-md { font-weight: 900; letter-spacing: -0.03em; text-transform: uppercase; }
+    .nb-label { letter-spacing: 0.08em; text-transform: uppercase; }
+    .nb-mono { letter-spacing: 0.02em; }
+    .legend-item { letter-spacing: 0.05em; }
+    .data-label, .stat-label { letter-spacing: 0.08em; text-transform: uppercase; }
+    .slide-2 .intro-card h3, .nb-card h3, .card h4 { text-transform: uppercase; letter-spacing: 0.08em; }
+  </style>
+</head>
+<body>
+  <section class="slide slide-4">
+    <div class="nb-label nb-label-blue">근거와 보안</div>
+    <div class="chart-frame">
+      <div class="chart-header">
+        <h2 class="nb-heading-md">운영과보안</h2>
+        <div class="chart-legend">
+          <div class="legend-item"><div class="legend-swatch" style="background: var(--pink);"></div>Revenue</div>
+          <div class="legend-item"><div class="legend-swatch" style="background: var(--green);"></div>Users</div>
+        </div>
+      </div>
+      <div class="chart-body">
+        <svg class="chart-svg" viewBox="0 0 800 360" xmlns="http://www.w3.org/2000/svg">
+          <line x1="60" y1="20" x2="60" y2="280" stroke="#000" stroke-width="3"/>
+          <line x1="60" y1="280" x2="780" y2="280" stroke="#000" stroke-width="3"/>
+          <rect x="80"  y="200" width="32" height="80"  fill="var(--pink)" stroke="#000" stroke-width="2"/>
+          <rect x="224" y="160" width="32" height="120" fill="var(--green)" stroke="#000" stroke-width="2"/>
+          <rect x="368" y="120" width="32" height="160" fill="var(--blue)" stroke="#000" stroke-width="2"/>
+          <rect x="512" y="80"  width="32" height="200" fill="#FE90E8" stroke="#000" stroke-width="2"/>
+          <rect x="656" y="60"  width="32" height="220" fill="#99E885" stroke="#000" stroke-width="2"/>
+          <text x="134" y="320" text-anchor="middle">Q1</text>
+          <text x="278" y="320" text-anchor="middle">Q2</text>
+          <text x="422" y="320" text-anchor="middle">Q3</text>
+          <text x="566" y="320" text-anchor="middle">Q4</text>
+          <text x="710" y="320" text-anchor="middle">Q5</text>
+        </svg>
+        <div class="data-column">
+          <div class="data-box">
+            <span class="data-num">전환율</span>
+            <span class="data-label">방문에서 문의·가입까지 이어지는 전환율</span>
+          </div>
+          <div class="data-box">
+            <span class="data-num">활성</span>
+            <span class="data-label">핵심 기능 반복 사용, 팀 초대, 재방문 흐름</span>
+          </div>
+          <div class="data-box">
+            <span class="data-num">품질</span>
+            <span class="data-label">결과물 완성도, 수정 횟수, 지원 요청 감소</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section class="slide slide-2">
+    <div class="nb-label nb-label-yellow">근거와 사례</div>
+    <h2 class="nb-heading-lg">근거와 사례</h2>
+    <div class="col-right">
+      <div class="intro-card">
+        <h3>실무자</h3>
+        <p>반복 작업을 줄이고 결과물 완성도를 높이는 방식</p>
+      </div>
+      <div class="nb-card">
+        <h3>리더</h3>
+        <p>팀 속도, 품질, 비용을 함께 관리할 수 있는 기준</p>
+      </div>
+      <div class="card">
+        <h4>운영자</h4>
+        <p>권한, 저장, 감사, 보안 요구를 만족시키는 운영 체계</p>
+      </div>
+    </div>
+    <p class="nb-body">운영 권한과 저장 정책을 한 화면에서 검토하고 배포 전에 확인한다</p>
+  </section>
+</body>
+</html>

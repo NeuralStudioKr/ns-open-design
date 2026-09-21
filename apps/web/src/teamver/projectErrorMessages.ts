@@ -130,6 +130,36 @@ export function formatProjectArtifactRegressionRejectedError(
     : 'The AI returned a short draft instead of a full slide deck, so it was not saved. Your existing deck is preserved — please try again.';
 }
 
+/**
+ * 루프547 · short-response persisted notice.
+ *
+ * substance-rich prior 위에 짧지만 온전한 다중-slide fill (non-strict + newCount≥2)이
+ * 왔을 때 저장을 막지 않고 그대로 진행하되, "장 수가 줄었으니 필요 시 다시 시도"라고
+ * 알린다. reject 배너와 달리 결과가 저장됐음을 명시해 사용자 혼동 방지.
+ */
+export function formatProjectArtifactShortResponsePersistedNotice(
+  _fileName: string,
+  priorCount: number,
+  newCount: number,
+  options?: { paddedCount?: number },
+): string {
+  const embed = isTeamverEmbedMode();
+  const paddedCount = options?.paddedCount;
+  if (
+    typeof paddedCount === 'number'
+    && Number.isFinite(paddedCount)
+    && paddedCount > newCount
+    && paddedCount >= priorCount
+  ) {
+    return embed
+      ? `AI가 이번 응답에서 ${priorCount}장 중 ${newCount}장만 작성했습니다. 부족한 장은 초안으로 채워 ${paddedCount}장으로 저장했습니다.`
+      : `The AI returned ${newCount} of ${priorCount} slides. Missing slides were filled from the draft so ${paddedCount} slides were saved.`;
+  }
+  return embed
+    ? `AI가 이번 응답에서 슬라이드 수를 ${priorCount} → ${newCount}장으로 줄여 반환했습니다. 결과는 저장했지만, 부족한 슬라이드가 있다면 "다시 시도"로 재요청할 수 있어요.`
+    : `The AI returned ${newCount} slides instead of ${priorCount}. The result was saved; if you need the full deck, please try again.`;
+}
+
 export function formatProjectArtifactSaveFailedError(
   fileName: string,
   detail?: ProjectArtifactSaveErrorDetail,
@@ -295,6 +325,7 @@ export function encodePersistedRunErrorDetail(
     kind?: string | null;
     reason?: string | null;
     code?: string | null;
+    extras?: Record<string, string | number | boolean | null | undefined>;
   },
 ): string {
   const parts: string[] = [];
@@ -303,6 +334,17 @@ export function encodePersistedRunErrorDetail(
   const code = sanitizeRunErrorDiagFragment(String(diagnostic?.code ?? ""));
   if (code && !parts.some((part) => part.includes(`code=${code}`))) {
     parts.push(`code=${code.slice(0, 80)}`);
+  }
+  const extras = diagnostic?.extras;
+  if (extras) {
+    for (const [key, value] of Object.entries(extras)) {
+      const token = sanitizeRunErrorDiagFragment(key).replace(/[^a-zA-Z0-9_]/g, "").slice(0, 40);
+      if (!token || !/^[a-zA-Z][a-zA-Z0-9_]*$/.test(token)) continue;
+      if (value == null || value === "") continue;
+      const rendered = sanitizeRunErrorDiagFragment(String(value)).slice(0, 80);
+      if (!rendered) continue;
+      parts.push(`${token}=${rendered}`);
+    }
   }
   if (parts.length === 0) return userMessage;
   return `${userMessage}${RUN_ERROR_DIAG_MARKER_START}${parts.join(" ")}${RUN_ERROR_DIAG_MARKER_END}`;
@@ -429,6 +471,9 @@ export function formatEmergencyDeckFallbackNotice(): string {
  * Shown when every auto-continue retry and the stream-based emergency salvage
  * all failed to produce a deck, and we saved a minimal outline-only
  * placeholder from the conversation instead of surfacing a raw failure state.
+ *
+ * 루프528 — Outline fallback is persisted as failed + error event so the
+ * ChatPane Retry dock matches this copy (same pattern as LOOK seed / 루프525).
  */
 export function formatOutlineDeckFallbackNotice(): string {
   return isTeamverEmbedMode()
@@ -437,14 +482,60 @@ export function formatOutlineDeckFallbackNotice(): string {
 }
 
 /**
- * 루프362/364 — Clone 첫 채우기 턴에서 slot-fill이 실패(저품질 HTML · soft-invalid JSON 등)해
- * 이미 디스크에 있는 LOOK seed를 열고 run을 succeeded로 마감했다는 안내.
- * `incomplete_output` 대신 이 배너를 노출하고 우측 "다시 시도"로 완성본 재생성을 유도한다.
+ * 루프529 — Home create deferred MiniMax fill because the brief had no usable topic.
+ * LOOK seed still lands; user should type a concrete topic in chat.
  */
-export function formatCloneLookSeedFallbackNotice(): string {
+export function formatGenericBriefDeferFillNotice(): string {
   return isTeamverEmbedMode()
-    ? "슬라이드 채우기에 실패해 템플릿 초안(LOOK seed)을 유지했습니다. 우측의 '다시 시도' 버튼으로 완성본을 다시 생성해 주세요."
-    : "Slide fill did not complete — kept the template draft (LOOK seed). Use the retry button to regenerate the full deck.";
+    ? '템플릿 초안은 준비했습니다. 주제를 구체적으로 입력하면 슬라이드 내용을 채울 수 있습니다.'
+    : 'Template draft is ready. Enter a concrete topic in chat to fill the slides.';
+}
+
+/**
+ * 루프362/364 — Clone 첫 채우기 턴에서 slot-fill이 실패해 LOOK seed를 열고 run을 마감했다는 안내.
+ *
+ * 루프524 — Retry dock 부재로 "채팅에 재요청" copy 를 잠깐 썼다.
+ * 루프525 — LOOK seed 를 failed+error event 로 마감해 Retry dock 이 동작한다.
+ * 루프528 — copy 를 다시 '다시 시도' 버튼 안내로 정렬한다 (채팅 재입력도 가능).
+ */
+export function formatCloneLookSeedFallbackNotice(options?: {
+  genericBrief?: boolean;
+}): string {
+  const base = isTeamverEmbedMode()
+    ? "슬라이드 채우기에 실패해 템플릿 초안(LOOK seed)을 임시로 유지했습니다. 우측의 '다시 시도' 버튼으로 완성본을 다시 생성해 주세요."
+    : 'Slide fill did not complete — kept the template draft (LOOK seed). Use the retry button to regenerate the full deck.';
+  if (!options?.genericBrief) return base;
+  const extra = isTeamverEmbedMode()
+    ? '이번 요청에 주제가 명확하지 않았습니다. 채팅에 주제를 더 구체적으로 입력해 주세요.'
+    : 'This request did not have a clear topic. Enter a more specific topic in chat.';
+  return `${base} ${extra}`;
+}
+
+/**
+ * 루프533 — status:error detail for LOOK seed fallback. User sentence + hidden
+ * diagnostic tail so ChatPane copy-diagnostics is not stuck on reason=unavailable.
+ */
+export function formatCloneLookSeedFallbackErrorDetail(
+  reason?: string | null,
+  options?: {
+    genericBrief?: boolean;
+    source?: 'persist' | 'reload';
+    fillMode?: string | null;
+  },
+): string {
+  const notice = formatCloneLookSeedFallbackNotice(options);
+  const trimmed = String(reason ?? '').trim().slice(0, 240);
+  const fillMode = String(options?.fillMode ?? '').trim();
+  return encodePersistedRunErrorDetail(notice, {
+    kind: 'clone-look-seed-fallback',
+    reason: trimmed || 'look_seed_fallback',
+    code: 'clone_look_seed_fallback',
+    extras: {
+      genericBrief: options?.genericBrief === true ? 1 : 0,
+      source: options?.source === 'reload' ? 'reload' : 'persist',
+      ...(fillMode ? { fillMode } : {}),
+    },
+  });
 }
 
 /** 루프368 — JSON repair auto-send 진행 중 (LOOK seed 경고 전). @deprecated 루프371에서 FE repair loop 제거. */

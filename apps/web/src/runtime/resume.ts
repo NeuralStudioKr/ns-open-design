@@ -118,6 +118,9 @@ export function excerptPartialHtmlForAutoContinue(html: string): string {
   const trimmed = html.replace(/^﻿/, '').trim();
   if (!trimmed) return '';
   if (shouldDiscardPartialHtmlForMotifSvgDump(trimmed)) return '';
+  // Head/CSS-only stubs must not be re-fenced — that re-anchors MiniMax on
+  // kit chrome and stalls after `</head>` again.
+  if (!documentContainsSlideSection(trimmed)) return '';
   const salvaged = salvageTruncatedHtmlDocument(trimmed);
   const source = salvaged ?? trimmed;
   const bodyIdx = source.search(/<body\b/i);

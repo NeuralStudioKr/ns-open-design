@@ -22,6 +22,16 @@ export type DeckTemplateSendMeta = {
   };
 };
 
+function explicitVisualPin(
+  id: string | null | undefined,
+  title?: string | null,
+): SelectedDeckTemplateMetadata | null {
+  const trimmed = id?.trim() ?? '';
+  if (!looksLikeExplicitVisualDeckTemplateId(trimmed)) return null;
+  const label = title?.trim() || undefined;
+  return label ? { id: trimmed, title: label } : { id: trimmed };
+}
+
 export function selectedDeckTemplateMetadata(
   metadata: ProjectMetadata | null | undefined,
   turnMeta?: Pick<DeckTemplateSendMeta, 'selectedDeckTemplateId' | 'selectedDeckTemplateTitle'> | null,
@@ -29,17 +39,14 @@ export function selectedDeckTemplateMetadata(
   // Per-turn pin wins over project metadata. Canvas/Drive confirm can
   // `patchProject` then send on the same tick while React still holds a
   // previous template id — turn meta is the user's latest pick.
-  const fromTurn = turnMeta?.selectedDeckTemplateId?.trim();
-  if (fromTurn) {
-    const title = turnMeta?.selectedDeckTemplateTitle?.trim() || undefined;
-    return { id: fromTurn, title };
-  }
-  const fromProject = metadata?.selectedDeckTemplateId?.trim();
-  if (fromProject) {
-    const title = metadata?.selectedDeckTemplateTitle?.trim() || undefined;
-    return { id: fromProject, title };
-  }
-  return null;
+  // simple-deck / 기본 템플릿 id는 시각 핀이 아니다.
+  return explicitVisualPin(
+    turnMeta?.selectedDeckTemplateId,
+    turnMeta?.selectedDeckTemplateTitle,
+  ) ?? explicitVisualPin(
+    metadata?.selectedDeckTemplateId,
+    metadata?.selectedDeckTemplateTitle,
+  );
 }
 
 /** True when a skill/plugin id is the visual deck template pin (not a normal skill). */
@@ -51,6 +58,146 @@ export function looksLikeDeckTemplateSkillId(id: string | null | undefined): boo
     || trimmed.startsWith('html-ppt-')
     || /(?:^|-)ppt(?:-|$)/i.test(trimmed)
   );
+}
+
+const DEFAULT_SCENARIO_DECK_TEMPLATE_IDS = new Set([
+  'example-simple-deck',
+]);
+
+/**
+ * Visual template the user picked (Zhangzara / html-ppt), not the default
+ * simple-deck scenario that Retry must not re-promote.
+ */
+export function looksLikeExplicitVisualDeckTemplateId(id: string | null | undefined): boolean {
+  const trimmed = id?.trim() ?? '';
+  if (!trimmed || DEFAULT_SCENARIO_DECK_TEMPLATE_IDS.has(trimmed)) return false;
+  return looksLikeDeckTemplateSkillId(trimmed);
+}
+
+export type DeckTemplateRunContext = {
+  selectedDeckTemplateId?: string;
+  selectedDeckTemplateTitle?: string;
+  skillIds?: string[];
+  contextSkillIds?: string[];
+};
+
+/** Recover the first-turn visual pin from a persisted user message. */
+export function selectedDeckTemplateMetadataFromRunContext(
+  runContext?: DeckTemplateRunContext | null,
+): SelectedDeckTemplateMetadata | null {
+  const fromId = runContext?.selectedDeckTemplateId?.trim();
+  if (fromId && looksLikeExplicitVisualDeckTemplateId(fromId)) {
+    const title = runContext?.selectedDeckTemplateTitle?.trim() || undefined;
+    return title ? { id: fromId, title } : { id: fromId };
+  }
+  for (const raw of [
+    ...(runContext?.skillIds ?? []),
+    ...(runContext?.contextSkillIds ?? []),
+  ]) {
+    const id = raw?.trim();
+    if (id && looksLikeExplicitVisualDeckTemplateId(id)) {
+      return { id };
+    }
+  }
+  return null;
+}
+
+/**
+ * Retry / auto-continue only sends `{ retryOfAssistantId }`. If project
+ * metadata is stale or empty, copy the original turn's visual pin so compose
+ * and LOOK-seed resolution do not fall back to simple-deck.
+ */
+export function mergeRetryDeckTemplateIntoSendMeta<T extends DeckTemplateSendMeta>(
+  meta: T | undefined,
+  retryUser?: { runContext?: DeckTemplateRunContext | null } | null,
+): T | undefined {
+  const existing = meta?.selectedDeckTemplateId?.trim();
+  if (existing && looksLikeExplicitVisualDeckTemplateId(existing)) return meta;
+  const fromRetry = selectedDeckTemplateMetadataFromRunContext(retryUser?.runContext);
+  if (!fromRetry) return meta;
+  return {
+    ...(meta ?? ({} as T)),
+    selectedDeckTemplateId: fromRetry.id,
+    ...(fromRetry.title
+      ? { selectedDeckTemplateTitle: fromRetry.title }
+      : {}),
+  };
+}
+
+export function findLatestExplicitDeckTemplateFromMessages(
+  messages: ReadonlyArray<{ role?: string; runContext?: DeckTemplateRunContext | null }>,
+): SelectedDeckTemplateMetadata | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role !== 'user') continue;
+    const found = selectedDeckTemplateMetadataFromRunContext(message.runContext);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * Single pin for compose / persist LOOK / LOOK-seed / Retry.
+ * Turn → run ref → project metadata → retry/history → artifact id.
+ * Never returns simple-deck.
+ */
+export function resolveDurableDeckTemplatePin(input: {
+  turn?: Pick<DeckTemplateSendMeta, 'selectedDeckTemplateId' | 'selectedDeckTemplateTitle'> | null;
+  project?: ProjectMetadata | null;
+  runRef?: string | null;
+  retryUser?: { runContext?: DeckTemplateRunContext | null } | null;
+  messages?: ReadonlyArray<{ role?: string; runContext?: DeckTemplateRunContext | null }>;
+  artifactTemplateId?: string | null;
+}): SelectedDeckTemplateMetadata | null {
+  return explicitVisualPin(input.turn?.selectedDeckTemplateId, input.turn?.selectedDeckTemplateTitle)
+    ?? explicitVisualPin(input.runRef)
+    ?? selectedDeckTemplateMetadata(input.project, input.turn)
+    ?? selectedDeckTemplateMetadataFromRunContext(input.retryUser?.runContext)
+    ?? findLatestExplicitDeckTemplateFromMessages(input.messages ?? [])
+    ?? explicitVisualPin(input.artifactTemplateId);
+}
+
+export function deckTemplateSendMetaFromPin(
+  pin: SelectedDeckTemplateMetadata | null | undefined,
+): Pick<DeckTemplateSendMeta, 'selectedDeckTemplateId' | 'selectedDeckTemplateTitle'> {
+  if (!pin?.id) return {};
+  return {
+    selectedDeckTemplateId: pin.id,
+    ...(pin.title ? { selectedDeckTemplateTitle: pin.title } : {}),
+  };
+}
+
+export function ensureChatSendMetaHasDurableDeckTemplate<T extends DeckTemplateSendMeta>(
+  meta: T | undefined,
+  input: {
+    project?: ProjectMetadata | null;
+    retryUser?: { runContext?: DeckTemplateRunContext | null } | null;
+    messages?: ReadonlyArray<{ role?: string; runContext?: DeckTemplateRunContext | null }>;
+  },
+): T | undefined {
+  const merged = mergeRetryDeckTemplateIntoSendMeta(meta, input.retryUser);
+  const pin = resolveDurableDeckTemplatePin({
+    turn: merged,
+    project: input.project,
+    retryUser: input.retryUser,
+    messages: input.messages,
+  });
+  if (!pin) return enrichChatSendMetaWithProjectDeckTemplate(merged, input.project);
+  return enrichChatSendMetaWithProjectDeckTemplate(
+    {
+      ...(merged ?? ({} as T)),
+      ...deckTemplateSendMetaFromPin(pin),
+    },
+    input.project,
+  );
+}
+
+export function projectMetadataNeedsDeckTemplatePin(
+  project: ProjectMetadata | null | undefined,
+  pin: SelectedDeckTemplateMetadata | null | undefined,
+): boolean {
+  if (!pin?.id || !looksLikeExplicitVisualDeckTemplateId(pin.id)) return false;
+  return project?.selectedDeckTemplateId?.trim() !== pin.id;
 }
 
 /** Chat chip label — prefer title, then a readable id fallback (never hide the chip). */
@@ -92,7 +239,7 @@ export function resolveSelectedDeckTemplateChipLabel(input: {
   // selectedDeckTemplate* fields on runContext.
   const skillIds = input.runContext?.skillIds ?? [];
   const firstSkill = skillIds[0]?.trim();
-  if (firstSkill && looksLikeDeckTemplateSkillId(firstSkill)) {
+  if (firstSkill && looksLikeExplicitVisualDeckTemplateId(firstSkill)) {
     return formatSelectedDeckTemplateChipLabel({ id: firstSkill });
   }
   return null;

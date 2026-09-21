@@ -26,3 +26,105 @@ export const SLIDE_DECK_CONTENT_EXPANSION_EXAMPLE =
   "Expand into domain slides for the stated topic and audience — definition, named parts, evidence, trade-offs, next steps. " +
   "A deck that only restates the instruction or the topic word (\"소개\", \"특징\") is a failed deliverable. " +
   "Do not copy this example's wording, or any other host-contract example, onto slides.";
+
+/**
+ * Shared with JSON slot-fill, prompt-fill, and Canvas/Home/Drive HTML create.
+ * Product entry (Canvas vs Home) must not weaken this contract.
+ */
+export const SLIDE_DECK_LAYOUT_VARIETY_INSTRUCTION =
+  "Layout variety is REQUIRED (mirror the template preview): " +
+  "the template ships multiple slide shells (cover, cards grid, stat/data, team, timeline, process, quote, closing). " +
+  "When the deck has 4+ content slides, rotate through ≥ 4 distinct shells from the Template scaffold map — " +
+  "never stamp the same list/body layout on every page while other shells sit unused.";
+
+/**
+ * Shared copy-density bar. Title-only cards / bare labels fail next to the
+ * template preview (~2–3 sentences per card).
+ */
+export const SLIDE_DECK_COPY_DENSITY_INSTRUCTION =
+  "Copy density mirrors the template preview: every non-cover, non-closing slide needs a full-sentence lead " +
+  "(or opening <p>) and card/list entries with a concrete 1-sentence body (~12–28 Korean chars or 6–16 English words). " +
+  "Bare labels (`핵심`, `개념`, `요약`), single-noun bullets, and title-only cards fail.";
+
+/**
+ * 루프544 — Prompt-fill / JSON slot-fill hard rules에서 강제하는 슬롯 단위 유일성.
+ * 루프546에서 사용자 리포트("v1.4.15 시점이 오히려 결과물이 좋았다")를 받아
+ * penalty framing(`failed deliverable`, `majority ... share the same body
+ * sentence`) 표현을 제거했다. 이 표현들이 모델을 슬라이드 드롭으로 몰아
+ * client `findClientSlideCountRegression` 가드에 걸려 저장 자체가 실패하고
+ * 있었다. 밀도 지시(구체 문장 · 제목=본문 금지 · 한 단어 라벨 완화)는 유지.
+ * "슬라이드 수 유지"는 별도 상수 `SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION`
+ * 으로 분리해 유일성 지시와 상충 표현이 한 상수 안에 공존하지 않게.
+ */
+export const SLIDE_DECK_UNIQUE_SLOT_COPY_INSTRUCTION =
+  "Each card / list item / stat / step / quote body should be a concrete 1–2 sentence line — prefer a distinct angle per slot over stamping the same lead across multiple slots. " +
+  "Do not repeat the slide title as its body. " +
+  "Bare one-word labels (핵심, 개념, 요약, 특징, 목표, 방향) as body copy are too thin — expand to a real sentence about THIS slot's angle.";
+
+/**
+ * 루프546 — Keep the template's slide count. 유일성 지시와 상충 표현이 한
+ * 상수 안에 공존하면 모델 순응이 흔들려 슬라이드를 드롭하는 회귀를 만들었다.
+ * 이 지시는 별도 라인으로 emit해서 "장 수 유지"라는 결정을 다른 밀도·주제
+ * 지시와 명확히 분리한다.
+ */
+export const SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION =
+  "Deliver the same number of `<section class=\"slide\">` slides as the seed. If two slots would repeat, rewrite one with a different angle — do not merge or drop slides.";
+
+/**
+ * 루프550 — 정량·강제 slide-count 순응 프롬프트.
+ *
+ * `SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION`은 seed count를 모델이 스스로 세도록
+ * 두었지만, 사용자 케이스(project `031f42a2-…`, 10→2)에서 순응이 흔들렸다.
+ * 실제 seed shell 개수 N을 치환해 못박는다.
+ *
+ * `seedShellCount`가 null이면 기존 상수(길이 미확정 상황) fallback.
+ */
+export function renderSlideCountRequirementInstruction(
+  seedShellCount: number | null | undefined,
+): string {
+  if (
+    seedShellCount == null
+    || !Number.isFinite(seedShellCount)
+    || seedShellCount <= 0
+  ) {
+    return SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION;
+  }
+  const n = Math.max(1, Math.floor(seedShellCount));
+  // 루프554 — v1.4.15처럼 짧게. "If unsure, copy missing slides verbatim"
+  // 과 quality 장문이 겹치면 MiniMax가 2장에서 조기 종료하는 관측이 있어
+  // 정량 한 줄만 남긴다. 상단 힌트와 동일 문구.
+  return `Seed contains ${n} slides. Return EXACTLY ${n} <section class="slide"> elements.`;
+}
+
+/**
+ * 루프550 — seed 상단(첫 사용자 메시지 초입)에 emit할 짧은 정량 힌트.
+ *
+ * hard rules와 별도로, 세션 초입에도 seed shell 개수를 명시해 모델이 요청 파악
+ * 단계부터 slide count를 기억하게 한다.
+ */
+export function renderSlideCountSeedHeaderHint(
+  seedShellCount: number | null | undefined,
+): string | null {
+  if (
+    seedShellCount == null
+    || !Number.isFinite(seedShellCount)
+    || seedShellCount <= 0
+  ) {
+    return null;
+  }
+  const n = Math.max(1, Math.floor(seedShellCount));
+  return `Seed contains ${n} slides. Return EXACTLY ${n} <section class="slide"> elements.`;
+}
+
+/**
+ * 루프544 — Topic-lock: brief 주제 밖 일반론(`개념/구조/영향`, `용어와 원리를 짧고
+ * 정확하게 정의`, `배경/핵심 질문/판단 기준`) 을 그대로 카드에 붙이면 어떤 주제든
+ * 같은 덱처럼 보인다. deterministic synth outline이 넣어도 되는 skeleton과 달리,
+ * 모델이 채우는 prompt-fill/JSON slot-fill 턴에서는 주제 명사·근거 없는 일반론을
+ * 카드로 남기지 말라고 못 박는다. 카탈로그 영어 데모 잔재도 같이 금지.
+ */
+export const SLIDE_DECK_TOPIC_LOCK_INSTRUCTION =
+  "Topic-lock (brief-tethered content): every card/list/stat body must reference the actual brief topic with concrete nouns, examples, or judgement criteria for THAT topic. " +
+  "Generic outline scaffolds parroted verbatim — `개념 / 구조 / 영향`, `용어와 원리를 짧고 정확하게 정의`, `구성 요소와 서로 연결되는 방식을 설명`, `배경 / 핵심 질문 / 판단 기준`, `Definition / Structure / Impact` — are forbidden as final slide copy. Use them as your INTERNAL outline only; the shipped card body must swap in the brief's nouns and specifics. " +
+  "Do not invent quantitative KPIs, prices ($XB, ₩억, %), or market-share claims unless the brief or attached source materials state them. Prefer qualitative topic-specific claims over fabricated numbers. " +
+  "Do not leave English catalog demo copy from the template example (Presentation Template, THANK YOU FOR WATCHING, NEXUS VENTURES, Q1 2026 · $1.2M, Studio Orbital, Access Tiers pricing, AGENDA.TXT, All systems operational, Connecting Founders With Opportunity, Hartfield, NorthPeak, WACC, EBITDA, Project Atlas) in a Korean deck.";

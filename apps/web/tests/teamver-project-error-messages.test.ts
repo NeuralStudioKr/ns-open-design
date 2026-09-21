@@ -71,6 +71,10 @@ describe("project conversation error messages", () => {
       formatProjectRunErrorForUser,
       formatProjectConversationErrorForUser,
       formatProjectForkConversationError,
+      formatCloneLookSeedFallbackNotice,
+      formatCloneLookSeedFallbackErrorDetail,
+      formatOutlineDeckFallbackNotice,
+      formatGenericBriefDeferFillNotice,
       looksLikeLowSubstancePersistSkipReason,
       formatProjectRunLowSubstanceDeliverableError,
     } = await import("../src/teamver/projectErrorMessages");
@@ -121,6 +125,39 @@ describe("project conversation error messages", () => {
     expect(formatProjectRunLowSubstanceDeliverableError("thin-prior-top-up-no-append")).not.toContain(
       "이어서",
     );
+    expect(formatCloneLookSeedFallbackNotice()).toContain("다시 시도");
+    expect(formatCloneLookSeedFallbackNotice()).toContain("우측");
+    expect(formatCloneLookSeedFallbackNotice()).not.toContain("주제가 명확하지");
+    expect(formatCloneLookSeedFallbackNotice({ genericBrief: true })).toContain("주제가 명확하지");
+    expect(formatCloneLookSeedFallbackNotice({ genericBrief: true })).toContain("다시 시도");
+    expect(formatCloneLookSeedFallbackErrorDetail("seed_fallback_untouched_look", {
+      genericBrief: true,
+    })).toContain("주제가 명확하지");
+    expect(formatCloneLookSeedFallbackErrorDetail("seed_fallback_untouched_look")).toContain(
+      "다시 시도",
+    );
+    expect(
+      extractPersistedRunErrorDiagnostic(
+        formatCloneLookSeedFallbackErrorDetail("seed_fallback_untouched_look"),
+      ),
+    ).toMatch(/seed_fallback_untouched_look/);
+    expect(
+      extractPersistedRunErrorDiagnostic(
+        formatCloneLookSeedFallbackErrorDetail("seed_fallback_untouched_look", {
+          genericBrief: true,
+          source: "reload",
+          fillMode: "prompt",
+        }),
+      ),
+    ).toMatch(/genericBrief=1[\s\S]*source=reload[\s\S]*fillMode=prompt|source=reload/);
+    expect(userFacingRunErrorDetail(
+      formatCloneLookSeedFallbackErrorDetail("seed_fallback_untouched_look", {
+        genericBrief: true,
+      }),
+    )).not.toContain("genericBrief=");
+    expect(formatOutlineDeckFallbackNotice()).toContain("다시 시도");
+    expect(formatOutlineDeckFallbackNotice()).toContain("우측");
+    expect(formatGenericBriefDeferFillNotice()).toContain("주제를 구체적으로");
     expect(formatProjectRunDeliverableMissingError("low-substance deck artifact")).toBe(
       formatProjectRunLowSubstanceDeliverableError(),
     );
