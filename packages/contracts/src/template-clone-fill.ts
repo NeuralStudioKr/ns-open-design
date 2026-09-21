@@ -7754,12 +7754,24 @@ function isCapsuleDecorativeDemoLabel(text: string): boolean {
  * known Capsule demo label; any pill the model rewrote (Korean text, digits
  * that are real content) is left untouched.
  */
+/** Capsule full-deck fingerprint, or a slide/fragment that still carries Capsule chrome. */
+function looksLikeCapsuleChrome(html: string): boolean {
+  const src = String(html ?? '');
+  if (!src) return false;
+  if (officialLookIsCoral(src) || officialLookIsPlayful(src) || officialLookIsNeoBrutalBlockFrame(src)) {
+    return false;
+  }
+  if (officialLookIsCapsule(src)) return true;
+  return /\b(?:orbit-pill|deco-pill|title-pill|header-pill|statement-box|closing-pill|f-pill|c-pill|stat-pill|diagram-node|chart-row|chart-label|chart-value|step-label|step-desc|tier-card|visual-frame|frame-content)\b/i.test(src);
+}
+
 export function scrubCapsuleLeftoverDecorativeChrome(
   html: string,
   options: { deckLang?: 'ko' | 'en' | 'auto' } = {},
 ): string {
   const src = String(html ?? '');
   if (!src) return src;
+  if (!looksLikeCapsuleChrome(src)) return src;
   const deckLang = options.deckLang ?? 'auto';
   if (deckLang === 'en') return src;
   if (deckLang === 'auto') {
@@ -7817,14 +7829,19 @@ export function fillCapsuleEmptyTitlePill(
 ): string {
   const src = String(html ?? '');
   if (!src) return src;
-  if (!/<div\b[^>]*\bclass\s*=\s*"[^"]*\btitle-pill\b[^"]*"[^>]*>\s*<\/div>/i.test(src)) {
+  if (!looksLikeCapsuleChrome(src)) return src;
+  // 0918-N05 fills slide-1 with Latin "OVERVIEW". On Korean decks treat that
+  // catalog kicker as empty so the yellow pill stays in the deck language.
+  const emptyOrLatinCatalogPill =
+    /<div\b[^>]*\bclass\s*=\s*"[^"]*\btitle-pill\b[^"]*"[^>]*>\s*(?:OVERVIEW|PRESENTATION(?:\s+TEMPLATE)?|Presentation Template)?\s*<\/div>/i;
+  if (!emptyOrLatinCatalogPill.test(src)) {
     return src;
   }
   const rawKicker = (options.kicker ?? '').toString().trim();
   const deckTitle = (options.deckTitle ?? '').toString().trim();
   const fallback = (options.fallback ?? '').toString().trim();
-  // Prefer explicit kicker; else derive a short label from the deck title.
-  let label = rawKicker || '';
+  // Prefer explicit kicker; skip leftover service-intro labels (개요).
+  let label = rawKicker && !looksLikeGenericLeftoverTitle(rawKicker) ? rawKicker : '';
   if (!label && deckTitle) {
     const hangulTokens = deckTitle.match(/[가-힣]{2,}/g);
     label = hangulTokens && hangulTokens.length > 0 ? hangulTokens[0]! : deckTitle;
@@ -7834,7 +7851,7 @@ export function fillCapsuleEmptyTitlePill(
   if (label.length > 12) label = label.slice(0, 12);
   if (!label) return src;
   return src.replace(
-    /(<div\b[^>]*\bclass\s*=\s*"[^"]*\btitle-pill\b[^"]*"[^>]*>)\s*(<\/div>)/i,
+    /(<div\b[^>]*\bclass\s*=\s*"[^"]*\btitle-pill\b[^"]*"[^>]*>)\s*(?:OVERVIEW|PRESENTATION(?:\s+TEMPLATE)?|Presentation Template)?\s*(<\/div>)/i,
     `$1${escapeHtml(label)}$2`,
   );
 }
@@ -8073,6 +8090,7 @@ export function scrubCapsuleLeftoverSpecialtySlotCopy(
 ): string {
   const src = String(html ?? '');
   if (!src) return src;
+  if (!looksLikeCapsuleChrome(src)) return src;
   const deckLang = options.deckLang ?? 'auto';
   if (deckLang === 'en') return src;
   if (deckLang === 'auto' && !/[가-힣]/.test(src)) return src;
@@ -8140,6 +8158,7 @@ export function refillCapsuleEmptyStructuredSlots(
 ): string {
   const src = String(html ?? '');
   if (!src) return src;
+  if (!looksLikeCapsuleChrome(src)) return src;
   const deckLang = options.deckLang ?? 'auto';
   if (deckLang === 'en') return src;
   const deckTitle = (options.deckTitle ?? '').toString().trim();
@@ -8161,8 +8180,11 @@ export function refillCapsuleEmptyStructuredSlots(
     const { start, end } = slides[i]!;
     const before = out.slice(start, end);
     const outline = outlineSlides[i];
-    const outlineTitle = String(outline?.title ?? '').trim();
-    const outlineBody = String(outline?.body ?? '').trim();
+    const rawOutlineTitle = String(outline?.title ?? '').trim();
+    const outlineTitle = looksLikeGenericLeftoverTitle(rawOutlineTitle) ? '' : rawOutlineTitle;
+    const outlineBody = looksLikeGenericLeftoverTitle(String(outline?.body ?? '').trim())
+      ? ''
+      : String(outline?.body ?? '').trim();
     const after = refillCapsuleEmptyStructuredSlotsInSlide(before, {
       deckTitle,
       outlineTitle,
@@ -8204,9 +8226,12 @@ function refillCapsuleEmptyStructuredSlotsInSlide(
   const renderedTitle = extractSlideRefillTitle(out)
     || extractSlideRefillAttributionText(out);
   const renderedBody = extractSlideRefillBodyText(out, renderedTitle);
-  const title = ctx.outlineTitle || renderedTitle;
-  const bodyText = ctx.outlineBody || renderedBody;
-  const kicker = extractSlideRefillKicker(out);
+  const titleRaw = ctx.outlineTitle || renderedTitle;
+  const title = looksLikeGenericLeftoverTitle(titleRaw) ? '' : titleRaw;
+  const bodyRaw = ctx.outlineBody || renderedBody;
+  const bodyText = looksLikeGenericLeftoverTitle(bodyRaw) ? '' : bodyRaw;
+  const kickerRaw = extractSlideRefillKicker(out);
+  const kicker = looksLikeGenericLeftoverTitle(kickerRaw) ? '' : kickerRaw;
 
   // 루프513 — Only refill SEMANTIC slots (blockquote, attribution,
   // header/closing pills) with meaningful copy. Content slots
@@ -8749,8 +8774,6 @@ export function healCapsuleLeftoverCatalogCopy(
   return wipeEightBitCapsuleLeftoverPhrases(
     stripCapsuleOwnedDemoCopy(stripLeftoverCatalogDemoPhrases(out)),
   );
-}
-
 }
 
 /** 루프434 / 루프461 — Block-frame / Neo catalog marketing leftovers on Hangul LOOK seeds. */

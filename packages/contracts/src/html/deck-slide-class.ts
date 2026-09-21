@@ -37,6 +37,7 @@ export const DECK_SLIDE_CHROME_CLASS_TOKENS = new Set([
   'slide-meta',
   'slide-content',
   'slide-inner',
+  'nav-dot',
 ]);
 
 /**
@@ -87,6 +88,10 @@ export function classAttrHasTemplateSlideAlias(classAttr: string): boolean {
 export function attrsLookLikeDeckOrTemplateSlideHost(attrs: string): boolean {
   const source = String(attrs ?? '');
   const cls = classAttrFromOpenTag(source);
+  // Capsule (and similar presenters) put `data-slide` on pager dots.
+  // Those are chrome, not page hosts — counting them doubles seed length
+  // and makes recover/pad invent extra shells (0921-N03).
+  if (/\bnav-dot\b/i.test(cls) && !classAttrHasDeckSlideToken(cls)) return false;
   if (classAttrHasDeckSlideToken(cls) || classAttrHasTemplateSlideAlias(cls)) return true;
   if (/\bid\s*=\s*["']slide(?:-\d+)?["']/i.test(source)) return true;
   if (/\bdata-slide(?:-index)?\s*=/i.test(source)) return true;

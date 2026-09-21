@@ -14,6 +14,9 @@
 - [x] `CAPSULE_SLOT_MAP` specialty host+peer
 - [x] persist salvage와 `buildTemplateClonedDeckHtml` 모두에서 **0918-N05 heal 뒤**에 scrub/refill
 - [x] staging `fillCapsuleKitSlide` / `healCapsuleLeftoverCatalogCopy` / stackStyle / Block Frame hangul / 555 collapse 유지
+- [x] Capsule healer는 `looksLikeCapsuleChrome` — Block Frame/Coral/Playful 에 안 탐
+- [x] leftover `개요`/`OVERVIEW` 를 title-pill/header-pill 에 다시 쓰지 않음 (0918-N05 leftover)
+- [x] `nav-dot[data-slide]` 는 slide host가 아님 — Capsule pager가 seed 장수를 2배로 세던 충돌 해소
 
 ## 검증
 

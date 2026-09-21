@@ -6577,7 +6577,7 @@ describe('0901-N02-C13 peer-fit catalog + sticky chrome deny', () => {
           roleHint: 'cards',
           items: [
             {
-              title: '화면, 워크플로우, 결과물 예시로 제품 실체를 보여준다',
+              title: '데모 화면, 사용자 흐름, 산출물로 제품 실체를 보여준다',
               body: '데모 화면과 사용자 흐름을 연결해 구매 전 이해를 돕습니다.',
             },
             {
@@ -6601,11 +6601,11 @@ describe('0901-N02-C13 peer-fit catalog + sticky chrome deny', () => {
     const headings = [...bodyOnly.matchAll(/<h3\b[^>]*>([\s\S]*?)<\/h3>/gi)]
       .map((match) => match[1]!.replace(/<[^>]*>/g, '').trim())
       .filter(Boolean);
-    expect(headings).toContain('화면·워크플로우');
+    expect(headings).toContain('데모 화면·사용자 흐름');
     expect(headings).toContain('고객 유형별 문제 해결');
     expect(headings).toContain('지원·보안');
-    expect(headings.some((heading) => heading.includes('결과물 예시로 제품 실체를 보여준다'))).toBe(false);
-    expect(bodyOnly).toContain('화면, 워크플로우, 결과물 예시로 제품 실체를 보여준다');
+    expect(headings.some((heading) => heading.includes('산출물로 제품 실체를 보여준다'))).toBe(false);
+    expect(bodyOnly).toContain('데모 화면, 사용자 흐름, 산출물로 제품 실체를 보여준다');
     expect(bodyOnly).toContain('데모 화면과 사용자 흐름을 연결해 구매 전 이해를 돕습니다.');
     expect(bodyOnly).toContain('data-od-card-fit="compact"');
     expect(bodyOnly).toMatch(/font-size:36px;line-height:1\.08/);
@@ -7311,11 +7311,28 @@ describe('루프510 Capsule Korean-deck decorative chrome scrub + title-pill fil
       '</div>',
     ].join('\n');
     const out = fillCapsuleEmptyTitlePill(html, {
-      kicker: '개요',
+      kicker: '브리프',
       deckTitle: 'Teamver 소개',
     });
-    expect(out).toContain('<div class="title-pill">개요</div>');
+    expect(out).toContain('<div class="title-pill">브리프</div>');
     expect(out).not.toContain('<div class="title-pill"></div>');
+  });
+
+  it('does not stamp leftover 개요 onto title-pill (0918-N05 leftover policy)', () => {
+    const html = [
+      '<div class="slide slide-1 active">',
+      '  <div class="deco-pills"><div class="deco-pill"></div></div>',
+      '  <div class="title-pill"></div>',
+      '  <h1 class="main-title">Teamver 소개</h1>',
+      '</div>',
+    ].join('\n');
+    const out = fillCapsuleEmptyTitlePill(html, {
+      kicker: '개요',
+      deckTitle: 'Teamver 소개',
+      fallback: '소개',
+    });
+    expect(out).toContain('<div class="title-pill">소개</div>');
+    expect(out).not.toContain('>개요<');
   });
 
   it('falls back to a Korean deck-title token when kicker is missing', () => {
