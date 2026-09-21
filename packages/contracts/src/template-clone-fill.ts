@@ -2383,7 +2383,7 @@ function padDeterministicTemplateCloneSlides(
   const out = [...slides];
   let sectionIdx = 0;
   while (out.length < targetCount) {
-    let label = TEMPLATE_CLONE_GENERIC_SECTION_LABELS[sectionIdx] ?? `핵심 ${out.length + 1}`;
+    let label: string = TEMPLATE_CLONE_GENERIC_SECTION_LABELS[sectionIdx] ?? `핵심 ${out.length + 1}`;
     sectionIdx += 1;
     if (looksLikeGenericLeftoverTitle(label) || /^핵심\s+\d+$/.test(label)) {
       label = genericRoleCopyForIndex(cover, brief, out.length + 1).heading;
