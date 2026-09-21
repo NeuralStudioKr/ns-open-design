@@ -11,7 +11,7 @@
 ## 한 줄 결론
 
 > **Usage Phase 1은 FE-first(saveMessage 종료 hook)로 wiring하고, Drive Publish v1은 HTML+PDF만 지원한다.**  
-> Registry reserve/commit **골격**은 daemon run-path에 연결됨(Phase 2a). **실측 토큰 → 크레딧(T) 환산·정확 차감**은 미구현 — 후속 SSOT는 **§4**. production은 registry credentials가 없으면 기동/배포를 차단하고, staging은 `TEAMVER_BILLING_DISABLED=1`을 명시한 경우만 임시 비활성을 허용한다.
+> **크레딧 차감 ON 의 구현 SSOT는 [0918-N07-2](./0918-N07-2-구현설계-[Design_크레딧_차감_활성화].md) 이다 (2026-09-21).** Apps JWT(`TEAMVER_JWT_AUDIENCE=teamver-design`)로 잔액을 읽고, drain 워커는 `TEAMVER_INTERNAL_API_KEY`로 Main `TokenService` consume을 친다. Registry `/api/billing/reserve|commit` 는 쓰지 않는다. 기본은 `TEAMVER_BILLING_DISABLED=1`. 본 문서 §4의 Registry 골격은 이력이다.
 
 ---
 
