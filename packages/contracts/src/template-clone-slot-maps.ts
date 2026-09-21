@@ -61,11 +61,37 @@ export const BLUE_PROFESSIONAL_SLOT_MAP: TemplateCloneSlotMap = mapOf(
   /\bmetrics-row\b[\s\S]{0,4000}?\bmetric-card\b/i,
 );
 
+/**
+ * 루프512 — Capsule ships eight specialty content hosts, not just the
+ * `cards-grid`/`pillar-card` pair. Restricting the slot map to a single
+ * host meant chart/timeline/stats/tier/diagram/closing shells never got
+ * outline `items[]` routed into their slots; the fill/scrub pipeline then
+ * left English demo copy or bare visual chrome behind. Add the remaining
+ * host+peer pairs (`.chart-container`/`.chart-row`, `.timeline`/`.timeline-step`,
+ * `.stats-grid`/`.stat-pill`+`.stat-block`, `.tier-grid`/`.tier-card`,
+ * `.diagram-flow`/`.pill.pill-filled`) so outline items land in the right
+ * slots and the specialty peer fillers in `fillOneCardPeer` fire.
+ */
 export const CAPSULE_SLOT_MAP: TemplateCloneSlotMap = mapOf(
   ['example-html-ppt-zhangzara-capsule', 'html-ppt-zhangzara-capsule'],
-  ['cards-grid'],
-  ['pillar-card', 'card'],
-  /\bpillar-card\b/i,
+  [
+    'cards-grid',
+    'chart-container',
+    'timeline',
+    'stats-grid',
+    'tier-grid',
+    'diagram-flow',
+  ],
+  [
+    'pillar-card',
+    'card',
+    'chart-row',
+    'timeline-step',
+    'stat-pill',
+    'stat-block',
+    'tier-card',
+  ],
+  /\b(?:pillar-card|chart-row|timeline-step|tier-card|stat-pill)\b/i,
 );
 
 export const BOLD_POSTER_SLOT_MAP: TemplateCloneSlotMap = mapOf(
