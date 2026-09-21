@@ -32,6 +32,22 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **명시 5장+ 요청에서는 저장하지 않는다.** 8–10장 요청의 1장/4장 Template Clone fill은 `deck.html` 덮어쓰기 전에 incomplete로 막고 기존 덱을 보존한다. 6장 이상 첫 fill만 저장 후 top-up 가능하다. 사용자가 1장을 명시하거나 요청 장수가 작을 때만 1장 저장을 허용한다 |
 
+### 1.45 2026-09-21 — Kit copy pack Teamver-scope guard (0921-N04 · 루프570)
+
+Non-Teamver 브리프(`neuralstudio.kr 회사 소개`)에도 kit copy pack이 하드코드한 Teamver 제품 특유 명명(`같은 보드` · `권한 경계` · `결과 이력` · `한 팀 보드` · `리뷰 습관` · `팀 보드 복제` …)이 카드 title로 새어 나온다. `${brand}` interpolation 은 body 서술구에만 적용되고 카드 title은 리터럴이라 topic-parameterization 이 안 된다.
+
+- [x] `TEAMVER_BRANDED_KIT_KEYS` 12개 kit 상수 (product-launch-halo · raw-grid-pitch 제외)
+- [x] `briefIsAboutTeamverProduct(cover, brief, label)` — `teamver` / `팀버` word-boundary 검사 (export)
+- [x] `synthesizeTemplateCloneSlideBody` — Teamver-branded kit key + non-Teamver 브리프 → `kitKey=null` 로 `templatesForSynthTemplateTopic` fall-through
+- [x] `TEAMVER_HARDCODED_PACK_TITLE_MAP` (21 항목) · `TEAMVER_HARDCODED_PACK_BODY_MAP` (32 정규식)
+- [x] `neutralizeTeamverPackCopyInDeckHtml` — `buildTemplateClonedDeckHtml` 최종 후처리. title 은 `>...<` slot 정확 매칭 + raw substring 두 pass, body 는 unrestricted 정규식
+- [x] `루프480` 기대값 갱신 (같은 보드 → 통합 화면)
+- [x] `루프570` red-spec — 6개 kit template × non-Teamver 브리프에서 하드코드 문구 leak 없음
+
+**문서:** [0921-N04-1](./0921-N04-1-상위설계-[kit_pack_teamver_scope_guard].md) · [0921-N04-3](./0921-N04-3-구현현황-[kit_pack_teamver_scope_guard].md)
+
+**정책 불변:** Persist salvage · pad · continue · head-banner · deterministic outline · slot map · slot fill · slot heal · AI content generation pipeline (`shouldUseDeterministicTemplateCloneFill` · `TEMPLATE_CLONE_FILL_DEFAULT_MODE`). Teamver 브리프 경로에서는 no-op (원래 동작 유지).
+
 ### 1.44 2026-09-21 — Capsule 한글 덱 chrome / overflow / sparse-role (0921-N03 · 루프563)
 
 0918-N05가 Capsule kit key + 역할 pack + leftover healer를 넣었지만, 커버 데코 pill 누수와 title-only specialty 빈 격자는 남았다. 브랜치 내부 loop510–514는 staging 루프510–514와 번호가 겹치므로 **루프563**으로 기록한다.
