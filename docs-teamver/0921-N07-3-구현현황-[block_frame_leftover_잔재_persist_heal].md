@@ -9,7 +9,7 @@
 | 잔재/ leftover 제목 leaf 비우기 | ☑ |
 | 빈 `.list-num` `<li>` 제거 (sibling 카피 span 유지) | ☑ |
 | persist `healAiGeneratedDeckMarkup` 연결 | ☑ |
-| Block Frame leftover heal 말미 연결 | ☑ |
+| fill leftover heal 말미에 연결하지 않음 | ☑ |
 | 공식 영문 example no-op | ☑ |
 | 루프572 red-spec | ☑ |
 

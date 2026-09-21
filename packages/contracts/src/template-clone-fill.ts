@@ -1447,7 +1447,7 @@ function wipeServiceIntroLeftoverLeaves(html: string): string {
   const next = dest.replace(/>([^<]{2,})</g, (full, chunk: string) => {
     const plain = String(chunk).replace(/\s+/g, ' ').trim();
     if (!plain) return full;
-    if (looksLikeBrokenHangulLeftoverRemnant(plain) || looksLikeServiceIntroLeftoverTitle(plain)) {
+    if (looksLikeBrokenHangulLeftoverRemnant(plain)) {
       changed = true;
       return '><';
     }
@@ -16280,7 +16280,6 @@ export function healBlockFrameLeftoverCatalogCopy(
   if (hasHangul) {
     out = injectBlockFrameHangulTypography(out);
   }
-  out = healBrokenServiceIntroLeftoverRemnants(out);
   return out;
 }
 

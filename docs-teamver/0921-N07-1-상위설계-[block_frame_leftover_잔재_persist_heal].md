@@ -19,7 +19,7 @@ N06은 **새로 합성하는** substring wipe / `${noun} 다음` 을 막는다. 
 1. `healBrokenServiceIntroLeftoverRemnants` — 잔재 leaf 를 비운다. 대체 문장을 만들지 않는다.
 2. leftover 제목과 leftover 제목+조사 문장(`다음는` / `쓰는 길에서`)도 비운다.
 3. `.list-num` 만 있는 `<li>` 를 제거한다. 옆 카피 `<span>` 이 있는 공식 content-list 항목은 유지한다.
-4. persist `healAiGeneratedDeckMarkup` 과 Block Frame leftover heal 말미에서 호출한다.
+4. persist `healAiGeneratedDeckMarkup` 에서만 호출한다. fill `healBlockFrameLeftoverCatalogCopy` 말미에 두면 leftover 카드 제목·본문을 다시 비운다.
 5. 공식 영문 `example.html` 은 Hangul 잔재가 없으면 no-op.
 
 ## 비범위
