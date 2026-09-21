@@ -160,8 +160,8 @@ fi
 rm -f "$BAD_PREFIX_ENV"
 echo "✓ validate_deploy_env rejects OD_S3_PREFIX without trailing slash"
 
-if ! grep -q 'TEAMVER_REGISTRY_\* 설정됨' <<< "$clean_out"; then
-  echo "❌ expected REGISTRY 설정됨 warning in baseline"
+if ! grep -q 'TEAMVER_REGISTRY_\* 가 남아 있어도 읽지 않는다' <<< "$clean_out"; then
+  echo "❌ expected leftover REGISTRY ignored warning in baseline"
   echo "$clean_out"
   exit 1
 fi
@@ -186,8 +186,8 @@ grep -v '^TEAMVER_REGISTRY_' "$TMP_ENV" > "$FULL_ENV"
   echo 'TEAMVER_REGISTRY_ACCESS_KEY=secret-1'
 } >> "$FULL_ENV"
 full_out="$(bash "$SCRIPT" --staging --rds --env-file "$FULL_ENV" 2>&1)"
-if ! grep -q 'TEAMVER_REGISTRY_\* 설정됨' <<< "$full_out"; then
-  echo "❌ expected REGISTRY 설정됨 warning"
+if ! grep -q 'TEAMVER_REGISTRY_\* 가 남아 있어도 읽지 않는다' <<< "$full_out"; then
+  echo "❌ expected leftover REGISTRY ignored warning"
   rm -f "$FULL_ENV"
   echo "$full_out"
   exit 1
@@ -223,11 +223,32 @@ if ! grep -q 'TEAMVER_BILLING_DISABLED=1' <<< "$prod_no_reg_out"; then
 fi
 PROD_NO_KILL_DIR="$(mktemp -d)"
 grep -v -E '^(TEAMVER_REGISTRY_|TEAMVER_BILLING_DISABLED)' "$TMP_ENV" > "$PROD_NO_KILL_DIR/.env.production"
-if bash "$SCRIPT" --production --rds --env-file "$PROD_NO_KILL_DIR/.env.production" >/dev/null 2>&1; then
-  echo "❌ production w/o registry and w/o BILLING_DISABLED must fail"
+if ! bash "$SCRIPT" --production --rds --env-file "$PROD_NO_KILL_DIR/.env.production" >/dev/null 2>&1; then
+  echo "❌ production w/o registry and unset DISABLED should default OFF and pass"
   rm -rf "$PROD_BILLING_DIR" "$PROD_NO_KILL_DIR"
   exit 1
 fi
+ON_NO_PRICE="$(mktemp)"
+grep -v -E '^(TEAMVER_REGISTRY_|TEAMVER_BILLING_DISABLED|DESIGN_MODEL_PRICES_JSON)' "$TMP_ENV" > "$ON_NO_PRICE"
+echo 'TEAMVER_BILLING_DISABLED=0' >> "$ON_NO_PRICE"
+if bash "$SCRIPT" --staging --rds --env-file "$ON_NO_PRICE" >/dev/null 2>&1; then
+  echo "❌ DISABLED=0 without DESIGN_MODEL_PRICES_JSON must fail"
+  rm -f "$ON_NO_PRICE"
+  rm -rf "$PROD_BILLING_DIR" "$PROD_NO_KILL_DIR"
+  exit 1
+fi
+ON_OK="$(mktemp)"
+cat "$ON_NO_PRICE" > "$ON_OK"
+echo 'DESIGN_MODEL_PRICES_JSON={"MiniMax-M3":{"prompt_cost_per_1k":0.0003,"completion_cost_per_1k":0.0012}}' >> "$ON_OK"
+on_ok_out="$(bash "$SCRIPT" --staging --rds --env-file "$ON_OK" 2>&1)"
+if [[ $? -ne 0 ]] || ! grep -q 'Main M2M spendable/consume' <<< "$on_ok_out"; then
+  echo "❌ DISABLED=0 + prices should pass without Registry"
+  echo "$on_ok_out"
+  rm -f "$ON_NO_PRICE" "$ON_OK"
+  rm -rf "$PROD_BILLING_DIR" "$PROD_NO_KILL_DIR"
+  exit 1
+fi
+rm -f "$ON_NO_PRICE" "$ON_OK"
 rm -rf "$PROD_BILLING_DIR" "$PROD_NO_KILL_DIR"
 
 echo "✓ validate_deploy_env --env-file + REGISTRY warnings ok"
@@ -336,8 +357,8 @@ rm -f "$PURGE_ZERO_ENV"
 echo "✓ validate_deploy_env hosted OD_S3_PURGE_ON_DELETE gates ok"
 
 # Daemon billing bridge warnings.
-if ! grep -q 'daemon billing bridge 활성\|daemon billing bridge OFF' <<< "$clean_out"; then
-  echo "❌ baseline should print daemon billing bridge line (활성 or OFF)"
+if ! grep -q 'daemon estimate-reserve\|차감 OFF' <<< "$clean_out"; then
+  echo "❌ baseline should print estimate-reserve / 차감 OFF line"
   echo "$clean_out"
   exit 1
 fi

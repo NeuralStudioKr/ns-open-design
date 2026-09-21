@@ -116,21 +116,21 @@ registry_set_count=0
 [[ -n "${TEAMVER_REGISTRY_KEY_ID:-}" ]] && registry_set_count=$((registry_set_count + 1))
 [[ -n "${TEAMVER_REGISTRY_ACCESS_KEY:-}" ]] && registry_set_count=$((registry_set_count + 1))
 case "$registry_set_count" in
-  0) flag "registry billing" "(disabled — TEAMVER_REGISTRY_* unset, run_lifecycle skips)" ;;
-  3) flag "registry billing" "enabled (reserve/commit/refund active)" ;;
-  *) flag "registry billing" "PARTIAL — fix or clear all three TEAMVER_REGISTRY_*" ;;
+  0) flag "registry billing" "(unused — 0918-N07 M2M consume)" ;;
+  3) flag "registry billing" "(leftover keys ignored)" ;;
+  *) flag "registry billing" "PARTIAL — clear leftover TEAMVER_REGISTRY_*" ;;
 esac
 if [[ -n "${TEAMVER_DRIVE_PUBLISH_FOLDER_ID:-}" ]]; then
   flag "drive publish folder" "set (export → Teamver Drive folder ${TEAMVER_DRIVE_PUBLISH_FOLDER_ID:0:8}…)"
 else
   flag "drive publish folder" "(unset — publish lands at Drive root; G7 isolation 권장)"
 fi
-if [[ "${TEAMVER_BILLING_DISABLED:-}" == "1" ]]; then
-  flag "daemon billing bridge" "DISABLED (TEAMVER_BILLING_DISABLED=1; run lifecycle skip)"
+if [[ "${TEAMVER_BILLING_DISABLED:-1}" == "1" ]]; then
+  flag "design credits" "OFF (TEAMVER_BILLING_DISABLED=1; ledger only)"
 elif [[ -n "${TEAMVER_DESIGN_API_URL:-}" && -n "${TEAMVER_INTERNAL_API_KEY:-}" ]]; then
-  flag "daemon billing bridge" "enabled (reserve→commit/refund on terminal run)"
+  flag "design credits" "ON (M2M spendable/consume + drain)"
 else
-  flag "daemon billing bridge" "(off — TEAMVER_DESIGN_API_URL·TEAMVER_INTERNAL_API_KEY 미설정)"
+  flag "design credits" "(off — TEAMVER_DESIGN_API_URL·TEAMVER_INTERNAL_API_KEY 미설정)"
 fi
 echo
 

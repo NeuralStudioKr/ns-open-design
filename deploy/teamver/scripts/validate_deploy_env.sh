@@ -320,29 +320,33 @@ if [[ "$REQUIRE_S3_STORAGE" == true ]]; then
   fi
 fi
 
-# Registry billing (Phase 2) — Admin 발급. All-or-nothing.
+# leftover Registry keys — 쓰지 않는다. 부분 설정만 막는다.
 registry_set_count=0
 [[ -n "${TEAMVER_REGISTRY_APP_ID:-}" ]] && registry_set_count=$((registry_set_count + 1))
 [[ -n "${TEAMVER_REGISTRY_KEY_ID:-}" ]] && registry_set_count=$((registry_set_count + 1))
 [[ -n "${TEAMVER_REGISTRY_ACCESS_KEY:-}" ]] && registry_set_count=$((registry_set_count + 1))
 if [[ "$registry_set_count" -gt 0 && "$registry_set_count" -lt 3 ]]; then
-  fail "TEAMVER_REGISTRY_APP_ID/KEY_ID/ACCESS_KEY 부분 설정 — 셋 모두 또는 셋 모두 비워야 함 (run_lifecycle은 셋 모두 있을 때만 reserve/commit 호출)"
+  fail "TEAMVER_REGISTRY_APP_ID/KEY_ID/ACCESS_KEY 부분 설정 — 지워라. 과금은 Registry를 쓰지 않는다"
 elif [[ "$registry_set_count" -eq 3 ]]; then
-  warn "TEAMVER_REGISTRY_* 설정됨 — design run reserve/commit/refund 활성 (CW alarm: teamver_usage_5xx)"
-  if [[ -z "${DESIGN_MODEL_PRICES_JSON:-}" ]]; then
-    warn "DESIGN_MODEL_PRICES_JSON 미설정 — Strategy A reserve estimate·ledger credits_amount_t metered path skipped (flat_fallback/0 only)"
-  else
-    warn "DESIGN_MODEL_PRICES_JSON 설정됨 — Strategy A reserve estimate + ledger credits_amount_t meter 활성"
-    if [[ "${DESIGN_BILLING_MAX_RESERVE_T:-0}" -le 0 ]]; then
-      warn "DESIGN_BILLING_MAX_RESERVE_T=0 — reserve estimate 상한 미적용 (무제한 estimate; staging에서 cap 권장)"
-    fi
-  fi
+  warn "TEAMVER_REGISTRY_* 가 남아 있어도 읽지 않는다 (0918-N07 M2M consume)"
+fi
+
+# 0918-N07 — 차감 ON은 DISABLED=0 + 단가표 + internal key. Registry 불필요.
+# 미설정은 코드 기본과 같이 OFF.
+billing_off=true
+case "${TEAMVER_BILLING_DISABLED:-1}" in
+  0|false|FALSE|no|off) billing_off=false ;;
+esac
+if [[ "$billing_off" == true ]]; then
+  warn "TEAMVER_BILLING_DISABLED=${TEAMVER_BILLING_DISABLED:-1} — 차감 OFF (ledger만). merge ≠ 차감 ON"
 else
-  if [[ "${TEAMVER_BILLING_DISABLED:-}" != "1" ]]; then
-    fail "${DEPLOY_ENV_FLAG#--}: TEAMVER_REGISTRY_* 미설정 시 TEAMVER_BILLING_DISABLED=1 명시 필요 (Registry Phase 2 미구현·usage ledger만 기록)"
-  else
-    warn "TEAMVER_REGISTRY_* 미설정 — Registry billing skip (usage ledger만; TEAMVER_BILLING_DISABLED=1)"
+  if [[ -z "${DESIGN_MODEL_PRICES_JSON:-}" ]]; then
+    fail "${DEPLOY_ENV_FLAG#--}: TEAMVER_BILLING_DISABLED=0 이면 DESIGN_MODEL_PRICES_JSON 필수"
   fi
+  if [[ -z "${TEAMVER_INTERNAL_API_KEY:-}" ]]; then
+    fail "${DEPLOY_ENV_FLAG#--}: TEAMVER_BILLING_DISABLED=0 이면 TEAMVER_INTERNAL_API_KEY 필수"
+  fi
+  warn "TEAMVER_BILLING_DISABLED=0 — Main M2M spendable/consume + 합산 드레인. Registry 키는 필요 없다"
 fi
 
 # Drive publish (Phase 4 / G7) — Teamver Drive 업로드 폴더.
@@ -354,14 +358,13 @@ else
   warn "TEAMVER_DRIVE_PUBLISH_FOLDER_ID 설정됨 — design-api PublishService가 해당 폴더로 export 업로드 (G7)"
 fi
 
-# Daemon Registry billing bridge (Phase 2 / 09 §3 / A9) — daemon이 chat run
-# 시작 시 design-api `/api/internal/billing/{reserve,commit,refund}`를 호출.
-if [[ "${TEAMVER_BILLING_DISABLED:-}" == "1" ]]; then
-  warn "TEAMVER_BILLING_DISABLED=1 — daemon billing bridge OFF (run lifecycle reserve/commit/refund 호출 안 함)"
+# daemon → design-api estimate-reserve (0 가드). 전액 reserve 없음.
+if [[ "$billing_off" == true ]]; then
+  warn "daemon estimate-reserve — 킬스위치라 policy=billing_disabled, 가드 없음"
 elif [[ -n "${TEAMVER_DESIGN_API_URL:-}" && -n "${TEAMVER_INTERNAL_API_KEY:-}" ]]; then
-  warn "daemon billing bridge 활성 — design-api 응답 usage_id=null 이면 best-effort skip (registry creds 미설정 시 안전)"
+  warn "daemon estimate-reserve 활성 — insufficient/unavailable 이면 런 거절. 차감은 drain"
 else
-  warn "daemon billing bridge OFF — TEAMVER_DESIGN_API_URL·TEAMVER_INTERNAL_API_KEY 미설정"
+  warn "daemon estimate-reserve OFF — TEAMVER_DESIGN_API_URL·TEAMVER_INTERNAL_API_KEY 미설정"
 fi
 
 # Scratch eviction (P1-10 / P1-6) — daemon scratch 용량 관리.
