@@ -1267,18 +1267,18 @@ describe("ProjectView message loading", () => {
     expect(block).not.toContain("runStatus: 'failed'");
   });
 
-  it("루프550 · short-response auto-retry arms once then falls back to pad", () => {
+  it("short-response auto-retry arms once without padding template drafts", () => {
     const source = readSource("src/components/ProjectView.tsx");
     expect(source).toContain("shouldAutoRetryShortSlideResponse({");
     expect(source).toContain("kind: 'needs-short-response-retry'");
     expect(source).toContain("autoRetryForShortResponse: true");
     expect(source).toContain("renderShortResponseAutoRetryPrompt({");
     expect(source).toContain("applyQuantitativeSlideCountInstruction(modelPrompt, seedShellCount)");
-    expect(source).toContain("padToSeedSlideCount: true");
-    expect(source).toContain("artifact_short_response_persisted");
+    expect(source).toContain("defaultFirstFillSlideCount:");
+    expect(source).toContain("padToSeedSlideCount: false");
   });
 
-  it("루프554 · slide-count short response retries then pads; never warn-saves 2 slides", () => {
+  it("slide-count short response retries then preserves the existing deck", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const start = source.indexOf("const slideRegression = findClientSlideCountRegression({");
     expect(start).toBeGreaterThan(0);
@@ -1286,19 +1286,16 @@ describe("ProjectView message loading", () => {
     expect(block).toContain("shouldAutoRetryShortSlideResponse({");
     expect(block).toContain("kind: 'needs-short-response-retry'");
     expect(block).toContain("retryKind: 'slide-count'");
-    expect(block).toContain("recoverShortDeckByPaddingToSeed({");
-    expect(block).toContain("forcePad: true");
-    expect(block).toContain("kind: 'skipped-incomplete'");
-    expect(source).toContain("persist refused");
+    expect(block).not.toContain("recoverShortDeckByPaddingToSeed({");
+    expect(block).toContain("kind: 'artifact-regression'");
   });
 
-  it("0917-N25 · head-preamble continue skips short-response retry and force-pads", () => {
+  it("head-preamble continue skips short-response retry without padding", () => {
     const source = readSource("src/components/ProjectView.tsx");
     expect(source).toContain("runHeadPreambleContinueRef.current");
     expect(source).toContain("!runHeadPreambleContinueRef.current");
     expect(source).toContain("buildHeadPreambleContinuePrompt()");
-    expect(source).toContain("forcePad: true");
-    expect(source).toContain("paddedCount");
+    expect(source).toContain("kind: 'skipped-incomplete'");
     expect(source).toContain("shouldEmitHeadPreambleBanner");
   });
 
@@ -1307,7 +1304,7 @@ describe("ProjectView message loading", () => {
     const start = source.indexOf("const merged = applyTemplateClonePromptFillLookMerge(");
     expect(start).toBeGreaterThan(0);
     const block = source.slice(start, start + 2600);
-    expect(block).toContain("padToSeedSlideCount: true");
+    expect(block).toContain("padToSeedSlideCount: false");
     expect(block).toContain("forcePad: true");
     expect(block).not.toContain("shortVsSeed ? { forcePad: true }");
   });

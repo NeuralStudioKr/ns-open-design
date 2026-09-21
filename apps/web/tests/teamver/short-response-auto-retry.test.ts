@@ -47,15 +47,15 @@ describe('루프550 short-response auto-retry decision', () => {
     })).toBe(false);
   });
 
-  it('unspecified 3 slides does not retry', () => {
+  it('unspecified 2-slide first fill retries against the resolved default target', () => {
     expect(shouldAutoRetryShortSlideResponse({
-      seedCount: 10,
-      returnedCount: 3,
-      requestedSlideCount: null,
+      seedCount: 6,
+      returnedCount: 2,
+      requestedSlideCount: 6,
       alreadyRetried: false,
       scopedEdit: false,
       isCreateOrFullFill: true,
-    })).toBe(false);
+    })).toBe(true);
   });
 
   it('scoped 1 slide does not retry', () => {
@@ -75,7 +75,7 @@ describe('루프550 short-response auto-retry decision', () => {
       seedCount: 10,
     });
     expect(prompt).toBe(
-      'The previous response returned only 2 slides. Seed contains 10 slides. Return EXACTLY 10 <section class="slide">.',
+      'The previous response returned only 2 slides. The complete first fill requires 10 slides. Return EXACTLY 10 <section class="slide">.',
     );
     expect(isShortResponseAutoRetryPrompt(prompt)).toBe(true);
   });

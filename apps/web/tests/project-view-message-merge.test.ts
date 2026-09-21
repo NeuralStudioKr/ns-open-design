@@ -576,24 +576,40 @@ describe("findTemplateCloneFillSlideCountIncomplete", () => {
     ).toBeNull();
   });
 
-  it("allows a titled one-slide cover draft so top-up can append the rest", () => {
+  it("blocks a one-slide unspecified first fill before it can become the final deck", () => {
     expect(
       findTemplateCloneFillSlideCountIncomplete({
         fileName: "deck.html",
         htmlBody: '<section class="slide"><h1>Cover only</h1></section>',
         requestedSlideCount: null,
+        defaultFirstFillSlideCount: 6,
       }),
-    ).toBeNull();
+    ).toMatchObject({ producedCount: 1, expectedCount: 6 });
   });
 
-  it("allows untitled one-slide drafts so top-up can append instead of incomplete_output", () => {
+  it("blocks a two-slide unspecified first fill like the live Block Frame regression", () => {
     expect(
       findTemplateCloneFillSlideCountIncomplete({
         fileName: "deck.html",
-        htmlBody: '<section class="slide"><p>placeholder</p></section>',
+        htmlBody: '<section class="slide"><h1>Cover</h1></section>'
+          + '<section class="slide"><h2>Problem</h2><p>body</p></section>',
         requestedSlideCount: null,
+        defaultFirstFillSlideCount: 6,
       }),
-    ).toBeNull();
+    ).toMatchObject({ producedCount: 2, expectedCount: 6 });
+  });
+
+  it("allows a six-slide unspecified first fill", () => {
+    const sixSlides = Array.from(
+      { length: 6 },
+      (_, index) => `<section class="slide"><h2>Slide ${index + 1}</h2><p>body</p></section>`,
+    ).join("");
+    expect(findTemplateCloneFillSlideCountIncomplete({
+      fileName: "deck.html",
+      htmlBody: sixSlides,
+      requestedSlideCount: null,
+      defaultFirstFillSlideCount: 6,
+    })).toBeNull();
   });
 
   it("does not block short fills against an explicit small slide count", () => {

@@ -54,7 +54,7 @@ export function renderShortResponseAutoRetryPrompt(input: {
   const seedCount = Math.max(1, Math.floor(input.seedCount));
   return (
     `The previous response returned only ${returnedCount} slides. `
-    + `Seed contains ${seedCount} slides. `
+    + `The complete first fill requires ${seedCount} slides. `
     + `Return EXACTLY ${seedCount} <section class="slide">.`
   );
 }

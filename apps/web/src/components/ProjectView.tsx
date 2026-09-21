@@ -3262,32 +3262,42 @@ export function findClientSlideCountRegression(input: {
  *
  * Loop404 allowed every short explicit request through so hidden top-up could append,
  * but that also let a one-slide cover overwrite `deck.html` for an 8-10 request.
- * Keep small explicit/unspecified decks allowed, but for explicit 5+ requests require
- * at least min(requestedMin, FIRST_FILL_SLIDE_COUNT_THIS_TURN) closed slides before
- * saving over the current deck. A 6-of-8-10 first fill can still persist and top-up;
- * 1-4/5 slide truncations are treated as incomplete and preserve the prior file.
+ * Keep explicit 1–4 slide requests allowed. For explicit 5+ requests and unspecified
+ * first fills, require a resolved first-fill floor before saving over the current deck.
+ * A 6-of-8-10 first fill can still persist and top-up; 1–5 slide truncations from an
+ * unspecified run are retried instead of becoming the final deliverable.
  */
 export function findTemplateCloneFillSlideCountIncomplete(input: {
   fileName: string;
   htmlBody: string;
   requestedSlideCount: number | null;
   requestedSlideCountMin?: number | null;
+  defaultFirstFillSlideCount?: number | null;
 }): { fileName: string; producedCount: number; expectedCount: number; reason: string } | null {
   const fileName = input.fileName.trim();
   if (!fileName.toLowerCase().endsWith('.html')) return null;
-  const requestedMin =
+  const explicitRequestedMin =
     typeof input.requestedSlideCountMin === 'number' && Number.isFinite(input.requestedSlideCountMin)
       ? Math.floor(input.requestedSlideCountMin)
       : typeof input.requestedSlideCount === 'number' && Number.isFinite(input.requestedSlideCount)
         ? Math.floor(input.requestedSlideCount)
         : null;
+  const requestedMin = explicitRequestedMin
+    ?? (
+      typeof input.defaultFirstFillSlideCount === 'number'
+      && Number.isFinite(input.defaultFirstFillSlideCount)
+        ? Math.floor(input.defaultFirstFillSlideCount)
+        : null
+    );
   if (requestedMin == null || requestedMin <= 4) return null;
   const producedCount = countDeckSlideSections(input.htmlBody);
   if (producedCount <= 0) return {
     fileName,
     producedCount,
     expectedCount: requestedMin,
-    reason: `template clone fill produced no slides for an explicit ${requestedMin}-slide request`,
+    reason: explicitRequestedMin != null
+      ? `template clone fill produced no slides for an explicit ${requestedMin}-slide request`
+      : `template clone fill produced no slides; ${requestedMin} slides are required for the first fill`,
   };
   const firstFillFloor = Math.min(requestedMin, FIRST_FILL_SLIDE_COUNT_THIS_TURN);
   if (producedCount >= firstFillFloor) return null;
@@ -3295,9 +3305,11 @@ export function findTemplateCloneFillSlideCountIncomplete(input: {
     fileName,
     producedCount,
     expectedCount: firstFillFloor,
-    reason:
-      `template clone fill produced only ${producedCount} slides for an explicit ${requestedMin}-slide request; ` +
-      `at least ${firstFillFloor} slides are required before saving over deck.html`,
+    reason: explicitRequestedMin != null
+      ? `template clone fill produced only ${producedCount} slides for an explicit ${requestedMin}-slide request; `
+        + `at least ${firstFillFloor} slides are required before saving over deck.html`
+      : `template clone fill produced only ${producedCount} slides; `
+        + `at least ${firstFillFloor} slides are required for an unspecified first fill before saving over deck.html`,
   };
 }
 
@@ -6468,6 +6480,9 @@ export function ProjectView({
             htmlBody,
             requestedSlideCount: requestedSpec?.max ?? null,
             requestedSlideCountMin: requestedSpec?.min ?? null,
+            defaultFirstFillSlideCount: requestedSpec == null
+              ? FIRST_FILL_SLIDE_COUNT_THIS_TURN
+              : null,
           });
           if (slideCountIncomplete) {
             const producedCount = slideCountIncomplete.producedCount;
@@ -6484,7 +6499,10 @@ export function ProjectView({
                 && shouldAutoRetryShortSlideResponse({
                   seedCount: expectedCount,
                   returnedCount: producedCount,
-                  requestedSlideCount: requestedSpec?.min ?? requestedSpec?.max ?? null,
+                  requestedSlideCount:
+                    requestedSpec?.min
+                    ?? requestedSpec?.max
+                    ?? expectedCount,
                   alreadyRetried: runAutoRetryForShortResponseRef.current,
                   scopedEdit:
                     persistCommentAttachments.length > 0
