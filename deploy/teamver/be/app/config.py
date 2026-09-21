@@ -84,12 +84,12 @@ class Settings(BaseModel):
     dev_display_name: str = os.getenv("DEV_DISPLAY_NAME", "Dev User")
     dev_workspace_id: str = os.getenv("DEV_WORKSPACE_ID", "dev-workspace")
 
-    # Registry billing (Phase 2) — Admin 발급
+    # leftover Registry env — 읽기만. fail-fast·차감 경로에서 쓰지 않는다.
     teamver_registry_app_id: str = os.getenv("TEAMVER_REGISTRY_APP_ID", "")
     teamver_registry_key_id: str = os.getenv("TEAMVER_REGISTRY_KEY_ID", "")
     teamver_registry_access_key: str = os.getenv("TEAMVER_REGISTRY_ACCESS_KEY", "")
     teamver_billing_disabled: bool = Field(
-        default_factory=lambda: _env_bool("TEAMVER_BILLING_DISABLED", default=False)
+        default_factory=lambda: _env_bool("TEAMVER_BILLING_DISABLED", default=True)
     )
     teamver_billing_reserve_amount: int = Field(
         default_factory=lambda: _env_nonneg_int("TEAMVER_BILLING_RESERVE_AMOUNT", default=0)

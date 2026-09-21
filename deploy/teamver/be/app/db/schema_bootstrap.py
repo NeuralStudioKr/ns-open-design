@@ -108,6 +108,15 @@ def apply_postgres_schema_patches() -> None:
         CREATE INDEX IF NOT EXISTS idx_design_billing_outbox_status_ws
           ON design_billing_outbox (status, workspace_id);
         """,
+        "ALTER TABLE design_billing_outbox ADD COLUMN IF NOT EXISTS settlement_id TEXT;",
+        "ALTER TABLE design_billing_outbox ADD COLUMN IF NOT EXISTS consume_reference_id TEXT;",
+        "ALTER TABLE design_billing_outbox ADD COLUMN IF NOT EXISTS consume_attempted BOOLEAN NOT NULL DEFAULT false;",
+        "ALTER TABLE design_billing_outbox ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;",
+        """
+        CREATE INDEX IF NOT EXISTS idx_design_billing_outbox_consume_ref
+          ON design_billing_outbox (consume_reference_id)
+          WHERE consume_reference_id IS NOT NULL;
+        """,
         """
         CREATE TABLE IF NOT EXISTS workspace_billing_plans (
           workspace_id TEXT PRIMARY KEY,
