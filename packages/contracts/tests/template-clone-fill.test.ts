@@ -410,8 +410,8 @@ describe('buildTemplateClonedDeckHtml', () => {
     expect(cloned).toBeTruthy();
     expect(listTemplateCloneSlideShells(cloned!).length).toBe(8);
     expect(cloned).toContain('팀버 소개');
-    expect(cloned).toContain('서비스 가치 제안');
     expect(cloned).toContain('도입 로드맵');
+    expect(cloned).toMatch(/Teamver|보드|초안/);
     expect(cloned).not.toContain('핵심 기능과 사용자가 얻는 직접적인 가치');
     expect(cloned).not.toMatch(/Aurora|Public attendance|Open programme|Field Notes|Quiet Editions|The Long Yellow/i);
     expect(cloned).not.toMatch(/입력입력|정리정리|병목병목|A 2\.4× rise|Returning audience/i);

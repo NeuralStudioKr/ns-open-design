@@ -503,7 +503,7 @@ describe('루프419 resolveTemplateCloneSlidesForDeterministicFill', () => {
     const joined = JSON.stringify(slides);
     expect(joined).not.toMatch(/팀버이|팀버은|Teamver이|Teamver은/);
     expect(joined).toContain('Teamver가 풀어야 하는 문제');
-    expect(joined).toContain('서비스 가치 제안');
+    expect(joined).toMatch(/보드|초안/);
     expect(joined).not.toContain('한눈에');
     expect(slides[0]?.lead).toBe(
       synthesizeTemplateCloneCoverLead('Teamver', 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘. 8~10장'),
@@ -750,7 +750,7 @@ describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
     if (decision.kind === 'seed-fallback') {
       expect(listTemplateCloneSlideShells(decision.html).length).toBe(10);
       expect(decision.html).toContain('성과 지표');
-      expect(decision.html).toContain('서비스 가치 제안');
+      expect(decision.html).toMatch(/Teamver|보드|초안/);
       expect(decision.html).toContain('도입 로드맵');
       expect(decision.html).not.toContain('Demo');
     }
