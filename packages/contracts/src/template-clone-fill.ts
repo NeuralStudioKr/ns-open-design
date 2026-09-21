@@ -5548,6 +5548,10 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   // Korean decks because the salvage pipeline only rewrites main content
   // slots. Blank the demo labels; keep the pill shape.
   next = scrubCapsuleLeftoverDecorativeChrome(next, { deckLang: 'auto' });
+  // 루프511 — Capsule specialty slots (chart/timeline/quote/stats/diagram
+  // /header-pill/closing-pill) similarly leak English demo copy through
+  // salvage. Blank the known catalog phrases on Korean decks.
+  next = scrubCapsuleLeftoverSpecialtySlotCopy(next, { deckLang: 'auto' });
   next = enrichSparseCobaltCover(next, brief);
   next = restyleBiennaleSparseChapterBodies(next);
   next = restyleBiennaleSparseDataBodies(next);
@@ -6264,6 +6268,261 @@ export function fillCapsuleEmptyTitlePill(
     /(<div\b[^>]*\bclass\s*=\s*"[^"]*\btitle-pill\b[^"]*"[^>]*>)\s*(<\/div>)/i,
     `$1${escapeHtml(label)}$2`,
   );
+}
+
+/**
+ * 루프511 — Capsule's specialty slot chrome (chart labels, timeline step
+ * labels+descriptions, statement-box blockquote+attribution, stat-label,
+ * header-pill / closing-pill / closing-sub, and slide-8 diagram pill-filled
+ * captions) is not routed through the clone-fill slot map. On Korean decks
+ * that surfaces as untranslated English demo copy on slides 3-10 — "Market
+ * Reach / 8.2M" on the chart, "Discovery / Map the terrain…" on the
+ * timeline, "The best time to plant a tree…" as the quote body, and
+ * "Data Ingestion / Transformation / Distribution" plus their English
+ * descriptions on the flow diagram — which is exactly what the user's
+ * 2026-09-21 screenshot showed as "요소 CSS도 제대로 안먹히고, 배치·정렬·
+ * 본문 밀도·품질이 적절치 않다". Blank those known catalog phrases (and any
+ * pure-Latin content of the specialty slots) so a Korean deck no longer
+ * leaks English demo copy through non-slot chrome. Never touches decks that
+ * carry no Hangul; preserves numeric/percent glyphs and any Korean/mixed
+ * content the model wrote.
+ */
+const CAPSULE_SPECIALTY_SLOT_CLASSES = [
+  'chart-label',
+  'chart-value',
+  'step-label',
+  'step-desc',
+  'attribution',
+  'header-pill',
+  'closing-pill',
+  'closing-sub',
+  'stat-label',
+] as const;
+
+/**
+ * Known English demo copy shipped by html-ppt-zhangzara-capsule/example.html.
+ * Matching is case-insensitive and collapses whitespace/HTML so a
+ * `<br>`-broken stat label ("Growth in<br>Active Users") still matches
+ * "growth in active users".
+ */
+const CAPSULE_SPECIALTY_SLOT_DEMO_TEXTS: ReadonlyArray<[string, string]> = [
+  // slide-4 .chart-label
+  ['chart-label', 'market reach'],
+  ['chart-label', 'engagement'],
+  ['chart-label', 'conversion'],
+  ['chart-label', 'retention'],
+  ['chart-label', 'satisfaction'],
+  // slide-4 .chart-value (English demo metric glyphs like 8.2M — blanked
+  // only when the deck is Korean and the model did not fill items[])
+  ['chart-value', '8.2m'],
+  ['chart-value', '4.5m'],
+  ['chart-value', '2.1m'],
+  ['chart-value', '7.8m'],
+  ['chart-value', '6.3m'],
+  // slide-6 .step-label
+  ['step-label', 'discovery'],
+  ['step-label', 'definition'],
+  ['step-label', 'development'],
+  ['step-label', 'delivery'],
+  ['step-label', 'evolution'],
+  // slide-6 .step-desc
+  ['step-desc', 'map the terrain before you traverse it'],
+  ['step-desc', 'sharpen the question to find the answer'],
+  ['step-desc', 'build with intent, iterate with care'],
+  ['step-desc', 'ship the work, then make it better'],
+  ['step-desc', 'growth is a process, not a destination'],
+  // slide-5 .attribution
+  ['attribution', 'a philosophy of action'],
+  // slide-3 .header-pill (English demo kicker)
+  ['header-pill', 'core principles'],
+  // slide-10 .closing-pill + .closing-sub
+  ['closing-pill', 'the journey continues'],
+  ['closing-sub', 'questions and conversation welcome'],
+  // slide-7 .stat-label (multiline via <br>)
+  ['stat-label', 'growth in active users'],
+  ['stat-label', 'total reach across channels'],
+  ['stat-label', 'system uptime record'],
+  ['stat-label', 'average user satisfaction score'],
+];
+
+/** slide-5 statement-box blockquote demo prose (multi-sentence). */
+const CAPSULE_BLOCKQUOTE_DEMO_START_RE =
+  /the best time to plant a tree was twenty years ago/i;
+
+/** slide-9 visual-side placeholder text. */
+const CAPSULE_VISUAL_PLACEHOLDER_DEMO_RE = /^visual placeholder$/i;
+
+/** slide-8 pill.pill-filled diagram flow labels + demo descriptions. */
+const CAPSULE_PILL_FILLED_DEMO_LABELS = new Set<string>([
+  'data ingestion',
+  'transformation',
+  'distribution',
+]);
+
+const CAPSULE_PILL_FILLED_DEMO_DESCRIPTIONS: readonly RegExp[] = [
+  /raw signals are captured and normalized from multiple sources in real time/i,
+  /information is enriched,\s*filtered,\s*and structured for downstream consumption/i,
+  /results are routed to appropriate endpoints with guaranteed delivery/i,
+];
+
+function collapseInnerTextForMatch(inner: string): string {
+  return inner
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function innerHasHangul(inner: string): boolean {
+  return /[가-힣]/.test(inner);
+}
+
+function blankSpecialtySlotIfDemoMatch(
+  src: string,
+  className: string,
+  demoTexts: readonly string[],
+): string {
+  const openRe = new RegExp(
+    `<(div|span|p)\\b([^>]*\\bclass\\s*=\\s*"[^"]*\\b${className}\\b[^"]*"[^>]*)>`,
+    'gi',
+  );
+  const rewrites: Array<{ start: number; end: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(src)) !== null) {
+    const openStart = match.index;
+    const openLen = match[0].length;
+    const tag = match[1]!.toLowerCase();
+    const closeRe = new RegExp(`</${tag}\\s*>`, 'gi');
+    closeRe.lastIndex = openStart + openLen;
+    const closeMatch = closeRe.exec(src);
+    if (!closeMatch) continue;
+    const inner = src.slice(openStart + openLen, closeMatch.index);
+    if (innerHasHangul(inner)) continue;
+    const normalized = collapseInnerTextForMatch(inner);
+    if (!normalized) continue;
+    if (!demoTexts.includes(normalized)) continue;
+    rewrites.push({ start: openStart + openLen, end: closeMatch.index });
+  }
+  if (rewrites.length === 0) return src;
+  let out = src;
+  for (let i = rewrites.length - 1; i >= 0; i -= 1) {
+    const { start, end } = rewrites[i]!;
+    out = out.slice(0, start) + out.slice(end);
+  }
+  return out;
+}
+
+/** Blank slide-5 `<blockquote>` when it still carries the tree-planting demo prose. */
+function blankCapsuleDemoBlockquote(src: string): string {
+  return src.replace(
+    /<blockquote\b([^>]*)>([\s\S]*?)<\/blockquote>/gi,
+    (whole, attrs: string, inner: string) => {
+      const flat = collapseInnerTextForMatch(inner);
+      if (!flat) return whole;
+      if (innerHasHangul(inner)) return whole;
+      if (!CAPSULE_BLOCKQUOTE_DEMO_START_RE.test(flat)) return whole;
+      return `<blockquote${attrs}></blockquote>`;
+    },
+  );
+}
+
+/** slide-9 `.visual-frame .frame-content span:"Visual Placeholder"`. */
+function blankCapsuleVisualPlaceholder(src: string): string {
+  return src.replace(
+    /(<div\b[^>]*\bclass\s*=\s*"[^"]*\bframe-content\b[^"]*"[^>]*>)([\s\S]*?)(<\/div>)/gi,
+    (whole, open: string, inner: string, close: string) => {
+      const flat = collapseInnerTextForMatch(inner);
+      if (!flat) return whole;
+      if (innerHasHangul(inner)) return whole;
+      if (!CAPSULE_VISUAL_PLACEHOLDER_DEMO_RE.test(flat)) return whole;
+      return `${open}${close}`;
+    },
+  );
+}
+
+/**
+ * Blank the three-column flow diagram beneath slide-8 (`.diagram-container`)
+ * when it still ships the English demo copy. Handles both the pill label
+ * (`Data Ingestion` / `Transformation` / `Distribution`) and the sibling
+ * demo description text.
+ */
+function blankCapsulePillFilledDemo(src: string): string {
+  let out = src;
+  // Pill labels
+  const pillOpenRe =
+    /<(div|span)\b([^>]*\bclass\s*=\s*"[^"]*\bpill\b[^"]*\bpill-filled\b[^"]*"[^>]*)>/gi;
+  const pillRewrites: Array<{ start: number; end: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = pillOpenRe.exec(out)) !== null) {
+    const openStart = match.index;
+    const openLen = match[0].length;
+    const tag = match[1]!.toLowerCase();
+    const closeRe = new RegExp(`</${tag}\\s*>`, 'gi');
+    closeRe.lastIndex = openStart + openLen;
+    const closeMatch = closeRe.exec(out);
+    if (!closeMatch) continue;
+    const inner = out.slice(openStart + openLen, closeMatch.index);
+    if (innerHasHangul(inner)) continue;
+    const flat = collapseInnerTextForMatch(inner);
+    if (!flat) continue;
+    if (!CAPSULE_PILL_FILLED_DEMO_LABELS.has(flat)) continue;
+    pillRewrites.push({ start: openStart + openLen, end: closeMatch.index });
+  }
+  for (let i = pillRewrites.length - 1; i >= 0; i -= 1) {
+    const { start, end } = pillRewrites[i]!;
+    out = out.slice(0, start) + out.slice(end);
+  }
+  // Demo descriptions (sibling divs beneath the pill-filled labels).
+  // Match any small text div whose content matches one of the known
+  // demo description sentences.
+  for (const demoRe of CAPSULE_PILL_FILLED_DEMO_DESCRIPTIONS) {
+    out = out.replace(
+      /<div\b([^>]*)>([^<]{20,320})<\/div>/gi,
+      (whole, attrs: string, inner: string) => {
+        if (innerHasHangul(inner)) return whole;
+        if (!demoRe.test(inner)) return whole;
+        return `<div${attrs}></div>`;
+      },
+    );
+  }
+  return out;
+}
+
+/**
+ * 루프511 entry point — apply every Capsule specialty-slot demo scrub on
+ * Korean decks. Idempotent; safe to call multiple times.
+ */
+export function scrubCapsuleLeftoverSpecialtySlotCopy(
+  html: string,
+  options: { deckLang?: 'ko' | 'en' | 'auto' } = {},
+): string {
+  const src = String(html ?? '');
+  if (!src) return src;
+  const deckLang = options.deckLang ?? 'auto';
+  if (deckLang === 'en') return src;
+  if (deckLang === 'auto' && !/[가-힣]/.test(src)) return src;
+  let out = src;
+  const byClass = new Map<string, string[]>();
+  for (const [cls, phrase] of CAPSULE_SPECIALTY_SLOT_DEMO_TEXTS) {
+    const arr = byClass.get(cls) ?? [];
+    arr.push(phrase);
+    byClass.set(cls, arr);
+  }
+  for (const cls of CAPSULE_SPECIALTY_SLOT_CLASSES) {
+    const phrases = byClass.get(cls);
+    if (!phrases || phrases.length === 0) continue;
+    out = blankSpecialtySlotIfDemoMatch(out, cls, phrases);
+  }
+  out = blankCapsuleDemoBlockquote(out);
+  out = blankCapsuleVisualPlaceholder(out);
+  out = blankCapsulePillFilledDemo(out);
+  return out;
 }
 
 /** 루프434 / 루프461 — Block-frame / Neo catalog marketing leftovers on Hangul LOOK seeds. */
@@ -9126,6 +9385,16 @@ export function buildTemplateClonedDeckHtml(
   // Blank the demo labels; keep the pill shape/color intact so the deck
   // still carries the intended visual rhythm.
   out = scrubCapsuleLeftoverDecorativeChrome(out, { deckLang: 'auto' });
+  // 루프511 — Capsule specialty-slot chrome (chart labels, timeline
+  // labels+descs, quote body+attribution, stat-labels, header-pill,
+  // closing-pill/closing-sub, and the slide-8 diagram flow pill-filled
+  // captions) is not covered by the slot-map fill path. On Korean decks
+  // the English demo copy dominates those slides ("Market Reach / 8.2M",
+  // "Discovery / Map the terrain…", "The best time to plant a tree…",
+  // "Data Ingestion / Transformation / Distribution"). Blank the known
+  // English demo phrases so a Korean deck no longer leaks catalog copy
+  // through non-slot chrome.
+  out = scrubCapsuleLeftoverSpecialtySlotCopy(out, { deckLang: 'auto' });
   // 루프510 — Capsule cover's yellow `.title-pill` gets emptied by the clone
   // fill; restore a short Korean kicker so the cover pill is not a bare
   // blank on Korean decks.

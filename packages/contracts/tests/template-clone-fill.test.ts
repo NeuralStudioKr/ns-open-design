@@ -102,6 +102,7 @@ import {
   hoistCloneSlidesOutOfFlexTrack,
   resolveTemplateCloneSlotMap,
   scrubCapsuleLeftoverDecorativeChrome,
+  scrubCapsuleLeftoverSpecialtySlotCopy,
   fillCapsuleEmptyTitlePill,
 } from '../src/template-clone-fill.js';
 import { pinDeckSlidesToFixedCanvas } from '../src/html/deck-fixed-canvas.js';
@@ -5403,6 +5404,315 @@ describe('루프510 Capsule Korean-deck decorative chrome scrub + title-pill fil
       expect(out, `label ${label} still present after scrub`).not.toMatch(
         new RegExp(`>\\s*${label.replace(/\s+/g, '\\s+')}\\s*<`, 'i'),
       );
+    }
+  });
+});
+
+/**
+ * 루프511 — Capsule specialty slots (chart-label/chart-value/step-label/
+ * step-desc/attribution/blockquote/header-pill/closing-pill/closing-sub/
+ * stat-label + slide-8 diagram flow pill-filled captions + slide-9 visual
+ * placeholder) are not fed through the clone-fill slot map. On Korean
+ * decks they surface as untranslated English demo copy — the *actual*
+ * "요소 CSS도 제대로 안먹히고, 배치·정렬·본문 밀도·품질이 적절치 않다"
+ * from the user's 2026-09-21 follow-up. Pin the invariant that a Korean
+ * clone never leaks these known catalog phrases.
+ */
+describe('루프511 Capsule Korean-deck specialty-slot demo copy scrub', () => {
+  it('blanks .chart-label English demo copy on Korean decks', () => {
+    const html = [
+      '<div class="chart-row">',
+      '  <div class="chart-label">Market Reach</div>',
+      '  <div class="chart-bar-track"><div class="chart-bar-fill" style="width:82%;">82%</div></div>',
+      '  <div class="chart-value">8.2M</div>',
+      '</div>',
+      '<h1>수치 요약</h1>',
+    ].join('\n');
+    const out = scrubCapsuleLeftoverSpecialtySlotCopy(html);
+    expect(out).not.toMatch(/>Market Reach</);
+    expect(out).not.toMatch(/>8\.2M</);
+    // Bar fill visual width % is left alone (visual chrome, not slot text).
+    expect(out).toContain('style="width:82%;">82%</div>');
+    // Structural div remains.
+    expect(out).toContain('class="chart-label"');
+    expect(out).toContain('class="chart-value"');
+  });
+
+  it('blanks all 5 catalog chart labels + values on Korean decks', () => {
+    const html = [
+      '<div class="chart-label">Market Reach</div>',
+      '<div class="chart-label">Engagement</div>',
+      '<div class="chart-label">Conversion</div>',
+      '<div class="chart-label">Retention</div>',
+      '<div class="chart-label">Satisfaction</div>',
+      '<div class="chart-value">8.2M</div>',
+      '<div class="chart-value">4.5M</div>',
+      '<div class="chart-value">2.1M</div>',
+      '<div class="chart-value">7.8M</div>',
+      '<div class="chart-value">6.3M</div>',
+      '<p>측정해야 할 지표.</p>',
+    ].join('\n');
+    const out = scrubCapsuleLeftoverSpecialtySlotCopy(html);
+    for (const label of [
+      'Market Reach', 'Engagement', 'Conversion', 'Retention', 'Satisfaction',
+      '8.2M', '4.5M', '2.1M', '7.8M', '6.3M',
+    ]) {
+      expect(out, `${label} still present`).not.toMatch(
+        new RegExp(`>\\s*${label.replace('.', '\\.')}\\s*<`, 'i'),
+      );
+    }
+  });
+
+  it('blanks .step-label + .step-desc English demo copy on Korean decks', () => {
+    const html = [
+      '<div class="timeline-step">',
+      '  <div class="step-node pill-coral">1</div>',
+      '  <div class="step-label">Discovery</div>',
+      '  <div class="step-desc">Map the terrain before you traverse it</div>',
+      '</div>',
+      '<div class="timeline-step">',
+      '  <div class="step-node pill-lime">2</div>',
+      '  <div class="step-label">Definition</div>',
+      '  <div class="step-desc">Sharpen the question to find the answer</div>',
+      '</div>',
+      '<h1>도입 단계</h1>',
+    ].join('\n');
+    const out = scrubCapsuleLeftoverSpecialtySlotCopy(html);
+    for (const label of [
+      'Discovery', 'Definition',
+      'Map the terrain before you traverse it',
+      'Sharpen the question to find the answer',
+    ]) {
+      expect(out, `${label} still present`).not.toContain(label);
+    }
+    // Structural shells + Korean heading preserved.
+    expect(out).toContain('class="step-label"');
+    expect(out).toContain('class="step-desc"');
+    expect(out).toContain('<h1>도입 단계</h1>');
+  });
+
+  it('blanks Capsule slide-5 statement-box blockquote demo prose on Korean decks', () => {
+    const html = [
+      '<div class="statement-box">',
+      '  <blockquote>',
+      '    The best time to plant a tree was twenty years ago. The second best time is <span class="quote-highlight">right now</span>. Every moment of hesitation is a moment where <span class="quote-highlight alt">possibility</span> quietly dims.',
+      '  </blockquote>',
+      '  <div class="attribution">A Philosophy of Action</div>',
+      '</div>',
+      '<p>팀 이야기.</p>',
+    ].join('\n');
+    const out = scrubCapsuleLeftoverSpecialtySlotCopy(html);
+    expect(out).not.toContain('The best time to plant a tree');
+    expect(out).not.toContain('A Philosophy of Action');
+    // Structural blockquote + attribution preserved.
+    expect(out).toMatch(/<blockquote[^>]*>\s*<\/blockquote>/);
+    expect(out).toContain('class="attribution"');
+  });
+
+  it('blanks slide-3 .header-pill "Core Principles" demo kicker on Korean decks', () => {
+    const html = [
+      '<div class="slide-header">',
+      '  <div class="header-pill">Core Principles</div>',
+      '  <h2>Teamver가 풀어야 하는 문제</h2>',
+      '</div>',
+    ].join('\n');
+    const out = scrubCapsuleLeftoverSpecialtySlotCopy(html);
+    expect(out).not.toMatch(/>Core Principles</);
+    expect(out).toContain('<h2>Teamver가 풀어야 하는 문제</h2>');
+  });
+
+  it('blanks slide-10 .closing-pill + .closing-sub demo copy on Korean decks', () => {
+    const html = [
+      '<div class="closing-content">',
+      '  <div class="closing-pill">The Journey Continues</div>',
+      '  <h2>지금 시작</h2>',
+      '  <div class="closing-line"></div>',
+      '  <div class="closing-sub">Questions and conversation welcome</div>',
+      '</div>',
+    ].join('\n');
+    const out = scrubCapsuleLeftoverSpecialtySlotCopy(html);
+    expect(out).not.toContain('The Journey Continues');
+    expect(out).not.toContain('Questions and conversation welcome');
+    expect(out).toContain('<h2>지금 시작</h2>');
+  });
+
+  it('blanks slide-7 multiline .stat-label demo copy on Korean decks', () => {
+    const html = [
+      '<div class="stat-pill">',
+      '  <div class="stat-number">340%</div>',
+      '  <div class="stat-label">Growth in<br>Active Users</div>',
+      '</div>',
+      '<div class="stat-pill">',
+      '  <div class="stat-number">4.9</div>',
+      '  <div class="stat-label">Average User<br>Satisfaction Score</div>',
+      '</div>',
+      '<p>핵심 지표.</p>',
+    ].join('\n');
+    const out = scrubCapsuleLeftoverSpecialtySlotCopy(html);
+    // Multi-token <br>-broken labels normalize + match.
+    expect(out).not.toContain('Growth in');
+    expect(out).not.toContain('Active Users');
+    expect(out).not.toContain('Average User');
+    expect(out).not.toContain('Satisfaction Score');
+    // Numeric glyphs preserved (real metric values allowed by design).
+    expect(out).toContain('>340%</div>');
+    expect(out).toContain('>4.9</div>');
+  });
+
+  it('blanks slide-8 .pill.pill-filled diagram flow labels + English demo descriptions on Korean decks', () => {
+    const html = [
+      '<div class="diagram-container"><div class="diagram-node pill-white">Input Layer</div></div>',
+      '<div style="display:flex;">',
+      '  <div style="text-align:center;">',
+      '    <div class="pill pill-filled pill-sky">Data Ingestion</div>',
+      '    <div style="font-size:0.75rem;opacity:0.55;">Raw signals are captured and normalized from multiple sources in real time</div>',
+      '  </div>',
+      '  <div style="text-align:center;">',
+      '    <div class="pill pill-filled pill-violet">Transformation</div>',
+      '    <div style="font-size:0.75rem;opacity:0.55;">Information is enriched, filtered, and structured for downstream consumption</div>',
+      '  </div>',
+      '  <div style="text-align:center;">',
+      '    <div class="pill pill-filled pill-yellow">Distribution</div>',
+      '    <div style="font-size:0.75rem;opacity:0.55;">Results are routed to appropriate endpoints with guaranteed delivery</div>',
+      '  </div>',
+      '</div>',
+      '<h1>지금 시작</h1>',
+    ].join('\n');
+    const out = scrubCapsuleLeftoverSpecialtySlotCopy(html);
+    for (const label of [
+      'Data Ingestion', 'Transformation', 'Distribution',
+      'Raw signals are captured',
+      'Information is enriched',
+      'Results are routed to appropriate endpoints',
+    ]) {
+      expect(out, `${label} still present`).not.toContain(label);
+    }
+    // Pill shells preserved so styling still reads visually.
+    expect(out).toContain('class="pill pill-filled pill-sky"');
+  });
+
+  it('blanks slide-9 visual placeholder frame content on Korean decks', () => {
+    const html = [
+      '<div class="visual-frame">',
+      '  <div class="frame-pattern"></div>',
+      '  <div class="frame-content"><span>Visual Placeholder</span></div>',
+      '</div>',
+      '<p>배경 설명.</p>',
+    ].join('\n');
+    const out = scrubCapsuleLeftoverSpecialtySlotCopy(html);
+    expect(out).not.toContain('Visual Placeholder');
+    // Frame shell preserved.
+    expect(out).toContain('class="visual-frame"');
+    expect(out).toContain('class="frame-content"');
+  });
+
+  it('does NOT touch specialty slots on English-only decks', () => {
+    const html = [
+      '<div class="chart-label">Market Reach</div>',
+      '<div class="step-label">Discovery</div>',
+      '<div class="attribution">A Philosophy of Action</div>',
+      '<blockquote>The best time to plant a tree was twenty years ago.</blockquote>',
+      '<div class="header-pill">Core Principles</div>',
+      '<p>An English deck with no Hangul.</p>',
+    ].join('\n');
+    const out = scrubCapsuleLeftoverSpecialtySlotCopy(html);
+    expect(out).toContain('>Market Reach<');
+    expect(out).toContain('>Discovery<');
+    expect(out).toContain('>A Philosophy of Action<');
+    expect(out).toContain('plant a tree');
+    expect(out).toContain('>Core Principles<');
+  });
+
+  it('preserves specialty slot content when the model already wrote Korean copy', () => {
+    const html = [
+      '<div class="chart-label">시장 도달</div>',
+      '<div class="chart-value">1.2M</div>',
+      '<div class="step-label">발견</div>',
+      '<div class="step-desc">지도를 그리기 전에 지형을 파악한다.</div>',
+      '<div class="attribution">— 팀버</div>',
+      '<blockquote>초안과 수정을 한 화면에서 끝냅니다.</blockquote>',
+      '<div class="header-pill">핵심 원칙</div>',
+      '<p>한글 콘텐츠.</p>',
+    ].join('\n');
+    const out = scrubCapsuleLeftoverSpecialtySlotCopy(html);
+    // Every Korean-authored slot content survives.
+    expect(out).toContain('>시장 도달<');
+    expect(out).toContain('>1.2M<');
+    expect(out).toContain('>발견<');
+    expect(out).toContain('지도를 그리기 전에');
+    expect(out).toContain('>— 팀버<');
+    expect(out).toContain('초안과 수정을 한 화면에서');
+    expect(out).toContain('>핵심 원칙<');
+  });
+
+  it('is idempotent — running twice produces the same output as once', () => {
+    const html = [
+      '<div class="chart-label">Market Reach</div>',
+      '<div class="step-label">Discovery</div>',
+      '<blockquote>The best time to plant a tree was twenty years ago.</blockquote>',
+      '<div class="attribution">A Philosophy of Action</div>',
+      '<div class="pill pill-filled pill-sky">Data Ingestion</div>',
+      '<p>한글 콘텐츠.</p>',
+    ].join('\n');
+    const once = scrubCapsuleLeftoverSpecialtySlotCopy(html);
+    const twice = scrubCapsuleLeftoverSpecialtySlotCopy(once);
+    expect(twice).toBe(once);
+  });
+
+  it('full pipeline: buildTemplateClonedDeckHtml scrubs Capsule specialty demo copy on Korean deck', async () => {
+    const source = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-capsule/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const cloned = buildTemplateClonedDeckHtml(
+      source,
+      [
+        { title: 'Teamver 소개', body: 'Teamver는 초안과 수정을 같은 보드에서 끝냅니다.' },
+        { title: 'Teamver가 풀어야 하는 문제', body: '초안과 수정이 분리돼 있습니다.', items: ['초안이 흩어짐', '수정이 다른 툴에서', '히스토리 단절'] },
+        { title: '핵심 가치', body: '한 화면에서 끝나는 협업 흐름을 만듭니다.', items: ['초안', '수정', '공유'] },
+        { title: '측정해야 할 지표', body: '실사용 지표.' },
+        { title: '수치 요약', body: '핵심 수치.' },
+        { title: '도입 단계', body: '점진적 도입 로드맵.', items: ['한 팀 보드', '리뷰 습관', '조직 기준', '이어서 쓰기'] },
+        { title: '대상 고객', body: '누구를 위한가.' },
+        { title: '팀 이야기', body: '초안을 보낸 뒤에도 같은 화면에서 고칠 수 있어야 일이 끝난다.' },
+        { title: '요금제', body: '유연한 요금제.' },
+        { title: '지금 시작', body: '초대로 첫 보드를 열어보세요.' },
+      ],
+      { title: 'Teamver 소개', templateId: 'html-ppt-zhangzara-capsule' },
+    );
+    expect(cloned).not.toBeNull();
+    const html = cloned!;
+
+    // No English specialty slot demo copy leaks into a Korean deck.
+    for (const phrase of [
+      // chart
+      'Market Reach', 'Engagement', 'Conversion', 'Retention', 'Satisfaction',
+      '8.2M', '4.5M', '2.1M', '7.8M', '6.3M',
+      // timeline
+      'Discovery', 'Definition', 'Development', 'Delivery', 'Evolution',
+      'Map the terrain', 'Sharpen the question',
+      'Build with intent', 'Ship the work',
+      // quote
+      'The best time to plant a tree',
+      'A Philosophy of Action',
+      // header pill / closing pill / closing sub
+      'Core Principles',
+      'The Journey Continues',
+      'Questions and conversation welcome',
+      // stat labels
+      'Growth in', 'Total Reach', 'System', 'Average User',
+      // diagram flow
+      'Data Ingestion', 'Transformation', 'Distribution',
+      'Raw signals are captured',
+      'Information is enriched',
+      'Results are routed to appropriate endpoints',
+      // visual placeholder
+      'Visual Placeholder',
+    ]) {
+      expect(html, `specialty demo copy "${phrase}" leaked`).not.toContain(phrase);
     }
   });
 });

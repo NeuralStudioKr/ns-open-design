@@ -32,6 +32,43 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **명시 5장+ 요청에서는 저장하지 않는다.** 8–10장 요청의 1장/4장 Template Clone fill은 `deck.html` 덮어쓰기 전에 incomplete로 막고 기존 덱을 보존한다. 6장 이상 첫 fill만 저장 후 top-up 가능하다. 사용자가 1장을 명시하거나 요청 장수가 작을 때만 1장 저장을 허용한다 |
 
+### 1.34 2026-09-21 — Capsule 한글덱 specialty slot 영문 데모 카피 스크럽 (루프510 후속)
+
+§1.33 (루프510)이 Capsule 커버의 데코 pill + title-pill을 정상화했지만, 사용자는 같은 날 재보고했다: “결과물 퀄리티가 더 안좋아졌다. 요소 CSS도 제대로 안먹히고, 배치·정렬·본문 밀도·품질이 적절치 않다. 근본적인 문제를 파악하여 해결이 필요하다.”
+
+로컬 재현(`buildTemplateClonedDeckHtml` + FE 프리뷰 파이프라인 `injectStackedCanvasNeutralizeForLetterbox` 시뮬레이션 → `google-chrome --headless=new` 스크린샷)으로 실제 렌더를 확인한 결과, 루프510이 잡은 것은 커버의 데코 chrome뿐이었고 **본문 슬라이드는 여전히 영문 카탈로그 데모 카피가 그대로였다**:
+
+- 슬라이드-4 chart: `Market Reach 8.2M / Engagement 4.5M / Conversion 2.1M / Retention 7.8M / Satisfaction 6.3M`
+- 슬라이드-6 timeline: `Discovery / Map the terrain before you traverse it`, `Definition / Sharpen the question to find the answer`, `Development / Build with intent, iterate with care`, `Delivery / Ship the work, then make it better`
+- 슬라이드-5 quote: `<blockquote>The best time to plant a tree was twenty years ago…</blockquote>` + `<div class="attribution">A Philosophy of Action</div>`
+- 슬라이드-3 header: `<div class="header-pill">Core Principles</div>`
+- 슬라이드-8 diagram flow: `Data Ingestion / Transformation / Distribution` + `Raw signals are captured…`, `Information is enriched…`, `Results are routed…`
+- 슬라이드-7 stat: `Growth in Active Users / Total Reach Across Channels / System Uptime Record / Average User Satisfaction Score`
+- 슬라이드-10 closing: `The Journey Continues / Questions and conversation welcome`
+- 슬라이드-9 visual: `<span>Visual Placeholder</span>`
+
+원인:
+
+1. **`CAPSULE_SLOT_MAP`이 host `cards-grid` + peer `pillar-card`/`card` 만 인식한다.** Capsule 템플릿의 나머지 특수 슬롯(`.chart-label`, `.chart-value`, `.step-label`, `.step-desc`, `blockquote`, `.attribution`, `.header-pill`, `.closing-pill`, `.closing-sub`, `.stat-label`, `.pill.pill-filled` + 그 옆 데모 설명 div, `.frame-content` visual placeholder)은 slot-fill을 통과하지 않는다. 이 상태에서 outline이 슬라이드마다 `title + body`만 주면 **본문 슬라이드의 “영문 카피 슬롯”이 원본 데모 카피 그대로 렌더된다.**
+2. **루프510은 데코 chrome만 대상.** 커버/사이드의 pill 시각 노이즈는 잡았지만, 본문 슬라이드의 “content-shaped 영문 카피”는 손대지 않았다. 사용자가 본 “배치·정렬·본문 밀도·품질” 이슈는 실질적으로 이 영문 데모 카피 leak 때문.
+3. **FE 프리뷰 파이프라인이 `LOOK_NEUTRALIZE`를 잘 주입한다.** 처음에는 “`.slide{opacity:0}` 때문에 슬라이드가 하나만 보이는 것 아닌가” 의심했지만, 실제 프리뷰 경로(`srcdoc.ts`의 `injectStackedCanvasNeutralizeForLetterbox`)가 `LOOK_NEUTRALIZE_CSS`를 주입하고 있어 슬라이드는 전부 보인다. 문제는 CSS가 아니라 콘텐츠(영문 데모)였다.
+
+구현 현황:
+
+- [x] `packages/contracts/src/template-clone-fill.ts` — `scrubCapsuleLeftoverSpecialtySlotCopy(html, { deckLang })` 신설. `deckLang: 'auto'`(기본)에서 문서에 Hangul이 있으면 활성화. `CAPSULE_SPECIALTY_SLOT_CLASSES` (`chart-label|chart-value|step-label|step-desc|attribution|header-pill|closing-pill|closing-sub|stat-label`)에 대해 innerText가 `CAPSULE_SPECIALTY_SLOT_DEMO_TEXTS` 목록의 알려진 영문 데모 문구와 정확히 일치할 때만 innerText를 blank한다. `<br>`-깨진 stat-label(`Growth in<br>Active Users`)는 `collapseInnerTextForMatch`가 whitespace/HTML/`&nbsp;`를 flatten해서 매칭. Hangul이 하나라도 있으면 절대 손대지 않음.
+- [x] `blankCapsuleDemoBlockquote` / `blankCapsuleVisualPlaceholder` / `blankCapsulePillFilledDemo` 세부 blanker 추가 — 각각 슬라이드-5 인용문, 슬라이드-9 visual placeholder, 슬라이드-8 diagram flow (`.pill.pill-filled` + sibling 데모 설명 div) 대상. 모두 “Hangul 없음 + 알려진 영문 데모 문구 매칭”일 때만 blank하고 shell(class/style)은 유지 → 컬러/레이아웃 리듬은 그대로.
+- [x] `buildTemplateClonedDeckHtml` end (루프510 `scrubCapsuleLeftoverDecorativeChrome` 뒤, `fillCapsuleEmptyTitlePill` 앞)에 `scrubCapsuleLeftoverSpecialtySlotCopy` 호출 추가.
+- [x] `salvageMalformedMiniMaxSlideMarkup` 체인의 `scrubCapsuleLeftoverDecorativeChrome` 뒤에도 동일 호출 삽입 → MiniMax stream 경로 커버.
+- [x] 회귀:
+  - `template-clone-fill.test.ts` — `루프511 Capsule Korean-deck specialty-slot demo copy scrub` describe 13 케이스 (chart-label/chart-value/step-label/step-desc/blockquote/attribution/header-pill/closing-pill+closing-sub/stat-label multiline `<br>`/pill.pill-filled + 데모 설명/visual placeholder/영문 덱 예외/한국어 채워진 슬롯 보존/idempotent/end-to-end)
+  - 전체: `pnpm --filter @open-design/contracts test` → 3165 tests pass, 1 skipped, 0 failed
+
+주의 / 다음:
+
+- 이번 스코프는 “영문 데모 카피 노출 제거”. 데모 카피가 사라진 뒤에는 슬롯이 빈 상태로 남는다(예: chart-label 5개 빈 칸, timeline 4개 step-label 빈 칸). 이는 outline이 해당 슬롯을 채울 데이터를 주지 않았기 때문. **후속 루프에서 (a) `CAPSULE_SLOT_MAP`을 chart-row/timeline-step/pill-filled peer로 확장해 outline items[]에서 채우거나, (b) synth item으로 채우는 안전망(루프509와 동일 패턴)** 이 필요.
+- 이번 healer는 Capsule 템플릿 한정. 다른 opacity-stack 프레젠터 템플릿(Blue Professional, Bold Poster, Playful, Sakura Chroma, Cobalt Grid, Long Table, Biennale Yellow, Coral, Retro Zine, Cartesian, Weekly Report, Retro Windows 등)에도 유사한 “specialty slot 영문 데모 카피 leak”이 있을 가능성 높음. 별도 루프 후보.
+- 진짜 근본 해결은 “specialty slot을 slot-map으로 확장”. 이번 healer는 “영문 카피 노출 방지”라는 최소 방어선.
+
 ### 1.33 2026-09-21 — Capsule 한글덱 데코 chrome 스크럽 · 커버 title-pill 채움
 
 §1.32까지의 sparse-outline 안전망은 “카드 그리드 shell에 착지한 title-only 슬라이드에 items[]가 없다”를 해결한다. 그러나 사용자는 2026-09-21에 “결과물 퀄리티가 더 안좋아졌다. 요소 CSS도 제대로 안먹히고, 배치·정렬·본문 밀도·품질이 적절치 않다”고 재보고했고, 첨부 스크린샷은 Capsule 템플릿 커버 슬라이드였다. `<h1>Teamver 소개</h1>`는 정상이지만 좌측에 `Research/Ideation/Prototype/Iterate/Launch/Scale` 라벨이 붙은 큰 pill이 세로로 쌓여 letterbox 바깥으로 빠져나오고, 상하좌우로 `OVERVIEW/DESIGN/FUTURE/NEXT`가 흩어져 있었다.
