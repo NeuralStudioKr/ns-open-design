@@ -1273,6 +1273,8 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("kind: 'needs-short-response-retry'");
     expect(source).toContain("autoRetryForShortResponse: true");
     expect(source).toContain("renderShortResponseAutoRetryPrompt({");
+    expect(source).toContain("renderTemplateCloneJsonShortResponseRetryPrompt({");
+    expect(source).toContain("runTemplateCloneContentFillRef.current");
     expect(source).toContain("applyQuantitativeSlideCountInstruction(modelPrompt, seedShellCount)");
     expect(source).toContain("defaultFirstFillSlideCount:");
     expect(source).toContain("padToSeedSlideCount: false");

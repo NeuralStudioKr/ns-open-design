@@ -254,6 +254,7 @@ import {
   shouldUseJsonTemplateCloneFill,
   getTemplateCloneFillMode,
   applyQuantitativeSlideCountInstruction,
+  renderTemplateCloneJsonShortResponseRetryPrompt,
   templateCloneContentFillHardRules,
   templateCloneFillSlideCountOverrideNotice,
   withTemplateCloneFillPluginInputs,
@@ -11854,10 +11855,15 @@ export function ProjectView({
                           seedCount: persistResult.expectedCount,
                           previousSnippet: persistResult.previousSnippet,
                         })
-                      : renderShortResponseAutoRetryPrompt({
-                          returnedCount: persistResult.producedCount,
-                          seedCount: persistResult.expectedCount,
-                        }),
+                      : runTemplateCloneContentFillRef.current
+                        ? renderTemplateCloneJsonShortResponseRetryPrompt({
+                            returnedCount: persistResult.producedCount,
+                            slideCount: persistResult.expectedCount,
+                          })
+                        : renderShortResponseAutoRetryPrompt({
+                            returnedCount: persistResult.producedCount,
+                            seedCount: persistResult.expectedCount,
+                          }),
                   ].join('\n');
                   const scheduledProjectId = project.id;
                   const scheduledConversationId = activeConversationId;

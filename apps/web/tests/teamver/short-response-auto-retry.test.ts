@@ -19,6 +19,7 @@ import {
 import {
   applyQuantitativeSlideCountInstruction,
   buildTemplateClonePromptFillSeed,
+  renderTemplateCloneJsonShortResponseRetryPrompt,
   templateCloneContentFillHardRules,
 } from '../../src/teamver/templateCloneContentFill';
 import { SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION } from '@open-design/contracts';
@@ -78,6 +79,17 @@ describe('루프550 short-response auto-retry decision', () => {
       'The previous response returned only 2 slides. The complete first fill requires 10 slides. Return EXACTLY 10 <section class="slide">.',
     );
     expect(isShortResponseAutoRetryPrompt(prompt)).toBe(true);
+  });
+
+  it('keeps JSON slot-fill retries on the JSON contract', () => {
+    const prompt = renderTemplateCloneJsonShortResponseRetryPrompt({
+      returnedCount: 2,
+      slideCount: 6,
+    });
+    expect(prompt).toContain('EXACTLY 6 entries in slides[]');
+    expect(prompt).toContain('ONE complete JSON outline');
+    expect(prompt).toContain('Do not emit HTML');
+    expect(prompt).not.toContain('<section class="slide">');
   });
 });
 

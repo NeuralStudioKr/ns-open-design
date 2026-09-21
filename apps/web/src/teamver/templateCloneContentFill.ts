@@ -772,6 +772,22 @@ export function templateCloneContentFillHardRules(options: {
   ];
 }
 
+/** Retry a truncated JSON slot-fill without switching the provider to HTML. */
+export function renderTemplateCloneJsonShortResponseRetryPrompt(input: {
+  returnedCount: number;
+  slideCount: number;
+}): string {
+  const returnedCount = Math.max(0, Math.floor(input.returnedCount));
+  const slideCount = Math.max(1, Math.floor(input.slideCount));
+  return [
+    `The previous JSON outline returned only ${returnedCount} slides.`,
+    `Return ONE complete JSON outline with EXACTLY ${slideCount} entries in slides[].`,
+    'Do not emit HTML, <section>, <artifact>, commentary, or status prose.',
+    'Use the existing JSON schema: {"title":"...","slides":[{"title":"...","kicker":"...","lead":"...","roleHint":"cover|list|cards|timeline|stat|quote|team|process|closing|body","items":[{"title":"...","body":"..."}]}]}.',
+    'Every body slide must contain a concrete lead and 2-4 substantive items or an equally substantive body. Close the JSON object.',
+  ].join(' ');
+}
+
 const FIRST_FILL_SLIDE_COUNT_STABILITY_CAP =
   `${FIRST_FILL_SLIDE_COUNT_THIS_TURN} (stability cap for first template fill)`;
 
