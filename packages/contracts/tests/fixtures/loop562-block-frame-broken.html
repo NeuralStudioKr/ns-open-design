@@ -1,0 +1,60 @@
+<!--
+루프562 · 사용자 리포트 (2026-09-21) 조각.
+
+사용자가 홈에서 `neuralstudio.kr 회사 사이트야. 분석해서 회사 소개 ppt 만들어줘.`
+브리프로 생성한 뒤 11초 만에 완료된 결과에서 관찰된 회귀 패턴을 최소로
+축약한 fixture. 원본 HTML 은 스크린샷과 마크업 조각만 공유돼 이 fixture 는
+회귀 검증용 minimal repro 다.
+
+관찰된 회귀:
+  1. `Neuralstudio 소개 2` (숫자 접미)
+  2. `대상 고객별 메시지 다음` (`${x} 다음` 접미)
+  3. `측정해야 할 지표 쓰는 길` (`${x} 쓰는 길` 접미)
+  4. `문제 — 사용자가과 전환 비용을 먼저 정의` (heal substring strip 후 잘림)
+  5. `사용자 — 이해해야 할 제품 범위와 약속`
+  6. `맥락 — 와 실제 사용 장면을 연결`
+  7. `Neuralstudio가 ` (cover subtitle 이 topic + 조사만 남기고 잘림)
+  8. 모든 텍스트에 `data-od-hangul="1"` — offline heal 이 전량 rewrite
+-->
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>Neuralstudio 소개</title>
+  </head>
+  <body>
+    <section class="slide slide-1">
+      <div class="hero-frame">
+        <div class="nb-label nb-label-pink" data-od-hangul="1">Neuralstudio 소개</div>
+        <h1 class="hero-title" data-od-hangul="1">Neuralstudio 소개</h1>
+        <p class="hero-subtitle" data-od-hangul="1">Neuralstudio가 </p>
+      </div>
+    </section>
+
+    <section class="slide slide-2">
+      <div class="split-content">
+        <div class="nb-label nb-label-green" data-od-hangul="1">Neuralstudio 소개 2</div>
+        <h2 class="nb-heading-md" data-od-hangul="1">Neuralstudio 소개 2</h2>
+        <ul class="content-list">
+          <li data-od-hangul="1">문제 — 사용자가과 전환 비용을 먼저 정의</li>
+          <li data-od-hangul="1">사용자 — 이해해야 할 제품 범위와 약속</li>
+          <li data-od-hangul="1">맥락 — 와 실제 사용 장면을 연결</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide slide-3">
+      <div class="split-content">
+        <div class="nb-label nb-label-blue" data-od-hangul="1">대상 고객별 메시지 다음</div>
+        <h2 class="nb-heading-md" data-od-hangul="1">대상 고객별 메시지 다음</h2>
+      </div>
+    </section>
+
+    <section class="slide slide-4">
+      <div class="chart-header">
+        <div class="nb-label" data-od-hangul="1">측정해야 할 지표 쓰는 길</div>
+        <h2 class="nb-heading-md" data-od-hangul="1">측정해야 할 지표 쓰는 길</h2>
+      </div>
+    </section>
+  </body>
+</html>

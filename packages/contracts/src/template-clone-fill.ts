@@ -1385,7 +1385,7 @@ function isGenericSynthTopicNoun(topic: string): boolean {
   if (GENERIC_SYNTH_TOPIC_NOUN_RE.test(text)) return true;
   if (/핵심\s+주제/.test(text)) return true;
   if (/^핵심\s+\d+/.test(text)) return true;
-  // 0921-N05 — leftover outline labels must never become the deck topic noun
+  // 0921-N06 — leftover outline labels must never become the deck topic noun
   // (`대상 고객별 메시지 다음`, `측정해야 할 지표 쓰는 길`).
   if (looksLikeServiceIntroLeftoverTitle(text)) return true;
   return false;
@@ -1398,12 +1398,12 @@ function looksLikeServiceIntroLeftoverTitle(text: string): boolean {
     || SERVICE_INTRO_LEFTOVER_CARD_TITLE_RE.test(value)) {
     return true;
   }
-  // 0921-N05 — leftover heading + synth suffix (`대상 고객별 메시지 다음`).
+  // 0921-N06 — leftover heading + synth suffix (`대상 고객별 메시지 다음`).
   return /^(?:대상 고객별 메시지|서비스 가치 제안|사용 흐름|신뢰를 만드는 증거|측정해야 할 지표|다음 액션)(?:\s+(?:범위|판단|쓰는 길|다음))?$/.test(value);
 }
 
 /**
- * 0921-N05 — leftover substring wipe leftovers such as `로 연결되는…`,
+ * 0921-N06 — leftover substring wipe leftovers such as `로 연결되는…`,
  * `Teamver가 `, `빠르게을 시작`, `사용자가과 전환`.
  */
 function looksLikeBrokenHangulLeftoverRemnant(text: string): boolean {
@@ -1421,7 +1421,7 @@ function looksLikeBrokenHangulLeftoverRemnant(text: string): boolean {
 }
 
 /**
- * 0921-N04 AI fill / 0921-N05 — Strip leftover service-intro phrases only
+ * 0921-N05 AI fill / 0921-N06 — Strip leftover service-intro phrases only
  * when the whole leaf is leftover (or leftover + a josa remnant). Never
  * delete a substring from the middle of a keepable sentence.
  */
@@ -1653,7 +1653,7 @@ export function healGenericTemplateCloneLeftover(
 }
 
 function serviceIntroSynthTitleFallback(_topic: string, index: number): string {
-  // 0921-N05 / 0921-N04 AI fill — never concatenate a topic/leftover heading
+  // 0921-N06 / 0921-N05 AI fill — never concatenate a topic/leftover heading
   // with 범위/판단/쓰는 길/다음. Those suffixes produced
   // `대상 고객별 메시지 다음` and `측정해야 할 지표 쓰는 길`.
   const titles = ['핵심', '장면', '차이', '경로'] as const;
@@ -2621,8 +2621,9 @@ function padDeterministicTemplateCloneSlides(
       label = genericRoleCopyForIndex(cover, brief, out.length + 1).heading;
     }
     if (used.has(label.toLowerCase())) {
+      // 루프562 — `${cover} · N` salt suffix 금지. 중복이면 pack heading 반복을
+      // 감수하고 원문을 유지한다 (MiniMax 응답이 later slide title을 덮어쓴다).
       label = genericRoleCopyForIndex(cover, brief, out.length + 1).heading;
-      // 0921-N05 — do not mint `${cover} · N` salt titles.
     }
     used.add(label.toLowerCase());
     out.push({
@@ -14462,7 +14463,7 @@ function biennalePackForBody(body: string, attrs: string, pack: BiennaleCopyPack
 
 function slideHasForeignChromeBlockingCoral(html: string, attrs = ''): boolean {
   const hay = `${attrs}\n${html}`;
-  // 0921-N05 — Coral used to fire on every `slide-N` host. Block Frame /
+  // 0921-N06 — Coral used to fire on every `slide-N` host. Block Frame /
   // Capsule / EightBit / Daisy also use slide-1…slide-10, so Coral appended
   // section-label/big-statement/body-text into their row flex and broke layout.
   return /\b(?:hero-frame|intro-card|feature-card|chart-frame|data-box|nb-heading|nb-label|nb-card|close-frame|stat-card|timeline-step|title-pill|orbit-pill|deco-pills|header-pill|pixel-label|crt-glow|starfield|deco-daisy|welcome-frame|day-card)\b/i.test(hay);
@@ -18661,10 +18662,13 @@ export function buildTemplateClonedDeckHtml(
           });
         } else {
           const n = workingSlides.length + 1;
-          // 0921-N05 — do not mint `${deckTitle} · N` salt titles.
+          // 루프562 / 0921-N05 — pad 슬라이드의 title 은 pack heading 을 우선 사용하고
+          // `${deckTitle} · ${n}` salt 접미는 발행하지 않는다. deckTitle 반복은
+          // 감수 (MiniMax / kit healer 가 실제 title 을 최종 확정).
           const label = n === 1
             ? deckTitle
-            : genericRoleCopyForIndex(deckTitle, options.brief, Math.max(1, n - 1)).heading;
+            : (genericRoleCopyForIndex(deckTitle, options.brief, Math.max(1, n - 1)).heading
+              || deckTitle);
           workingSlides.push({
             title: label,
             ...synthesizeTemplateCloneSlideBody(
@@ -18706,22 +18710,26 @@ export function buildTemplateClonedDeckHtml(
   } else {
     // Empty brief: short starter deck with role-diverse shells — not all
     // template demo pages in demo order.
+    // 루프562 — `${deckTitle} · ${n}` salt 접미 금지. 표지는 deckTitle, 이후
+    // 슬라이드는 pack heading 을 사용한다. `Neuralstudio 소개 2` 처럼 문서명에
+    // 숫자를 붙여 fake title 을 만드는 회귀 방지.
     const starterCount = hint ?? 3;
     workingSlides = Array.from({ length: Math.min(20, starterCount) }, (_, index) => {
-      const label = index === 0 ? deckTitle : `${deckTitle} · ${index + 1}`;
       if (index === 0) {
         return {
-          title: label,
+          title: deckTitle,
           roleHint: 'cover' as const,
           kicker: 'OVERVIEW',
           lead: synthesizeTemplateCloneCoverLead(deckTitle),
         };
       }
+      const roleLabel = genericRoleCopyForIndex(deckTitle, options.brief, index + 1).heading
+        || deckTitle;
       return {
-        title: label,
+        title: roleLabel,
         ...synthesizeTemplateCloneSlideBody(
           deckTitle,
-          label,
+          roleLabel,
           index,
           options.brief,
           resolveTemplateCloneKitKey(source),
@@ -18741,8 +18749,10 @@ export function buildTemplateClonedDeckHtml(
     resolveTemplateCloneKitKey(source),
   ));
   const filled = picked.map((shell, index) => {
+    // 루프562 — enrich fallback 도 `${deckTitle} · ${n}` salt 금지. deckTitle
+    // 반복을 감수하고 원제 유지 (kit shell 재사용은 healer 가 disambiguate).
     const content = enrichedSlides[index] ?? {
-      title: index === 0 ? deckTitle : `${deckTitle} · ${index + 1}`,
+      title: deckTitle,
     };
     const section = fillSlideShell(shell, content, index, slotMap);
     // 루프547 · pad marker · outline이 seed shell 개수보다 짧아서 auto-pad된
@@ -19611,8 +19621,14 @@ function rewriteInstructionParrotingSlideTitles(
     const koreanPlaceholder = slideTitleLooksLikeKoreanPlaceholder(collapsedTitle);
     const instructionBody = slide.body != null && looksLikeInstructionCopy(slide.body);
     const needsTitleRewrite = !sanitized || parrotsBrief || koreanPlaceholder;
+    // 루프562 — instruction-parroting title rewrite 도 `${cover} · N` salt 를
+    // 발행하지 않는다. 표지는 fallbackCover, 이후 슬라이드는 pack heading (또는
+    // cover 반복) 을 사용해 `Neuralstudio 소개 2` 같은 접미 회귀를 차단.
     const title = needsTitleRewrite
-      ? (index === 0 ? fallbackCover : `${fallbackCover} · ${index + 1}`)
+      ? (index === 0
+        ? fallbackCover
+        : (genericRoleCopyForIndex(fallbackCover, brief || null, index + 1).heading
+          || fallbackCover))
       : collapsedTitle;
     let body = slide.body;
     if (instructionBody && brief) {
@@ -19676,7 +19692,7 @@ function dedupeIdenticalOutlineTitles(
     ) {
       return { ...slide, title: lead };
     }
-    // 0921-N05 — unique without `${cover} · N` salt.
+    // 0921-N05 / 0921-N06 — unique without `${cover} · N` salt.
     return { ...slide, title: serviceIntroSynthTitleFallback('', index) };
   });
 }
