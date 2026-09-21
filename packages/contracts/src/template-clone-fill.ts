@@ -2576,8 +2576,9 @@ function padDeterministicTemplateCloneSlides(
       label = genericRoleCopyForIndex(cover, brief, out.length + 1).heading;
     }
     if (used.has(label.toLowerCase())) {
+      // 루프562 — `${cover} · N` salt suffix 금지. 중복이면 pack heading 반복을
+      // 감수하고 원문을 유지한다 (MiniMax 응답이 later slide title을 덮어쓴다).
       label = genericRoleCopyForIndex(cover, brief, out.length + 1).heading;
-      if (used.has(label.toLowerCase())) label = `${cover} · ${out.length + 1}`;
     }
     used.add(label.toLowerCase());
     out.push({
@@ -18602,7 +18603,13 @@ export function buildTemplateClonedDeckHtml(
           });
         } else {
           const n = workingSlides.length + 1;
-          const label = n === 1 ? deckTitle : `${deckTitle} · ${n}`;
+          // 루프562 — pad 슬라이드의 title 은 pack heading 을 우선 사용하고
+          // `${deckTitle} · ${n}` salt 접미는 발행하지 않는다. deckTitle 반복은
+          // 감수 (MiniMax / kit healer 가 실제 title 을 최종 확정).
+          const label = n === 1
+            ? deckTitle
+            : (genericRoleCopyForIndex(deckTitle, options.brief, Math.max(1, n - 1)).heading
+              || deckTitle);
           workingSlides.push({
             title: label,
             ...synthesizeTemplateCloneSlideBody(
@@ -18644,22 +18651,26 @@ export function buildTemplateClonedDeckHtml(
   } else {
     // Empty brief: short starter deck with role-diverse shells — not all
     // template demo pages in demo order.
+    // 루프562 — `${deckTitle} · ${n}` salt 접미 금지. 표지는 deckTitle, 이후
+    // 슬라이드는 pack heading 을 사용한다. `Neuralstudio 소개 2` 처럼 문서명에
+    // 숫자를 붙여 fake title 을 만드는 회귀 방지.
     const starterCount = hint ?? 3;
     workingSlides = Array.from({ length: Math.min(20, starterCount) }, (_, index) => {
-      const label = index === 0 ? deckTitle : `${deckTitle} · ${index + 1}`;
       if (index === 0) {
         return {
-          title: label,
+          title: deckTitle,
           roleHint: 'cover' as const,
           kicker: 'OVERVIEW',
           lead: synthesizeTemplateCloneCoverLead(deckTitle),
         };
       }
+      const roleLabel = genericRoleCopyForIndex(deckTitle, options.brief, index + 1).heading
+        || deckTitle;
       return {
-        title: label,
+        title: roleLabel,
         ...synthesizeTemplateCloneSlideBody(
           deckTitle,
-          label,
+          roleLabel,
           index,
           options.brief,
           resolveTemplateCloneKitKey(source),
@@ -18679,8 +18690,10 @@ export function buildTemplateClonedDeckHtml(
     resolveTemplateCloneKitKey(source),
   ));
   const filled = picked.map((shell, index) => {
+    // 루프562 — enrich fallback 도 `${deckTitle} · ${n}` salt 금지. deckTitle
+    // 반복을 감수하고 원제 유지 (kit shell 재사용은 healer 가 disambiguate).
     const content = enrichedSlides[index] ?? {
-      title: index === 0 ? deckTitle : `${deckTitle} · ${index + 1}`,
+      title: deckTitle,
     };
     const section = fillSlideShell(shell, content, index, slotMap);
     // 루프547 · pad marker · outline이 seed shell 개수보다 짧아서 auto-pad된
@@ -19549,8 +19562,14 @@ function rewriteInstructionParrotingSlideTitles(
     const koreanPlaceholder = slideTitleLooksLikeKoreanPlaceholder(collapsedTitle);
     const instructionBody = slide.body != null && looksLikeInstructionCopy(slide.body);
     const needsTitleRewrite = !sanitized || parrotsBrief || koreanPlaceholder;
+    // 루프562 — instruction-parroting title rewrite 도 `${cover} · N` salt 를
+    // 발행하지 않는다. 표지는 fallbackCover, 이후 슬라이드는 pack heading (또는
+    // cover 반복) 을 사용해 `Neuralstudio 소개 2` 같은 접미 회귀를 차단.
     const title = needsTitleRewrite
-      ? (index === 0 ? fallbackCover : `${fallbackCover} · ${index + 1}`)
+      ? (index === 0
+        ? fallbackCover
+        : (genericRoleCopyForIndex(fallbackCover, brief || null, index + 1).heading
+          || fallbackCover))
       : collapsedTitle;
     let body = slide.body;
     if (instructionBody && brief) {
