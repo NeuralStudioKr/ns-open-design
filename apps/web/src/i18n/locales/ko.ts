@@ -14,6 +14,8 @@ export const ko: Dict = {
   'chat.antigravityError.launchTerminalCta': '터미널에서 로그인',
   'chat.antigravityError.launchSwitchModelCta': '터미널에서 모델 전환',
   'chat.connectionDropped': '응답이 끝나기 전에 모델 서비스 연결이 끊겼습니다. 대개 불안정한 네트워크나 프록시가 원인입니다. 다시 시도해 주세요.',
+  'chat.connectionRetry': '다시 시도',
+  'chat.connectionRetrying': '연결 확인 중...',
   'common.cancel': '취소',
   'common.save': '저장',
   'common.close': '닫기',

@@ -40,6 +40,8 @@ const translations: Record<string, string> = {
   'avatar.useLocal': 'Use Local CLI',
   'chat.copyErrorDiagnostic': 'Copy error diagnostics',
   'chat.copyDone': 'Copied!',
+  'chat.connectionRetry': 'Retry connection',
+  'chat.connectionRetrying': 'Checking connection...',
 };
 
 vi.mock('../../src/i18n', () => ({
@@ -273,6 +275,35 @@ describe('ChatPane streaming state', () => {
     expect(retryableAssistantMessage(messages, failed.id, true)).toBeNull();
     expect(retryableAssistantMessage([...messages, { ...messages[0]!, id: 'user-2' }], failed.id, false))
       .toBeNull();
+  });
+
+  it('keeps conversation connection failures out of run diagnostics and retries in place', () => {
+    const onConnectionRetry = vi.fn();
+    render(
+      <ChatPane
+        projectKindForTracking="prototype"
+        messages={[]}
+        streaming={false}
+        error="Could not load conversations"
+        errorKind="connection"
+        onConnectionRetry={onConnectionRetry}
+        projectId="project-1"
+        projectFiles={[]}
+        onEnsureProject={async () => 'project-1'}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        conversations={[]}
+        activeConversationId={null}
+        onSelectConversation={vi.fn()}
+        onDeleteConversation={vi.fn()}
+        projectMetadata={projectMetadata}
+      />,
+    );
+
+    expect(screen.getByText('Could not load conversations')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'Copy error diagnostics' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry connection' }));
+    expect(onConnectionRetry).toHaveBeenCalledTimes(1);
   });
 
   it('copies failed-run diagnostics with the trace id from the error card', async () => {

@@ -503,6 +503,7 @@ import {
 } from '../teamver/createProjectStreamHandoff';
 import { registerTeamverProjectIfNeeded } from '../teamver/projectRegistry';
 import {
+  clearDesignAuthRefreshDecline,
   ensureDesignAuthLadder,
   refreshTeamverEmbedAuthBeforeMutating,
   isDesignAuthRefreshDeclined,
@@ -3512,6 +3513,7 @@ export function ProjectView({
   const [conversationLoadError, setConversationLoadError] = useState<string | null>(null);
   const [messageLoadRetryNonce, setMessageLoadRetryNonce] = useState(0);
   const [conversationLoadRetryNonce, setConversationLoadRetryNonce] = useState(0);
+  const [conversationLoadRetrying, setConversationLoadRetrying] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const messagesRef = useRef<ChatMessage[]>([]);
   const apiRecoveryPollGuardRef = useRef({
@@ -4048,32 +4050,6 @@ export function ProjectView({
     }, MESSAGE_LOAD_STUCK_RETRY_MS);
     return () => window.clearTimeout(timer);
   }, [activeConversationId, currentConversationLoading, messageLoadRetryNonce]);
-
-  useEffect(() => {
-    if (!isTeamverEmbedMode()) return;
-    let cancelled = false;
-    void waitForTeamverEmbedBoot().then(() => {
-      if (cancelled) return;
-      if (conversationLoadError) {
-        setConversationLoadRetryNonce((nonce) => nonce + 1);
-        return;
-      }
-      if (
-        activeConversationId
-        && failedMessagesConversationId === activeConversationId
-      ) {
-        setMessageLoadRetryNonce((nonce) => nonce + 1);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    project.id,
-    activeConversationId,
-    conversationLoadError,
-    failedMessagesConversationId,
-  ]);
 
   const currentConversationStreaming = streaming && streamingConversationId === activeConversationId;
   const currentConversationQueueDisabled = currentConversationLoading
@@ -10280,6 +10256,35 @@ export function ProjectView({
     ],
   );
 
+  const retryProjectConversationConnection = useCallback(() => {
+    if (conversationLoadRetrying) return;
+    setConversationLoadRetrying(true);
+    void (async () => {
+      try {
+        if (isTeamverEmbedMode()) {
+          // Explicit user recovery owns sticky reset. Passive retries stay
+          // quiet so a dead cookie cannot create another request storm.
+          clearDesignAuthRefreshDecline();
+          const probed = await ensureDesignAuthLadder('project_conversation_retry', {
+            mode: 'probe',
+            bypassNegativeCache: true,
+          });
+          if (!probed) {
+            await ensureDesignAuthLadder('project_conversation_retry', { mode: 'ensure' });
+          }
+        }
+      } catch (err) {
+        devLog.warn('[project] explicit conversation connection recovery failed', err);
+      } finally {
+        setConversationLoadRetryNonce((nonce) => nonce + 1);
+        if (activeConversationId) {
+          setMessageLoadRetryNonce((nonce) => nonce + 1);
+        }
+        setConversationLoadRetrying(false);
+      }
+    })();
+  }, [activeConversationId, conversationLoadRetrying]);
+
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
     const onAuthReady = () => {
@@ -16440,6 +16445,14 @@ export function ProjectView({
               sendDisabled={currentConversationSendDisabled}
               queuedItems={currentConversationQueuedItems}
               error={conversationLoadError ?? error ?? audioVoiceOptionsError}
+              errorKind={
+                conversationLoadError
+                || (activeConversationId && failedMessagesConversationId === activeConversationId)
+                  ? 'connection'
+                  : 'run'
+              }
+              onConnectionRetry={retryProjectConversationConnection}
+              connectionRetrying={conversationLoadRetrying}
               projectId={project.id}
               sessionMode={activeSessionMode}
               onSessionModeChange={handleActiveConversationSessionModeChange}

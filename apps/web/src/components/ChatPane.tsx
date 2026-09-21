@@ -497,6 +497,10 @@ interface Props {
   streaming: boolean;
   loading?: boolean;
   error: string | null;
+  /** Non-run failures must not be reported as AGENT_EXECUTION_FAILED. */
+  errorKind?: 'run' | 'connection';
+  onConnectionRetry?: () => void;
+  connectionRetrying?: boolean;
   projectId: string | null;
   sessionMode?: ChatSessionMode;
   onSessionModeChange?: (mode: ChatSessionMode) => void;
@@ -740,6 +744,9 @@ export function ChatPane({
   sendDisabled = false,
   queuedItems = [],
   error,
+  errorKind = 'run',
+  onConnectionRetry,
+  connectionRetrying = false,
   projectId,
   sessionMode = 'design',
   onSessionModeChange,
@@ -1098,7 +1105,7 @@ export function ChatPane({
   const diagnosticRawError =
     failedRunErrorEvent?.detail ?? diagnosticRunErrorEvent?.detail ?? rawError;
   const persistDiagnostic = extractPersistedRunErrorDiagnostic(diagnosticRawError);
-  const errorDiagnosticText = displayError
+  const errorDiagnosticText = displayError && errorKind === 'run'
     ? buildRunErrorDiagnosticText({
         message: displayError,
         rawMessage: persistDiagnostic
@@ -1161,7 +1168,9 @@ export function ChatPane({
       : null;
   const showByokRecoveryCta = showByokRecoveryAction && Boolean(onSwitchToLocalCli);
   const showErrorActions =
-    showByokRecoveryCta || Boolean(retryAssistant && onRetry && runFailureUi);
+    showByokRecoveryCta
+    || Boolean(errorKind === 'connection' && onConnectionRetry)
+    || Boolean(retryAssistant && onRetry && runFailureUi);
   useEffect(() => {
     if (!displayError || !failedRunErrorEvent?.code || !retryAssistant) return;
     // The hosted-AMR nudge owns this same surface_view when it renders below
@@ -2269,6 +2278,16 @@ export function ChatPane({
                           onClick={onSwitchToLocalCli}
                         >
                           {t('avatar.useLocal')}
+                        </button>
+                      ) : null}
+                      {errorKind === 'connection' && onConnectionRetry ? (
+                        <button
+                          type="button"
+                          className="chat-error-action"
+                          onClick={onConnectionRetry}
+                          disabled={connectionRetrying}
+                        >
+                          {connectionRetrying ? t('chat.connectionRetrying') : t('chat.connectionRetry')}
                         </button>
                       ) : null}
                       {errorDiagnosticText ? (

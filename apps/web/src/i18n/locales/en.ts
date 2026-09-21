@@ -14,6 +14,8 @@ export const en: Dict = {
   'chat.antigravityError.launchTerminalCta': 'Sign in via terminal',
   'chat.antigravityError.launchSwitchModelCta': 'Switch model in terminal',
   'chat.connectionDropped': 'The connection to the model service dropped before the response finished — usually an unstable network or proxy. Please retry.',
+  'chat.connectionRetry': 'Retry connection',
+  'chat.connectionRetrying': 'Checking connection...',
   'common.cancel': 'Cancel',
   'common.save': 'Save',
   'common.close': 'Close',
