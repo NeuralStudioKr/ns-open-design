@@ -5864,8 +5864,10 @@ describe('루프512 Capsule fixed-density peer preservation + vertical centering
     }
   });
 
-  describe('refillCapsuleEmptyStructuredSlots', () => {
-    it('fills empty .stat-label + .stat-number with numbered Korean placeholders', () => {
+  describe('refillCapsuleEmptyStructuredSlots (loop513 semantic-only refill)', () => {
+    it('does NOT add "항목 2/3/4" indexed placeholders to empty stat-label slots', () => {
+      // 루프513 — indexed content-slot placeholders read as machine-
+      // generated filler; a subtle empty structural card is better.
       const html = [
         '<h2>측정해야 할 지표</h2>',
         '<div class="stats-grid">',
@@ -5877,16 +5879,13 @@ describe('루프512 Capsule fixed-density peer preservation + vertical centering
       ].join('\n');
       const wrapped = `<div class="slide slide-7">${html}</div>`;
       const out = refillCapsuleEmptyStructuredSlots(wrapped, { deckLang: 'auto' });
-      expect(out).toContain('실사용 지표'); // preserves existing
-      expect(out).toContain('항목 2');
-      expect(out).toContain('항목 3');
-      expect(out).toContain('항목 4');
-      expect(out).toContain('02');
-      expect(out).toContain('03');
-      expect(out).toContain('04');
+      expect(out).toContain('실사용 지표'); // preserves existing outline copy
+      expect(out).not.toContain('항목 2');
+      expect(out).not.toContain('항목 3');
+      expect(out).not.toContain('항목 4');
     });
 
-    it('fills empty .chart-label / .chart-value with indexed labels', () => {
+    it('does NOT add "지표 2/3" placeholders to empty chart-label slots', () => {
       const html = [
         '<h2>수치 요약</h2>',
         '<div class="chart-container">',
@@ -5897,12 +5896,12 @@ describe('루프512 Capsule fixed-density peer preservation + vertical centering
       ].join('\n');
       const wrapped = `<div class="slide slide-4">${html}</div>`;
       const out = refillCapsuleEmptyStructuredSlots(wrapped, { deckLang: 'auto' });
-      expect(out).toContain('핵심');
-      expect(out).toContain('지표 2');
-      expect(out).toContain('지표 3');
+      expect(out).toContain('핵심'); // preserves outline copy
+      expect(out).not.toContain('지표 2');
+      expect(out).not.toContain('지표 3');
     });
 
-    it('fills empty .step-desc from the sibling .step-label', () => {
+    it('does NOT append "로 시작한다" to empty step-desc slots (bad Korean particle grammar)', () => {
       const html = [
         '<h2>도입 단계</h2>',
         '<div class="timeline">',
@@ -5913,8 +5912,8 @@ describe('루프512 Capsule fixed-density peer preservation + vertical centering
       ].join('\n');
       const wrapped = `<div class="slide slide-6">${html}</div>`;
       const out = refillCapsuleEmptyStructuredSlots(wrapped, { deckLang: 'auto' });
-      expect(out).toMatch(/한 팀 보드로 시작한다/);
-      expect(out).toMatch(/리뷰 습관로 시작한다/);
+      // Would previously produce grammatically-wrong "습관로 시작한다".
+      expect(out).not.toMatch(/로 시작한다/);
     });
 
     it('fills an empty <blockquote> with the slide body / title / deck title fallback', () => {
@@ -5931,7 +5930,7 @@ describe('루프512 Capsule fixed-density peer preservation + vertical centering
       expect(out).toMatch(/<blockquote>[^<]*Teamver 소개[^<]*<\/blockquote>/);
     });
 
-    it('fills empty .diagram-node with the slide title + index', () => {
+    it('does NOT synthesize "지금 시작 · 1/2/3/4" placeholders in empty diagram-node slots', () => {
       const html = [
         '<h2>지금 시작</h2>',
         '<div class="diagram-container">',
@@ -5946,20 +5945,20 @@ describe('루프512 Capsule fixed-density peer preservation + vertical centering
       ].join('\n');
       const wrapped = `<div class="slide slide-8">${html}</div>`;
       const out = refillCapsuleEmptyStructuredSlots(wrapped, { deckLang: 'auto' });
-      expect(out).toContain('지금 시작 · 1');
-      expect(out).toContain('지금 시작 · 4');
+      expect(out).not.toContain('지금 시작 · 1');
+      expect(out).not.toContain('지금 시작 · 4');
     });
 
     it('is idempotent — a second pass does not double-fill', () => {
       const html = [
-        '<div class="slide slide-7"><h2>측정</h2>',
-        '<div class="stats-grid">',
-        '<div class="stat-pill"><div class="stat-number"></div><div class="stat-label"></div></div>',
-        '<div class="stat-pill"><div class="stat-number"></div><div class="stat-label"></div></div>',
+        '<div class="slide slide-5"><h2>인용</h2>',
+        '<div class="statement-box">',
+        '<blockquote></blockquote>',
+        '<div class="attribution"></div>',
         '</div></div>',
       ].join('\n');
-      const once = refillCapsuleEmptyStructuredSlots(html, { deckLang: 'auto' });
-      const twice = refillCapsuleEmptyStructuredSlots(once, { deckLang: 'auto' });
+      const once = refillCapsuleEmptyStructuredSlots(html, { deckLang: 'auto', deckTitle: '인용 데크' });
+      const twice = refillCapsuleEmptyStructuredSlots(once, { deckLang: 'auto', deckTitle: '인용 데크' });
       expect(twice).toBe(once);
     });
 
@@ -5975,7 +5974,84 @@ describe('루프512 Capsule fixed-density peer preservation + vertical centering
       expect(out).toBe(html);
     });
 
-    it('end-to-end: buildTemplateClonedDeckHtml delivers dense Korean Capsule specialty grids', async () => {
+    it('uses outlineSlides[i] to fill a statement-box shell whose h*/p slot was dropped by fill', () => {
+      // Capsule slide-5 statement-box has NO h1/h2/h3. If the shell picker
+      // maps a "요금제" outline slide here, the fill pipeline drops the
+      // outline title/body and blockquote falls back to the deck title —
+      // producing "Teamver 소개" as the quote AND attribution. With outline
+      // context, the blockquote should surface the outline body and the
+      // attribution should read "{deckTitle} · {slideTitle}".
+      const html = [
+        '<div class="slide slide-5">',
+        '  <div class="statement-box">',
+        '    <div class="quote-mark">"</div>',
+        '    <blockquote></blockquote>',
+        '    <div class="attribution"></div>',
+        '  </div>',
+        '</div>',
+      ].join('\n');
+      const out = refillCapsuleEmptyStructuredSlots(html, {
+        deckLang: 'auto',
+        deckTitle: 'Teamver 소개',
+        outlineSlides: [
+          { title: '요금제', body: '유연한 요금제.' },
+        ],
+      });
+      expect(out).toContain('<blockquote>유연한 요금제.</blockquote>');
+      expect(out).toContain('Teamver 소개 · 요금제');
+      expect(out).not.toMatch(/<blockquote>\s*Teamver 소개\s*<\/blockquote>/);
+    });
+
+    it('outlineSlides preserves per-slide ordering (blockquote on slide-i uses outline[i])', () => {
+      const html = [
+        '<div class="slide slide-3">',
+        '  <div class="statement-box">',
+        '    <blockquote></blockquote>',
+        '    <div class="attribution"></div>',
+        '  </div>',
+        '</div>',
+        '<div class="slide slide-5">',
+        '  <div class="statement-box">',
+        '    <blockquote></blockquote>',
+        '    <div class="attribution"></div>',
+        '  </div>',
+        '</div>',
+      ].join('\n');
+      const out = refillCapsuleEmptyStructuredSlots(html, {
+        deckLang: 'auto',
+        deckTitle: '데크',
+        outlineSlides: [
+          { title: '첫 슬라이드', body: '첫 슬라이드 본문' },
+          { title: '두 번째 슬라이드', body: '두 번째 슬라이드 본문' },
+        ],
+      });
+      expect(out).toContain('첫 슬라이드 본문');
+      expect(out).toContain('두 번째 슬라이드 본문');
+      // Cross-contamination is not allowed.
+      const firstSlideEnd = out.indexOf('</div>', out.indexOf('첫 슬라이드 본문'));
+      const secondSlideStart = out.indexOf('slide-5');
+      expect(firstSlideEnd).toBeLessThan(secondSlideStart);
+    });
+
+    it('outlineSlides is optional — old callers keep the deckTitle fallback behavior', () => {
+      // Backwards compatibility: no outlineSlides passed = fall back to
+      // extracting title from the rendered slide (h1/h2/h3 or attribution).
+      const html = [
+        '<div class="slide slide-5">',
+        '  <div class="statement-box">',
+        '    <blockquote></blockquote>',
+        '    <div class="attribution"></div>',
+        '  </div>',
+        '</div>',
+      ].join('\n');
+      const out = refillCapsuleEmptyStructuredSlots(html, {
+        deckLang: 'auto',
+        deckTitle: '데크 제목',
+      });
+      expect(out).toContain('데크 제목');
+    });
+
+    it('end-to-end: buildTemplateClonedDeckHtml preserves Capsule structure without machine-y placeholder labels', async () => {
       const source = await readFile(
         new URL(
           '../../../plugins/_official/examples/html-ppt-zhangzara-capsule/example.html',
@@ -6008,9 +6084,13 @@ describe('루프512 Capsule fixed-density peer preservation + vertical centering
       expect(statPillCount, 'stats-grid should keep its 4 pills').toBeGreaterThanOrEqual(4);
       expect(chartRowCount, 'chart-container should keep its 4 rows').toBeGreaterThanOrEqual(4);
       expect(diagramNodeCount, 'diagram-container should keep its 4 nodes').toBeGreaterThanOrEqual(4);
-      // Empty diagram-nodes are refilled with a Korean label.
-      expect(html).toMatch(/시작 · [1-4]/);
-      // No bare empty <blockquote> even when the sparse outline gives no lead.
+      // Content-slot indexed placeholders are gone (루프513 quality gate).
+      expect(html).not.toContain('항목 2');
+      expect(html).not.toContain('지표 2');
+      expect(html).not.toMatch(/로 시작한다/);
+      expect(html).not.toContain('단계 5');
+      expect(html).not.toContain('시작 · 1');
+      // Semantic slot fill still works: no bare empty blockquote.
       expect(html).not.toMatch(/<blockquote>\s*<\/blockquote>/);
       // The layout fix ships alongside so vertical centering is restored.
       expect(html).toContain('data-od-capsule-layout-fix');

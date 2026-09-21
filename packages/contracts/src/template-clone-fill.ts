@@ -6557,22 +6557,51 @@ export function scrubCapsuleLeftoverSpecialtySlotCopy(
  */
 export function refillCapsuleEmptyStructuredSlots(
   html: string,
-  options: { deckLang?: 'ko' | 'en' | 'auto'; deckTitle?: string | null } = {},
+  options: {
+    deckLang?: 'ko' | 'en' | 'auto';
+    deckTitle?: string | null;
+    /**
+     * 루프513 — Outline slides in document order. When provided, each slide's
+     * empty semantic slots (blockquote / attribution / closing-pill / -sub
+     * / header-pill) are refilled from the CORRESPONDING outline entry
+     * instead of the deck title. This fixes statement-box shells whose h*
+     * slot the fill pipeline could not populate (Capsule slide-5 has no
+     * `<h2>` — the outline title otherwise disappears and the blockquote
+     * falls back to the deck title, producing "Teamver 소개" repeated on a
+     * "요금제" outline slide).
+     */
+    outlineSlides?: ReadonlyArray<{ title?: string | null; body?: string | null }>;
+  } = {},
 ): string {
   const src = String(html ?? '');
   if (!src) return src;
   const deckLang = options.deckLang ?? 'auto';
   if (deckLang === 'en') return src;
-  if (deckLang === 'auto' && !/[가-힣]/.test(src)) return src;
   const deckTitle = (options.deckTitle ?? '').toString().trim();
+  const outlineSlides = options.outlineSlides ?? [];
+  // 루프513 — Auto-mode: also consider Hangul in caller context (deckTitle
+  // or outlineSlides) as evidence that this is a Korean deck. A minimalist
+  // statement-box shell may contain no Hangul in its own HTML but the
+  // caller's outline entry ("요금제", "유연한 요금제.") is unambiguously Korean.
+  if (deckLang === 'auto') {
+    const hasHangulInSrc = /[가-힣]/.test(src);
+    const hasHangulInCtx = /[가-힣]/.test(deckTitle)
+      || outlineSlides.some((s) => /[가-힣]/.test(String(s?.title ?? '') + String(s?.body ?? '')));
+    if (!hasHangulInSrc && !hasHangulInCtx) return src;
+  }
   const slides = listRefillTargetSlideRanges(src);
   if (slides.length === 0) return src;
   let out = src;
   for (let i = slides.length - 1; i >= 0; i -= 1) {
     const { start, end } = slides[i]!;
     const before = out.slice(start, end);
+    const outline = outlineSlides[i];
+    const outlineTitle = String(outline?.title ?? '').trim();
+    const outlineBody = String(outline?.body ?? '').trim();
     const after = refillCapsuleEmptyStructuredSlotsInSlide(before, {
       deckTitle,
+      outlineTitle,
+      outlineBody,
     });
     if (after !== before) out = out.slice(0, start) + after + out.slice(end);
   }
@@ -6600,21 +6629,35 @@ function listRefillTargetSlideRanges(src: string): RefillSlideRange[] {
 
 function refillCapsuleEmptyStructuredSlotsInSlide(
   slideHtml: string,
-  ctx: { deckTitle: string },
+  ctx: { deckTitle: string; outlineTitle: string; outlineBody: string },
 ): string {
   let out = slideHtml;
-  const title = extractSlideRefillTitle(out)
-    // Slide-5 (statement-box) has no h1/h2/h3 slot; fall back to the
-    // .attribution text (which we may have already filled with the deck
-    // title) so downstream slots don't get a bare empty string.
+  // Prefer the OUTLINE title/body over what we can extract from the rendered
+  // slide. On statement-box shells (Capsule slide-5) the fill pipeline drops
+  // the outline title (no h1/h2/h3 slot) — without the outline hint we would
+  // fall back to the deck title and produce a repeated "Teamver 소개".
+  const renderedTitle = extractSlideRefillTitle(out)
     || extractSlideRefillAttributionText(out);
-  const bodyText = extractSlideRefillBodyText(out, title);
+  const renderedBody = extractSlideRefillBodyText(out, renderedTitle);
+  const title = ctx.outlineTitle || renderedTitle;
+  const bodyText = ctx.outlineBody || renderedBody;
   const kicker = extractSlideRefillKicker(out);
-  const stepLabels = extractStepLabelsFromSlide(out);
 
-  // 1) `.blockquote` (Capsule slide-5 statement) — fall back to slide body,
-  //    or slide title if the body was too short. Slide-5 shells have no
-  //    h1/h2/h3, so we also honor the deck title as a last-resort quote.
+  // 루프513 — Only refill SEMANTIC slots (blockquote, attribution,
+  // header/closing pills) with meaningful copy. Content slots
+  // (chart-label, stat-label/number, tier-name/price, step-desc,
+  // pill-filled, diagram-node) do NOT get an indexed placeholder
+  // ("항목 2", "지표 3", "단계 1", …) because that reads as obvious
+  // machine-generated filler and drops perceived quality below the
+  // pre-fill scrubbed state. When the outline is sparse, an empty
+  // structural card is subtler than an obvious placeholder label —
+  // the fill pipeline preserves the peer's chrome (borders, number
+  // chip color, icon) which still contributes visual density without
+  // faking data the deck does not have.
+
+  // 1) `.blockquote` (Capsule slide-5 statement) — prefer outline body,
+  //    then outline title, then deck title. Never leave blank when the
+  //    outline gave us words to use.
   out = fillEmptyClassOnce(
     out,
     'blockquote',
@@ -6622,43 +6665,25 @@ function refillCapsuleEmptyStructuredSlotsInSlide(
     'blockquote',
   );
 
-  // 2) `.attribution` (Capsule slide-5) — deck title takes precedence.
-  out = fillEmptyExactClass(out, 'attribution', () => deckTitleAttribution(ctx.deckTitle, title));
+  // 2) `.attribution` (Capsule slide-5) — when the slide has its own title,
+  //    quote is a slide-scoped statement so `.attribution` reads best as
+  //    "{deckTitle} · {slideTitle}"; otherwise fall back to deck title alone.
+  out = fillEmptyExactClass(out, 'attribution', () => {
+    const dt = ctx.deckTitle.trim();
+    const st = title.trim();
+    if (dt && st && dt !== st) return `${dt} · ${st}`;
+    return dt || st;
+  });
 
   // 3) `.closing-pill` (Capsule slide-10) — slide title / kicker.
   out = fillEmptyExactClass(out, 'closing-pill', () => title || kicker || ctx.deckTitle);
-  //    `.closing-sub` — slide body / short synth.
-  out = fillEmptyExactClass(out, 'closing-sub', () => bodyText || `${title} 이어서 쓰기`);
+  //    `.closing-sub` — slide body / short synth from title (avoid awkward
+  //    "이어서 쓰기" postfix that we previously appended).
+  out = fillEmptyExactClass(out, 'closing-sub', () => bodyText || title || ctx.deckTitle);
 
   // 4) `.header-pill` — slide kicker or short title.
   out = fillEmptyExactClass(out, 'header-pill', () => (
     kicker || truncateForPill(title, 16)
-  ));
-
-  // 5) `.chart-label` / `.chart-value` — indexed placeholders when empty.
-  out = fillEmptyIndexedSlots(out, 'chart-label', (index) => `지표 ${index + 1}`);
-  out = fillEmptyIndexedSlots(out, 'chart-value', () => '');
-
-  // 6) `.step-desc` — reuse the sibling `.step-label` text.
-  out = fillEmptyStepDescriptions(out, stepLabels, title);
-
-  // 7) `.stat-label` / `.stat-number` — indexed labels + short numeric
-  //    placeholders so the stats grid stops reading as one lonely card.
-  out = fillEmptyIndexedSlots(out, 'stat-label', (index) => `항목 ${index + 1}`);
-  out = fillEmptyIndexedSlots(out, 'stat-number', (index) => `0${index + 1}`);
-
-  // 8) `.tier-name` / `.tier-price` — indexed pricing placeholders.
-  out = fillEmptyIndexedSlots(out, 'tier-name', (index) => `옵션 ${index + 1}`);
-  out = fillEmptyIndexedSlots(out, 'tier-price', () => '—');
-
-  // 9) `.pill.pill-filled` diagram nodes — indexed step labels.
-  out = fillEmptyPillFilled(out, title);
-
-  // 10) `.diagram-node` (Capsule slide-8 flow) — indexed short labels.
-  //     These are the top-row nodes; the pill-filled captions below already
-  //     get their own fill via (9).
-  out = fillEmptyIndexedSlots(out, 'diagram-node', (index) => (
-    title ? `${title} · ${index + 1}` : `단계 ${index + 1}`
   ));
 
   return out;
@@ -6719,25 +6744,6 @@ function extractSlideRefillKicker(slideHtml: string): string {
     }
   }
   return '';
-}
-
-function extractStepLabelsFromSlide(slideHtml: string): string[] {
-  const labels: string[] = [];
-  const stepRe = /<div\b[^>]*\bclass\s*=\s*["'][^"']*\btimeline-step\b[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*(?=<div\b[^>]*\btimeline-step\b|<\/div>)/gi;
-  let match: RegExpExecArray | null;
-  while ((match = stepRe.exec(slideHtml)) !== null) {
-    const inner = String(match[1] ?? '');
-    // Prefer the `.step-label` value first; fall back to the raw leading text
-    // node the current fill pipeline prepends before `.step-node`.
-    const labelMatch = /<div\b[^>]*\bstep-label\b[^>]*>([\s\S]*?)<\/div>/i.exec(inner);
-    const labelText = labelMatch ? String(labelMatch[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
-    if (labelText) { labels.push(labelText); continue; }
-    // Prepended text node before `.step-node`.
-    const prependMatch = /^([^<]{1,80})<div\b[^>]*\bstep-node\b/i.exec(inner);
-    const prepended = prependMatch ? String(prependMatch[1] ?? '').replace(/\s+/g, ' ').trim() : '';
-    labels.push(prepended || '');
-  }
-  return labels;
 }
 
 function pickCapsuleQuoteCopy(bodyText: string, title: string, kicker: string): string {
@@ -6828,109 +6834,6 @@ function fillEmptyClassOnce(
   }
   return out;
   void fallbackTag; // reserved for future callers
-}
-
-function fillEmptyIndexedSlots(
-  html: string,
-  className: string,
-  resolve: (index: number) => string,
-): string {
-  const openRe = new RegExp(
-    `<(div|span|p)\\b([^>]*\\bclass\\s*=\\s*["'][^"']*\\b${escapeRegExp(className)}\\b[^"']*["'][^>]*)>`,
-    'gi',
-  );
-  let out = html;
-  const rewrites: Array<{ start: number; end: number; text: string }> = [];
-  let match: RegExpExecArray | null;
-  let index = 0;
-  while ((match = openRe.exec(out)) !== null) {
-    const openStart = match.index;
-    const openLen = match[0].length;
-    const tag = match[1]!.toLowerCase();
-    const closeRe = new RegExp(`</${tag}\\s*>`, 'gi');
-    closeRe.lastIndex = openStart + openLen;
-    const closeMatch = closeRe.exec(out);
-    if (!closeMatch) { index += 1; continue; }
-    const inner = out.slice(openStart + openLen, closeMatch.index);
-    if (inner.replace(/\s+/g, '').length > 0) { index += 1; continue; }
-    const text = resolve(index);
-    index += 1;
-    if (!text) continue;
-    rewrites.push({ start: openStart + openLen, end: closeMatch.index, text: escapeHtml(text) });
-  }
-  for (let i = rewrites.length - 1; i >= 0; i -= 1) {
-    const r = rewrites[i]!;
-    out = out.slice(0, r.start) + r.text + out.slice(r.end);
-  }
-  return out;
-}
-
-/**
- * Fill empty `.step-desc` with a short Korean copy derived from the
- * sibling `.step-label` (position-matched) or the slide title. Preserves
- * populated `.step-desc` untouched.
- */
-function fillEmptyStepDescriptions(
-  html: string,
-  stepLabels: readonly string[],
-  slideTitle: string,
-): string {
-  const openRe = /<div\b([^>]*\bclass\s*=\s*["'][^"']*\bstep-desc\b[^"']*["'][^>]*)>/gi;
-  let out = html;
-  const rewrites: Array<{ start: number; end: number; text: string }> = [];
-  let match: RegExpExecArray | null;
-  let index = 0;
-  while ((match = openRe.exec(out)) !== null) {
-    const openStart = match.index;
-    const openLen = match[0].length;
-    const closeRe = /<\/div\s*>/gi;
-    closeRe.lastIndex = openStart + openLen;
-    const closeMatch = closeRe.exec(out);
-    if (!closeMatch) { index += 1; continue; }
-    const inner = out.slice(openStart + openLen, closeMatch.index);
-    if (inner.replace(/\s+/g, '').length > 0) { index += 1; continue; }
-    const label = stepLabels[index] ?? '';
-    const text = label
-      ? `${label}로 시작한다`
-      : (slideTitle ? `${slideTitle} 단계 ${index + 1}` : `단계 ${index + 1}`);
-    index += 1;
-    rewrites.push({ start: openStart + openLen, end: closeMatch.index, text: escapeHtml(text) });
-  }
-  for (let i = rewrites.length - 1; i >= 0; i -= 1) {
-    const r = rewrites[i]!;
-    out = out.slice(0, r.start) + r.text + out.slice(r.end);
-  }
-  return out;
-}
-
-function fillEmptyPillFilled(html: string, slideTitle: string): string {
-  const openRe =
-    /<(div|span)\b([^>]*\bclass\s*=\s*["'][^"']*\bpill\b[^"']*\bpill-filled\b[^"']*["'][^>]*)>/gi;
-  let out = html;
-  const rewrites: Array<{ start: number; end: number; text: string }> = [];
-  let match: RegExpExecArray | null;
-  let index = 0;
-  while ((match = openRe.exec(out)) !== null) {
-    const openStart = match.index;
-    const openLen = match[0].length;
-    const tag = match[1]!.toLowerCase();
-    const closeRe = new RegExp(`</${tag}\\s*>`, 'gi');
-    closeRe.lastIndex = openStart + openLen;
-    const closeMatch = closeRe.exec(out);
-    if (!closeMatch) { index += 1; continue; }
-    const inner = out.slice(openStart + openLen, closeMatch.index);
-    if (inner.replace(/\s+/g, '').length > 0) { index += 1; continue; }
-    const text = slideTitle
-      ? `${slideTitle} · 단계 ${index + 1}`
-      : `단계 ${index + 1}`;
-    index += 1;
-    rewrites.push({ start: openStart + openLen, end: closeMatch.index, text: escapeHtml(text) });
-  }
-  for (let i = rewrites.length - 1; i >= 0; i -= 1) {
-    const r = rewrites[i]!;
-    out = out.slice(0, r.start) + r.text + out.slice(r.end);
-  }
-  return out;
 }
 
 /** 루프434 / 루프461 — Block-frame / Neo catalog marketing leftovers on Hangul LOOK seeds. */
@@ -9961,9 +9864,20 @@ export function buildTemplateClonedDeckHtml(
   // outlines. Refill those empty shells with meaningful Korean copy derived
   // from each slide's own title / body / kicker plus the deck title so the
   // visual density matches the template's design intent.
+  // 루프513 — Pass the outline in document order so semantic slots
+  // (blockquote / attribution / closing-pill / closing-sub / header-pill)
+  // on shells whose h*/p slot the fill pipeline could not populate
+  // (Capsule slide-5 statement-box has no h1/h2 — the outline title
+  // otherwise disappears) can still surface the user's actual outline
+  // title/body instead of the deck title.
+  const outlineSlidesForRefill = workingSlides.map((slide) => ({
+    title: slide.title,
+    body: slide.body ?? null,
+  }));
   out = refillCapsuleEmptyStructuredSlots(out, {
     deckLang: 'auto',
     deckTitle,
+    outlineSlides: outlineSlidesForRefill,
   });
   out = renumberBiennalePagenums(out, filled.length);
   return out.trim() || null;

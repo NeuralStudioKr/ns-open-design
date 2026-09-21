@@ -32,6 +32,37 @@
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 | 1장짜리 템플릿 결과가 저장되는가? | **명시 5장+ 요청에서는 저장하지 않는다.** 8–10장 요청의 1장/4장 Template Clone fill은 `deck.html` 덮어쓰기 전에 incomplete로 막고 기존 덱을 보존한다. 6장 이상 첫 fill만 저장 후 top-up 가능하다. 사용자가 1장을 명시하거나 요청 장수가 작을 때만 1장 저장을 허용한다 |
 
+### 1.36 2026-09-21 — Capsule refill: outline 기반 semantic slot 채움 + machine-tag placeholder 제거 (루프513)
+
+§1.35(루프512) 이후 다시 확인한 스크린샷에서 남은 결함:
+
+- 슬라이드 4/5/7 처럼 outline body 가 짧고 items 가 없는 경우 stat-label/chart-label/tier-name/pill-filled/diagram-node 슬롯이 `항목 2 / 지표 3 / 옵션 4 / 단계 2` 같은 **명백한 machine-generated placeholder** 로 채워져 “가짜 데이터” 인상을 남긴다.
+- 슬라이드 9(요금제) 처럼 outline 이 statement-box shell 로 매핑되면 `<h1/2/3>` 슬롯이 없어 refill 이 rendered title 을 못 뽑고, blockquote/attribution 이 **deck title(“Teamver 소개”)** 로 폴백되어 다른 슬라이드와 완전히 동일한 인용문이 반복된다.
+- 슬라이드 6(도입 단계) 의 step-desc 가 `습관로 시작한다` 처럼 **한국어 조사 오류** 를 담는다 (자동 접미사 “로 시작한다” 가 명사 어미와 무관하게 붙음).
+
+**구현.** `packages/contracts/src/template-clone-fill.ts`
+
+- `refillCapsuleEmptyStructuredSlots` 시그니처에 `outlineSlides?: ReadonlyArray<{ title, body }>` 옵션 추가. `buildTemplateClonedDeckHtml` 이 workingSlides 를 문서 순서 그대로 전달해서, 슬라이드-i 의 refill 이 **rendered HTML 대신 원본 outline** 을 볼 수 있게 했다.
+- `refillCapsuleEmptyStructuredSlotsInSlide(ctx: { deckTitle, outlineTitle, outlineBody })` — semantic 슬롯만 refill:
+  - `<blockquote>` → outline body → outline title → deck title (statement-box 슬라이드에도 항상 outline-scoped 문장이 남는다)
+  - `.attribution` → outline title 이 있으면 `"{deckTitle} · {outlineTitle}"`, 없으면 deck title (다른 슬라이드와 동일한 attribution 이 반복되지 않는다)
+  - `.closing-pill` / `.closing-sub` → outline title / body (deck title fallback 은 최후수단)
+  - `.header-pill` → kicker 또는 outline title 요약
+- **content 슬롯 인덱스 placeholder 완전 제거** — `.chart-label`/`.chart-value`/`.step-desc`/`.stat-label`/`.stat-number`/`.tier-name`/`.tier-price`/`.pill.pill-filled`/`.diagram-node` 는 outline 이 데이터를 주지 않으면 **비운 채 남긴다**. loop512 가 유지한 peer shell (borders/color/chip) 이 그 자체로 시각 리듬을 담당하고, 인덱스 라벨 없이 렌더되는 편이 “가짜 라벨” 보다 훨씬 얌전하다. 이로써 `습관로 시작한다` 같은 조사 오류 케이스도 자동 소멸.
+- `deckLang === 'auto'` 감지를 확장 — src HTML 자체에 Hangul 이 없더라도 `deckTitle` 또는 `outlineSlides` 에 한글이 있으면 “Korean deck” 로 판정한다. Capsule statement-box 셸은 h1/h2 슬롯이 비어 있어서 src 만 보면 한글이 없어 refill 이 조기 종료되던 회귀를 막는다.
+- 미사용 헬퍼(`fillEmptyIndexedSlots` / `fillEmptyPillFilled` / `fillEmptyStepDescriptions` / `extractStepLabelsFromSlide`) 제거.
+
+**검증.** `packages/contracts/tests/template-clone-fill.test.ts`
+
+- 기존 `refillCapsuleEmptyStructuredSlots` 스위트를 인덱스 placeholder 제거에 맞춰 정정 (예: `expect(out).not.toContain('항목 2')`).
+- 신규 케이스:
+  - statement-box shell 에 `outlineSlides` 를 넘기면 blockquote 가 outline body 로, attribution 이 `"{deckTitle} · {outlineTitle}"` 로 채워진다.
+  - 여러 슬라이드가 있을 때 각 슬라이드가 자기 순서의 outline 을 받는다 (attribution 이 슬라이드별로 다르다).
+  - `outlineSlides` 를 넘기지 않아도 (backward compat) 예전 동작으로 폴백한다.
+- 전체: `pnpm --filter @open-design/contracts test` → 3184 pass / 1 skip / 0 fail.
+
+**남은 갭.** Shell picker 의 role 매칭(“요금제 → statement-box” 오매칭)은 여전히 유효한 이슈이지만, refill 이 outline 을 존중하도록 바뀌었으므로 “다른 슬라이드와 blockquote 가 똑같이 보이는” 최악의 회귀는 해소된다. 다음 루프에서 `pickTemplateShellsForContent` 를 role-aware 로 확장하는 것이 정공법.
+
 ### 1.35 2026-09-21 — Capsule 한글덱 근본 원인: 고정 밀도 peer trim + LOOK 중앙정렬 파괴 (루프512)
 
 §1.34(루프511)이 specialty 슬롯의 영문 데모 카피를 지웠지만, 같은 날 사용자는 세 번째로 재보고했다: “결과물 퀄리티가 더 안좋아졌다. 요소 css도 제대로 안먹히고, 전체적으로 배치, 정렬, 본문 밀도 및 품질이 적절치 않다. 어디서 문제가 되는 것인가? 근본적인 문제를 파악하여 해결이 필요하다.”
