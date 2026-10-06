@@ -352,6 +352,7 @@ import {
 import {
   AUTO_CONTINUE_ENTRY_FROM,
   AUTO_CONTINUE_MAX_PER_CONVERSATION,
+  AUTO_CONTINUE_STATUS_CODE,
   RESUME_CONTINUE_PROMPT,
   extractAutoContinueContextFromAssistant,
   isAutoContinueIncompleteOutputPrompt,
@@ -12259,6 +12260,8 @@ export function ProjectView({
                     shouldFailMissingSlideHtml: missingSlideDeliverableForAutoContinue,
                     shouldRouteScopedCommentEditToAutoContinue,
                   }));
+              const isSlotFillRepairAutoContinue =
+                pendingSlotFillRepairRef.current && canAutoContinue;
 
               let emergencyRecovered = false;
               let emergencyProduced = produced;
@@ -12425,19 +12428,36 @@ export function ProjectView({
                   autoContinueCount + 1,
                 );
                 const autoContinueNotice = formatAutoContinueIncompleteOutputNotice();
-                // Durable incomplete_output under the transient notice so a
-                // hard reload can rebuild Retry after AUTO_CONTINUE is no
-                // longer "pending" in this session.
-                updateAssistant((prev) => ({
-                  ...attachAutoContinueIncompleteOutputNotice(
-                    prev,
-                    autoContinueNotice,
-                    deliverableError,
-                    deliverableErrorCode,
-                  ),
-                  producedFiles: produced,
-                  endedAt: prev.endedAt ?? endedAt,
-                }));
+                if (isSlotFillRepairAutoContinue) {
+                  // This is an internal hand-off to a fresh AI JSON turn, not
+                  // a terminal deliverable failure. Persisting incomplete_output
+                  // here surfaces an error before the scheduled repair starts.
+                  updateAssistant((prev) => ({
+                    ...appendWarningStatusEvent(
+                      clearDurableDeliverableErrorsAfterRecovery(prev),
+                      autoContinueNotice,
+                      AUTO_CONTINUE_STATUS_CODE,
+                    ),
+                    producedFiles: produced,
+                    runStatus: 'canceled',
+                    resumable: false,
+                    endedAt: prev.endedAt ?? endedAt,
+                  }));
+                } else {
+                  // Durable incomplete_output under the transient notice so a
+                  // hard reload can rebuild Retry after AUTO_CONTINUE is no
+                  // longer "pending" in this session.
+                  updateAssistant((prev) => ({
+                    ...attachAutoContinueIncompleteOutputNotice(
+                      prev,
+                      autoContinueNotice,
+                      deliverableError,
+                      deliverableErrorCode,
+                    ),
+                    producedFiles: produced,
+                    endedAt: prev.endedAt ?? endedAt,
+                  }));
+                }
               } else {
                 updateAssistant((prev) => ({
                   ...attachPersistedChatError(prev, deliverableError, deliverableErrorCode),
@@ -12447,7 +12467,10 @@ export function ProjectView({
                   endedAt: prev.endedAt ?? endedAt,
                 }));
               }
-              updateConversationLatestRun('failed', endedAt);
+              updateConversationLatestRun(
+                isSlotFillRepairAutoContinue ? 'canceled' : 'failed',
+                endedAt,
+              );
               if (canAutoContinue) {
                 // Fire the automatic continue after the failed-assistant
                 // row commits. Without this delay, handleSend samples
@@ -12633,13 +12656,36 @@ export function ProjectView({
                       })),
                     },
                   );
+                  const surfaceRepairStartFailure = () => {
+                    if (wantSlotFillRepair) {
+                      if (runIsVisible()) setError(deliverableError);
+                      updateAssistant((prev) => ({
+                        ...attachPersistedChatError(
+                          clearDurableDeliverableErrorsAfterRecovery(prev),
+                          deliverableError,
+                          deliverableErrorCode,
+                        ),
+                        runStatus: 'failed',
+                        resumable: true,
+                        endedAt: prev.endedAt ?? Date.now(),
+                      }));
+                      updateConversationLatestRun('failed', Date.now());
+                    }
+                  };
                   void Promise.resolve(started).then((ok) => {
                     if (ok === false) {
                       rollbackAutoContinueCount(
                         conversationAutoContinueCountRef.current,
                         scheduledConversationId,
                       );
+                      surfaceRepairStartFailure();
                     }
+                  }).catch(() => {
+                    rollbackAutoContinueCount(
+                      conversationAutoContinueCountRef.current,
+                      scheduledConversationId,
+                    );
+                    surfaceRepairStartFailure();
                   });
                 }, 600);
               }

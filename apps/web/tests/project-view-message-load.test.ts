@@ -1289,6 +1289,9 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("buildTemplateCloneSlotFillRepairPrompt({");
     expect(source).toContain("entryFrom: wantSlotFillRepair");
     expect(source).toContain("CLONE_SLOT_FILL_REPAIR_ENTRY_FROM");
+    expect(source).toContain("const isSlotFillRepairAutoContinue =");
+    expect(source).toContain("isSlotFillRepairAutoContinue ? 'canceled' : 'failed'");
+    expect(source).toContain("surfaceRepairStartFailure");
   });
 
   it("asks Clone fill for the user's requested count instead of the LOOK seed count", () => {
