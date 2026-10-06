@@ -1953,6 +1953,47 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(healed).toMatch(/Teamver 시작하기|지금 시작하기/);
   });
 
+  it('루프563 — Product Launch persist heals empty titles, ₩0, and repeated steps', async () => {
+    const html = await readFile(
+      new URL('./fixtures/loop563-product-launch-empty-pricing.html', import.meta.url),
+      'utf8',
+    );
+    expect(officialLookIsProductLaunchHalo(html)).toBe(true);
+    const healed = salvageMalformedMiniMaxSlideMarkup(
+      healProductLaunchLeftoverCatalogCopy(html, 'Teamver 소개'),
+      'Teamver 소개',
+    );
+
+    expect(healed).not.toMatch(/<h[12][^>]*>\s*<\/h[12]>/);
+    expect(healed).not.toMatch(/₩\s*0/);
+    expect(healed).not.toMatch(/>\s*Free\s*</);
+    expect(healed).not.toMatch(/다루는 칸/);
+    expect(healed).not.toMatch(/<h[12][^>]*>\s*0?2\s*</);
+    expect(healed).not.toMatch(/<div[^>]*\bamount\b[^>]*>\s*0[1-3]\s*</);
+    expect(healed).toContain('hero-shot');
+    expect(healed).toContain('price-card');
+    expect(healed).toMatch(/cta-btn/);
+
+    const slides = [...healed.matchAll(/<section\b[^>]*class="[^"]*\bslide\b[^"]*"[^>]*>([\s\S]*?)<\/section>/gi)]
+      .map((match) => match[1] ?? '');
+    expect(slides.length).toBeGreaterThanOrEqual(6);
+    const headingOf = (slide: string) => String(
+      /<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i.exec(slide)?.[1] ?? '',
+    ).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const coverTitle = headingOf(slides[0] ?? '');
+    const secondTitle = headingOf(slides[1] ?? '');
+    expect(coverTitle).toMatch(/Teamver/);
+    expect(secondTitle).not.toBe('Teamver 소개');
+    expect(secondTitle.length).toBeGreaterThan(1);
+
+    const stepSlide = slides.find((slide) => /\bstep\b/.test(slide)) ?? '';
+    const stepBodies = [...stepSlide.matchAll(/<p\b[^>]*\bdim\b[^>]*>([\s\S]*?)<\/p>/gi)]
+      .map((match) => String(match[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    expect(stepBodies.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(stepBodies).size).toBe(stepBodies.length);
+  });
+
   it('루프555 — Block Frame leftover heal restores glued Korean and drops role templates', async () => {
     const html = await readFile(
       new URL('./fixtures/loop555-block-frame-broken-ko.html', import.meta.url),

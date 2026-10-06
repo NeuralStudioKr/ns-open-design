@@ -1399,7 +1399,11 @@ function looksLikeServiceIntroLeftoverTitle(text: string): boolean {
     return true;
   }
   // 0921-N06 — leftover heading + synth suffix (`대상 고객별 메시지 다음`).
-  return /^(?:대상 고객별 메시지|서비스 가치 제안|사용 흐름|신뢰를 만드는 증거|측정해야 할 지표|다음 액션)(?:\s+(?:범위|판단|쓰는 길|다음))?$/.test(value);
+  if (/^(?:대상 고객별 메시지|서비스 가치 제안|사용 흐름|신뢰를 만드는 증거|측정해야 할 지표|다음 액션)(?:\s+(?:범위|판단|쓰는 길|다음))?$/.test(value)) {
+    return true;
+  }
+  // 1006-N01 — pack jargon that read as a UI slot, not a slide title.
+  return /다루는 칸/.test(value);
 }
 
 /**
@@ -1492,10 +1496,10 @@ function genericSlideCopyPack(topic: string): Record<GenericSlideRole, GenericRo
       `${brand}는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.`,
       [
         { title: '초안', body: `${brand} 보드에 붙일 초안이 같은 자리에서 열린다.` },
-        { title: '수정', body: `${brand}에서는 보낸 뒤에도 문장과 칸을 고친다.` },
+        { title: '수정', body: `${brand}에서는 보낸 뒤에도 문장과 레이아웃을 고친다.` },
       ],
     ),
-    list: line(`${brand}가 다루는 칸`, `${brand}에서 보드·권한·이력을 한 흐름으로 본다.`, [
+    list: line(`${brand}가 모으는 일`, `${brand}에서 보드·권한·이력을 한 흐름으로 본다.`, [
       { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
       { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
       { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
@@ -1595,16 +1599,28 @@ export function healGenericTemplateCloneLeftover(
     const visible = visibleDeckCopy(body);
     const needsHeal = looksLikeGenericLeftoverTitle(heading)
       || GENERIC_LEFTOVER_LEAF_RE.test(heading)
+      || !heading
+      || /^\d{1,3}$/.test(heading)
+      || /₩\s*0\b/.test(visible)
+      || /다루는 칸/.test(heading)
       || /(?<![가-힣])개요(?![가-힣])|핵심\s*포인트|탐색[\s\S]{0,80}실행[\s\S]{0,80}확장/.test(visible)
       || /(?<![가-힣])실무자(?![가-힣])|(?<![가-힣])리더(?![가-힣])|(?<![가-힣])운영자(?![가-힣])/.test(visible)
       || /Halo v2|\$179|\$279|\$399|\bPricing\b|\bYoY\b/.test(visible);
     if (!needsHeal) continue;
     const role = genericRoleCopyForIndex(briefText || heading, briefText, i + 1);
-    if (looksLikeGenericLeftoverTitle(heading) || GENERIC_LEFTOVER_LEAF_RE.test(heading)) {
-      body = body.replace(
-        /(<h[1-3]\b[^>]*>)([\s\S]*?)(<\/h[1-3]>)/i,
-        `$1${escapeHtml(role.heading)}$3`,
-      );
+    if (
+      !heading
+      || /^\d{1,3}$/.test(heading)
+      || /다루는 칸/.test(heading)
+      || looksLikeGenericLeftoverTitle(heading)
+      || GENERIC_LEFTOVER_LEAF_RE.test(heading)
+    ) {
+      if (/<h[1-3]\b/i.test(body)) {
+        body = body.replace(
+          /(<h[1-3]\b[^>]*>)([\s\S]*?)(<\/h[1-3]>)/i,
+          `$1${escapeHtml(role.heading)}$3`,
+        );
+      }
     }
     let itemIndex = 0;
     body = body.replace(
@@ -1633,6 +1649,7 @@ export function healGenericTemplateCloneLeftover(
           looksLikeGenericLeftoverTitle(plain)
           || GENERIC_LEFTOVER_LEAF_RE.test(plain)
           || /핵심\s*맥락과\s*다음\s*단계/.test(plain)
+          || /₩\s*0\b/.test(plain)
           || /Halo v2|\$179|\$279|\$399/.test(plain)
         ) {
           return `${open}${escapeHtml(role.lead)}${close}`;
@@ -11434,6 +11451,7 @@ type StudioCreativeFillInput = {
   kicker: string;
   fillLines: TemplateCloneCardFillLine[];
   topic?: string;
+  brief?: string | null;
 };
 
 function fillStudioKitSlide(
@@ -12259,7 +12277,59 @@ function productLaunchHasHealerTitleArtifact(text: string): boolean {
   if (/◎/.test(String(text ?? ''))) return true;
   if (/^Pricing$/i.test(value)) return true;
   if (/Halo/i.test(value)) return true;
+  if (/다루는 칸/.test(value)) return true;
   return false;
+}
+
+function productLaunchHeadingLooksLikeBodySentence(title: string): boolean {
+  const value = stripProductLaunchBrandMarkText(title);
+  return value.length >= 28 && /(?:다|요)\.?$/.test(value);
+}
+
+function productLaunchHeadingNeedsRefill(
+  heading: string,
+  options?: { brief?: string | null; slideIndex?: number },
+): boolean {
+  const title = stripProductLaunchBrandMarkText(heading);
+  if (!title) return true;
+  if (/^\d{1,3}$/.test(title)) return true;
+  if (PRODUCT_LAUNCH_GENERIC_HEADING_RE.test(title)) return true;
+  if (looksLikeServiceIntroLeftoverTitle(title)) return true;
+  if (/^(?:차이|핵심|장면|경로)$/.test(title)) return true;
+  if (productLaunchHeadingLooksLikeBodySentence(title)) return true;
+  if (productLaunchHasHealerTitleArtifact(title)) return true;
+  if ((options?.slideIndex ?? 0) > 0 && slideTitleParrotsBriefFragment(title, options?.brief)) {
+    return true;
+  }
+  return false;
+}
+
+function productLaunchLooksLikeOrphanPricingChrome(body: string): boolean {
+  const hasZeroPrice = /₩\s*0\b|\$\s*0\b/.test(body);
+  const hasFreeLabel = />\s*Free\s*</i.test(body);
+  const hasCta = /\bcta-btn\b/i.test(body);
+  const hasPlanCards = /\bprice-card\b/i.test(body);
+  if (hasPlanCards) return false;
+  return (hasZeroPrice || hasFreeLabel) && (hasCta || /도입 로드맵/.test(body));
+}
+
+function productLaunchRepeatedSiblingDim(body: string, className: string): boolean {
+  const blocks = exactClassBlocks(body, className);
+  if (blocks.length < 2) return false;
+  const texts = blocks
+    .map((block) => visibleDeckCopy(
+      /<[^>]*\bdim\b[^>]*>([\s\S]*?)<\//i.exec(block.html)?.[1] ?? '',
+    ))
+    .filter((text) => text.length >= 12);
+  if (texts.length < 2) return false;
+  return texts.every((text) => text === texts[0]);
+}
+
+function wipeProductLaunchOrphanPriceTokens(html: string): string {
+  return String(html ?? '')
+    .replace(/(<(?:div|p|span)\b[^>]*>)\s*₩\s*0\s*(<\/(?:div|p|span)>)/gi, '$1$2')
+    .replace(/(<(?:div|p|span)\b[^>]*>)\s*\$\s*0\s*(<\/(?:div|p|span)>)/gi, '$1$2')
+    .replace(/(<(?:div|p|span)\b[^>]*>)\s*Free\s*(<\/(?:div|p|span)>)/gi, '$1$2');
 }
 
 function productLaunchCopyIsKeepable(text: string): boolean {
@@ -12449,9 +12519,11 @@ function wipeProductLaunchDemoAmounts(html: string, ordinal?: string | null): st
         .trim();
       if (!plain) return full;
       if (/[가-힣]/.test(plain)) return full;
-      if (!/^\$\d+/.test(plain)) return full;
-      const replacement = ordinal == null || ordinal === '' ? '' : String(ordinal);
-      return `${open}${replacement}${close}`;
+      // 1006-N01 — do not stamp 01/02/03. Wipe Halo dollars, ₩0, and prior
+      // healer ordinals. Never invent a replacement price.
+      if (!/^(?:\$\s*\d+|₩\s*\d+|0?\d{1,2})$/.test(plain)) return full;
+      void ordinal;
+      return `${open}${close}`;
     },
   );
 }
@@ -12522,7 +12594,168 @@ function restoreProductLaunchShipLayout(body: string, topic: string): string {
   return `${next}${cta}`;
 }
 
-function productLaunchSlideNeedsHeal(body: string, _attrs: string): boolean {
+function stripForeignBlockFrameTypographyFromProductLaunch(html: string): string {
+  return String(html ?? '')
+    .replace(
+      new RegExp(`\\s${BLOCK_FRAME_HANGUL_TYPE_ATTR}\\s*=\\s*["']1["']`, 'gi'),
+      '',
+    )
+    .replace(
+      new RegExp(`<style\\b[^>]*\\b${BLOCK_FRAME_HANGUL_TYPE_MARK}\\b[^>]*>[\\s\\S]*?<\\/style>`, 'gi'),
+      '',
+    );
+}
+
+function productLaunchStructuralHeading(body: string, attrs: string, topic: string): string {
+  if (/\bprice-card\b/i.test(body)) return `${topic} 활용 시나리오`;
+  if (/\bcta-btn\b|\bamount\b/i.test(body)) return `${topic}에서 이어 쓰기`;
+  if (/\bstep\b/i.test(body)) return `${topic} 실행 흐름`;
+  if (/\bcenter\b/i.test(attrs) && /다음|action/i.test(body)) {
+    return `${attachKoreanJosa(topic, '을/를')} 시작하세요`;
+  }
+  if (/\b(?:feature-card|card)\b/i.test(body)) return `${topic} 핵심 근거`;
+  return `${topic} 핵심 내용`;
+}
+
+function productLaunchStepBodyForTitle(title: string, topic: string, index: number): string {
+  const text = visibleDeckCopy(title);
+  if (/파일|대화|보드/.test(text)) {
+    return '파일과 대화를 같은 보드에서 이어서 맥락 전환과 중복 작업을 줄인다.';
+  }
+  if (/권한|보기|고치기/.test(text)) {
+    return '보기·수정·공유 권한을 역할별로 나눠 협업 경계를 분명히 한다.';
+  }
+  if (/보낸 뒤|공유|이력/.test(text)) {
+    return '공유 후에도 같은 결과물을 이어서 수정하고 변경 이력을 남긴다.';
+  }
+  const fallbacks = [
+    `${topic} 작업을 한 화면에서 시작한다.`,
+    '팀과 검토하고 역할별 권한으로 수정 범위를 나눈다.',
+    '완성본을 공유한 뒤에도 같은 맥락에서 후속 작업을 이어간다.',
+  ];
+  return fallbacks[index % fallbacks.length]!;
+}
+
+function healProductLaunchStructuralQuality(html: string, topic: string): string {
+  let out = stripForeignBlockFrameTypographyFromProductLaunch(html);
+  const spans = listHealSlideHostSpans(out);
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    let body = out.slice(span.bodyStart, span.bodyEnd);
+    const headingMatch = body.match(/<h([12])\b([^>]*)>([\s\S]*?)<\/h\1>/i);
+    const heading = visibleDeckCopy(headingMatch?.[3] ?? '');
+    const brokenHeading = !heading
+      || /^\d{1,3}$/.test(heading)
+      || /^(?:주제|핵심|차이)$/.test(heading)
+      || /^주제(?:에서|의|가|를|는|와)/.test(heading)
+      || /다루는 칸/.test(heading)
+      || productLaunchHeadingLooksLikeBodySentence(heading);
+    if (productLaunchLooksLikeOrphanPricingChrome(body)) {
+      body = wipeProductLaunchOrphanPriceTokens(body);
+    }
+    body = wipeProductLaunchDemoAmounts(body);
+    const structuralTitle = productLaunchStructuralHeading(body, span.attrs, topic);
+    if (brokenHeading && headingMatch) {
+      body = body.replace(
+        headingMatch[0],
+        `<h${headingMatch[1]}${headingMatch[2]}>${escapeHtml(structuralTitle)}</h${headingMatch[1]}>`,
+      );
+    } else if (brokenHeading && /\bcta-btn\b/i.test(body)) {
+      const intro = `<div class="product-launch-intro"><h2 class="h2">${escapeHtml(structuralTitle)}</h2><p class="lede">작게 시작해 팀 협업과 운영 정책까지 단계적으로 확장한다.</p></div>`;
+      body = body.replace(
+        /(<div\b[^>]*style\s*=\s*["'][^"']*flex\s*:\s*1[^"']*["'][^>]*>)\s*(<\/div>)/i,
+        `$1${intro}$2`,
+      );
+      if (!/\bproduct-launch-intro\b/i.test(body)) body = `${intro}${body}`;
+    }
+
+    const stepBlocks = exactClassBlocks(body, 'step');
+    if (stepBlocks.length >= 2) {
+      const stepBodies = stepBlocks.map((block) => visibleDeckCopy(
+        /<[^>]*\bdim\b[^>]*>([\s\S]*?)<\//i.exec(block.html)?.[1] ?? '',
+      ));
+      const nonEmptyBodies = stepBodies.filter(Boolean);
+      if (nonEmptyBodies.length >= 2 && new Set(nonEmptyBodies).size === 1) {
+        body = replaceExactClassBlocksBySequence(
+          body,
+          'step',
+          stepBlocks.map((block, index) => {
+            const title = visibleDeckCopy(
+              block.html.match(/<h[3-5]\b[^>]*>([\s\S]*?)<\/h[3-5]>/i)?.[1] ?? '',
+            );
+            return { title, body: productLaunchStepBodyForTitle(title, topic, index) };
+          }),
+          (block, line) => {
+            const resolved = resolveTemplateCloneCardFill(line);
+            return replaceFirstExactClassText(block, 'dim', resolved.body);
+          },
+        );
+      }
+    }
+    body = body.replace(
+      /(<p\b[^>]*>)([^<]*[가-힣][^<]*?)(<\/p>)/gi,
+      (full, open: string, inner: string, close: string) => {
+        const plain = visibleDeckCopy(inner);
+        if (!/(?:하는|위한|통한)\s*$/.test(plain)) return full;
+        return `${open}${escapeHtml(`${plain} 핵심 사용자층`)}${close}`;
+      },
+    );
+    out = `${out.slice(0, span.bodyStart)}${body}${out.slice(span.bodyEnd)}`;
+  }
+
+  const healedSpans = listHealSlideHostSpans(out);
+  const rewrites: Array<{ start: number; end: number; html: string }> = [];
+  const seenHeadings = new Set<string>();
+  for (const span of healedSpans) {
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    const match = body.match(/<h([12])\b([^>]*)>([\s\S]*?)<\/h\1>/i);
+    if (!match || match.index == null) continue;
+    const heading = visibleDeckCopy(match[3] ?? '');
+    if (heading && seenHeadings.has(heading)) {
+      const isCenter = /\bcenter\b/i.test(span.attrs);
+      const isCard = /\b(?:feature-card|card)\b/i.test(body);
+      const candidates = isCenter
+        ? [
+          `${attachKoreanJosa(topic, '이/가')} 해결하는 문제`,
+          `${topic} 작업 흐름`,
+          `${topic} 다음 단계`,
+        ]
+        : isCard
+          ? [
+            productLaunchStructuralHeading(body, span.attrs, topic),
+            `${topic} 운영 근거`,
+            `${topic} 적용 사례`,
+            `${topic} 실행 기준`,
+          ]
+          : [
+            productLaunchStructuralHeading(body, span.attrs, topic),
+            `${topic} 상세 내용`,
+            `${topic} 다음 단계`,
+          ];
+      const replacement = candidates.find((candidate) => !seenHeadings.has(candidate))
+        ?? `${topic} 보충 내용`;
+      rewrites.push({
+        start: span.bodyStart + match.index,
+        end: span.bodyStart + match.index + match[0].length,
+        html: `<h${match[1]}${match[2]}>${escapeHtml(replacement)}</h${match[1]}>`,
+      });
+      seenHeadings.add(replacement);
+    } else if (heading) {
+      seenHeadings.add(heading);
+    }
+  }
+  for (let i = rewrites.length - 1; i >= 0; i -= 1) {
+    const rewrite = rewrites[i]!;
+    out = `${out.slice(0, rewrite.start)}${rewrite.html}${out.slice(rewrite.end)}`;
+  }
+  return out;
+}
+
+function productLaunchSlideNeedsHeal(
+  body: string,
+  _attrs: string,
+  options?: { brief?: string | null; slideIndex?: number },
+): boolean {
   const heading = visibleDeckCopy(
     body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
   );
@@ -12532,6 +12765,11 @@ function productLaunchSlideNeedsHeal(body: string, _attrs: string): boolean {
   const lede = visibleDeckCopy(
     /<[^>]*\blede\b[^>]*>([\s\S]*?)<\//i.exec(body)?.[1] ?? '',
   );
+  if (productLaunchHeadingNeedsRefill(heading, options)) return true;
+  if (looksLikeServiceIntroLeftoverTitle(kicker)) return true;
+  if (productLaunchLooksLikeOrphanPricingChrome(body)) return true;
+  if (productLaunchRepeatedSiblingDim(body, 'step')) return true;
+  if (productLaunchRepeatedSiblingDim(body, 'feature-card')) return true;
   if (PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(body)) return true;
   if (PRODUCT_LAUNCH_DEMO_COPY_RE.test(body)) {
     PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
@@ -12544,7 +12782,6 @@ function productLaunchSlideNeedsHeal(body: string, _attrs: string): boolean {
   }
   if (/^Pricing$/i.test(kicker)) return true;
   if (PRODUCT_LAUNCH_BROKEN_COPY_RE.test(body)) return true;
-  if (PRODUCT_LAUNCH_GENERIC_HEADING_RE.test(heading)) return true;
   if (/핵심\s+주제|주제이|주제을/.test(body)) return true;
   if (/주제를 쓰기 시작/.test(body)) return true;
   if (/—\s*,/.test(body)) return true;
@@ -12556,6 +12793,7 @@ function fillProductLaunchKitSlide(
   body: string,
   input: StudioCreativeFillInput,
   attrs = '',
+  slideIndex = 0,
 ): string {
   let next = String(body ?? '').replace(/◎\s*/g, '').replace(/Teamver을/g, 'Teamver를');
   const topic = resolveProductLaunchTopicNoun(
@@ -12570,7 +12808,15 @@ function fillProductLaunchKitSlide(
   const kickerText = visibleDeckCopy(
     /<[^>]*\bkicker\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? input.kicker ?? '',
   );
-  const resolvedTitle = rewriteProductLaunchLeakedHeading(heading || input.title);
+  const role = genericRoleCopyForIndex(topic || 'Teamver', input.brief ?? input.topic ?? null, slideIndex + 1);
+  const refillBrief = input.brief ?? input.topic;
+  const headingNeedsRefill = productLaunchHeadingNeedsRefill(heading || input.title, {
+    ...(refillBrief !== undefined ? { brief: refillBrief } : {}),
+    slideIndex,
+  });
+  const resolvedTitle = headingNeedsRefill
+    ? (rewriteProductLaunchLeakedHeading(heading || input.title) || role.heading)
+    : rewriteProductLaunchLeakedHeading(heading || input.title);
   const suppliedLines = Array.isArray(input.fillLines) ? input.fillLines : [];
   const lines = suppliedLines.length > 0
     ? biennaleFillLines({ ...input, title: resolvedTitle || input.title }, 6)
@@ -12582,11 +12828,27 @@ function fillProductLaunchKitSlide(
         };
       })
     : [];
-  if (heading && resolvedTitle !== heading) {
-    next = replaceFirstHeadingText(next, resolvedTitle);
+  if (resolvedTitle && resolvedTitle !== heading) {
+    if (/<h[12]\b/i.test(next)) {
+      next = replaceFirstHeadingText(next, resolvedTitle);
+      if (productLaunchHeadingLooksLikeBodySentence(heading) && !/\blede\b/i.test(next)) {
+        next = next.replace(
+          /(<\/h[12]>)/i,
+          `$1<p class="lede">${escapeHtml(heading)}</p>`,
+        );
+      }
+    } else if (kickerText) {
+      next = next.replace(
+        /(<p\b[^>]*\bkicker\b[^>]*>[\s\S]*?<\/p>)/i,
+        `$1<h2 class="h2">${escapeHtml(resolvedTitle)}</h2>`,
+      );
+    }
   }
-  if (/^Pricing$/i.test(kickerText)) {
+  if (/^Pricing$/i.test(kickerText) || looksLikeServiceIntroLeftoverTitle(kickerText)) {
     next = replaceFirstExactClassText(next, 'kicker', '');
+  }
+  if (productLaunchLooksLikeOrphanPricingChrome(next)) {
+    next = wipeProductLaunchOrphanPriceTokens(next);
   }
   if (/\blede\b/i.test(next)) {
     const lede = visibleDeckCopy(
@@ -12615,11 +12877,12 @@ function fillProductLaunchKitSlide(
     input.lead ?? '',
     kickerText,
   );
+  const forceDistinctFeatures = productLaunchRepeatedSiblingDim(next, 'feature-card');
   if (/\bfeature-card\b/i.test(next)) {
     const featureLines = lines.length > 0
       ? lines
       : exactClassBlocks(next, 'feature-card').map(() => ({ title: '', body: '' }));
-    next = replaceExactClassBlocksBySequence(next, 'feature-card', featureLines, (block, line) => {
+    next = replaceExactClassBlocksBySequence(next, 'feature-card', featureLines, (block, line, index) => {
       const existingTitle = visibleDeckCopy(
         block.match(/<h[3-5]\b[^>]*>([\s\S]*?)<\/h[3-5]>/i)?.[1] ?? '',
       );
@@ -12627,7 +12890,8 @@ function fillProductLaunchKitSlide(
         /<[^>]*\bdim\b[^>]*>([\s\S]*?)<\//i.exec(block)?.[1] ?? '',
       );
       if (
-        productLaunchCopyIsKeepable(existingBody)
+        !forceDistinctFeatures
+        && productLaunchCopyIsKeepable(existingBody)
         && !productLaunchHasHealerTitleArtifact(existingTitle)
         && !PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(existingTitle)
       ) {
@@ -12639,8 +12903,10 @@ function fillProductLaunchKitSlide(
         || productLaunchSlotNeedsRefill(existingTitle)
         || PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(existingTitle)
       ) {
-        const nextTitle = productLaunchKitAwareCardTitle(existingTitle, topic, 0)
-          || (line ? resolveTemplateCloneCardFill(line).title : '');
+        const nextTitle = productLaunchKitAwareCardTitle(existingTitle, topic, index)
+          || (line ? resolveTemplateCloneCardFill(line).title : '')
+          || role.items[index]?.title
+          || '';
         if (nextTitle && nextTitle !== existingTitle) {
           filled = filled.replace(
             /(<h[3-5]\b[^>]*>)([\s\S]*?)(<\/h[3-5]>)/i,
@@ -12653,13 +12919,14 @@ function fillProductLaunchKitSlide(
           );
         }
       }
-      if (productLaunchSlotNeedsRefill(existingBody)) {
+      if (forceDistinctFeatures || productLaunchSlotNeedsRefill(existingBody)) {
         const resolved = line ? resolveTemplateCloneCardFill(line) : { title: '', body: '' };
-        const nextBody = resolved.body
+        const nextBody = role.items[index]?.body
+          || resolved.body
           || productLaunchConcreteCardBody(
-            productLaunchKitAwareCardTitle(existingTitle, topic, 0),
+            productLaunchKitAwareCardTitle(existingTitle, topic, index),
             topic,
-            0,
+            index,
           );
         if (nextBody) {
           filled = replaceFirstExactClassText(filled, 'dim', nextBody);
@@ -12690,10 +12957,7 @@ function fillProductLaunchKitSlide(
           `$1${escapeHtml(resolvedTitle)}$3`,
         );
       }
-      filled = wipeProductLaunchDemoAmounts(
-        filled,
-        String(index + 1).padStart(2, '0'),
-      );
+      filled = wipeProductLaunchDemoAmounts(filled);
       if (productLaunchSlotNeedsRefill(existingBody)) {
         filled = replaceFirstExactClassText(
           filled,
@@ -12712,11 +12976,12 @@ function fillProductLaunchKitSlide(
       return filled;
     });
   }
+  const forceDistinctSteps = productLaunchRepeatedSiblingDim(next, 'step');
   if (/\bstep\b/i.test(next) && /<div\b[^>]*\bstep\b/i.test(next)) {
     const stepLines = lines.length > 0
       ? lines
       : exactClassBlocks(next, 'step').map(() => ({ title: '', body: '' }));
-    next = replaceExactClassBlocksBySequence(next, 'step', stepLines, (block, line) => {
+    next = replaceExactClassBlocksBySequence(next, 'step', stepLines, (block, line, index) => {
       const existingTitle = visibleDeckCopy(
         block.match(/<h[3-5]\b[^>]*>([\s\S]*?)<\/h[3-5]>/i)?.[1] ?? '',
       );
@@ -12724,14 +12989,19 @@ function fillProductLaunchKitSlide(
         /<[^>]*\bdim\b[^>]*>([\s\S]*?)<\//i.exec(block)?.[1] ?? '',
       );
       if (
-        productLaunchCopyIsKeepable(existingBody)
+        !forceDistinctSteps
+        && productLaunchCopyIsKeepable(existingBody)
         && !productLaunchHasHealerTitleArtifact(existingTitle)
         && !PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(existingTitle)
       ) {
         return block;
       }
-      if (!productLaunchSlotNeedsRefill(existingTitle) && !productLaunchSlotNeedsRefill(existingBody)
-        && !PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(existingTitle)) {
+      if (
+        !forceDistinctSteps
+        && !productLaunchSlotNeedsRefill(existingTitle)
+        && !productLaunchSlotNeedsRefill(existingBody)
+        && !PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(existingTitle)
+      ) {
         return block;
       }
       const resolved = line ? resolveTemplateCloneCardFill(line) : { title: '', body: '' };
@@ -12741,18 +13011,22 @@ function fillProductLaunchKitSlide(
         || productLaunchHasHealerTitleArtifact(existingTitle)
         || PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(existingTitle)
       ) {
-        const nextTitle = productLaunchKitAwareCardTitle(existingTitle, topic, 0) || resolved.title;
+        const nextTitle = productLaunchKitAwareCardTitle(existingTitle, topic, index)
+          || resolved.title
+          || role.items[index]?.title
+          || '';
         filled = filled.replace(
           /(<h[3-5]\b[^>]*>)([\s\S]*?)(<\/h[3-5]>)/i,
           `$1${escapeHtml(nextTitle)}$3`,
         );
       }
-      if (productLaunchSlotNeedsRefill(existingBody)) {
-        const nextBody = resolved.body
+      if (forceDistinctSteps || productLaunchSlotNeedsRefill(existingBody)) {
+        const nextBody = role.items[index]?.body
+          || resolved.body
           || productLaunchConcreteCardBody(
-            productLaunchKitAwareCardTitle(existingTitle, topic, 0),
+            productLaunchKitAwareCardTitle(existingTitle, topic, index),
             topic,
-            0,
+            index,
           );
         if (nextBody) {
           filled = replaceFirstExactClassText(filled, 'dim', nextBody);
@@ -12839,15 +13113,22 @@ export function healProductLaunchLeftoverCatalogCopy(
   let out = replaceProductLaunchHeroShotCssBrand(dest, brand);
   const spans = listHealSlideHostSpans(out);
   if (spans.length === 0) {
-    return stripLeftoverCatalogDemoPhrases(stripProductLaunchCatalogDemoCopy(out))
-      .replace(/◎\s*/g, '')
-      .replace(/Teamver을/g, 'Teamver를');
+    return healProductLaunchStructuralQuality(
+      stripLeftoverCatalogDemoPhrases(stripProductLaunchCatalogDemoCopy(out))
+        .replace(/◎\s*/g, '')
+        .replace(/Teamver을/g, 'Teamver를'),
+      topic,
+    );
   }
   for (let i = spans.length - 1; i >= 0; i -= 1) {
     const span = spans[i]!;
     const body = out.slice(span.bodyStart, span.bodyEnd);
+    const slideHealOptions = {
+      ...(brief !== undefined ? { brief } : {}),
+      slideIndex: i,
+    };
     if (
-      !productLaunchSlideNeedsHeal(body, span.attrs)
+      !productLaunchSlideNeedsHeal(body, span.attrs, slideHealOptions)
       && !PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(body)
       && !PRODUCT_LAUNCH_DEMO_COPY_RE.test(body)
     ) {
@@ -12869,14 +13150,18 @@ export function healProductLaunchLeftoverCatalogCopy(
       kicker: /^Pricing$/i.test(kicker) ? '' : kicker,
       fillLines: [],
       topic,
-    }, span.attrs);
+      ...(brief !== undefined ? { brief } : {}),
+    }, span.attrs, i);
     const scrubbed = stripProductLaunchCatalogDemoCopy(nextBody);
     if (scrubbed === body) continue;
     out = `${out.slice(0, span.bodyStart)}${scrubbed}${out.slice(span.bodyEnd)}`;
   }
-  return stripLeftoverCatalogDemoPhrases(stripProductLaunchCatalogDemoCopy(out))
-    .replace(/◎\s*/g, '')
-    .replace(/Teamver을/g, 'Teamver를');
+  return healProductLaunchStructuralQuality(
+    stripLeftoverCatalogDemoPhrases(stripProductLaunchCatalogDemoCopy(out))
+      .replace(/◎\s*/g, '')
+      .replace(/Teamver을/g, 'Teamver를'),
+    topic,
+  );
 }
 
 function groveStudioRoleCopy(
@@ -13425,7 +13710,7 @@ function playfulSlideCopyPack(topic: string): PlayfulCopyPack {
   const brand = topic || 'Teamver';
   return {
     cover: eightBitRoleCopy('표지', `${brand}는 초안과 수정을 같은 보드에서 끝낸다.`),
-    toc: eightBitRoleCopy(`${brand}가 다루는 칸`, `${brand}에서 보드·권한·이력·보내기를 한 흐름으로 본다.`, [
+    toc: eightBitRoleCopy(`${brand}가 모으는 일`, `${brand}에서 보드·권한·이력·보내기를 한 흐름으로 본다.`, [
       { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
       { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
       { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
@@ -14233,7 +14518,7 @@ function coralSlideCopyPack(topic: string): CoralCopyPack {
       `${brand}가 묶는 일`,
       `${brand}는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.`,
     ),
-    pillars: eightBitRoleCopy(`${brand}가 다루는 칸`, `${brand}에서 보드·권한·이력을 한 흐름으로 본다.`, [
+    pillars: eightBitRoleCopy(`${brand}가 모으는 일`, `${brand}에서 보드·권한·이력을 한 흐름으로 본다.`, [
       { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
       { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
       { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
@@ -14284,7 +14569,7 @@ function matSlideCopyPack(topic: string): MatCopyPack {
       `${brand}가 묶는 일`,
       `${brand}는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.`,
     ),
-    split: eightBitRoleCopy(`${brand}가 다루는 칸`, `${brand}에서 보드·권한·이력을 한 흐름으로 본다.`, [
+    split: eightBitRoleCopy(`${brand}가 모으는 일`, `${brand}에서 보드·권한·이력을 한 흐름으로 본다.`, [
       { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
       { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
       { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
@@ -14329,7 +14614,7 @@ function biennaleYellowSlideCopyPack(topic: string): BiennaleCopyPack {
       `${brand}가 묶는 일`,
       `${brand}는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.`,
     ),
-    programme: eightBitRoleCopy(`${brand}가 다루는 칸`, `${brand}에서 보드·권한·이력·보내기를 한 흐름으로 본다.`, [
+    programme: eightBitRoleCopy(`${brand}가 모으는 일`, `${brand}에서 보드·권한·이력·보내기를 한 흐름으로 본다.`, [
       { title: '같은 보드', body: `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.` },
       { title: '권한 경계', body: `${brand}에서 보기와 고치기를 슬라이드마다 정한다.` },
       { title: '결과 이력', body: `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.` },
@@ -15941,6 +16226,7 @@ function rewriteBlockFrameHeadingCopy(
 }
 
 function blockFrameLeftoverHealShouldRun(html: string): boolean {
+  if (officialLookIsProductLaunchHalo(html) || /\btpl-product-launch\b/i.test(html)) return false;
   if (officialLookIsNeoBrutalBlockFrame(html)) return true;
   return /\b(?:chart-frame|intro-card|feature-card|nb-heading|data-box|nb-label|nb-card)\b/i.test(html)
     && ((html.match(/[가-힣]/g) ?? []).length >= 2);
