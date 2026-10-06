@@ -46,6 +46,24 @@ h1/h2 분기는 닫혔다. 같은 카드 슬로건이 **다른 장**에 반복�
 18. **`.card` leftover** — kit `.card`(feature-card 아님)도 생성 fill·persist refill 대상. 제목이 keepable이어도 leftover 카드 잎을 교체한다.
 19. **공식 inset** — slide+flow 이중 `56px 72px`를 제거하고 flow를 킷 미리보기와 같은 `80px 112px`로 맞춘다.
 
+## 후속 (1006-N01 슬라이스 4)
+
+persist leftover는 줄었지만 미리보기와 다른 **킷 셸 배치**가 남는다. fillMode(`json`)는 유지한다.
+
+20. **표지 chrome** — `.brand`도 `.hero-shot`처럼 flow 밖으로 승격하고 공식 `position:absolute;top:56px;left:112px`를 복구한다.
+21. **영문 킷 kicker** — `01 · The sound` / `02` / `Pricing` 은 `${topic} 한눈에`로 교체.
+22. **CTA 잔재** — `early review` / `2-year warranty` / `· from` / 빈 96px / 킷 `14일`을 제거하고 큰 숫자는 `지금`으로 시각 리듬을 맞춘다.
+23. **price-card 무게** — 가격을 지어내지 않는다. 빈 amount는 `한 화면` / `한 팀` / `한 정책` 짧은 한글 라벨로 공식 64px 숫자를 대체한다.
+24. **센터 장** — kicker+제목만 있는 introducing 장에 role lede를 넣어 빈 화면을 채운다.
+25. **중복 style 속성** — `style="" style="…" style="…"`처럼 한 태그에 style가 여러 번이면 브라우저가 첫 번째만 쓴다. 하나로 병합하고 빈 style는 제거한다.
+
+## 후속 (1006-N01 슬라이스 4b — 12초 근본원인)
+
+슬라이스 3에서 synth copy를 깨끗하게 올린 **역효과**로 `outlineNeedsAiContentFill()`가 `false`를 반환했다. synth outline이 더 이상 `GENERIC_DETERMINISTIC_FILL_COPY_RE`에 걸리지 않고 모든 장에 item이 있으면 데몬이 **MiniMax AI fill을 건너뛰고** 순수 synth 덱을 ~12초에 내보낸다. 미리보기 대비 품질이 떨어지는 진짜 원인이다. fillMode(`json`)는 유지한다.
+
+26. **synthetic/densified outline은 항상 AI fill** — `resolveTemplateCloneSlidesForDeterministicFillWithProvenance.finish()`에서 `needsAiContentFill = source === 'resolved' ? outlineNeedsAiContentFill(slides) : true`. synthetic·densified는 generic seed이므로 반드시 MiniMax fill을 거친다. 완전히 `resolved`된 outline만 AI fill을 건너뛸 수 있다.
+27. **service-intro seed lead 복구** — synth 첫 장 lead를 `${topic} 풀어야 하는 문제`로 되돌린다. leftover 라벨이 아니라 keepable copy이며, outline이 generic seed임을 분기와 테스트(루프419)에서 식별하게 한다. "evidence/신뢰" 슬롯(슬라이드 6)도 leftover 정문구(`신뢰를 만드는 증거`)를 피해 `${topic} 신뢰 근거`로 복원한다.
+
 ## 경계
 
 - 표지 `Teamver 소개`는 유지

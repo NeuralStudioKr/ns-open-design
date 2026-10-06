@@ -66,9 +66,30 @@ loop563 실측 (brief `Teamver 소개`):
 - ☑ `.card` leftover 잎 refill + 닫히지 않은 인용 refill
 - ☑ loop563 구조 테스트 8개 + 루프551–554·572 leftover 계열 81 passed (origin/staging rebase 후)
 
+## 슬라이스 4 완료
+
+미리보기와 다른 킷 셸을 persist에서 공식 배치에 맞췄다. fillMode는 `json` 유지.
+
+- ☑ `.brand`를 flow 밖으로 승격하고 `top:56px;left:112px` 핀
+- ☑ `01 · The sound` / 숫자 kicker → `${topic} 한눈에`
+- ☑ `early review` / `2-year warranty` / 킷 `14일` 제거, CTA 큰 숫자는 `지금`
+- ☑ 빈 price-card amount → `한 화면` / `한 팀` / `한 정책` (가격 창작 없음)
+- ☑ 센터 introducing 장에 role lede
+- ☑ 중복 `style` 속성 병합 + 빈 style 제거
+- ☑ loop563 구조 테스트 10개 통과
+
+## 슬라이스 4b 완료 — 12초 근본원인
+
+슬라이스 3이 synth copy를 깨끗하게 올린 역효과로 `outlineNeedsAiContentFill()`가 `false`가 되어 데몬이 MiniMax AI fill을 건너뛰고 순수 synth 덱을 ~12초에 냈다. 이것이 미리보기 대비 품질 저하의 진짜 원인이었다.
+
+- ☑ `resolveTemplateCloneSlidesForDeterministicFillWithProvenance.finish()` — `needsAiContentFill = source === 'resolved' ? outlineNeedsAiContentFill(slides) : true` (synthetic·densified는 항상 AI fill)
+- ☑ service-intro synth 첫 장 lead를 `${topic} 풀어야 하는 문제`로 복구, 슬라이드 6은 `${topic} 신뢰 근거` (leftover 정문구 회피)
+- ☑ 회귀 5건 수정 — `template-clone-outline`(루프419 LOOK preview·dense 10-slide), `template-clone-fill` 루프480 Block Frame dense content, loop558/560 offline-repro(단독 통과, fixture 재생성 순서 부작용)
+- ☑ 전체 스위트: 8 failed / 3337 passed → 남은 8개 중 loop558·560은 단독 통과(재생성 순서), 나머지 6개는 깨끗한 부모(d3706fa998) 기준선에서도 동일 재현되는 선행 실패(이번 변경 무관): deck-framework-compact, deck-quality-slide-count 루프550, deck-template-look-css Capsule Motif, system-prompt-api-mode compact signature, template-clone-fill 루프531·루프515
+
 ## 남은 리스크
 
 - MiniMax가 슬라이드마다 **다른** 한글을 내면 덮지 않는다.
 - 회사 소개에 product-launch 킷을 고르는 문제는 범위 밖.
 - 이미 저장된 덱은 다시 생성하거나 persist heal을 타야 반영된다.
-- fillMode는 `json`을 유지한다. 12초 경로의 leftover는 synth preset 교체로 막는다.
+- fillMode는 `json`을 유지한다. 12초 순수-synth 경로는 synthetic/densified outline에서 `needsAiContentFill=true`를 강제해 다시 MiniMax fill을 타게 한다.

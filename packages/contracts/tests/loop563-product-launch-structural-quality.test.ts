@@ -144,6 +144,47 @@ describe('루프563 · Product Launch cross-kit / structural quality', () => {
     expect(healed).not.toMatch(/padding:\s*56px 72px/);
   });
 
+  it('표지 chrome·영문 킷 잔재·빈 가격칸·센터 lede를 미리보기에 맞춘다', () => {
+    const html = productLaunchDeck([
+      '<section class="slide slide-title"><div data-od-slide-flow style="padding:56px 72px">',
+      '<div class="brand">Teamver</div>',
+      '<h1 class="h1">Teamver 소개</h1>',
+      '<div class="hero-shot"></div></div></section>',
+      '<section class="slide center tc"><p class="kicker">01 · The sound</p>',
+      '<h1 class="h1">Teamver가 해결하는 문제</h1></section>',
+      '<section class="slide"><h2 class="h2">활용</h2>',
+      '<div class="price-card"><h4>실무</h4><div class="amount"></div><p class="dim">한 화면에서 초안을 고친다.</p></div>',
+      '</section>',
+      '<section class="slide dark"><h2 class="h2">이어 쓰기</h2>',
+      '<p class="dim">지금 에이전트와 early review</p>',
+      '<div style="font-size:96px;font-weight:900">14일</div>',
+      '<p class="dim"> · from · 2-year warranty</p>',
+      '<a class="cta-btn">지금 시작하기</a></section>',
+    ].join(''));
+    const healed = healProductLaunchLeftoverCatalogCopy(html, BRIEF);
+    expect(healed).toMatch(/<\/div><div data-od-official-motif-html class="hero-shot"><\/div><div class="brand" style="position:absolute;top:56px;left:112px">/);
+    expect(healed).not.toMatch(/01 · The sound|The sound/);
+    expect(healed).not.toMatch(/early review|2-year warranty|· from/);
+    expect(healed).not.toMatch(/>\s*14일\s*</);
+    expect(healed).toMatch(/>지금</);
+    expect(healed).toMatch(/<div[^>]*\bamount\b[^>]*>한 화면<\/div>/);
+    expect(healed).toMatch(/class="lede"/);
+  });
+
+  it('중복 style 속성을 하나로 병합하고 빈 style를 제거한다', () => {
+    const html = productLaunchDeck([
+      '<section class="slide center tc"><div data-od-slide-flow style="padding:80px 112px">',
+      '<p class="kicker">Teamver 한눈에</p>',
+      '<h1 class="h1" style="" style="color:#111111!important" style="color:#111111!important">Teamver 작업 흐름</h1>',
+      '</div></section>',
+    ].join(''));
+    const healed = healProductLaunchLeftoverCatalogCopy(html, BRIEF);
+    expect((healed.match(/<h1\b[^>]*>/) ?? [''])[0]).not.toMatch(/style=[^>]*style=/);
+    expect(healed).not.toMatch(/style=""/);
+    expect(healed).toMatch(/color:#111111!important/);
+    expect(healed).toMatch(/class="lede"/);
+  });
+
   it('service-intro synth가 leftover 카드 라벨을 다시 넣지 않는다', () => {
     const synth = synthesizeTemplateCloneSlideBody(
       'Teamver 소개',

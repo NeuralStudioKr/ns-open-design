@@ -1906,18 +1906,27 @@ function templatesForSynthTemplateTopic(
     // the 12s JSON-fill floor. Use the shared role pack so persist heal and
     // synth emit the same keepable Korean.
     const pack = genericSlideCopyPack(topic);
-    const fromRole = (role: GenericRoleCopy, hint: TemplateCloneShellRole): SynthTemplateBodyTemplate => ({
+    const fromRole = (
+      role: GenericRoleCopy,
+      hint: TemplateCloneShellRole,
+      leadOverride?: string,
+    ): SynthTemplateBodyTemplate => ({
       roleHint: hint,
-      lead: role.lead,
+      lead: leadOverride ?? role.lead,
       itemTitles: role.items.map((item) => item.title),
       lines: role.items.map((item) => item.body),
     });
+    // Keep the service-intro "problem" framing (`${topic}가 풀어야 하는 문제`)
+    // as the first seed lead — it is keepable copy, not a leftover label, and
+    // anchors the deck on the problem the service solves.
     return [
-      fromRole(pack.statement, 'list'),
+      fromRole(pack.statement, 'list', `${attachKoreanJosa(topic, '이/가')} 풀어야 하는 문제`),
       fromRole(pack.cards, 'cards'),
       fromRole(pack.process, 'process'),
       fromRole(pack.team, 'cards'),
-      fromRole(pack.quote, 'list'),
+      // Keep the "evidence / 신뢰" slot framing (service-intro slide 6) without
+      // reusing the exact leftover heading `신뢰를 만드는 증거`.
+      fromRole(pack.quote, 'list', `${topic} 신뢰 근거`),
       fromRole(pack.timeline, 'timeline'),
       fromRole(pack.stats, 'stat'),
       fromRole(pack.close, 'closing'),
@@ -12303,6 +12312,19 @@ function productLaunchHeadingNeedsRefill(
   return false;
 }
 
+function productLaunchKickerNeedsRefill(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!value) return false;
+  if (looksLikeServiceIntroLeftoverTitle(value) || SERVICE_INTRO_LEFTOVER_BODY_RE.test(value)) {
+    return true;
+  }
+  if (/^Pricing$/i.test(value)) return true;
+  if (/^\d{1,2}$/.test(value)) return true;
+  if (/^\d{1,2}\s*[·•.\-]\s*(?:The\s+)?\w+/i.test(value)) return true;
+  if (/^The\s+(sound|fit|intelligence|ship)$/i.test(value)) return true;
+  return false;
+}
+
 function productLaunchLooksLikeOrphanPricingChrome(body: string): boolean {
   const hasZeroPrice = /₩\s*0\b|\$\s*0\b/.test(body);
   const hasFreeLabel = />\s*Free\s*</i.test(body);
@@ -12710,10 +12732,7 @@ function healProductLaunchStructuralQuality(html: string, topic: string): string
     const kickerText = visibleDeckCopy(
       /<[^>]*\bkicker\b[^>]*>([\s\S]*?)<\//i.exec(body)?.[1] ?? '',
     );
-    if (
-      looksLikeServiceIntroLeftoverTitle(kickerText)
-      || SERVICE_INTRO_LEFTOVER_BODY_RE.test(kickerText)
-    ) {
+    if (productLaunchKickerNeedsRefill(kickerText)) {
       body = replaceFirstExactClassText(
         body,
         'kicker',
@@ -12780,12 +12799,15 @@ function healProductLaunchStructuralQuality(html: string, topic: string): string
     out = `${out.slice(0, rewrite.start)}${rewrite.html}${out.slice(rewrite.end)}`;
   }
   out = healProductLaunchRepeatedCardCopy(out, topic);
-  out = liftProductLaunchHeroShotOutOfFlow(out);
+  out = liftProductLaunchOfficialChromeOutOfFlow(out);
   out = stripProductLaunchInlineDisplayOverrides(out);
   out = restoreProductLaunchOfficialInsets(out);
   out = normalizeProductLaunchSparseGrids(out);
   out = salvageBrokenProductLaunchMarkup(out);
-  return stripEmptyProductLaunchAmountNodes(out);
+  out = wipeProductLaunchEnglishDemoChrome(out);
+  out = healProductLaunchCtaDisplay(out);
+  out = fillProductLaunchSparseCenterSlides(out, topic);
+  return restoreProductLaunchPriceCardWeight(out);
 }
 
 const PRODUCT_LAUNCH_CARD_SHELLS = ['feature-card', 'price-card', 'step', 'card'] as const;
@@ -13008,7 +13030,7 @@ function restoreProductLaunchOfficialInsets(html: string): string {
 }
 
 function stripProductLaunchInlineDisplayOverrides(html: string): string {
-  return String(html ?? '').replace(
+  const next = String(html ?? '').replace(
     /<(h[12])\b([^>]*\bstyle\s*=\s*)(["'])([\s\S]*?)\3([^>]*)>/gi,
     (full, tag: string, pre: string, quote: string, style: string, post: string) => {
       const nextStyle = compactInlineCssDeclarations(
@@ -13016,6 +13038,36 @@ function stripProductLaunchInlineDisplayOverrides(html: string): string {
       );
       if (nextStyle === compactInlineCssDeclarations(style)) return full;
       return `<${tag}${pre}${quote}${nextStyle}${quote}${post}>`;
+    },
+  );
+  return mergeDuplicateInlineStyleAttributes(next);
+}
+
+/**
+ * MiniMax (and prior healers that stripped a value to an empty `style=""`)
+ * can leave a tag with several `style=` attributes. The browser keeps only
+ * the first, so an emptied `style=""` silently drops later declarations and
+ * the markup reads broken. Collapse every tag's `style=` attributes into one
+ * compacted declaration and drop it when empty.
+ */
+function mergeDuplicateInlineStyleAttributes(html: string): string {
+  return String(html ?? '').replace(
+    /<([a-zA-Z][\w-]*)\b([^>]*)>/g,
+    (full, tag: string, attrs: string) => {
+      const styleRe = /\s+style\s*=\s*(["'])([\s\S]*?)\1/gi;
+      const declarations: string[] = [];
+      let hasStyle = false;
+      let match: RegExpExecArray | null;
+      while ((match = styleRe.exec(attrs)) !== null) {
+        hasStyle = true;
+        const chunk = compactInlineCssDeclarations(match[2] ?? '');
+        if (chunk) declarations.push(chunk);
+      }
+      if (!hasStyle) return full;
+      const stripped = attrs.replace(/\s+style\s*=\s*(["'])[\s\S]*?\1/gi, '');
+      const merged = compactInlineCssDeclarations(declarations.join(';'));
+      if (!merged) return `<${tag}${stripped}>`;
+      return `<${tag}${stripped} style="${merged}">`;
     },
   );
 }
@@ -13037,7 +13089,26 @@ function normalizeProductLaunchSparseGrids(html: string): string {
   return out;
 }
 
-function liftProductLaunchHeroShotOutOfFlow(html: string): string {
+const PRODUCT_LAUNCH_BRAND_PIN = 'position:absolute;top:56px;left:112px';
+const PRODUCT_LAUNCH_AMOUNT_LABELS = ['한 화면', '한 팀', '한 정책'] as const;
+
+function pinProductLaunchBrandBlock(block: string): string {
+  if (/position\s*:\s*absolute/i.test(block)) return block;
+  if (/\bstyle\s*=/i.test(block)) {
+    return block.replace(
+      /(\bstyle\s*=\s*)(["'])([\s\S]*?)\2/i,
+      (_m, pre: string, q: string, style: string) => (
+        `${pre}${q}${compactInlineCssDeclarations(`${style};${PRODUCT_LAUNCH_BRAND_PIN}`)}${q}`
+      ),
+    );
+  }
+  return block.replace(
+    /^(<[a-zA-Z][\w-]*)\b/,
+    `$1 style="${PRODUCT_LAUNCH_BRAND_PIN}"`,
+  );
+}
+
+function liftProductLaunchOfficialChromeOutOfFlow(html: string): string {
   const dest = String(html ?? '');
   if (!officialLookIsProductLaunchHalo(dest)) return dest;
   const spans = listHealSlideHostSpans(dest);
@@ -13055,11 +13126,14 @@ function liftProductLaunchHeroShotOutOfFlow(html: string): string {
     const innerEnd = flowAbs + flowBalanced.length - closeLen;
     const inner = out.slice(innerStart, innerEnd);
     const shots = exactClassBlocks(inner, 'hero-shot');
-    if (shots.length === 0) continue;
+    const brands = exactClassBlocks(inner, 'brand');
+    if (shots.length === 0 && brands.length === 0) continue;
+    const removals = [...shots, ...brands].sort((a, b) => b.start - a.start);
     let nextInner = inner;
-    const lifted: string[] = [];
-    for (let s = shots.length - 1; s >= 0; s -= 1) {
-      const shot = shots[s]!;
+    for (const item of removals) {
+      nextInner = `${nextInner.slice(0, item.start)}${nextInner.slice(item.end)}`;
+    }
+    const liftedHero = shots.map((shot) => {
       let block = shot.html;
       if (!/\bdata-od-official-motif-html\b/i.test(block)) {
         block = block.replace(
@@ -13067,10 +13141,92 @@ function liftProductLaunchHeroShotOutOfFlow(html: string): string {
           '$1 data-od-official-motif-html',
         );
       }
-      lifted.unshift(block);
-      nextInner = `${nextInner.slice(0, shot.start)}${nextInner.slice(shot.end)}`;
-    }
-    out = `${out.slice(0, innerStart)}${nextInner}${out.slice(innerEnd, flowAbs + flowBalanced.length)}${lifted.join('')}${out.slice(flowAbs + flowBalanced.length)}`;
+      return block;
+    });
+    const liftedBrand = brands.map((brand) => pinProductLaunchBrandBlock(brand.html));
+    out = `${out.slice(0, innerStart)}${nextInner}${out.slice(innerEnd, flowAbs + flowBalanced.length)}${liftedHero.join('')}${liftedBrand.join('')}${out.slice(flowAbs + flowBalanced.length)}`;
+  }
+  return out;
+}
+
+function wipeProductLaunchEnglishDemoChrome(html: string): string {
+  return String(html ?? '')
+    .replace(/\bearly review\b/gi, '')
+    .replace(/\b2-year warranty\b/gi, '')
+    .replace(/\bFree shipping\b/gi, '')
+    .replace(/\bShips May \d+\b/gi, '')
+    .replace(/\s*·\s*from\b/gi, '')
+    .replace(/—\s*,/g, '')
+    .replace(/\s{2,}/g, ' ');
+}
+
+function healProductLaunchCtaDisplay(html: string): string {
+  return String(html ?? '').replace(
+    /<(div|p|span)\b([^>]*font-size\s*:\s*96px[^>]*)>([\s\S]*?)<\/\1>/gi,
+    (full, tag: string, attrs: string, inner: string) => {
+      const plain = visibleDeckCopy(inner);
+      if (!plain || /^14일$/.test(plain)) {
+        return `<${tag}${attrs}>지금</${tag}>`;
+      }
+      return full;
+    },
+  );
+}
+
+function fillProductLaunchSparseCenterSlides(html: string, topic: string): string {
+  const dest = String(html ?? '');
+  const spans = listHealSlideHostSpans(dest);
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    if (!/\b(?:center|tc)\b/i.test(span.attrs)) continue;
+    let body = out.slice(span.bodyStart, span.bodyEnd);
+    if (/\blede\b/i.test(body)) continue;
+    if (/\b(?:feature-card|price-card|step)\b/i.test(body)) continue;
+    if (!/<h[12]\b/i.test(body)) continue;
+    const role = genericRoleCopyForIndex(topic || 'Teamver', null, i + 1);
+    if (!role.lead) continue;
+    body = body.replace(
+      /(<\/h[12]>)/i,
+      `$1<p class="lede">${escapeHtml(role.lead)}</p>`,
+    );
+    out = `${out.slice(0, span.bodyStart)}${body}${out.slice(span.bodyEnd)}`;
+  }
+  return out;
+}
+
+function restoreProductLaunchPriceCardWeight(html: string): string {
+  const dest = String(html ?? '');
+  const spans = listHealSlideHostSpans(dest);
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    let body = out.slice(span.bodyStart, span.bodyEnd);
+    const blocks = exactClassBlocks(body, 'price-card');
+    if (blocks.length === 0) continue;
+    body = replaceExactClassBlocksBySequence(
+      body,
+      'price-card',
+      blocks.map((block) => ({ title: '', body: productLaunchCardInnerBody(block.html) })),
+      (block, _line, index) => {
+        const amount = visibleDeckCopy(
+          /<[^>]*\bamount\b[^>]*>([\s\S]*?)<\//i.exec(block)?.[1] ?? '',
+        );
+        if (amount && /[가-힣]/.test(amount) && !/^(?:₩|\$)/.test(amount)) return block;
+        const label = PRODUCT_LAUNCH_AMOUNT_LABELS[index] ?? PRODUCT_LAUNCH_AMOUNT_LABELS[0]!;
+        if (/\bamount\b/i.test(block)) {
+          return block.replace(
+            /(<(?:div|span)\b[^>]*\bamount\b[^>]*>)([\s\S]*?)(<\/(?:div|span)>)/i,
+            `$1${escapeHtml(label)}$3`,
+          );
+        }
+        return block.replace(
+          /(<\/h[3-5]>)/i,
+          `$1<div class="amount">${escapeHtml(label)}</div>`,
+        );
+      },
+    );
+    out = `${out.slice(0, span.bodyStart)}${body}${out.slice(span.bodyEnd)}`;
   }
   return out;
 }
@@ -13102,9 +13258,7 @@ function productLaunchSlideNeedsHeal(
     /<[^>]*\blede\b[^>]*>([\s\S]*?)<\//i.exec(body)?.[1] ?? '',
   );
   if (productLaunchHeadingNeedsRefill(heading, options)) return true;
-  if (looksLikeServiceIntroLeftoverTitle(kicker) || SERVICE_INTRO_LEFTOVER_BODY_RE.test(kicker)) {
-    return true;
-  }
+  if (productLaunchKickerNeedsRefill(kicker)) return true;
   if (productLaunchBodyHasLeftoverCards(body)) return true;
   if (/<\s+div\b|<\s*>|<\/\s*>/i.test(body)) return true;
   if (/font-size\s*:\s*140px/i.test(body) && /[가-힣]{8,}/.test(body)) return true;
@@ -13121,7 +13275,17 @@ function productLaunchSlideNeedsHeal(
   if (productLaunchHasHealerTitleArtifact(heading) || productLaunchHasHealerTitleArtifact(lede)) {
     return true;
   }
-  if (/^Pricing$/i.test(kicker)) return true;
+  if (/early review|2-year warranty|The sound|The fit|The intelligence/i.test(body)) {
+    return true;
+  }
+  if (/\bprice-card\b/i.test(body) && /<[^>]*\bamount\b[^>]*>\s*</i.test(body)) return true;
+  if (
+    /\b(?:center|tc)\b/i.test(_attrs)
+    && !/\blede\b/i.test(body)
+    && !/\b(?:feature-card|price-card|step|card)\b/i.test(body)
+  ) {
+    return true;
+  }
   if (PRODUCT_LAUNCH_BROKEN_COPY_RE.test(body)) return true;
   if (/핵심\s+주제|주제이|주제을/.test(body)) return true;
   if (/주제를 쓰기 시작/.test(body)) return true;
@@ -13185,11 +13349,7 @@ function fillProductLaunchKitSlide(
       );
     }
   }
-  if (
-    /^Pricing$/i.test(kickerText)
-    || looksLikeServiceIntroLeftoverTitle(kickerText)
-    || SERVICE_INTRO_LEFTOVER_BODY_RE.test(kickerText)
-  ) {
+  if (productLaunchKickerNeedsRefill(kickerText)) {
     next = replaceFirstExactClassText(
       next,
       'kicker',
@@ -21082,7 +21242,15 @@ export function resolveTemplateCloneSlidesForDeterministicFillWithProvenance(opt
   ): TemplateCloneDeterministicFillResolution => ({
     slides,
     source,
-    needsAiContentFill: outlineNeedsAiContentFill(slides),
+    // 1006-N01 슬라이스 4b — synthetic / densified outlines are generic seeds
+    // (role-pack copy), never the final deck. The daemon must still run the AI
+    // content fill so MiniMax rewrites them from the real brief. Before this,
+    // the clean role-pack copy no longer tripped GENERIC_DETERMINISTIC_FILL_
+    // COPY_RE, so needsAiContentFill fell to false and the deck finished in
+    // ~12s as pure synth. Only a fully `resolved` outline may skip AI fill.
+    needsAiContentFill: source === 'resolved'
+      ? outlineNeedsAiContentFill(slides)
+      : true,
   });
   if (resolved.length === 0 || ellipsisStarter) {
     const synth = synthesizeTemplateCloneOutlineFromBrief({
