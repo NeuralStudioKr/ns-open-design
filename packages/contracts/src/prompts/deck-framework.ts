@@ -596,6 +596,10 @@ export const COMPACT_FIRST_FILL_TOP_UP_FROM = 11;
 export const COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE =
   `Slide count THIS TURN: honor an explicit user count of 1–${COMPACT_FIRST_FILL_HONOR_MAX} (5-6/5~6 → close ≥5 this turn; 8-10 → close 8–10 this turn, hard cap 10 — never 15). If the user asked for ${COMPACT_FIRST_FILL_TOP_UP_FROM} or more, close ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close ${COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN} this turn. Never close after a single cover or after 3 slides when the target is 5+ — no 3+3+3 split. Never exceed the requested max.`;
 
+/** JSON slot-fill is compact: complete explicit requests through 20 at once. */
+export const COMPACT_TEMPLATE_JSON_FILL_SLIDE_COUNT_GUIDANCE =
+  'JSON outline slide count: honor an explicit user or Plugin count of 1–20 exactly this turn (8–10 → 10; 20 → 20). Do not return only 6 slides and defer hidden top-up. If unspecified, return 6 slides. Never exceed the requested maximum.';
+
 const COMPACT_FIRST_FILL_OUTLINE_MAX_20 =
   'Outline slide count = deliverable count (max 20)';
 const COMPACT_FIRST_FILL_OUTLINE_LENGTH_MAX_20 =
@@ -837,7 +841,7 @@ You are in API mode after a LOOK seed. **Emit a JSON outline THIS TURN — not H
 The host already has the template DOM/CSS/motif in \`deck.html\`. It will swap your titles/bodies into that shell. Regenerating \`<!doctype\` / \`<section class="slide">\` / Motif SVG destroys the kit look.
 
 **Output contract (non-negotiable):**
-1. Short status sentence (optional), then ONE JSON object (plain or \`\`\`json\`\`\` fenced).
+1. Begin with \`{\` (or \`\`\`json\`\`\`) immediately and emit ONE JSON object. No status sentence, promise, commentary, or progress prose.
 2. Shape:
 \`\`\`json
 {
@@ -854,7 +858,7 @@ The host already has the template DOM/CSS/motif in \`deck.html\`. It will swap y
 \`\`\`
 3. Allowed fields: \`title\`, \`slides[].title\`, optional \`slides[].kicker\`, \`slides[].lead\`, \`slides[].body\` (newline fallback), \`slides[].items[]{title,body}\`, optional \`slides[].roleHint\` (\`cover|list|cards|timeline|stat|quote|team|process|closing|body\`).
 4. Cards / list / stat / process slides MUST use \`items\` with 2–4 \`{title, body}\` slots. Do not leave card body empty. \`lead\` is the section subtitle — not a card.
-5. ${COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE} Outline slide count = deliverable count (max 20). Never mirror the template demo page lineup.
+5. ${COMPACT_TEMPLATE_JSON_FILL_SLIDE_COUNT_GUIDANCE} Outline slide count = deliverable count (max 20). Never mirror the template demo page lineup.
 6. Fill REAL topical titles/bodies. No "만들어줘", no template demo nouns (Hartfield / Daisy Days captions), no empty pillar/column-number fillers, no adjacent duplicate headings.
 
 **FORBIDDEN this turn:** \`<!doctype\`, \`<html\`, \`<head\`, \`<style\`, \`<section class="slide"\`, Motif \`<svg>\`, full example.html rewrite, Neutral \`#0f172a\`, terracotta \`#c96442\`, emoji ornament rows, inventing empty cards to pad columns.

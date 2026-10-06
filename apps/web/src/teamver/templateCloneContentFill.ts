@@ -33,10 +33,10 @@ import { isTeamverEmbedMode } from './designApiBase';
 
 /** Keep local — contracts barrel can be undefined during web test init. */
 const FIRST_FILL_SLIDE_COUNT_THIS_TURN = 6;
-const FIRST_FILL_HONOR_MAX = 10;
-const FIRST_FILL_TOP_UP_FROM = 11;
+const FIRST_FILL_HONOR_MAX = 20;
+const FIRST_FILL_TOP_UP_FROM = 21;
 const FIRST_FILL_SLIDE_COUNT_GUIDANCE =
-  `Slide count THIS TURN: honor an explicit user count of 1–${FIRST_FILL_HONOR_MAX} (5-6/5~6 → close ≥5 this turn; 8-10 → close 8–10 this turn, hard cap 10 — never 15). If the user asked for ${FIRST_FILL_TOP_UP_FROM} or more, close ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} complete body-first slides this turn and hidden top-up appends the rest. If unspecified, close ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} this turn. Never close after a single cover or after 3 slides when the target is 5+ — no 3+3+3 split. Never exceed the requested max.`;
+  `Slide count THIS TURN: honor an explicit user count of 1–${FIRST_FILL_HONOR_MAX} exactly (5-6/5~6 → use the requested range maximum; 8-10 → 10). JSON is compact enough to finish the full requested outline in one turn; do not stop at 6 and defer hidden top-up. If unspecified, close ${FIRST_FILL_SLIDE_COUNT_THIS_TURN} this turn. Never close after a single cover or after 3 slides when the target is 5+. Never exceed the requested max.`;
 
 /** Keep local — importing canvasSlideLaunch here caused circular init of expansion consts. */
 const SLIDE_DECK_QUALITY_BAR_INSTRUCTION =
@@ -348,7 +348,7 @@ export function buildTemplateCloneSlotFillRepairPrompt(options?: {
     TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
     TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER,
     'Previous reply was not a valid JSON outline (HTML dump or schema fail).',
-    'Emit ONE JSON outline only this turn — plain or ```json fenced.',
+    'Begin with `{` (or ```json) immediately. Emit ONE JSON outline only this turn with no status sentence, promise, commentary, or progress prose.',
     'Shape: {"title":"...","slides":[{"title":"...","body":"line\\nline","roleHint":"cover|list|cards|timeline|stat|quote|team|process|closing|body"}]}',
     'FORBIDDEN: <!doctype, <html, <head, <style, <section class="slide">, Motif <svg>.',
     // 루프522 — Mirror templateCloneContentFillHardRules: JSON slot-fill turns
@@ -744,7 +744,7 @@ export function templateCloneContentFillHardRules(options: {
   );
   return [
     'Hard rules (READ — JSON slot-fill):',
-    '- This is CREATE of real topical content, not a surgical edit. Status tone: "슬라이드 초안 작성 중" — NEVER "수정 반영 중" / "Applying your edits".',
+    '- This is CREATE of real topical content, not a surgical edit. Begin with `{` (or ```json) immediately; emit no status sentence, promise, commentary, or progress prose.',
     '- Emit ONE JSON outline only (plain or ```json fenced). The host slot-fills the LOOK seed — do NOT regenerate deck HTML.',
     '- Never emit `<artifact type="deck-patch">` — this is a JSON slot-fill turn (no artifact).',
     '- Forbidden output: <!doctype, <html, <head, <style, <section class="slide">, Motif <svg>, full example.html rewrite.',
@@ -760,7 +760,7 @@ export function templateCloneContentFillHardRules(options: {
     '- Copy density must fill the chosen layout without becoming a label grid: every non-cover, non-closing slide needs a specific 25–60 Korean-character (12–30 English-word) `lead`; each `items[]` entry needs a concrete 25–60 Korean-character (12–30 English-word) `body`. Bare labels (`핵심`, `개념`, `요약`) and title-only cards fail. `stat` slides are excepted only when the metric is sourced and its label explains what the number measures.',
     '- Brand spelling: keep Latin product/brand spellings from the brief or URL (host-derived; do not phonetic-Hangulize proper nouns).',
     '- Cards / list / stat / process slides MUST use items[] with 2–4 {title, body} slots. lead = section subtitle, not a card. Every item body must state an actor/action, mechanism, trade-off, example, or observable result; do not emit title-only cards.',
-    `- ${FIRST_FILL_SLIDE_COUNT_GUIDANCE} Outline length = requested count this turn (8-10 → 8–10, hard cap 10, never 15/20). Hidden top-up only when the user asked for ${FIRST_FILL_TOP_UP_FROM}+.`,
+    `- ${FIRST_FILL_SLIDE_COUNT_GUIDANCE} Outline length = requested count this turn (8-10 → 10; 20 → 20). Hidden top-up applies only above ${FIRST_FILL_HONOR_MAX}.`,
     '- Treat the daemon Clone seed as the visual baseline the host will keep. You only supply titles/bodies/roleHint.',
     `- If the brief is only a topic, use a default ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}-slide outline (cover, why it matters, key concepts, evidence, next steps, close). Adapt labels to the topic and audience.`,
     '- Do not invent empty pillar/column-number cards to pad a 3-column look. Card count = content count.',
@@ -842,7 +842,18 @@ export function normalizeTemplateCloneFillSlideCountHint(input: string | number 
   return raw;
 }
 
-/** Cap Plugin-input slideCount for Clone fill so Quick settings cannot fight the seed hint. */
+/** JSON slot-fill is compact enough to honor exact counts above the HTML path's 15-slide cap. */
+function parseTemplateCloneFillSlideCountTarget(text: string | null | undefined): number | null {
+  const raw = String(text ?? '').replace(/\s+/g, ' ').trim();
+  const match = raw.match(/(?:\bexactly\b|정확히)\s*(\d{1,2})/i)
+    ?? raw.match(/(\d{1,2})\s*(?:장|slides?|pages?|페이지)/i);
+  const count = Number(match?.[1] ?? NaN);
+  return Number.isFinite(count) && count >= 1 && count <= FIRST_FILL_HONOR_MAX
+    ? count
+    : null;
+}
+
+/** Normalize Plugin-input slideCount so Quick settings and the seed agree. */
 export function withTemplateCloneFillPluginInputs(
   pluginInputs: Record<string, unknown> | null | undefined,
   slideCountHint?: string | number | null,
@@ -861,7 +872,7 @@ export function withTemplateCloneFillPluginInputs(
 
 /**
  * Appended after the rendered plugin block on fill turns so snapshot Plugin
- * inputs (often still 8-10 / 12-15) cannot override the stability-capped hint.
+ * inputs cannot override the normalized user-requested count.
  */
 export function templateCloneFillSlideCountOverrideNotice(
   slideCountHint?: string | number | null,
@@ -876,10 +887,11 @@ export function templateCloneFillSlideCountOverrideNotice(
     ].join('\n');
   }
   if (FIRST_FILL_HONOR_RANGE_CLOSE_RE.test(capped)) {
+    const range = parseSlideCountSpec(capped, { allowBareNumber: true });
     return [
       '# Template clone fill slideCount override',
       `For THIS first content-fill turn only, treat Plugin input slideCount as "${capped}".`,
-      'Close the requested range this turn with a hard cap at the range max (8-10 → 10). Emitting 15 slides is a failed overshoot. Do not leave remaining slides for a later turn.',
+      `Close the requested range this turn with a hard cap at ${range?.max ?? 'the range maximum'}. Exceeding that maximum is a failed overshoot. Do not leave remaining slides for a later turn.`,
     ].join('\n');
   }
   if (capped === FIRST_FILL_SLIDE_COUNT_STABILITY_CAP) {
@@ -897,7 +909,7 @@ export function templateCloneFillSlideCountOverrideNotice(
   ].join('\n');
 }
 
-/** Persist the uncapped user request so top-up can ignore the first-fill cap. */
+/** Persist the user request so validation and any later top-up use the same count. */
 export function formatUserRequestedSlideCountLine(
   slideCountHint?: string | number | null,
 ): string | null {
@@ -925,7 +937,7 @@ function templateClonePromptFillSlideCountInstruction(input: {
       : '';
     return [
       `Slide count: ${slideCountHint || range}.`,
-      `Emit ${range} complete slides in THIS artifact (hard cap ${spec.max}; emitting 15 is a failed overshoot); do not stop at a default ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}-slide compact deck.${missClause}`,
+      `Emit ${range} complete slides in THIS artifact (hard cap ${spec.max}; exceeding it is a failed overshoot); do not stop at a default ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}-slide compact deck.${missClause}`,
     ].join(' ');
   }
   return `Slide count: ${slideCountHint || FIRST_FILL_SLIDE_COUNT_GUIDANCE}.`;
@@ -978,7 +990,8 @@ export function buildTemplateCloneContentFillSeed(options: {
   if (templateTitle) {
     parts.push(`Selected template: ${templateTitle}.`);
   }
-  const visibleSlideCount = parseSlideCountTarget(visible);
+  const visibleSlideCount =
+    parseTemplateCloneFillSlideCountTarget(visible) ?? parseSlideCountTarget(visible);
   const pluginOrUiHint = options.slideCountHint;
   // Typed `5페이지` beats Home/Canvas quick-length ranges (`6-8` auto, `5-6` short).
   const slideCountHintSource =

@@ -872,7 +872,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(normal).toContain('Motif budget');
       expect(normal).toMatch(/render visible kit Motif anchors|at most ONE capped kit Motif sprite|paste at most ONE capped kit Motif sprite/i);
       expect(fill).not.toMatch(/official Motif merged after save|Official look\/Motif CSS\/SVG is merged after save|Motif `<svg>` is NOT required this turn/i);
-      expect(fill).toMatch(/honor an explicit user count of 1–10/i);
+      expect(fill).toMatch(/honor an explicit user or Plugin count of 1–20/i);
+      expect(fill).toContain('No status sentence or progress prose');
       expect(fill).not.toMatch(/produce 3 filled 1920×1080 slides/i);
       // Fill kits must not re-inject Motif SVG bodies (persist remmerge paints them).
       expect(fill).not.toMatch(/```html[\s\S]*?<svg\s/i);

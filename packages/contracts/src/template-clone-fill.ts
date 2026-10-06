@@ -2726,9 +2726,15 @@ export function decideTemplateCloneSlotFillTerminal(input: {
     return { kind: 'abort' };
   }
   const requestedSlideCount =
-    input.slideCount != null && Number.isInteger(input.slideCount) && input.slideCount >= 1
+    input.slideCount != null
+      && Number.isInteger(input.slideCount)
+      && input.slideCount >= 1
+      && input.slideCount <= 20
       ? input.slideCount
-      : input.maxSlides != null && Number.isInteger(input.maxSlides) && input.maxSlides >= 1
+      : input.maxSlides != null
+        && Number.isInteger(input.maxSlides)
+        && input.maxSlides >= 1
+        && input.maxSlides <= 20
         ? input.maxSlides
         : undefined;
   const seedTarget = Math.max(

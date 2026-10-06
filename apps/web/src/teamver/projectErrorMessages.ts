@@ -460,6 +460,13 @@ export function formatAutoContinueIncompleteOutputNotice(): string {
     : "The deliverable is incomplete — trying an automatic continue…";
 }
 
+/** Internal JSON slot-fill handoff; this is progress, not a failed deck. */
+export function formatTemplateCloneSlotFillRepairNotice(): string {
+  return isTeamverEmbedMode()
+    ? "AI가 템플릿에 넣을 슬라이드 내용을 구성하고 있습니다…"
+    : "AI is preparing the slide content for the selected template…";
+}
+
 /** Shown when truncated/streamed model HTML was salvaged and persisted. */
 export function formatEmergencyDeckFallbackNotice(): string {
   return isTeamverEmbedMode()

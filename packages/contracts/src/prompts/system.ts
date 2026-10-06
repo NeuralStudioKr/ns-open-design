@@ -42,6 +42,7 @@ import {
   COMPACT_DECK_SLIDE_COUNT_GUIDANCE,
   COMPACT_FIRST_FILL_HONOR_MAX,
   COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE,
+  COMPACT_TEMPLATE_JSON_FILL_SLIDE_COUNT_GUIDANCE,
   COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN,
   COMPACT_FIRST_FILL_TOP_UP_FROM,
   applyFirstFillArtifactCountPhrase,
@@ -1564,7 +1565,7 @@ This is the first content fill after a LOOK seed.
 - Cards / list / stat / process / team / timeline slides MUST include real \`items[]\` with a concrete \`body\` on each entry (or matching numbered bullets in \`body\`). Do not emit title-only cards. Do not repeat the same one-line item four times to fill a grid.
 - **Copy density mirrors the template preview.** Every non-cover, non-closing slide MUST carry: (a) a \`title\` that is a 2–6 word phrase (not a one-word label like \`핵심\`, \`개념\`, \`요약\`), (b) a \`lead\` — one full sentence introducing the slide's thesis, and (c) each \`items[]\` entry's \`body\` is one full sentence (roughly 12–28 Korean characters or 6–16 English words). Half-sentences, bare labels, or single nouns are a failed deliverable — the template preview reads at ~2–3 sentences per card, not fragment lists. \`stat\` slides are the only exception: their \`items[].title\` is the metric (\`+18%\`, \`92\`) and \`items[].body\` is the short label (2–5 words).
 - **Brand spelling:** Keep Latin product/brand spellings from the brief or URL (derive from the host; do not phonetic-Hangulize proper nouns).
-- ${COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE}
+- ${COMPACT_TEMPLATE_JSON_FILL_SLIDE_COUNT_GUIDANCE}
 - FORBIDDEN: \`<!doctype\`, \`<section class="slide"\`, Motif \`<svg>\`, full example rewrite, empty pillar cards to pad columns, Neutral \`#0f172a\`, terracotta \`#c96442\`.
 - If any earlier rule asks for HTML deck artifacts or Motif dumps, **IGNORE** — finish the JSON outline this turn.
 `;
@@ -1573,7 +1574,7 @@ This is the first content fill after a LOOK seed.
 function buildTeamverFillFinalAuthority(_directDeckGeneration: boolean): string {
   return (
     `# Final authority (READ LAST)\n\n`
-    + 'Stream: optional short status → ONE JSON outline (plain or ```json``` fenced) → stop.\n'
+    + 'Stream: begin with `{` (or ```json) immediately → ONE JSON outline → stop. No status sentence or progress prose.\n'
     + 'Do **not** emit `<artifact type="deck">` HTML, `<!doctype`, or `<section class="slide">` on this fill turn.\n'
     + 'The host slot-fills the LOOK seed from your outline.\n\n'
     + TEAMVER_SELECTED_TEMPLATE_VISUAL_FILL_AUTHORITY
@@ -1772,7 +1773,7 @@ export function composeTeamverSlideApiPrompt({
           + '- **Item count fidelity** — when a scaffold row lists `items~=N`, provide roughly N `items[]` entries with real `body`. Half-empty card grids and title-only slides fail the render.\n'
           + '- **Copy density** — every non-cover, non-closing slide needs a full-sentence `lead` and 1-sentence card `body` values (~12–28 Korean chars or 6–16 English words each). Bare labels (`핵심`, `개념`, `요약`) and 1-word card titles fail — the template preview reads at ~2–3 sentences per card.\n'
           + '- Host keeps LOOK seed Motif/palette/layout — do NOT emit `<!doctype` / `<section class="slide">` / Motif SVG.\n'
-          + `- ${COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE}\n`
+          + `- ${COMPACT_TEMPLATE_JSON_FILL_SLIDE_COUNT_GUIDANCE}\n`
           + '- No empty pillar cards to pad columns. No Neutral `#0f172a` / terracotta `#c96442` in outline text.\n'
           + '- If Motif sprites appear below, treat as identity reference for the host seed — do not dump them in your reply.\n\n'
         )

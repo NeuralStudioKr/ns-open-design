@@ -11,6 +11,7 @@ import {
   COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE,
   COMPACT_FIRST_FILL_SLIDE_COUNT_THIS_TURN,
   COMPACT_FIRST_FILL_TOP_UP_FROM,
+  COMPACT_TEMPLATE_JSON_FILL_SLIDE_COUNT_GUIDANCE,
   DECK_COMPACT_INLINE_LAYOUT_VOCABULARY,
   DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE,
   DECK_FRAMEWORK_DIRECTIVE_COMPACT,
@@ -416,22 +417,20 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
       ),
     ).toContain(COMPACT_FIRST_FILL_DEFAULT_ARTIFACT_COUNT_PHRASE_PLAIN);
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toContain(
-      COMPACT_FIRST_FILL_SLIDE_COUNT_GUIDANCE,
+      COMPACT_TEMPLATE_JSON_FILL_SLIDE_COUNT_GUIDANCE,
     );
   });
 
   it('template-fill compact contract asks for JSON outline slot-fill (0901-N02)', () => {
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toMatch(
-      /honor an explicit user count of 1–10/i,
+      /honor an explicit user or Plugin count of 1–20/i,
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toContain('20 → 20');
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toContain(
+      'No status sentence, promise, commentary, or progress prose',
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toContain(
-      'no 3+3+3 split',
-    );
-    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toContain(
-      '5-6/5~6 → close ≥5 this turn',
-    );
-    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toContain(
-      'when the target is 5+',
+      'Do not return only 6 slides and defer hidden top-up',
     );
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_TEMPLATE_FILL).toContain(
       'Emit a JSON outline',

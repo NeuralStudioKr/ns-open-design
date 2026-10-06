@@ -537,6 +537,7 @@ import {
   extractPersistedRunErrorDiagnostic,
   userFacingRunErrorDetail,
   formatAutoContinueIncompleteOutputNotice,
+  formatTemplateCloneSlotFillRepairNotice,
   formatCloneLookSeedFallbackNotice,
   formatCloneLookSeedFallbackErrorDetail,
   formatEmergencyDeckFallbackNotice,
@@ -12427,7 +12428,9 @@ export function ProjectView({
                   runConversationId,
                   autoContinueCount + 1,
                 );
-                const autoContinueNotice = formatAutoContinueIncompleteOutputNotice();
+                const autoContinueNotice = isSlotFillRepairAutoContinue
+                  ? formatTemplateCloneSlotFillRepairNotice()
+                  : formatAutoContinueIncompleteOutputNotice();
                 if (isSlotFillRepairAutoContinue) {
                   // This is an internal hand-off to a fresh AI JSON turn, not
                   // a terminal deliverable failure. Persisting incomplete_output
