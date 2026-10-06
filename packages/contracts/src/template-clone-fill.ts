@@ -1290,6 +1290,39 @@ export function recoverPartialTemplateCloneOutline(
   rawFinalText: string,
   options?: { fallbackTitle?: string | null },
 ): TemplateCloneDeckOutline | null {
+  const cleaned = stripTemplateCloneOutlineNoise(String(rawFinalText ?? ''));
+  const slidesStart = /"slides"\s*:\s*\[/i.exec(cleaned);
+  if (slidesStart) {
+    const tail = cleaned.slice(slidesStart.index + slidesStart[0].length);
+    const recoveredSlides: TemplateCloneSlideContent[] = [];
+    for (const candidate of iterateBalancedJsonObjects(tail)) {
+      const parsed = tryParseLooseJson(candidate.body);
+      const outline = parseTemplateCloneDeckOutline({
+        title: options?.fallbackTitle ?? '슬라이드',
+        slides: parsed == null ? [] : [parsed],
+      });
+      const slide = outline?.slides[0];
+      if (slide) recoveredSlides.push(slide);
+      if (recoveredSlides.length >= TEMPLATE_CLONE_OUTLINE_MAX_SLIDES) break;
+    }
+    if (recoveredSlides.length > 0) {
+      const deckTitleMatch = /^\s*\{[\s\S]*?"title"\s*:\s*"((?:\\.|[^"\\])*)"/i.exec(
+        cleaned.slice(0, slidesStart.index),
+      );
+      let deckTitle = options?.fallbackTitle ?? '';
+      if (deckTitleMatch?.[1]) {
+        try {
+          deckTitle = JSON.parse(`"${deckTitleMatch[1]}"`) as string;
+        } catch {
+          deckTitle = deckTitleMatch[1];
+        }
+      }
+      return {
+        title: sanitizeTemplateCloneDeckTitle(deckTitle) ?? recoveredSlides[0]!.title,
+        slides: recoveredSlides,
+      };
+    }
+  }
   const titles = extractTitleStringsFromLoose(rawFinalText, TEMPLATE_CLONE_OUTLINE_MAX_SLIDES + 1);
   const slides: TemplateCloneSlideContent[] = [];
   const seen = new Set<string>();
@@ -1305,6 +1338,26 @@ export function recoverPartialTemplateCloneOutline(
     sanitizeTemplateCloneDeckTitle(options?.fallbackTitle ?? '')
     ?? slides[0]!.title;
   return { title: fallback, slides };
+}
+
+function mergeTemplateCloneOutlines(
+  prior: TemplateCloneDeckOutline | null,
+  current: TemplateCloneDeckOutline | null,
+): TemplateCloneDeckOutline | null {
+  if (!prior) return current;
+  if (!current) return prior;
+  const slides: TemplateCloneSlideContent[] = [];
+  const seen = new Set<string>();
+  for (const slide of [...prior.slides, ...current.slides]) {
+    const key = slide.title.trim().toLocaleLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    slides.push(slide);
+    if (slides.length >= TEMPLATE_CLONE_OUTLINE_MAX_SLIDES) break;
+  }
+  return slides.length > 0
+    ? { title: current.title || prior.title, slides }
+    : null;
 }
 
 /**
@@ -2708,6 +2761,8 @@ export function synthesizeTemplateCloneOutlineFromBrief(input: {
  */
 export function decideTemplateCloneSlotFillTerminal(input: {
   rawFinalText: string;
+  /** First truncated response when this is the one-shot missing-slides repair. */
+  priorRawFinalText?: string | null;
   seedHtml: string | null | undefined;
   repairAlreadyAttempted: boolean;
   templateId?: string | null;
@@ -2750,7 +2805,17 @@ export function decideTemplateCloneSlotFillTerminal(input: {
     ...(requiredSlideCount > 0 ? { maxSlides: requiredSlideCount } : {}),
     padToSeedSlideCount: false,
   };
-  const outline = parseTemplateCloneDeckOutline(raw);
+  const currentOutline =
+    parseTemplateCloneDeckOutline(raw)
+    ?? recoverPartialTemplateCloneOutline(raw, { fallbackTitle: input.deckTitle ?? null });
+  const priorRaw = String(input.priorRawFinalText ?? '');
+  const priorOutline = priorRaw
+    ? (
+      parseTemplateCloneDeckOutline(priorRaw)
+      ?? recoverPartialTemplateCloneOutline(priorRaw, { fallbackTitle: input.deckTitle ?? null })
+    )
+    : null;
+  const outline = mergeTemplateCloneOutlines(priorOutline, currentOutline);
   const needsAiRepair = !outline
     || (requiredSlideCount > 0 && outline.slides.length < requiredSlideCount);
   if (needsAiRepair) {
@@ -2761,7 +2826,7 @@ export function decideTemplateCloneSlotFillTerminal(input: {
       title: titleForSeedFallback(raw, seed),
     };
   }
-  const filled = applyTemplateCloneSlotFill(seed, raw, templateOpts);
+  const filled = applyTemplateCloneSlotFill(seed, outline, templateOpts);
   if (filled) return { kind: 'slot-fill', html: filled.html, title: filled.title };
   if (!input.repairAlreadyAttempted) return { kind: 'queue-repair' };
   return {

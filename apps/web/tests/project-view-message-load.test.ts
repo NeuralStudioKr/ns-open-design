@@ -1291,6 +1291,10 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("CLONE_SLOT_FILL_REPAIR_ENTRY_FROM");
     expect(source).toContain("const isSlotFillRepairAutoContinue =");
     expect(source).toContain("formatTemplateCloneSlotFillRepairNotice()");
+    expect(source).toContain("priorRawFinalText: priorSlotFillResponse");
+    expect(source).toContain("pendingSlotFillPriorRawRef.current = rawFinalText");
+    expect(source).toContain("recoveredSlideCount: recoveredSlotFillOutline?.slides.length ?? 0");
+    expect(source).toContain("targetSlideCount: repairTargetSlideCount");
     expect(source).toContain("isSlotFillRepairAutoContinue ? 'canceled' : 'failed'");
     expect(source).toContain("surfaceRepairStartFailure");
   });

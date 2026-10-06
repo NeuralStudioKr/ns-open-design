@@ -1056,6 +1056,19 @@ describe('templateCloneContentFill', () => {
     ])).toBe(true);
   });
 
+  it('asks only for missing slides when a truncated outline was partially recovered', () => {
+    const repair = buildTemplateCloneSlotFillRepairPrompt({
+      userBrief: 'Teamver 서비스 소개',
+      recoveredSlideCount: 7,
+      recoveredSlideTitles: ['표지', '문제', '솔루션'],
+      targetSlideCount: 10,
+    });
+    expect(repair).toContain('recovered 7 complete AI-authored slides');
+    expect(repair).toContain('ONLY the 3 missing slides');
+    expect(repair).toContain('표지 | 문제 | 솔루션');
+    expect(repair).toContain('do not repeat');
+  });
+
   it('cloneFillJsonRepairAlreadyAttempted includes in-flight repair user turn (루프369)', () => {
     const repair = buildTemplateCloneSlotFillRepairPrompt({ userBrief: 'expo 설명' });
     expect(repair).toContain('expo');

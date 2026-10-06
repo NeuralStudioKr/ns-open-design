@@ -342,12 +342,22 @@ export function shouldQueueCloneSlotFillJsonRepair(
 /** Short repair user turn — not the long incomplete-output auto-continue essay. */
 export function buildTemplateCloneSlotFillRepairPrompt(options?: {
   userBrief?: string | null;
+  recoveredSlideCount?: number;
+  recoveredSlideTitles?: string[];
+  targetSlideCount?: number;
 }): string {
+  const recoveredSlideCount = Math.max(0, Math.floor(options?.recoveredSlideCount ?? 0));
+  const targetSlideCount = Math.max(0, Math.floor(options?.targetSlideCount ?? 0));
+  const missingSlideCount = targetSlideCount > recoveredSlideCount
+    ? targetSlideCount - recoveredSlideCount
+    : 0;
   const parts = [
     TEMPLATE_CLONE_CONTENT_FILL_MARKER,
     TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
     TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER,
-    'Previous reply was not a valid JSON outline (HTML dump or schema fail).',
+    recoveredSlideCount > 0 && missingSlideCount > 0
+      ? `The host recovered ${recoveredSlideCount} complete AI-authored slides from the truncated reply. Return ONLY the ${missingSlideCount} missing slides in slides[]; the host will append them.`
+      : 'Previous reply was not a valid JSON outline (HTML dump or schema fail).',
     'Begin with `{` (or ```json) immediately. Emit ONE JSON outline only this turn with no status sentence, promise, commentary, or progress prose.',
     'Shape: {"title":"...","slides":[{"title":"...","body":"line\\nline","roleHint":"cover|list|cards|timeline|stat|quote|team|process|closing|body"}]}',
     'FORBIDDEN: <!doctype, <html, <head, <style, <section class="slide">, Motif <svg>.',
@@ -358,6 +368,13 @@ export function buildTemplateCloneSlotFillRepairPrompt(options?: {
     'Never emit `<artifact type="deck-patch">` or `<artifact type="element-patch">` — this is a JSON slot-fill turn (no artifact wrapper).',
     'Host slot-fills the LOOK seed. Do not regenerate deck HTML.',
   ];
+  const recoveredTitles = (options?.recoveredSlideTitles ?? [])
+    .map((title) => String(title ?? '').replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .slice(0, 20);
+  if (recoveredTitles.length > 0) {
+    parts.push(`Already retained slide titles (do not repeat): ${recoveredTitles.join(' | ')}`);
+  }
   const brief = String(options?.userBrief ?? '').trim();
   if (brief && !looksLikeInstructionNotSlideCopy(brief)) {
     parts.push(`Original brief (fill REAL topical copy): ${brief.slice(0, 400)}`);

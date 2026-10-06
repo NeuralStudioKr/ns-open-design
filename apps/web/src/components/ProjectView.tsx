@@ -190,6 +190,7 @@ import {
   applyTemplateClonePromptFillLookMerge,
   listTemplateCloneSlideShells,
   prepareTemplateCloneSlotFillAssistantText,
+  recoverPartialTemplateCloneOutline,
   type AudioVoiceOption,
   type MemorySystemPromptResponse,
   type ResearchOptions,
@@ -3818,6 +3819,7 @@ export function ProjectView({
   const runTemplateCloneContentFillRef = useRef(false);
   /** Invalid/short JSON outline is waiting for one AI-authored repair turn. */
   const pendingSlotFillRepairRef = useRef(false);
+  const pendingSlotFillPriorRawRef = useRef<string | null>(null);
   /**
    * Prompt-mode HTML fill (staging default). Needs the same seed-replace +
    * short-deck top-up as JSON content-fill, without routing through slot-fill
@@ -10653,6 +10655,9 @@ export function ProjectView({
       runTemplateCloneContentFillRef.current = isCloneContentFillTurn;
       runTemplateClonePromptFillRef.current = isClonePromptFillTurn;
       pendingSlotFillRepairRef.current = false;
+      if (meta?.entryFrom !== CLONE_SLOT_FILL_REPAIR_ENTRY_FROM) {
+        pendingSlotFillPriorRawRef.current = null;
+      }
       runTemplateCloneSlotFillFallbackRef.current = false;
       runAutoRetryForShortResponseRef.current =
         meta?.autoRetryForShortResponse === true
@@ -11550,13 +11555,23 @@ export function ProjectView({
                 const requestedSlideCountSpec =
                   extractRequestedSlideCountSpecFromMessages(messagesRef.current);
                 const honorCeiling = honorSlideCountCeiling(requestedSlideCountSpec);
+                const repairAlreadyAttempted = cloneFillJsonRepairAlreadyAttempted(
+                  cloneFillMessageHistory,
+                  userMsg.content,
+                );
+                const priorSlotFillResponse = repairAlreadyAttempted
+                  ? (
+                    pendingSlotFillPriorRawRef.current
+                    ?? [...historyBase].reverse().find(
+                      (message) => message.role === 'assistant',
+                    )?.content
+                  )
+                  : null;
                 const decision = decideTemplateCloneSlotFillTerminal({
                   rawFinalText,
+                  priorRawFinalText: priorSlotFillResponse,
                   seedHtml,
-                  repairAlreadyAttempted: cloneFillJsonRepairAlreadyAttempted(
-                    cloneFillMessageHistory,
-                    userMsg.content,
-                  ),
+                  repairAlreadyAttempted,
                   templateId:
                     (project.metadata as { selectedDeckTemplateId?: string } | undefined)
                       ?.selectedDeckTemplateId
@@ -11595,6 +11610,7 @@ export function ProjectView({
                 }
                 if (decision.kind === 'slot-fill') {
                   pendingSlotFillRepairRef.current = false;
+                  pendingSlotFillPriorRawRef.current = null;
                   runTemplateCloneSlotFillFallbackRef.current = false;
                   artifactToPersist = {
                     identifier: 'deck',
@@ -11607,6 +11623,7 @@ export function ProjectView({
                   // this run incomplete so the capped auto-continue below
                   // requests one fresh, complete JSON outline.
                   pendingSlotFillRepairRef.current = true;
+                  pendingSlotFillPriorRawRef.current = rawFinalText;
                   runTemplateCloneSlotFillFallbackRef.current = false;
                   artifactToPersist = null;
                   terminalPersistResult = {
@@ -11618,6 +11635,7 @@ export function ProjectView({
                   terminalArtifactPersistFailed = true;
                 } else if (decision.kind === 'seed-fallback') {
                   pendingSlotFillRepairRef.current = false;
+                  pendingSlotFillPriorRawRef.current = null;
                   // A failed repair must never become a generic completed deck.
                   // Keep the untouched LOOK seed and surface the fallback notice.
                   const rawSeed = String(seedHtml ?? '').trim();
@@ -11648,10 +11666,12 @@ export function ProjectView({
                     }
                   }
                 } else {
+                  pendingSlotFillPriorRawRef.current = null;
                   artifactToPersist = null;
                   runTemplateCloneSlotFillFallbackRef.current = true;
                 }
               } catch (error) {
+                pendingSlotFillPriorRawRef.current = null;
                 devLog.warn('[teamver] template clone slot-fill failed; keeping LOOK seed', error);
                 runTemplateCloneSlotFillFallbackRef.current = true;
                 if (!(await recoverCloneLookSeedFallback({
@@ -12583,12 +12603,28 @@ export function ProjectView({
                   );
                   const autoContinueFill = templateCloneAutoContinueFlags(originatingUserMsg);
                   const wantSlotFillRepair = pendingSlotFillRepairRef.current;
+                  const recoveredSlotFillOutline = wantSlotFillRepair
+                    ? recoverPartialTemplateCloneOutline(rawFinalText, {
+                        fallbackTitle: project.name || '슬라이드',
+                      })
+                    : null;
+                  const repairTargetSlideCount = wantSlotFillRepair
+                    ? (
+                      extractRequestedSlideCountSpecFromMessages(autoContinueMessages)?.max
+                      ?? Math.max(6, recoveredSlotFillOutline?.slides.length ?? 0)
+                    )
+                    : 0;
                   if (wantSlotFillRepair) {
                     pendingSlotFillRepairRef.current = false;
                   }
                   const autoContinuePromptRaw = wantSlotFillRepair
                     ? buildTemplateCloneSlotFillRepairPrompt({
                         userBrief: runVisiblePromptRef.current || '',
+                        recoveredSlideCount: recoveredSlotFillOutline?.slides.length ?? 0,
+                        recoveredSlideTitles: recoveredSlotFillOutline?.slides.map(
+                          (slide) => slide.title,
+                        ),
+                        targetSlideCount: repairTargetSlideCount,
                       })
                     : terminalHeadDecision === 'continue'
                       ? buildHeadPreambleContinuePrompt()

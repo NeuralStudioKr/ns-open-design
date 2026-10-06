@@ -407,7 +407,7 @@ describe('0901-N02 applyTemplateCloneSlotFill', () => {
 });
 
 describe('루프373 recoverPartialTemplateCloneOutline', () => {
-  it('extracts every "title" string from a truncated JSON reply', () => {
+  it('recovers complete slide objects from a truncated JSON reply', () => {
     const raw = [
       '{"title":"Expo","slides":[',
       '{"title":"개요","body":"WHY"},',
@@ -417,12 +417,9 @@ describe('루프373 recoverPartialTemplateCloneOutline', () => {
     ].join('\n');
     const outline = recoverPartialTemplateCloneOutline(raw);
     expect(outline?.title).toBe('Expo');
-    expect(outline?.slides.map((s) => s.title)).toEqual([
-      'Expo',
-      '개요',
-      '핵심 개념',
-      '실행 방안',
-    ]);
+    expect(outline?.slides.map((s) => s.title)).toEqual(['개요', '핵심 개념']);
+    expect(outline?.slides[0]?.body).toBe('WHY');
+    expect(outline?.slides[1]?.body).toBe('CORE');
   });
 
   it('falls back deck title when only a body reply is present', () => {
@@ -776,6 +773,39 @@ describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
     if (afterRepair.kind === 'seed-fallback') {
       expect(afterRepair.html).toBe(tenSeed);
       expect(afterRepair.html).not.toContain('Teamver에서 바로 쓰는 것');
+    }
+  });
+
+  it('merges retained AI slides with a missing-slide repair response', () => {
+    const fourSeed = Array.from(
+      { length: 4 },
+      (_, index) => `<section class="slide"><h2>Seed ${index + 1}</h2><p>demo</p></section>`,
+    ).join('');
+    const prior = [
+      '{"title":"Teamver","slides":[',
+      '{"title":"Teamver 소개","lead":"업무 맥락을 연결합니다","roleHint":"cover"},',
+      '{"title":"분산된 업무의 비용","lead":"도구 전환이 실행 속도를 낮춥니다","body":"문서와 대화가 분리됨\\n결정 근거 추적이 어려움","roleHint":"cards"},',
+    ].join('');
+    const repair = JSON.stringify({
+      title: 'Teamver',
+      slides: [
+        { title: '하나의 워크스페이스', lead: 'AI가 맥락을 읽고 실행합니다', body: 'Slides와 Docs 연결', roleHint: 'process' },
+        { title: '도입 다음 단계', lead: '작은 팀부터 검증합니다', body: '파일럿 범위 합의', roleHint: 'closing' },
+      ],
+    });
+    const decision = decideTemplateCloneSlotFillTerminal({
+      rawFinalText: repair,
+      priorRawFinalText: prior,
+      seedHtml: fourSeed,
+      repairAlreadyAttempted: true,
+      slideCount: 4,
+    });
+    expect(decision.kind).toBe('slot-fill');
+    if (decision.kind === 'slot-fill') {
+      expect(decision.html).toContain('Teamver 소개');
+      expect(decision.html).toContain('분산된 업무의 비용');
+      expect(decision.html).toContain('하나의 워크스페이스');
+      expect(decision.html).toContain('도입 다음 단계');
     }
   });
 });
