@@ -10570,9 +10570,12 @@ export function ProjectView({
         attachments.length === 0 &&
         commentAttachments.length === 0
       ) return false;
+      const isSlotFillRepairSend =
+        meta?.entryFrom === CLONE_SLOT_FILL_REPAIR_ENTRY_FROM;
       const isAutoContinueSend =
         meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM
-        || isAutoContinueIncompleteOutputPrompt(prompt);
+        || isAutoContinueIncompleteOutputPrompt(prompt)
+        || isSlotFillRepairSend;
       const isSlideCountTopUpSend =
         meta?.entryFrom === SLIDE_COUNT_TOP_UP_ENTRY_FROM
         || isSlideCountTopUpPrompt(prompt)
@@ -11555,10 +11558,14 @@ export function ProjectView({
                 const requestedSlideCountSpec =
                   extractRequestedSlideCountSpecFromMessages(messagesRef.current);
                 const honorCeiling = honorSlideCountCeiling(requestedSlideCountSpec);
-                const repairAlreadyAttempted = cloneFillJsonRepairAlreadyAttempted(
-                  cloneFillMessageHistory,
-                  userMsg.content,
-                );
+                // `persistableUserMessageContent` strips the model-only repair
+                // marker from userMsg.content. Inspect the live model prompt / entry
+                // metadata or every repair turn is mistaken for the first attempt.
+                const repairAlreadyAttempted = isSlotFillRepairSend
+                  || cloneFillJsonRepairAlreadyAttempted(
+                    cloneFillMessageHistory,
+                    modelPrompt,
+                  );
                 const priorSlotFillResponse = repairAlreadyAttempted
                   ? (
                     pendingSlotFillPriorRawRef.current
