@@ -87,6 +87,17 @@ loop563 실측 (brief `Teamver 소개`):
 - ☑ 회귀 5건 수정 — `template-clone-outline`(루프419 LOOK preview·dense 10-slide), `template-clone-fill` 루프480 Block Frame dense content, loop558/560 offline-repro(단독 통과, fixture 재생성 순서 부작용)
 - ☑ 전체 스위트: 8 failed / 3337 passed → 남은 8개 중 loop558·560은 단독 통과(재생성 순서), 나머지 6개는 깨끗한 부모(d3706fa998) 기준선에서도 동일 재현되는 선행 실패(이번 변경 무관): deck-framework-compact, deck-quality-slide-count 루프550, deck-template-look-css Capsule Motif, system-prompt-api-mode compact signature, template-clone-fill 루프531·루프515
 
+## 슬라이스 5 — pack dump / 반복 kicker
+
+실측 HTML(10장, `www.teamver.com` 서비스 소개) 기준.
+
+- ☑ pack close dump(`쓸 방을 열고…`)를 CTA/인용/lede에서 제거
+- ☑ 문장형·반복 `한눈에` kicker를 역할별로 분기
+- ☑ cover에 없는 `.hero-shot` 삽입
+- ☑ `나눠같이` / `한다.를` 조사 수정
+- ☑ artifact_regression(slide-count)은 이후 수정 턴이 장수를 줄여 거절된 안전 게이트. 이번 슬라이스에서 게이트를 느슨하게 하지 않음
+- ☑ loop563 구조 테스트 11개 통과
+
 ## 남은 리스크
 
 - MiniMax가 슬라이드마다 **다른** 한글을 내면 덮지 않는다.

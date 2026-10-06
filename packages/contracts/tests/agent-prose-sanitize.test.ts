@@ -39,6 +39,12 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(sanitizeAssistantProseForDisplay(`작성 중.\n\n${leak}`)).toBe("작성 중.");
   });
 
+  it("strips leaked Korean doctype deliverable-contract echoes", () => {
+    const leak = "작성 중입니다. `<!doctype 시작하는 완전한 덱을 같은 응답에 동봉합니다.";
+    expect(sanitizeLeakedAgentProse(leak)).toBe("");
+    expect(sanitizeAssistantProseForDisplay(leak)).toBe("");
+  });
+
   it("strips trailing open answer_operator while streaming", () => {
     const input = "Working…\n<answer_operator>\n<task_analysis>\nPlan:";
     const { text, hadOpenInternalMarkup } = stripTrailingOpenInternalMarkup(input);

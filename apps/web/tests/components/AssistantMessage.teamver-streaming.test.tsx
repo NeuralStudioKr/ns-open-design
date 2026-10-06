@@ -431,6 +431,24 @@ describe('AssistantMessage Teamver streaming visibility', () => {
     expect(screen.queryByText(/<question-form/)).toBeNull();
   });
 
+  it('hides leaked doctype deliverable-contract status from the chat bubble', () => {
+    render(
+      <AssistantMessage
+        message={streamingMessage(
+          '작성 중입니다. `<!doctype 시작하는 완전한 덱을 같은 응답에 동봉합니다.',
+        )}
+        streaming
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.queryByText(/작성 중입니다/)).toBeNull();
+    expect(screen.queryByText(/같은 응답에 동봉/)).toBeNull();
+    expect(screen.queryByText(/<!doctype/)).toBeNull();
+    expect(screen.getByText('Waiting for first output')).toBeTruthy();
+  });
+
   it('falls back to a visible waiting state when the streamed text is hidden protocol only', () => {
     render(
       <AssistantMessage

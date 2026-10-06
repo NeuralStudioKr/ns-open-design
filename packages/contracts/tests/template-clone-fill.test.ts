@@ -3330,6 +3330,12 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(stripLeakedApiModeFilesystemProse(
       '작성 중.\n\nSince this workspace is in API mode without filesystem write tools, here is the complete deck HTML. You can save this as deck.html and it will render as a self-contained slide deck.',
     )).toBe('작성 중.');
+    expect(looksLikeLeakedApiModeFilesystemProse(
+      '작성 중입니다. `<!doctype 시작하는 완전한 덱을 같은 응답에 동봉합니다.',
+    )).toBe(true);
+    expect(stripLeakedApiModeFilesystemProse(
+      '작성 중입니다. `<!doctype 시작하는 완전한 덱을 같은 응답에 동봉합니다.',
+    )).toBe('');
     expect(looksLikeTemplateMarketingTitle('Html Ppt Zhangzara Daisy Days')).toBe(true);
     expect(looksLikeTemplateMarketingTitle('Presentation')).toBe(true);
     expect(looksLikeTemplateMarketingTitle('Slide')).toBe(true);

@@ -37,6 +37,7 @@ describe('looksLikeDeckCreateProgressProse', () => {
     expect(looksLikeDeckCreateProgressProse('Creating the slide deck now. Please wait a moment.')).toBe(true);
     expect(looksLikeDeckCreateProgressProse('making your deck')).toBe(true);
     expect(looksLikeDeckCreateProgressProse('작성 중')).toBe(true);
+    expect(looksLikeDeckCreateProgressProse('작성 중입니다.')).toBe(true);
     expect(looksLikeDeckCreateProgressProse('Writing')).toBe(true);
   });
 
@@ -49,6 +50,12 @@ describe('looksLikeDeckCreateProgressProse', () => {
 describe('looksLikeDeckInFlightStatusResidue', () => {
   it('matches bare status and synthetic live-lead copy only', () => {
     expect(looksLikeDeckInFlightStatusResidue('작성 중')).toBe(true);
+    expect(looksLikeDeckInFlightStatusResidue('작성 중입니다.')).toBe(true);
+    expect(
+      looksLikeDeckInFlightStatusResidue(
+        '작성 중입니다. `<!doctype 시작하는 완전한 덱을 같은 응답에 동봉합니다.',
+      ),
+    ).toBe(true);
     expect(looksLikeDeckInFlightStatusResidue('수정 반영 중')).toBe(true);
     expect(
       looksLikeDeckInFlightStatusResidue('슬라이드 초안을 작성 중입니다. 잠시만 기다려 주세요.'),
@@ -73,6 +80,11 @@ describe('stripDeckInFlightStatusResidue', () => {
     expect(
       stripDeckInFlightStatusResidue('작성 중\n\n표지 다음에 문제 정의를 두었어요.'),
     ).toBe('표지 다음에 문제 정의를 두었어요.');
+    expect(
+      stripDeckInFlightStatusResidue(
+        '작성 중입니다. `<!doctype 시작하는 완전한 덱을 같은 응답에 동봉합니다.',
+      ),
+    ).toBe('');
   });
 });
 

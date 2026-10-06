@@ -114,7 +114,7 @@ export function looksLikeDeckCreateCompletionProse(text: string): boolean {
  * synthetic "draft ready" lead.
  */
 const DECK_CREATE_PROGRESS_STATUS_ONLY_RE =
-  /^(?:작성\s*중\.?|생성\s*중\.?|만들고\s*있(?:습니다)?\.?|작성하고\s*있(?:습니다)?\.?|생성하고\s*있(?:습니다)?\.?|Writing\.?|Creating\.{0,3}|Building\.{0,3}|Generating\.{0,3})$/i;
+  /^(?:작성\s*중(?:입니다)?\.?|생성\s*중(?:입니다)?\.?|만들고\s*있(?:습니다)?\.?|작성하고\s*있(?:습니다)?\.?|생성하고\s*있(?:습니다)?\.?|Writing\.?|Creating\.{0,3}|Building\.{0,3}|Generating\.{0,3})$/i;
 
 /** Edit-turn status lines from the same prompt contract ("수정 반영 중"). */
 const DECK_EDIT_PROGRESS_STATUS_ONLY_RE =
@@ -140,6 +140,29 @@ export function looksLikeDeckCreateProgressProse(text: string): boolean {
 }
 
 /**
+ * Prompt-contract echo MiniMax pastes as if it were status:
+ * `작성 중입니다. \`<!doctype 시작하는 완전한 덱을 같은 응답에 동봉합니다.`
+ */
+const LEAKED_DECK_DELIVERABLE_CONTRACT_RE =
+  /(?:<!doctype\b|doctype\s+html)[\s\S]{0,160}(?:완전한\s*덱|같은\s*응답|동봉)|(?:완전한\s*덱을?\s*(?:같은\s*응답에\s*)?동봉)|(?:같은\s*응답에)\s*(?:완전한\s*)?(?:덱|슬라이드)|(?:complete\s+(?:<!doctype|deck)[\s\S]{0,80}(?:this\s+)?same\s+response)|(?:(?:this\s+)?same\s+response[\s\S]{0,80}complete\s+(?:<!doctype|deck))/i;
+
+export function looksLikeLeakedDeckDeliverableContractProse(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  return LEAKED_DECK_DELIVERABLE_CONTRACT_RE.test(trimmed)
+    || looksLikeLeakedApiModeFilesystemProse(trimmed);
+}
+
+export function stripLeakedDeckDeliverableContractProse(text: string): string {
+  const kept = text.split('\n').filter((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return true;
+    return !looksLikeLeakedDeckDeliverableContractProse(trimmed);
+  });
+  return kept.join('\n').replace(/^\n+|\n+$/g, '').trim();
+}
+
+/**
  * Narrow leftover in-flight status that must not survive a settled Teamver
  * slide turn. Intentionally tighter than `looksLikeDeckCreateProgressProse`:
  * long explanatory prose that merely uses progressive tense stays visible.
@@ -147,6 +170,7 @@ export function looksLikeDeckCreateProgressProse(text: string): boolean {
 export function looksLikeDeckInFlightStatusResidue(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
+  if (looksLikeLeakedDeckDeliverableContractProse(trimmed)) return true;
   if (DECK_CREATE_PROGRESS_STATUS_ONLY_RE.test(trimmed)) return true;
   if (DECK_EDIT_PROGRESS_STATUS_ONLY_RE.test(trimmed)) return true;
   // Synthetic live-lead copy (ko/en) left in message.content after stream end.

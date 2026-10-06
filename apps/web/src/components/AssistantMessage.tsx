@@ -63,6 +63,7 @@ import {
   shouldHideDeckCreateCompletionProseOnEditTurn,
   shouldHidePrematureDeckCompletionProse,
   stripDeckInFlightStatusResidue,
+  stripLeakedDeckDeliverableContractProse,
 } from "../teamver/deckDeliverableProse";
 import {
   getPluginFolderCandidates,
@@ -484,9 +485,12 @@ function hasVisibleAssistantTextOutput(
       if (seg.kind === "form") return true;
       const visibleSegmentText = stripUserVisibleQuestionFormProtocolText(seg.text);
       if (visibleSegmentText.includes(INVALID_QUESTION_FORM_FALLBACK)) return false;
-      const settledText = !streaming && slideOnlyGate
-        ? stripDeckInFlightStatusResidue(visibleSegmentText)
+      const withoutContract = slideOnlyGate
+        ? stripLeakedDeckDeliverableContractProse(visibleSegmentText)
         : visibleSegmentText;
+      const settledText = !streaming && slideOnlyGate
+        ? stripDeckInFlightStatusResidue(withoutContract)
+        : withoutContract;
       if (
         shouldHideDeckCreateCompletionProseOnEditTurn({
           text: settledText,
@@ -2362,10 +2366,11 @@ function ProseBlock({
       ) {
         return [];
       }
-      // Settled: strip bare "작성 중" / live-lead residue lines; keep explanations.
+      const withoutContract = stripLeakedDeckDeliverableContractProse(seg.text);
+      // Settled: also strip bare "작성 중" / live-lead residue; keep explanations.
       const text = !streaming
-        ? stripDeckInFlightStatusResidue(seg.text)
-        : seg.text;
+        ? stripDeckInFlightStatusResidue(withoutContract)
+        : withoutContract;
       if (!text.trim()) return [];
       // Edit turns: suppress "draft created" prose so synthetic edit lead wins.
       if (

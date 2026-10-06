@@ -64,6 +64,16 @@ persist leftover는 줄었지만 미리보기와 다른 **킷 셸 배치**가 �
 26. **synthetic/densified outline은 항상 AI fill** — `resolveTemplateCloneSlidesForDeterministicFillWithProvenance.finish()`에서 `needsAiContentFill = source === 'resolved' ? outlineNeedsAiContentFill(slides) : true`. synthetic·densified는 generic seed이므로 반드시 MiniMax fill을 거친다. 완전히 `resolved`된 outline만 AI fill을 건너뛸 수 있다.
 27. **service-intro seed lead 복구** — synth 첫 장 lead를 `${topic} 풀어야 하는 문제`로 되돌린다. leftover 라벨이 아니라 keepable copy이며, outline이 generic seed임을 분기와 테스트(루프419)에서 식별하게 한다. "evidence/신뢰" 슬롯(슬라이드 6)도 leftover 정문구(`신뢰를 만드는 증거`)를 피해 `${topic} 신뢰 근거`로 복원한다.
 
+## 후속 (1006-N01 슬라이스 5 — pack dump / 반복 kicker)
+
+실측 10장(www.teamver.com 서비스 소개)은 persist heal이 지나도 **같은 마감 문장**이 kicker·testimonial·CTA·lede에 반복되고, 표지에 `.hero-shot`이 없으며, `나눠같이` / `한다.를` 조사가 깨진다. fillMode(`json`)는 유지한다.
+
+28. **pack close dump** — `쓸 방을 열고 첫 보드에 팀을 초대한다`가 CTA/인용/lede에 있으면 제거한다. CTA는 `${topic} 시작하기`, 인용·lede는 짧은 다른 문장으로 교체한다. kicker dump는 역할별 짧은 라벨로 교체한다.
+29. **문장형 kicker** — 24자 이상 `다/요`로 끝나는 kicker는 본문이지 라벨이 아니다. 역할별 짧은 kicker로 교체한다.
+30. **동일 kicker 반복** — `Teamver 한눈에`가 여러 장에 있으면 표지만 남기고 나머지는 역할별 라벨로 분기한다.
+31. **표지 hero-shot** — cover에 `.hero-shot`이 없으면 공식 chrome을 flow 밖에 삽입한다.
+32. **깨진 조사** — `나눠같이` → `나눠 같이`, `한다.를` → `한 것을`.
+
 ## 경계
 
 - 표지 `Teamver 소개`는 유지

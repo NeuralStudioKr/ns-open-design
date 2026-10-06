@@ -29,6 +29,16 @@
 
 `packages/contracts/tests/chat-leak-probe-round922.test.ts` — 사용자 보고 전문 → sanitize 후 빈 문자열; 한글 결과+영어 self-talk 혼합 시 한글만 남음.
 
+## 후속 — deliverable contract 한국어 에코
+
+모델이 프롬프트 계약을 채팅에 그대로 옮긴다:
+
+`작성 중입니다. \`<!doctype 시작하는 완전한 덱을 같은 응답에 동봉합니다.`
+
+4. **host-contract fingerprint** — `looksLikeLeakedApiModeFilesystemProse`에 `<!doctype` + `완전한 덱` / `같은 응답` / `동봉` (및 `complete deck` + `same response`)를 넣는다. 문장 제거 후 남은 `작성 중입니다`만이면 같이 지운다.
+5. **표시** — Teamver 슬라이드 UI는 스트리밍 중에도 계약 에코(`<!doctype` + 동봉/같은 응답)를 `stripLeakedDeckDeliverableContractProse`로 숨긴다. 짧은 `작성 중`만 있는 진행 문구는 스트리밍 동안 유지하고, 턴이 끝나면 residue로 지운다.
+6. **프롬프트** — deliverable rule에 "채팅에 `<!doctype` / 같은 응답에 동봉 계약을 에코하지 말 것"을 명시한다.
+
 ## 비범위
 
 - BE BFF

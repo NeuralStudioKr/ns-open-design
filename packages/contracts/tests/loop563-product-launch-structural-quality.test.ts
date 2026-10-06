@@ -54,7 +54,7 @@ describe('루프563 · Product Launch cross-kit / structural quality', () => {
     expect(healed).not.toMatch(/<h[12][^>]*>\s*02\s*<\/h[12]>/);
     expect(healed).not.toMatch(/₩0/);
     expect(healed).toMatch(/Teamver가 묶는 일/);
-    expect(healed).toMatch(/Teamver 서비스 핵심 근거/);
+    expect(healed).toMatch(/Teamver가 모으는 일/);
     expect(healed).toMatch(/Teamver에서 바로 쓰는 것/);
     expect(healed).toMatch(/AI를 매일 활용하는 팀을 기준으로 도입 범위를 정한다/);
     expect(healed).toMatch(/맥락 전환과 중복 작업을 줄인다/);
@@ -182,6 +182,34 @@ describe('루프563 · Product Launch cross-kit / structural quality', () => {
     expect((healed.match(/<h1\b[^>]*>/) ?? [''])[0]).not.toMatch(/style=[^>]*style=/);
     expect(healed).not.toMatch(/style=""/);
     expect(healed).toMatch(/color:#111111!important/);
+    expect(healed).toMatch(/class="lede"/);
+  });
+
+  it('pack close dump·반복 한눈에 kicker·표지 hero-shot·깨진 조사를 고친다', () => {
+    const html = productLaunchDeck([
+      '<section class="slide dark slide-title"><div data-od-slide-flow style="padding:80px 112px">',
+      '<p class="kicker">Teamver 한눈에</p><h1 class="h1">Teamver 소개</h1></div>',
+      '<div class="brand" style="position:relative">Teamver</div></section>',
+      '<section class="slide"><p class="kicker">Teamver 한눈에</p><h2 class="h2">장면</h2>',
+      '<div class="feature-card"><h4>초안</h4><p class="dim">Teamver 보드에 붙일 초안이 같은 자리에서 열린다.</p></div></section>',
+      '<section class="slide"><h2 class="h2">활용</h2>',
+      '<div class="price-card"><h4>팀과 고치기</h4><p class="dim">보기와 고치기를 나눠같이 고친다.</p></div></section>',
+      '<section class="slide dark"><p class="kicker">Teamver에서 쓸 방을 열고 첫 보드에 팀을 초대한다.</p>',
+      '<p class="testimonial">Teamver에서 쓸 방을 열고 첫 보드에 팀을 초대한다.를 쓰기 시작한 뒤, 작업이 한곳으로 모이기 시작했다.</p>',
+      '<a class="cta-btn">Teamver에서 쓸 방을 열고 첫 보드에 팀을 초대한다. 시작하기</a></section>',
+      '<section class="slide center tc"><p class="kicker">Teamver가 풀어야 하는 문제</p>',
+      '<h1 class="h1">보드에서 이어 쓰기</h1>',
+      '<p class="lede">Teamver에서 쓸 방을 열고 첫 보드에 팀을 초대한다.</p></section>',
+    ].join(''));
+    const healed = healProductLaunchLeftoverCatalogCopy(html, BRIEF);
+    expect(healed).toMatch(/data-od-official-motif-html class="hero-shot"/);
+    expect((healed.match(/Teamver 한눈에/g) ?? []).length).toBeLessThanOrEqual(1);
+    expect(healed).not.toMatch(/쓸 방을 열고 첫 보드에 팀을 초대/);
+    expect(healed).not.toMatch(/나눠같이/);
+    expect(healed).toMatch(/나눠 같이/);
+    expect(healed).toMatch(/Teamver 시작하기/);
+    expect(healed).not.toMatch(/초대한다\.를/);
+    expect(healed).not.toMatch(/>\s*장면\s*</);
     expect(healed).toMatch(/class="lede"/);
   });
 

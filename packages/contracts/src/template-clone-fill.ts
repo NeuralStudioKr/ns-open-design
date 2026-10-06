@@ -12312,6 +12312,27 @@ function productLaunchHeadingNeedsRefill(
   return false;
 }
 
+const PRODUCT_LAUNCH_PACK_CLOSE_DUMP_RE =
+  /쓸 방을 열고 첫 보드에 팀을 초대/;
+
+const PRODUCT_LAUNCH_KICKER_BY_INDEX = [
+  (topic: string) => `${topic} 한눈에`,
+  (topic: string) => `${topic}가 하는 일`,
+  (topic: string) => '이렇게 씁니다',
+  (topic: string) => `${topic} 한 장면`,
+  (topic: string) => '쓰는 단위',
+  (topic: string) => '남기는 것',
+  (topic: string) => '정착 순서',
+  (topic: string) => `${topic} 기준`,
+  (topic: string) => '이어서',
+  (topic: string) => '다음에',
+] as const;
+
+function productLaunchKickerLooksLikeBodySentence(text: string): boolean {
+  const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+  return value.length >= 24 && /(?:다|요)\.?$/.test(value);
+}
+
 function productLaunchKickerNeedsRefill(text: string): boolean {
   const value = String(text ?? '').replace(/\s+/g, ' ').trim();
   if (!value) return false;
@@ -12322,6 +12343,8 @@ function productLaunchKickerNeedsRefill(text: string): boolean {
   if (/^\d{1,2}$/.test(value)) return true;
   if (/^\d{1,2}\s*[·•.\-]\s*(?:The\s+)?\w+/i.test(value)) return true;
   if (/^The\s+(sound|fit|intelligence|ship)$/i.test(value)) return true;
+  if (PRODUCT_LAUNCH_PACK_CLOSE_DUMP_RE.test(value)) return true;
+  if (productLaunchKickerLooksLikeBodySentence(value)) return true;
   return false;
 }
 
@@ -12733,11 +12756,10 @@ function healProductLaunchStructuralQuality(html: string, topic: string): string
       /<[^>]*\bkicker\b[^>]*>([\s\S]*?)<\//i.exec(body)?.[1] ?? '',
     );
     if (productLaunchKickerNeedsRefill(kickerText)) {
-      body = replaceFirstExactClassText(
-        body,
-        'kicker',
-        topic ? `${topic} 한눈에` : '한눈에',
-      );
+      const nextKicker = PRODUCT_LAUNCH_KICKER_BY_INDEX[i]
+        ? PRODUCT_LAUNCH_KICKER_BY_INDEX[i]!(topic || 'Teamver')
+        : (topic ? `${topic} 한눈에` : '한눈에');
+      body = replaceFirstExactClassText(body, 'kicker', nextKicker);
     }
     body = body.replace(
       /(<p\b[^>]*>)([^<]*[가-힣][^<]*?)(<\/p>)/gi,
@@ -12807,6 +12829,9 @@ function healProductLaunchStructuralQuality(html: string, topic: string): string
   out = wipeProductLaunchEnglishDemoChrome(out);
   out = healProductLaunchCtaDisplay(out);
   out = fillProductLaunchSparseCenterSlides(out, topic);
+  out = ensureProductLaunchCoverHeroShot(out);
+  out = healProductLaunchPackCloseDump(out, topic);
+  out = diversifyProductLaunchRepeatedKickers(out, topic);
   return restoreProductLaunchPriceCardWeight(out);
 }
 
@@ -12977,11 +13002,17 @@ function salvageBrokenProductLaunchMarkup(html: string): string {
 const PRODUCT_LAUNCH_KIT_INSET = '80px 112px';
 
 function compactInlineCssDeclarations(style: string): string {
-  return String(style ?? '')
-    .replace(/;\s*;+/g, ';')
-    .replace(/^\s*;+\s*/, '')
-    .replace(/;+\s*$/, '')
-    .trim();
+  const parts = String(style ?? '')
+    .split(';')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const lastByProp = new Map<string, string>();
+  for (const part of parts) {
+    const colon = part.indexOf(':');
+    if (colon <= 0) continue;
+    lastByProp.set(part.slice(0, colon).trim().toLowerCase(), part);
+  }
+  return [...lastByProp.values()].join(';');
 }
 
 function restoreProductLaunchOfficialInsets(html: string): string {
@@ -13231,6 +13262,115 @@ function restoreProductLaunchPriceCardWeight(html: string): string {
   return out;
 }
 
+function ensureProductLaunchCoverHeroShot(html: string): string {
+  const dest = String(html ?? '');
+  if (!officialLookIsProductLaunchHalo(dest) || /<[^>]*\bhero-shot\b/i.test(dest)) return dest;
+  const spans = listHealSlideHostSpans(dest);
+  const cover = spans[0];
+  if (!cover) return dest;
+  const body = dest.slice(cover.bodyStart, cover.bodyEnd);
+  if (!/<h1\b/i.test(body) && !/\b(?:slide-title|slide-1)\b/i.test(cover.attrs)) return dest;
+  const shot = '<div data-od-official-motif-html class="hero-shot"></div>';
+  const flowOpen = /<div\b[^>]*\bdata-od-slide-flow\b[^>]*>/i.exec(body);
+  if (flowOpen && flowOpen.index != null) {
+    const flowAbs = cover.bodyStart + flowOpen.index;
+    const flowBalanced = extractBalancedFrom(dest, flowAbs);
+    if (flowBalanced) {
+      const insertAt = flowAbs + flowBalanced.length;
+      return `${dest.slice(0, insertAt)}${shot}${dest.slice(insertAt)}`;
+    }
+  }
+  return `${dest.slice(0, cover.bodyEnd)}${shot}${dest.slice(cover.bodyEnd)}`;
+}
+
+function healProductLaunchPackCloseDump(html: string, topic: string): string {
+  const brand = topic || 'Teamver';
+  let out = String(html ?? '').replace(/나눠같이/g, '나눠 같이');
+  out = out.replace(/([가-힣]다)\.\s*를/g, '$1 것을');
+  let ledeReplacements = 0;
+  out = out.replace(
+    /(<p\b[^>]*\blede\b[^>]*>)([\s\S]*?)(<\/p>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const plain = visibleDeckCopy(inner);
+      if (!PRODUCT_LAUNCH_PACK_CLOSE_DUMP_RE.test(plain)) return full;
+      const next = ledeReplacements === 0
+        ? `${brand}에서 초안·수정·공유가 한 흐름이다.`
+        : '첫 화면을 열고 같이 고칠 사람을 부른다.';
+      ledeReplacements += 1;
+      return `${open}${escapeHtml(next)}${close}`;
+    },
+  );
+  out = out.replace(
+    /(<p\b[^>]*\btestimonial\b[^>]*>)([\s\S]*?)(<\/p>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const plain = visibleDeckCopy(inner);
+      if (
+        !PRODUCT_LAUNCH_PACK_CLOSE_DUMP_RE.test(plain)
+        && !/를 쓰기 시작/.test(plain)
+        && !/한다\.\s*를/.test(plain)
+      ) {
+        return full;
+      }
+      return `${open}${escapeHtml(`${brand}를 쓰기 시작한 뒤, 작업이 한곳으로 모이기 시작했다.`)}${close}`;
+    },
+  );
+  out = out.replace(
+    /(<a\b[^>]*\bcta-btn\b[^>]*>)([\s\S]*?)(<\/a>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const label = visibleDeckCopy(inner);
+      if (
+        !PRODUCT_LAUNCH_PACK_CLOSE_DUMP_RE.test(label)
+        && label.length <= 16
+        && !/^(?:시작하기|Get Started)$/i.test(label)
+      ) {
+        return full;
+      }
+      return `${open}${escapeHtml(`${brand} 시작하기`)}${close}`;
+    },
+  );
+  return out;
+}
+
+function diversifyProductLaunchRepeatedKickers(html: string, topic: string): string {
+  const dest = String(html ?? '');
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) return dest;
+  const kickers = spans.map((span) => visibleDeckCopy(
+    /<[^>]*\bkicker\b[^>]*>([\s\S]*?)<\//i.exec(dest.slice(span.bodyStart, span.bodyEnd))?.[1] ?? '',
+  ));
+  const seen = new Set<string>();
+  const nextByIndex = new Map<number, string>();
+  for (let i = 0; i < spans.length; i += 1) {
+    const text = kickers[i] ?? '';
+    if (!text) continue;
+    const stale = productLaunchKickerNeedsRefill(text)
+      || (seen.has(text) && text.length >= 4);
+    if (!stale) {
+      seen.add(text);
+      continue;
+    }
+    let next = PRODUCT_LAUNCH_KICKER_BY_INDEX[i]
+      ? PRODUCT_LAUNCH_KICKER_BY_INDEX[i]!(topic || 'Teamver')
+      : `${topic || 'Teamver'} 보충`;
+    if (seen.has(next) || next === text) next = `${topic || 'Teamver'} ${i + 1}`;
+    nextByIndex.set(i, next);
+    seen.add(next);
+  }
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const next = nextByIndex.get(i);
+    if (!next) continue;
+    const span = spans[i]!;
+    const body = replaceFirstExactClassText(
+      out.slice(span.bodyStart, span.bodyEnd),
+      'kicker',
+      next,
+    );
+    out = `${out.slice(0, span.bodyStart)}${body}${out.slice(span.bodyEnd)}`;
+  }
+  return out;
+}
+
 function pinKoreanDeckLang(html: string): string {
   const dest = String(html ?? '');
   if (!/[가-힣]/.test(dest)) return dest;
@@ -13291,6 +13431,19 @@ function productLaunchSlideNeedsHeal(
   if (/주제를 쓰기 시작/.test(body)) return true;
   if (/—\s*,/.test(body)) return true;
   if (/\bcta-btn\b/i.test(body) && />\s*시작하기\s*</.test(body)) return true;
+  if (PRODUCT_LAUNCH_PACK_CLOSE_DUMP_RE.test(body)) return true;
+  if (/나눠같이|다\.\s*를/.test(body)) return true;
+  if (
+    /\b(?:slide-title|slide-1)\b/i.test(_attrs)
+    && /<h1\b/i.test(body)
+    && !/\bhero-shot\b/i.test(body)
+  ) {
+    return true;
+  }
+  const cta = visibleDeckCopy(
+    /<a\b[^>]*\bcta-btn\b[^>]*>([\s\S]*?)<\/a>/i.exec(body)?.[1] ?? '',
+  );
+  if (cta.length > 16) return true;
   return false;
 }
 
@@ -13319,9 +13472,19 @@ function fillProductLaunchKitSlide(
     ...(refillBrief !== undefined ? { brief: refillBrief } : {}),
     slideIndex,
   });
+  const rewrittenTitle = rewriteProductLaunchLeakedHeading(heading || input.title);
   const resolvedTitle = headingNeedsRefill
-    ? (rewriteProductLaunchLeakedHeading(heading || input.title) || role.heading)
-    : rewriteProductLaunchLeakedHeading(heading || input.title);
+    ? (
+      rewrittenTitle
+      && rewrittenTitle !== heading
+      && !productLaunchHeadingNeedsRefill(rewrittenTitle, {
+        ...(refillBrief !== undefined ? { brief: refillBrief } : {}),
+        slideIndex,
+      })
+        ? rewrittenTitle
+        : role.heading
+    )
+    : rewrittenTitle;
   const suppliedLines = Array.isArray(input.fillLines) ? input.fillLines : [];
   const lines = suppliedLines.length > 0
     ? biennaleFillLines({ ...input, title: resolvedTitle || input.title }, 6)
@@ -13350,11 +13513,10 @@ function fillProductLaunchKitSlide(
     }
   }
   if (productLaunchKickerNeedsRefill(kickerText)) {
-    next = replaceFirstExactClassText(
-      next,
-      'kicker',
-      topic ? `${topic} 한눈에` : '한눈에',
-    );
+    const nextKicker = PRODUCT_LAUNCH_KICKER_BY_INDEX[slideIndex]
+      ? PRODUCT_LAUNCH_KICKER_BY_INDEX[slideIndex]!(topic || 'Teamver')
+      : (topic ? `${topic} 한눈에` : '한눈에');
+    next = replaceFirstExactClassText(next, 'kicker', nextKicker);
   }
   if (productLaunchLooksLikeOrphanPricingChrome(next)) {
     next = wipeProductLaunchOrphanPriceTokens(next);
@@ -13368,6 +13530,7 @@ function fillProductLaunchKitSlide(
       || (kickerText && lede && kickerText === lede)
       || PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(lede)
       || PRODUCT_LAUNCH_DEMO_COPY_RE.test(lede)
+      || PRODUCT_LAUNCH_PACK_CLOSE_DUMP_RE.test(lede)
     ) {
       PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
       const nextLede = input.lead
@@ -13590,7 +13753,12 @@ function fillProductLaunchKitSlide(
     /(<a\b[^>]*\bcta-btn\b[^>]*>)([\s\S]*?)(<\/a>)/gi,
     (full, open: string, inner: string, close: string) => {
       const label = visibleDeckCopy(inner);
-      if (/Halo|Pre-order/i.test(label) || /^(?:시작하기|Get Started)$/i.test(label)) {
+      if (
+        /Halo|Pre-order/i.test(label)
+        || /^(?:시작하기|Get Started)$/i.test(label)
+        || PRODUCT_LAUNCH_PACK_CLOSE_DUMP_RE.test(label)
+        || label.length > 16
+      ) {
         return `${open}${escapeHtml(topic ? `${topic} 시작하기` : '지금 시작하기')}${close}`;
       }
       return full;
@@ -20322,19 +20490,39 @@ function deriveTitleFromBrief(brief: string, deckTitle?: string | null): string 
 const LEAKED_API_MODE_FILESYSTEM_FINGERPRINT_RE =
   /(?:API\s+mode\s+without\s+filesystem\s+write\s+tools|without\s+filesystem\s+write\s+tools|save\s+this\s+as\s+deck\.html|here\s+is\s+the\s+complete\s+deck\s+HTML|this\s+workspace\s+is\s+in\s+API\s+mode|API\s*모드[^.!?\n]{0,80}파일\s*시스템|deck\.html(?:로|에)\s*저장)/i;
 
+/**
+ * Model-parroted deliverable contract ("emit a complete `<!doctype` deck in
+ * this same response"). Must never appear in the chat bubble.
+ */
+const LEAKED_DECK_DELIVERABLE_CONTRACT_RE =
+  /(?:<!doctype\b|doctype\s+html)[\s\S]{0,160}(?:완전한\s*덱|같은\s*응답|동봉)|(?:완전한\s*덱을?\s*(?:같은\s*응답에\s*)?동봉)|(?:같은\s*응답에)\s*(?:완전한\s*)?(?:덱|슬라이드)|(?:complete\s+(?:<!doctype|deck)[\s\S]{0,80}(?:this\s+)?same\s+response)|(?:(?:this\s+)?same\s+response[\s\S]{0,80}complete\s+(?:<!doctype|deck))/i;
+
+const LEAKED_HOST_CONTRACT_STATUS_ONLY_RE =
+  /^(?:작성\s*중(?:입니다)?\.?|생성\s*중(?:입니다)?\.?)$/i;
+
+function looksLikeLeakedHostContractProse(text: string): boolean {
+  const trimmed = String(text ?? '').trim();
+  if (!trimmed) return false;
+  return LEAKED_API_MODE_FILESYSTEM_FINGERPRINT_RE.test(trimmed)
+    || LEAKED_DECK_DELIVERABLE_CONTRACT_RE.test(trimmed);
+}
+
 export function looksLikeLeakedApiModeFilesystemProse(text: string): boolean {
-  return LEAKED_API_MODE_FILESYSTEM_FINGERPRINT_RE.test(String(text ?? '').trim());
+  return looksLikeLeakedHostContractProse(text);
 }
 
 /** Drop leaked "save this as deck.html" / API-mode filesystem sentences from prose. */
 export function stripLeakedApiModeFilesystemProse(text: string): string {
-  if (!text || !LEAKED_API_MODE_FILESYSTEM_FINGERPRINT_RE.test(text)) return text;
+  if (!text || !looksLikeLeakedHostContractProse(text)) return text;
   const lines = text.split('\n').map((line) => {
-    if (!LEAKED_API_MODE_FILESYSTEM_FINGERPRINT_RE.test(line)) return line;
+    if (!looksLikeLeakedHostContractProse(line)) return line;
     const kept = line
-      .split(/(?<=[.!?])\s+/)
-      .filter((sentence) => !LEAKED_API_MODE_FILESYSTEM_FINGERPRINT_RE.test(sentence));
-    return kept.join(' ').trim();
+      .split(/(?<=[.!?。])\s+/)
+      .filter((sentence) => !looksLikeLeakedHostContractProse(sentence))
+      .join(' ')
+      .trim();
+    if (LEAKED_HOST_CONTRACT_STATUS_ONLY_RE.test(kept)) return '';
+    return kept;
   });
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
