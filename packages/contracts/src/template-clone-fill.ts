@@ -1902,86 +1902,25 @@ function templatesForSynthTemplateTopic(
 ): SynthTemplateBodyTemplate[] {
   const topic = profile.topic;
   if (profile.preset === 'service-intro') {
+    // 1006-N01-3 — leftover labels (`핵심 가치` / `사용자가 즉시 얻는…`) were
+    // the 12s JSON-fill floor. Use the shared role pack so persist heal and
+    // synth emit the same keepable Korean.
+    const pack = genericSlideCopyPack(topic);
+    const fromRole = (role: GenericRoleCopy, hint: TemplateCloneShellRole): SynthTemplateBodyTemplate => ({
+      roleHint: hint,
+      lead: role.lead,
+      itemTitles: role.items.map((item) => item.title),
+      lines: role.items.map((item) => item.body),
+    });
     return [
-      {
-        roleHint: 'list',
-        lead: `${attachKoreanJosa(topic, '이/가')} 풀어야 하는 문제`,
-        itemTitles: ['문제', '사용자', '맥락'],
-        lines: [
-          '사용자가 반복해서 겪는 핵심 불편과 전환 비용을 먼저 정의',
-          '방문자가 처음 보는 순간 이해해야 할 제품 범위와 약속',
-          '사이트에서 확인되는 메시지와 실제 사용 장면을 연결',
-        ],
-      },
-      {
-        roleHint: 'cards',
-        lead: '서비스 가치 제안',
-        itemTitles: ['핵심 가치', '사용 장면', '차별점'],
-        lines: [
-          '핵심 가치: 사용자가 즉시 얻는 시간 절감, 품질 개선, 의사결정 지원',
-          '사용 장면: 도입 전 탐색, 팀 협업, 결과물 생산, 운영 관리',
-          '차별점: 기존 대안 대비 더 적은 단계로 같은 결과를 만드는 흐름',
-        ],
-      },
-      {
-        roleHint: 'process',
-        lead: '사용 흐름',
-        itemTitles: ['첫 방문', '쓰는 길', '팀으로 넓히기'],
-        lines: [
-          '첫 방문에서 문제와 해결 방식을 한 문장으로 이해',
-          '주요 기능을 체험하거나 문의로 연결되는 명확한 행동 경로',
-          '팀 규모, 권한, 반복 작업으로 확장되는 운영 시나리오',
-        ],
-      },
-      {
-        roleHint: 'cards',
-        lead: '대상 고객별 메시지',
-        itemTitles: ['실무자', '리더', '운영자'],
-        lines: [
-          '실무자: 반복 작업을 줄이고 결과물 완성도를 높이는 방식',
-          '리더: 팀 속도, 품질, 비용을 함께 관리할 수 있는 기준',
-          '운영자: 권한, 저장, 감사, 보안 요구를 만족시키는 운영 체계',
-        ],
-      },
-      {
-        roleHint: 'list',
-        lead: '신뢰를 만드는 증거',
-        itemTitles: ['제품', '사례', '운영'],
-        lines: [
-          '화면, 워크플로우, 결과물 예시로 제품 실체를 보여준다',
-          '고객 유형별 문제 해결 사례와 정량·정성 효과를 정리한다',
-          '지원, 보안, 개인정보, 도입 프로세스를 투명하게 제시한다',
-        ],
-      },
-      {
-        roleHint: 'timeline',
-        lead: '도입 로드맵',
-        itemTitles: ['파일럿', '확대', '정착'],
-        lines: [
-          '작은 팀이나 단일 업무에서 빠르게 파일럿을 시작',
-          '반복 사용 패턴을 기준으로 템플릿과 권한 정책을 확장',
-          '성과 지표와 운영 책임을 정해 조직 표준으로 정착',
-        ],
-      },
-      {
-        roleHint: 'stat',
-        lead: '측정해야 할 지표',
-        itemTitles: ['전환', '활성', '품질'],
-        lines: [
-          '방문에서 문의·가입까지 이어지는 전환율',
-          '핵심 기능 반복 사용, 팀 초대, 재방문 흐름',
-          '결과물 완성도, 수정 횟수, 지원 요청 감소',
-        ],
-      },
-      {
-        roleHint: 'closing',
-        lead: '다음 액션',
-        itemTitles: ['요약', '제안'],
-        lines: [
-          `${topic} 소개는 기능 나열보다 문제, 가치, 증거, 도입 경로가 이어져야 설득력이 생긴다`,
-          '다음 단계는 실제 고객군에 맞춘 메시지 우선순위와 CTA를 확정하는 것이다',
-        ],
-      },
+      fromRole(pack.statement, 'list'),
+      fromRole(pack.cards, 'cards'),
+      fromRole(pack.process, 'process'),
+      fromRole(pack.team, 'cards'),
+      fromRole(pack.quote, 'list'),
+      fromRole(pack.timeline, 'timeline'),
+      fromRole(pack.stats, 'stat'),
+      fromRole(pack.close, 'closing'),
     ];
   }
   // Free-form topics: topic-parameterized skeleton only — no domain essays.
@@ -12405,7 +12344,21 @@ function productLaunchCopyIsKeepable(text: string): boolean {
   PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
   if (/의미와 적용 기준을 한 문장으로/.test(value)) return false;
   if (PRODUCT_LAUNCH_GENERIC_CARD_BODY_RE.test(value)) return false;
+  if (/["“][^"”]*$/.test(value) && !/["”]$/.test(value)) return false;
   return true;
+}
+
+function productLaunchBodyHasLeftoverCards(body: string): boolean {
+  const titles = [...String(body ?? '').matchAll(/<h[3-5]\b[^>]*>([\s\S]*?)<\/h[3-5]>/gi)]
+    .map((match) => visibleDeckCopy(match[1] ?? ''));
+  if (titles.some((title) => (
+    PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(title)
+    || looksLikeServiceIntroLeftoverTitle(title)
+  ))) {
+    return true;
+  }
+  return PRODUCT_LAUNCH_GENERIC_CARD_BODY_RE.test(body)
+    || SERVICE_INTRO_LEFTOVER_BODY_RE.test(body);
 }
 
 function sanitizeProductLaunchHeading(rawTitle: string): string {
@@ -12482,6 +12435,7 @@ function productLaunchSlotNeedsRefill(text: string): boolean {
   if (productLaunchCopyIsKeepable(value)) return false;
   if (PRODUCT_LAUNCH_BROKEN_COPY_RE.test(value)) return true;
   if (PRODUCT_LAUNCH_GENERIC_CARD_BODY_RE.test(value)) return true;
+  if (/["“][^"”]*$/.test(value) && !/["”]$/.test(value)) return true;
   if (/Halo/i.test(value)) return true;
   if (/^실행 방안(?:\s*(?:실무|리더|운영)|[이가을를은는])/.test(value)) return true;
   if (productLaunchHasHealerTitleArtifact(value)) return true;
@@ -12714,6 +12668,7 @@ function healProductLaunchStructuralQuality(html: string, topic: string): string
       body = wipeProductLaunchOrphanPriceTokens(body);
     }
     body = wipeProductLaunchDemoAmounts(body);
+    body = refillProductLaunchLeftoverCardLeaves(body, topic, i);
     const structuralTitle = productLaunchStructuralHeading(body, span.attrs, topic);
     if (brokenHeading && headingMatch) {
       body = body.replace(
@@ -12752,12 +12707,28 @@ function healProductLaunchStructuralQuality(html: string, topic: string): string
         );
       }
     }
+    const kickerText = visibleDeckCopy(
+      /<[^>]*\bkicker\b[^>]*>([\s\S]*?)<\//i.exec(body)?.[1] ?? '',
+    );
+    if (
+      looksLikeServiceIntroLeftoverTitle(kickerText)
+      || SERVICE_INTRO_LEFTOVER_BODY_RE.test(kickerText)
+    ) {
+      body = replaceFirstExactClassText(
+        body,
+        'kicker',
+        topic ? `${topic} 한눈에` : '한눈에',
+      );
+    }
     body = body.replace(
       /(<p\b[^>]*>)([^<]*[가-힣][^<]*?)(<\/p>)/gi,
       (full, open: string, inner: string, close: string) => {
         const plain = visibleDeckCopy(inner);
         if (!/(?:하는|위한|통한)\s*$/.test(plain)) return full;
-        return `${open}${escapeHtml(`${plain} 핵심 사용자층`)}${close}`;
+        const closed = /활용하는$/.test(plain)
+          ? `${plain} 팀을 기준으로 도입 범위를 정한다.`
+          : `${plain} 흐름을 한 화면에서 이어 간다.`;
+        return `${open}${escapeHtml(closed)}${close}`;
       },
     );
     out = `${out.slice(0, span.bodyStart)}${body}${out.slice(span.bodyEnd)}`;
@@ -12808,7 +12779,312 @@ function healProductLaunchStructuralQuality(html: string, topic: string): string
     const rewrite = rewrites[i]!;
     out = `${out.slice(0, rewrite.start)}${rewrite.html}${out.slice(rewrite.end)}`;
   }
+  out = healProductLaunchRepeatedCardCopy(out, topic);
+  out = liftProductLaunchHeroShotOutOfFlow(out);
+  out = stripProductLaunchInlineDisplayOverrides(out);
+  out = restoreProductLaunchOfficialInsets(out);
+  out = normalizeProductLaunchSparseGrids(out);
+  out = salvageBrokenProductLaunchMarkup(out);
+  return stripEmptyProductLaunchAmountNodes(out);
+}
+
+const PRODUCT_LAUNCH_CARD_SHELLS = ['feature-card', 'price-card', 'step', 'card'] as const;
+
+const PRODUCT_LAUNCH_ALT_CARD_TITLES = [
+  '같은 보드',
+  '권한 경계',
+  '결과 이력',
+  '초안',
+  '수정',
+  '공유',
+  '혼자 시작',
+  '팀과 고치기',
+  '리뷰',
+  '한 팀 보드',
+  '리뷰 습관',
+  '조직 기준',
+] as const;
+
+function nextUnusedProductLaunchCardTitle(seen: Set<string>): string {
+  for (const title of PRODUCT_LAUNCH_ALT_CARD_TITLES) {
+    if (!seen.has(title)) return title;
+  }
+  return '';
+}
+
+function productLaunchCardInnerTitle(block: string): string {
+  return visibleDeckCopy(block.match(/<h[3-5]\b[^>]*>([\s\S]*?)<\/h[3-5]>/i)?.[1] ?? '');
+}
+
+function productLaunchCardInnerBody(block: string): string {
+  return visibleDeckCopy(
+    /<[^>]*\bdim\b[^>]*>([\s\S]*?)<\//i.exec(block)?.[1]
+    ?? /<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(block)?.[1]
+    ?? '',
+  );
+}
+
+function replaceProductLaunchCardInnerTitle(block: string, title: string): string {
+  if (!/<h[3-5]\b/i.test(block)) return block;
+  return block.replace(
+    /(<h[3-5]\b[^>]*>)([\s\S]*?)(<\/h[3-5]>)/i,
+    `$1${escapeHtml(title)}$3`,
+  );
+}
+
+function replaceProductLaunchCardInnerBody(block: string, text: string): string {
+  if (/\bdim\b/i.test(block)) return replaceFirstExactClassText(block, 'dim', text);
+  if (/<p\b/i.test(block)) {
+    return block.replace(/(<p\b[^>]*>)([\s\S]*?)(<\/p>)/i, `$1${escapeHtml(text)}$3`);
+  }
+  return block;
+}
+
+function healProductLaunchRepeatedCardCopy(html: string, topic: string): string {
+  const dest = String(html ?? '');
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) return dest;
+  const seenTitles = new Set<string>();
+  const seenBodies = new Set<string>();
+  const patches: Array<{ start: number; end: number; html: string }> = [];
+  for (const span of spans) {
+    const body = dest.slice(span.bodyStart, span.bodyEnd);
+    for (const className of PRODUCT_LAUNCH_CARD_SHELLS) {
+      for (const block of exactClassBlocks(body, className)) {
+        const title = productLaunchCardInnerTitle(block.html);
+        const copy = productLaunchCardInnerBody(block.html);
+        let next = block.html;
+        let nextTitle = title;
+        if (title.length >= 8 && seenTitles.has(title)) {
+          const unused = nextUnusedProductLaunchCardTitle(seenTitles);
+          if (unused) {
+            nextTitle = unused;
+            next = replaceProductLaunchCardInnerTitle(next, unused);
+          }
+        }
+        if (nextTitle) seenTitles.add(nextTitle);
+        if (copy.length >= 16 && seenBodies.has(copy)) {
+          let nextBody = productLaunchStepBodyForTitle(nextTitle, topic, patches.length);
+          if (!nextBody || seenBodies.has(nextBody) || nextBody === copy) {
+            nextBody = nextTitle
+              ? `${topic}에서 ${attachKoreanJosa(nextTitle, '을/를')} 같은 화면에서 이어 간다.`
+              : `${topic}에서 다음 단계를 같은 화면에서 이어 간다.`;
+          }
+          next = replaceProductLaunchCardInnerBody(next, nextBody);
+          seenBodies.add(nextBody);
+        } else if (copy.length >= 16) {
+          seenBodies.add(copy);
+        }
+        if (next !== block.html) {
+          patches.push({
+            start: span.bodyStart + block.start,
+            end: span.bodyStart + block.end,
+            html: next,
+          });
+        }
+      }
+    }
+  }
+  let out = dest;
+  for (let i = patches.length - 1; i >= 0; i -= 1) {
+    const patch = patches[i]!;
+    out = `${out.slice(0, patch.start)}${patch.html}${out.slice(patch.end)}`;
+  }
   return out;
+}
+
+function stripEmptyProductLaunchAmountNodes(html: string): string {
+  return String(html ?? '').replace(
+    /<(div|span)\b[^>]*\bamount\b[^>]*>\s*<\/\1>/gi,
+    '',
+  );
+}
+
+function refillProductLaunchLeftoverCardLeaves(
+  body: string,
+  topic: string,
+  slideIndex: number,
+): string {
+  const role = genericRoleCopyForIndex(topic || 'Teamver', null, slideIndex + 1);
+  let next = body;
+  let itemIndex = 0;
+  for (const className of PRODUCT_LAUNCH_CARD_SHELLS) {
+    const blocks = exactClassBlocks(next, className);
+    if (blocks.length === 0) continue;
+    next = replaceExactClassBlocksBySequence(
+      next,
+      className,
+      blocks.map((block) => ({
+        title: productLaunchCardInnerTitle(block.html),
+        body: productLaunchCardInnerBody(block.html),
+      })),
+      (block, _line, index) => {
+        const title = productLaunchCardInnerTitle(block);
+        const copy = productLaunchCardInnerBody(block);
+        const titleBad = !title
+          || PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(title)
+          || looksLikeServiceIntroLeftoverTitle(title)
+          || productLaunchHasHealerTitleArtifact(title);
+        const copyBad = productLaunchSlotNeedsRefill(copy);
+        if (!titleBad && !copyBad) return block;
+        const item = role.items[itemIndex] ?? role.items[index] ?? role.items[0];
+        itemIndex += 1;
+        let filled = block;
+        if (titleBad && item?.title) {
+          filled = replaceProductLaunchCardInnerTitle(filled, item.title);
+        }
+        if (copyBad && item?.body) {
+          filled = replaceProductLaunchCardInnerBody(filled, item.body);
+        }
+        return filled;
+      },
+    );
+  }
+  return next;
+}
+
+function salvageBrokenProductLaunchMarkup(html: string): string {
+  return String(html ?? '')
+    .replace(/<\s+div\b/gi, '<div')
+    .replace(/<div="">/gi, '<div>')
+    .replace(/<\s*>/g, '')
+    .replace(/<\/\s*>/g, '')
+    .replace(/나눠같이/g, '나눠 같이');
+}
+
+const PRODUCT_LAUNCH_KIT_INSET = '80px 112px';
+
+function compactInlineCssDeclarations(style: string): string {
+  return String(style ?? '')
+    .replace(/;\s*;+/g, ';')
+    .replace(/^\s*;+\s*/, '')
+    .replace(/;+\s*$/, '')
+    .trim();
+}
+
+function restoreProductLaunchOfficialInsets(html: string): string {
+  if (!officialLookIsProductLaunchHalo(html)) return html;
+  const dest = String(html ?? '');
+  const spans = listHealSlideHostSpans(dest);
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    let open = out.slice(span.start, span.bodyStart);
+    if (/\bstyle\s*=/i.test(open)) {
+      open = open.replace(
+        /(\bstyle\s*=\s*)(["'])([\s\S]*?)\2/i,
+        (_m, pre: string, q: string, style: string) => {
+          const nextStyle = compactInlineCssDeclarations(
+            style.replace(/(?:^|;)\s*padding\s*:[^;"']+;?/gi, ';'),
+          );
+          return `${pre}${q}${nextStyle}${q}`;
+        },
+      );
+    }
+    let body = out.slice(span.bodyStart, span.bodyEnd);
+    if (/data-od-slide-flow/i.test(body)) {
+      if (/\bdata-od-slide-flow\b[^>]*\bstyle=/i.test(body)) {
+        body = body.replace(
+          /(<div\b[^>]*\bdata-od-slide-flow\b[^>]*\bstyle\s*=\s*)(["'])([\s\S]*?)\2/i,
+          (_m, pre: string, q: string, style: string) => {
+            const nextStyle = compactInlineCssDeclarations(
+              /(?:^|;)\s*padding\s*:/i.test(style)
+                ? style.replace(/(?:^|;)\s*padding\s*:[^;"']+/gi, `;padding:${PRODUCT_LAUNCH_KIT_INSET}`)
+                : `${style};padding:${PRODUCT_LAUNCH_KIT_INSET}`,
+            );
+            return `${pre}${q}${nextStyle}${q}`;
+          },
+        );
+      } else {
+        body = body.replace(
+          /(<div\b[^>]*\bdata-od-slide-flow\b)([^>]*)>/i,
+          `$1 style="padding:${PRODUCT_LAUNCH_KIT_INSET}"$2>`,
+        );
+      }
+    }
+    out = `${out.slice(0, span.start)}${open}${body}${out.slice(span.bodyEnd)}`;
+  }
+  return out;
+}
+
+function stripProductLaunchInlineDisplayOverrides(html: string): string {
+  return String(html ?? '').replace(
+    /<(h[12])\b([^>]*\bstyle\s*=\s*)(["'])([\s\S]*?)\3([^>]*)>/gi,
+    (full, tag: string, pre: string, quote: string, style: string, post: string) => {
+      const nextStyle = compactInlineCssDeclarations(
+        style.replace(/(?:^|;)\s*font-size\s*:\s*140px(?:\s*!important)?;?/gi, ';'),
+      );
+      if (nextStyle === compactInlineCssDeclarations(style)) return full;
+      return `<${tag}${pre}${quote}${nextStyle}${quote}${post}>`;
+    },
+  );
+}
+
+function normalizeProductLaunchSparseGrids(html: string): string {
+  const dest = String(html ?? '');
+  const spans = listHealSlideHostSpans(dest);
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    let body = out.slice(span.bodyStart, span.bodyEnd);
+    if (!/\bg3\b/.test(body)) continue;
+    const cards = exactClassBlocks(body, 'card').length
+      + exactClassBlocks(body, 'feature-card').length;
+    if (cards !== 2) continue;
+    body = body.replace(/\bg3\b/, 'g2');
+    out = `${out.slice(0, span.bodyStart)}${body}${out.slice(span.bodyEnd)}`;
+  }
+  return out;
+}
+
+function liftProductLaunchHeroShotOutOfFlow(html: string): string {
+  const dest = String(html ?? '');
+  if (!officialLookIsProductLaunchHalo(dest)) return dest;
+  const spans = listHealSlideHostSpans(dest);
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    const flowOpen = /<div\b[^>]*\bdata-od-slide-flow\b[^>]*>/i.exec(body);
+    if (!flowOpen || flowOpen.index == null) continue;
+    const flowAbs = span.bodyStart + flowOpen.index;
+    const flowBalanced = extractBalancedFrom(out, flowAbs);
+    if (!flowBalanced) continue;
+    const closeLen = /<\/div\s*>$/i.exec(flowBalanced)?.[0]?.length ?? 6;
+    const innerStart = flowAbs + flowOpen[0].length;
+    const innerEnd = flowAbs + flowBalanced.length - closeLen;
+    const inner = out.slice(innerStart, innerEnd);
+    const shots = exactClassBlocks(inner, 'hero-shot');
+    if (shots.length === 0) continue;
+    let nextInner = inner;
+    const lifted: string[] = [];
+    for (let s = shots.length - 1; s >= 0; s -= 1) {
+      const shot = shots[s]!;
+      let block = shot.html;
+      if (!/\bdata-od-official-motif-html\b/i.test(block)) {
+        block = block.replace(
+          /(<[a-zA-Z][\w-]*)\b/,
+          '$1 data-od-official-motif-html',
+        );
+      }
+      lifted.unshift(block);
+      nextInner = `${nextInner.slice(0, shot.start)}${nextInner.slice(shot.end)}`;
+    }
+    out = `${out.slice(0, innerStart)}${nextInner}${out.slice(innerEnd, flowAbs + flowBalanced.length)}${lifted.join('')}${out.slice(flowAbs + flowBalanced.length)}`;
+  }
+  return out;
+}
+
+function pinKoreanDeckLang(html: string): string {
+  const dest = String(html ?? '');
+  if (!/[가-힣]/.test(dest)) return dest;
+  return dest.replace(/<html\b([^>]*)>/i, (full, attrs: string) => {
+    if (/\blang\s*=\s*["']ko["']/i.test(attrs)) return full;
+    if (/\blang\s*=/.test(attrs)) {
+      return `<html${attrs.replace(/\blang\s*=\s*(["'])[^"']*\1/i, 'lang="ko"')}>`;
+    }
+    return `<html lang="ko"${attrs}>`;
+  });
 }
 
 function productLaunchSlideNeedsHeal(
@@ -12826,7 +13102,12 @@ function productLaunchSlideNeedsHeal(
     /<[^>]*\blede\b[^>]*>([\s\S]*?)<\//i.exec(body)?.[1] ?? '',
   );
   if (productLaunchHeadingNeedsRefill(heading, options)) return true;
-  if (looksLikeServiceIntroLeftoverTitle(kicker)) return true;
+  if (looksLikeServiceIntroLeftoverTitle(kicker) || SERVICE_INTRO_LEFTOVER_BODY_RE.test(kicker)) {
+    return true;
+  }
+  if (productLaunchBodyHasLeftoverCards(body)) return true;
+  if (/<\s+div\b|<\s*>|<\/\s*>/i.test(body)) return true;
+  if (/font-size\s*:\s*140px/i.test(body) && /[가-힣]{8,}/.test(body)) return true;
   if (productLaunchLooksLikeOrphanPricingChrome(body)) return true;
   if (productLaunchRepeatedSiblingDim(body, 'step')) return true;
   if (productLaunchRepeatedSiblingDim(body, 'feature-card')) return true;
@@ -12904,8 +13185,16 @@ function fillProductLaunchKitSlide(
       );
     }
   }
-  if (/^Pricing$/i.test(kickerText) || looksLikeServiceIntroLeftoverTitle(kickerText)) {
-    next = replaceFirstExactClassText(next, 'kicker', '');
+  if (
+    /^Pricing$/i.test(kickerText)
+    || looksLikeServiceIntroLeftoverTitle(kickerText)
+    || SERVICE_INTRO_LEFTOVER_BODY_RE.test(kickerText)
+  ) {
+    next = replaceFirstExactClassText(
+      next,
+      'kicker',
+      topic ? `${topic} 한눈에` : '한눈에',
+    );
   }
   if (productLaunchLooksLikeOrphanPricingChrome(next)) {
     next = wipeProductLaunchOrphanPriceTokens(next);
@@ -12937,22 +13226,27 @@ function fillProductLaunchKitSlide(
     input.lead ?? '',
     kickerText,
   );
-  const forceDistinctFeatures = productLaunchRepeatedSiblingDim(next, 'feature-card');
-  if (/\bfeature-card\b/i.test(next)) {
+  const forceDistinctFeatures = productLaunchRepeatedSiblingDim(next, 'feature-card')
+    || productLaunchRepeatedSiblingDim(next, 'card');
+  for (const cardClass of ['feature-card', 'card'] as const) {
+    if (exactClassBlocks(next, cardClass).length === 0) continue;
     const featureLines = lines.length > 0
       ? lines
-      : exactClassBlocks(next, 'feature-card').map(() => ({ title: '', body: '' }));
-    next = replaceExactClassBlocksBySequence(next, 'feature-card', featureLines, (block, line, index) => {
+      : exactClassBlocks(next, cardClass).map(() => ({ title: '', body: '' }));
+    next = replaceExactClassBlocksBySequence(next, cardClass, featureLines, (block, line, index) => {
       const existingTitle = visibleDeckCopy(
         block.match(/<h[3-5]\b[^>]*>([\s\S]*?)<\/h[3-5]>/i)?.[1] ?? '',
       );
       const existingBody = visibleDeckCopy(
-        /<[^>]*\bdim\b[^>]*>([\s\S]*?)<\//i.exec(block)?.[1] ?? '',
+        /<[^>]*\bdim\b[^>]*>([\s\S]*?)<\//i.exec(block)?.[1]
+          ?? /<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(block)?.[1]
+          ?? '',
       );
       if (
         !forceDistinctFeatures
         && productLaunchCopyIsKeepable(existingBody)
         && !productLaunchHasHealerTitleArtifact(existingTitle)
+        && !looksLikeServiceIntroLeftoverTitle(existingTitle)
         && !PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(existingTitle)
       ) {
         return block;
@@ -12961,6 +13255,7 @@ function fillProductLaunchKitSlide(
       if (
         productLaunchHasHealerTitleArtifact(existingTitle)
         || productLaunchSlotNeedsRefill(existingTitle)
+        || looksLikeServiceIntroLeftoverTitle(existingTitle)
         || PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(existingTitle)
       ) {
         const nextTitle = productLaunchKitAwareCardTitle(existingTitle, topic, index)
@@ -12989,7 +13284,12 @@ function fillProductLaunchKitSlide(
             index,
           );
         if (nextBody) {
-          filled = replaceFirstExactClassText(filled, 'dim', nextBody);
+          filled = /\bdim\b/.test(filled)
+            ? replaceFirstExactClassText(filled, 'dim', nextBody)
+            : filled.replace(
+              /(<p\b[^>]*>)([\s\S]*?)(<\/p>)/i,
+              `$1${escapeHtml(nextBody)}$3`,
+            );
         }
       }
       return filled;
@@ -13173,12 +13473,12 @@ export function healProductLaunchLeftoverCatalogCopy(
   let out = replaceProductLaunchHeroShotCssBrand(dest, brand);
   const spans = listHealSlideHostSpans(out);
   if (spans.length === 0) {
-    return healProductLaunchStructuralQuality(
+    return pinKoreanDeckLang(healProductLaunchStructuralQuality(
       stripLeftoverCatalogDemoPhrases(stripProductLaunchCatalogDemoCopy(out))
         .replace(/◎\s*/g, '')
         .replace(/Teamver을/g, 'Teamver를'),
       topic,
-    );
+    ));
   }
   for (let i = spans.length - 1; i >= 0; i -= 1) {
     const span = spans[i]!;
@@ -13216,12 +13516,12 @@ export function healProductLaunchLeftoverCatalogCopy(
     if (scrubbed === body) continue;
     out = `${out.slice(0, span.bodyStart)}${scrubbed}${out.slice(span.bodyEnd)}`;
   }
-  return healProductLaunchStructuralQuality(
+  return pinKoreanDeckLang(healProductLaunchStructuralQuality(
     stripLeftoverCatalogDemoPhrases(stripProductLaunchCatalogDemoCopy(out))
       .replace(/◎\s*/g, '')
       .replace(/Teamver을/g, 'Teamver를'),
     topic,
-  );
+  ));
 }
 
 function groveStudioRoleCopy(

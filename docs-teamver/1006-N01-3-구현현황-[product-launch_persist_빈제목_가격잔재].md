@@ -46,8 +46,29 @@ loop563 실측 (brief `Teamver 소개`):
 
 전체 `template-clone-fill` 테스트는 373개 통과, 2개 실패다. 실패한 Block Frame 제목 축약과 KPI 데모값 제거 테스트는 깨끗한 기준선 `b88b1271c8`에서도 동일하게 재현되어 이번 변경의 회귀가 아니다.
 
+## 슬라이스 2 완료
+
+- ☑ 덱 전역 카드 h4/본문 슬로건 분기 (`healProductLaunchRepeatedCardCopy`) — 첫 등장 유지
+- ☑ 빈 `.amount` 노드 제거
+- ☑ leftover 표지 kicker → `${topic} 한눈에`
+- ☑ 한국어 덱 `html lang="ko"`
+- ☑ 잘린 `하는/위한/통한` 문장을 완전한 문장으로 닫음
+- ☑ loop563 구조 테스트 6개 + 루프551–554 유지 (46 passed)
+
+## 슬라이스 3 완료
+
+12초 JSON-synth leftover + 미리보기와 다른 배치를 같은 에픽에서 닫았다. fillMode는 `json` 유지.
+
+- ☑ `templatesForSynthTemplateTopic('service-intro')` → `genericSlideCopyPack` (핵심 가치/사용 장면 제거)
+- ☑ leftover 카드·깨진 태그·긴 한글 140px → needsHeal
+- ☑ `.hero-shot`을 `[data-od-slide-flow]` 밖으로 승격 (`data-od-official-motif-html`)
+- ☑ 공식 inset `80px 112px` 복구, `g3`+2칸 → `g2`, 빈 amount 제거, `< div="">`/`<>` salvage
+- ☑ `.card` leftover 잎 refill + 닫히지 않은 인용 refill
+- ☑ loop563 구조 테스트 8개 + 루프551–554·572 leftover 계열 81 passed (origin/staging rebase 후)
+
 ## 남은 리스크
 
-- MiniMax가 슬라이드마다 **다른** 한글을 내면 덮지 않는다. 같은 슬로건을 덱 전체에 반복하면 h1/h2 중복을 가르고, 카드 본문 반복은 같은 슬라이드의 형제 카드 범위에서만 가른다.
-- 회사 소개에 product-launch 킷을 고르는 문제는 이번 범위 밖.
+- MiniMax가 슬라이드마다 **다른** 한글을 내면 덮지 않는다.
+- 회사 소개에 product-launch 킷을 고르는 문제는 범위 밖.
 - 이미 저장된 덱은 다시 생성하거나 persist heal을 타야 반영된다.
+- fillMode는 `json`을 유지한다. 12초 경로의 leftover는 synth preset 교체로 막는다.
