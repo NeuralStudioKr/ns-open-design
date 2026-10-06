@@ -614,36 +614,22 @@ describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
     }
   });
 
-  it('keeps LOOK seed immediately on HTML dump (skip repair churn)', () => {
+  it('queues one AI JSON repair on HTML dump', () => {
     const decision = decideTemplateCloneSlotFillTerminal({
       rawFinalText: '<!doctype html><section class="slide"><h1>Nope</h1></section>',
       seedHtml: seed,
       repairAlreadyAttempted: false,
     });
-    expect(decision.kind).toBe('seed-fallback');
-    if (decision.kind === 'seed-fallback') {
-      expect(decision.html).toContain('slide-title');
-      expect(decision.html).toContain('Demo');
-      expect(decision.html).not.toContain('Nope');
-    }
+    expect(decision).toEqual({ kind: 'queue-repair' });
   });
 
-  it('recovers 덱 title from soft-invalid JSON and stamps it into the seed (루프364 + 루프373)', () => {
-    // Loop364 kept the raw LOOK seed here. Loop373 recovers the "덱" title
-    // from the broken JSON via `recoverPartialTemplateCloneOutline` and slot-
-    // fills the seed with it, so the user sees "덱" on the cover instead of
-    // the raw template demo copy. Still `seed-fallback` (no queue-repair).
+  it('queues one AI JSON repair on soft-invalid JSON', () => {
     const decision = decideTemplateCloneSlotFillTerminal({
       rawFinalText: '{"title":"덱","slides":[{"title":',
       seedHtml: seed,
       repairAlreadyAttempted: false,
     });
-    expect(decision.kind).toBe('seed-fallback');
-    if (decision.kind === 'seed-fallback') {
-      expect(decision.title).toBe('덱');
-      expect(decision.html).toContain('덱');
-      expect(decision.html).not.toContain('Demo');
-    }
+    expect(decision).toEqual({ kind: 'queue-repair' });
   });
 
   it('still seed-falls-back after a prior repair attempt flag (compat)', () => {
@@ -686,14 +672,12 @@ describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
     expect(decision.kind).toBe('seed-fallback');
     if (decision.kind === 'seed-fallback') {
       expect(decision.title).toBe('분기 전략');
-      // Loop373 — partial recovery pushes the sole "분기 전략" title into the
-      // cover, so the seed-fallback is topical, not raw template demo copy.
-      expect(decision.html).toContain('분기 전략');
-      expect(decision.html).not.toContain('Demo');
+      expect(decision.html).toBe(seed);
+      expect(decision.html).toContain('Demo');
     }
   });
 
-  it('루프373: broken JSON → partial recovery slot-fills every surviving title', () => {
+  it('broken JSON never publishes partial titles as a completed deck', () => {
     const brokenRaw = [
       '{"title":"Expo","slides":[',
       '{"title":"개요","body":"WHY"},',
@@ -704,16 +688,10 @@ describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
       seedHtml: seed,
       repairAlreadyAttempted: false,
     });
-    expect(decision.kind).toBe('seed-fallback');
-    if (decision.kind === 'seed-fallback') {
-      expect(decision.title).toBe('Expo');
-      expect(decision.html).toContain('Expo');
-      expect(decision.html).toContain('개요');
-      expect(decision.html).not.toContain('Demo');
-    }
+    expect(decision).toEqual({ kind: 'queue-repair' });
   });
 
-  it('루프373: model gave nothing usable → synth outline from brief', () => {
+  it('model gave nothing usable → queues AI repair instead of synth copy', () => {
     const decision = decideTemplateCloneSlotFillTerminal({
       rawFinalText: 'sorry, could not build the deck',
       seedHtml: seed,
@@ -721,16 +699,10 @@ describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
       userBrief: 'Expo 개발 도구에 대해 시니어 개발자용 발표 자료를 만들어 주세요',
       deckTitle: '슬라이드',
     });
-    expect(decision.kind).toBe('seed-fallback');
-    if (decision.kind === 'seed-fallback') {
-      expect(decision.html).not.toContain('Demo');
-      expect(decision.title).not.toBe('슬라이드');
-      // At least one generic body section landed in the seed
-      expect(/개요|핵심 포인트|근거와 사례|실행 방안|요약/.test(decision.html)).toBe(true);
-    }
+    expect(decision).toEqual({ kind: 'queue-repair' });
   });
 
-  it('honors explicit slide count when synth fallback builds from the brief', () => {
+  it('queues AI repair when explicit slide count has no valid outline', () => {
     const tenSeed = Array.from(
       { length: 10 },
       (_, index) =>
@@ -746,17 +718,10 @@ describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
       deckTitle: '슬라이드',
       slideCount: 10,
     });
-    expect(decision.kind).toBe('seed-fallback');
-    if (decision.kind === 'seed-fallback') {
-      expect(listTemplateCloneSlideShells(decision.html).length).toBe(10);
-      expect(decision.html).toContain('성과 지표');
-      expect(decision.html).toMatch(/Teamver|보드|초안/);
-      expect(decision.html).toContain('도입 로드맵');
-      expect(decision.html).not.toContain('Demo');
-    }
+    expect(decision).toEqual({ kind: 'queue-repair' });
   });
 
-  it('synthesizes from the brief even when the model output is empty', () => {
+  it('keeps untouched LOOK seed after the single repair also fails', () => {
     const decision = decideTemplateCloneSlotFillTerminal({
       rawFinalText: '',
       seedHtml: seed,
@@ -767,13 +732,12 @@ describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
     });
     expect(decision.kind).toBe('seed-fallback');
     if (decision.kind === 'seed-fallback') {
-      expect(decision.html).not.toBe(seed);
-      expect(decision.html).not.toContain('Demo');
-      expect(decision.html).toMatch(/NeuralStudio|서비스 가치 제안|핵심 포인트/);
+      expect(decision.html).toBe(seed);
+      expect(decision.html).toContain('Demo');
     }
   });
 
-  it('루프373: unusable model output + no brief → raw seed (no synth)', () => {
+  it('unusable model output + no brief still queues the one repair', () => {
     const decision = decideTemplateCloneSlotFillTerminal({
       rawFinalText: '???',
       seedHtml: seed,
@@ -781,9 +745,37 @@ describe('0901-N02 decideTemplateCloneSlotFillTerminal (B5)', () => {
       userBrief: '',
       deckTitle: '',
     });
-    expect(decision.kind).toBe('seed-fallback');
-    if (decision.kind === 'seed-fallback') {
-      expect(decision.html).toBe(seed);
+    expect(decision).toEqual({ kind: 'queue-repair' });
+  });
+
+  it('queues repair for a valid but short AI outline instead of padding generic slides', () => {
+    const tenSeed = Array.from(
+      { length: 10 },
+      (_, index) => `<section class="slide"><h2>Seed ${index + 1}</h2></section>`,
+    ).join('');
+    const rawFinalText = JSON.stringify({
+      title: 'Teamver 소개',
+      slides: [
+        { title: 'Teamver 소개', roleHint: 'cover' },
+        { title: '문제', roleHint: 'cards' },
+      ],
+    });
+    expect(decideTemplateCloneSlotFillTerminal({
+      rawFinalText,
+      seedHtml: tenSeed,
+      repairAlreadyAttempted: false,
+      slideCount: 10,
+    })).toEqual({ kind: 'queue-repair' });
+    const afterRepair = decideTemplateCloneSlotFillTerminal({
+      rawFinalText,
+      seedHtml: tenSeed,
+      repairAlreadyAttempted: true,
+      slideCount: 10,
+    });
+    expect(afterRepair.kind).toBe('seed-fallback');
+    if (afterRepair.kind === 'seed-fallback') {
+      expect(afterRepair.html).toBe(tenSeed);
+      expect(afterRepair.html).not.toContain('Teamver에서 바로 쓰는 것');
     }
   });
 });

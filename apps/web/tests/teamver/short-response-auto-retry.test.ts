@@ -133,6 +133,17 @@ describe('루프550 quantitative slide-count prompt pins', () => {
     expect(after).toContain('Seed contains 10');
     expect(after).not.toContain(SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION);
   });
+
+  it('replaces a stale seed count with the user-requested count', () => {
+    const before = [
+      'Seed contains 10 slides. Return EXACTLY 10 <section class="slide"> elements.',
+      'Create the deck with concrete AI-authored content.',
+    ].join('\n');
+    const after = applyQuantitativeSlideCountInstruction(before, 20);
+    expect(after).toContain('Seed contains 20 slides. Return EXACTLY 20');
+    expect(after).not.toContain('Seed contains 10 slides');
+    expect(after.match(/Return EXACTLY/g)).toHaveLength(1);
+  });
 });
 
 describe('루프552 too-short HTML persist recovery', () => {

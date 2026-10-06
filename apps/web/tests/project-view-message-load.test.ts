@@ -242,7 +242,7 @@ describe("ProjectView message loading", () => {
 
     const paneStart = source.indexOf("<ChatPane");
     expect(paneStart).toBeGreaterThan(0);
-    const paneBlock = source.slice(paneStart, paneStart + 1600);
+    const paneBlock = source.slice(paneStart, paneStart + 2400);
     expect(paneBlock).toContain("skills={chatComposerSkills}");
   });
 
@@ -1275,9 +1275,29 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("renderShortResponseAutoRetryPrompt({");
     expect(source).toContain("renderTemplateCloneJsonShortResponseRetryPrompt({");
     expect(source).toContain("runTemplateCloneContentFillRef.current");
-    expect(source).toContain("applyQuantitativeSlideCountInstruction(modelPrompt, seedShellCount)");
+    expect(source).toContain("applyQuantitativeSlideCountInstruction(");
+    expect(source).toContain("targetSlideCount");
     expect(source).toContain("defaultFirstFillSlideCount:");
     expect(source).toContain("padToSeedSlideCount: false");
+  });
+
+  it("retries invalid or short Clone JSON instead of publishing deterministic filler", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("decision.kind === 'queue-repair'");
+    expect(source).toContain("pendingSlotFillRepairRef.current = true");
+    expect(source).toContain("TEMPLATE_CLONE_SLOT_FILL_JSON_REPAIR_REASON");
+    expect(source).toContain("buildTemplateCloneSlotFillRepairPrompt({");
+    expect(source).toContain("entryFrom: wantSlotFillRepair");
+    expect(source).toContain("CLONE_SLOT_FILL_REPAIR_ENTRY_FROM");
+  });
+
+  it("asks Clone fill for the user's requested count instead of the LOOK seed count", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("const requestedSlideCount = (");
+    expect(source).toContain("parseSlideCountSpec(durableSlideCountHint ?? fillSlideCountHint");
+    expect(source).toContain("extractRequestedSlideCountSpecFromMessages(messagesRef.current)");
+    expect(source).toContain("const targetSlideCount = requestedSlideCount ?? seedShellCount");
+    expect(source).toContain("applyQuantitativeSlideCountInstruction(");
   });
 
   it("slide-count short response retries then preserves the existing deck", () => {

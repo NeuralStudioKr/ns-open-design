@@ -2701,15 +2701,10 @@ export function synthesizeTemplateCloneOutlineFromBrief(input: {
 
 /**
  * Terminal decision for Clone first-fill (0901-N02 B5 + D + 루프364).
- * Prefer LOOK seed slot-fill. On any non-fill outcome with a LOOK seed
- * (HTML dump OR soft-invalid JSON), return seed-fallback immediately —
- * never queue-repair. A one-shot repair AC painted durable incomplete_output
- * on the first turn (`reason=template-clone-slot-fill-json-repair`) and left
- * users there even when AC later started (루프359–362 residual). N02-D
- * forbids model HTML; LOOK seed is the only safe fallback.
- *
- * `repairAlreadyAttempted` is retained for call-site / test compat; with a
- * seed present it no longer gates a repair turn.
+ * Prefer AI-authored JSON slot-fill. Invalid or short model output gets one
+ * automatic JSON repair turn; deterministic synth copy must never masquerade
+ * as a completed AI deck. After that one repair, keep the untouched LOOK seed
+ * and surface the failure instead of publishing generic filler.
  */
 export function decideTemplateCloneSlotFillTerminal(input: {
   rawFinalText: string;
@@ -2717,12 +2712,11 @@ export function decideTemplateCloneSlotFillTerminal(input: {
   repairAlreadyAttempted: boolean;
   templateId?: string | null;
   slideCount?: number | null;
-  /** User brief / topic + resolved deck title used to synthesize a topical
-   *  outline when the model output is unusable — so seed-fallback shows the
-   *  user's topic instead of raw template demo copy (Hartfield / Daisy). */
+  /** User brief / topic + resolved deck title used by the AI repair prompt
+   *  and fallback title detection. Generic copy is never synthesized here. */
   userBrief?: string | null;
   deckTitle?: string | null;
-  /** Honor ceiling (8–10 → 10). Caps overshoot outlines; 11+ omits this. */
+  /** Optional range ceiling (8–10 → 10). Explicit slideCount still wins. */
   maxSlides?: number;
 }): TemplateCloneSlotFillTerminalDecision {
   const seed = String(input.seedHtml ?? '').trim();
@@ -2731,56 +2725,44 @@ export function decideTemplateCloneSlotFillTerminal(input: {
     void input.repairAlreadyAttempted;
     return { kind: 'abort' };
   }
-  const honorCeiling =
-    input.maxSlides != null && input.maxSlides >= 1 && input.maxSlides <= 10
-      ? input.maxSlides
-      : input.slideCount != null && input.slideCount >= 1 && input.slideCount <= 10
-        ? input.slideCount
+  const requestedSlideCount =
+    input.slideCount != null && Number.isInteger(input.slideCount) && input.slideCount >= 1
+      ? input.slideCount
+      : input.maxSlides != null && Number.isInteger(input.maxSlides) && input.maxSlides >= 1
+        ? input.maxSlides
         : undefined;
+  const seedTarget = Math.max(
+    listTemplateCloneSlideShells(seed).length,
+    inferKitSlideCountFromCss(seed) ?? 0,
+  );
+  const requiredSlideCount = requestedSlideCount ?? seedTarget;
   const templateOpts = {
     ...(input.templateId !== undefined ? { templateId: input.templateId } : {}),
     ...(input.userBrief != null && String(input.userBrief).trim()
       ? { brief: input.userBrief }
       : {}),
-    ...(honorCeiling != null ? { maxSlides: honorCeiling } : {}),
+    ...(requiredSlideCount > 0 ? { maxSlides: requiredSlideCount } : {}),
     padToSeedSlideCount: false,
   };
+  const outline = parseTemplateCloneDeckOutline(raw);
+  const needsAiRepair = !outline
+    || (requiredSlideCount > 0 && outline.slides.length < requiredSlideCount);
+  if (needsAiRepair) {
+    if (!input.repairAlreadyAttempted) return { kind: 'queue-repair' };
+    return {
+      kind: 'seed-fallback',
+      html: seed,
+      title: titleForSeedFallback(raw, seed),
+    };
+  }
   const filled = applyTemplateCloneSlotFill(seed, raw, templateOpts);
   if (filled) return { kind: 'slot-fill', html: filled.html, title: filled.title };
-
-  // Model failed to emit a parseable outline. Loop373 — try harder before
-  // falling back to raw LOOK seed demo copy: (1) recover partial titles
-  // from broken JSON, (2) synthesize a topical outline from user brief so
-  // the seed at least reflects the user's topic. Both paths still call
-  // buildTemplateClonedDeckHtml so no model HTML lands.
-  const fallbackTitleGuess = titleForSeedFallback(raw, seed);
-  const partial = recoverPartialTemplateCloneOutline(raw, {
-    fallbackTitle: fallbackTitleGuess,
-  });
-  if (partial) {
-    const filledPartial = buildTemplateClonedDeckHtml(seed, partial.slides, {
-      title: partial.title,
-      ...templateOpts,
-    });
-    if (filledPartial?.trim()) {
-      return { kind: 'seed-fallback', html: filledPartial, title: partial.title };
-    }
-  }
-  const synth = synthesizeTemplateCloneOutlineFromBrief({
-    userBrief: input.userBrief ?? null,
-    deckTitle: input.deckTitle ?? fallbackTitleGuess,
-    slideCount: input.slideCount ?? null,
-  });
-  if (synth) {
-    const filledSynth = buildTemplateClonedDeckHtml(seed, synth.slides, {
-      title: synth.title,
-      ...templateOpts,
-    });
-    if (filledSynth?.trim()) {
-      return { kind: 'seed-fallback', html: filledSynth, title: synth.title };
-    }
-  }
-  return { kind: 'seed-fallback', html: seed, title: fallbackTitleGuess };
+  if (!input.repairAlreadyAttempted) return { kind: 'queue-repair' };
+  return {
+    kind: 'seed-fallback',
+    html: seed,
+    title: titleForSeedFallback(raw, seed),
+  };
 }
 
 /**
@@ -2820,7 +2802,7 @@ export function isCloneContentFillLowSubstancePersistReason(
   );
 }
 
-/** True when persist was forced for the (now-retired) slot-fill JSON repair AC. */
+/** True when persist was forced for the one-shot slot-fill JSON repair AC. */
 export function isCloneContentFillJsonRepairPersistReason(
   reason: unknown,
 ): boolean {

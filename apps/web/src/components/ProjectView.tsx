@@ -186,6 +186,7 @@ import {
   looksLikeScrubbedCatalogExampleShell,
   sanitizePersistedDeckHostLeaks,
   decideTemplateCloneSlotFillTerminal,
+  TEMPLATE_CLONE_SLOT_FILL_JSON_REPAIR_REASON,
   applyTemplateClonePromptFillLookMerge,
   listTemplateCloneSlideShells,
   prepareTemplateCloneSlotFillAssistantText,
@@ -229,6 +230,7 @@ import {
   TEMPLATE_CLONE_CONTENT_FILL_MARKER,
   TEMPLATE_CLONE_CONTENT_FILL_TURN_MARKER,
   CLONE_SLOT_FILL_REPAIR_ENTRY_FROM,
+  buildTemplateCloneSlotFillRepairPrompt,
   clearTemplateCloneContentFillQueue,
   cloneFillJsonRepairAlreadyAttempted,
   ensureTemplateCloneContentFillContinuePrompt,
@@ -3812,6 +3814,8 @@ export function ProjectView({
    * JSON slot-fill terminal only — prompt-fill uses {@link runTemplateClonePromptFillRef}.
    */
   const runTemplateCloneContentFillRef = useRef(false);
+  /** Invalid/short JSON outline is waiting for one AI-authored repair turn. */
+  const pendingSlotFillRepairRef = useRef(false);
   /**
    * Prompt-mode HTML fill (staging default). Needs the same seed-replace +
    * short-deck top-up as JSON content-fill, without routing through slot-fill
@@ -10646,6 +10650,7 @@ export function ProjectView({
       const isCloneHostFillTurn = isCloneContentFillTurn || isClonePromptFillTurn;
       runTemplateCloneContentFillRef.current = isCloneContentFillTurn;
       runTemplateClonePromptFillRef.current = isClonePromptFillTurn;
+      pendingSlotFillRepairRef.current = false;
       runTemplateCloneSlotFillFallbackRef.current = false;
       runAutoRetryForShortResponseRef.current =
         meta?.autoRetryForShortResponse === true
@@ -10884,8 +10889,18 @@ export function ProjectView({
           const seedPath = resolveCanonicalDeckEntryPath(filesSnapshot) ?? 'deck.html';
           const seedHtml = seedPath ? await readProjectHtml(seedPath) : null;
           const seedShellCount = seedHtml ? listTemplateCloneSlideShells(seedHtml).length : 0;
-          if (seedShellCount > 0) {
-            modelPrompt = applyQuantitativeSlideCountInstruction(modelPrompt, seedShellCount);
+          const requestedSlideCount = (
+            parseSlideCountSpec(durableSlideCountHint ?? fillSlideCountHint, {
+              allowBareNumber: true,
+            })
+            ?? extractRequestedSlideCountSpecFromMessages(messagesRef.current)
+          )?.max;
+          const targetSlideCount = requestedSlideCount ?? seedShellCount;
+          if (targetSlideCount > 0) {
+            modelPrompt = applyQuantitativeSlideCountInstruction(
+              modelPrompt,
+              targetSlideCount,
+            );
           }
         } catch {
           // LOOK seed not on disk yet — keep fallback keep-slide-count constant.
@@ -11577,6 +11592,7 @@ export function ProjectView({
                   });
                 }
                 if (decision.kind === 'slot-fill') {
+                  pendingSlotFillRepairRef.current = false;
                   runTemplateCloneSlotFillFallbackRef.current = false;
                   artifactToPersist = {
                     identifier: 'deck',
@@ -11584,13 +11600,24 @@ export function ProjectView({
                     title: decision.title,
                     html: decision.html,
                   };
+                } else if (decision.kind === 'queue-repair') {
+                  // Do not publish deterministic filler as an AI result. Mark
+                  // this run incomplete so the capped auto-continue below
+                  // requests one fresh, complete JSON outline.
+                  pendingSlotFillRepairRef.current = true;
+                  runTemplateCloneSlotFillFallbackRef.current = false;
+                  artifactToPersist = null;
+                  terminalPersistResult = {
+                    kind: 'skipped-incomplete',
+                    fileName: 'deck.html',
+                    reason: TEMPLATE_CLONE_SLOT_FILL_JSON_REPAIR_REASON,
+                  };
+                  terminalPersistResultKind = 'skipped-incomplete';
+                  terminalArtifactPersistFailed = true;
                 } else if (decision.kind === 'seed-fallback') {
-                  // Loop373 — when the terminal decision applied a partial
-                  // recovery or brief-synth outline to the seed (decision.html
-                  // differs from the raw LOOK seed on disk), persist that
-                  // topical version as a completed host fill. Otherwise point
-                  // at the untouched disk seed to keep the earlier recovery
-                  // behavior and show the LOOK seed fallback notice.
+                  pendingSlotFillRepairRef.current = false;
+                  // A failed repair must never become a generic completed deck.
+                  // Keep the untouched LOOK seed and surface the fallback notice.
                   const rawSeed = String(seedHtml ?? '').trim();
                   const decisionHtml = String(decision.html ?? '').trim();
                   const shouldWarnSeedFallback = templateCloneSeedFallbackShouldWarn({
@@ -11910,6 +11937,7 @@ export function ProjectView({
             // when the conversation has Clone host-fill lineage.
             if (
               !cloneLookSeedFallbackRecovered
+              && !pendingSlotFillRepairRef.current
               && (
                 runTemplateCloneContentFillRef.current
                 || runTemplateClonePromptFillRef.current
@@ -12205,28 +12233,32 @@ export function ProjectView({
                 streamedText: rawFinalText || latestAssistantMsg.content || '',
                 priorHeadPreambleContinues: countHeadPreambleContinueAttempts(messagesRef.current),
               });
-              const canAutoContinue = terminalHeadDecision !== 'fallback'
-                && shouldAutoContinueForIncompleteOutput({
-                runIsVisible: runIsVisible(),
-                autoContinueCount,
-                scopedCommentAttachmentCount: terminalAutoContinueCommentAttachments.length,
-                maxPerConversation: resolveAutoContinueMaxAttempts({
-                  scopedCommentAttachmentCount: terminalAutoContinueCommentAttachments.length,
-                  visualMarkOnly: terminalAutoContinueVisualFlags.visualMarkOnly,
-                }),
-                terminalPersistResultKind,
-                terminalPersistResultCode:
-                  terminalPersistResult?.kind === 'scope-rejected'
-                    ? terminalPersistResult.code
-                    : null,
-                terminalPersistResultReason:
-                  terminalPersistResult && 'reason' in terminalPersistResult
-                    ? terminalPersistResult.reason ?? null
-                    : null,
-                hadIncompleteParsedArtifact,
-                shouldFailMissingSlideHtml: missingSlideDeliverableForAutoContinue,
-                shouldRouteScopedCommentEditToAutoContinue,
-              });
+              const canAutoContinue =
+                pendingSlotFillRepairRef.current ||
+                (terminalHeadDecision !== 'fallback' &&
+                  shouldAutoContinueForIncompleteOutput({
+                    runIsVisible: runIsVisible(),
+                    autoContinueCount,
+                    scopedCommentAttachmentCount:
+                      terminalAutoContinueCommentAttachments.length,
+                    maxPerConversation: resolveAutoContinueMaxAttempts({
+                      scopedCommentAttachmentCount:
+                        terminalAutoContinueCommentAttachments.length,
+                      visualMarkOnly: terminalAutoContinueVisualFlags.visualMarkOnly,
+                    }),
+                    terminalPersistResultKind,
+                    terminalPersistResultCode:
+                      terminalPersistResult?.kind === 'scope-rejected'
+                        ? terminalPersistResult.code
+                        : null,
+                    terminalPersistResultReason:
+                      terminalPersistResult && 'reason' in terminalPersistResult
+                        ? terminalPersistResult.reason ?? null
+                        : null,
+                    hadIncompleteParsedArtifact,
+                    shouldFailMissingSlideHtml: missingSlideDeliverableForAutoContinue,
+                    shouldRouteScopedCommentEditToAutoContinue,
+                  }));
 
               let emergencyRecovered = false;
               let emergencyProduced = produced;
@@ -12524,38 +12556,51 @@ export function ProjectView({
                     autoContinueCommentAttachments,
                   );
                   const autoContinueFill = templateCloneAutoContinueFlags(originatingUserMsg);
-                  const autoContinuePromptRaw = terminalHeadDecision === 'continue'
-                    ? buildHeadPreambleContinuePrompt()
-                    : resolveAutoContinuePrompt({
-                    commentAttachmentCount: autoContinueCommentAttachments.length,
-                    visualMarkOnly: autoContinueVisualFlags.visualMarkOnly,
-                    visualAnnotationEdit: autoContinueVisualFlags.visualAnnotationEdit,
-                    scopedCommentEditFailureReason: scopedFailureReason,
-                    scopedCommentContext,
-                    scopedUserInstruction,
-                    concretePatchTemplate,
-                    incompleteOutput: {
-                      attempt,
-                      truncatedByMaxTokens: runStopReason === 'max_tokens',
-                      referenceFiles: collectSlideReferencePathsFromMessages(autoContinueMessages),
-                      slideCountHint: extractRequestedSlideCountHintFromMessages(autoContinueMessages),
-                      ...extractAutoContinueContextFromAssistant(latestAssistantMsg, {
-                        partialHtml: partialHtmlForAutoContinue,
-                        planOutline: rawFinalText,
-                      }),
-                      existingDeckPath: autoContinueFill.hostFill
-                        ? null
-                        : resolvePrimaryDeckFilePath(
-                          projectFiles,
-                          project.metadata?.entryFile,
-                        ),
-                      templateCloneContentFill: autoContinueFill.jsonFill,
-                      templateClonePromptFill: autoContinueFill.promptFill,
-                      healBrief: runVisiblePromptRef.current || '',
-                      healTitle: project.name || '슬라이드',
-                    },
-                  });
-                  const autoContinuePrompt = autoContinueFill.jsonFill
+                  const wantSlotFillRepair = pendingSlotFillRepairRef.current;
+                  if (wantSlotFillRepair) {
+                    pendingSlotFillRepairRef.current = false;
+                  }
+                  const autoContinuePromptRaw = wantSlotFillRepair
+                    ? buildTemplateCloneSlotFillRepairPrompt({
+                        userBrief: runVisiblePromptRef.current || '',
+                      })
+                    : terminalHeadDecision === 'continue'
+                      ? buildHeadPreambleContinuePrompt()
+                      : resolveAutoContinuePrompt({
+                          commentAttachmentCount: autoContinueCommentAttachments.length,
+                          visualMarkOnly: autoContinueVisualFlags.visualMarkOnly,
+                          visualAnnotationEdit:
+                            autoContinueVisualFlags.visualAnnotationEdit,
+                          scopedCommentEditFailureReason: scopedFailureReason,
+                          scopedCommentContext,
+                          scopedUserInstruction,
+                          concretePatchTemplate,
+                          incompleteOutput: {
+                            attempt,
+                            truncatedByMaxTokens: runStopReason === 'max_tokens',
+                            referenceFiles:
+                              collectSlideReferencePathsFromMessages(autoContinueMessages),
+                            slideCountHint:
+                              extractRequestedSlideCountHintFromMessages(autoContinueMessages),
+                            ...extractAutoContinueContextFromAssistant(latestAssistantMsg, {
+                              partialHtml: partialHtmlForAutoContinue,
+                              planOutline: rawFinalText,
+                            }),
+                            existingDeckPath: autoContinueFill.hostFill
+                              ? null
+                              : resolvePrimaryDeckFilePath(
+                                  projectFiles,
+                                  project.metadata?.entryFile,
+                                ),
+                            templateCloneContentFill: autoContinueFill.jsonFill,
+                            templateClonePromptFill: autoContinueFill.promptFill,
+                            healBrief: runVisiblePromptRef.current || '',
+                            healTitle: project.name || '슬라이드',
+                          },
+                        });
+                  const autoContinuePrompt = wantSlotFillRepair
+                    ? autoContinuePromptRaw
+                    : autoContinueFill.jsonFill
                     ? ensureTemplateCloneContentFillContinuePrompt(autoContinuePromptRaw)
                     : autoContinuePromptRaw;
                   // Preserve comment scope + image/deck attachments on retry.
@@ -12564,11 +12609,18 @@ export function ProjectView({
                   // Fill lineage: omit truncated Clone LOOK deck.html.
                   const started = sendNow(
                     autoContinuePrompt,
-                    chatAttachmentsForAutoContinueImageEmbed(originatingUserMsg, projectFilesRef.current.map((file) => String(file.path || file.name || "").trim()).filter(Boolean)),
+                    chatAttachmentsForAutoContinueImageEmbed(
+                      originatingUserMsg,
+                      projectFilesRef.current
+                        .map((file) => String(file.path || file.name || '').trim())
+                        .filter(Boolean),
+                    ),
                     autoContinueCommentAttachments,
                     {
-                      entryFrom: AUTO_CONTINUE_ENTRY_FROM,
-                      ...(autoContinueFill.jsonFill
+                      entryFrom: wantSlotFillRepair
+                        ? CLONE_SLOT_FILL_REPAIR_ENTRY_FROM
+                        : AUTO_CONTINUE_ENTRY_FROM,
+                      ...((autoContinueFill.jsonFill || wantSlotFillRepair)
                         ? { templateCloneContentFill: true }
                         : {}),
                       ...(autoContinueFill.promptFill

@@ -97,7 +97,12 @@ export type ChatAnalyticsEntryFrom =
   // After a closed short deck lands, append remaining slides up to the
   // user-requested count (Home 1–15). Distinct from incomplete-output recovery
   // so dashboards can tell "retry truncated turn" from "fill remaining slides".
-  | 'slide_count_top_up';
+  | 'slide_count_top_up'
+  // Automatic slide quality follow-ups. These are hidden automation turns,
+  // but still need stable analytics entry values for BYOK and daemon runs.
+  | 'sparse_content_top_up'
+  | 'thin_prior_full_rewrite'
+  | 'clone_slot_fill_json_repair';
 
 export type ChatAnalyticsLengthBucket =
   | '0'

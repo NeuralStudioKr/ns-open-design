@@ -1113,7 +1113,12 @@ export function applyQuantitativeSlideCountInstruction(
   const n = Math.max(1, Math.floor(seedShellCount));
   const requirement = renderSlideCountRequirementInstruction(n);
   const header = renderSlideCountSeedHeaderHint(n);
-  let out = next;
+  // The seed builder may already have stamped its own count. User-requested
+  // counts win, so keep one authoritative quantitative requirement.
+  let out = next.replace(
+    /^Seed contains \d+ slides\. Return EXACTLY \d+ <section class="slide"> elements\.\s*$/gim,
+    '',
+  ).trim();
   if (out.includes(`Return EXACTLY ${n}`)) {
     if (header && !out.includes(`Seed contains ${n}`)) {
       out = `${header}\n${out}`;

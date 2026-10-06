@@ -1179,7 +1179,7 @@ describe('루프450/459/469/470/472 Zhangzara template quality gates', () => {
 });
 
 describe('루프419 Capsule deterministic quality gate', () => {
-  it('keeps model-authored slide count instead of padding to the Capsule seed', async () => {
+  it('keeps a complete model-authored deck and repairs an explicitly short response', async () => {
     const seed = await readFile(
       new URL('../../../plugins/_official/examples/html-ppt-zhangzara-capsule/example.html', import.meta.url),
       'utf8',
@@ -1223,11 +1223,7 @@ describe('루프419 Capsule deterministic quality gate', () => {
       slideCount: 20,
       userBrief: 'Teamver 서비스 소개',
     });
-    expect(decision.kind).toBe('slot-fill');
-    if (decision.kind === 'slot-fill') {
-      expect(listTemplateCloneSlideShells(decision.html).length).toBe(11);
-      expect(decision.html).not.toContain('data-teamver-pad="short-response"');
-    }
+    expect(decision).toEqual({ kind: 'queue-repair' });
   });
 
   it('fills Capsule cards for www.teamver.com + 8-10 without MiniMax HTML', async () => {
