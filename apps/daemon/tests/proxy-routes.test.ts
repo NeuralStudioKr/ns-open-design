@@ -2298,15 +2298,24 @@ describe('API proxy routes', () => {
     expect(upstreamChatBodies[0].tool_choice).toBe('auto');
   });
 
-  it('rejects a prematurely closed MiniMax JSON-outline stream instead of sending end', async () => {
+  it('uses an atomic non-streaming MiniMax request for a complete JSON outline', async () => {
+    const upstreamChatBodies: any[] = [];
     const fetchMock = vi.fn(async (input: FetchInput, init?: FetchInit) => {
       const url = String(input);
       if (url.startsWith(baseUrl)) return realFetch(input, init);
       if (url === 'https://api.minimax.io/v1/chat/completions') {
-        return sseResponse([
-          'data: {"choices":[{"index":0,"delta":{"content":"```json\\n{\\\"title\\\":\\\"Teamver\\\",\\\"slides\\\":[{\\\"title\\\":\\\"소개\\\",\\\"roleHint\\\":"}}]}',
-          '',
-        ].join('\n'));
+        upstreamChatBodies.push(JSON.parse(String(init?.body || '{}')));
+        return new Response(JSON.stringify({
+          choices: [{
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: '{"title":"Teamver","slides":[{"title":"소개","body":"팀 협업","roleHint":"cover"}]}',
+            },
+            finish_reason: 'stop',
+          }],
+          usage: { prompt_tokens: 20, completion_tokens: 30 },
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
       }
       throw new Error(`unexpected fetch: ${url}`);
     });
@@ -2322,6 +2331,51 @@ describe('API proxy routes', () => {
         model: 'MiniMax-M3',
         expectCompleteJsonOutline: true,
         messages: [{ role: 'user', content: '슬라이드 JSON을 만들어줘' }],
+      }),
+    });
+
+    const body = await res.text();
+    expect(body).toContain('Teamver');
+    expect(body).toContain('event: end');
+    expect(body).not.toContain('event: error');
+    expect(upstreamChatBodies).toHaveLength(1);
+    expect(upstreamChatBodies[0].stream).toBe(false);
+    expect(upstreamChatBodies[0].temperature).toBe(0.2);
+    expect(upstreamChatBodies[0].tool_choice).toBe('none');
+    expect(upstreamChatBodies[0]).not.toHaveProperty('tools');
+    expect(upstreamChatBodies[0]).not.toHaveProperty('stream_options');
+  });
+
+  it('rejects an incomplete atomic MiniMax JSON outline instead of sending end', async () => {
+    const fetchMock = vi.fn(async (input: FetchInput, init?: FetchInit) => {
+      const url = String(input);
+      if (url.startsWith(baseUrl)) return realFetch(input, init);
+      if (url === 'https://api.minimax.io/v1/chat/completions') {
+        return new Response(JSON.stringify({
+          choices: [{
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: '```json\n{"title":"Teamver","slides":[{"title":"intro","roleHint":"',
+            },
+            finish_reason: 'length',
+          }],
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await realFetch(`${baseUrl}/api/proxy/minimax/stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: 'https://api.minimax.io/v1',
+        apiKey: 'sk-cp-test',
+        projectId: 'test-project',
+        model: 'MiniMax-M3',
+        expectCompleteJsonOutline: true,
+        messages: [{ role: 'user', content: 'create a slide JSON outline' }],
       }),
     });
 

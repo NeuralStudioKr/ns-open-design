@@ -2240,7 +2240,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       const payload: any = {
         model,
         messages: messagesForTurn,
-        stream: true,
+        stream: expectCompleteJsonOutline === true && opts.providerId === 'minimax'
+          ? false
+          : true,
         tools: opts.tools,
         tool_choice: 'auto',
       };
@@ -2248,8 +2250,13 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         Object.assign(payload, buildMiniMaxChatCompletionExtras({
           requestedMaxCompletionTokens:
             typeof maxTokens === 'number' && maxTokens > 0 ? maxTokens : null,
+          includeUsage: expectCompleteJsonOutline !== true,
+          jsonOutline: expectCompleteJsonOutline === true,
         }));
-        if (!minimaxTurnShouldEnableWebFetch(messagesForTurn, systemPrompt)) {
+        if (
+          expectCompleteJsonOutline === true
+          || !minimaxTurnShouldEnableWebFetch(messagesForTurn, systemPrompt)
+        ) {
           delete payload.tools;
           payload.tool_choice = 'none';
         }
@@ -2312,6 +2319,57 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       let providerErrorData: unknown = null;
 
       const guard = createDeltaGuard(sse);
+      if (expectCompleteJsonOutline === true && opts.providerId === 'minimax') {
+        let data: any;
+        try {
+          data = await response.json();
+        } catch {
+          sendProxyError(sse, 'MiniMax returned an unreadable JSON-outline response', {
+            code: 'UPSTREAM_UNAVAILABLE',
+            retryable: true,
+          });
+          return { kind: 'error' };
+        }
+
+        const streamErr = extractStreamErrorMessage(data);
+        if (streamErr) {
+          sendProviderStreamError(sse, `Provider error: ${streamErr}`, data);
+          return { kind: 'error' };
+        }
+        const usage = data?.usage;
+        if (typeof usage?.prompt_tokens === 'number' && usage.prompt_tokens > 0) {
+          turnUsage.inputTokens += usage.prompt_tokens;
+        }
+        if (typeof usage?.completion_tokens === 'number' && usage.completion_tokens > 0) {
+          turnUsage.outputTokens += usage.completion_tokens;
+        }
+        const choice = Array.isArray(data?.choices) ? data.choices[0] : null;
+        const content = typeof choice?.message?.content === 'string'
+          ? choice.message.content
+          : typeof choice?.delta?.content === 'string'
+            ? choice.delta.content
+            : '';
+        // The ordinary prose/role-marker stream guard treats JSON keys such as
+        // `roleHint` as chat prose. This response is buffered and parsed by the
+        // Clone host, so validate the complete raw document atomically instead.
+        if (!completeJsonOutlineText(content)) {
+          sendProxyUsageIfPresent(
+            res,
+            sse,
+            turnUsage.inputTokens,
+            turnUsage.outputTokens,
+            model,
+          );
+          sendProxyError(sse, 'MiniMax response ended before the JSON outline completed', {
+            code: 'UPSTREAM_UNAVAILABLE',
+            retryable: true,
+          });
+          return { kind: 'error' };
+        }
+        sse.send('delta', { delta: content });
+        return { kind: 'text_end' };
+      }
+
       await streamUpstreamSse(response, ({ payload, data }: any) => {
         if (payload === '[DONE]') {
           sawDone = true;

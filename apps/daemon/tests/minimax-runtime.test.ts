@@ -7,6 +7,7 @@ import {
   MINIMAX_M3_RECOMMENDED_MAX_COMPLETION_TOKENS,
   MINIMAX_M3_RECOMMENDED_TEMPERATURE,
   MINIMAX_M3_RECOMMENDED_TOP_P,
+  MINIMAX_JSON_OUTLINE_TEMPERATURE,
   buildMiniMaxChatCompletionExtras,
   isMiniMaxChatTarget,
   normalizeMiniMaxBaseUrl,
@@ -135,6 +136,16 @@ describe('minimax-runtime', () => {
     expect(thinkingOn.reasoning_split).toBe(true);
     expect(thinkingOn.service_tier).toBe('priority');
     expect(thinkingOn).not.toHaveProperty('stream_options');
+  });
+
+  it('uses stable sampling and no streaming-usage option for JSON outlines', () => {
+    process.env.TEAMVER_MINIMAX_TEMPERATURE = '1.5';
+    const extras = buildMiniMaxChatCompletionExtras({
+      jsonOutline: true,
+      includeUsage: false,
+    });
+    expect(extras.temperature).toBe(MINIMAX_JSON_OUTLINE_TEMPERATURE);
+    expect(extras).not.toHaveProperty('stream_options');
   });
 
   it('enables MiniMax web_fetch only for real page URLs or tool-loop follow-ups', () => {

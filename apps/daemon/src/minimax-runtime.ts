@@ -84,6 +84,8 @@ export const MINIMAX_RECOMMENDED_MAX_COMPLETION_TOKENS =
 /** Official recommended sampling for MiniMax-M3 (range temperature [0,2], top_p [0,1]). */
 export const MINIMAX_M3_RECOMMENDED_TEMPERATURE = 1;
 export const MINIMAX_M3_RECOMMENDED_TOP_P = 0.95;
+/** Stable sampling for the small machine-parsed Clone content outline. */
+export const MINIMAX_JSON_OUTLINE_TEMPERATURE = 0.2;
 
 function clampMiniMaxMaxCompletionTokens(value: number): number {
   return Math.min(
@@ -170,6 +172,7 @@ export type MiniMaxChatCompletionExtras = {
 export function buildMiniMaxChatCompletionExtras(options?: {
   requestedMaxCompletionTokens?: number | null;
   includeUsage?: boolean;
+  jsonOutline?: boolean;
 }): MiniMaxChatCompletionExtras {
   const thinkingType = resolveMiniMaxThinkingType();
   const extras: MiniMaxChatCompletionExtras = {
@@ -177,7 +180,9 @@ export function buildMiniMaxChatCompletionExtras(options?: {
       options?.requestedMaxCompletionTokens,
     ),
     thinking: { type: thinkingType },
-    temperature: resolveMiniMaxTemperature(),
+    temperature: options?.jsonOutline
+      ? MINIMAX_JSON_OUTLINE_TEMPERATURE
+      : resolveMiniMaxTemperature(),
     top_p: resolveMiniMaxTopP(),
   };
   if (options?.includeUsage !== false) {
