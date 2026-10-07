@@ -449,6 +449,31 @@ describe('AssistantMessage Teamver streaming visibility', () => {
     expect(screen.getByText('Waiting for first output')).toBeTruthy();
   });
 
+  it('hides leaked slide-outline JSON from the chat bubble', () => {
+    render(
+      <AssistantMessage
+        message={streamingMessage([
+          '{',
+          '"title": "Teamver — 하나의 워크스페이스로 연결되는 팀의 AI 협업 공간",',
+          '"slides": [',
+          '{',
+          '"title": "Teamver — Smarter & Faster",',
+          '"kicker": "PRODUCT LAUNCH · TEAMVER",',
+          '"lead": "대화, 파일, AI, 결과물 생성까지 하나의 워크스페이스에서 끊김 없이 이어주는 팀 AI 협업 플랫폼입니다.",',
+          '"roleHint": "',
+        ].join('\n'))}
+        streaming
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.queryByText(/PRODUCT LAUNCH/)).toBeNull();
+    expect(screen.queryByText(/roleHint/)).toBeNull();
+    expect(screen.queryByText(/Smarter & Faster/)).toBeNull();
+    expect(screen.getByText('Waiting for first output')).toBeTruthy();
+  });
+
   it('falls back to a visible waiting state when the streamed text is hidden protocol only', () => {
     render(
       <AssistantMessage

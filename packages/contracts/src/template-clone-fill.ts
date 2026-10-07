@@ -20732,14 +20732,145 @@ function looksLikeLeakedHostContractProse(text: string): boolean {
     || LEAKED_DECK_DELIVERABLE_CONTRACT_RE.test(trimmed);
 }
 
+/**
+ * Clone-fill outline the model pastes into chat instead of the deck artifact.
+ * Distinctive keys are `slides` plus `kicker` / `roleHint`, or the
+ * `{"title":…,"slides":[` header (including a truncated stream).
+ */
+function isLeakedSlideOutlineJson(slice: string): boolean {
+  if (!/"slides"\s*:\s*\[/.test(slice)) return false;
+  if (/"roleHint"\s*:/.test(slice) || /"kicker"\s*:/.test(slice)) return true;
+  return /\{\s*"title"\s*:\s*"/.test(slice);
+}
+
+function findBalancedJsonEnd(text: string, start: number): number {
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i]!;
+    if (inString) {
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escape = true;
+        continue;
+      }
+      if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '{' || ch === '[') depth += 1;
+    else if (ch === '}' || ch === ']') {
+      depth -= 1;
+      if (depth === 0) return i + 1;
+    }
+  }
+  return -1;
+}
+
+function looksLikeJsonOutlineLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return true;
+  if (/^```/.test(trimmed)) return true;
+  return /^[{}\[\],"]/.test(trimmed) || /^"[^"]+"\s*:/.test(trimmed);
+}
+
+/** Unclosed outline: keep eating JSON lines, stop before the next prose line. */
+function consumeUnclosedJson(text: string, start: number): number {
+  let inString = false;
+  let escape = false;
+  let lineStart = start;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i]!;
+    if (ch === '\n' && !inString) {
+      const line = text.slice(lineStart, i);
+      if (lineStart > start && line.trim() && !looksLikeJsonOutlineLine(line)) return lineStart;
+      lineStart = i + 1;
+    }
+    if (inString) {
+      if (escape) escape = false;
+      else if (ch === '\\') escape = true;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"') {
+      inString = true;
+    }
+  }
+  if (!inString && lineStart > start) {
+    const line = text.slice(lineStart);
+    if (line.trim() && !looksLikeJsonOutlineLine(line)) return lineStart;
+  }
+  return text.length;
+}
+
+function stripLeakedSlideOutlineJsonProse(text: string): string {
+  if (!/"slides"\s*:/.test(text)) return text;
+  const ranges: Array<{ start: number; end: number }> = [];
+  const re = /"slides"\s*:\s*\[/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) {
+    const brace = text.lastIndexOf('{', match.index);
+    if (brace < 0) continue;
+    const closed = findBalancedJsonEnd(text, brace);
+    const end = closed > brace ? closed : consumeUnclosedJson(text, brace);
+    const slice = text.slice(brace, end);
+    if (!isLeakedSlideOutlineJson(slice)) continue;
+    let start = brace;
+    let finish = end;
+    const before = text.slice(0, brace);
+    const fence = before.match(/```(?:json)?[ \t]*\n?$/i);
+    if (fence && fence.index != null) {
+      start = fence.index;
+      const tail = /^\s*```/.exec(text.slice(end));
+      if (tail) finish = end + tail[0].length;
+    }
+    ranges.push({ start, end: finish });
+  }
+  if (ranges.length === 0) return text;
+  ranges.sort((a, b) => b.start - a.start);
+  let out = text;
+  let cursor = out.length;
+  for (const range of ranges) {
+    if (range.end > cursor) continue;
+    out = `${out.slice(0, range.start)}${out.slice(range.end)}`;
+    cursor = range.start;
+  }
+  return out;
+}
+
+/** Drop clone-fill outline JSON. Leave `<artifact>` bodies untouched. */
+function stripLeakedSlideOutlineJson(text: string): string {
+  if (!text || !/"slides"\s*:/.test(text)) return text;
+  const artifactRe = /<artifact\b[^>]*>[\s\S]*?(?:<\/artifact>|$)/gi;
+  const pieces: string[] = [];
+  let last = 0;
+  let found: RegExpExecArray | null;
+  while ((found = artifactRe.exec(text)) !== null) {
+    pieces.push(stripLeakedSlideOutlineJsonProse(text.slice(last, found.index)));
+    pieces.push(found[0]);
+    last = found.index + found[0].length;
+  }
+  pieces.push(stripLeakedSlideOutlineJsonProse(text.slice(last)));
+  const joined = pieces.join('');
+  if (joined === text) return text;
+  return joined.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 export function looksLikeLeakedApiModeFilesystemProse(text: string): boolean {
-  return looksLikeLeakedHostContractProse(text);
+  return looksLikeLeakedHostContractProse(text)
+    || isLeakedSlideOutlineJson(String(text ?? ''));
 }
 
 /** Drop leaked "save this as deck.html" / API-mode filesystem sentences from prose. */
 export function stripLeakedApiModeFilesystemProse(text: string): string {
-  if (!text || !looksLikeLeakedHostContractProse(text)) return text;
-  const lines = text.split('\n').map((line) => {
+  const withoutOutline = stripLeakedSlideOutlineJson(text);
+  if (!withoutOutline || !looksLikeLeakedHostContractProse(withoutOutline)) return withoutOutline;
+  const lines = withoutOutline.split('\n').map((line) => {
     if (!looksLikeLeakedHostContractProse(line)) return line;
     const kept = line
       .split(/(?<=[.!?。])\s+/)

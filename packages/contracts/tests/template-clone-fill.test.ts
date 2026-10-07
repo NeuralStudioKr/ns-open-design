@@ -3332,6 +3332,22 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(stripLeakedApiModeFilesystemProse(
       '작성 중입니다. `<!doctype 시작하는 완전한 덱을 같은 응답에 동봉합니다.',
     )).toBe('');
+    const outlineLeak = [
+      '{',
+      '"title": "Teamver — 하나의 워크스페이스로 연결되는 팀의 AI 협업 공간",',
+      '"slides": [',
+      '{',
+      '"title": "Teamver — Smarter & Faster",',
+      '"kicker": "PRODUCT LAUNCH · TEAMVER",',
+      '"lead": "대화, 파일, AI, 결과물 생성까지 하나의 워크스페이스에서 끊김 없이 이어주는 팀 AI 협업 플랫폼입니다.",',
+      '"roleHint": "',
+    ].join('\n');
+    expect(looksLikeLeakedApiModeFilesystemProse(outlineLeak)).toBe(true);
+    expect(stripLeakedApiModeFilesystemProse(`초안을 준비합니다.\n\n${outlineLeak}`)).toBe('초안을 준비합니다.');
+    expect(stripLeakedApiModeFilesystemProse(outlineLeak)).toBe('');
+    expect(stripLeakedApiModeFilesystemProse(
+      `${outlineLeak}\n<artifact type="deck"><section class="slide">본문</section>`,
+    )).toBe('<artifact type="deck"><section class="slide">본문</section>');
     expect(looksLikeTemplateMarketingTitle('Html Ppt Zhangzara Daisy Days')).toBe(true);
     expect(looksLikeTemplateMarketingTitle('Presentation')).toBe(true);
     expect(looksLikeTemplateMarketingTitle('Slide')).toBe(true);

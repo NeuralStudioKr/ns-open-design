@@ -45,6 +45,23 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(sanitizeAssistantProseForDisplay(leak)).toBe("");
   });
 
+  it("strips leaked slide-outline JSON from the chat bubble", () => {
+    const leak = [
+      "{",
+      '"title": "Teamver — 하나의 워크스페이스로 연결되는 팀의 AI 협업 공간",',
+      '"slides": [',
+      "{",
+      '"title": "Teamver — Smarter & Faster",',
+      '"kicker": "PRODUCT LAUNCH · TEAMVER",',
+      '"lead": "대화, 파일, AI, 결과물 생성까지 하나의 워크스페이스에서 끊김 없이 이어주는 팀 AI 협업 플랫폼입니다.",',
+      '"roleHint": "',
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(leak, { streaming: true })).toBe("");
+    expect(sanitizeAssistantProseForDisplay(`초안을 준비합니다.\n\n${leak}`)).toBe("초안을 준비합니다.");
+    const closed = '{"title":"Teamver","slides":[{"title":"Faster","kicker":"PRODUCT LAUNCH","lead":"한 흐름.","roleHint":"cover"}]}';
+    expect(sanitizeAssistantProseForDisplay(`앞에서.\n\n${closed}\n뒤에서.`)).toBe("앞에서.\n\n뒤에서.");
+  });
+
   it("strips trailing open answer_operator while streaming", () => {
     const input = "Working…\n<answer_operator>\n<task_analysis>\nPlan:";
     const { text, hadOpenInternalMarkup } = stripTrailingOpenInternalMarkup(input);
