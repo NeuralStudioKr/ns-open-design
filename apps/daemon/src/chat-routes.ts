@@ -933,9 +933,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     const proseGuard = createStreamingProseDeltaGuard();
     let visibleChars = 0;
     let substantiveChars = 0;
+    let visibleText = '';
     const emitVisible = (text: string) => {
       if (!text) return;
       visibleChars += text.length;
+      visibleText += text;
       if (text.trim().length > 0) substantiveChars += text.trim().length;
       sse.send('delta', { delta: text });
     };
@@ -987,8 +989,37 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       get visibleCharCount() {
         return visibleChars;
       },
+      get visibleText() {
+        return visibleText;
+      },
     };
   }
+
+  const completeJsonOutlineText = (text: string): boolean => {
+    const raw = String(text ?? '').trim();
+    if (!raw || !/"slides"\s*:/i.test(raw)) return false;
+    const start = raw.indexOf('{');
+    if (start < 0) return false;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = start; i < raw.length; i += 1) {
+      const ch = raw[i]!;
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (ch === '\\') escaped = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') inString = true;
+      else if (ch === '{') depth += 1;
+      else if (ch === '}') {
+        depth -= 1;
+        if (depth === 0) return true;
+      }
+    }
+    return false;
+  };
 
   /** Upstream closed without message_stop/[DONE]/error — empty streams are retryable drops. */
   const finalizeProxyUpstreamIfIncomplete = (
@@ -2081,6 +2112,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       byokVideoModel,
       byokSpeechModel,
       byokSpeechVoice,
+      expectCompleteJsonOutline,
     } = proxyBody;
     const apiKey = resolveProxyApiKeyOrSendError(
       req,
@@ -2276,11 +2308,15 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
 
       const accum: Record<number, AccumulatedToolCall> = {};
       let finishReason = '';
+      let sawDone = false;
       let providerErrorData: unknown = null;
 
       const guard = createDeltaGuard(sse);
       await streamUpstreamSse(response, ({ payload, data }: any) => {
-        if (payload === '[DONE]') return true;
+        if (payload === '[DONE]') {
+          sawDone = true;
+          return true;
+        }
         if (!data) return false;
 
         const streamErr = extractStreamErrorMessage(data);
@@ -2367,6 +2403,27 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         );
         const streamMessage = extractStreamErrorMessage(providerErrorData) || 'provider error';
         sendProviderStreamError(sse, `Provider error: ${streamMessage}`, providerErrorData);
+        return { kind: 'error' };
+      }
+
+      if (
+        expectCompleteJsonOutline === true
+        && (
+          (!sawDone && !finishReason)
+          || !completeJsonOutlineText(guard.visibleText)
+        )
+      ) {
+        sendProxyUsageIfPresent(
+          res,
+          sse,
+          turnUsage.inputTokens,
+          turnUsage.outputTokens,
+          model,
+        );
+        sendProxyError(sse, 'MiniMax stream ended before the JSON outline completed', {
+          code: 'UPSTREAM_UNAVAILABLE',
+          retryable: true,
+        });
         return { kind: 'error' };
       }
 

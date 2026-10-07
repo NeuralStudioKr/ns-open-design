@@ -13920,6 +13920,7 @@ export function ProjectView({
             byokSpeechModelOverride || config.byokSpeechModel || byokSpeechModelOptionsPV[0]?.id,
           byokSpeechVoice: byokSpeechVoiceOverride || config.byokSpeechVoice,
           minOutputTokens: slideOnlyMvp ? TEAMVER_DECK_MIN_MAX_TOKENS : undefined,
+          bufferJsonOutlineUntilComplete: runTemplateCloneContentFillRef.current,
         });
         return true;
       }

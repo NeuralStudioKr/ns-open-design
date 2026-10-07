@@ -176,6 +176,8 @@ export interface ProxyContext {
    * {@link PROXY_STREAM_IDLE_TIMEOUT_DECK_MS} via minOutputTokens.
    */
   streamIdleTimeoutMs?: number;
+  /** Hold Clone slot-fill JSON until a terminal SSE frame so a safe retry cannot duplicate text. */
+  bufferJsonOutlineUntilComplete?: boolean;
 }
 
 /** Embed never ships browser secrets — always request daemon-managed BYOK. */
@@ -384,6 +386,7 @@ async function streamProxyEndpointOnce(
   let receivedThinkingDelta = false;
   let sawEndEvent = false;
   let proxyStreamId = '';
+  const bufferJsonOutlineUntilComplete = context?.bufferJsonOutlineUntilComplete === true;
   let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
 
   const releaseStalledUpstream = () => {
@@ -420,6 +423,9 @@ async function streamProxyEndpointOnce(
         ...(context?.conversationId ? { conversationId: context.conversationId } : {}),
         ...(context?.assistantMessageId
           ? { assistantMessageId: context.assistantMessageId }
+          : {}),
+        ...(bufferJsonOutlineUntilComplete
+          ? { expectCompleteJsonOutline: true }
           : {}),
         ...(context?.byokImageModel
           ? { byokImageModel: context.byokImageModel }
@@ -525,7 +531,7 @@ async function streamProxyEndpointOnce(
             // often emit a leading `\n` before a mid-stream overload/drop).
             if (text.trim().length > 0) receivedSubstantiveDelta = true;
             acc += text;
-            handlers.onDelta(text);
+            if (!bufferJsonOutlineUntilComplete) handlers.onDelta(text);
           }
           continue;
         }
@@ -558,7 +564,7 @@ async function streamProxyEndpointOnce(
           }
           finishProxyStreamError(
             err,
-            receivedSubstantiveDelta,
+            receivedSubstantiveDelta && !bufferJsonOutlineUntilComplete,
             receivedThinkingDelta,
             releaseStalledUpstream,
           );
@@ -603,6 +609,7 @@ async function streamProxyEndpointOnce(
 
         if (parsed.event === 'end') {
           sawEndEvent = true;
+          if (bufferJsonOutlineUntilComplete && acc) handlers.onDelta(acc);
           handlers.onDone(acc);
           return 'ok';
         }
@@ -620,7 +627,7 @@ async function streamProxyEndpointOnce(
           if (text) {
             if (text.trim().length > 0) receivedSubstantiveDelta = true;
             acc += text;
-            handlers.onDelta(text);
+            if (!bufferJsonOutlineUntilComplete) handlers.onDelta(text);
           }
         } else if (parsed.event === 'thinking_delta') {
           const thinking = String(parsed.data.delta ?? '');
@@ -647,7 +654,7 @@ async function streamProxyEndpointOnce(
           }
           finishProxyStreamError(
             err,
-            receivedSubstantiveDelta,
+            receivedSubstantiveDelta && !bufferJsonOutlineUntilComplete,
             receivedThinkingDelta,
             releaseStalledUpstream,
           );
@@ -668,6 +675,7 @@ async function streamProxyEndpointOnce(
           }
         } else if (parsed.event === 'end') {
           sawEndEvent = true;
+          if (bufferJsonOutlineUntilComplete && acc) handlers.onDelta(acc);
           handlers.onDone(acc);
           return 'ok';
         }
@@ -677,13 +685,13 @@ async function streamProxyEndpointOnce(
     // Graceful EOF without `end`: empty/pre-token drops are retryable.
     // Thinking-only incomplete matches daemon finalize (retryable:false — soft-retry
     // would duplicate thinking UI). Substantive text keeps historical onDone.
-    if (!sawEndEvent && !receivedSubstantiveDelta) {
+    if (!sawEndEvent && (!receivedSubstantiveDelta || bufferJsonOutlineUntilComplete)) {
       const err = new Error('Upstream stream ended before any content') as Error & {
         code?: string;
         retryable?: boolean;
       };
       err.code = 'UPSTREAM_UNAVAILABLE';
-      err.retryable = !receivedThinkingDelta;
+      err.retryable = bufferJsonOutlineUntilComplete || !receivedThinkingDelta;
       return { error: err };
     }
     handlers.onDone(acc);
@@ -713,7 +721,7 @@ async function streamProxyEndpointOnce(
     }
     finishProxyStreamError(
       error,
-      receivedSubstantiveDelta,
+      receivedSubstantiveDelta && !bufferJsonOutlineUntilComplete,
       receivedThinkingDelta,
       releaseStalledUpstream,
     );

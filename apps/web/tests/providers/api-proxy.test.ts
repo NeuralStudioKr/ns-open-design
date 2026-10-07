@@ -1106,6 +1106,65 @@ describe('streamProxyEndpoint soft-retry gates', () => {
     expect(err.retryable).toBe(false);
     expect(fetch).toHaveBeenCalledTimes(1);
   });
+
+  it('buffers Clone JSON and safely retries a partial MiniMax stream without duplicate deltas', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode([
+              'event: delta',
+              'data: {"delta":"```json\\n{\\\"title\\\":\\\"Teamver\\\",\\\"slides\\\":["}',
+              '',
+              'event: error',
+              'data: {"code":"UPSTREAM_UNAVAILABLE","retryable":true,"message":"partial JSON"}',
+              '',
+            ].join('\n')));
+            controller.close();
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode([
+              'event: delta',
+              'data: {"delta":"{\\\"title\\\":\\\"Teamver\\\",\\\"slides\\\":[{\\\"title\\\":\\\"소개\\\"}]}"}',
+              '',
+              'event: end',
+              'data: {}',
+              '',
+            ].join('\n')));
+            controller.close();
+          },
+        }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const onDelta = vi.fn();
+    const onDone = vi.fn();
+    const onError = vi.fn();
+    await streamProxyEndpoint(
+      '/api/proxy/minimax/stream',
+      { apiKey: 'test-api-key', baseUrl: 'https://example.com', model: 'MiniMax-M3' } as any,
+      'System',
+      [{ id: 'm1', role: 'user', content: 'slides', createdAt: 1 }],
+      new AbortController().signal,
+      { onDelta, onDone, onError },
+      { bufferJsonOutlineUntilComplete: true },
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+      expectCompleteJsonOutline: true,
+    });
+    expect(onDelta).toHaveBeenCalledTimes(1);
+    expect(onDelta).toHaveBeenCalledWith('{"title":"Teamver","slides":[{"title":"소개"}]}');
+    expect(onDone).toHaveBeenCalledWith('{"title":"Teamver","slides":[{"title":"소개"}]}');
+    expect(onError).not.toHaveBeenCalled();
+  });
 });
 
 describe('streamProxyEndpoint Motif-SVG dump abort', () => {

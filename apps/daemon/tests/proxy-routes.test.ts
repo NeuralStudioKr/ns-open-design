@@ -2298,6 +2298,40 @@ describe('API proxy routes', () => {
     expect(upstreamChatBodies[0].tool_choice).toBe('auto');
   });
 
+  it('rejects a prematurely closed MiniMax JSON-outline stream instead of sending end', async () => {
+    const fetchMock = vi.fn(async (input: FetchInput, init?: FetchInit) => {
+      const url = String(input);
+      if (url.startsWith(baseUrl)) return realFetch(input, init);
+      if (url === 'https://api.minimax.io/v1/chat/completions') {
+        return sseResponse([
+          'data: {"choices":[{"index":0,"delta":{"content":"```json\\n{\\\"title\\\":\\\"Teamver\\\",\\\"slides\\\":[{\\\"title\\\":\\\"소개\\\",\\\"roleHint\\\":"}}]}',
+          '',
+        ].join('\n'));
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await realFetch(`${baseUrl}/api/proxy/minimax/stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: 'https://api.minimax.io/v1',
+        apiKey: 'sk-cp-test',
+        projectId: 'test-project',
+        model: 'MiniMax-M3',
+        expectCompleteJsonOutline: true,
+        messages: [{ role: 'user', content: '슬라이드 JSON을 만들어줘' }],
+      }),
+    });
+
+    const body = await res.text();
+    expect(body).toContain('event: error');
+    expect(body).toContain('UPSTREAM_UNAVAILABLE');
+    expect(body).toContain('before the JSON outline completed');
+    expect(body).not.toContain('event: end');
+  });
+
   it('omits MiniMax web_fetch on greenfield turns without a page URL', async () => {
     const upstreamChatBodies: any[] = [];
     const fetchMock = vi.fn(async (input: FetchInput, init?: FetchInit) => {

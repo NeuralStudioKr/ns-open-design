@@ -1300,6 +1300,7 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("pendingSlotFillPriorRawRef.current = rawFinalText");
     expect(source).toContain("recoveredSlideCount: recoveredSlotFillOutline?.slides.length ?? 0");
     expect(source).toContain("targetSlideCount: repairTargetSlideCount");
+    expect(source).toContain("bufferJsonOutlineUntilComplete: runTemplateCloneContentFillRef.current");
     expect(source).toContain("isSlotFillRepairAutoContinue ? 'canceled' : 'failed'");
     expect(source).toContain("surfaceRepairStartFailure");
   });
