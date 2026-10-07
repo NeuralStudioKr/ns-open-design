@@ -3592,11 +3592,15 @@ export function stripLeftoverMotifDemoCopy(html: string): string {
 
 /** Persist/preview: protocol leaks + leftover motif demo copy. */
 export function sanitizePersistedDeckHostLeaks(html: string): string {
-  return stripEmptyOfficialMotifInstances(
+  const stripped = stripEmptyOfficialMotifInstances(
     salvageMalformedMiniMaxSlideMarkup(
       stripLeftoverMotifDemoCopy(stripHostProtocolLeakFromDeckHtml(html)),
     ),
   );
+  // 1006-N01 슬라이스 7 — salvage가 표지에 넣은 빈 hero-shot을 motif
+  // strip이 지운 뒤, 조사 치환이 최종 HTML에 한 번 더 닿게 한다.
+  if (!officialLookIsProductLaunchHalo(stripped)) return stripped;
+  return healProductLaunchBrokenParticles(ensureProductLaunchCoverHeroShot(stripped));
 }
 
 const BROKEN_EMPTY_ATTR_OPEN_RE = /<([a-zA-Z][\w-]*)=""(?=[\s>])/g;
@@ -7759,9 +7763,15 @@ export function stripEmptyOfficialMotifInstances(html: string): string {
     }
     if (end > start) spans.push({ start, end });
   }
+  const keepProductLaunchHeroShot = officialLookIsProductLaunchHalo(out);
   for (let i = spans.length - 1; i >= 0; i -= 1) {
     const span = spans[i]!;
     const block = out.slice(span.start, span.end);
+    const open = /^<[^>]+>/.exec(block)?.[0] ?? '';
+    // Product Launch `.hero-shot` is CSS paint (empty shell). Head rules for
+    // `[data-od-official-motif-html].hero-shot` stay, but this strip used to
+    // delete the node after cover heal inserted it.
+    if (keepProductLaunchHeroShot && openHasExactClass(open, 'hero-shot')) continue;
     if (officialMotifVisibleText(block).length >= 2) continue;
     if (/<svg\b/i.test(block) && block.length > 80) continue;
     out = `${out.slice(0, span.start)}${out.slice(span.end)}`;
@@ -12883,19 +12893,22 @@ function healProductLaunchStructuralQuality(html: string, topic: string): string
   out = healProductLaunchCtaDisplay(out);
   out = fillProductLaunchSparseCenterSlides(out, topic);
   out = ensureProductLaunchCoverHeroShot(out);
+  out = wipeProductLaunchEmptyDeckFooters(out);
   out = healProductLaunchPackCloseDump(out, topic);
   // 1006-N01 슬라이스 6 — 저장된 Teamver persist 결과가 여전히 빈 dim-dot
   // 캡션, 2단 Ship 좌캠 공백, kicker↔h1 "문제" 중복, price-card 슬라이드의
   // "증거/묶는" h2를 그대로 둔다. fillMode(json)는 유지.
   out = wipeProductLaunchOrphanDimDots(out);
+  out = stripProductLaunchTrailingSeparatorDots(out);
   out = healProductLaunchKickerParrotsHeading(out, topic);
   out = retitleProductLaunchPriceCardSlide(out, topic);
   out = fillProductLaunchShipSlide(out, topic);
+  // 1006-N01 슬라이스 7 — 2칸 그리드·2단 step·헤드폰 아이콘·표지 lede.
+  out = padProductLaunchSparsePairs(out, topic);
+  out = stripProductLaunchFeatureDemoIcons(out);
   out = diversifyProductLaunchRepeatedKickers(out, topic);
   // Defensive 조사 교정 — pack-dump heal이 어떤 분기를 못 타도 반드시 적용.
-  out = out
-    .replace(/나눠같이/g, '나눠 같이')
-    .replace(/([가-힣])다\.\s*를/g, '$1 것을');
+  out = healProductLaunchBrokenParticles(out);
   return restoreProductLaunchPriceCardWeight(out);
 }
 
@@ -13274,7 +13287,14 @@ function fillProductLaunchSparseCenterSlides(html: string, topic: string): strin
   let out = dest;
   for (let i = spans.length - 1; i >= 0; i -= 1) {
     const span = spans[i]!;
-    if (!/\b(?:center|tc)\b/i.test(span.attrs)) continue;
+    const bodyPreview = out.slice(span.bodyStart, span.bodyEnd);
+    const isCenter = /\b(?:center|tc)\b/i.test(span.attrs);
+    // Flat cover: 첫 장이 h1만 있으면 .dark / .slide-title / .center / flow 없이도 lede.
+    const isTitleOnlyCover = i === 0
+      && /<h1\b/i.test(bodyPreview)
+      && !/\b(?:feature-card|price-card|step|card)\b/i.test(bodyPreview);
+    const isCoverShell = /\b(?:slide-title|slide-1)\b/i.test(span.attrs) || isTitleOnlyCover;
+    if (!isCenter && !isCoverShell) continue;
     let body = out.slice(span.bodyStart, span.bodyEnd);
     if (/\blede\b/i.test(body)) continue;
     if (/\b(?:feature-card|price-card|step)\b/i.test(body)) continue;
@@ -13326,9 +13346,17 @@ function restoreProductLaunchPriceCardWeight(html: string): string {
   return out;
 }
 
+function productLaunchHasHeroShotElement(html: string): boolean {
+  return /<(?:div|span|figure)\b[^>]*\bclass\s*=\s*["'][^"']*\bhero-shot\b[^"']*["'][^>]*>/i.test(html);
+}
+
 function ensureProductLaunchCoverHeroShot(html: string): string {
   const dest = String(html ?? '');
-  if (!officialLookIsProductLaunchHalo(dest) || /<[^>]*\bhero-shot\b/i.test(dest)) return dest;
+  // CSS in <head> (`.hero-shot`, `[data-od-official-motif-html].hero-shot`)
+  // is not a node. Only an element with class hero-shot counts.
+  // An existing shot — including a flat cover child with no flow wrapper —
+  // is left in place so this heal does not duplicate it.
+  if (!officialLookIsProductLaunchHalo(dest) || productLaunchHasHeroShotElement(dest)) return dest;
   const spans = listHealSlideHostSpans(dest);
   const cover = spans[0];
   if (!cover) return dest;
@@ -13357,6 +13385,184 @@ function wipeProductLaunchOrphanDimDots(html: string): string {
   return String(html ?? '')
     .replace(/<p\b[^>]*\bdim\b[^>]*>\s*(?:·|•|・|\s|&nbsp;|&middot;)+\s*<\/p>/gi, '')
     .replace(/<p\b[^>]*\bdim\b[^>]*>\s*<\/p>/gi, '');
+}
+
+/**
+ * 1006-N01 슬라이스 7 — 문장 끝의 떨어진 구분점(`팀 AI 워크스페이스 · `)만
+ * 지운다. 단어 사이 붙임표(`초안·리뷰·버전`)는 유지한다.
+ */
+function stripProductLaunchTrailingSeparatorDots(html: string): string {
+  return String(html ?? '').replace(
+    /(<(?:p|div|span)\b[^>]*\b(?:dim|lede)\b[^>]*>)([\s\S]*?)(<\/(?:p|div|span)>)/gi,
+      (_full, open: string, inner: string, close: string) => {
+      if (!/(?:·|•|・|&middot;)/i.test(inner)) return _full;
+      const stripped = inner.replace(
+        /(?:\s|&nbsp;)+(?:·|•|・|&middot;)(?:\s|&nbsp;)*(?=(?:<\/[^>]+>\s*)*$)/i,
+        '',
+      );
+      if (stripped === inner) return _full;
+      if (!visibleDeckCopy(stripped)) return '';
+      return `${open}${stripped}${close}`;
+    },
+  );
+}
+
+function wipeProductLaunchEmptyDeckFooters(html: string): string {
+  return String(html ?? '').replace(
+    /<div\b[^>]*\bclass\s*=\s*["'][^"']*\bdeck-footer\b[^"']*["'][^>]*>[\s\S]*?<\/div>/gi,
+    (full) => {
+      if (/<(?:img|svg|video)\b/i.test(full)) return full;
+      if (visibleDeckCopy(full)) return full;
+      return '';
+    },
+  );
+}
+
+const PRODUCT_LAUNCH_GLUED_PARTICLE_RE =
+  /나(?:<[^>]+>|[\u200b\u200c\u200d\ufeff])*눠(?:<[^>]+>|[\u200b\u200c\u200d\ufeff])*같이/g;
+
+function healProductLaunchBrokenParticles(html: string): string {
+  const dest = String(html ?? '');
+  if (!officialLookIsProductLaunchHalo(dest)) return dest;
+  return dest
+    .replace(PRODUCT_LAUNCH_GLUED_PARTICLE_RE, '나눠 같이')
+    .replace(/([가-힣])다\.\s*를/g, '$1 것을');
+}
+
+const PRODUCT_LAUNCH_DEMO_ICON_GLYPH_RE = /[♪◈◐✦✧]/;
+
+function stripProductLaunchFeatureDemoIcons(html: string): string {
+  const dest = String(html ?? '');
+  const blocks = exactClassBlocks(dest, 'feature-card');
+  if (blocks.length === 0) return dest;
+  let out = dest;
+  for (let i = blocks.length - 1; i >= 0; i -= 1) {
+    const block = blocks[i]!;
+    const next = block.html.replace(
+      /<(div|span)\b([^>]*\bclass\s*=\s*["'][^"']*\bicon\b[^"']*["'][^>]*)>([\s\S]*?)<\/\1>/gi,
+      (full, _tag: string, _attrs: string, inner: string) => {
+        const plain = visibleDeckCopy(inner);
+        const demoGlyph = PRODUCT_LAUNCH_DEMO_ICON_GLYPH_RE.test(plain);
+        if (!plain || (demoGlyph && /^[♪◈◐✦✧\s]+$/.test(plain))) {
+          return '';
+        }
+        if (!PRODUCT_LAUNCH_DEMO_ICON_GLYPH_RE.test(plain)) return full;
+        const cleaned = plain.replace(PRODUCT_LAUNCH_DEMO_ICON_GLYPH_RE, '').replace(/\s+/g, ' ').trim();
+        if (!cleaned) return '';
+        return full.replace(inner, escapeHtml(cleaned));
+      },
+    );
+    if (next !== block.html) {
+      out = `${out.slice(0, block.start)}${next}${out.slice(block.end)}`;
+    }
+  }
+  return out;
+}
+
+function productLaunchCopyForAltTitle(title: string, topic: string): string {
+  const brand = topic || 'Teamver';
+  const known: Record<string, string> = {
+    '같은 보드': `${brand}에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.`,
+    '권한 경계': `${brand}에서 보기와 고치기를 슬라이드마다 정한다.`,
+    '결과 이력': `${brand}에서 누가 언제 바꿨는지 남기고 되돌린다.`,
+    '초안': `${brand} 보드에 바로 붙일 수 있는 초안이 열린다.`,
+    '수정': `${brand}에서는 보낸 뒤에도 같은 화면에서 문장과 레이아웃을 고친다.`,
+    '공유': `${brand}에 필요한 사람만 초대해 보기와 고치기를 나눈다.`,
+    '혼자 시작': `${brand}에서 한 보드를 열고 초안을 붙인다.`,
+    '팀과 고치기': `${brand}에서 보기와 고치기를 나눠 같이 고친다.`,
+    '리뷰': `${brand}에서 댓글과 버전을 같은 화면에서 본다.`,
+    '한 팀 보드': `기존 문서를 ${brand} 보드로 옮기고 보기·고치기 권한을 나눈다.`,
+    '리뷰 습관': `${brand}에서 댓글과 버전을 같은 화면에서 고정한다.`,
+    '조직 기준': `${brand} 워크스페이스 기본값으로 감사와 보내기 규칙을 둔다.`,
+  };
+  return known[title] ?? productLaunchStepBodyForTitle(title, brand, 2);
+}
+
+function injectProductLaunchMissingKicker(body: string, label: string): string {
+  if (/<[^>]*\bkicker\b/i.test(body)) return body;
+  const kicker = `<p class="kicker">${escapeHtml(label)}</p>`;
+  // h1/h2가 있으면 flow 유무와 관계없이 그 앞에 kicker를 둔다.
+  if (/<h[12]\b/i.test(body)) return body.replace(/(<h[12]\b)/i, `${kicker}$1`);
+  if (/data-od-slide-flow/i.test(body)) {
+    return body.replace(/(<div\b[^>]*\bdata-od-slide-flow\b[^>]*>)/i, `$1${kicker}`);
+  }
+  return `${kicker}${body}`;
+}
+
+function widenProductLaunchPairGrid(body: string): string {
+  let widened = false;
+  return body.replace(
+    /(<div\b[^>]*\bclass\s*=\s*["'])([^"']*)(["'])/gi,
+    (full, pre: string, cls: string, quote: string) => {
+      if (widened || !/\bgrid\b/.test(cls) || !/\bg2\b/.test(cls)) return full;
+      widened = true;
+      return `${pre}${cls.replace(/\bg2\b/, 'g3')}${quote}`;
+    },
+  );
+}
+
+function appendProductLaunchPairItem(
+  body: string,
+  className: 'step' | 'feature-card' | 'card',
+  topic: string,
+  seen: Set<string>,
+): string {
+  const blocks = exactClassBlocks(body, className);
+  if (blocks.length !== 2) return body;
+  const title = nextUnusedProductLaunchCardTitle(seen);
+  if (!title) return body;
+  const copy = productLaunchCopyForAltTitle(title, topic);
+  let clone = replaceProductLaunchCardInnerBody(
+    replaceProductLaunchCardInnerTitle(blocks[1]!.html, title),
+    copy,
+  );
+  if (className === 'step') {
+    clone = clone.replace(
+      /(<[^>]*\bclass\s*=\s*["'][^"']*\bn\b[^"']*["'][^>]*>)\s*\d+\s*(<\/)/i,
+      (_match, open: string, close: string) => `${open}3${close}`,
+    );
+  }
+  seen.add(title);
+  const last = blocks[1]!;
+  let next = `${body.slice(0, last.end)}${clone}${body.slice(last.end)}`;
+  if (className !== 'step') next = widenProductLaunchPairGrid(next);
+  return next;
+}
+
+/**
+ * 1006-N01 슬라이스 7 — 1920 캔버스에 step / feature-card / card가 2개뿐이면
+ * 팩에 있는 다른 역할(같은 보드·권한·이력)을 세 번째로 붙인다. price-card와
+ * 가격은 짓지 않는다. step 슬라이드에 kicker가 없으면 `정착 순서`를 둔다.
+ */
+function padProductLaunchSparsePairs(html: string, topic: string): string {
+  const brand = topic || 'Teamver';
+  const dest = String(html ?? '');
+  const spans = listHealSlideHostSpans(dest);
+  if (spans.length === 0) return dest;
+  const seen = new Set<string>();
+  for (const span of spans) {
+    const body = dest.slice(span.bodyStart, span.bodyEnd);
+    for (const className of PRODUCT_LAUNCH_CARD_SHELLS) {
+      for (const block of exactClassBlocks(body, className)) {
+        const title = productLaunchCardInnerTitle(block.html);
+        if (title) seen.add(title);
+      }
+    }
+  }
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    let body = out.slice(span.bodyStart, span.bodyEnd);
+    if (exactClassBlocks(body, 'step').length >= 1) {
+      body = injectProductLaunchMissingKicker(body, '정착 순서');
+    }
+    body = appendProductLaunchPairItem(body, 'step', brand, seen);
+    body = appendProductLaunchPairItem(body, 'feature-card', brand, seen);
+    body = appendProductLaunchPairItem(body, 'card', brand, seen);
+    if (body === out.slice(span.bodyStart, span.bodyEnd)) continue;
+    out = `${out.slice(0, span.bodyStart)}${body}${out.slice(span.bodyEnd)}`;
+  }
+  return out;
 }
 
 const PRODUCT_LAUNCH_PRICE_CARD_HEADING_LABEL = '쓰임새';

@@ -1,9 +1,14 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { describe, expect, it } from 'vitest';
 
 import {
   healBlockFrameLeftoverCatalogCopy,
   healProductLaunchLeftoverCatalogCopy,
   listTemplateCloneSlideShells,
+  sanitizePersistedDeckHostLeaks,
   synthesizeTemplateCloneSlideBody,
 } from '../src/template-clone-fill';
 
@@ -137,7 +142,8 @@ describe('루프563 · Product Launch cross-kit / structural quality', () => {
     expect(healed).not.toMatch(/사용자가 즉시 얻는 시간 절감/);
     expect(healed).not.toMatch(/font-size:\s*140px/);
     expect(healed).not.toMatch(/<\s+div\b|<\s*>|<\/\s*>/);
-    expect(healed).toMatch(/class="[^"]*\bg2\b/);
+    expect((healed.match(/\bfeature-card\b/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    expect(healed).toMatch(/class="[^"]*\bg3\b/);
     expect(healed).toMatch(/<\/div><div data-od-official-motif-html class="hero-shot"/);
     expect(healed).not.toMatch(/5초 안에 "문서/);
     expect(healed).toMatch(/data-od-slide-flow[^>]*padding:\s*80px 112px/);
@@ -273,5 +279,153 @@ describe('루프563 · Product Launch cross-kit / structural quality', () => {
     expect(blob).not.toMatch(/핵심 가치|사용 장면|차별점/);
     expect(blob).not.toMatch(/사용자가 즉시 얻는 시간 절감/);
     expect(blob).toMatch(/같은 보드|초안|수정|권한/);
+  });
+
+  it('표지 hero-shot·lede가 persist strip 뒤에도 남고 빈 deck-footer는 없다', () => {
+    const html = productLaunchDeck([
+      '<style>.slide [data-od-official-motif-html].hero-shot{position:absolute}</style>',
+      '<section class="slide dark slide-title"><div data-od-slide-flow style="padding:80px 112px">',
+      '<p class="kicker">Teamver 한눈에</p>',
+      '<h1 class="h1">Teamver 소개</h1>',
+      '<div class="deck-footer"></div>',
+      '</div></section>',
+      '<section class="slide"><h2 class="h2">다음</h2>',
+      '<div class="price-card"><h4>실무</h4><p class="dim">한 화면에서 고친다.</p></div></section>',
+    ].join(''));
+    const healed = sanitizePersistedDeckHostLeaks(html);
+    expect(healed).toMatch(/<\/div><div data-od-official-motif-html class="hero-shot"><\/div>/);
+    expect(healed).toMatch(/<p class="lede">/);
+    expect(healed).toMatch(/초안과 수정/);
+    expect(healed).not.toMatch(/deck-footer/);
+    expect(healed).toMatch(/class="hero-shot"/);
+  });
+
+  it('pack 소스와 persist 결과 모두 나눠같이를 남기지 않는다', () => {
+    const blobs: string[] = [];
+    for (let index = 1; index <= 8; index += 1) {
+      blobs.push(JSON.stringify(synthesizeTemplateCloneSlideBody(
+        'Teamver 서비스 소개',
+        '팀과 고치기',
+        index,
+        'Teamver 서비스 소개',
+      )));
+    }
+    const blob = blobs.join('\n');
+    expect(blob).not.toMatch(/나눠같이/);
+    expect(blob).toMatch(/나눠 같이/);
+    const html = productLaunchDeck(
+      '<section class="slide"><div class="price-card"><h4>팀과 고치기</h4><p class="dim">Teamver에서 보기와 고치기를 나눠같이 고친다.</p></div></section>',
+    );
+    const healed = healProductLaunchLeftoverCatalogCopy(html, BRIEF);
+    expect(healed).not.toMatch(/나눠같이/);
+    expect(healed).toMatch(/나눠 같이/);
+  });
+
+  it('dim/lede 끝의 떨어진 중점만 지우고 초안·리뷰는 유지한다', () => {
+    const html = productLaunchDeck([
+      '<section class="slide"><h2 class="h2">보내기</h2>',
+      '<p class="dim">팀 AI 워크스페이스 · </p>',
+      '<p class="lede">초안·리뷰·버전</p></section>',
+    ].join(''));
+    const healed = healProductLaunchLeftoverCatalogCopy(html, BRIEF);
+    expect(healed).not.toMatch(/워크스페이스\s*·/);
+    expect(healed).toMatch(/팀 AI 워크스페이스/);
+    expect(healed).toMatch(/초안·리뷰·버전/);
+  });
+
+  it('feature-card의 헤드폰 데모 글리프를 제거한다', () => {
+    const html = productLaunchDeck([
+      '<section class="slide"><h2 class="h2">기능</h2><div class="grid g3">',
+      '<div class="feature-card"><div class="icon">♪</div><h4>초안</h4><p class="dim">보드에 붙일 초안이 열린다.</p></div>',
+      '<div class="feature-card"><div class="icon">◈</div><h4>수정</h4><p class="dim">같은 화면에서 문장을 고친다.</p></div>',
+      '<div class="feature-card"><div class="icon">◐</div><h4>공유</h4><p class="dim">필요한 사람만 초대한다.</p></div>',
+      '</div></section>',
+    ].join(''));
+    const healed = healProductLaunchLeftoverCatalogCopy(html, BRIEF);
+    expect(healed).not.toMatch(/[♪◈◐✦✧]/);
+    expect(healed).toMatch(/>\s*초안\s*</);
+  });
+
+  it('step이 2개뿐인 도입 단계에 세 번째 항목과 kicker를 붙인다', () => {
+    const html = productLaunchDeck([
+      '<section class="slide"><h2 class="h2">도입 단계</h2>',
+      '<div class="step"><div class="n">1</div><div><h4>한 팀 보드</h4><p class="dim">기존 문서를 Teamver 보드로 옮긴다.</p></div></div>',
+      '<div class="step"><div class="n">2</div><div><h4>리뷰 습관</h4><p class="dim">댓글과 버전을 같은 화면에 고정한다.</p></div></div>',
+      '</section>',
+    ].join(''));
+    const healed = healProductLaunchLeftoverCatalogCopy(html, BRIEF);
+    expect((healed.match(/\bstep\b/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    expect(healed).toMatch(/<p class="kicker">[^<]+<\/p>/);
+    expect(healed).toMatch(/>\s*(?:같은 보드|권한 경계|결과 이력|조직 기준)\s*</);
+    expect(healed).toMatch(/>\s*한 팀 보드\s*</);
+    expect(healed).toMatch(/>\s*리뷰 습관\s*</);
+  });
+
+  it('flow 없는 flat 덱에서도 글리프·조사·2칸·표지 footer를 고치고 hero-shot은 복제하지 않는다', () => {
+    const flat = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), 'fixtures/loop563-product-launch-flat.html'),
+      'utf8',
+    );
+    expect(flat).not.toMatch(/data-od-slide-flow/);
+    expect(flat).not.toMatch(/data-od-deck-fixed-canvas-pin/);
+    expect(flat).not.toMatch(/slide-title/);
+    expect(flat).toMatch(/나눠같이/);
+    expect(flat).toMatch(/[♪◈◐✦✧]/);
+    const html = productLaunchDeck(flat);
+    const healed = healProductLaunchLeftoverCatalogCopy(html, BRIEF);
+    const persisted = sanitizePersistedDeckHostLeaks(html);
+
+    function sectionsOf(source: string): string[] {
+      return source.match(/<section\b[\s\S]*?<\/section>/gi) ?? [];
+    }
+    function countExactClass(source: string, name: string): number {
+      const re = /<div\b[^>]*\bclass\s*=\s*["']([^"']+)["'][^>]*>/gi;
+      let count = 0;
+      for (const match of source.matchAll(re)) {
+        const tokens = (match[1] ?? '').trim().split(/\s+/);
+        if (tokens.some((token) => token.toLowerCase() === name)) count += 1;
+      }
+      return count;
+    }
+    function assertFlatHealed(source: string): void {
+      expect(listTemplateCloneSlideShells(source)).toHaveLength(10);
+      expect(source).not.toMatch(/[♪◈◐✦✧]/);
+      expect(source).not.toMatch(/나눠같이/);
+      expect(source).toMatch(/나눠 같이/);
+      expect(source).not.toMatch(/<div\b[^>]*\bdeck-footer\b/i);
+      expect(source).not.toMatch(/\$\s*\d|₩\s*\d/);
+      expect(source).toMatch(/>\s*한 화면\s*</);
+      expect(source).toMatch(/>\s*한 팀\s*</);
+      expect(source).toMatch(/>\s*한 정책\s*</);
+      expect(countExactClass(source, 'hero-shot')).toBe(1);
+
+      const sections = sectionsOf(source);
+      expect(sections).toHaveLength(10);
+      const cover = sections[0] ?? '';
+      expect(cover).toMatch(/\bclass\s*=\s*["'][^"']*\bslide\b[^"']*\bdark\b/);
+      expect(countExactClass(cover, 'hero-shot')).toBe(1);
+      expect(cover).not.toMatch(/deck-footer/);
+      expect((cover.match(/\blede\b/gi) ?? []).length).toBe(1);
+
+      const seat = sections.find((section) => section.includes('파일 밖으로 흩어지지')) ?? '';
+      expect(countExactClass(seat, 'feature-card')).toBe(3);
+      expect(seat).toMatch(/\bg3\b/);
+      expect(seat).not.toMatch(/\bg2\b/);
+
+      const board = sections.find((section) => section.includes('같은 자리에서 열린다')) ?? '';
+      expect(countExactClass(board, 'card')).toBe(3);
+      expect(board).toMatch(/\bg3\b/);
+      expect(board).not.toMatch(/\bg2\b/);
+
+      const steps = sections.find((section) => /\bstep\b/.test(section)) ?? '';
+      expect(countExactClass(steps, 'step')).toBe(3);
+      expect(steps).toMatch(/<p\b[^>]*\bkicker\b/i);
+
+      const prices = sections.find((section) => section.includes('price-card')) ?? '';
+      expect(countExactClass(prices, 'price-card')).toBe(3);
+    }
+
+    assertFlatHealed(healed);
+    assertFlatHealed(persisted);
   });
 });
