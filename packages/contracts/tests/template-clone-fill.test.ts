@@ -1048,12 +1048,14 @@ describe('루프450/459/469/470/472 Zhangzara template quality gates', () => {
       .replace(/<[^>]+>/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
-    // 0921-N04 (루프570) — brief가 non-Teamver(neuralstudio.kr 회사) 이므로
-    // Teamver 하드코드 pack title (같은 보드 · 권한 경계 · 결과 이력)이 새어
-    // 나오면 안 된다. 후처리에서 이들을 토픽-중립 명사구(통합 화면 · 역할
-    // 정의 · 변경 이력)로 치환한다.
+    // 0921-N04 (루프570) / 1007-N01 — brief가 non-Teamver(neuralstudio.kr 회사)
+    // 이므로 Teamver 하드코드 pack title (같은 보드 · 권한 경계 · 결과 이력)이
+    // 새어 나오면 안 된다. `genericSlideCopyPack` 이 이제 non-Teamver 브리프에
+    // 대해 토픽-중립 카피를 직접 내보내므로, '같은 보드'를 사후 치환하는 대신
+    // 처음부터 제품 명사(보드·워크스페이스·감사 로그) 없는 본문이 들어간다.
     expect(eighthText).not.toMatch(/같은 보드|권한 경계|결과 이력/);
-    expect(eighthText).toMatch(/통합 화면|역할 정의|변경 이력/);
+    expect(eighthText).not.toMatch(/보드|워크스페이스|감사 로그|초안과 수정/);
+    expect(eighthText.length).toBeGreaterThan(40);
     expect(cloned).not.toMatch(/BlockFrame\s*템플릿|채워\s*담아줘|비주얼로\s*구성/);
   });
 

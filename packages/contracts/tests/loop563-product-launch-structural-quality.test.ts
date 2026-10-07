@@ -463,3 +463,116 @@ describe('루프563 · Product Launch cross-kit / structural quality', () => {
     assertFlatHealed(persisted);
   });
 });
+
+/**
+ * 1007-N01 (topic contamination) — Product Launch Halo heal + genericSlideCopyPack
+ * 가 모든 product-launch 덱을 Teamver 로 가정하고 Teamver 워크스페이스 카피
+ * (같은 보드 · 권한 경계 · 워크스페이스 · 감사 로그 · 초안/수정 · 작업이 한곳으로
+ * 모이기)를 주입하던 회귀. 브리프/토픽이 Teamver 가 아니면 heal 은 토픽-충실해야
+ * 하고, 좋은 on-topic 본문을 덮어쓰거나 2칸 그리드를 Teamver 3번째 카드로
+ * 패딩해서는 안 된다.
+ */
+describe('1007-N01 · 비-Teamver 토픽 오염 방지 (영어 회화 자가학습)', () => {
+  const ENGLISH_BRIEF = '영어 회화 실력, 매일 15분 안에 끌어올리는 법';
+  const TEAMVER_COPY_RE =
+    /같은 보드|권한 경계|결과 이력|워크스페이스|감사 로그|초안과 수정을 같은 보드|작업이 한곳으로 모이기|파일 밖으로 흩어지지/;
+
+  it('2칸 feature 그리드를 Teamver 카드로 패딩하지 않고 on-topic 본문을 유지한다', () => {
+    const html = productLaunchDeck([
+      '<section class="slide"><h2 class="h2">15분 회화 루틴</h2>',
+      '<div class="grid g2 mt-l">',
+      '<div class="feature-card"><h4>Chunk로 묶어 말하기</h4><p class="dim">자주 쓰는 표현을 덩어리로 외워 말할 때 바로 꺼내 쓴다.</p></div>',
+      '<div class="feature-card"><h4>섀도잉 10분</h4><p class="dim">원어민 음성을 따라 말하며 억양과 리듬을 몸에 익힌다.</p></div>',
+      '</div></section>',
+    ].join(''));
+    const healed = healProductLaunchLeftoverCatalogCopy(html, ENGLISH_BRIEF);
+    // Teamver 카피 주입 금지.
+    expect(healed).not.toMatch(TEAMVER_COPY_RE);
+    // 2칸 유지: 세 번째 Teamver 카드로 패딩하거나 g2→g3 로 넓히지 않는다.
+    const seat = (healed.match(/<section\b[\s\S]*?<\/section>/gi) ?? [])
+      .find((section) => section.includes('15분 회화 루틴')) ?? '';
+    expect((seat.match(/\bfeature-card\b/g) ?? []).length).toBe(2);
+    expect(seat).toMatch(/\bg2\b/);
+    expect(seat).not.toMatch(/\bg3\b/);
+    // on-topic 모델 본문/제목 보존.
+    expect(healed).toMatch(/덩어리로 외워 말할 때 바로 꺼내 쓴다/);
+    expect(healed).toMatch(/억양과 리듬을 몸에 익힌다/);
+    expect(healed).toMatch(/Chunk로 묶어 말하기/);
+    expect(healed).toMatch(/섀도잉 10분/);
+  });
+
+  it('빈 center 커버에 Teamver lede 대신 토픽-중립 lede를 넣는다', () => {
+    const html = productLaunchDeck([
+      '<section class="slide center tc slide-title"><div data-od-slide-flow style="padding:80px 112px">',
+      '<h1 class="h1">영어 회화 15분 루틴</h1></div></section>',
+    ].join(''));
+    const healed = healProductLaunchLeftoverCatalogCopy(html, ENGLISH_BRIEF);
+    expect(healed).not.toMatch(TEAMVER_COPY_RE);
+    expect(healed).not.toMatch(/AI 초안을 만들고 고치게|보드를 열고 함께 고칠 사람/);
+    expect(healed).toMatch(/class="lede"/);
+  });
+
+  it('price-card 슬라이드에 Teamver 요금/운영 bullet·금액을 주입하지 않는다', () => {
+    const html = productLaunchDeck([
+      '<section class="slide"><h2 class="h2">학습 플랜</h2>',
+      '<div class="price-card"><h4>입문</h4><div class="amount">1주차</div><ul><li>기초 표현 50개를 소리 내어 익힌다</li></ul></div>',
+      '<div class="price-card"><h4>중급</h4><div class="amount">4주차</div><ul><li>실전 상황별 대화를 반복 연습한다</li></ul></div>',
+      '</section>',
+    ].join(''));
+    const healed = healProductLaunchLeftoverCatalogCopy(html, ENGLISH_BRIEF);
+    expect(healed).not.toMatch(TEAMVER_COPY_RE);
+    expect(healed).not.toMatch(/반복 작업을 한 화면|같은 워크스페이스에서 처리|기본 운영으로 둔다/);
+    // 모델의 금액/본문 보존 (한 화면/한 팀/한 정책 Teamver 라벨로 교체 금지).
+    expect(healed).not.toMatch(/>한 화면<|>한 팀<|>한 정책</);
+    expect(healed).toMatch(/1주차/);
+    expect(healed).toMatch(/4주차/);
+    expect(healed).toMatch(/기초 표현 50개를 소리 내어 익힌다/);
+  });
+
+  it('Ship(cta) 슬라이드에 Teamver testimonial 을 지어내지 않는다', () => {
+    const html = productLaunchDeck([
+      '<section class="slide dark"><p class="kicker">마무리</p><h2 class="h2">오늘 시작하기</h2>',
+      '<p class="testimonial">주제를 쓰기 시작한 뒤 바뀐 점</p>',
+      '<div class="row"><div style="flex:1"></div>',
+      '<div><a class="cta-btn">지금 시작하기</a></div></div></section>',
+    ].join(''));
+    const healed = healProductLaunchLeftoverCatalogCopy(html, ENGLISH_BRIEF);
+    expect(healed).not.toMatch(TEAMVER_COPY_RE);
+    expect(healed).not.toMatch(/쓰기 시작한 뒤, 작업이 한곳으로 모이기 시작했다/);
+  });
+
+  it('받침으로 끝나는 토픽 명사에 조사(이/가·을/를)를 올바르게 붙인다', () => {
+    // '공부법'은 받침(ㅂ)으로 끝나므로 토픽-중립 pack 이 '공부법가/공부법를'
+    // 같은 깨진 조사를 만들면 안 된다. attachKoreanJosa 로 '공부법이/공부법을'.
+    const html = productLaunchDeck([
+      '<section class="slide center tc slide-title"><div data-od-slide-flow style="padding:80px 112px">',
+      '<h1 class="h1">한국사 공부법 핵심</h1></div></section>',
+      '<section class="slide center tc"><div data-od-slide-flow style="padding:80px 112px">',
+      '<h2 class="h2">단계별 접근</h2></div></section>',
+      '<section class="slide center tc"><div data-od-slide-flow style="padding:80px 112px">',
+      '<h2 class="h2">마무리</h2></div></section>',
+    ].join(''));
+    const healed = healProductLaunchLeftoverCatalogCopy(html, '한국사 공부법으로 시험 준비하기');
+    // 깨진 조사 금지.
+    expect(healed).not.toMatch(/법가\s|법를\s|법은\s(?!말)/);
+    expect(healed).not.toMatch(TEAMVER_COPY_RE);
+  });
+
+  it('이미 저장된 non-Teamver 덱의 pack 잔재는 persist 경로에서 토픽-중립화된다', () => {
+    // 브리프가 없는 persist/preview 경로. 덱 본문에 Teamver 문자열이 없으면
+    // non-Teamver 로 판단하고 남아 있는 pack 카피를 중립화한다.
+    const html = productLaunchDeck([
+      '<section class="slide"><h2 class="h2">영어 회화 핵심</h2>',
+      '<div class="grid g3 mt-l">',
+      '<div class="feature-card"><h4>같은 보드</h4><p class="dim">영어 회화에서 초안과 피드백이 파일 밖으로 흩어지지 않는다.</p></div>',
+      '<div class="feature-card"><h4>권한 경계</h4><p class="dim">영어 회화에서 보기와 고치기를 슬라이드마다 정한다.</p></div>',
+      '<div class="feature-card"><h4>결과 이력</h4><p class="dim">영어 회화에서 누가 언제 바꿨는지 남기고 되돌린다.</p></div>',
+      '</div></section>',
+    ].join(''));
+    const persisted = sanitizePersistedDeckHostLeaks(html);
+    expect(persisted).not.toMatch(/같은 보드|권한 경계|결과 이력/);
+    expect(persisted).not.toMatch(/파일 밖으로 흩어지지/);
+    // 중립 치환 결과가 들어간다.
+    expect(persisted).toMatch(/통합 화면|역할 정의|변경 이력/);
+  });
+});

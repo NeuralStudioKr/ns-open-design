@@ -1594,11 +1594,96 @@ type GenericRoleCopy = {
   items: Array<{ title: string; body: string }>;
 };
 
-function genericSlideCopyPack(topic: string): Record<GenericSlideRole, GenericRoleCopy> {
+/**
+ * 1007-N01 (topic-contamination) — `genericSlideCopyPack` 는 이름과 달리 모든
+ * 문장이 Teamver 제품(보드·권한·워크스페이스·감사·초안/수정·피드백)을 서술한다.
+ * `${brand}` 치환은 명사만 바꿀 뿐 문장 자체는 Teamver 마케팅이라, 브리프가
+ * Teamver 가 아닌 덱(예: 영어 회화 학습)에 그대로 쓰이면 전 슬롯이 오염된다.
+ * `allowTeamverCopy` 가 false 면 제품 명사가 전혀 없는 토픽-중립 카피를 돌려주고,
+ * true(=브리프가 실제 Teamver) 일 때만 기존 Teamver 카피를 유지한다.
+ */
+function genericTopicNeutralSlideCopyPack(
+  brand: string,
+  line: (heading: string, lead: string, items?: Array<{ title: string; body: string }>) => GenericRoleCopy,
+): Record<GenericSlideRole, GenericRoleCopy> {
+  const b = brand && !isGenericSynthTopicNoun(brand) ? brand : (brand.trim() || '이 주제');
+  // 1007-N01 — resolve 이/가 · 을/를 by batchim so a topic noun ending in a
+  // consonant (예: '실력') does not produce '실력가/실력를' broken josa.
+  const bGa = attachKoreanJosa(b, '이/가');
+  const bReul = attachKoreanJosa(b, '을/를');
+  return {
+    cover: line(b, `${b}의 핵심을 한눈에 짚어 본다.`, [
+      { title: '한눈에', body: `${bGa} 무엇이고 왜 중요한지 먼저 정리한다.` },
+      { title: '출발점', body: `${bReul} 처음 접하는 사람도 흐름을 놓치지 않게 안내한다.` },
+    ]),
+    statement: line(
+      `${bGa} 중요한 이유`,
+      `${bGa} 어떤 문제를 풀고 무엇을 바꾸는지 정리한다.`,
+      [
+        { title: '배경', body: `${bGa} 필요해진 맥락과 상황을 짚는다.` },
+        { title: '변화', body: `${bGa} 실제로 가져오는 변화를 설명한다.` },
+      ],
+    ),
+    list: line(`${b} 핵심 포인트`, `${b}에서 꼭 짚어야 할 내용을 간추린다.`, [
+      { title: '핵심 하나', body: `${bReul} 이해하는 데 가장 중요한 축을 설명한다.` },
+      { title: '핵심 둘', body: `${b}에서 자주 놓치는 부분을 짚는다.` },
+      { title: '핵심 셋', body: `${bReul} 실제로 적용할 때의 기준을 정리한다.` },
+    ]),
+    cards: line(`${b} 핵심 내용`, `${b}의 주요 내용을 항목별로 정리한다.`, [
+      { title: '내용 하나', body: `${b}의 첫 번째 핵심을 구체적으로 설명한다.` },
+      { title: '내용 둘', body: `${b}의 두 번째 핵심을 예시와 함께 짚는다.` },
+      { title: '내용 셋', body: `${b}의 세 번째 핵심과 적용 방법을 정리한다.` },
+    ]),
+    quote: line(
+      `${bGa} 남기는 메시지`,
+      `${b}에서 기억해야 할 한 문장을 정리한다.`,
+      [
+        { title: '메시지', body: `${b}의 핵심을 한 문장으로 요약한다.` },
+        { title: '의미', body: `${bGa} 왜 중요한지 다시 짚는다.` },
+      ],
+    ),
+    timeline: line('진행 단계', `${bReul} 단계별로 어떻게 밟아 가는지 정리한다.`, [
+      { title: '1단계', body: `${b}의 기초를 먼저 다진다.` },
+      { title: '2단계', body: `${bReul} 실제로 연습하거나 적용한다.` },
+      { title: '3단계', body: `${bReul} 꾸준히 이어 가며 다듬는다.` },
+    ]),
+    stats: line(`${b} 점검 지표`, `${b}에서 눈여겨볼 기준을 정리한다.`, [
+      { title: '지표 하나', body: `${b}의 진행이나 성과를 보여 주는 기준을 설명한다.` },
+      { title: '지표 둘', body: `${b}에서 변화를 확인할 수 있는 척도를 짚는다.` },
+      { title: '지표 셋', body: `${bReul} 꾸준히 점검하는 방법을 정리한다.` },
+    ]),
+    team: line(`${bReul} 함께하는 사람`, `${b}에서 각자 맡는 역할을 정리한다.`, [
+      { title: '혼자', body: `${bReul} 스스로 시작하는 방법을 짚는다.` },
+      { title: '함께', body: `${bReul} 다른 사람과 같이 해 나가는 방법을 설명한다.` },
+      { title: '도움', body: `${b}에서 도움을 주고받는 방법을 정리한다.` },
+    ]),
+    process: line(`${b} 진행 방법`, `${bReul} 실제로 어떻게 해 나가는지 순서대로 정리한다.`, [
+      { title: '시작', body: `${b}의 첫걸음을 뗀다.` },
+      { title: '진행', body: `${bReul} 꾸준히 이어 간다.` },
+      { title: '정리', body: `${b}의 결과를 돌아보고 다음을 준비한다.` },
+    ]),
+    close: line(
+      '이어서 시작하기',
+      `${bReul} 오늘부터 바로 시작해 본다.`,
+      [
+        { title: '첫걸음', body: `${bReul} 지금 바로 시작할 방법을 정리한다.` },
+        { title: '다음', body: `${bReul} 꾸준히 이어 갈 계획을 세운다.` },
+      ],
+    ),
+  };
+}
+
+function genericSlideCopyPack(
+  topic: string,
+  allowTeamverCopy: boolean = briefIsAboutTeamverProduct(topic),
+): Record<GenericSlideRole, GenericRoleCopy> {
   const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : (topic.trim() || 'Teamver');
   const line = (heading: string, lead: string, items: Array<{ title: string; body: string }> = []): GenericRoleCopy => (
     { heading, lead, items }
   );
+  if (!allowTeamverCopy) {
+    return genericTopicNeutralSlideCopyPack(topic, line);
+  }
   return {
     cover: line(brand, `${brand}는 초안과 수정을 같은 보드에서 끝낸다.`, [
       { title: '같은 화면', body: `${brand}에서 초안을 열고 바로 고친다.` },
@@ -1665,10 +1750,19 @@ function genericRoleCopyForIndex(
   cover: string,
   brief: string | null | undefined,
   index: number,
+  // 1007-N01 — callers that already resolved the Teamver gate (e.g. the
+  // product-launch heal, which may pass a stripped topic noun with no brief)
+  // pass it explicitly so detection does not depend on the brand string.
+  allowTeamverCopy?: boolean,
 ): GenericRoleCopy {
   const topic = resolveLockedTopicNoun(cover, brief);
   const brand = topic && !isGenericSynthTopicNoun(topic) ? topic : (String(cover ?? '').trim() || 'Teamver');
-  const pack = genericSlideCopyPack(brand);
+  // 1007-N01 — gate the Teamver copy pack on the resolved brief/cover. A
+  // non-Teamver topic gets the topic-neutral pack instead of Teamver product copy.
+  const pack = genericSlideCopyPack(
+    brand,
+    allowTeamverCopy ?? briefIsAboutTeamverProduct(cover, brief),
+  );
   const role = GENERIC_SLIDE_ROLES[Math.max(0, index - 1) % GENERIC_SLIDE_ROLES.length]!;
   return pack[role];
 }
@@ -2346,6 +2440,17 @@ const TEAMVER_HARDCODED_PACK_BODY_MAP: ReadonlyArray<readonly [RegExp, string]> 
   [/워크스페이스로 옮긴다/g, '작업 공간으로 옮긴다'],
   [/에서 쓸 방을 열고/g, '에서 시작 화면을 열고'],
   [/워크스페이스 기준으로 이력과 보내기를 고정한다/g, '조직 기준으로 이력과 전달을 정한다'],
+  // 1007-N01 — product-launch-halo pack / heal 서술구. 가팅으로 신규 주입은
+  // 막지만, 이미 저장된 non-Teamver 덱에 남은 문장은 여기서 토픽-중립화한다.
+  [/초안과 수정을 같은 보드에서 끝낸다/g, '핵심 내용을 한 화면에서 정리한다'],
+  [/초안과 수정이 한 흐름이 된다/g, '핵심 내용이 한 흐름이 된다'],
+  [/팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다/g, '핵심 내용을 한 흐름으로 정리하게 한다'],
+  [/초안·수정·공유가 한 흐름이다/g, '핵심 내용이 한 흐름으로 이어진다'],
+  [/작업이 한곳으로 모이기 시작했다/g, '핵심 내용이 한곳으로 모이기 시작했다'],
+  [/반복 작업을 한 화면에서 끝내고 초안을 바로 공유한다/g, '반복 작업을 한 화면에서 끝내고 결과를 바로 공유한다'],
+  [/리뷰·권한 요청을 같은 워크스페이스에서 처리한다/g, '검토와 요청을 같은 화면에서 처리한다'],
+  [/권한·저장·감사 로그를 기본 운영으로 둔다/g, '접근·저장·기록을 기본 운영으로 둔다'],
+  [/보드를 열고 함께 고칠 사람을 부른다/g, '화면을 열고 함께할 사람을 부른다'],
 ];
 
 /**
@@ -12758,7 +12863,15 @@ function productLaunchStepBodyForTitle(title: string, topic: string, index: numb
   return fallbacks[index % fallbacks.length]!;
 }
 
-function healProductLaunchStructuralQuality(html: string, topic: string): string {
+function healProductLaunchStructuralQuality(
+  html: string,
+  topic: string,
+  // 1007-N01 — when the brief is not about Teamver, the product-launch heals
+  // must not invent Teamver product copy (price plans, 같은 보드/권한 경계 pads,
+  // testimonial, Ship lede). Content that cannot be made on-topic is left as the
+  // model wrote it rather than overwritten with Teamver filler.
+  allowTeamverCopy: boolean = briefIsAboutTeamverProduct(topic),
+): string {
   let out = stripForeignBlockFrameTypographyFromProductLaunch(html);
   const spans = listHealSlideHostSpans(out);
   for (let i = spans.length - 1; i >= 0; i -= 1) {
@@ -12776,7 +12889,7 @@ function healProductLaunchStructuralQuality(html: string, topic: string): string
       body = wipeProductLaunchOrphanPriceTokens(body);
     }
     body = wipeProductLaunchDemoAmounts(body);
-    body = refillProductLaunchLeftoverCardLeaves(body, topic, i);
+    body = refillProductLaunchLeftoverCardLeaves(body, topic, i, allowTeamverCopy);
     const structuralTitle = productLaunchStructuralHeading(body, span.attrs, topic);
     if (brokenHeading && headingMatch) {
       body = body.replace(
@@ -12893,10 +13006,10 @@ function healProductLaunchStructuralQuality(html: string, topic: string): string
   out = salvageBrokenProductLaunchMarkup(out);
   out = wipeProductLaunchEnglishDemoChrome(out);
   out = healProductLaunchCtaDisplay(out);
-  out = fillProductLaunchSparseCenterSlides(out, topic);
+  out = fillProductLaunchSparseCenterSlides(out, topic, allowTeamverCopy);
   out = ensureProductLaunchCoverHeroShot(out);
   out = wipeProductLaunchEmptyDeckFooters(out);
-  out = healProductLaunchPackCloseDump(out, topic);
+  out = healProductLaunchPackCloseDump(out, topic, allowTeamverCopy);
   // 1006-N01 슬라이스 6 — 저장된 Teamver persist 결과가 여전히 빈 dim-dot
   // 캡션, 2단 Ship 좌캠 공백, kicker↔h1 "문제" 중복, price-card 슬라이드의
   // "증거/묶는" h2를 그대로 둔다. fillMode(json)는 유지.
@@ -12904,14 +13017,14 @@ function healProductLaunchStructuralQuality(html: string, topic: string): string
   out = stripProductLaunchTrailingSeparatorDots(out);
   out = healProductLaunchKickerParrotsHeading(out, topic);
   out = retitleProductLaunchPriceCardSlide(out, topic);
-  out = fillProductLaunchShipSlide(out, topic);
+  out = fillProductLaunchShipSlide(out, topic, allowTeamverCopy);
   // 1006-N01 슬라이스 7 — 2칸 그리드·2단 step·헤드폰 아이콘·표지 lede.
-  out = padProductLaunchSparsePairs(out, topic);
+  out = padProductLaunchSparsePairs(out, topic, allowTeamverCopy);
   out = stripProductLaunchFeatureDemoIcons(out);
   out = diversifyProductLaunchRepeatedKickers(out, topic);
   // Defensive 조사 교정 — pack-dump heal이 어떤 분기를 못 타도 반드시 적용.
   out = healProductLaunchBrokenParticles(out);
-  return restoreProductLaunchPriceCardWeight(out);
+  return restoreProductLaunchPriceCardWeight(out, allowTeamverCopy);
 }
 
 const PRODUCT_LAUNCH_CARD_SHELLS = ['feature-card', 'price-card', 'step', 'card'] as const;
@@ -13030,8 +13143,9 @@ function refillProductLaunchLeftoverCardLeaves(
   body: string,
   topic: string,
   slideIndex: number,
+  allowTeamverCopy = true,
 ): string {
-  const role = genericRoleCopyForIndex(topic || 'Teamver', null, slideIndex + 1);
+  const role = genericRoleCopyForIndex(topic || 'Teamver', null, slideIndex + 1, allowTeamverCopy);
   let next = body;
   let itemIndex = 0;
   for (const className of PRODUCT_LAUNCH_CARD_SHELLS) {
@@ -13266,7 +13380,7 @@ function healProductLaunchCtaDisplay(html: string): string {
   );
 }
 
-function fillProductLaunchSparseCenterSlides(html: string, topic: string): string {
+function fillProductLaunchSparseCenterSlides(html: string, topic: string, allowTeamverCopy = true): string {
   const dest = String(html ?? '');
   const spans = listHealSlideHostSpans(dest);
   let out = dest;
@@ -13284,7 +13398,7 @@ function fillProductLaunchSparseCenterSlides(html: string, topic: string): strin
     if (/\blede\b/i.test(body)) continue;
     if (/\b(?:feature-card|price-card|step)\b/i.test(body)) continue;
     if (!/<h[12]\b/i.test(body)) continue;
-    const role = genericRoleCopyForIndex(topic || 'Teamver', null, i + 1);
+    const role = genericRoleCopyForIndex(topic || 'Teamver', null, i + 1, allowTeamverCopy);
     if (!role.lead) continue;
     body = body.replace(
       /(<\/h[12]>)/i,
@@ -13295,8 +13409,11 @@ function fillProductLaunchSparseCenterSlides(html: string, topic: string): strin
   return out;
 }
 
-function restoreProductLaunchPriceCardWeight(html: string): string {
+function restoreProductLaunchPriceCardWeight(html: string, allowTeamverCopy = true): string {
   const dest = String(html ?? '');
+  // 1007-N01 — the amount labels (한 화면/한 팀/한 정책) are Teamver workspace
+  // framing. On a non-Teamver deck leave the model's own price-card amounts.
+  if (!allowTeamverCopy) return dest;
   const spans = listHealSlideHostSpans(dest);
   let out = dest;
   for (let i = spans.length - 1; i >= 0; i -= 1) {
@@ -13521,9 +13638,13 @@ function appendProductLaunchPairItem(
  * price-card와 가격·KPI는 짓지 않는다. step 슬라이드에 kicker가 없으면
  * `정착 순서`를 둔다.
  */
-function padProductLaunchSparsePairs(html: string, topic: string): string {
+function padProductLaunchSparsePairs(html: string, topic: string, allowTeamverCopy = true): string {
   const brand = topic || 'Teamver';
   const dest = String(html ?? '');
+  // 1007-N01 — the third card comes from the Teamver 같은 보드/권한 경계 pool and
+  // widens g2→g3. On a non-Teamver deck do not pad a 2-card grid with Teamver
+  // copy; leave the model's grid as-is.
+  if (!allowTeamverCopy) return dest;
   const spans = listHealSlideHostSpans(dest);
   if (spans.length === 0) return dest;
   const seen = new Set<string>();
@@ -13673,9 +13794,13 @@ function smallestProductLaunchDiv(
  * 넣는다. 이미지·카드가 있는 칸과 `flex:1.5` 는 유지한다. 색은 킷
  * `.slide.dark .lede` 에 맡긴다. 가격을 지어내지 않는다.
  */
-function fillProductLaunchShipSlide(html: string, topic: string): string {
+function fillProductLaunchShipSlide(html: string, topic: string, allowTeamverCopy = true): string {
   const brand = topic || 'Teamver';
   const dest = String(html ?? '');
+  // 1007-N01 — the injected Ship lede ("보드를 열고 함께 고칠 사람을 부른다 …")
+  // is Teamver product copy. On a non-Teamver deck leave the empty column as-is
+  // rather than filling it with Teamver filler.
+  if (!allowTeamverCopy) return dest;
   const spans = listHealSlideHostSpans(dest);
   let out = dest;
   for (let i = spans.length - 1; i >= 0; i -= 1) {
@@ -13701,7 +13826,7 @@ function fillProductLaunchShipSlide(html: string, topic: string): string {
   return out;
 }
 
-function healProductLaunchPackCloseDump(html: string, topic: string): string {
+function healProductLaunchPackCloseDump(html: string, topic: string, allowTeamverCopy = true): string {
   const brand = topic || 'Teamver';
   let out = String(html ?? '').replace(/나눠같이/g, '나눠 같이');
   out = out.replace(/([가-힣])다\.\s*를/g, '$1 것을');
@@ -13711,9 +13836,15 @@ function healProductLaunchPackCloseDump(html: string, topic: string): string {
     (full, open: string, inner: string, close: string) => {
       const plain = visibleDeckCopy(inner);
       if (!PRODUCT_LAUNCH_PACK_CLOSE_DUMP_RE.test(plain)) return full;
-      const next = ledeReplacements === 0
-        ? `${brand}에서 초안·수정·공유가 한 흐름이다.`
-        : '첫 화면을 열고 같이 고칠 사람을 부른다.';
+      // 1007-N01 — the dumped pack text is garbage either way. On a non-Teamver
+      // deck replace it with topic-neutral copy instead of Teamver product copy.
+      const next = allowTeamverCopy
+        ? (ledeReplacements === 0
+          ? `${brand}에서 초안·수정·공유가 한 흐름이다.`
+          : '첫 화면을 열고 같이 고칠 사람을 부른다.')
+        : (ledeReplacements === 0
+          ? `${brand}의 핵심을 이어서 정리한다.`
+          : `${brand}를 오늘부터 바로 시작해 본다.`);
       ledeReplacements += 1;
       return `${open}${escapeHtml(next)}${close}`;
     },
@@ -13729,6 +13860,9 @@ function healProductLaunchPackCloseDump(html: string, topic: string): string {
       ) {
         return full;
       }
+      // 1007-N01 — do not invent a Teamver testimonial on a non-Teamver deck.
+      // Clear the dumped quote rather than overwriting with Teamver marketing.
+      if (!allowTeamverCopy) return `${open}${close}`;
       return `${open}${escapeHtml(`${brand}를 쓰기 시작한 뒤, 작업이 한곳으로 모이기 시작했다.`)}${close}`;
     },
   );
@@ -13870,6 +14004,9 @@ function fillProductLaunchKitSlide(
   input: StudioCreativeFillInput,
   attrs = '',
   slideIndex = 0,
+  // 1007-N01 — callers that already resolved the deck-wide Teamver gate pass it
+  // here so per-slide detection does not drift on slides whose heading omits the brand.
+  allowTeamverCopyOverride?: boolean,
 ): string {
   let next = String(body ?? '').replace(/◎\s*/g, '').replace(/Teamver을/g, 'Teamver를');
   const topic = resolveProductLaunchTopicNoun(
@@ -13878,13 +14015,20 @@ function fillProductLaunchKitSlide(
     input.lead,
     input.kicker,
   );
+  // 1007-N01 — gate Teamver-specific invented copy (price-plan bullets,
+  // testimonial) on whether the brief is actually about Teamver.
+  const allowTeamverCopy = allowTeamverCopyOverride ?? briefIsAboutTeamverProduct(
+    input.title ?? input.topic,
+    input.brief ?? input.topic,
+    input.kicker,
+  );
   const heading = visibleDeckCopy(
     next.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
   );
   const kickerText = visibleDeckCopy(
     /<[^>]*\bkicker\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? input.kicker ?? '',
   );
-  const role = genericRoleCopyForIndex(topic || 'Teamver', input.brief ?? input.topic ?? null, slideIndex + 1);
+  const role = genericRoleCopyForIndex(topic || 'Teamver', input.brief ?? input.topic ?? null, slideIndex + 1, allowTeamverCopy);
   const refillBrief = input.brief ?? input.topic;
   const headingNeedsRefill = productLaunchHeadingNeedsRefill(heading || input.title, {
     ...(refillBrief !== undefined ? { brief: refillBrief } : {}),
@@ -14067,12 +14211,19 @@ function fillProductLaunchKitSlide(
         );
       }
       if (/<[uo]l\b/i.test(filled) && productLaunchSlotNeedsRefill(listText)) {
-        const bullets = PRODUCT_LAUNCH_PRICE_PLAN_BULLETS[index]
-          ?? compactTextLines(
-            typeof line === 'string' ? line : line.body,
-            resolvedTitle,
-          ).slice(0, 3);
-        filled = replaceListItems(filled, [...bullets]);
+        // 1007-N01 — the canned price-plan bullets are Teamver workspace copy
+        // (반복 작업 한 화면/워크스페이스/감사 로그). On a non-Teamver deck fill
+        // only from the model's own line; if that is empty, leave the list.
+        const topicBullets = compactTextLines(
+          typeof line === 'string' ? line : line.body,
+          resolvedTitle,
+        ).slice(0, 3);
+        const bullets = allowTeamverCopy
+          ? (PRODUCT_LAUNCH_PRICE_PLAN_BULLETS[index] ?? topicBullets)
+          : topicBullets;
+        if (bullets.length > 0) {
+          filled = replaceListItems(filled, [...bullets]);
+        }
       }
       return filled;
     });
@@ -14150,7 +14301,8 @@ function fillProductLaunchKitSlide(
       next = replaceFirstExactClassText(
         next,
         'testimonial',
-        topic
+        // 1007-N01 — do not invent a Teamver testimonial on a non-Teamver deck.
+        topic && allowTeamverCopy
           ? `${attachKoreanJosa(topic, '을/를')} 쓰기 시작한 뒤, 작업이 한곳으로 모이기 시작했다.`
           : '',
       );
@@ -14215,16 +14367,29 @@ export function healProductLaunchLeftoverCatalogCopy(
     brief,
     harvestProductLaunchTopicFromHtml(dest),
   );
+  // 1007-N01 — single Teamver gate for the whole product-launch heal. When the
+  // brief/topic is not about Teamver, the structural heal must not inject
+  // Teamver product copy, and any Teamver pack copy that already leaked into the
+  // saved deck is neutralized at the tail.
+  const coverTitle = deriveDeckCoverTitleFromBrief(String(brief ?? ''), null);
+  // When no brief is threaded (persist/preview salvage), fall back to the deck
+  // HTML so a deck that literally references Teamver is still detected, while a
+  // non-Teamver deck (brand = its own topic noun) is not.
+  const allowTeamverCopy = briefIsAboutTeamverProduct(coverTitle || topic, brief ?? dest, null);
   const brand = productLaunchShortBrand(brief, topic);
   let out = replaceProductLaunchHeroShotCssBrand(dest, brand);
   const spans = listHealSlideHostSpans(out);
   if (spans.length === 0) {
-    return pinKoreanDeckLang(healProductLaunchStructuralQuality(
+    const healedEmpty = pinKoreanDeckLang(healProductLaunchStructuralQuality(
       stripLeftoverCatalogDemoPhrases(stripProductLaunchCatalogDemoCopy(out))
         .replace(/◎\s*/g, '')
         .replace(/Teamver을/g, 'Teamver를'),
       topic,
+      allowTeamverCopy,
     ));
+    return allowTeamverCopy
+      ? healedEmpty
+      : neutralizeTeamverPackCopyInDeckHtml(healedEmpty, brief, coverTitle || topic);
   }
   for (let i = spans.length - 1; i >= 0; i -= 1) {
     const span = spans[i]!;
@@ -14257,17 +14422,21 @@ export function healProductLaunchLeftoverCatalogCopy(
       fillLines: [],
       topic,
       ...(brief !== undefined ? { brief } : {}),
-    }, span.attrs, i);
+    }, span.attrs, i, allowTeamverCopy);
     const scrubbed = stripProductLaunchCatalogDemoCopy(nextBody);
     if (scrubbed === body) continue;
     out = `${out.slice(0, span.bodyStart)}${scrubbed}${out.slice(span.bodyEnd)}`;
   }
-  return pinKoreanDeckLang(healProductLaunchStructuralQuality(
+  const healedOut = pinKoreanDeckLang(healProductLaunchStructuralQuality(
     stripLeftoverCatalogDemoPhrases(stripProductLaunchCatalogDemoCopy(out))
       .replace(/◎\s*/g, '')
       .replace(/Teamver을/g, 'Teamver를'),
     topic,
+    allowTeamverCopy,
   ));
+  return allowTeamverCopy
+    ? healedOut
+    : neutralizeTeamverPackCopyInDeckHtml(healedOut, brief, coverTitle || topic);
 }
 
 function groveStudioRoleCopy(
@@ -19338,6 +19507,9 @@ function fillSlideShell(
   index: number,
   slotMap?: TemplateCloneSlotMap | null,
   templateKitKey?: string | null,
+  // 1007-N01 — deck-wide brief so the product-launch kit gate detects Teamver
+  // from the whole brief, not only a per-slide title that may omit the brand.
+  deckBrief?: string | null,
 ): string {
   let body = shell.body;
   const rawTitle = content.title.trim()
@@ -19607,7 +19779,21 @@ function fillSlideShell(
   body = fillEightBitOrbitKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
   body = fillCapsuleKitSlide(body, shell.attrs, { title, lead, bodyText, kicker, fillLines });
   if (slideLooksLikeProductLaunchKit(shell.attrs, body)) {
-    body = fillProductLaunchKitSlide(body, { title, lead, bodyText, kicker, fillLines }, shell.attrs);
+    // 1007-N01 — resolve the Teamver gate from the deck brief (plus this slide's
+    // title/kicker) so a Teamver deck keeps its product copy even on sub-slides
+    // whose heading omits the brand, while a non-Teamver deck stays neutral.
+    const allowTeamverCopy = briefIsAboutTeamverProduct(
+      title || rawTitle,
+      deckBrief ?? bodyText ?? lead,
+      kicker,
+    );
+    body = fillProductLaunchKitSlide(
+      body,
+      { title, lead, bodyText, kicker, fillLines },
+      shell.attrs,
+      index,
+      allowTeamverCopy,
+    );
   }
   // 루프558 — Cover slide (index 0) with empty subtitle slots must get a
   // synthesized lead BEFORE `stripEightBitOrbitCatalogDemoCopy` drops empty
