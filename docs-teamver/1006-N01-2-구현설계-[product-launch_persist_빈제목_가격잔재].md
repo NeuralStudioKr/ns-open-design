@@ -84,6 +84,17 @@ persist leftover는 줄었지만 미리보기와 다른 **킷 셸 배치**가 �
 36. **Ship CTA 좌캠 lede 복구** — CTA와 같은 행의 `flex:1` 칸이 비어 있을 때만 `${topic}에서 보드를 열고 함께 고칠 사람을 부른다. 초안과 수정이 한 흐름이 된다.` lede를 넣는다. `flex:1.5`, 이미지·카드가 있는 칸, CTA가 들어 있는 칸은 유지한다. 색은 킷 `.lede` / `.slide.dark .lede`에 맡긴다.
 37. **방어적 조사 heal** — `healProductLaunchStructuralQuality` 마지막에 `나눠같이` → `나눠 같이`, `한다.를` → `한 것을` (`초대한다.를` → `초대한 것을`)을 다시 적용한다.
 
+## 후속 (1006-N01 슬라이스 7 — 2026-10-07 재생성)
+
+슬라이스 5/6 kicker와 price-card h2(`쓰임새`)는 이미 반영된 덱에서도 표지가 비고, `나눠같이`·끝 중점·헤드폰 글리프·2칸 와이드 슬라이드가 남는다. fillMode(`json`)는 유지한다. 가격·KPI는 짓지 않는다.
+
+38. **표지 chrome** — `.dark.slide-title`은 `.center`가 아니라서 `fillProductLaunchSparseCenterSlides`가 lede를 넣지 않았다. cover/center가 kicker+제목뿐이면 role lede를 둔다. 첫 장이 h1만 있고 카드가 없으면 `.dark` / `.slide-title` / `.center` / `[data-od-slide-flow]`가 없어도 lede를 둔다. `.hero-shot`이 이미 있으면 복제하지 않는다. 없을 때만 flow가 있으면 그 형제, 없으면 표지 끝에 넣는다. head CSS의 `.hero-shot`은 노드로 세지 않는다. 빈 `.deck-footer`는 제거한다. kicker는 h1/h2 앞에 두고, flow는 제목이 없을 때만 폴백이다.
+39. **빈 motif strip** — `sanitizePersistedDeckHostLeaks`가 salvage 뒤에 `stripEmptyOfficialMotifInstances`를 돌린다. 방금 넣은 빈 hero-shot이 여기서 삭제되고 head의 `[data-od-official-motif-html].hero-shot` CSS만 남았다. product-launch `.hero-shot`은 CSS paint라 strip에서 제외하고, strip 뒤에 cover ensure와 조사 치환을 한 번 더 적용한다.
+40. **나눠같이** — `genericSlideCopyPack` 등 팩 문장은 `나눠 같이`다. persist는 붙임·제로폭·태그 사이 형태까지 `나눠 같이`로 고치고, service-intro synth가 `나눠같이`를 내면 실패하는 회귀를 둔다.
+41. **끝 중점** — dim/lede 문장 끝의 ` · ` / ` • `만 제거한다. `초안·리뷰·버전`처럼 단어 사이 붙임표는 유지한다. 점만 있는 문단 삭제는 슬라이스 6 그대로다.
+42. **헤드폰 글리프** — product-launch `feature-card`의 `♪ ◈ ◐ ✦ ✧` 아이콘만 제거한다. 다른 킷은 건드리지 않는다.
+43. **2칸 와이드** — step / feature-card / card가 정확히 2개면 `PRODUCT_LAUNCH_ALT_CARD_TITLES`에서 아직 안 쓴 제목(같은 보드·권한 경계·결과 이력…)과 기존 팩 본문을 세 번째로 붙인다. `g2`는 `g3`로 되돌린다. price-card·가격은 추가하지 않는다. step 슬라이드에 kicker가 없으면 `정착 순서`를 둔다.
+
 ## 경계
 
 - 표지 `Teamver 소개`는 유지
@@ -91,3 +102,8 @@ persist leftover는 줄었지만 미리보기와 다른 **킷 셸 배치**가 �
 - CTA 라벨은 `Teamver 시작하기`로만 정규화, 버튼 셸은 유지
 - fillMode / MiniMax 호출 정책은 유지 (`json` default)
 - 킷 선정(회사 소개 → product-launch)은 여전히 범위 밖
+
+## 변경 이력
+
+| 2026-10-07 13:11 | 슬라이스 7 flat — 표지 lede의 .dark 게이트 제거, 기존 hero-shot은 복제하지 않음 |
+| 2026-10-07 13:10 | 슬라이스 7 — 표지 hero/lede, 빈 motif strip, 나눠같이, 끝 중점, 헤드폰 글리프, 2칸 와이드 |

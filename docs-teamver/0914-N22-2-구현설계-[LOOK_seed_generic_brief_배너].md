@@ -24,3 +24,9 @@
 - generic / topical / Canvas source 분기
 - 기본 notice는 여전히 「다시 시도」
 - recovery가 messages를 넘기면 generic 문장
+
+## 후속 — 오판 (2026-10-07)
+
+- `isGenericTemplateCloneTopicBrief`: 24자 이하라도 동사·슬라이드 종류 단어를 뺀 뒤에 주제가 2자 이상 남으면 generic이 아니다.
+- `resolveTemplateCloneRunBrief`: generic 리드는 후보에서 제외한다. persist가 `[Template clone …]` 뒤를 잘라 `슬라이드 내용을 채워줘.`만 남겨도, 같은 프롬프트의 `User instruction:`을 브리프로 쓴다.
+- `genericBrief=1`은 그 브리프가 여전히 비어 있을 때만 배너에 붙는다. JSON slot-fill 실패로 LOOK seed를 유지하는 분기는 그대로다.

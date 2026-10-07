@@ -39,8 +39,15 @@
 - ☑ Teamver 채팅은 스트리밍 중에도 **계약 에코만** 숨긴다. 짧은 `작성 중` 진행 문구는 기존처럼 유지
 - ☑ API deliverable prompt에 계약 에코 금지
 
+## 슬라이스 — 슬라이드 개요 JSON 에코
+
+- ☑ `stripLeakedSlideOutlineJson` — `title` + `slides` + `kicker`/`roleHint` JSON(잘린 스트림 포함)을 채팅 문장에서 제거
+- ☑ `<artifact>` 본문은 유지. 앞뒤 사용자 문장은 유지
+- ☑ deliverable prompt에 개요 JSON 에코 금지
+
 ## 변경 이력
 
+| 2026-10-07 | 슬라이드 개요 JSON(`title`/`slides`/`kicker`/`roleHint`)을 채팅에서 숨김 |
 | 2026-10-06 | deliverable contract 한국어 에코(`작성 중입니다. <!doctype … 동봉`)를 채팅에서 숨김 |
 | 2026-09-15 | 루프508 후속 — BYOK contracts `composeSystemPrompt` locale에 패치 금지 반영 |
 | 2026-09-15 | 루프508 완료 — 패치 self-talk 숨김 + locale 프롬프트 · staging push |

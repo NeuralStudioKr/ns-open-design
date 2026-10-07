@@ -87,6 +87,28 @@ loop563 실측 (brief `Teamver 소개`):
 - ☑ 회귀 5건 수정 — `template-clone-outline`(루프419 LOOK preview·dense 10-slide), `template-clone-fill` 루프480 Block Frame dense content, loop558/560 offline-repro(단독 통과, fixture 재생성 순서 부작용)
 - ☑ 전체 스위트: 8 failed / 3337 passed → 남은 8개 중 loop558·560은 단독 통과(재생성 순서), 나머지 6개는 깨끗한 부모(d3706fa998) 기준선에서도 동일 재현되는 선행 실패(이번 변경 무관): deck-framework-compact, deck-quality-slide-count 루프550, deck-template-look-css Capsule Motif, system-prompt-api-mode compact signature, template-clone-fill 루프531·루프515
 
+## 슬라이스 7 — 표지 chrome · 조사 · 2칸 와이드
+
+2026-10-07 재생성 HTML. 슬라이스 5/6 kicker(`Teamver 한눈에` / `이렇게 씁니다` / `쓰는 단위` / `정착 순서` / `Teamver 기준` / `이어서` / `다음에`)와 price-card h2 `Teamver 쓰임새`는 이미 들어가 있다. 남은 결함은 표지·조사·끝 중점·헤드폰 글리프·2칸 슬라이드다. fillMode는 `json` 유지.
+
+- ☑ 표지가 `.dark.slide-title`이라 center lede를 건너뛰던 것 — cover에도 lede
+- ☑ hero-shot은 삽입됐지만 `stripEmptyOfficialMotifInstances`가 빈 `data-od-official-motif-html`을 지웠다. product-launch `.hero-shot`은 strip에서 제외하고 persist 끝에서 다시 확인. 빈 `.deck-footer` 제거
+- ☑ `나눠같이` — 팩 소스는 `나눠 같이`. persist 치환을 최종 HTML까지 유지. synth 회귀로 소스가 붙임꼴을 내면 실패
+- ☑ dim/lede 끝 ` · ` 제거, `초안·리뷰` 유지
+- ☑ feature-card `♪ ◈ ◐ ✦ ✧` 제거 (다른 킷 제외)
+- ☑ step / feature-card / card가 2개면 팩 제목으로 세 번째를 채우고, step에 kicker가 없으면 `정착 순서`
+- ☑ loop563 구조 테스트 19개 통과. template-clone-fill `루프55|Product Launch` 41개 통과 (synth 문장은 바꾸지 않음)
+- ☐ 이미 저장된 덱은 다시 생성하거나 persist heal을 타야 화면에 반영된다. 이번 턴은 commit/push/배포 없음
+
+### flat variant (flow 없음)
+
+같은 날 재생성본은 `[data-od-slide-flow]`도 `data-od-deck-fixed-canvas-pin`도 없고, 표지가 `.slide.dark`이며 `.hero-shot`·kicker·h1·빈 `.deck-footer`가 section 직계다. `.slide-title` / `.center`가 아니다. 슬라이스 7 heal은 이 마크업에서도 돈다. 회귀는 `tests/fixtures/loop563-product-launch-flat.html`.
+
+- 글리프 제거, `나눠같이` → `나눠 같이`, 빈 footer 제거, 2칸 feature-card/card → 3칸 `g3`, 2-step에 세 번째와 kicker는 flow에 묶여 있지 않았다.
+- 표지 lede만 `.center` / `.slide-title` / (첫 장 + `.dark` + h1)에 묶여 있었다. `.dark` 조건을 빼서, 카드 없는 첫 h1 표지면 클래스와 flow가 없어도 lede를 넣는다. 이 재생성 표지는 원래 `.dark`라 조건 변경 전에도 lede 대상이었다.
+- hero ensure는 요소가 있으면 즉시 반환한다. flow는 샷이 없을 때의 삽입 위치일 뿐이다. 기존 `<div class="hero-shot">`은 복제되지 않는다. kicker는 h1/h2가 있으면 flow 없이 그 앞에 붙는다.
+- `healProductLaunchLeftoverCatalogCopy`와 `sanitizePersistedDeckHostLeaks` 모두 위 단언을 통과했다. 가격·KPI는 추가하지 않는다. 배포 후 재생성하면 이 flat 덱의 위 결함은 heal 된다.
+
 ## 슬라이스 6 — 빈 dim-dot · 중복 kicker · price-card 역할 불일치
 
 사용자 재생성(2026-10-06) 실측 HTML: Ship 슬라이드 좌캠에 `<p class="dim mt-m"> · </p>` orphan만 남아 비어 보이고, 2장은 kicker/h1이 모두 `문제`로 중복, price-card 슬라이드 h2는 `${topic}가 남기는 증거`라 역할이 어긋났다. 슬라이스 5의 수정이 이미 배포된 것은 kicker 분기(`이렇게 씁니다/쓰는 단위/정착 순서/Teamver 기준/이어서/다음에`)가 `PRODUCT_LAUNCH_KICKER_BY_INDEX`와 정확히 일치해 확인됐다.
@@ -116,3 +138,8 @@ loop563 실측 (brief `Teamver 소개`):
 - 회사 소개에 product-launch 킷을 고르는 문제는 범위 밖.
 - 이미 저장된 덱은 다시 생성하거나 persist heal을 타야 반영된다.
 - fillMode는 `json`을 유지한다. 12초 순수-synth 경로는 synthetic/densified outline에서 `needsAiContentFill=true`를 강제해 다시 MiniMax fill을 타게 한다.
+
+## 변경 이력
+
+| 2026-10-07 13:11 | 슬라이스 7 flat — flow 없는 표지에서도 lede·hero·2칸·글리프 heal, loop563 19 |
+| 2026-10-07 13:10 | 슬라이스 7 — 표지 hero가 motif strip에 지워지던 원인과 2칸·글리프·조사 heal |

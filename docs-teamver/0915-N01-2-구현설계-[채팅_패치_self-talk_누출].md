@@ -39,6 +39,17 @@
 5. **표시** — Teamver 슬라이드 UI는 스트리밍 중에도 계약 에코(`<!doctype` + 동봉/같은 응답)를 `stripLeakedDeckDeliverableContractProse`로 숨긴다. 짧은 `작성 중`만 있는 진행 문구는 스트리밍 동안 유지하고, 턴이 끝나면 residue로 지운다.
 6. **프롬프트** — deliverable rule에 "채팅에 `<!doctype` / 같은 응답에 동봉 계약을 에코하지 말 것"을 명시한다.
 
+## 후속 — 슬라이드 개요 JSON 에코
+
+모델이 clone-fill 개요를 채팅에 그대로 붙인다.
+
+```json
+{"title":"…","slides":[{"title":"…","kicker":"…","lead":"…","roleHint":"
+```
+
+7. **표시** — `stripLeakedApiModeFilesystemProse`가 `"slides"` 배열과 `kicker` / `roleHint`(또는 `{"title"…"slides":[` 헤더)를 채팅 문장에서 제거한다. 잘린 스트림도 지운다. `<artifact>` 본문은 유지한다. 앞뒤의 사용자용 문장은 남긴다.
+8. **프롬프트** — 채팅에 `title` / `slides` / `kicker` / `roleHint` JSON을 붙이지 말 것.
+
 ## 비범위
 
 - BE BFF
