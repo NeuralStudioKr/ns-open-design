@@ -64,7 +64,6 @@ describe("project conversation error messages", () => {
       userFacingRunErrorDetail,
       extractPersistedRunErrorDiagnostic,
       formatAutoContinueIncompleteOutputNotice,
-      formatTemplateCloneSlotFillRepairNotice,
       extractProjectRunErrorCode,
       extractProjectRunErrorCodeFromDetail,
       formatPersistedProjectRunError,
@@ -205,7 +204,6 @@ describe("project conversation error messages", () => {
       "terminalPersistResultKind=skipped-incomplete",
     );
     expect(formatAutoContinueIncompleteOutputNotice()).toContain("자동으로 이어쓰기");
-    expect(formatTemplateCloneSlotFillRepairNotice()).toContain("슬라이드 내용을 구성");
     // Generic fallback must never leak developer / infra jargon to end users.
     const generic = formatProjectArtifactSaveFailedError("deck.html");
     expect(generic).not.toContain("daemon");

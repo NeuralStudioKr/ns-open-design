@@ -347,6 +347,7 @@ import {
   attachPersistedChatError,
   attachAutoContinueIncompleteOutputNotice,
   clearDurableDeliverableErrorsAfterRecovery,
+  clearTransientAutoContinueStatusEvents,
   messageHasPersistedChatError,
   messageHasVisibleProse,
 } from '../runtime/chat-events';
@@ -538,7 +539,6 @@ import {
   extractPersistedRunErrorDiagnostic,
   userFacingRunErrorDetail,
   formatAutoContinueIncompleteOutputNotice,
-  formatTemplateCloneSlotFillRepairNotice,
   formatCloneLookSeedFallbackNotice,
   formatCloneLookSeedFallbackErrorDetail,
   formatEmergencyDeckFallbackNotice,
@@ -12455,19 +12455,17 @@ export function ProjectView({
                   runConversationId,
                   autoContinueCount + 1,
                 );
-                const autoContinueNotice = isSlotFillRepairAutoContinue
-                  ? formatTemplateCloneSlotFillRepairNotice()
-                  : formatAutoContinueIncompleteOutputNotice();
+                const autoContinueNotice = formatAutoContinueIncompleteOutputNotice();
                 if (isSlotFillRepairAutoContinue) {
                   // This is an internal hand-off to a fresh AI JSON turn, not
-                  // a terminal deliverable failure. Persisting incomplete_output
-                  // here surfaces an error before the scheduled repair starts.
+                  // a terminal deliverable failure. Keep this canceled row empty:
+                  // persisting a "preparing content" warning leaves a permanent
+                  // progress banner even after the hidden repair succeeds.
                   updateAssistant((prev) => ({
-                    ...appendWarningStatusEvent(
+                    ...clearTransientAutoContinueStatusEvents(
                       clearDurableDeliverableErrorsAfterRecovery(prev),
-                      autoContinueNotice,
-                      AUTO_CONTINUE_STATUS_CODE,
                     ),
+                    content: '',
                     producedFiles: produced,
                     runStatus: 'canceled',
                     resumable: false,

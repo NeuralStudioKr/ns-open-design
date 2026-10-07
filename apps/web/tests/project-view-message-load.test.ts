@@ -1294,7 +1294,8 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("|| isSlotFillRepairSend;");
     expect(source).toContain("const repairAlreadyAttempted = isSlotFillRepairSend");
     expect(source).toContain("cloneFillMessageHistory,\n                    modelPrompt,");
-    expect(source).toContain("formatTemplateCloneSlotFillRepairNotice()");
+    expect(source).toContain("clearTransientAutoContinueStatusEvents(");
+    expect(source).toContain("content: ''");
     expect(source).toContain("priorRawFinalText: priorSlotFillResponse");
     expect(source).toContain("pendingSlotFillPriorRawRef.current = rawFinalText");
     expect(source).toContain("recoveredSlideCount: recoveredSlotFillOutline?.slides.length ?? 0");

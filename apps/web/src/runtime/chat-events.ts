@@ -198,10 +198,28 @@ export function clearDurableDeliverableErrorsAfterRecovery(
   return { ...message, events: nextEvents };
 }
 
+/** Remove an internal auto-continue progress event once its source run is terminal. */
+export function clearTransientAutoContinueStatusEvents(
+  message: ChatMessage,
+): ChatMessage {
+  const events = message.events ?? [];
+  const nextEvents = events.filter(
+    (event) => !(
+      event.kind === 'status'
+      && event.code === AUTO_CONTINUE_STATUS_CODE
+    ),
+  );
+  if (nextEvents.length === events.length) return message;
+  return { ...message, events: nextEvents };
+}
+
 export function reconcileChatMessageOnLoad(message: ChatMessage): ChatMessage {
   let reconciled = recoverChatAttachmentsFromMentions(
     reconcileUserCommentAttachments(message),
   );
+  if (reconciled.runStatus === 'canceled') {
+    reconciled = clearTransientAutoContinueStatusEvents(reconciled);
+  }
   if (reconciled.runStatus === 'succeeded') {
     reconciled = clearDurableDeliverableErrorsAfterRecovery(reconciled);
   }

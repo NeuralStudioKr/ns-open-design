@@ -8,6 +8,7 @@ import {
   attachAutoContinueIncompleteOutputNotice,
   attachPersistedChatError,
   clearDurableDeliverableErrorsAfterRecovery,
+  clearTransientAutoContinueStatusEvents,
   messageHasPersistedChatError,
   messageHasVisibleProse,
   reconcileChatMessageOnLoad,
@@ -378,6 +379,30 @@ describe('reconcileChatMessageOnLoad', () => {
       ],
     };
     expect(reconcileChatMessageOnLoad(message)).toBe(message);
+  });
+
+  it('removes stale auto-continue progress warnings from canceled repair rows', () => {
+    const message: ChatMessage = {
+      id: 'a-repair',
+      role: 'assistant',
+      content: '',
+      createdAt: 1,
+      runStatus: 'canceled',
+      events: [
+        { kind: 'status', label: 'requesting' },
+        {
+          kind: 'status',
+          label: 'warning',
+          detail: 'AI가 템플릿에 넣을 슬라이드 내용을 구성하고 있습니다…',
+          code: AUTO_CONTINUE_STATUS_CODE,
+        },
+      ],
+    };
+    const cleared = clearTransientAutoContinueStatusEvents(message);
+    expect(cleared.events).toEqual([{ kind: 'status', label: 'requesting' }]);
+    expect(reconcileChatMessageOnLoad(message).events).toEqual([
+      { kind: 'status', label: 'requesting' },
+    ]);
   });
 
   it('keeps emergency salvage success as succeeded and strips leftover incomplete_output', () => {
