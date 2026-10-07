@@ -3038,6 +3038,25 @@ export function priorDeckAllowsCompactReplacement(
   );
 }
 
+/**
+ * Clone fill is a property of the run that produced the artifact. Prefer the
+ * captured run context over mutable refs, which a queued follow-up can replace
+ * while the current run is awaiting seed resolution or disk I/O.
+ */
+export function artifactPersistAllowsTemplateCloneReplacement(input: {
+  capturedTemplateCloneHostFill?: boolean;
+  currentContentFill?: boolean;
+  currentPromptFill?: boolean;
+  priorIsCloneLookSeed?: boolean;
+}): boolean {
+  return Boolean(
+    input.capturedTemplateCloneHostFill
+    || input.currentContentFill
+    || input.currentPromptFill
+    || input.priorIsCloneLookSeed,
+  );
+}
+
 function countDeckSlideSections(html: string): number {
   // Same hosts as top-up append (`section|div.slide`). Section-only counts
   // made Capsule fills look empty so hidden top-up never scheduled.
@@ -5654,6 +5673,7 @@ export function ProjectView({
       projectFilesSnapshot?: ProjectFile[],
       sourceText?: string,
       activityStartedAt?: number,
+      persistContext?: { templateCloneHostFill?: boolean },
     ): Promise<ArtifactPersistResult> => {
       {
         const artifactHtml = typeof art.html === 'string' ? art.html.trim() : '';
@@ -6631,12 +6651,15 @@ export function ProjectView({
         : null;
       const priorIsCloneLookSeedFile = isTemplateCloneLookSeedFile(priorProjectFile);
       const allowReplaceSeedOrLeftover =
-        runTemplateCloneContentFillRef.current
-        || runTemplateClonePromptFillRef.current
+        artifactPersistAllowsTemplateCloneReplacement({
+          capturedTemplateCloneHostFill: persistContext?.templateCloneHostFill,
+          currentContentFill: runTemplateCloneContentFillRef.current,
+          currentPromptFill: runTemplateClonePromptFillRef.current,
+          priorIsCloneLookSeed: priorIsCloneLookSeedFile,
+        })
         // 루프524 — LOOK seed on disk is not a user deliverable. Any
         // compact fresh fill (fresh brief re-send after seed banner)
         // must be allowed to replace it regardless of slide-count drop.
-        || priorIsCloneLookSeedFile
         || priorDeckAllowsCompactReplacement(
           priorDiskHtml,
           runVisiblePromptRef.current || '',
@@ -11895,6 +11918,7 @@ export function ProjectView({
                   nextFiles,
                   rawFinalText,
                   startedAt,
+                  { templateCloneHostFill: isCloneHostFillTurn },
                 );
                 terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(
                   persistResult,
@@ -12000,6 +12024,7 @@ export function ProjectView({
                   nextFiles,
                   '',
                   startedAt,
+                  { templateCloneHostFill: true },
                 );
                 terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(
                   retryPersistResult,

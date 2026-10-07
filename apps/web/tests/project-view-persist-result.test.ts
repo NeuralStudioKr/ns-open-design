@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  artifactPersistAllowsTemplateCloneReplacement,
   findClientArtifactRegression,
   findClientSlideCountRegression,
   priorDeckAllowsCompactReplacement,
@@ -30,6 +31,34 @@ const parrotThree =
   + '</body></html>';
 
 describe('shouldFailRunForArtifactPersistResult', () => {
+  it('keeps a captured Clone fill replacement allowance after mutable refs change', () => {
+    const captured = artifactPersistAllowsTemplateCloneReplacement({
+      capturedTemplateCloneHostFill: true,
+      currentContentFill: false,
+      currentPromptFill: false,
+      priorIsCloneLookSeed: false,
+    });
+    expect(captured).toBe(true);
+    expect(findClientSlideCountRegression({
+      fileName: 'deck.html',
+      htmlBody: fullEight,
+      priorHtml: [
+        '<!doctype html><html><body>',
+        ...Array.from({ length: 20 }, (_, i) => (
+          `<section class="slide"><h2>Template shell ${i + 1}</h2><p>Example copy</p></section>`
+        )),
+        '</body></html>',
+      ].join(''),
+      allowSlideCountReduction: captured,
+    })).toBeNull();
+    expect(artifactPersistAllowsTemplateCloneReplacement({
+      capturedTemplateCloneHostFill: false,
+      currentContentFill: false,
+      currentPromptFill: false,
+      priorIsCloneLookSeed: false,
+    })).toBe(false);
+  });
+
   it('treats skipped-duplicate as failure for scoped comment edits', () => {
     expect(
       shouldFailRunForArtifactPersistResult(
