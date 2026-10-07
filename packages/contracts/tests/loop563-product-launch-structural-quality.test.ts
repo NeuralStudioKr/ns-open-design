@@ -541,6 +541,24 @@ describe('1007-N01 · 비-Teamver 토픽 오염 방지 (영어 회화 자가학�
     expect(healed).not.toMatch(/쓰기 시작한 뒤, 작업이 한곳으로 모이기 시작했다/);
   });
 
+  it('반복 step body 복구가 비-Teamver 덱에 Teamver step 문장을 주입하지 않는다', () => {
+    // 실제 생성 덱(영어 회화)에서 slide6 step 본문이 '조직 기본값으로...',
+    // '댓글과 버전을...', '보드로 옮기고 보기·고치기 역할을 나눈다' 로 오염됐다.
+    // 출처는 healProductLaunchStructuralQuality 의 반복 step 복구(12922) +
+    // healProductLaunchRepeatedCardCopy(12999) 가 productLaunchStepBodyForTitle 로
+    // Teamver step body 를 주입하기 때문. allowTeamverCopy 게이트가 걸려야 한다.
+    const html = productLaunchDeck([
+      '<section class="slide"><h2 class="h2">15분 회화 루틴</h2>',
+      '<div class="step"><div><h4>한 팀 보드</h4><p class="dim">같은 설명</p></div></div>',
+      '<div class="step"><div><h4>리뷰 습관</h4><p class="dim">같은 설명</p></div></div>',
+      '<div class="step"><div><h4>조직 기준</h4><p class="dim">같은 설명</p></div></div>',
+      '</section>',
+    ].join(''));
+    const healed = healProductLaunchLeftoverCatalogCopy(html, ENGLISH_BRIEF);
+    expect(healed).not.toMatch(TEAMVER_COPY_RE);
+    expect(healed).not.toMatch(/보드로 옮기고|보기·고치기|댓글과 버전|조직 기본값|워크스페이스 기본값/);
+  });
+
   it('받침으로 끝나는 토픽 명사에 조사(이/가·을/를)를 올바르게 붙인다', () => {
     // '공부법'은 받침(ㅂ)으로 끝나므로 토픽-중립 pack 이 '공부법가/공부법를'
     // 같은 깨진 조사를 만들면 안 된다. attachKoreanJosa 로 '공부법이/공부법을'.

@@ -2360,6 +2360,21 @@ export function briefIsAboutTeamverProduct(
 }
 
 /**
+ * 1007-N01 — Detect whether a deck is genuinely about Teamver from its VISIBLE
+ * copy only. Deck chrome always embeds `data-teamver-*` attributes and the
+ * `data-teamver-template-clone-size` style, so testing the raw HTML with
+ * `briefIsAboutTeamverProduct` yields a false positive for every deck. Strip
+ * styles/scripts/tags/attributes first so only rendered text is considered.
+ */
+function deckVisibleCopyMentionsTeamver(html: string): boolean {
+  const visible = String(html ?? '')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ');
+  return briefIsAboutTeamverProduct(visible, null, null);
+}
+
+/**
  * 0921-N04 (루프570) — Teamver 제품 기능 이름을 카드 title로 하드코딩한 kit
  * copy pack이 non-Teamver 브리프에도 새어 나온다. 최종 HTML에서 이들을
  * 토픽-중립 명사구로 치환하여 예: `neuralstudio.kr 회사 소개` 덱이 `같은
@@ -2403,6 +2418,20 @@ const TEAMVER_HARDCODED_PACK_TITLE_MAP: ReadonlyArray<readonly [string, string]>
  * 문장이라 non-Teamver 브리프에서 어색하다.
  */
 const TEAMVER_HARDCODED_PACK_BODY_MAP: ReadonlyArray<readonly [RegExp, string]> = [
+  // 1007-N01 — product-launch-halo pack / heal 서술구(cover·intro·ship lede 등).
+  // 이 전체-문장 매핑은 반드시 아래 명사-조각 매핑(같은 보드에서→통합 화면에서,
+  // 같은 맥락에서→공통 맥락에서 …)보다 "먼저" 와야 한다. 그렇지 않으면 조각이
+  // 명사만 바꿔 '초안과 수정을 통합 화면에서 끝낸다' 같은 반쪽 Teamver 문장이
+  // 남는다. (실제 생성 덱의 표지/intro lede 오염이 바로 이 순서 때문이었다.)
+  [/초안과 수정을 같은 보드에서 끝낸다/g, '핵심 내용을 한 화면에서 정리한다'],
+  [/초안과 수정이 한 흐름이 된다/g, '핵심 내용이 한 흐름이 된다'],
+  [/팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다/g, '핵심 내용을 한 흐름으로 정리하게 한다'],
+  [/초안·수정·공유가 한 흐름이다/g, '핵심 내용이 한 흐름으로 이어진다'],
+  [/작업이 한곳으로 모이기 시작했다/g, '핵심 내용이 한곳으로 모이기 시작했다'],
+  [/반복 작업을 한 화면에서 끝내고 초안을 바로 공유한다/g, '반복 작업을 한 화면에서 끝내고 결과를 바로 공유한다'],
+  [/리뷰·권한 요청을 같은 워크스페이스에서 처리한다/g, '검토와 요청을 같은 화면에서 처리한다'],
+  [/권한·저장·감사 로그를 기본 운영으로 둔다/g, '접근·저장·기록을 기본 운영으로 둔다'],
+  [/보드를 열고 함께 고칠 사람을 부른다/g, '화면을 열고 함께할 사람을 부른다'],
   [/초안과 피드백이 파일 밖으로 흩어지지 않는다/g, '핵심 자료가 한곳에 모인다'],
   [/보기와 고치기를 슬라이드마다 정한다/g, '역할별 접근 범위를 정한다'],
   [/누가 언제 바꿨는지 남기고 되돌린다/g, '변경 기록을 남기고 이전 상태로 되돌린다'],
@@ -2440,17 +2469,6 @@ const TEAMVER_HARDCODED_PACK_BODY_MAP: ReadonlyArray<readonly [RegExp, string]> 
   [/워크스페이스로 옮긴다/g, '작업 공간으로 옮긴다'],
   [/에서 쓸 방을 열고/g, '에서 시작 화면을 열고'],
   [/워크스페이스 기준으로 이력과 보내기를 고정한다/g, '조직 기준으로 이력과 전달을 정한다'],
-  // 1007-N01 — product-launch-halo pack / heal 서술구. 가팅으로 신규 주입은
-  // 막지만, 이미 저장된 non-Teamver 덱에 남은 문장은 여기서 토픽-중립화한다.
-  [/초안과 수정을 같은 보드에서 끝낸다/g, '핵심 내용을 한 화면에서 정리한다'],
-  [/초안과 수정이 한 흐름이 된다/g, '핵심 내용이 한 흐름이 된다'],
-  [/팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다/g, '핵심 내용을 한 흐름으로 정리하게 한다'],
-  [/초안·수정·공유가 한 흐름이다/g, '핵심 내용이 한 흐름으로 이어진다'],
-  [/작업이 한곳으로 모이기 시작했다/g, '핵심 내용이 한곳으로 모이기 시작했다'],
-  [/반복 작업을 한 화면에서 끝내고 초안을 바로 공유한다/g, '반복 작업을 한 화면에서 끝내고 결과를 바로 공유한다'],
-  [/리뷰·권한 요청을 같은 워크스페이스에서 처리한다/g, '검토와 요청을 같은 화면에서 처리한다'],
-  [/권한·저장·감사 로그를 기본 운영으로 둔다/g, '접근·저장·기록을 기본 운영으로 둔다'],
-  [/보드를 열고 함께 고칠 사람을 부른다/g, '화면을 열고 함께할 사람을 부른다'],
 ];
 
 /**
@@ -2466,7 +2484,7 @@ const TEAMVER_HARDCODED_PACK_BODY_MAP: ReadonlyArray<readonly [RegExp, string]> 
  *   - Element text content (`>...<`)만 정확히 겨냥해 attribute value / CSS
  *     선택자 안의 임의 문자열은 건드리지 않는다.
  */
-function neutralizeTeamverPackCopyInDeckHtml(
+export function neutralizeTeamverPackCopyInDeckHtml(
   html: string,
   brief?: string | null,
   deckTitle?: string | null,
@@ -2482,6 +2500,15 @@ function neutralizeTeamverPackCopyInDeckHtml(
   //   - Pass 2: 잔여 하드코드가 문장 중간에 남아 있으면 raw substring으로 치환.
   //     Teamver 제품 특유 명명(같은 보드/권한 경계/결과 이력/한 팀 보드/리뷰
   //     습관 …)은 다른 문맥에서 재등장할 확률이 낮아 안전하다.
+  // 1007-N01 FIX — Body (full-sentence) maps MUST run before title (noun) maps.
+  // The title pass does a raw substring swap (같은 보드→통합 화면, 같은 맥락→
+  // 공통 맥락), which would otherwise mutate the nouns inside Teamver sentences
+  // first and make the full-sentence body maps (초안과 수정을 같은 보드에서 끝낸다,
+  // 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다) miss, leaving half-neutralized
+  // Teamver copy like "초안과 수정을 통합 화면에서 끝낸다".
+  for (const [teamverBodyRe, neutralBody] of TEAMVER_HARDCODED_PACK_BODY_MAP) {
+    out = out.replace(teamverBodyRe, neutralBody);
+  }
   for (const [teamverTitle, neutralTitle] of TEAMVER_HARDCODED_PACK_TITLE_MAP) {
     const teamverEsc = teamverTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const titleRe = new RegExp(
@@ -2493,9 +2520,6 @@ function neutralizeTeamverPackCopyInDeckHtml(
     ));
     const rawRe = new RegExp(teamverEsc, 'g');
     out = out.replace(rawRe, neutralTitle);
-  }
-  for (const [teamverBodyRe, neutralBody] of TEAMVER_HARDCODED_PACK_BODY_MAP) {
-    out = out.replace(teamverBodyRe, neutralBody);
   }
   return out;
 }
@@ -14372,10 +14396,14 @@ export function healProductLaunchLeftoverCatalogCopy(
   // Teamver product copy, and any Teamver pack copy that already leaked into the
   // saved deck is neutralized at the tail.
   const coverTitle = deriveDeckCoverTitleFromBrief(String(brief ?? ''), null);
-  // When no brief is threaded (persist/preview salvage), fall back to the deck
-  // HTML so a deck that literally references Teamver is still detected, while a
-  // non-Teamver deck (brand = its own topic noun) is not.
-  const allowTeamverCopy = briefIsAboutTeamverProduct(coverTitle || topic, brief ?? dest, null);
+  // 1007-N01 FIX — When no brief is threaded (persist/preview salvage), detect
+  // Teamver from the deck's VISIBLE copy only. The raw deck HTML always carries
+  // chrome tokens (`data-teamver-pad`, `<style data-teamver-template-clone-size>`,
+  // `data-teamver-capsule-stack`) that `briefIsAboutTeamverProduct` matched as
+  // "teamver", so `brief ?? dest` turned the gate true for EVERY persisted deck
+  // and re-injected Teamver copy into non-Teamver decks. Strip tags/styles first.
+  const allowTeamverCopy = briefIsAboutTeamverProduct(coverTitle || topic, brief, null)
+    || (brief == null && deckVisibleCopyMentionsTeamver(dest));
   const brand = productLaunchShortBrand(brief, topic);
   let out = replaceProductLaunchHeroShotCssBrand(dest, brand);
   const spans = listHealSlideHostSpans(out);
