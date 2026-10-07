@@ -719,11 +719,34 @@ export function isGenericTemplateCloneTopicBrief(
   if (/\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\b/i.test(visible)) {
     return false;
   }
-  // Short instruction-only shells ("만들어줘", "슬라이드 만들어줘").
-  if (looksLikeInstructionNotSlideCopy(visible) && visible.length <= 24) return true;
+  // Instruction-only shells ("만들어줘", "슬라이드 만들어줘"). A short
+  // "Teamver 소개 슬라이드 만들어줘" still names a topic — do not treat every
+  // ≤24 character 만들어줘 line as an empty brief.
+  if (looksLikeInstructionNotSlideCopy(visible) && visible.length <= 24) {
+    if (instructionShellHasNoTopic(visible)) return true;
+  }
   // Longer free-form with content beyond the verb phrase → keep auto-fill.
   if (visible.length >= 12) return false;
   return looksLikeInstructionNotSlideCopy(visible);
+}
+
+/**
+ * True when a create-verb line has no product/topic left after the
+ * slide-type words and trailing particles are removed.
+ */
+function instructionShellHasNoTopic(visible: string): boolean {
+  const withoutVerbs = visible
+    .replace(/(?:만들어|작성|생성)\s*(?:줘|주세요)|설명해?\s*(?:줘|주세요)/gi, ' ')
+    .replace(/\b(?:please\s+)?(?:make|create|build|write|generate)\b/gi, ' ');
+  const withoutSlideWords = withoutVerbs
+    .replace(/(?:피피티|ppt|슬라이드\s*덱|슬라이드|덱|프레젠테이션|발표\s*자료|\bdeck\b|\bslides?\b|\bpresentation\b)/gi, ' ');
+  const tokens = withoutSlideWords
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter((token) => token.length > 0 && !/^(?:을|를|은|는|이|가|과|와|도|의|a|an|the)$/i.test(token));
+  const residue = tokens.join('');
+  return residue.length < 2;
 }
 
 const LOOK_SEED_ATTACHED_SOURCE_RE =

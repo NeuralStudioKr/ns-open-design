@@ -3380,6 +3380,10 @@ function templateCloneBriefLooksUsable(text: string | null | undefined): text is
   if (/^슬라이드 채우기에 실패해/i.test(value)) return false;
   if (/^\[?FINAL RETRY\]?/i.test(value)) return false;
   if (/^<!--od:auto_continue_incomplete_output-->/i.test(value)) return false;
+  // Boilerplate fill leads ("슬라이드 내용을 채워줘.") are usable text but not
+  // a topic. Skipping them lets a later candidate (full prompt / pending
+  // prompt) supply the real brief before LOOK-seed copy claims it was missing.
+  if (isGenericTemplateCloneTopicBrief(value)) return false;
   return true;
 }
 

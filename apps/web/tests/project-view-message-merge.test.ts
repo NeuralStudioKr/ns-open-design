@@ -236,6 +236,28 @@ describe("resolveTemplateCloneRunBrief", () => {
 
     expect(brief).toBe('Expo 개발 도구에 대해 시니어 개발자용 발표 자료를 만들어 주세요');
   });
+
+  it('skips a boilerplate fill lead and keeps the source-brief topic', () => {
+    const topic = 'Teamver 신제품 Aurora 런칭. 기존 고객에게 핵심 기능과 도입 순서를 설명한다.';
+    const prompt = [
+      '슬라이드 내용을 채워줘.',
+      '',
+      '[Template clone content fill]',
+      'Fill REAL presentation CONTENT for this create.',
+      '',
+      '[Source brief]',
+      `User instruction: ${topic}`,
+    ].join('\n');
+    const brief = resolveTemplateCloneRunBrief({
+      prompt,
+      persistedUserContent: '슬라이드 내용을 채워줘.',
+      pendingPrompt: null,
+      projectName: '슬라이드',
+    });
+
+    expect(brief).toContain('Aurora');
+    expect(brief).not.toBe('슬라이드 내용을 채워줘.');
+  });
 });
 
 describe("imageAttachmentPathsForSlideEmbed", () => {

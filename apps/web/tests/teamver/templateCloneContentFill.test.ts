@@ -717,6 +717,11 @@ describe('templateCloneContentFill', () => {
     expect(
       isGenericTemplateCloneTopicBrief('expo에 대해서 설명하는 피피티 만들어줘.'),
     ).toBe(false);
+    expect(isGenericTemplateCloneTopicBrief('슬라이드 만들어줘')).toBe(true);
+    expect(isGenericTemplateCloneTopicBrief('슬라이드를 만들어줘')).toBe(true);
+    // Short, but the product/topic is still there — not an empty shell.
+    expect(isGenericTemplateCloneTopicBrief('Teamver 소개 슬라이드 만들어줘')).toBe(false);
+    expect(isGenericTemplateCloneTopicBrief('신제품 런칭 슬라이드를 만들어줘.')).toBe(false);
     // Canvas/Drive with source material never defer.
     expect(
       isGenericTemplateCloneTopicBrief('', { hasSourceMaterial: true }),
@@ -727,6 +732,9 @@ describe('templateCloneContentFill', () => {
     expect(shouldExplainGenericBriefOnLookSeedFallback({
       brief: '슬라이드 만들어줘',
     })).toBe(true);
+    expect(shouldExplainGenericBriefOnLookSeedFallback({
+      brief: 'Teamver 소개 슬라이드 만들어줘',
+    })).toBe(false);
     expect(shouldExplainGenericBriefOnLookSeedFallback({
       brief: 'www.teamver.com 사이트 분석해서 서비스 소개 슬라이드 만들어줘.',
     })).toBe(false);
