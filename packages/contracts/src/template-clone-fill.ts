@@ -12887,7 +12887,9 @@ function healProductLaunchStructuralQuality(html: string, topic: string): string
   out = liftProductLaunchOfficialChromeOutOfFlow(out);
   out = stripProductLaunchInlineDisplayOverrides(out);
   out = restoreProductLaunchOfficialInsets(out);
-  out = normalizeProductLaunchSparseGrids(out);
+  // 1007-N01 — do not shrink g3+2 cards to g2. padProductLaunchSparsePairs
+  // adds a third card from the unused-title pool and widens g2 to g3.
+  // An existing g3 stays g3 when that pool is empty.
   out = salvageBrokenProductLaunchMarkup(out);
   out = wipeProductLaunchEnglishDemoChrome(out);
   out = healProductLaunchCtaDisplay(out);
@@ -13178,23 +13180,6 @@ function mergeDuplicateInlineStyleAttributes(html: string): string {
       return `<${tag}${stripped} style="${merged}">`;
     },
   );
-}
-
-function normalizeProductLaunchSparseGrids(html: string): string {
-  const dest = String(html ?? '');
-  const spans = listHealSlideHostSpans(dest);
-  let out = dest;
-  for (let i = spans.length - 1; i >= 0; i -= 1) {
-    const span = spans[i]!;
-    let body = out.slice(span.bodyStart, span.bodyEnd);
-    if (!/\bg3\b/.test(body)) continue;
-    const cards = exactClassBlocks(body, 'card').length
-      + exactClassBlocks(body, 'feature-card').length;
-    if (cards !== 2) continue;
-    body = body.replace(/\bg3\b/, 'g2');
-    out = `${out.slice(0, span.bodyStart)}${body}${out.slice(span.bodyEnd)}`;
-  }
-  return out;
 }
 
 const PRODUCT_LAUNCH_BRAND_PIN = 'position:absolute;top:56px;left:112px';
@@ -13530,9 +13515,11 @@ function appendProductLaunchPairItem(
 }
 
 /**
- * 1006-N01 슬라이스 7 — 1920 캔버스에 step / feature-card / card가 2개뿐이면
- * 팩에 있는 다른 역할(같은 보드·권한·이력)을 세 번째로 붙인다. price-card와
- * 가격은 짓지 않는다. step 슬라이드에 kicker가 없으면 `정착 순서`를 둔다.
+ * 1006-N01 슬라이스 7 / 1007-N01 — step / feature-card / card가 2개뿐이면
+ * 쓰지 않은 제목 풀에서 세 번째를 붙이고 g2는 g3로 넓힌다. g3+2는 g2로
+ * 줄이지 않는다. 풀이 비면 카드를 지어내지 않고 기존 g3를 유지한다.
+ * price-card와 가격·KPI는 짓지 않는다. step 슬라이드에 kicker가 없으면
+ * `정착 순서`를 둔다.
  */
 function padProductLaunchSparsePairs(html: string, topic: string): string {
   const brand = topic || 'Teamver';

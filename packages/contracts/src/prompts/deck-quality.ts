@@ -62,6 +62,16 @@ export const SLIDE_DECK_UNIQUE_SLOT_COPY_INSTRUCTION =
   "Bare one-word labels (핵심, 개념, 요약, 특징, 목표, 방향) as body copy are too thin — expand to a real sentence about THIS slot's angle.";
 
 /**
+ * 1007-N01 — one-sentence fill wiring of the unique-slot rule.
+ * The long constant stays the shared definition. Fill prompts use this short
+ * line so it can sit next to the slide-count guard without a second essay
+ * (loop554 early-stop). Still says: distinct angle per slot, do not repeat
+ * the slide title as body, do not stamp the same lead across slots.
+ */
+export const SLIDE_DECK_UNIQUE_SLOT_FILL_LINE =
+  "Each slot takes a distinct angle: do not repeat the slide title as its body, and do not stamp the same lead across slots.";
+
+/**
  * 루프546 — Keep the template's slide count. 유일성 지시와 상충 표현이 한
  * 상수 안에 공존하면 모델 순응이 흔들려 슬라이드를 드롭하는 회귀를 만들었다.
  * 이 지시는 별도 라인으로 emit해서 "장 수 유지"라는 결정을 다른 밀도·주제
@@ -123,8 +133,22 @@ export function renderSlideCountSeedHeaderHint(
  * 모델이 채우는 prompt-fill/JSON slot-fill 턴에서는 주제 명사·근거 없는 일반론을
  * 카드로 남기지 말라고 못 박는다. 카탈로그 영어 데모 잔재도 같이 금지.
  */
-export const SLIDE_DECK_TOPIC_LOCK_INSTRUCTION =
+const SLIDE_DECK_TOPIC_LOCK_CORE =
   "Topic-lock (brief-tethered content): every card/list/stat body must reference the actual brief topic with concrete nouns, examples, or judgement criteria for THAT topic. " +
-  "Generic outline scaffolds parroted verbatim — `개념 / 구조 / 영향`, `용어와 원리를 짧고 정확하게 정의`, `구성 요소와 서로 연결되는 방식을 설명`, `배경 / 핵심 질문 / 판단 기준`, `Definition / Structure / Impact` — are forbidden as final slide copy. Use them as your INTERNAL outline only; the shipped card body must swap in the brief's nouns and specifics. " +
-  "Do not invent quantitative KPIs, prices ($XB, ₩억, %), or market-share claims unless the brief or attached source materials state them. Prefer qualitative topic-specific claims over fabricated numbers. " +
+  "Generic outline scaffolds parroted verbatim — `개념 / 구조 / 영향`, `용어와 원리를 짧고 정확하게 정의`, `구성 요소와 서로 연결되는 방식을 설명`, `배경 / 핵심 질문 / 판단 기준`, `Definition / Structure / Impact` — are forbidden as final slide copy. Use them as your INTERNAL outline only; the shipped card body must swap in the brief's nouns and specifics. ";
+
+const SLIDE_DECK_TOPIC_LOCK_KPI =
+  "Do not invent quantitative KPIs, prices ($XB, ₩억, %), or market-share claims unless the brief or attached source materials state them. Prefer qualitative topic-specific claims over fabricated numbers. ";
+
+const SLIDE_DECK_TOPIC_LOCK_CATALOG =
   "Do not leave English catalog demo copy from the template example (Presentation Template, THANK YOU FOR WATCHING, NEXUS VENTURES, Q1 2026 · $1.2M, Studio Orbital, Access Tiers pricing, AGENDA.TXT, All systems operational, Connecting Founders With Opportunity, Hartfield, NorthPeak, WACC, EBITDA, Project Atlas) in a Korean deck.";
+
+export const SLIDE_DECK_TOPIC_LOCK_INSTRUCTION =
+  SLIDE_DECK_TOPIC_LOCK_CORE + SLIDE_DECK_TOPIC_LOCK_KPI + SLIDE_DECK_TOPIC_LOCK_CATALOG;
+
+/**
+ * Prompt-fill already bans invented KPIs/prices on its own line.
+ * Inject this so the KPI sentence is not repeated.
+ */
+export const SLIDE_DECK_TOPIC_LOCK_INSTRUCTION_WITHOUT_KPI_BAN =
+  SLIDE_DECK_TOPIC_LOCK_CORE + SLIDE_DECK_TOPIC_LOCK_CATALOG;

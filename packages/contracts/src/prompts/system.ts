@@ -81,6 +81,21 @@ For every slide deck creation or edit request, the turn is successful only if it
 - When the user attaches image files and asks to place them on slides, embed them with project-relative \`<img src="exact-attachment-path">\` (paths are listed in \`<attached-project-files>\` / \`[Attached image embed]\`). Do not invent remote URLs or data: URIs. Putting an attached image into a slide is in scope — it is not standalone image generation.
 `;
 
+/** JSON slot-fill: same scope intro, but this turn emits an outline, not an HTML deck. */
+function teamverSlideOnlyScope(jsonSlotFill: boolean): string {
+  if (!jsonSlotFill) return TEAMVER_SLIDE_ONLY_SCOPE.trim();
+  const intro = TEAMVER_SLIDE_ONLY_SCOPE.split('### Slide deliverable contract')[0]?.trim() ?? '';
+  return `${intro}
+
+### Slide deliverable contract
+
+The host slot-fill writes the previewable deck. This turn's deliverable IS one JSON outline beginning with \`{\`, consumed by the host slot-fill. Do not emit \`<!doctype\`, \`<artifact type="deck">\`, or \`<section class="slide">\`.
+
+**Never paste slide-outline JSON into chat** (\`title\` / \`slides\` / \`kicker\` / \`roleHint\`). The human-readable chat bubble must not show the outline JSON.
+
+- When the user attaches image files and asks to place them on slides, embed them with project-relative \`<img src="exact-attachment-path">\` (paths are listed in \`<attached-project-files>\` / \`[Attached image embed]\`). Do not invent remote URLs or data: URIs. Putting an attached image into a slide is in scope — it is not standalone image generation.`;
+}
+
 const TEAMVER_SLIDE_ONLY_FIRST_TURN_OVERRIDE = `# Slide-only — turn-1 quick brief (required)
 
 This is a slide-only workspace. On the user's **first message** in a new conversation (no prior \`[form answers — discovery]\` in the transcript):
@@ -851,6 +866,21 @@ When the user message includes \`[Existing deck edit]\` and/or \`[Attached image
 - Do NOT treat the compact 2-slide wireframe example as a literal template for edit turns — preserve the attached deck's slide count and content.
 `;
 
+/**
+ * JSON slot-fill turn: the deliverable is the outline the host consumes.
+ * The chat bubble still must not show that JSON.
+ */
+const TEAMVER_SLIDE_ONLY_API_DELIVERABLE_OVERRIDE_JSON_SLOT = `
+
+## Slide-only API deliverable rule
+
+When the user asks for a slide deck, presentation, PPT, pitch deck, or slide edit, do not treat a plan/outline/progress note as a valid final answer.
+
+If the request contains enough information to proceed, this turn's deliverable IS one JSON outline beginning with \`{\`, consumed by the host slot-fill. Do not emit \`<!doctype\`, \`<artifact type="deck">\`, or \`<section class="slide">\`.
+
+**Never paste slide-outline JSON into chat** (\`title\` / \`slides\` / \`kicker\` / \`roleHint\`). The human-readable chat bubble must not show the outline JSON.
+`;
+
 const TEAMVER_API_DECK_FRAMEWORK_OVERRIDE = `
 
 ## API — deck framework emission override (overrides daemon workflow above)
@@ -882,7 +912,20 @@ The active skill mentions \`assets/template.html\`. **In this API run that file 
 Instead: take only the skill's visual intent (palette, type scale, layout names) from the skill body text, then emit the compact filled HTML deck from the API compact contract above. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Never leave \`<!-- SLOT -->\` placeholders. Do not start by writing a \`<head>\` block; start the visible \`<body><section class="slide">\` content immediately.
 `;
 
-const API_MODE_OVERRIDE = (options: { teamverSlideOnly?: boolean } = {}) => `# API mode — no tools available (read first — overrides every rule below)
+const API_MODE_OVERRIDE = (options: { teamverSlideOnly?: boolean; jsonSlotFill?: boolean } = {}) => {
+  const jsonSlotFill = options.jsonSlotFill === true && options.teamverSlideOnly === true;
+  const allowedDeliverableBullet = jsonSlotFill
+    ? '- This turn\'s deliverable IS one JSON outline beginning with `{`, consumed by the host slot-fill. Do not emit `<!doctype`, `<artifact type="deck">`, or `<section class="slide">`. The human-readable chat bubble must not show the outline JSON.'
+    : '- A final `<artifact type="deck">...</artifact>` block containing a complete `<!doctype html>` document when the brief is ready to deliver.';
+  const sameTurnDeliverable = jsonSlotFill
+    ? 'If enough information is present to proceed, this turn\'s deliverable IS one JSON outline beginning with `{`, consumed by the host slot-fill. Do not emit `<!doctype`, `<artifact type="deck">`, or `<section class="slide">`.'
+    : 'If enough information is present to proceed, include the complete HTML deck artifact in this same response.';
+  const slideOnlyOverride = options.teamverSlideOnly
+    ? (jsonSlotFill
+      ? TEAMVER_SLIDE_ONLY_API_DELIVERABLE_OVERRIDE_JSON_SLOT
+      : TEAMVER_SLIDE_ONLY_API_DELIVERABLE_OVERRIDE)
+    : '';
+  return `# API mode — no tools available (read first — overrides every rule below)
 
 You are running through a plain Messages API. **No tools are wired through to you.** \`TodoWrite\`, \`Read\`, \`Write\`, \`Edit\`, \`Bash\`, and \`WebFetch\` are unavailable — calls to them will not execute and will not render in the UI.
 
@@ -897,13 +940,14 @@ Every later instruction in this prompt that tells you to "call TodoWrite", "run 
 
 **Allowed output:**
 - Plain chat prose to the user (in their language). State your plan as prose — a short numbered list in markdown is fine; it just must not be wrapped in \`<todo-list>\` or claim to be a tool call.
-- A final \`<artifact type="deck">...</artifact>\` block containing a complete \`<!doctype html>\` document when the brief is ready to deliver.
+${allowedDeliverableBullet}
 - \`<question-form>\` blocks for discovery (turn 1) and for mid-conversation clarification, exactly as the rules below describe — question-form is markup the UI parses, not a tool call.
 - \`<web-fetch-context>\` is fetched URL text; use it, don't say URL inaccessible.
 
-For slide deck / presentation / PPT requests in API mode, the plan is not the deliverable. Do not stop after an outline, promise, or "I'll make it" message. If enough information is present to proceed, include the complete HTML deck artifact in this same response.
+For slide deck / presentation / PPT requests in API mode, the plan is not the deliverable. Do not stop after an outline, promise, or "I'll make it" message. ${sameTurnDeliverable}
 
-If the rules below tell you to plan with TodoWrite, write the plan as prose instead. If they tell you to read skill side files before writing, describe in one sentence which patterns/conventions you're going to apply and proceed. If they tell you to run brand-spec extraction via Bash + Read + WebFetch, ask the user the missing brand questions in the discovery form instead.${options.teamverSlideOnly ? TEAMVER_SLIDE_ONLY_API_DELIVERABLE_OVERRIDE : ''}`;
+If the rules below tell you to plan with TodoWrite, write the plan as prose instead. If they tell you to read skill side files before writing, describe in one sentence which patterns/conventions you're going to apply and proceed. If they tell you to run brand-spec extraction via Bash + Read + WebFetch, ask the user the missing brand questions in the discovery form instead.${slideOnlyOverride}`;
+};
 
 const BYOK_TOOLS_OVERRIDE = (
   toolNames: readonly string[],
@@ -1648,11 +1692,17 @@ export function composeTeamverSlideApiPrompt({
   const directDeckGeneration =
     metadata?.skipDiscoveryBrief === true || metadata?.examplePrompt === true;
 
-  parts.push(API_MODE_OVERRIDE({ teamverSlideOnly: true }));
-  parts.push(TEAMVER_SLIDE_ONLY_SCOPE.trim());
+  parts.push(API_MODE_OVERRIDE({ teamverSlideOnly: true, jsonSlotFill }));
+  parts.push(teamverSlideOnlyScope(jsonSlotFill));
   if (directDeckGeneration) {
     // Teamver-specific: omit Site-ref discovery exception (fights DIRECT_STREAMING).
-    parts.push(SKIP_DISCOVERY_BRIEF_OVERRIDE_TEAMVER_SLIDE);
+    // JSON slot-fill must not also be told to emit the HTML deck this turn.
+    parts.push(jsonSlotFill
+      ? SKIP_DISCOVERY_BRIEF_OVERRIDE_TEAMVER_SLIDE.replace(
+        'then emit the deck artifact in this same turn.',
+        'then this turn\'s deliverable IS one JSON outline beginning with `{`, consumed by the host slot-fill. Do not emit `<!doctype`, `<artifact type="deck">`, or `<section class="slide">`.',
+      )
+      : SKIP_DISCOVERY_BRIEF_OVERRIDE_TEAMVER_SLIDE);
   } else {
     parts.push(TEAMVER_SLIDE_ONLY_FIRST_TURN_OVERRIDE.trim());
   }
@@ -1775,6 +1825,7 @@ export function composeTeamverSlideApiPrompt({
           + '- Host keeps LOOK seed Motif/palette/layout — do NOT emit `<!doctype` / `<section class="slide">` / Motif SVG.\n'
           + `- ${COMPACT_TEMPLATE_JSON_FILL_SLIDE_COUNT_GUIDANCE}\n`
           + '- No empty pillar cards to pad columns. No Neutral `#0f172a` / terracotta `#c96442` in outline text.\n'
+          + '- Do not use music or deco glyphs (♪ ♫ 🎵 ♩ ◈ ◐ ✦ ✧) as icons or ornaments.\n'
           + '- If Motif sprites appear below, treat as identity reference for the host seed — do not dump them in your reply.\n\n'
         )
         : hasTemplateScaffold
@@ -1832,7 +1883,9 @@ export function composeTeamverSlideApiPrompt({
       firstFillSlideCountHint,
     ),
   );
-  parts.push(TEAMVER_API_DECK_FRAMEWORK_OVERRIDE.trim());
+  if (!jsonSlotFill) {
+    parts.push(TEAMVER_API_DECK_FRAMEWORK_OVERRIDE.trim());
+  }
   if (!directDeckGeneration) {
     parts.push(TEAMVER_SLIDE_API_DISCOVERY_BINDING_RULE);
   }
@@ -1875,13 +1928,15 @@ export function composeTeamverSlideApiPrompt({
       parts.push(TEAMVER_SLIDE_API_EXISTING_DECK_IMAGE_EDIT_RULE);
     }
     if (hasSelectedTemplate) {
-      parts.push(
-        hasTemplateScaffold
-          ? TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_SCAFFOLD
-          : hasTemplateVisualKit
-          ? TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_KIT
-          : TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITHOUT_KIT,
-      );
+      const visual = hasTemplateScaffold
+        ? TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_SCAFFOLD
+        : hasTemplateVisualKit
+        ? TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_KIT
+        : TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITHOUT_KIT;
+      // Prompt-fill only. Non-fill HTML prompts stay inside the length ceiling.
+      parts.push(htmlPromptFill
+        ? `${visual}\n- Do not use music or deco glyphs (♪ ♫ 🎵 ♩ ◈ ◐ ✦ ✧) as icons or ornaments.`
+        : visual);
     }
   }
   const honorCount = compactFirstFillHonorReadLast(firstFillSlideCountHint);

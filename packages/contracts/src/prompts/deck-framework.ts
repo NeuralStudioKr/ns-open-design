@@ -857,7 +857,7 @@ The host already has the template DOM/CSS/motif in \`deck.html\`. It will swap y
 }
 \`\`\`
 3. Allowed fields: \`title\`, \`slides[].title\`, optional \`slides[].kicker\`, \`slides[].lead\`, \`slides[].body\` (newline fallback), \`slides[].items[]{title,body}\`, optional \`slides[].roleHint\` (\`cover|list|cards|timeline|stat|quote|team|process|closing|body\`).
-4. Cards / list / stat / process slides MUST use \`items\` with 2–4 \`{title, body}\` slots. Do not leave card body empty. \`lead\` is the section subtitle — not a card.
+4. Cards / list / stat / process slides MUST use \`items\` with 3–4 \`{title, body}\` slots. Do not leave card body empty. \`lead\` is the section subtitle — not a card.
 5. ${COMPACT_TEMPLATE_JSON_FILL_SLIDE_COUNT_GUIDANCE} Outline slide count = deliverable count (max 20). Never mirror the template demo page lineup.
 6. Fill REAL topical titles/bodies. No "만들어줘", no template demo nouns (Hartfield / Daisy Days captions), no empty pillar/column-number fillers, no adjacent duplicate headings.
 

@@ -15,6 +15,9 @@ import {
   SLIDE_DECK_COPY_DENSITY_INSTRUCTION,
   SLIDE_DECK_LAYOUT_VARIETY_INSTRUCTION,
   SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION,
+  SLIDE_DECK_TOPIC_LOCK_INSTRUCTION,
+  SLIDE_DECK_TOPIC_LOCK_INSTRUCTION_WITHOUT_KPI_BAN,
+  SLIDE_DECK_UNIQUE_SLOT_FILL_LINE,
   renderSlideCountRequirementInstruction,
   renderSlideCountSeedHeaderHint,
 } from '@open-design/contracts';
@@ -752,6 +755,21 @@ function instructionShellHasNoTopic(visible: string): boolean {
 const LOOK_SEED_ATTACHED_SOURCE_RE =
   /attached source materials \(Canvas\/Drive\/files\)/i;
 
+/** 1007-N01 — one sentence, adjacent to the slide-count guard. */
+const FILL_PER_SLIDE_KICKER_LINE =
+  'Each slide kicker is a distinct 2–4 word label; do not paste the same kicker (or the example OVERVIEW) onto every slide.';
+
+/** 1007-N01 — music/deco glyphs. Do not scrub these from other kits' HTML. */
+const FILL_MUSIC_DECO_GLYPH_BAN_LINE =
+  'Do not use music or deco glyphs (♪ ♫ 🎵 ♩ ◈ ◐ ✦ ✧) as icons or ornaments.';
+
+const FILL_QUALITY_LINES_JSON = [
+  SLIDE_DECK_UNIQUE_SLOT_FILL_LINE,
+  FILL_PER_SLIDE_KICKER_LINE,
+  SLIDE_DECK_TOPIC_LOCK_INSTRUCTION,
+  FILL_MUSIC_DECO_GLYPH_BAN_LINE,
+] as const;
+
 /**
  * 루프536 — LOOK seed 배너에 N09 generic-brief 문장을 붙일지.
  * Canvas/Drive 소스나 topical brief에는 붙이지 않는다.
@@ -790,16 +808,18 @@ export function templateCloneContentFillHardRules(options: {
     '- Forbidden output: <!doctype, <html, <head, <style, <section class="slide">, Motif <svg>, full example.html rewrite.',
     `- ${SLIDE_DECK_QUALITY_BAR_INSTRUCTION}`,
     `- ${SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION}`,
-    // 루프546은 전체 원복이 아님. unique-slot/topic-lock은 여기 넣지 않는다.
     // 루프554 — N이 있으면 짧은 정량 한 줄만 (v1.4.15 길이 + EXACTLY N).
+    // 1007-N01 — unique-slot / kicker / topic-lock / glyph sit on the next
+    // lines. Slide-count text stays unchanged and adjacent.
     `- ${slideCountRequirement}`,
+    ...FILL_QUALITY_LINES_JSON.map((line) => `- ${line}`),
     '- Expand THIS turn\'s brief only. Do not copy host-contract examples or the user instruction onto slides.',
     '- JSON shape: {"title":"...","slides":[{"title":"...","kicker":"...","lead":"...","roleHint":"cover|list|cards|timeline|stat|quote|team|process|closing|body","items":[{"title":"...","body":"..."}]}]}',
     '- Layout variety is mandatory: for 5+ slides use at least 3 distinct body `roleHint` values, and for 8–10 slides use at least 4 when the scaffold map offers them. Do not repeat the same cards/body layout for every page.',
     '- Pick `roleHint` from the Template scaffold map roles: cover once, then mix list/cards/stat/timeline/quote/process/body/closing according to the brief. Preserve semantic fit, but avoid one-layout decks.',
     '- Copy density must fill the chosen layout without becoming a label grid: every non-cover, non-closing slide needs a specific 25–60 Korean-character (12–30 English-word) `lead`; each `items[]` entry needs a concrete 25–60 Korean-character (12–30 English-word) `body`. Bare labels (`핵심`, `개념`, `요약`) and title-only cards fail. `stat` slides are excepted only when the metric is sourced and its label explains what the number measures.',
     '- Brand spelling: keep Latin product/brand spellings from the brief or URL (host-derived; do not phonetic-Hangulize proper nouns).',
-    '- Cards / list / stat / process slides MUST use items[] with 2–4 {title, body} slots. lead = section subtitle, not a card. Every item body must state an actor/action, mechanism, trade-off, example, or observable result; do not emit title-only cards.',
+    '- Cards / list / stat / process slides MUST use items[] with 3–4 {title, body} slots. lead = section subtitle, not a card. Every item body must state an actor/action, mechanism, trade-off, example, or observable result; do not emit title-only cards.',
     `- ${FIRST_FILL_SLIDE_COUNT_GUIDANCE} Outline length = requested count this turn (8-10 → 10; 20 → 20). Hidden top-up applies only above ${FIRST_FILL_HONOR_MAX}.`,
     '- Treat the daemon Clone seed as the visual baseline the host will keep. You only supply titles/bodies/roleHint.',
     `- If the brief is only a topic, use a default ${FIRST_FILL_SLIDE_COUNT_THIS_TURN}-slide outline (cover, why it matters, key concepts, evidence, next steps, close). Adapt labels to the topic and audience.`,
@@ -808,7 +828,7 @@ export function templateCloneContentFillHardRules(options: {
     '- REPLACE every example.html proper noun, table, and metric in your outline text. Hartfield / NorthPeak / Project Atlas / WACC / EBITDA / "Demo-data notice" are forbidden unless the user brief names them.',
     '- Prefer a closed valid JSON outline this turn over Motif/HTML fidelity experiments.',
     '- Honor stated audience/level (e.g. 시니어 개발자 = architecture/internals/trade-offs, not a beginner intro).',
-    '- Each body slide needs a real title plus 2–4 concrete bullet lines or a real paragraph in `body`. Across the deck include problem/context, how it works, concrete workflow/example, constraints or trade-offs, and next action. No "핵심 메시지를 정리합니다" filler.',
+    '- Each body slide needs a real title plus 3–4 concrete bullet lines or a real paragraph in `body`. Across the deck include problem/context, how it works, concrete workflow/example, constraints or trade-offs, and next action. No "핵심 메시지를 정리합니다" filler.',
   ];
 }
 
@@ -824,7 +844,7 @@ export function renderTemplateCloneJsonShortResponseRetryPrompt(input: {
     `Return ONE complete JSON outline with EXACTLY ${slideCount} entries in slides[].`,
     'Do not emit HTML, <section>, <artifact>, commentary, or status prose.',
     'Use the existing JSON schema: {"title":"...","slides":[{"title":"...","kicker":"...","lead":"...","roleHint":"cover|list|cards|timeline|stat|quote|team|process|closing|body","items":[{"title":"...","body":"..."}]}]}.',
-    'Every body slide must contain a concrete lead and 2-4 substantive items or an equally substantive body. Close the JSON object.',
+    'Every body slide must contain a concrete lead and 3-4 substantive items or an equally substantive body. Close the JSON object.',
   ].join(' ');
 }
 
@@ -1098,11 +1118,19 @@ export function buildTemplateClonePromptFillSeed(options: {
   // 루프550 — hard rules 라인 (정량·강제 slide-count 요구).
   const slideCountRequirementLine =
     renderSlideCountRequirementInstruction(options.seedShellCount ?? null);
+  const promptFillQualityLines = [
+    SLIDE_DECK_UNIQUE_SLOT_FILL_LINE,
+    FILL_PER_SLIDE_KICKER_LINE,
+    SLIDE_DECK_TOPIC_LOCK_INSTRUCTION_WITHOUT_KPI_BAN,
+    FILL_MUSIC_DECO_GLYPH_BAN_LINE,
+  ];
   const parts = [
     visible,
     '',
     TEMPLATE_CLONE_PROMPT_FILL_MARKER,
-    seedHeaderHint ?? '',
+    // 1007-N01 — when N is known, the seed-header hint stays first and the
+    // short quality lines sit on the next lines. Count text is unchanged.
+    ...(seedHeaderHint ? [seedHeaderHint, ...promptFillQualityLines] : []),
     'A visual deck template was selected. Create ONE complete final deck artifact now.',
     'Emit slides immediately; do not stop after </head>.',
     'Emit `<artifact type="deck" identifier="deck">` with a complete HTML document and filled slides. Do not emit JSON outline.',
@@ -1125,15 +1153,15 @@ export function buildTemplateClonePromptFillSeed(options: {
     SLIDE_DECK_QUALITY_BAR_INSTRUCTION,
     SLIDE_DECK_LAYOUT_VARIETY_INSTRUCTION,
     SLIDE_DECK_COPY_DENSITY_INSTRUCTION,
-    // 루프546은 전체 원복이 아님. prompt-fill에 unique-slot/topic-lock 없음.
     // 루프554 — N이 있으면 seed 상단 힌트만 쓰고 여기 장문 요구는 생략.
     // 중복 "Return EXACTLY N" + quality 장문이 2장 조기 종료를 유도함.
-    seedHeaderHint ? '' : slideCountRequirementLine,
+    // 1007-N01 — no header: keep-count line, then the same short quality lines.
+    ...(seedHeaderHint ? [] : [slideCountRequirementLine, ...promptFillQualityLines]),
     requestedLine,
     templateClonePromptFillSlideCountInstruction({ slideCountHint, slideCountHintSource }),
     websiteOutline
       ?? 'If the source is a website or product URL, build a real service-introduction deck: problem/context, product promise, core workflow, key features, user/team use cases, integration/security/operation notes, adoption path, and closing. Do not stop at a shallow brand intro.',
-    'Every content slide needs 2-4 concrete cards/bullets/paragraphs derived from the brief/source. A slide with only a section number and one generic title is incomplete.',
+    'Every content slide needs 3-4 concrete cards/bullets/paragraphs derived from the brief/source. A slide with only a section number and one generic title is incomplete.',
     'HTML structure guard: close badges, section labels, header pills, and number pills before opening grids/cards. Never nest the whole slide grid inside a `.header-pill`, `.title-pill`, `.tag`, or badge element.',
     'Every slide must be 1920x1080, fixed-size, overflow hidden, and navigable as a deck, not a scrolling article.',
     'Do not stop after a status sentence, outline, or partial `<head>`; close `</html></artifact>`.',

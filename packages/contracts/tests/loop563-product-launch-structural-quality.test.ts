@@ -150,6 +150,40 @@ describe('루프563 · Product Launch cross-kit / structural quality', () => {
     expect(healed).not.toMatch(/padding:\s*56px 72px/);
   });
 
+  it('제목 풀이 비어도 g3+2카드를 g2로 줄이지 않는다', () => {
+    const titles = [
+      '같은 보드',
+      '권한 경계',
+      '결과 이력',
+      '초안',
+      '수정',
+      '공유',
+      '혼자 시작',
+      '팀과 고치기',
+      '리뷰',
+      '한 팀 보드',
+      '리뷰 습관',
+      '조직 기준',
+    ];
+    const sparse = [
+      '<section class="slide"><h2 class="h2">쓰임</h2>',
+      '<div class="grid g3 mt-l">',
+      `<div class="feature-card"><h4>${titles[0]}</h4><p class="dim">파일과 대화를 한 보드에 둔다.</p></div>`,
+      `<div class="feature-card"><h4>${titles[1]}</h4><p class="dim">보기와 고치기를 나눈다.</p></div>`,
+      '</div></section>',
+    ].join('');
+    const rest = titles.slice(2).map((title) => (
+      `<section class="slide"><h2 class="h2">${title} 장면</h2><div class="feature-card"><h4>${title}</h4><p class="dim">${title}을 같은 화면에서 둔다.</p></div></section>`
+    )).join('');
+    const healed = healProductLaunchLeftoverCatalogCopy(productLaunchDeck(sparse + rest), BRIEF);
+    const sparseSlide = (healed.match(/<section\b[\s\S]*?<\/section>/gi) ?? [])
+      .find((section) => section.includes('class="grid g3') || section.includes("class='grid g3")) ?? '';
+    expect(sparseSlide).toMatch(/\bg3\b/);
+    expect(sparseSlide).not.toMatch(/\bg2\b/);
+    expect((sparseSlide.match(/\bfeature-card\b/g) ?? []).length).toBe(2);
+    expect(healed).not.toMatch(/\$\s*\d|₩\s*\d/);
+  });
+
   it('표지 chrome·영문 킷 잔재·빈 가격칸·센터 lede를 미리보기에 맞춘다', () => {
     const html = productLaunchDeck([
       '<section class="slide slide-title"><div data-od-slide-flow style="padding:56px 72px">',

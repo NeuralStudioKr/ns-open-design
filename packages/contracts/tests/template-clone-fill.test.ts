@@ -150,7 +150,10 @@ import {
   slideSectionIsShortResponsePad,
   TEAMVER_SHORT_RESPONSE_PAD_ATTR,
   TEAMVER_SHORT_RESPONSE_PAD_VALUE,
+  parseTemplateCloneDeckOutline,
+  prepareTemplateCloneSlotFillAssistantText,
 } from '../src/template-clone-fill.js';
+import { sanitizeAssistantProseForDisplay } from '../src/agent-prose-sanitize.js';
 import { pinDeckSlidesToFixedCanvas } from '../src/html/deck-fixed-canvas.js';
 import { hoistDeckHostStylesToHead } from '../src/html/deck-template-look-css.js';
 import { healAiGeneratedDeckMarkup } from '../src/html/heal-ai-generated-deck.js';
@@ -3348,6 +3351,30 @@ describe('sanitizeTemplateCloneDeckTitle', () => {
     expect(stripLeakedApiModeFilesystemProse(
       `${outlineLeak}\n<artifact type="deck"><section class="slide">본문</section>`,
     )).toBe('<artifact type="deck"><section class="slide">본문</section>');
+    const slotFillPayload = [
+      '{',
+      '  "title": "워크스페이스 소개",',
+      '  "slides": [',
+      '    {',
+      '      "title": "초안을 한곳에",',
+      '      "kicker": "작업 흐름",',
+      '      "lead": "파일과 대화를 같은 보드에서 잇는다.",',
+      '      "roleHint": "cards",',
+      '      "items": [{ "title": "초안", "body": "보드에 바로 붙일 초안이 열린다." }]',
+      '    }',
+      '  ]',
+      '}',
+    ].join('\n');
+    expect(looksLikeLeakedApiModeFilesystemProse(slotFillPayload)).toBe(true);
+    expect(sanitizeAssistantProseForDisplay(`초안을 준비합니다.\n\n${slotFillPayload}`)).toBe('초안을 준비합니다.');
+    expect(stripLeakedApiModeFilesystemProse(slotFillPayload)).toBe('');
+    const prepared = prepareTemplateCloneSlotFillAssistantText(slotFillPayload);
+    expect(prepared).toContain('"kicker"');
+    expect(prepared).toContain('"roleHint"');
+    const parsed = parseTemplateCloneDeckOutline(prepared);
+    expect(parsed?.slides[0]?.kicker).toBe('작업 흐름');
+    expect(parsed?.slides[0]?.roleHint).toBe('cards');
+    expect(parsed?.slides[0]?.title).toBe('초안을 한곳에');
     expect(looksLikeTemplateMarketingTitle('Html Ppt Zhangzara Daisy Days')).toBe(true);
     expect(looksLikeTemplateMarketingTitle('Presentation')).toBe(true);
     expect(looksLikeTemplateMarketingTitle('Slide')).toBe(true);

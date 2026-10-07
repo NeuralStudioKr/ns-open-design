@@ -955,5 +955,37 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('# Final authority (READ LAST)');
       expect(prompt).not.toContain('## Selected template — first HTML fill');
     });
+
+    it('1007-N01 — json slot-fill deliverable is one JSON outline, not an HTML deck', () => {
+      const metadata = {
+        kind: 'deck' as const,
+        skipDiscoveryBrief: true,
+        selectedDeckTemplateId: 'example-html-ppt-zhangzara-daisy-days',
+      };
+      const jsonPrompt = composeTeamverSlideApiPrompt({
+        skillName: 'Daisy Days',
+        skillBody: '## Visual summary (from template frontmatter)\n\nCream paper, coral accent.',
+        metadata,
+        templateCloneContentFill: true,
+      });
+      expect(jsonPrompt).toContain('this turn\'s deliverable IS one JSON outline beginning with `{`');
+      expect(jsonPrompt).toContain('Never paste slide-outline JSON into chat');
+      expect(jsonPrompt).toContain('human-readable chat bubble must not show the outline JSON');
+      expect(jsonPrompt).toMatch(/Do not emit `<!doctype`/);
+      expect(jsonPrompt).not.toContain(
+        'your same response MUST include exactly one complete `<artifact type="deck" identifier="deck">...</artifact>` block',
+      );
+      expect(jsonPrompt).not.toContain('include the complete HTML deck artifact in this same response');
+      expect(jsonPrompt).toMatch(/♪ ♫ 🎵/);
+
+      const htmlPrompt = composeTeamverSlideApiPrompt({
+        skillName: 'Daisy Days',
+        metadata,
+        templateClonePromptFill: true,
+      });
+      expect(htmlPrompt).toContain('Do not emit a JSON outline');
+      expect(htmlPrompt).toContain('include the complete HTML deck artifact in this same response');
+      expect(htmlPrompt).not.toContain('this turn\'s deliverable IS one JSON outline beginning with `{`');
+    });
   });
 });

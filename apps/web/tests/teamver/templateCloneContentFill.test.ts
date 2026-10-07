@@ -389,7 +389,8 @@ describe('templateCloneContentFill', () => {
     expect(seed).toMatch(/Copy density must fill the chosen layout/i);
     expect(seed).toMatch(/Brand spelling: keep Latin product\/brand spellings/i);
     expect(seed).toMatch(/25–60 Korean-character/i);
-    expect(seed).toMatch(/items\[\] with 2–4 \{title, body\}/);
+    expect(seed).toMatch(/items\[\] with 3–4 \{title, body\}/);
+    expect(seed).not.toMatch(/items\[\] with 2–4 \{title, body\}/);
     expect(seed).toMatch(/Slide count THIS TURN/i);
     expect(seed).toMatch(/default 6-slide outline/i);
     expect(seed).toMatch(/empty pillar\/column-number|Card count = content count/i);
@@ -480,39 +481,86 @@ describe('templateCloneContentFill', () => {
     );
   });
 
-  it('루프546 — prompt-fill seed keeps v1.4.15 stability: no topic/unique penalty text', () => {
+  it('루프546 / 1007-N01 — prompt-fill keeps slide count and wires short unique-slot', () => {
     const seed = buildTemplateClonePromptFillSeed({
       userInstruction: '글을 매력적으로 쓰는 팁 정리해줘',
       templateTitle: 'Html Ppt Zhangzara 8-Bit Orbit',
       slideCountHint: '6-8',
     });
-    // 루프546 · topic/unique hard bans made models shrink 10-shell seeds to 6
-    // slides. Prompt-fill should keep v1.4.15 behavior and leave this cleanup to
-    // post-fill merge/heal/gates.
-    expect(seed).not.toMatch(/Topic-lock \(brief-tethered content\)/);
-    expect(seed).not.toContain('개념 / 구조 / 영향');
-    expect(seed).not.toMatch(/prefer a distinct angle per slot/);
-    expect(seed).not.toMatch(/Do not repeat the slide title as its body/);
-    expect(seed).not.toMatch(/Bare one-word labels \(핵심, 개념, 요약/);
+    // Penalty framing stays out. Unique-slot is the one-sentence fill line,
+    // sitting next to the keep-count instruction.
+    expect(seed).toMatch(/Each slot takes a distinct angle/);
+    expect(seed).toMatch(/do not repeat the slide title as its body/i);
+    expect(seed).toMatch(/do not stamp the same lead across slots/i);
+    expect(seed).toMatch(/Each slide kicker is a distinct 2–4 word label/);
+    expect(seed).toMatch(/example OVERVIEW/);
+    expect(seed).toMatch(/Topic-lock \(brief-tethered content\)/);
+    expect(seed).toContain('개념 / 구조 / 영향');
+    expect(seed).toMatch(/3-4 concrete cards\/bullets\/paragraphs/);
+    expect(seed).not.toMatch(/2-4 concrete cards\/bullets\/paragraphs/);
+    expect(seed).toMatch(/♪ ♫ 🎵 ♩ ◈ ◐ ✦ ✧/);
     expect(seed).not.toMatch(/failed deliverable/i);
     expect(seed).not.toMatch(/majority of body slides share the same body sentence/i);
     expect(seed).toMatch(/Deliver the same number of `<section class="slide">` slides as the seed/);
+    expect(seed).toMatch(/do not merge or drop slides/);
+    const keepAt = seed.indexOf('Deliver the same number of');
+    const uniqueAt = seed.indexOf('Each slot takes a distinct angle');
+    expect(uniqueAt).toBeGreaterThan(keepAt);
+    expect(uniqueAt - keepAt).toBeLessThan(400);
+    // KPI ban stays the existing prompt-fill line, not a second topic-lock sentence.
+    expect(seed.match(/Do not invent quantitative KPIs/g)).toHaveLength(1);
+    expect(seed).toContain('headcount, NPS');
+    expect(seed).not.toContain('prices ($XB, ₩억, %)');
+    expect(seed).toMatch(/Do not emit JSON outline/i);
     // 기존 pin 유지 — CONTENT_EXPANSION은 prompt-fill seed에 노출되지 않음.
     expect(seed).not.toMatch(/Content expansion contract/i);
   });
 
-  it('루프546 — JSON slot-fill hard rules keep count without topic/unique penalty text', () => {
+  it('루프546 / 1007-N01 — JSON slot-fill wires unique-slot and full topic-lock', () => {
     const rules = templateCloneContentFillHardRules();
     const joined = rules.join('\n');
-    expect(joined).not.toMatch(/Topic-lock \(brief-tethered content\)/);
-    expect(joined).not.toMatch(/prefer a distinct angle per slot/);
-    expect(joined).not.toContain('개념 / 구조 / 영향');
+    expect(joined).toMatch(/Each slot takes a distinct angle/);
+    expect(joined).toMatch(/do not repeat the slide title as its body/i);
+    expect(joined).toMatch(/do not stamp the same lead across slots/i);
+    expect(joined).toMatch(/Each slide kicker is a distinct 2–4 word label/);
+    expect(joined).toMatch(/Topic-lock \(brief-tethered content\)/);
+    expect(joined).toContain('개념 / 구조 / 영향');
+    expect(joined).toContain('Do not invent quantitative KPIs, prices ($XB, ₩억, %)');
+    expect(joined.match(/Do not invent quantitative KPIs/g)).toHaveLength(1);
+    expect(joined).toMatch(/items\[\] with 3–4 \{title, body\}/);
+    expect(joined).not.toMatch(/items\[\] with 2–4 \{title, body\}/);
+    expect(joined).toMatch(/♪ ♫ 🎵 ♩ ◈ ◐ ✦ ✧/);
     expect(joined).toMatch(/Deliver the same number of `<section class="slide">` slides as the seed/);
+    expect(joined).toMatch(/do not merge or drop slides/);
+    const keepAt = joined.indexOf('Deliver the same number of');
+    const uniqueAt = joined.indexOf('Each slot takes a distinct angle');
+    expect(uniqueAt).toBeGreaterThan(keepAt);
+    expect(uniqueAt - keepAt).toBeLessThan(500);
     // JSON slot-fill은 원래대로 CONTENT_EXPANSION도 유지.
     expect(joined).toMatch(/Content expansion contract/i);
     // unique/topic penalty framing 제거. `Content expansion contract` still
     // contains its long-standing "Failed deliverables" section for JSON mode.
     expect(joined).not.toMatch(/majority of body slides share the same body sentence/i);
+  });
+
+  it('1007-N01 — EXACTLY N stays next to the short quality lines', () => {
+    const seed = buildTemplateClonePromptFillSeed({
+      userInstruction: '글을 매력적으로 쓰는 팁 정리해줘',
+      seedShellCount: 10,
+    });
+    expect(seed).toContain('Seed contains 10 slides. Return EXACTLY 10 <section class="slide"> elements.');
+    const headerAt = seed.indexOf('Seed contains 10 slides');
+    const uniqueAt = seed.indexOf('Each slot takes a distinct angle');
+    expect(uniqueAt).toBeGreaterThan(headerAt);
+    expect(uniqueAt - headerAt).toBeLessThan(220);
+    expect(seed.match(/Return EXACTLY 10/g)).toHaveLength(1);
+
+    const rules = templateCloneContentFillHardRules({ seedShellCount: 10 }).join('\n');
+    expect(rules).toContain('Return EXACTLY 10');
+    const ruleCount = rules.indexOf('Return EXACTLY 10');
+    const ruleUnique = rules.indexOf('Each slot takes a distinct angle');
+    expect(ruleUnique).toBeGreaterThan(ruleCount);
+    expect(ruleUnique - ruleCount).toBeLessThan(220);
   });
 
   it('루프546 — "장 수 유지"는 별도 상수로 분리되어 prompt seed / hard rules 양쪽에 emit', () => {
