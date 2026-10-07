@@ -87,6 +87,18 @@ loop563 실측 (brief `Teamver 소개`):
 - ☑ 회귀 5건 수정 — `template-clone-outline`(루프419 LOOK preview·dense 10-slide), `template-clone-fill` 루프480 Block Frame dense content, loop558/560 offline-repro(단독 통과, fixture 재생성 순서 부작용)
 - ☑ 전체 스위트: 8 failed / 3337 passed → 남은 8개 중 loop558·560은 단독 통과(재생성 순서), 나머지 6개는 깨끗한 부모(d3706fa998) 기준선에서도 동일 재현되는 선행 실패(이번 변경 무관): deck-framework-compact, deck-quality-slide-count 루프550, deck-template-look-css Capsule Motif, system-prompt-api-mode compact signature, template-clone-fill 루프531·루프515
 
+## 슬라이스 6 — 빈 dim-dot · 중복 kicker · price-card 역할 불일치
+
+사용자 재생성(2026-10-06) 실측 HTML: Ship 슬라이드 좌캠에 `<p class="dim mt-m"> · </p>` orphan만 남아 비어 보이고, 2장은 kicker/h1이 모두 `문제`로 중복, price-card 슬라이드 h2는 `${topic}가 남기는 증거`라 역할이 어긋났다. 슬라이스 5의 수정이 이미 배포된 것은 kicker 분기(`이렇게 씁니다/쓰는 단위/정착 순서/Teamver 기준/이어서/다음에`)가 `PRODUCT_LAUNCH_KICKER_BY_INDEX`와 정확히 일치해 확인됐다.
+
+- ☑ `wipeProductLaunchOrphanDimDots` — `<p class="dim …"> · </p>` 및 빈 `<p class="dim …"></p>` 제거
+- ☑ `healProductLaunchKickerParrotsHeading` — kicker와 h1/h2가 같은 명사를 반복할 때만 index 라벨로 교체. 브랜드만 겹치면 유지
+- ☑ `retitleProductLaunchPriceCardSlide` — price-card ≥2장 + h2가 `남기는 증거/묶는 일/모으는 일/운영 근거`이면 h2를 `${topic} 쓰임새`로 교체. 카드 h4는 유지
+- ☑ `fillProductLaunchShipSlide` — CTA와 같은 행의 빈 `flex:1` 칸에만 `.lede` 삽입. 이미지·`flex:1.5`·CTA가 들어 있는 칸은 유지. 색은 킷 CSS
+- ☑ 방어적 `나눠같이` / `한다.를` → `한 것을` 치환을 heal 체인 끝으로 승격
+- ☑ loop563 구조 테스트 13개 통과
+- ☑ 전체 contracts 스위트: 11개 pre-existing 실패와 동일(슬라이스 4b 때 알려진 선행 실패 + loop558~561 live-fixture 환경 의존 + e2e). 슬라이스 6으로 새로 깨진 테스트 없음
+
 ## 슬라이스 5 — pack dump / 반복 kicker
 
 실측 HTML(10장, `www.teamver.com` 서비스 소개) 기준.

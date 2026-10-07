@@ -12884,7 +12884,18 @@ function healProductLaunchStructuralQuality(html: string, topic: string): string
   out = fillProductLaunchSparseCenterSlides(out, topic);
   out = ensureProductLaunchCoverHeroShot(out);
   out = healProductLaunchPackCloseDump(out, topic);
+  // 1006-N01 슬라이스 6 — 저장된 Teamver persist 결과가 여전히 빈 dim-dot
+  // 캡션, 2단 Ship 좌캠 공백, kicker↔h1 "문제" 중복, price-card 슬라이드의
+  // "증거/묶는" h2를 그대로 둔다. fillMode(json)는 유지.
+  out = wipeProductLaunchOrphanDimDots(out);
+  out = healProductLaunchKickerParrotsHeading(out, topic);
+  out = retitleProductLaunchPriceCardSlide(out, topic);
+  out = fillProductLaunchShipSlide(out, topic);
   out = diversifyProductLaunchRepeatedKickers(out, topic);
+  // Defensive 조사 교정 — pack-dump heal이 어떤 분기를 못 타도 반드시 적용.
+  out = out
+    .replace(/나눠같이/g, '나눠 같이')
+    .replace(/([가-힣])다\.\s*를/g, '$1 것을');
   return restoreProductLaunchPriceCardWeight(out);
 }
 
@@ -13336,10 +13347,171 @@ function ensureProductLaunchCoverHeroShot(html: string): string {
   return `${dest.slice(0, cover.bodyEnd)}${shot}${dest.slice(cover.bodyEnd)}`;
 }
 
+/**
+ * 1006-N01 슬라이스 6 — Pack-dump heal이 testimonial / byline 슬롯을 지운
+ * 뒤 남는 `<p class="dim …"> · </p>` orphan 캡션 (가운데 점만 남음)과 완전히
+ * 비어 있는 dim 문단을 제거한다. 사용자 리포트 2026-10-06: Ship 슬라이드
+ * 좌캠에 가운데 점 하나만 남아 전체 좌반부가 비어 보였다.
+ */
+function wipeProductLaunchOrphanDimDots(html: string): string {
+  return String(html ?? '')
+    .replace(/<p\b[^>]*\bdim\b[^>]*>\s*(?:·|•|・|\s|&nbsp;|&middot;)+\s*<\/p>/gi, '')
+    .replace(/<p\b[^>]*\bdim\b[^>]*>\s*<\/p>/gi, '');
+}
+
+const PRODUCT_LAUNCH_PRICE_CARD_HEADING_LABEL = '쓰임새';
+
+/**
+ * 1006-N01 슬라이스 6 — synth outline이 pack `stats/quote` role의 h2
+ * (`${brand}가 남기는 증거`, `${brand}가 묶는 일`, `${brand} 운영`)를
+ * price-card 슬라이드에 꽂으면 제목과 본문이 맞지 않는다. price-card가
+ * 최소 2장 이상이면 h2를 `${topic} 쓰임새` 로 정리한다.
+ */
+function retitleProductLaunchPriceCardSlide(html: string, topic: string): string {
+  const brand = topic || 'Teamver';
+  const dest = String(html ?? '');
+  const spans = listHealSlideHostSpans(dest);
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    const priceCards = exactClassBlocks(body, 'price-card');
+    if (priceCards.length < 2) continue;
+    const heading = visibleDeckCopy(
+      body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
+    );
+    if (!heading) continue;
+    const mismatched = /(?:남기는 증거|묶는 일|모으는 일|운영 근거)\s*$/.test(heading)
+      || heading === `${brand} 운영`;
+    if (!mismatched) continue;
+    const nextHeading = `${brand} ${PRODUCT_LAUNCH_PRICE_CARD_HEADING_LABEL}`;
+    const nextBody = replaceFirstHeadingText(body, nextHeading);
+    out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
+  }
+  return out;
+}
+
+const PRODUCT_LAUNCH_KICKER_PARROT_NOUNS = [
+  '쓰는 자리',
+  '작업 흐름',
+  '쓰임새',
+  '문제',
+  '주제',
+  '과제',
+] as const;
+
+/**
+ * kicker와 h1/h2가 같은 명사(문제·쓰임새·작업 흐름…)를 반복할 때만 true.
+ * 브랜드 문자열이 양쪽에 있다는 이유만으로 역할 라벨을 바꾸지 않는다.
+ */
+function productLaunchKickerParrotsHeading(kicker: string, heading: string): boolean {
+  const label = kicker.replace(/\s+/g, ' ').trim();
+  const title = heading.replace(/\s+/g, ' ').trim();
+  if (!label || !title) return false;
+  if (label === title) return true;
+  const shared = PRODUCT_LAUNCH_KICKER_PARROT_NOUNS.find(
+    (noun) => label.includes(noun) && title.includes(noun),
+  );
+  if (!shared) return false;
+  return /(?:풀어야 하는|해결하는|쓰는|작업|쓰임)/.test(label);
+}
+
+/**
+ * 1006-N01 슬라이스 6 — synth outline이 kicker에 `${topic}가 풀어야 하는
+ * 문제` 같은 title-tone 문장을 넣고 h1에도 `${topic}가 해결하는 문제`를
+ * 넣어 kicker와 heading이 사실상 같은 말을 반복한다. 겹치면 kicker를
+ * 역할별 짧은 라벨로 교체한다.
+ */
+function healProductLaunchKickerParrotsHeading(html: string, topic: string): string {
+  const brand = topic || 'Teamver';
+  const dest = String(html ?? '');
+  const spans = listHealSlideHostSpans(dest);
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    const kicker = visibleDeckCopy(
+      /<[^>]*\bkicker\b[^>]*>([\s\S]*?)<\//i.exec(body)?.[1] ?? '',
+    );
+    if (!kicker) continue;
+    const heading = visibleDeckCopy(
+      body.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
+    );
+    if (!productLaunchKickerParrotsHeading(kicker, heading)) continue;
+    const nextKicker = PRODUCT_LAUNCH_KICKER_BY_INDEX[i]
+      ? PRODUCT_LAUNCH_KICKER_BY_INDEX[i]!(brand)
+      : `${brand} 한눈에`;
+    if (nextKicker === kicker) continue;
+    const nextBody = replaceFirstExactClassText(body, 'kicker', nextKicker);
+    out = `${out.slice(0, span.bodyStart)}${nextBody}${out.slice(span.bodyEnd)}`;
+  }
+  return out;
+}
+
+const PRODUCT_LAUNCH_SHIP_FLEX_OPEN_RE =
+  /<div\b[^>]*\bstyle\s*=\s*["'][^"']*\bflex\s*:\s*1(?![\d.])[^"']*["'][^>]*>/i;
+
+function productLaunchShipColumnHasContent(inner: string): boolean {
+  if (visibleDeckCopy(inner).length >= 4) return true;
+  return /<(?:img|svg|video|canvas|ul|ol|h[1-6])\b/i.test(inner)
+    || /\b(?:hero-shot|feature-card|price-card|step|cta-btn)\b/i.test(inner);
+}
+
+function smallestProductLaunchDiv(
+  html: string,
+  predicate: (block: string) => boolean,
+): { start: number; block: string } | null {
+  const openRe = /<div\b[^>]*>/gi;
+  let best: { start: number; block: string } | null = null;
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(html)) !== null) {
+    const block = extractBalancedFrom(html, match.index);
+    if (!block || !predicate(block)) continue;
+    if (!best || block.length < best.block.length) {
+      best = { start: match.index, block };
+    }
+  }
+  return best;
+}
+
+/**
+ * 1006-N01 슬라이스 6 — Ship (CTA + 큰 숫자) 슬라이드의 좌캠(`flex:1`)이
+ * dim-dot wipe 후 완전히 비어 보인다. CTA와 같은 행의 빈 칸에만 lede를
+ * 넣는다. 이미지·카드가 있는 칸과 `flex:1.5` 는 유지한다. 색은 킷
+ * `.slide.dark .lede` 에 맡긴다. 가격을 지어내지 않는다.
+ */
+function fillProductLaunchShipSlide(html: string, topic: string): string {
+  const brand = topic || 'Teamver';
+  const dest = String(html ?? '');
+  const spans = listHealSlideHostSpans(dest);
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    if (!/\bcta-btn\b/i.test(body)) continue;
+    const row = smallestProductLaunchDiv(
+      body,
+      (block) => /\bcta-btn\b/i.test(block) && PRODUCT_LAUNCH_SHIP_FLEX_OPEN_RE.test(block),
+    );
+    if (!row) continue;
+    const leftOpen = PRODUCT_LAUNCH_SHIP_FLEX_OPEN_RE.exec(row.block);
+    if (!leftOpen || leftOpen.index == null) continue;
+    const left = extractBalancedFrom(row.block, leftOpen.index);
+    if (!left || /\bcta-btn\b/i.test(left)) continue;
+    const inner = left.slice(leftOpen[0].length, -'</div>'.length);
+    if (productLaunchShipColumnHasContent(inner)) continue;
+    const lede = `<p class="lede">${escapeHtml(`${brand}에서 보드를 열고 함께 고칠 사람을 부른다. 초안과 수정이 한 흐름이 된다.`)}</p>`;
+    const nextRow = `${row.block.slice(0, leftOpen.index)}${leftOpen[0]}${lede}</div>${row.block.slice(leftOpen.index + left.length)}`;
+    const abs = span.bodyStart + row.start;
+    out = `${out.slice(0, abs)}${nextRow}${out.slice(abs + row.block.length)}`;
+  }
+  return out;
+}
+
 function healProductLaunchPackCloseDump(html: string, topic: string): string {
   const brand = topic || 'Teamver';
   let out = String(html ?? '').replace(/나눠같이/g, '나눠 같이');
-  out = out.replace(/([가-힣]다)\.\s*를/g, '$1 것을');
+  out = out.replace(/([가-힣])다\.\s*를/g, '$1 것을');
   let ledeReplacements = 0;
   out = out.replace(
     /(<p\b[^>]*\blede\b[^>]*>)([\s\S]*?)(<\/p>)/gi,

@@ -213,6 +213,55 @@ describe('루프563 · Product Launch cross-kit / structural quality', () => {
     expect(healed).toMatch(/class="lede"/);
   });
 
+  it('빈 dim-dot·Ship 좌캠·price-card 타이틀·kicker↔h1 중복을 persist에서 고친다', () => {
+    const html = productLaunchDeck([
+      '<section class="slide center tc"><p class="kicker">Teamver가 풀어야 하는 문제</p>',
+      '<h1 class="h1">Teamver가 해결하는 문제</h1>',
+      '<p class="lede">Teamver는 팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다.</p></section>',
+      '<section class="slide"><p class="kicker">쓰는 단위</p><h2 class="h2">Teamver가 남기는 증거</h2>',
+      '<div class="price-card"><h4>혼자 시작</h4><div class="amount">한 화면</div><p class="dim">x</p></div>',
+      '<div class="price-card pro"><h4>팀과 고치기</h4><div class="amount">한 팀</div><p class="dim">y</p></div>',
+      '<div class="price-card"><h4>리뷰</h4><div class="amount">한 정책</div><p class="dim">z</p></div></section>',
+      '<section class="slide dark"><p class="kicker">정착 순서</p><h2 class="h2">Teamver 운영</h2>',
+      '<div class="row" style="gap:80px"><div style="flex:1"><p class="dim mt-m"> · </p></div>',
+      '<div style="flex:0 0 auto;text-align:center">',
+      '<div style="font-size:96px;font-weight:900">지금</div>',
+      '<a class="cta-btn">지금 시작하기</a>',
+      '<p class="dim mt-m" style="font-size:13px"> · </p></div></div></section>',
+    ].join(''));
+    const healed = healProductLaunchLeftoverCatalogCopy(html, BRIEF);
+    // 중복 kicker/h1 — kicker가 역할별 라벨로 바뀐다 (brief → "Teamver 서비스").
+    expect(healed).not.toMatch(/>\s*Teamver가 풀어야 하는 문제\s*</);
+    expect(healed).toMatch(/>\s*Teamver가 해결하는 문제\s*</);
+    // price-card 슬라이드 h2 복구 (topic prefix는 brief 파생이라 유연 허용).
+    expect(healed).not.toMatch(/>\s*Teamver가 남기는 증거\s*</);
+    expect(healed).toMatch(/>\s*Teamver(?:\s+\S+)?\s+쓰임새\s*</);
+    // dim-dot orphan 캡션 제거.
+    expect(healed).not.toMatch(/<p[^>]*\bdim\b[^>]*>\s*·\s*<\/p>/);
+    // Ship 좌캠 lede 복구.
+    expect(healed).toMatch(/<p class="lede"[^>]*>Teamver(?:\s+\S+)?에서 보드를 열고 함께 고칠 사람을 부른다/);
+    // Ship CTA·숫자는 보존.
+    expect(healed).toMatch(/>지금</);
+    expect(healed).toMatch(/\bcta-btn\b/);
+    expect(healed).toMatch(/>\s*혼자 시작\s*</);
+  });
+
+  it('이미지 좌캠과 브랜드만 겹치는 kicker는 유지하고 한다.를 조사를 고친다', () => {
+    const html = productLaunchDeck([
+      '<section class="slide"><p class="kicker">Teamver 작업 흐름</p><h2 class="h2">오늘 할 일</h2>',
+      '<p class="lede">팀을 초대한다.를 이 화면에서 정한다.</p></section>',
+      '<section class="slide dark"><h2 class="h2">제품 사진</h2>',
+      '<div class="row"><div style="flex:1"><img alt="제품" src="x.png"></div>',
+      '<div><a class="cta-btn">지금 시작하기</a></div></div></section>',
+    ].join(''));
+    const healed = healProductLaunchLeftoverCatalogCopy(html, BRIEF);
+    expect(healed).toMatch(/>\s*Teamver 작업 흐름\s*</);
+    expect(healed).toMatch(/초대한 것을/);
+    expect(healed).not.toMatch(/초대한다\.를/);
+    expect(healed).toMatch(/<img\b[^>]*alt="제품"/);
+    expect(healed).not.toMatch(/보드를 열고 함께 고칠 사람/);
+  });
+
   it('service-intro synth가 leftover 카드 라벨을 다시 넣지 않는다', () => {
     const synth = synthesizeTemplateCloneSlideBody(
       'Teamver 소개',

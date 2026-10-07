@@ -74,6 +74,16 @@ persist leftover는 줄었지만 미리보기와 다른 **킷 셸 배치**가 �
 31. **표지 hero-shot** — cover에 `.hero-shot`이 없으면 공식 chrome을 flow 밖에 삽입한다.
 32. **깨진 조사** — `나눠같이` → `나눠 같이`, `한다.를` → `한 것을`.
 
+## 후속 (1006-N01 슬라이스 6 — 2026-10-06 실측 리그레션)
+
+슬라이스 5가 배포된 뒤에도 같은 사용자 재생성에서 **빈약 좌캠·역할 불일치·중복 kicker**가 남는다. fillMode(`json`)는 유지한다.
+
+33. **빈 dim-dot 캡션 제거** — `<p class="dim …"> · </p>` 또는 비어 있는 `<p class="dim …"></p>`는 pack-dump heal이 testimonial / byline을 날린 뒤 남는 orphan이다. 캡션만 있는 p는 삭제해 좌캠에 가운데 점 하나만 남는 것을 막는다.
+34. **kicker↔h1 "문제" 중복 끊기** — synth가 kicker에 `${topic}가 풀어야 하는 문제`를 넣고 h1에도 `${topic}가 해결하는 문제`를 넣으면 의미가 반복된다. kicker와 heading이 같은 명사(`문제|주제|과제|쓰임새|쓰는 자리|작업 흐름`)를 공유할 때만 kicker를 index-기반 짧은 라벨로 교체한다. 브랜드 문자열만 겹치면 유지한다.
+35. **price-card 슬라이드 h2 정합** — price-card가 2장 이상인 슬라이드의 h2가 `남기는 증거` / `묶는 일` / `모으는 일` / `운영 근거` / `${topic} 운영`이면 price-card 내용과 어긋난다. h2를 `${topic} 쓰임새`로 교체한다. 끝에 `증거`만 있는 정상 제목은 유지한다. 가격·amount는 지어내지 않는다.
+36. **Ship CTA 좌캠 lede 복구** — CTA와 같은 행의 `flex:1` 칸이 비어 있을 때만 `${topic}에서 보드를 열고 함께 고칠 사람을 부른다. 초안과 수정이 한 흐름이 된다.` lede를 넣는다. `flex:1.5`, 이미지·카드가 있는 칸, CTA가 들어 있는 칸은 유지한다. 색은 킷 `.lede` / `.slide.dark .lede`에 맡긴다.
+37. **방어적 조사 heal** — `healProductLaunchStructuralQuality` 마지막에 `나눠같이` → `나눠 같이`, `한다.를` → `한 것을` (`초대한다.를` → `초대한 것을`)을 다시 적용한다.
+
 ## 경계
 
 - 표지 `Teamver 소개`는 유지
