@@ -33,6 +33,11 @@ import {
 import { isSlideCountRangeHint, parseSlideCountSpec, parseSlideCountTarget } from './slideCountTopUp';
 import { readTeamverViteEnv } from './teamverViteEnv';
 import { isTeamverEmbedMode } from './designApiBase';
+import {
+  RICH_OFFICIAL_LOOK_FILL_MODE,
+  buildRichOfficialLookDensityBlock,
+  isRichOfficialLookFillModeValue,
+} from './templateCloneRichFill';
 
 /** Keep local — contracts barrel can be undefined during web test init. */
 const FIRST_FILL_SLIDE_COUNT_THIS_TURN = 6;
@@ -80,7 +85,14 @@ export const CLONE_SLOT_FILL_REPAIR_ENTRY_FROM = 'clone_slot_fill_json_repair';
  *     still lands in the system prompt. With an explicit template, LOOK
  *     still seeds (loop422) and AI prompt-fill still runs (loop463).
  */
-export type TemplateCloneFillMode = 'json' | 'prompt' | 'deterministic' | 'pure-prompt';
+export type TemplateCloneFillMode =
+  | 'json'
+  | 'prompt'
+  | 'deterministic'
+  | 'pure-prompt'
+  // 1007-N01 슬라이스 B — official-look 리치 모드(opt-in, 기본 OFF). json/prompt
+  // 분기와 별개 값이라 기존 `=== 'json'`/`=== 'prompt'` 체크에 영향 없음.
+  | 'official-rich';
 
 /**
  * 0918-N03 — AI writes a structured content outline; the host deterministically
@@ -93,6 +105,11 @@ export const TEMPLATE_CLONE_FILL_DEFAULT_MODE: TemplateCloneFillMode = 'json';
 
 export function normalizeTemplateCloneFillMode(value: unknown): TemplateCloneFillMode {
   const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  // 1007-N01 슬라이스 B — official-look 리치 모드. json/legacy-prompt 별칭보다
+  // 먼저 접어, `rich`/`official-look` 등이 prompt로 흡수되지 않도록 한다.
+  if (isRichOfficialLookFillModeValue(raw)) {
+    return RICH_OFFICIAL_LOOK_FILL_MODE;
+  }
   if (raw === 'deterministic' || raw === 'content-fill' || raw === 'server') {
     return 'deterministic';
   }
@@ -189,7 +206,8 @@ export function shouldUseJsonTemplateCloneFill(): boolean {
 export function shouldQueueAiTemplateCloneFill(hasExplicitTemplate = false): boolean {
   if (shouldUseDeterministicTemplateCloneFill(hasExplicitTemplate)) return false;
   const mode = getTemplateCloneFillMode();
-  if (mode === 'json' || mode === 'prompt') return true;
+  // official-rich 는 prompt-fill 변종이라 json/prompt 와 동일하게 fill 턴을 큐잉.
+  if (mode === 'json' || mode === 'prompt' || mode === RICH_OFFICIAL_LOOK_FILL_MODE) return true;
   // 루프463 — picked template on pure-prompt: LOOK seed then AI prompt-fill.
   return mode === 'pure-prompt' && hasExplicitTemplate;
 }
@@ -230,10 +248,24 @@ export function shouldUsePromptTemplateCloneFill(): boolean {
   return getTemplateCloneFillMode() === 'prompt';
 }
 
+/**
+ * 1007-N01 슬라이스 B — official-look 리치 모드(opt-in, 기본 OFF). 켜면 모델이
+ * full HTML을 9/4 밀도로 저작한다. json 경로와 완전히 분리된 별도 값.
+ */
+export function isRichOfficialLookTemplateCloneFill(): boolean {
+  return getTemplateCloneFillMode() === RICH_OFFICIAL_LOOK_FILL_MODE;
+}
+
 export function buildTemplateCloneFillSeedForCurrentMode(
   options: Parameters<typeof buildTemplateCloneContentFillSeed>[0],
 ): { seed: string; jsonFill: boolean } {
-  const jsonFill = shouldUseJsonTemplateCloneFill();
+  const mode = getTemplateCloneFillMode();
+  // 1007-N01 슬라이스 B — 리치 모드는 prompt-fill(HTML artifact) 변종. jsonFill
+  // false 로 기존 prompt-fill 큐/복구 경로를 그대로 재사용한다.
+  if (mode === RICH_OFFICIAL_LOOK_FILL_MODE) {
+    return { jsonFill: false, seed: buildTemplateCloneRichOfficialLookFillSeed(options) };
+  }
+  const jsonFill = mode === 'json';
   return {
     jsonFill,
     seed: jsonFill
@@ -1173,6 +1205,29 @@ export function buildTemplateClonePromptFillSeed(options: {
     parts.push('', '[Source brief]', brief);
   }
   return parts.join('\n');
+}
+
+/**
+ * 1007-N01 슬라이스 B — official-look 리치 fill 시드(opt-in, 기본 OFF).
+ *
+ * 기존 `buildTemplateClonePromptFillSeed`(prompt-fill HTML artifact 계약: EXACTLY
+ * N·topic-lock·KPI-ban·cover-brand·1920×1080·close artifact)를 **그대로 재사용**
+ * 하고, 그 위에 official-look 밀도 계약(`buildRichOfficialLookDensityBlock`)만
+ * 덧붙인다. [Source brief] 블록은 항상 맨 끝에 오도록 density 블록을 그 앞에
+ * 삽입한다. 롤백 = 모드 스위치 OFF(이 함수 미호출) 또는 커밋 revert.
+ */
+export function buildTemplateCloneRichOfficialLookFillSeed(
+  options: Parameters<typeof buildTemplateClonePromptFillSeed>[0],
+): string {
+  const base = buildTemplateClonePromptFillSeed(options);
+  const densityBlock = buildRichOfficialLookDensityBlock().join('\n');
+  const briefMarker = '\n\n[Source brief]';
+  const briefIdx = base.indexOf(briefMarker);
+  if (briefIdx === -1) {
+    return `${base}\n${densityBlock}`;
+  }
+  // [Source brief] 는 맨 끝 블록이어야 하므로 density 계약을 그 앞에 끼운다.
+  return `${base.slice(0, briefIdx)}\n${densityBlock}${base.slice(briefIdx)}`;
 }
 
 /**

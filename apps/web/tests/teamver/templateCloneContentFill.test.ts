@@ -8,6 +8,9 @@ import {
   TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER,
   buildTemplateCloneContentFillSeed,
   buildTemplateClonePromptFillSeed,
+  buildTemplateCloneRichOfficialLookFillSeed,
+  buildTemplateCloneFillSeedForCurrentMode,
+  isRichOfficialLookTemplateCloneFill,
   templateCloneContentFillHardRules,
   buildTemplateCloneSlotFillRepairPrompt,
   buildWebsiteServiceIntroOutlineInstruction,
@@ -1212,5 +1215,81 @@ describe('templateCloneContentFill', () => {
       if (prev) (globalThis as { window?: unknown }).window = prev;
       else delete (globalThis as { window?: unknown }).window;
     }
+  });
+});
+
+/**
+ * 1007-N01 슬라이스 B — official-look 리치 모드(opt-in, 기본 OFF). json 경로
+ * 산출물이 1비트도 바뀌지 않음을 함께 검증한다.
+ */
+describe('template clone — official-look rich fill mode (slice B, opt-in)', () => {
+  const RICH_OPTS = {
+    userInstruction: '리액트 훅 교육 자료 8페이지',
+    sourceBrief: 'React hooks: useState, useEffect, custom hooks, rules of hooks.',
+    templateTitle: 'Broadside',
+    seedShellCount: 8,
+  } as const;
+
+  it('defaults to json; rich value only via explicit switch, revert = flip off', () => {
+    // 기본(미설정) → json. 리치 아님.
+    expect(getTemplateCloneFillMode()).toBe('json');
+    expect(isRichOfficialLookTemplateCloneFill()).toBe(false);
+
+    // 별칭들이 official-rich 로 접힌다 (기존 prompt/html 별칭은 영향 없음).
+    expect(normalizeTemplateCloneFillMode('official-rich')).toBe('official-rich');
+    expect(normalizeTemplateCloneFillMode('rich')).toBe('official-rich');
+    expect(normalizeTemplateCloneFillMode('official-look')).toBe('official-rich');
+    expect(normalizeTemplateCloneFillMode('html-rich')).toBe('official-rich');
+    expect(normalizeTemplateCloneFillMode('b')).toBe('official-rich');
+    // 기존 값은 그대로.
+    expect(normalizeTemplateCloneFillMode('prompt')).toBe('prompt');
+    expect(normalizeTemplateCloneFillMode('html')).toBe('prompt');
+    expect(normalizeTemplateCloneFillMode('json')).toBe('json');
+
+    process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = 'official-rich';
+    expect(getTemplateCloneFillMode()).toBe('official-rich');
+    expect(isRichOfficialLookTemplateCloneFill()).toBe(true);
+    // json 경로는 꺼져 있고, prompt-fill 변종으로 fill 턴은 큐잉된다.
+    expect(shouldUseJsonTemplateCloneFill()).toBe(false);
+    expect(shouldUsePromptTemplateCloneFill()).toBe(false);
+    expect(shouldQueueAiTemplateCloneFill()).toBe(true);
+
+    // 롤백: 스위치 제거 → 즉시 json 복귀.
+    delete process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE;
+    expect(getTemplateCloneFillMode()).toBe('json');
+    expect(isRichOfficialLookTemplateCloneFill()).toBe(false);
+  });
+
+  it('rich seed = prompt-fill contract + density block, keeps EXACTLY N / topic-lock / KPI-ban', () => {
+    const rich = buildTemplateCloneRichOfficialLookFillSeed(RICH_OPTS);
+    // prompt-fill(HTML artifact) 계약을 그대로 탄다 — JSON outline 마커가 아니다.
+    expect(rich).toContain(TEMPLATE_CLONE_PROMPT_FILL_MARKER);
+    expect(rich).not.toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
+    // density 계약이 덧붙었다.
+    expect(rich).toContain('[Official-look rich mode]');
+    expect(rich).toContain('2-3 sentence lead/body');
+    // slide-count 가드(EXACTLY N) 유지.
+    expect(rich).toMatch(/EXACTLY (?:the requested number of slides|8)/);
+    // 날조 수치 금지(KPI-ban) 유지.
+    expect(rich).toMatch(/Do not invent quantitative KPIs/i);
+    // [Source brief] 는 density 블록보다 뒤에 와야 한다.
+    const briefIdx = rich.indexOf('[Source brief]');
+    const densityIdx = rich.indexOf('[Official-look rich mode]');
+    expect(briefIdx).toBeGreaterThan(densityIdx);
+  });
+
+  it('toggling to rich does NOT change the json seed output (0 regression)', () => {
+    const jsonSeedBefore = buildTemplateCloneContentFillSeed(RICH_OPTS);
+    const fromModeJson = buildTemplateCloneFillSeedForCurrentMode(RICH_OPTS);
+    expect(fromModeJson.jsonFill).toBe(true);
+    expect(fromModeJson.seed).toBe(jsonSeedBefore);
+
+    process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = 'official-rich';
+    const fromModeRich = buildTemplateCloneFillSeedForCurrentMode(RICH_OPTS);
+    expect(fromModeRich.jsonFill).toBe(false);
+    expect(fromModeRich.seed).toBe(buildTemplateCloneRichOfficialLookFillSeed(RICH_OPTS));
+
+    // 리치 모드를 켠 뒤에도 json 빌더 산출물은 1비트도 동일.
+    expect(buildTemplateCloneContentFillSeed(RICH_OPTS)).toBe(jsonSeedBefore);
   });
 });
