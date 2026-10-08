@@ -1,0 +1,70 @@
+<!-- QUALITY BAR REFERENCE — 2026-09-04 output (Broadside kit, topic: React 소개).
+     User says current output must reach AT LEAST this body density, element
+     placement, and overall quality. Note: this deck is NOT product-launch halo.
+     It is the official-look Broadside kit filled with rich, model-authored
+     content (full stat cards, 3-pillar cards with complete descriptions, a code
+     example, ecosystem cards). No empty boxes, no templated 1-line ledes, no
+     synthetic host copy. Density + placement is the target. -->
+<section class="slide" data-screen-label="02 Why React" style="width:1920px;height:1080px;box-sizing:border-box;padding:72px 96px;background:#111111;color:#f0ece5;display:flex;flex-direction:column;justify-content:center"><div data-od-slide-flow style="display:flex;flex-direction:column;justify-content:center;color:#f0ece5;padding:72px 96px;box-sizing:border-box"> <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:80px;align-items:center">
+<div>
+<p class="eyebrow" style="font-family:'IBM Plex Mono',monospace;font-size:18px;letter-spacing:.18em;color:#e85d26;text-transform:uppercase;margin:0 0 24px">WHY REACT MATTERS</p>
+<h2 style="font-family:'Barlow',sans-serif;font-size:108px;line-height:1.0;font-weight:800;margin:0 0 32px;color:#f0ece5"><span style="color:#e85d26">함수</span></h2>
+<p style="font-size:26px;line-height:1.55;margin:0;color:#f0ece5">React는 단순한 라이브러리가 아니라 "UI = f(state)"라는 선언적 패러다임을 웹 프론트엔드의 기본 언어로 자리잡게 만든 도구입니다. 2013년 Meta가 오픈소스로 공개한 이후 12년 이상 메이저 프레임워크·상태관리·서버 렌더링 생태계 전반의 사실 표준(de facto standard)입니다.</p>
+</div>
+<div style="border-left:2px solid #e85d26;padding-left:48px">
+<p style="font-family:'IBM Plex Mono',monospace;font-size:18px;color:#888880;margin:0 0 20px">2024 STATS — npm trends &amp; Stack Overflow</p>
+<p style="font-size:48px;font-weight:800;margin:0 0 12px;color:#f0ece5">40%+</p>
+<p style="font-size:20px;color:#888880;margin:0 0 28px">웹 프론트엔드 개발자 중 React 사용 비중 (State of JS 2023)</p>
+<p style="font-size:48px;font-weight:800;margin:0 0 12px;color:#f0ece5">#1</p>
+<p style="font-size:20px;color:#888880;margin:0 0 28px">Stack Overflow Developer Survey — 가장 사랑받는 웹 프레임워크</p>
+<p style="font-size:48px;font-weight:800;margin:0 0 12px;color:#f0ece5">220k+</p>
+<p style="font-size:20px;color:#888880;margin:0">GitHub facebook/react 저장소 별 수</p>
+</div>
+</div></div></section>
+<section class="slide" data-screen-label="03 Core Concepts" style="width:1920px;height:1080px;box-sizing:border-box;padding:72px 96px;background:#1a1a18;color:#f0ece5">
+<p class="eyebrow" style="font-family:'IBM Plex Mono',monospace;font-size:18px;letter-spacing:.18em;color:#e85d26;text-transform:uppercase;margin:0 0 24px">CORE CONCEPTS</p>
+<h2 style="font-family:'Barlow',sans-serif;font-size:96px;line-height:1.0;font-weight:800;margin:0 0 56px;color:#f0ece5">세 개의 기둥</h2>
+<div style="display:grid;grid-template-columns:repeat(3, minmax(0,1fr));gap:40px">
+<div style="border:1px solid #282826;padding:36px;background:#111111">
+<div style="font-family:'IBM Plex Mono',monospace;font-size:18px;color:#e85d26;margin-bottom:12px">01 — COMPONENT</div>
+<h3 style="font-size:36px;font-weight:700;margin:0 0 16px;color:#f0ece5">컴포넌트</h3>
+<p style="font-size:22px;line-height:1.5;margin:0;color:#888880">재사용 가능한 UI 단위. 함수형 컴포넌트가 표준이며, props를 입력으로 받고 JSX 엘리먼트를 반환합니다. 디자인 시스템을 구성하는 최소 단위입니다.</p>
+</div>
+<div style="border:1px solid #282826;padding:36px;background:#111111">
+<div style="font-family:'IBM Plex Mono',monospace;font-size:18px;color:#e85d26;margin-bottom:12px">02 — JSX</div>
+<h3 style="font-size:36px;font-weight:700;margin:0 0 16px;color:#f0ece5">JSX</h3>
+<p style="font-size:22px;line-height:1.5;margin:0;color:#888880">JavaScript 안의 XML-like 문법. Babel이 React.createElement 호출로 트랜스파일하며, 로직과 마크업을 한 파일에서 함께 작성할 수 있게 합니다.</p>
+</div>
+<div style="border:1px solid #282826;padding:36px;background:#111111">
+<div style="font-family:'IBM Plex Mono',monospace;font-size:18px;color:#e85d26;margin-bottom:12px">03 — STATE &amp; PROPS</div>
+<h3 style="font-size:36px;font-weight:700;margin:0 0 16px;color:#f0ece5">상태와 속성</h3>
+<p style="font-size:22px;line-height:1.5;margin:0;color:#888880">props는 부모→자식 단방향 데이터, state는 컴포넌트 내부의 변경 가능한 값. useState/useReducer 훅이 상태 모델의 표준 진입점입니다.</p>
+</div>
+</div></section>
+<section class="slide" data-screen-label="04 Architecture" style="width:1920px;height:1080px;box-sizing:border-box;padding:72px 96px;background:#111111;color:#f0ece5">
+<p class="eyebrow" style="font-family:'IBM Plex Mono',monospace;font-size:18px;letter-spacing:.18em;color:#e85d26;text-transform:uppercase;margin:0 0 24px">UNDER THE HOOD</p>
+<h2 style="font-family:'Barlow',sans-serif;font-size:96px;line-height:1.0;font-weight:800;margin:0 0 32px;color:#f0ece5">Virtual DOM &amp; 재조정(Reconciliation)</h2>
+<p style="font-size:24px;line-height:1.55;margin:0 0 48px;max-width:1100px;color:#f0ece5">React는 실제 DOM을 직접 만지지 않습니다. 메모리 안의 경량 트리(Virtual DOM)에 변경 사항을 계산한 뒤, 이전 트리와 diff로 최소 변경만 실제 DOM에 패치합니다.</p>
+<div style="display:grid;grid-template-columns:repeat(3, minmax(0,1fr));gap:32px">
+<div style="padding:28px 32px;border-left:4px solid #e85d26;background:#1a1a18">
+<div style="font-family:'IBM Plex Mono',monospace;font-size:16px;color:#888880;margin-bottom:8px">PHASE 1</div>
+<p style="font-size:26px;font-weight:700;margin:0 0 8px;color:#f0ece5">Renderer</p>
+<p style="font-size:18px;line-height:1.5;margin:0;color:#888880">상태 변경 → 컴포넌트 함수 재호출 → 새로운 Virtual DOM 트리 생성</p>
+</div>
+<div style="padding:28px 32px;border-left:4px solid #e85d26;background:#1a1a18">
+<div style="font-family:'IBM Plex Mono',monospace;font-size:16px;color:#888880;margin-bottom:8px">PHASE 2</div>
+<p style="font-size:26px;font-weight:700;margin:0 0 8px;color:#f0ece5">Diff</p>
+<p style="font-size:18px;line-height:1.5;margin:0;color:#888880">이전 트리와 비교. key 기반 리스트 비교로 O(n) 복잡도 유지</p>
+</div>
+<div style="padding:28px 32px;border-left:4px solid #e85d26;background:#1a1a18">
+<div style="font-family:'IBM Plex Mono',monospace;font-size:16px;color:#888880;margin-bottom:8px">PHASE 3</div>
+<p style="font-size:26px;font-weight:700;margin:0 0 8px;color:#f0ece5">Commit</p>
+<p style="font-size:18px;line-height:1.5;margin:0;color:#888880">최소 변경 사항을 실제 DOM에 반영. React 18+ 는 자동 배치(automatic batching) 적용</p>
+</div>
+</div></section>
+<section class="slide" data-screen-label="06 Ecosystem" style="width:1920px;height:1080px;box-sizing:border-box;padding:72px 96px;background:#e85d26;color:#1c1b1a">
+<h2 style="font-family:'Barlow',sans-serif;font-size:96px;line-height:1.0;font-weight:800;margin:0 0 40px;color:#1c1b1a">한 걸음 더</h2>
+<div style="display:grid;grid-template-columns:repeat(2, minmax(0,1fr));gap:32px">
+<div style="border:2px solid #1c1b1a;padding:32px"><h3 style="font-size:32px;font-weight:800;margin:0 0 12px">상태 관리</h3><p style="font-size:20px;line-height:1.5;margin:0">Zustand · Jotai · Redux Toolkit · TanStack Query. 서버 상태와 클라이언트 상태를 분리하는 사고가 중요해졌습니다.</p></div>
+<div style="border:2px solid #1c1b1a;padding:32px"><h3 style="font-size:32px;font-weight:800;margin:0 0 12px">React 19</h3><p style="font-size:20px;line-height:1.5;margin:0">use() 훅 · Server Actions · Compiler(RC). 비동기 데이터 처리가 컴포넌트 모델 안으로 들어옵니다.</p></div>
+</div></section>

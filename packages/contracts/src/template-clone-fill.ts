@@ -2423,31 +2423,35 @@ const TEAMVER_HARDCODED_PACK_BODY_MAP: ReadonlyArray<readonly [RegExp, string]> 
   // 같은 맥락에서→공통 맥락에서 …)보다 "먼저" 와야 한다. 그렇지 않으면 조각이
   // 명사만 바꿔 '초안과 수정을 통합 화면에서 끝낸다' 같은 반쪽 Teamver 문장이
   // 남는다. (실제 생성 덱의 표지/intro lede 오염이 바로 이 순서 때문이었다.)
-  [/초안과 수정을 같은 보드에서 끝낸다/g, '핵심 내용을 한 화면에서 정리한다'],
-  [/초안과 수정이 한 흐름이 된다/g, '핵심 내용이 한 흐름이 된다'],
-  [/팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다/g, '핵심 내용을 한 흐름으로 정리하게 한다'],
-  [/초안·수정·공유가 한 흐름이다/g, '핵심 내용이 한 흐름으로 이어진다'],
-  [/작업이 한곳으로 모이기 시작했다/g, '핵심 내용이 한곳으로 모이기 시작했다'],
-  [/반복 작업을 한 화면에서 끝내고 초안을 바로 공유한다/g, '반복 작업을 한 화면에서 끝내고 결과를 바로 공유한다'],
-  [/리뷰·권한 요청을 같은 워크스페이스에서 처리한다/g, '검토와 요청을 같은 화면에서 처리한다'],
-  [/권한·저장·감사 로그를 기본 운영으로 둔다/g, '접근·저장·기록을 기본 운영으로 둔다'],
-  [/보드를 열고 함께 고칠 사람을 부른다/g, '화면을 열고 함께할 사람을 부른다'],
-  [/초안과 피드백이 파일 밖으로 흩어지지 않는다/g, '핵심 자료가 한곳에 모인다'],
-  [/보기와 고치기를 슬라이드마다 정한다/g, '역할별 접근 범위를 정한다'],
-  [/누가 언제 바꿨는지 남기고 되돌린다/g, '변경 기록을 남기고 이전 상태로 되돌린다'],
-  [/누가 언제 바꿨는지 남기고 필요하면 되돌린다/g, '변경 기록을 남기고 필요할 때 되돌린다'],
-  [/보드에 바로 붙일 수 있는 초안이 열린다/g, '바로 활용할 수 있는 시작 자료가 열린다'],
-  [/보낸 뒤에도 같은 화면에서 문장과 레이아웃을 고친다/g, '전달한 뒤에도 같은 화면에서 이어 다듬는다'],
-  [/필요한 사람만 초대해 보기와 고치기를 나눈다/g, '필요한 사람만 초대해 역할을 나눈다'],
-  [/댓글과 버전을 같은 화면에서 고정한다/g, '피드백과 버전을 같은 화면에서 정리한다'],
-  [/워크스페이스 기본값으로 감사와 보내기 규칙을 둔다/g, '조직 기본값으로 검토와 전달 기준을 둔다'],
-  [/쓸 방을 열고 첫 보드에 팀을 초대한다/g, '첫 화면을 열고 팀을 초대한다'],
-  [/보드를 열고 권한을 나눈 뒤 이력을 남긴다/g, '작업을 시작하고 역할을 나눈 뒤 기록을 남긴다'],
-  [/파일과 대화를 한 맥락으로 연다/g, '자료와 대화를 한 맥락으로 연다'],
-  [/파일과 대화가 한 화면으로 열린다/g, '자료와 대화가 한 화면으로 열린다'],
-  [/파일과 대화가 한곳으로 모인다/g, '자료와 대화가 한곳으로 모인다'],
-  [/초안과 리뷰가 한 보드에 남는다/g, '진행 상황이 한 화면에 남는다'],
-  [/초안과 리뷰가 흩어지지 않는다/g, '진행 상황이 흩어지지 않는다'],
+  // 1007-N01 — "임의 폴백 금지": 이 전체-문장 Teamver 보일러플레이트는
+  // 토픽-중립 합성 문장으로 "치환"하지 않고 "제거"한다(빈 lede/testimonial
+  // 노드는 collapse 단계가 정리). heal 경로의 주입은 이미 제거됐고, 이 map은
+  // 다른 kit 경로에서 새어 나온 pack 하드코드 문장을 걷어내는 안전망이다.
+  [/초안과 수정을 같은 보드에서 끝낸다/g, ''],
+  [/초안과 수정이 한 흐름이 된다/g, ''],
+  [/팀이 같은 맥락에서 AI 초안을 만들고 고치게 한다/g, ''],
+  [/초안·수정·공유가 한 흐름이다/g, ''],
+  [/작업이 한곳으로 모이기 시작했다/g, ''],
+  [/반복 작업을 한 화면에서 끝내고 초안을 바로 공유한다/g, ''],
+  [/리뷰·권한 요청을 같은 워크스페이스에서 처리한다/g, ''],
+  [/권한·저장·감사 로그를 기본 운영으로 둔다/g, ''],
+  [/보드를 열고 함께 고칠 사람을 부른다/g, ''],
+  [/초안과 피드백이 파일 밖으로 흩어지지 않는다/g, ''],
+  [/보기와 고치기를 슬라이드마다 정한다/g, ''],
+  [/누가 언제 바꿨는지 남기고 되돌린다/g, ''],
+  [/누가 언제 바꿨는지 남기고 필요하면 되돌린다/g, ''],
+  [/보드에 바로 붙일 수 있는 초안이 열린다/g, ''],
+  [/보낸 뒤에도 같은 화면에서 문장과 레이아웃을 고친다/g, ''],
+  [/필요한 사람만 초대해 보기와 고치기를 나눈다/g, ''],
+  [/댓글과 버전을 같은 화면에서 고정한다/g, ''],
+  [/워크스페이스 기본값으로 감사와 보내기 규칙을 둔다/g, ''],
+  [/쓸 방을 열고 첫 보드에 팀을 초대한다/g, ''],
+  [/보드를 열고 권한을 나눈 뒤 이력을 남긴다/g, ''],
+  [/파일과 대화를 한 맥락으로 연다/g, ''],
+  [/파일과 대화가 한 화면으로 열린다/g, ''],
+  [/파일과 대화가 한곳으로 모인다/g, ''],
+  [/초안과 리뷰가 한 보드에 남는다/g, ''],
+  [/초안과 리뷰가 흩어지지 않는다/g, ''],
   // 카드 title 밖(문장 안)에 남는 하드코드 제품 명명.
   [/같은 맥락에서/g, '공통 맥락에서'],
   [/같은 맥락으로/g, '공통 맥락으로'],
@@ -2520,6 +2524,12 @@ export function neutralizeTeamverPackCopyInDeckHtml(
     ));
     const rawRe = new RegExp(teamverEsc, 'g');
     out = out.replace(rawRe, neutralTitle);
+  }
+  // 1007-N01 — 전체-문장 Teamver 보일러플레이트를 ''로 비운 뒤 남는 빈 텍스트
+  // 노드/카드를 정리한다. product-launch 덱은 grid 컬럼 수까지 맞춘다.
+  out = stripEmptyProductLaunchTextNodes(out);
+  if (officialLookIsProductLaunchHalo(out)) {
+    out = collapseEmptyProductLaunchCardsAndGrids(out);
   }
   return out;
 }
@@ -12749,7 +12759,9 @@ function productLaunchKitAwareCardBody(
   if (!productLaunchSlotNeedsRefill(body) && !/의미와 적용 기준을 한 문장으로/.test(body)) {
     return body;
   }
-  return productLaunchConcreteCardBody(cardTitle, topic, index);
+  // 1007-N01 — 임의 폴백 금지: 모델 본문이 쓸만하지 않으면 지어낸 문장
+  // (productLaunchConcreteCardBody)으로 채우지 않고 비운다(빈 카드는 collapse 정리).
+  return '';
 }
 
 function slideLooksLikeProductLaunchKit(attrs: string, body: string): boolean {
@@ -12913,15 +12925,20 @@ function healProductLaunchStructuralQuality(
       body = wipeProductLaunchOrphanPriceTokens(body);
     }
     body = wipeProductLaunchDemoAmounts(body);
-    body = refillProductLaunchLeftoverCardLeaves(body, topic, i, allowTeamverCopy);
+    // 1007-N01 — 임의 폴백 금지: 모델이 비운 카드 leaf를 Teamver/합성 문장으로
+    // 지어내지 않는다. 잔여 데모 문구 제거는 strip 단계가, 빈 박스 정리는
+    // collapseEmptyProductLaunchCardsAndGrids가 담당한다.
     const structuralTitle = productLaunchStructuralHeading(body, span.attrs, topic);
     if (brokenHeading && headingMatch) {
+      // 제목(label)은 덱 자신의 topic/본문에서 끌어온 요약이므로 유지한다.
       body = body.replace(
         headingMatch[0],
         `<h${headingMatch[1]}${headingMatch[2]}>${escapeHtml(structuralTitle)}</h${headingMatch[1]}>`,
       );
     } else if (brokenHeading && /\bcta-btn\b/i.test(body)) {
-      const intro = `<div class="product-launch-intro"><h2 class="h2">${escapeHtml(structuralTitle)}</h2><p class="lede">작게 시작해 팀 협업과 운영 정책까지 단계적으로 확장한다.</p></div>`;
+      // 1007-N01 — lede 문장을 지어내지 않는다. 제목만 복원하고 본문은 비워 둔다
+      // (빈 박스는 뒤의 collapse 단계가 정리).
+      const intro = `<div class="product-launch-intro"><h2 class="h2">${escapeHtml(structuralTitle)}</h2></div>`;
       body = body.replace(
         /(<div\b[^>]*style\s*=\s*["'][^"']*flex\s*:\s*1[^"']*["'][^>]*>)\s*(<\/div>)/i,
         `$1${intro}$2`,
@@ -12929,49 +12946,12 @@ function healProductLaunchStructuralQuality(
       if (!/\bproduct-launch-intro\b/i.test(body)) body = `${intro}${body}`;
     }
 
-    const stepBlocks = exactClassBlocks(body, 'step');
-    if (stepBlocks.length >= 2) {
-      const stepBodies = stepBlocks.map((block) => visibleDeckCopy(
-        /<[^>]*\bdim\b[^>]*>([\s\S]*?)<\//i.exec(block.html)?.[1] ?? '',
-      ));
-      const nonEmptyBodies = stepBodies.filter(Boolean);
-      if (nonEmptyBodies.length >= 2 && new Set(nonEmptyBodies).size === 1) {
-        body = replaceExactClassBlocksBySequence(
-          body,
-          'step',
-          stepBlocks.map((block, index) => {
-            const title = visibleDeckCopy(
-              block.html.match(/<h[3-5]\b[^>]*>([\s\S]*?)<\/h[3-5]>/i)?.[1] ?? '',
-            );
-            return { title, body: productLaunchStepBodyForTitle(title, topic, index) };
-          }),
-          (block, line) => {
-            const resolved = resolveTemplateCloneCardFill(line);
-            return replaceFirstExactClassText(block, 'dim', resolved.body);
-          },
-        );
-      }
-    }
-    const kickerText = visibleDeckCopy(
-      /<[^>]*\bkicker\b[^>]*>([\s\S]*?)<\//i.exec(body)?.[1] ?? '',
-    );
-    if (productLaunchKickerNeedsRefill(kickerText)) {
-      const nextKicker = PRODUCT_LAUNCH_KICKER_BY_INDEX[i]
-        ? PRODUCT_LAUNCH_KICKER_BY_INDEX[i]!(topic || 'Teamver')
-        : (topic ? `${topic} 한눈에` : '한눈에');
-      body = replaceFirstExactClassText(body, 'kicker', nextKicker);
-    }
-    body = body.replace(
-      /(<p\b[^>]*>)([^<]*[가-힣][^<]*?)(<\/p>)/gi,
-      (full, open: string, inner: string, close: string) => {
-        const plain = visibleDeckCopy(inner);
-        if (!/(?:하는|위한|통한)\s*$/.test(plain)) return full;
-        const closed = /활용하는$/.test(plain)
-          ? `${plain} 팀을 기준으로 도입 범위를 정한다.`
-          : `${plain} 흐름을 한 화면에서 이어 간다.`;
-        return `${open}${escapeHtml(closed)}${close}`;
-      },
-    );
+    // 1007-N01 — 중복 step 본문을 지어낸 문장으로 교체하던 분기는 제거했다.
+    // 모델이 쓴 본문을 그대로 둔다(= 덱 on-topic 콘텐츠 보존).
+    // 1007-N01 (loop565) — 내용 없는 호스트 kicker 라벨(한눈에/하는 일 …)을
+    // 주입하지 않는다. 잔여 host kicker는 stripProductLaunchHostTemplateLeftovers가 제거.
+    // 1007-N01 — 모델이 "…하는/위한/통한"으로 끝낸 문장에 지어낸 꼬리를 붙이던
+    // 보정은 제거했다(임의 폴백 금지). 미완결 문장은 모델 원문 그대로 둔다.
     out = `${out.slice(0, span.bodyStart)}${body}${out.slice(span.bodyEnd)}`;
   }
 
@@ -12984,34 +12964,18 @@ function healProductLaunchStructuralQuality(
     if (!match || match.index == null) continue;
     const heading = visibleDeckCopy(match[3] ?? '');
     if (heading && seenHeadings.has(heading)) {
-      const isCenter = /\bcenter\b/i.test(span.attrs);
-      const isCard = /\b(?:feature-card|card)\b/i.test(body);
-      const candidates = isCenter
-        ? [
-          `${attachKoreanJosa(topic, '이/가')} 해결하는 문제`,
-          `${topic} 작업 흐름`,
-          `${topic} 다음 단계`,
-        ]
-        : isCard
-          ? [
-            productLaunchStructuralHeading(body, span.attrs, topic),
-            `${topic} 운영 근거`,
-            `${topic} 적용 사례`,
-            `${topic} 실행 기준`,
-          ]
-          : [
-            productLaunchStructuralHeading(body, span.attrs, topic),
-            `${topic} 상세 내용`,
-            `${topic} 다음 단계`,
-          ];
-      const replacement = candidates.find((candidate) => !seenHeadings.has(candidate))
-        ?? `${topic} 보충 내용`;
-      rewrites.push({
-        start: span.bodyStart + match.index,
-        end: span.bodyStart + match.index + match[0].length,
-        html: `<h${match[1]}${match[2]}>${escapeHtml(replacement)}</h${match[1]}>`,
-      });
-      seenHeadings.add(replacement);
+      // 1007-N01 — 중복 heading을 지어낸 라벨(`${topic} 운영 근거` 등)로 바꾸지
+      // 않는다. 덱 본문에서 끌어온 structuralTitle이 유일할 때만 교체하고,
+      // 그마저 중복이면 모델 원문을 그대로 둔다.
+      const derived = productLaunchStructuralHeading(body, span.attrs, topic);
+      if (derived && !seenHeadings.has(derived) && derived !== heading) {
+        rewrites.push({
+          start: span.bodyStart + match.index,
+          end: span.bodyStart + match.index + match[0].length,
+          html: `<h${match[1]}${match[2]}>${escapeHtml(derived)}</h${match[1]}>`,
+        });
+        seenHeadings.add(derived);
+      }
     } else if (heading) {
       seenHeadings.add(heading);
     }
@@ -13020,35 +12984,39 @@ function healProductLaunchStructuralQuality(
     const rewrite = rewrites[i]!;
     out = `${out.slice(0, rewrite.start)}${rewrite.html}${out.slice(rewrite.end)}`;
   }
-  out = healProductLaunchRepeatedCardCopy(out, topic);
+  // 1007-N01 — healProductLaunchRepeatedCardCopy는 중복 카드 제목/본문을 Teamver
+  // 명사 풀·지어낸 문장으로 교체했다. 임의 폴백 금지 정책에 따라 호출을 제거한다.
   out = liftProductLaunchOfficialChromeOutOfFlow(out);
   out = stripProductLaunchInlineDisplayOverrides(out);
   out = restoreProductLaunchOfficialInsets(out);
-  // 1007-N01 — do not shrink g3+2 cards to g2. padProductLaunchSparsePairs
-  // adds a third card from the unused-title pool and widens g2 to g3.
-  // An existing g3 stays g3 when that pool is empty.
   out = salvageBrokenProductLaunchMarkup(out);
   out = wipeProductLaunchEnglishDemoChrome(out);
   out = healProductLaunchCtaDisplay(out);
-  out = fillProductLaunchSparseCenterSlides(out, topic, allowTeamverCopy);
+  // 1007-N01 — fillProductLaunchSparseCenterSlides(lede 주입) 제거.
   out = ensureProductLaunchCoverHeroShot(out);
   out = wipeProductLaunchEmptyDeckFooters(out);
+  // packCloseDump은 덤프된 보일러플레이트를 "지어낸 문장으로 교체"가 아니라
+  // "비우기"로 바뀌었다(함수 내부 참조).
   out = healProductLaunchPackCloseDump(out, topic, allowTeamverCopy);
-  // 1006-N01 슬라이스 6 — 저장된 Teamver persist 결과가 여전히 빈 dim-dot
-  // 캡션, 2단 Ship 좌캠 공백, kicker↔h1 "문제" 중복, price-card 슬라이드의
-  // "증거/묶는" h2를 그대로 둔다. fillMode(json)는 유지.
   out = wipeProductLaunchOrphanDimDots(out);
   out = stripProductLaunchTrailingSeparatorDots(out);
   out = healProductLaunchKickerParrotsHeading(out, topic);
   out = retitleProductLaunchPriceCardSlide(out, topic);
-  out = fillProductLaunchShipSlide(out, topic, allowTeamverCopy);
-  // 1006-N01 슬라이스 7 — 2칸 그리드·2단 step·헤드폰 아이콘·표지 lede.
-  out = padProductLaunchSparsePairs(out, topic, allowTeamverCopy);
+  // 1007-N01 — fillProductLaunchShipSlide(lede 주입)·padProductLaunchSparsePairs
+  // (3번째 카드 주입)·restoreProductLaunchPriceCardWeight(한 화면/한 팀/한 정책
+  // amount 주입) 모두 제거. 빈 박스는 아래 collapse 단계가 정리한다.
   out = stripProductLaunchFeatureDemoIcons(out);
-  out = diversifyProductLaunchRepeatedKickers(out, topic);
-  // Defensive 조사 교정 — pack-dump heal이 어떤 분기를 못 타도 반드시 적용.
   out = healProductLaunchBrokenParticles(out);
-  return restoreProductLaunchPriceCardWeight(out, allowTeamverCopy);
+  // 1007-N01 (loop565) — 가격 없는 price-card는 일반 카드로 격하(빈 amount 제거,
+  // 주제 부적합 가격 슬롯 제거). 실제 금액이 있으면 유지.
+  out = demoteProductLaunchPricelessCards(out);
+  // 1007-N01 (loop565) — 호스트 템플릿 잔재(synth lede/kicker/brand·깨진 꼬리·중복
+  // li·빈 flex:1·center 빈 오브)를 지어낸 폴백 없이 제거/정리한다.
+  out = stripProductLaunchHostTemplateLeftovers(out, topic);
+  // 1007-N01 — 빈 박스를 지어내 채우지 않고, 모델이 못 채운 빈 카드/빈 텍스트
+  // 노드는 제거한 뒤 grid 컬럼 수를 남은 카드 수에 맞춘다("박스 갯수 조절").
+  out = collapseEmptyProductLaunchCardsAndGrids(out);
+  return out;
 }
 
 const PRODUCT_LAUNCH_CARD_SHELLS = ['feature-card', 'price-card', 'step', 'card'] as const;
@@ -13161,6 +13129,221 @@ function stripEmptyProductLaunchAmountNodes(html: string): string {
     /<(div|span)\b[^>]*\bamount\b[^>]*>\s*<\/\1>/gi,
     '',
   );
+}
+
+/**
+ * 1007-N01 — "임의 폴백 금지" 정책 보조 유틸.
+ * neutralize/heal이 보일러플레이트 문장을 비운 뒤 남는 빈 텍스트 노드
+ * (lede / testimonial / dim / amount)를 지운다. 지어낸 문장으로 채우지 않는다.
+ */
+function stripEmptyProductLaunchTextNodes(html: string): string {
+  return String(html ?? '').replace(
+    /<(p|div|span)\b([^>]*\b(?:lede|testimonial|dim|amount|kicker|brand)\b[^>]*)>(?:\s|&nbsp;|&#160;|<br\s*\/?\s*>|·|•|・|&middot;)*<\/\1>/gi,
+    '',
+  );
+}
+
+const PRODUCT_LAUNCH_GRID_CARD_CLASSES = ['feature-card', 'price-card', 'step', 'card'] as const;
+
+/**
+ * 빈 카드 leaf 판정: 보이는 한글/영숫자 텍스트가 전혀 없으면(크롬·구두점만) 빈 박스.
+ * 제목이든 본문이든 모델이 쓴 on-topic 텍스트가 하나라도 있으면 유지한다.
+ */
+function productLaunchCardIsBlank(block: string): boolean {
+  return !/[가-힣A-Za-z0-9]/.test(visibleDeckCopy(block));
+}
+
+/**
+ * 1007-N01 — grid의 `g{N}` 클래스와 `grid-template-columns:repeat(N,…)`를
+ * 실제 남은 카드 수에 맞춘다. 카드를 지어내지 않고, 빈 박스가 남지 않도록
+ * 컬럼 수만 조정한다(slide 수는 불변).
+ */
+function normalizeProductLaunchGridColumns(html: string): string {
+  const source = String(html ?? '');
+  const openRe = /<div\b[^>]*\bclass\s*=\s*["'][^"']*\bgrid\b[^"']*["'][^>]*>/gi;
+  type Edit = { start: number; end: number; replacement: string };
+  const edits: Edit[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = openRe.exec(source)) !== null) {
+    const block = extractBalancedFrom(source, m.index);
+    if (!block) continue;
+    const openTag = m[0];
+    const inner = block.slice(openTag.length);
+    let count = 0;
+    for (const className of PRODUCT_LAUNCH_GRID_CARD_CLASSES) {
+      count += exactClassBlocks(inner, className).length;
+    }
+    if (count < 1 || count > 4) continue;
+    let nextOpen = openTag.replace(/\bg[1-9]\b/, `g${count}`);
+    nextOpen = nextOpen.replace(
+      /(grid-template-columns\s*:\s*repeat\(\s*)\d+(\s*,)/i,
+      `$1${count}$2`,
+    );
+    if (nextOpen !== openTag) {
+      edits.push({ start: m.index, end: m.index + openTag.length, replacement: nextOpen });
+    }
+  }
+  let out = source;
+  for (let i = edits.length - 1; i >= 0; i -= 1) {
+    const e = edits[i]!;
+    out = `${out.slice(0, e.start)}${e.replacement}${out.slice(e.end)}`;
+  }
+  return out;
+}
+
+/**
+ * 1007-N01 (loop565/ref-0904) — product-launch 템플릿의 price-card/amount/`.pro`
+ * 슬롯은 가격·요금제 전용이다. 영어회화 같은 비가격 주제에서 모델이 금액을 쓰지
+ * 않으면 amount가 빈 슬롯으로 남아 "빈칸 + 주제 부적합 배치"가 된다. 금액이 없는
+ * price-card는 일반 카드(feature-card)로 격하하고 빈 amount 노드를 제거한다
+ * (가격 라벨을 지어내지 않는다). 실제 금액(₩/$/숫자/월·년 단위)이 있으면 유지.
+ */
+function demoteProductLaunchPricelessCards(html: string): string {
+  let out = String(html ?? '');
+  const blocks = exactClassBlocks(out, 'price-card');
+  for (let i = blocks.length - 1; i >= 0; i -= 1) {
+    const block = blocks[i]!;
+    const amount = visibleDeckCopy(
+      /<[^>]*\bamount\b[^>]*>([\s\S]*?)<\//i.exec(block.html)?.[1] ?? '',
+    );
+    const hasRealPrice = !!amount && /[₩$€]|\d|원|무료|\/\s*(?:월|년|mo|yr|month|year)/i.test(amount);
+    if (hasRealPrice) continue;
+    const next = block.html
+      .replace(
+        /(<div\b[^>]*\bclass\s*=\s*["'])([^"']*)(["'][^>]*>)/i,
+        (_m, pre: string, cls: string, post: string) => {
+          const tokens = cls.split(/\s+/).filter(Boolean)
+            .map((t) => (t === 'price-card' ? 'feature-card' : t))
+            .filter((t) => t !== 'pro' && t !== 'price-card');
+          if (!tokens.includes('feature-card')) tokens.unshift('feature-card');
+          return `${pre}${tokens.join(' ')}${post}`;
+        },
+      )
+      // 가격이 아닌 slot이므로 amount 노드(비었든 '한 화면' 같은 synth 라벨이든)를 통째로 제거.
+      .replace(/<(div|span)\b[^>]*\bamount\b[^>]*>[\s\S]*?<\/\1>/i, '');
+    out = `${out.slice(0, block.start)}${next}${out.slice(block.end)}`;
+  }
+  return out;
+}
+
+/**
+ * 1007-N01 (loop563) — 같은 grid 안에서 보이는 본문이 완전히 동일한 중복 카드는
+ * 지어낸 서로 다른 문장으로 채우지 않고, 첫 카드만 남기고 제거한다(박스 수 축소).
+ * 호스트-합성 bullet('반복 작업을 한 화면에서…')이 여러 step에 그대로 복제된
+ * 경우가 대표 사례. grid 컬럼은 이후 normalize가 남은 카드 수에 맞춘다.
+ */
+function dedupeProductLaunchDuplicateCards(html: string): string {
+  const source = String(html ?? '');
+  const openRe = /<div\b[^>]*\bclass\s*=\s*["'][^"']*\bgrid\b[^"']*["'][^>]*>/gi;
+  type Edit = { start: number; end: number; replacement: string };
+  const edits: Edit[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = openRe.exec(source)) !== null) {
+    const block = extractBalancedFrom(source, m.index);
+    if (!block) continue;
+    const openTag = m[0];
+    const inner = block.slice(openTag.length, block.length - '</div>'.length);
+    const cards: Array<{ start: number; end: number; html: string }> = [];
+    for (const cls of PRODUCT_LAUNCH_GRID_CARD_CLASSES) {
+      for (const b of exactClassBlocks(inner, cls)) cards.push(b);
+    }
+    cards.sort((a, b) => a.start - b.start);
+    const seen = new Set<string>();
+    const remove: Array<{ start: number; end: number }> = [];
+    for (const c of cards) {
+      const key = visibleDeckCopy(c.html).replace(/\s+/g, ' ').trim();
+      if (!key) continue;
+      if (seen.has(key)) remove.push({ start: c.start, end: c.end });
+      else seen.add(key);
+    }
+    if (remove.length === 0) continue;
+    let nextInner = inner;
+    for (let i = remove.length - 1; i >= 0; i -= 1) {
+      nextInner = `${nextInner.slice(0, remove[i]!.start)}${nextInner.slice(remove[i]!.end)}`;
+    }
+    edits.push({ start: m.index, end: m.index + block.length, replacement: `${openTag}${nextInner}</div>` });
+  }
+  let out = source;
+  for (let i = edits.length - 1; i >= 0; i -= 1) {
+    const e = edits[i]!;
+    out = `${out.slice(0, e.start)}${e.replacement}${out.slice(e.end)}`;
+  }
+  return out;
+}
+
+/**
+ * 1007-N01 (loop563) — 같은 컨테이너(grid/stack)의 형제 카드들이 **본문(dim)만**
+ * 똑같이 복제된 경우(제목은 서로 다르지만 dim이 같은 호스트-합성 bullet), 지어낸
+ * 서로 다른 문장으로 채우지 않고 **첫 등장만 남기고 나머지 중복 dim을 비운다**.
+ * 제목은 모델 콘텐츠이므로 보존하고, 정당한 별개 문장은 (완전 일치가 아니면)
+ * 건드리지 않는다. 비워진 dim 노드는 이후 stripEmptyProductLaunchTextNodes가 제거.
+ */
+function collapseRepeatedProductLaunchSiblingDimBodies(html: string): string {
+  const source = String(html ?? '');
+  const openRe = /<div\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:grid|stack)\b[^"']*["'][^>]*>/gi;
+  type Edit = { start: number; end: number; replacement: string };
+  const edits: Edit[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = openRe.exec(source)) !== null) {
+    const block = extractBalancedFrom(source, m.index);
+    if (!block) continue;
+    const openTag = m[0];
+    const inner = block.slice(openTag.length, block.length - '</div>'.length);
+    const cards: Array<{ start: number; end: number; html: string }> = [];
+    for (const cls of PRODUCT_LAUNCH_GRID_CARD_CLASSES) {
+      for (const b of exactClassBlocks(inner, cls)) cards.push(b);
+    }
+    cards.sort((a, b) => a.start - b.start);
+    const seen = new Set<string>();
+    const cardEdits: Edit[] = [];
+    for (const c of cards) {
+      const dim = /(<[a-z0-9]+\b[^>]*\bdim\b[^>]*>)([\s\S]*?)(<\/[a-z0-9]+>)/i.exec(c.html);
+      if (!dim) continue;
+      const body = visibleDeckCopy(dim[2] ?? '').replace(/\s+/g, ' ').trim();
+      if (!body) continue;
+      if (seen.has(body)) {
+        const rel = c.html.indexOf(dim[0]);
+        const emptied = `${c.html.slice(0, rel)}${dim[1]}${dim[3]}${c.html.slice(rel + dim[0].length)}`;
+        cardEdits.push({ start: c.start, end: c.end, replacement: emptied });
+      } else {
+        seen.add(body);
+      }
+    }
+    if (cardEdits.length === 0) continue;
+    let nextInner = inner;
+    for (let i = cardEdits.length - 1; i >= 0; i -= 1) {
+      const e = cardEdits[i]!;
+      nextInner = `${nextInner.slice(0, e.start)}${e.replacement}${nextInner.slice(e.end)}`;
+    }
+    edits.push({ start: m.index, end: m.index + block.length, replacement: `${openTag}${nextInner}</div>` });
+  }
+  let out = source;
+  for (let i = edits.length - 1; i >= 0; i -= 1) {
+    const e = edits[i]!;
+    out = `${out.slice(0, e.start)}${e.replacement}${out.slice(e.end)}`;
+  }
+  return out;
+}
+
+/**
+ * 1007-N01 — 모델이 채우지 못한 빈 카드는 지어내지 않고 제거한 뒤, grid 컬럼
+ * 수를 남은 카드 수에 맞춘다. "적절한 내용을 채우거나, 빈칸이 없도록 박스
+ * 갯수를 조절" 정책의 (b) 경로.
+ */
+function collapseEmptyProductLaunchCardsAndGrids(html: string): string {
+  let out = collapseRepeatedProductLaunchSiblingDimBodies(String(html ?? ''));
+  out = stripEmptyProductLaunchTextNodes(out);
+  out = stripEmptyProductLaunchAmountNodes(out);
+  for (const className of PRODUCT_LAUNCH_GRID_CARD_CLASSES) {
+    for (let guard = 0; guard < 64; guard += 1) {
+      const blocks = exactClassBlocks(out, className);
+      const blank = blocks.find((b) => productLaunchCardIsBlank(b.html));
+      if (!blank) break;
+      out = `${out.slice(0, blank.start)}${out.slice(blank.end)}`;
+    }
+  }
+  out = dedupeProductLaunchDuplicateCards(out);
+  return normalizeProductLaunchGridColumns(out);
 }
 
 function refillProductLaunchLeftoverCardLeaves(
@@ -13761,6 +13944,13 @@ function productLaunchKickerParrotsHeading(kicker: string, heading: string): boo
  * 역할별 짧은 라벨로 교체한다.
  */
 function healProductLaunchKickerParrotsHeading(html: string, topic: string): string {
+  // 1007-N01 (loop565) — kicker가 heading을 반복할 때 호스트 라벨로 "교체"하지
+  // 않는다. 내용 없는 host kicker는 stripProductLaunchHostTemplateLeftovers가 제거.
+  void topic;
+  return String(html ?? '');
+}
+
+function _legacyHealProductLaunchKickerParrotsHeading(html: string, topic: string): string {
   const brand = topic || 'Teamver';
   const dest = String(html ?? '');
   const spans = listHealSlideHostSpans(dest);
@@ -13850,27 +14040,18 @@ function fillProductLaunchShipSlide(html: string, topic: string, allowTeamverCop
   return out;
 }
 
-function healProductLaunchPackCloseDump(html: string, topic: string, allowTeamverCopy = true): string {
-  const brand = topic || 'Teamver';
+function healProductLaunchPackCloseDump(html: string, _topic: string, _allowTeamverCopy = true): string {
+  // 1007-N01 — 임의 폴백 금지: 덤프된 pack 보일러플레이트를 "지어낸 문장"으로
+  // 교체하지 않고 비운다. 빈 lede/testimonial 노드는 collapse 단계가 제거한다.
+  // CTA는 UI 라벨이므로 중립 라벨("시작하기")만 둔다.
   let out = String(html ?? '').replace(/나눠같이/g, '나눠 같이');
   out = out.replace(/([가-힣])다\.\s*를/g, '$1 것을');
-  let ledeReplacements = 0;
   out = out.replace(
     /(<p\b[^>]*\blede\b[^>]*>)([\s\S]*?)(<\/p>)/gi,
     (full, open: string, inner: string, close: string) => {
       const plain = visibleDeckCopy(inner);
       if (!PRODUCT_LAUNCH_PACK_CLOSE_DUMP_RE.test(plain)) return full;
-      // 1007-N01 — the dumped pack text is garbage either way. On a non-Teamver
-      // deck replace it with topic-neutral copy instead of Teamver product copy.
-      const next = allowTeamverCopy
-        ? (ledeReplacements === 0
-          ? `${brand}에서 초안·수정·공유가 한 흐름이다.`
-          : '첫 화면을 열고 같이 고칠 사람을 부른다.')
-        : (ledeReplacements === 0
-          ? `${brand}의 핵심을 이어서 정리한다.`
-          : `${brand}를 오늘부터 바로 시작해 본다.`);
-      ledeReplacements += 1;
-      return `${open}${escapeHtml(next)}${close}`;
+      return `${open}${close}`;
     },
   );
   out = out.replace(
@@ -13884,10 +14065,7 @@ function healProductLaunchPackCloseDump(html: string, topic: string, allowTeamve
       ) {
         return full;
       }
-      // 1007-N01 — do not invent a Teamver testimonial on a non-Teamver deck.
-      // Clear the dumped quote rather than overwriting with Teamver marketing.
-      if (!allowTeamverCopy) return `${open}${close}`;
-      return `${open}${escapeHtml(`${brand}를 쓰기 시작한 뒤, 작업이 한곳으로 모이기 시작했다.`)}${close}`;
+      return `${open}${close}`;
     },
   );
   out = out.replace(
@@ -13901,13 +14079,192 @@ function healProductLaunchPackCloseDump(html: string, topic: string, allowTeamve
       ) {
         return full;
       }
-      return `${open}${escapeHtml(`${brand} 시작하기`)}${close}`;
+      return `${open}시작하기${close}`;
     },
   );
   return out;
 }
 
+// 1007-N01 (loop565) — 호스트 템플릿이 만든 topic-neutral lede 문구. Teamver 여부와
+// 무관하게 "모델 원문이 아니라 호스트 생성물"이므로 제거한다(지어낸 폴백 금지).
+const PRODUCT_LAUNCH_HOST_LEDE_RE =
+  /핵심을 한눈에 짚어 본다|꼭 짚어야 할 내용을 간추린다|오늘부터 바로 시작해 본다|핵심을 이어서 정리한다|다루는 문제와 제공 가치|핵심 맥락과 다음 단계를 정리|핵심을 한 화면에서 정리한다|핵심이 한 흐름이 된다|핵심 내용을 한 흐름으로 정리/;
+
+// 내용 없는 네비 라벨형 kicker(호스트 템플릿). 정확 일치 + topic 접두 라벨 접미.
+const PRODUCT_LAUNCH_HOST_KICKER_EXACT = new Set<string>([
+  '이렇게 씁니다', '남기는 것', '정착 순서', '이어서', '다음에', '쓰는 단위', '한눈에',
+]);
+const PRODUCT_LAUNCH_HOST_KICKER_SUFFIX_RE = /(?:\s한눈에|가 하는 일|\s한 장면|\s기준|\s보충|가 풀어야 하는 문제|\s\d+)$/;
+
+function productLaunchKickerIsHostTemplate(text: string): boolean {
+  const t = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!t) return false;
+  if (PRODUCT_LAUNCH_HOST_KICKER_EXACT.has(t)) return true;
+  if (PRODUCT_LAUNCH_HOST_KICKER_SUFFIX_RE.test(t)) return true;
+  // 호스트/데모 kicker(번호·"The sound"·Pricing·pack dump·본문 문장 유출 등)도
+  // 내용 없는 eyebrow이므로 제거 대상. 모델의 짧은/비종결 eyebrow(예:
+  // "…연습법 10선.")는 productLaunchKickerNeedsRefill이 false라 유지된다.
+  return productLaunchKickerNeedsRefill(t);
+}
+
+/** 잘린 제목을 그대로 복사한 brand 슬롯(끝 공백·h1 접두)을 제거한다. */
+function cleanProductLaunchLeakedBrand(html: string): string {
+  const source = String(html ?? '');
+  const h1 = visibleDeckCopy(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(source)?.[1] ?? '');
+  return source.replace(
+    /<div\b[^>]*\bbrand\b[^>]*>([\s\S]*?)<\/div>/gi,
+    (full, inner: string) => {
+      const t = visibleDeckCopy(inner);
+      if (!t) return full;
+      // 잘린 제목 복사만 제거한다. 끝에 공백이 남았거나(명백한 중단), h1의
+      // 긴(>=12자) 접두사면 truncation. 짧은 정식 브랜드("Teamver")는 유지.
+      const trailingSpace = /\s$/.test(String(inner).replace(/<[^>]+>/g, ''));
+      const isTruncatedTitle = (trailingSpace && t.length >= 8)
+        || (!!h1 && h1 !== t && h1.startsWith(t) && t.length >= 12);
+      return isTruncatedTitle ? '' : full;
+    },
+  );
+}
+
+/**
+ * 모델 출력이 비정상 중단되어 남은 깨진 꼬리(예: "…비교해 F1")를 정리한다.
+ * 한글 뒤 공백 + 숫자를 포함한 짧은 라틴 토큰(F1 등)만 제거해 문장을 깔끔히
+ * 마무리한다. 모델 원문/종결 문장은 건드리지 않는다(빈칸을 만들지 않는다).
+ */
+function trimProductLaunchTruncatedTails(html: string): string {
+  return String(html ?? '').replace(
+    /(<(?:p|h[1-5]|li)\b[^>]*>)([^<]*)(<\/(?:p|h[1-5]|li)>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const trimmed = inner.replace(/\s+$/, '');
+      const m = /^([\s\S]*[가-힣])\s+[A-Za-z]{1,3}[0-9]{1,2}$/.exec(trimmed);
+      if (!m) return full;
+      return `${open}${m[1]}${close}`;
+    },
+  );
+}
+
+/**
+ * price-card/카드의 <ul><li>…</li></ul>가 p.dim 본문·h4 제목을 그대로 복사한
+ * 중복 li일 때 그 li를 제거하고, 남는 li가 없으면 ul 자체를 제거한다.
+ */
+function dedupeProductLaunchCardListItems(html: string): string {
+  let out = String(html ?? '');
+  for (const className of ['price-card', 'feature-card', 'card'] as const) {
+    const blocks = exactClassBlocks(out, className);
+    for (let i = blocks.length - 1; i >= 0; i -= 1) {
+      const block = blocks[i]!;
+      if (!/<ul\b/i.test(block.html)) continue;
+      const h4 = productLaunchCardInnerTitle(block.html);
+      const dim = productLaunchCardInnerBody(block.html);
+      const next = block.html.replace(/<ul\b[^>]*>[\s\S]*?<\/ul>/i, (ul) => {
+        let kept = 0;
+        const rewritten = ul.replace(/<li\b[^>]*>([\s\S]*?)<\/li>/gi, (liFull, liInner: string) => {
+          const t = visibleDeckCopy(liInner);
+          if (!t) return '';
+          if (dim && (t === dim || dim.includes(t) || t.includes(dim))) return '';
+          if (h4 && t === h4) return '';
+          kept += 1;
+          return liFull;
+        });
+        return kept === 0 ? '' : rewritten;
+      });
+      if (next !== block.html) {
+        out = `${out.slice(0, block.start)}${next}${out.slice(block.end)}`;
+      }
+    }
+  }
+  return out;
+}
+
+/** center(비표지) 슬라이드의 빈 hero-shot 오브를 제거한다(거대한 빈 오브·제목 박힘 방지). */
+function stripProductLaunchCenterHeroShot(html: string): string {
+  const spans = listHealSlideHostSpans(html);
+  let out = String(html ?? '');
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    if (!/\bcenter\b/i.test(span.attrs) || /\bslide-title\b/i.test(span.attrs)) continue;
+    const body = out.slice(span.bodyStart, span.bodyEnd);
+    const next = body.replace(
+      /<(div|span|figure)\b[^>]*\bclass\s*=\s*["'][^"']*\bhero-shot\b[^"']*["'][^>]*>\s*<\/\1>/gi,
+      '',
+    );
+    if (next !== body) out = `${out.slice(0, span.bodyStart)}${next}${out.slice(span.bodyEnd)}`;
+  }
+  return out;
+}
+
+/**
+ * 1007-N01 (loop565) — 호스트 템플릿이 남긴 topic-neutral 잔재를 지어낸 폴백으로
+ * 채우지 않고 제거/정리한다. (1) synth lede 제거 (2) 내용 없는 kicker 제거
+ * (3) 잘린 제목 복사 brand 제거 (4) 깨진 꼬리(F1) 정리 (5) 중복 li 제거
+ * (6) 빈 flex:1 Ship 좌캠 제거 (7) center 빈 hero-shot 오브 제거.
+ */
+/**
+ * 1007-N01 (loop553/554/563) — 저장된 덱에 남아 있는 호스트-합성 아티팩트를
+ * 지어낸 폴백 없이 "제거/교정"만 한다. (a) 깨진 조사(주제이→주제가), (b) 토큰
+ * 반복(쓰는 순서를 쓰는 순서→1회), (c) 표제 중복 넘버 접미(소개 2→소개), (d) 호스트
+ * 합성 문장('…의미와 적용 기준을 한 문장으로 정리한다.') 제거, (e) 플레이스홀더
+ * 라벨 '핵심 N' 제거, (f) 끊긴 대시(—  ,→—). 모두 삭제·정규화이며 새 문장을
+ * 주입하지 않는다. 빈 노드/카드는 이후 collapse 단계가 정리한다.
+ */
+export function cleanProductLaunchBrokenHostCopy(html: string): string {
+  let out = String(html ?? '');
+  // (a) 깨진 조사
+  out = out.replace(/주제이(?=[\s<])/g, '주제가').replace(/주제을(?=[\s<])/g, '주제를');
+  // (b) 토큰 반복 축약
+  out = out.replace(/(쓰는 순서를)\s+\1/g, '$1').replace(/(다음 단계)\s+\1/g, '$1');
+  // (c) 표제 중복 넘버 접미 (… 소개 2</h1> → … 소개</h1>). 섹션 인덱스(1~2자리)만
+  //     지우고, 연도('소개 2024') 등 3자리+ 숫자는 모델 콘텐츠로 보존한다.
+  out = out.replace(/((?:소개|한눈에|다음 단계))\s+\d{1,2}(?=\s*<\/)/g, '$1');
+  // (d) 호스트 합성 문장 제거 (지어낸 요약 꼬리)
+  out = out
+    .replace(/\s*—\s*[^<—]*?에서 의미와 적용 기준을 한 문장으로 정리한다\.?/g, '')
+    .replace(/의미와 적용 기준을 한 문장으로 정리한다\.?/g, '');
+  // (e) 플레이스홀더 라벨 '핵심 N' / '핵심 주제( 한눈에)' (노드 전체가 라벨일 때만)
+  out = out.replace(
+    /(<(h[1-6]|p|div|span)\b[^>]*>)\s*(?:핵심\s+\d+|핵심 주제(?:\s*한눈에)?)\s*(<\/\2>)/gi,
+    (_m, open: string, _tag: string, close: string) => `${open}${close}`,
+  );
+  // (f) 끊긴 대시
+  out = out.replace(/—\s*,/g, '—');
+  return out;
+}
+
+function stripProductLaunchHostTemplateLeftovers(html: string, _topic: string): string {
+  let out = String(html ?? '');
+  out = cleanProductLaunchBrokenHostCopy(out);
+  out = out.replace(
+    /(<p\b[^>]*\blede\b[^>]*>)([\s\S]*?)(<\/p>)/gi,
+    (full, open: string, inner: string, close: string) => (
+      PRODUCT_LAUNCH_HOST_LEDE_RE.test(visibleDeckCopy(inner)) ? `${open}${close}` : full
+    ),
+  );
+  out = out.replace(
+    /(<p\b[^>]*\bkicker\b[^>]*>)([\s\S]*?)(<\/p>)/gi,
+    (full, open: string, inner: string, close: string) => (
+      productLaunchKickerIsHostTemplate(visibleDeckCopy(inner)) ? `${open}${close}` : full
+    ),
+  );
+  out = cleanProductLaunchLeakedBrand(out);
+  out = trimProductLaunchTruncatedTails(out);
+  out = dedupeProductLaunchCardListItems(out);
+  // 빈 flex:1 패널(Ship 좌캠 등) 제거 → CTA 블록만 남아 중앙 정렬.
+  out = out.replace(
+    /<div\b[^>]*\bstyle\s*=\s*["'][^"']*flex\s*:\s*1(?![\d.])[^"']*["'][^>]*>\s*<\/div>/gi,
+    '',
+  );
+  out = stripProductLaunchCenterHeroShot(out);
+  return out;
+}
+
 function diversifyProductLaunchRepeatedKickers(html: string, topic: string): string {
+  // 1007-N01 (loop565) — 호스트 kicker 라벨(한눈에/정착 순서/이어서 …) 재주입을
+  // 중단한다. 중복·잔여 kicker는 stripProductLaunchHostTemplateLeftovers가 제거.
+  void topic;
+  return String(html ?? '');
+}
+
+function _legacyDiversifyProductLaunchRepeatedKickers(html: string, topic: string): string {
   const dest = String(html ?? '');
   const spans = listHealSlideHostSpans(dest);
   if (spans.length === 0) return dest;
@@ -14052,7 +14409,9 @@ function fillProductLaunchKitSlide(
   const kickerText = visibleDeckCopy(
     /<[^>]*\bkicker\b[^>]*>([\s\S]*?)<\//i.exec(next)?.[1] ?? input.kicker ?? '',
   );
-  const role = genericRoleCopyForIndex(topic || 'Teamver', input.brief ?? input.topic ?? null, slideIndex + 1, allowTeamverCopy);
+  // 1007-N01 — 임의 폴백 금지: role(genericRoleCopyForIndex) 하드코드/합성 카피를
+  // 더 이상 슬롯에 심지 않는다. 제목/본문/lede는 모델이 쓴 기존 텍스트와
+  // input.lead/fillLines(= 이 덱의 on-topic 콘텐츠)에서만 끌어온다.
   const refillBrief = input.brief ?? input.topic;
   const headingNeedsRefill = productLaunchHeadingNeedsRefill(heading || input.title, {
     ...(refillBrief !== undefined ? { brief: refillBrief } : {}),
@@ -14068,7 +14427,8 @@ function fillProductLaunchKitSlide(
         slideIndex,
       })
         ? rewrittenTitle
-        : role.heading
+        // 지어낸 제목(role.heading) 대신 모델 원문/제목을 유지한다.
+        : (heading || input.title || '')
     )
     : rewrittenTitle;
   const suppliedLines = Array.isArray(input.fillLines) ? input.fillLines : [];
@@ -14098,12 +14458,7 @@ function fillProductLaunchKitSlide(
       );
     }
   }
-  if (productLaunchKickerNeedsRefill(kickerText)) {
-    const nextKicker = PRODUCT_LAUNCH_KICKER_BY_INDEX[slideIndex]
-      ? PRODUCT_LAUNCH_KICKER_BY_INDEX[slideIndex]!(topic || 'Teamver')
-      : (topic ? `${topic} 한눈에` : '한눈에');
-    next = replaceFirstExactClassText(next, 'kicker', nextKicker);
-  }
+  // 1007-N01 (loop565) — 호스트 kicker 라벨을 주입하지 않는다(내용 없는 네비 라벨).
   if (productLaunchLooksLikeOrphanPricingChrome(next)) {
     next = wipeProductLaunchOrphanPriceTokens(next);
   }
@@ -14119,11 +14474,13 @@ function fillProductLaunchKitSlide(
       || PRODUCT_LAUNCH_PACK_CLOSE_DUMP_RE.test(lede)
     ) {
       PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
+      // 1007-N01 — lede를 지어내지 않는다. 모델 lead가 쓸만하면 쓰고,
+      // 아니면 비운다(빈 lede는 collapse가 제거).
       const nextLede = input.lead
         && input.lead !== kickerText
         && productLaunchCopyIsKeepable(input.lead)
         ? input.lead
-        : productLaunchDistinctLede(topic, kickerText);
+        : '';
       next = replaceFirstExactClassText(next, 'lede', nextLede);
     }
     PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
@@ -14167,9 +14524,10 @@ function fillProductLaunchKitSlide(
         || looksLikeServiceIntroLeftoverTitle(existingTitle)
         || PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(existingTitle)
       ) {
+        // 1007-N01 — 제목은 기존 텍스트 정리(productLaunchKitAwareCardTitle) +
+        // 모델 fillLine에서만. role.items(하드코드) 폴백 제거.
         const nextTitle = productLaunchKitAwareCardTitle(existingTitle, topic, index)
           || (line ? resolveTemplateCloneCardFill(line).title : '')
-          || role.items[index]?.title
           || '';
         if (nextTitle && nextTitle !== existingTitle) {
           filled = filled.replace(
@@ -14184,14 +14542,10 @@ function fillProductLaunchKitSlide(
         }
       }
       if (forceDistinctFeatures || productLaunchSlotNeedsRefill(existingBody)) {
+        // 1007-N01 — 본문은 모델 fillLine에서만. role.items/concreteCardBody
+        // (지어낸 문장) 폴백 제거. 모델 콘텐츠가 없으면 비워 둔다(collapse가 정리).
         const resolved = line ? resolveTemplateCloneCardFill(line) : { title: '', body: '' };
-        const nextBody = role.items[index]?.body
-          || resolved.body
-          || productLaunchConcreteCardBody(
-            productLaunchKitAwareCardTitle(existingTitle, topic, index),
-            topic,
-            index,
-          );
+        const nextBody = resolved.body;
         if (nextBody) {
           filled = /\bdim\b/.test(filled)
             ? replaceFirstExactClassText(filled, 'dim', nextBody)
@@ -14228,25 +14582,22 @@ function fillProductLaunchKitSlide(
       }
       filled = wipeProductLaunchDemoAmounts(filled);
       if (productLaunchSlotNeedsRefill(existingBody)) {
-        filled = replaceFirstExactClassText(
-          filled,
-          'dim',
-          productLaunchConcreteCardBody(resolvedTitle, topic, index),
-        );
+        // 1007-N01 — concreteCardBody(지어낸 문장) 대신 모델 fillLine에서만.
+        const modelBody = line ? resolveTemplateCloneCardFill(line).body : '';
+        if (modelBody) {
+          filled = replaceFirstExactClassText(filled, 'dim', modelBody);
+        }
       }
       if (/<[uo]l\b/i.test(filled) && productLaunchSlotNeedsRefill(listText)) {
-        // 1007-N01 — the canned price-plan bullets are Teamver workspace copy
-        // (반복 작업 한 화면/워크스페이스/감사 로그). On a non-Teamver deck fill
-        // only from the model's own line; if that is empty, leave the list.
+        // 1007-N01 — 캔드 price-plan bullets(한 화면/워크스페이스/감사 로그)는
+        // Teamver 하드코드 카피. Teamver 덱이라도 하드코드 폴백을 쓰지 않고
+        // 모델 line에서만 채운다. 비면 리스트를 그대로 둔다(빈 항목은 추후 정리).
         const topicBullets = compactTextLines(
           typeof line === 'string' ? line : line.body,
           resolvedTitle,
         ).slice(0, 3);
-        const bullets = allowTeamverCopy
-          ? (PRODUCT_LAUNCH_PRICE_PLAN_BULLETS[index] ?? topicBullets)
-          : topicBullets;
-        if (bullets.length > 0) {
-          filled = replaceListItems(filled, [...bullets]);
+        if (topicBullets.length > 0) {
+          filled = replaceListItems(filled, [...topicBullets]);
         }
       }
       return filled;
@@ -14287,9 +14638,9 @@ function fillProductLaunchKitSlide(
         || productLaunchHasHealerTitleArtifact(existingTitle)
         || PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(existingTitle)
       ) {
+        // 1007-N01 — role.items(하드코드) 폴백 제거. 기존 텍스트 정리 + 모델 line만.
         const nextTitle = productLaunchKitAwareCardTitle(existingTitle, topic, index)
           || resolved.title
-          || role.items[index]?.title
           || '';
         filled = filled.replace(
           /(<h[3-5]\b[^>]*>)([\s\S]*?)(<\/h[3-5]>)/i,
@@ -14297,13 +14648,8 @@ function fillProductLaunchKitSlide(
         );
       }
       if (forceDistinctSteps || productLaunchSlotNeedsRefill(existingBody)) {
-        const nextBody = role.items[index]?.body
-          || resolved.body
-          || productLaunchConcreteCardBody(
-            productLaunchKitAwareCardTitle(existingTitle, topic, index),
-            topic,
-            index,
-          );
+        // 1007-N01 — role.items/concreteCardBody(지어낸 문장) 폴백 제거. 모델 line만.
+        const nextBody = resolved.body;
         if (nextBody) {
           filled = replaceFirstExactClassText(filled, 'dim', nextBody);
         }
@@ -14322,14 +14668,9 @@ function fillProductLaunchKitSlide(
       || /운영과 보안/.test(quote)
     ) {
       PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
-      next = replaceFirstExactClassText(
-        next,
-        'testimonial',
-        // 1007-N01 — do not invent a Teamver testimonial on a non-Teamver deck.
-        topic && allowTeamverCopy
-          ? `${attachKoreanJosa(topic, '을/를')} 쓰기 시작한 뒤, 작업이 한곳으로 모이기 시작했다.`
-          : '',
-      );
+      // 1007-N01 — testimonial을 지어내지 않는다(Teamver 덱 포함). 덤프/데모
+      // 인용은 비우고, 빈 testimonial 노드는 collapse가 제거한다.
+      next = replaceFirstExactClassText(next, 'testimonial', '');
     }
     PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
   }

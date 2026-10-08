@@ -54,18 +54,16 @@ describe('루프563 · Product Launch cross-kit / structural quality', () => {
     ].join(''));
 
     const healed = healProductLaunchLeftoverCatalogCopy(html, BRIEF);
+    // 구조 복구는 유지: foreign CSS·빈/숫자 제목·₩0 제거, slide 수 보존.
     expect(healed).not.toMatch(/data-od-block-frame-hangul-type/);
     expect(healed).not.toMatch(/<h[12][^>]*>\s*<\/h[12]>/);
     expect(healed).not.toMatch(/<h[12][^>]*>\s*02\s*<\/h[12]>/);
     expect(healed).not.toMatch(/₩0/);
-    expect(healed).toMatch(/Teamver가 묶는 일/);
-    expect(healed).toMatch(/Teamver가 모으는 일/);
-    expect(healed).toMatch(/Teamver에서 바로 쓰는 것/);
-    expect(healed).toMatch(/AI를 매일 활용하는 팀을 기준으로 도입 범위를 정한다/);
-    expect(healed).toMatch(/맥락 전환과 중복 작업을 줄인다/);
-    expect(healed).toMatch(/협업 경계를 분명히 한다/);
-    expect(healed).toMatch(/변경 이력을 남긴다/);
-    expect((healed.match(/같은 설명/g) ?? []).length).toBe(0);
+    // 1007-N01 — 임의 폴백 금지(Teamver 덱 포함): 지어낸 역할 카피/본문을 넣지
+    // 않는다. 모델이 쓴 step 제목은 그대로 둔다.
+    expect(healed).not.toMatch(/묶는 일|모으는 일|바로 쓰는 것/);
+    expect(healed).not.toMatch(/맥락 전환과 중복 작업을 줄인다|협업 경계를 분명히 한다|변경 이력을 남긴다/);
+    expect(healed).toMatch(/파일과 대화를 같은 보드에 모은다/);
     expect(listTemplateCloneSlideShells(healed)).toHaveLength(4);
   });
 
@@ -75,8 +73,9 @@ describe('루프563 · Product Launch cross-kit / structural quality', () => {
       '<section class="slide center tc"><p class="kicker">문제 정의</p><h1 class="h1">Teamver 소개</h1></section>',
     ].join(''));
     const healed = healProductLaunchLeftoverCatalogCopy(html, BRIEF);
+    // 중복 제목은 "지어낸 Teamver 문장"이 아니라 덱 topic 파생 라벨로만 분리한다.
     expect((healed.match(/>Teamver 소개<\/h1>/g) ?? [])).toHaveLength(1);
-    expect(healed).toMatch(/Teamver 서비스가 해결하는 문제/);
+    expect(healed).toMatch(/핵심 내용|핵심 근거|활용 시나리오|이어 쓰기|실행 흐름|시작하세요/);
   });
 
   it('떨어진 카드 슬라이드의 중복 제목도 서로 다른 역할로 분리한다', () => {
@@ -88,9 +87,10 @@ describe('루프563 · Product Launch cross-kit / structural quality', () => {
       cardSlide,
     ].join(''));
     const healed = healProductLaunchLeftoverCatalogCopy(html, BRIEF);
-    expect((healed.match(/>Teamver 서비스 핵심 근거<\/h2>/g) ?? [])).toHaveLength(1);
-    expect(healed).toMatch(/Teamver 서비스 운영 근거/);
-    expect(healed).toMatch(/Teamver 서비스 적용 사례/);
+    // 1007-N01 — 중복 제목을 지어낸 라벨(운영 근거/적용 사례/실행 기준)로
+    // 분리하지 않는다. 모델이 쓴 카드 내용은 그대로 둔다.
+    expect(healed).not.toMatch(/운영 근거|적용 사례|실행 기준/);
+    expect(healed).toMatch(/>\s*항목\s*</);
   });
 
   it('price-card 숫자형 슬라이드는 도입 로드맵이 아니라 활용 시나리오로 복구한다', () => {
@@ -116,9 +116,8 @@ describe('루프563 · Product Launch cross-kit / structural quality', () => {
       `<div class="card"><h4>${slogan}</h4><p>파일과 대화를 한 맥락으로 연다.</p></div></section>`,
     ].join(''));
     const healed = healProductLaunchLeftoverCatalogCopy(html, BRIEF);
-    expect((healed.match(new RegExp(slogan, 'g')) ?? [])).toHaveLength(1);
-    expect(healed).toMatch(/같은 보드|권한 경계|결과 이력|초안/);
-    expect(healed).not.toMatch(/다루는 문제와 제공 가치/);
+    // 1007-N01 — 중복 슬로건을 지어낸 라벨로 교체하지 않는다(모델 본문 보존).
+    expect(healed).toMatch(new RegExp(slogan));
     expect(healed).toMatch(/<html[^>]*lang="ko"/);
   });
 
@@ -137,20 +136,21 @@ describe('루프563 · Product Launch cross-kit / structural quality', () => {
       '< div=""> <a class="cta-btn">지금 시작하기</a> <></div></section>',
     ].join(''));
     const healed = healProductLaunchLeftoverCatalogCopy(html, BRIEF);
+    // 제너릭 카드 제목은 topic 파생 라벨로 정리된다(원시 leftover 라벨 제거).
     expect(healed).not.toMatch(/>\s*핵심 가치\s*</);
     expect(healed).not.toMatch(/>\s*사용 장면\s*</);
-    expect(healed).not.toMatch(/사용자가 즉시 얻는 시간 절감/);
     expect(healed).not.toMatch(/font-size:\s*140px/);
     expect(healed).not.toMatch(/<\s+div\b|<\s*>|<\/\s*>/);
-    expect((healed.match(/\bfeature-card\b/g) ?? []).length).toBeGreaterThanOrEqual(3);
-    expect(healed).toMatch(/class="[^"]*\bg3\b/);
+    // 1007-N01 — 2카드 grid는 세 번째 카드를 지어내지 않고 g2로 맞춘다.
+    expect((healed.match(/\bfeature-card\b/g) ?? []).length).toBe(2);
+    expect(healed).toMatch(/class="[^"]*\bg2\b/);
+    expect(healed).not.toMatch(/class="[^"]*\bg3\b/);
     expect(healed).toMatch(/<\/div><div data-od-official-motif-html class="hero-shot"/);
-    expect(healed).not.toMatch(/5초 안에 "문서/);
     expect(healed).toMatch(/data-od-slide-flow[^>]*padding:\s*80px 112px/);
     expect(healed).not.toMatch(/padding:\s*56px 72px/);
   });
 
-  it('제목 풀이 비어도 g3+2카드를 g2로 줄이지 않는다', () => {
+  it('카드가 2개면 g3를 g2로 줄이고 세 번째 카드를 지어내지 않는다', () => {
     const titles = [
       '같은 보드',
       '권한 경계',
@@ -177,9 +177,10 @@ describe('루프563 · Product Launch cross-kit / structural quality', () => {
     )).join('');
     const healed = healProductLaunchLeftoverCatalogCopy(productLaunchDeck(sparse + rest), BRIEF);
     const sparseSlide = (healed.match(/<section\b[\s\S]*?<\/section>/gi) ?? [])
-      .find((section) => section.includes('class="grid g3') || section.includes("class='grid g3")) ?? '';
-    expect(sparseSlide).toMatch(/\bg3\b/);
-    expect(sparseSlide).not.toMatch(/\bg2\b/);
+      .find((section) => section.includes('15분 회화') || section.includes('쓰임')) ?? '';
+    // 1007-N01 — 2카드 grid는 g2로 맞추고 세 번째 카드를 지어내지 않는다.
+    expect(sparseSlide).toMatch(/\bg2\b/);
+    expect(sparseSlide).not.toMatch(/\bg3\b/);
     expect((sparseSlide.match(/\bfeature-card\b/g) ?? []).length).toBe(2);
     expect(healed).not.toMatch(/\$\s*\d|₩\s*\d/);
   });
@@ -207,8 +208,11 @@ describe('루프563 · Product Launch cross-kit / structural quality', () => {
     expect(healed).not.toMatch(/early review|2-year warranty|· from/);
     expect(healed).not.toMatch(/>\s*14일\s*</);
     expect(healed).toMatch(/>지금</);
-    expect(healed).toMatch(/<div[^>]*\bamount\b[^>]*>한 화면<\/div>/);
-    expect(healed).toMatch(/class="lede"/);
+    // 1007-N01 — 빈 amount에 "한 화면" 라벨을 지어넣지 않는다(빈 노드는 제거).
+    expect(healed).not.toMatch(/<div[^>]*\bamount\b[^>]*>\s*한 화면\s*<\/div>/);
+    expect(healed).not.toMatch(/<div[^>]*\bamount\b[^>]*>\s*<\/div>/);
+    // 모델이 쓴 price-card 본문은 보존한다.
+    expect(healed).toMatch(/한 화면에서 초안을 고친다/);
   });
 
   it('중복 style 속성을 하나로 병합하고 빈 style를 제거한다', () => {
@@ -222,7 +226,8 @@ describe('루프563 · Product Launch cross-kit / structural quality', () => {
     expect((healed.match(/<h1\b[^>]*>/) ?? [''])[0]).not.toMatch(/style=[^>]*style=/);
     expect(healed).not.toMatch(/style=""/);
     expect(healed).toMatch(/color:#111111!important/);
-    expect(healed).toMatch(/class="lede"/);
+    // 1007-N01 — 모델 lead가 없는 커버에 lede를 지어내지 않는다.
+    expect(healed).not.toMatch(/class="lede"/);
   });
 
   it('pack close dump·반복 한눈에 kicker·표지 hero-shot·깨진 조사를 고친다', () => {
@@ -244,13 +249,14 @@ describe('루프563 · Product Launch cross-kit / structural quality', () => {
     const healed = healProductLaunchLeftoverCatalogCopy(html, BRIEF);
     expect(healed).toMatch(/data-od-official-motif-html class="hero-shot"/);
     expect((healed.match(/Teamver 한눈에/g) ?? []).length).toBeLessThanOrEqual(1);
-    expect(healed).not.toMatch(/쓸 방을 열고 첫 보드에 팀을 초대/);
+    // 1007-N01 — 본문 문장이 샌 kicker/testimonial 덤프는 제거된다.
+    expect(healed).not.toMatch(/<p[^>]*\b(?:kicker|testimonial)\b[^>]*>[^<]*쓸 방을 열고/);
     expect(healed).not.toMatch(/나눠같이/);
     expect(healed).toMatch(/나눠 같이/);
-    expect(healed).toMatch(/Teamver 시작하기/);
+    // 1007-N01 — 덤프 CTA는 지어낸 문장 대신 중립 라벨만, lede 덤프는 비운다.
+    expect(healed).toMatch(/시작하기/);
     expect(healed).not.toMatch(/초대한다\.를/);
-    expect(healed).not.toMatch(/>\s*장면\s*</);
-    expect(healed).toMatch(/class="lede"/);
+    expect(healed).not.toMatch(/class="lede"[^>]*>[^<]*쓸 방을 열고/);
   });
 
   it('빈 dim-dot·Ship 좌캠·price-card 타이틀·kicker↔h1 중복을 persist에서 고친다', () => {
@@ -278,8 +284,8 @@ describe('루프563 · Product Launch cross-kit / structural quality', () => {
     expect(healed).toMatch(/>\s*Teamver(?:\s+\S+)?\s+쓰임새\s*</);
     // dim-dot orphan 캡션 제거.
     expect(healed).not.toMatch(/<p[^>]*\bdim\b[^>]*>\s*·\s*<\/p>/);
-    // Ship 좌캠 lede 복구.
-    expect(healed).toMatch(/<p class="lede"[^>]*>Teamver(?:\s+\S+)?에서 보드를 열고 함께 고칠 사람을 부른다/);
+    // 1007-N01 — Ship 좌캠에 지어낸 lede를 넣지 않는다(빈 칸은 비운다).
+    expect(healed).not.toMatch(/보드를 열고 함께 고칠 사람을 부른다/);
     // Ship CTA·숫자는 보존.
     expect(healed).toMatch(/>지금</);
     expect(healed).toMatch(/\bcta-btn\b/);
@@ -328,10 +334,12 @@ describe('루프563 · Product Launch cross-kit / structural quality', () => {
     ].join(''));
     const healed = sanitizePersistedDeckHostLeaks(html);
     expect(healed).toMatch(/<\/div><div data-od-official-motif-html class="hero-shot"><\/div>/);
-    expect(healed).toMatch(/<p class="lede">/);
-    expect(healed).toMatch(/초안과 수정/);
+    // 1007-N01 — 커버 lede를 지어내지 않는다(모델 lead 없음 → lede 없음).
+    expect(healed).not.toMatch(/초안과 수정/);
     expect(healed).not.toMatch(/deck-footer/);
     expect(healed).toMatch(/class="hero-shot"/);
+    // 모델 price-card 본문 보존.
+    expect(healed).toMatch(/한 화면에서 고친다/);
   });
 
   it('pack 소스와 persist 결과 모두 나눠같이를 남기지 않는다', () => {
@@ -380,7 +388,7 @@ describe('루프563 · Product Launch cross-kit / structural quality', () => {
     expect(healed).toMatch(/>\s*초안\s*</);
   });
 
-  it('step이 2개뿐인 도입 단계에 세 번째 항목과 kicker를 붙인다', () => {
+  it('step이 2개뿐이면 세 번째 항목을 지어내지 않고 2개를 유지한다', () => {
     const html = productLaunchDeck([
       '<section class="slide"><h2 class="h2">도입 단계</h2>',
       '<div class="step"><div class="n">1</div><div><h4>한 팀 보드</h4><p class="dim">기존 문서를 Teamver 보드로 옮긴다.</p></div></div>',
@@ -388,9 +396,9 @@ describe('루프563 · Product Launch cross-kit / structural quality', () => {
       '</section>',
     ].join(''));
     const healed = healProductLaunchLeftoverCatalogCopy(html, BRIEF);
-    expect((healed.match(/\bstep\b/g) ?? []).length).toBeGreaterThanOrEqual(3);
-    expect(healed).toMatch(/<p class="kicker">[^<]+<\/p>/);
-    expect(healed).toMatch(/>\s*(?:같은 보드|권한 경계|결과 이력|조직 기준)\s*</);
+    // 1007-N01 — 세 번째 step을 Teamver 명사 풀에서 지어내지 않는다.
+    expect((healed.match(/class="step"/g) ?? []).length).toBe(2);
+    expect(healed).not.toMatch(/>\s*(?:같은 보드|권한 경계|결과 이력|조직 기준)\s*</);
     expect(healed).toMatch(/>\s*한 팀 보드\s*</);
     expect(healed).toMatch(/>\s*리뷰 습관\s*</);
   });
@@ -428,10 +436,9 @@ describe('루프563 · Product Launch cross-kit / structural quality', () => {
       expect(source).toMatch(/나눠 같이/);
       expect(source).not.toMatch(/<div\b[^>]*\bdeck-footer\b/i);
       expect(source).not.toMatch(/\$\s*\d|₩\s*\d/);
-      expect(source).toMatch(/>\s*한 화면\s*</);
-      expect(source).toMatch(/>\s*한 팀\s*</);
-      expect(source).toMatch(/>\s*한 정책\s*</);
       expect(countExactClass(source, 'hero-shot')).toBe(1);
+      // 1007-N01 — 빈 카드 shell이 남지 않는다.
+      expect(source).not.toMatch(/<div\b[^>]*\b(?:feature-card|price-card|step|card)\b[^>]*>\s*<\/div>/i);
 
       const sections = sectionsOf(source);
       expect(sections).toHaveLength(10);
@@ -439,24 +446,41 @@ describe('루프563 · Product Launch cross-kit / structural quality', () => {
       expect(cover).toMatch(/\bclass\s*=\s*["'][^"']*\bslide\b[^"']*\bdark\b/);
       expect(countExactClass(cover, 'hero-shot')).toBe(1);
       expect(cover).not.toMatch(/deck-footer/);
-      expect((cover.match(/\blede\b/gi) ?? []).length).toBe(1);
+      // 커버에 lede를 지어내지 않는다.
+      expect((cover.match(/\blede\b/gi) ?? []).length).toBe(0);
 
-      const seat = sections.find((section) => section.includes('파일 밖으로 흩어지지')) ?? '';
+      // 1007-N01 — 세 번째 카드를 지어내지 않으므로 grid gN은 모델의 실제 카드
+      // 수와 일치한다(빈 박스 없음). 3카드 grid는 g3, 2카드 grid는 g2.
+      const seat = sections.find((section) => section.includes('모으는 일')) ?? '';
       expect(countExactClass(seat, 'feature-card')).toBe(3);
       expect(seat).toMatch(/\bg3\b/);
       expect(seat).not.toMatch(/\bg2\b/);
 
-      const board = sections.find((section) => section.includes('같은 자리에서 열린다')) ?? '';
+      const board = sections.find((section) => section.includes('바로 쓰는 것')) ?? '';
       expect(countExactClass(board, 'card')).toBe(3);
       expect(board).toMatch(/\bg3\b/);
-      expect(board).not.toMatch(/\bg2\b/);
 
-      const steps = sections.find((section) => /\bstep\b/.test(section)) ?? '';
-      expect(countExactClass(steps, 'step')).toBe(3);
-      expect(steps).toMatch(/<p\b[^>]*\bkicker\b/i);
+      const pairFeature = sections.find((section) => section.includes('쓰는 자리')) ?? '';
+      expect(countExactClass(pairFeature, 'feature-card')).toBe(2);
+      expect(pairFeature).toMatch(/\bg2\b/);
+      expect(pairFeature).not.toMatch(/\bg3\b/);
 
-      const prices = sections.find((section) => section.includes('price-card')) ?? '';
-      expect(countExactClass(prices, 'price-card')).toBe(3);
+      const pairCard = sections.find((section) => section.includes('같은 자리에')) ?? '';
+      expect(countExactClass(pairCard, 'card')).toBe(2);
+      expect(pairCard).toMatch(/\bg2\b/);
+
+      const steps = sections.find((section) => /class="step"/.test(section)) ?? '';
+      // 2개뿐인 step은 세 번째를 지어내지 않는다.
+      expect(countExactClass(steps, 'step')).toBe(2);
+
+      // 1007-N01 — 가격이 아닌 synth amount('한 화면/한 팀/한 정책')를 가진 price-card는
+      // feature-card로 격하하고 amount 노드를 제거한다(모델 카드 본문·불릿은 보존).
+      const prices = sections.find((section) => section.includes('혼자 시작')) ?? '';
+      expect(countExactClass(prices, 'price-card')).toBe(0);
+      expect(countExactClass(prices, 'feature-card')).toBe(3);
+      // amount(가격 전용) 노드는 제거된다. ('한 화면에서'처럼 본문/불릿에 쓰인 표현은 모델 콘텐츠이므로 보존)
+      expect(prices).not.toMatch(/<div[^>]*\bamount\b/);
+      expect(prices).toContain('Teamver에서 한 보드를 열고 초안을 붙인다');
     }
 
     assertFlatHealed(healed);
@@ -501,7 +525,7 @@ describe('1007-N01 · 비-Teamver 토픽 오염 방지 (영어 회화 자가학�
     expect(healed).toMatch(/섀도잉 10분/);
   });
 
-  it('빈 center 커버에 Teamver lede 대신 토픽-중립 lede를 넣는다', () => {
+  it('빈 center 커버에 lede를 지어내지 않는다(모델 lead 없음)', () => {
     const html = productLaunchDeck([
       '<section class="slide center tc slide-title"><div data-od-slide-flow style="padding:80px 112px">',
       '<h1 class="h1">영어 회화 15분 루틴</h1></div></section>',
@@ -509,7 +533,10 @@ describe('1007-N01 · 비-Teamver 토픽 오염 방지 (영어 회화 자가학�
     const healed = healProductLaunchLeftoverCatalogCopy(html, ENGLISH_BRIEF);
     expect(healed).not.toMatch(TEAMVER_COPY_RE);
     expect(healed).not.toMatch(/AI 초안을 만들고 고치게|보드를 열고 함께 고칠 사람/);
-    expect(healed).toMatch(/class="lede"/);
+    // 1007-N01 — 임의 폴백 금지: 모델 lead가 없으면 lede를 지어내지 않는다.
+    expect(healed).not.toMatch(/class="lede"/);
+    // 모델이 쓴 커버 제목은 보존한다.
+    expect(healed).toMatch(/영어 회화 15분 루틴/);
   });
 
   it('price-card 슬라이드에 Teamver 요금/운영 bullet·금액을 주입하지 않는다', () => {

@@ -1861,11 +1861,17 @@ describe('루프419 Capsule deterministic quality gate', () => {
     expect(healed).not.toMatch(/AAC \+ SBC/);
     expect(healed).not.toMatch(/Hi-Res Lossless/);
     expect(healed).toContain('hero-shot');
-    expect(healed).toContain('price-card');
     expect(healed).toContain('feature-card');
     expect(healed).toMatch(/Teamver|팀버/i);
-    expect(healed).not.toMatch(/<h[12][^>]*>\s*(?:개요|핵심 포인트|근거와 사례|실행 방안|고객 경험|도입 로드맵|성과 지표|요약)\s*</);
-    expect(healed).not.toMatch(/<h4[^>]*>\s*(?:핵심 가치|사용 장면|차별점|탐색|실행|확장|실무자|리더|운영자)\s*</);
+    // 1007-N01 — 임의(하드코드/합성) 폴백 금지 정책:
+    // (1) 카탈로그 가격($179 등)이 스크럽된 price-card는 feature-card로 격하되고
+    //     빈/합성 amount 노드는 제거된다(가격 라벨을 지어내지 않는다).
+    expect(healed).not.toMatch(/<div[^>]*\bamount\b[^>]*>\s*<\/div>/);
+    expect(healed).not.toMatch(/한 화면|한 팀|한 정책/);
+    // (2) 일반 구조 라벨(개요/실행 방안/핵심 가치 등)은 중립 구조이므로 토픽 문장으로
+    //     지어내 대체하지 않고 그대로 둔다. 깨진 josa·합성 요약 꼬리만 제거한다.
+    expect(healed).not.toMatch(/주제이|주제을/);
+    expect(healed).not.toMatch(/의미와 적용 기준을 한 문장으로/);
   });
 
   it('루프551 — Product Launch healer는 Grove / Broadside 킷에 발동하지 않는다', async () => {
@@ -1910,9 +1916,11 @@ describe('루프419 Capsule deterministic quality gate', () => {
     const cover = /<section\b[^>]*data-title="Cover"[^>]*>[\s\S]*?<\/section>/i.exec(healed)?.[0] ?? '';
     const coverKicker = /<p class="kicker">([^<]*)<\/p>/.exec(cover)?.[1] ?? '';
     const coverLede = /<p class="lede[^"]*">([^<]*)<\/p>/.exec(cover)?.[1] ?? '';
-    expect(coverKicker.length).toBeGreaterThan(0);
+    // 1007-N01 — 호스트 템플릿 kicker/lede는 지어낸 문장으로 다시 채우지 않는다.
+    // 비워져도(길이 0) 허용하되, 남아 있다면 합성 문구가 아니어야 하고 서로 중복이 아니어야 한다.
+    expect(coverKicker).not.toMatch(/핵심 맥락과 다음 단계|주제이|주제을/);
     expect(coverLede).not.toMatch(/핵심 맥락과 다음 단계/);
-    if (coverLede) expect(coverKicker).not.toBe(coverLede);
+    if (coverLede && coverKicker) expect(coverKicker).not.toBe(coverLede);
 
     const ship = /<section\b[^>]*data-title="Ship"[^>]*>[\s\S]*?<\/section>/i.exec(healed)?.[0] ?? '';
     expect(ship).not.toMatch(/—\s*,/);
@@ -1991,7 +1999,9 @@ describe('루프419 Capsule deterministic quality gate', () => {
     const stepBodies = [...stepSlide.matchAll(/<p\b[^>]*\bdim\b[^>]*>([\s\S]*?)<\/p>/gi)]
       .map((match) => String(match[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())
       .filter(Boolean);
-    expect(stepBodies.length).toBeGreaterThanOrEqual(3);
+    // 1007-N01 — 반복/빈 step은 지어낸 서로 다른 본문으로 채우지 않는다(임의 폴백 금지).
+    // 남은 step 본문은 비어 있지 않고 서로 중복이 아니어야 한다(중복·빈 박스는 collapse 정리).
+    expect(stepBodies.length).toBeGreaterThanOrEqual(1);
     expect(new Set(stepBodies).size).toBe(stepBodies.length);
   });
 
