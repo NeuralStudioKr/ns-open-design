@@ -52,6 +52,21 @@ export const PROXY_STREAM_IDLE_TIMEOUT_DECK_MS = 6 * 60 * 1000;
  */
 export const PROXY_STREAM_HEAD_PREAMBLE_IDLE_MS = 60 * 1000;
 
+/**
+ * 1007-N01 — official-rich greenfield/prompt-fill decks author a full rich
+ * HTML document: the model writes a large `<head>`/prelude `<style>` (Daisy +
+ * template look CSS) BEFORE the first titled slide, so the stream can legitimately
+ * sit in the head-preamble phase far longer than a json slot-fill. The 60s
+ * preamble clamp ({@link PROXY_STREAM_HEAD_PREAMBLE_IDLE_MS}) was tuned for the
+ * old json default and now cuts live rich heads as AGENT_EXECUTION_STALLED
+ * (e.g. the retry after `MiniMax stream ended before the deck artifact completed`
+ * tripped on a >60s silent gap mid-head). Only buffered rich-deck runs
+ * ({@link ProxyContext.bufferDeckArtifactUntilComplete}) use this wider budget;
+ * it stays below {@link PROXY_STREAM_IDLE_TIMEOUT_DECK_MS} so a genuine total
+ * hang still fails faster than the full deck idle, and json/clone-fill keep 60s.
+ */
+export const PROXY_STREAM_HEAD_PREAMBLE_IDLE_RICH_DECK_MS = 3 * 60 * 1000;
+
 /** @internal vitest + ProjectView deck runs */
 export function resolveProxyStreamIdleTimeoutMs(context?: ProxyContext): number {
   const override = context?.streamIdleTimeoutMs;
@@ -71,7 +86,12 @@ export function resolveAdaptiveProxyStreamIdleTimeoutMs(
 ): number {
   const base = resolveProxyStreamIdleTimeoutMs(context);
   if (looksLikeHeadOpenedDeckPreamble(streamedText)) {
-    return Math.min(base, PROXY_STREAM_HEAD_PREAMBLE_IDLE_MS);
+    // Rich full-HTML decks spend much longer in the head/style phase than a
+    // json slot-fill; give them a wider preamble budget (still < deck idle).
+    const preambleIdleMs = context?.bufferDeckArtifactUntilComplete === true
+      ? PROXY_STREAM_HEAD_PREAMBLE_IDLE_RICH_DECK_MS
+      : PROXY_STREAM_HEAD_PREAMBLE_IDLE_MS;
+    return Math.min(base, preambleIdleMs);
   }
   return base;
 }

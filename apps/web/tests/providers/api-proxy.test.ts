@@ -18,6 +18,7 @@ import {
   MAX_ANTHROPIC_PROXY_IMAGE_BYTES,
   PROXY_SOFT_RETRY_DELAY_MS,
   PROXY_STREAM_HEAD_PREAMBLE_IDLE_MS,
+  PROXY_STREAM_HEAD_PREAMBLE_IDLE_RICH_DECK_MS,
   PROXY_STREAM_IDLE_TIMEOUT_DECK_MS,
   PROXY_STREAM_IDLE_TIMEOUT_MS,
   PROXY_STREAM_SOFT_RETRY_MAX_ATTEMPTS,
@@ -1336,6 +1337,51 @@ describe('streamProxyEndpoint idle-timeout stall (AGENT_EXECUTION_STALLED)', () 
       resolveAdaptiveProxyStreamIdleTimeoutMs(
         '<artifact type="deck"><!doctype html><html lang="ko"><body><section class="slide">',
         { minOutputTokens: 16_000 },
+      ),
+    ).toBe(PROXY_STREAM_IDLE_TIMEOUT_DECK_MS);
+  });
+
+  it('1007-N01 — rich (official-rich) deck preamble waits longer than json before stalling', () => {
+    // Rich full-HTML decks author a large <head>/<style> before the first
+    // titled slide; the 60s json preamble clamp cut them as AGENT_EXECUTION_STALLED.
+    expect(PROXY_STREAM_HEAD_PREAMBLE_IDLE_RICH_DECK_MS).toBe(3 * 60 * 1000);
+    expect(PROXY_STREAM_HEAD_PREAMBLE_IDLE_RICH_DECK_MS).toBeGreaterThan(
+      PROXY_STREAM_HEAD_PREAMBLE_IDLE_MS,
+    );
+    // Still below the full deck idle so a genuine total hang fails faster.
+    expect(PROXY_STREAM_HEAD_PREAMBLE_IDLE_RICH_DECK_MS).toBeLessThan(
+      PROXY_STREAM_IDLE_TIMEOUT_DECK_MS,
+    );
+
+    const richHeadPreamble = [
+      'TeamVer 회사 소개 덱을 리치 HTML로 작성 중입니다.',
+      '<artifact type="deck" identifier="deck">',
+      '<!doctype html>',
+      '<html lang="ko">',
+      '<head>',
+      '<style>',
+    ].join('\n');
+
+    // Buffered rich deck run → wider preamble budget.
+    expect(
+      resolveAdaptiveProxyStreamIdleTimeoutMs(richHeadPreamble, {
+        minOutputTokens: 16_000,
+        bufferDeckArtifactUntilComplete: true,
+      }),
+    ).toBe(PROXY_STREAM_HEAD_PREAMBLE_IDLE_RICH_DECK_MS);
+
+    // Same preamble, but non-buffered (json/clone-fill) path keeps 60s.
+    expect(
+      resolveAdaptiveProxyStreamIdleTimeoutMs(richHeadPreamble, {
+        minOutputTokens: 16_000,
+      }),
+    ).toBe(PROXY_STREAM_HEAD_PREAMBLE_IDLE_MS);
+
+    // Once a titled slide appears, the rich path returns to the full deck idle.
+    expect(
+      resolveAdaptiveProxyStreamIdleTimeoutMs(
+        '<!doctype html><html><body><section class="slide"><h1>표지</h1></section></body></html>',
+        { minOutputTokens: 16_000, bufferDeckArtifactUntilComplete: true },
       ),
     ).toBe(PROXY_STREAM_IDLE_TIMEOUT_DECK_MS);
   });
