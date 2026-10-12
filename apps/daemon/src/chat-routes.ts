@@ -1021,6 +1021,28 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     return false;
   };
 
+  const completeDeckArtifactText = (text: string): boolean => {
+    const raw = String(text ?? '');
+    if (/<question-form\b[\s\S]*<\/question-form\s*>/i.test(raw)) return true;
+    const open = /<artifact\b([^>]*)>/i.exec(raw);
+    if (!open) return false;
+    const type = /\btype\s*=\s*["']([^"']+)["']/i.exec(open[1] ?? '')?.[1]?.toLowerCase();
+    if (!type || !['deck', 'deck-patch', 'element-patch'].includes(type)) return false;
+    const bodyStart = (open.index ?? 0) + open[0].length;
+    const closeIndex = raw.toLowerCase().indexOf('</artifact>', bodyStart);
+    if (closeIndex < 0) return false;
+    const body = raw.slice(bodyStart, closeIndex);
+    if (type === 'deck') {
+      return /<!doctype\s+html\b|<html\b/i.test(body)
+        && /<\/html\s*>/i.test(body)
+        && /<(?:section|div|main|article)\b[^>]*(?:class\s*=\s*["'][^"']*\bslide\b|data-slide(?:-index)?\s*=)/i.test(body);
+    }
+    if (type === 'deck-patch') {
+      return /<(?:section|div|main|article)\b[^>]*(?:class\s*=\s*["'][^"']*\bslide\b|data-slide-index\s*=)/i.test(body);
+    }
+    return /<patch\b[^>]*>[\s\S]*<\/patch\s*>/i.test(body);
+  };
+
   /** Upstream closed without message_stop/[DONE]/error — empty streams are retryable drops. */
   const finalizeProxyUpstreamIfIncomplete = (
     sse: any,
@@ -2113,6 +2135,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       byokSpeechModel,
       byokSpeechVoice,
       expectCompleteJsonOutline,
+      expectCompleteDeckArtifact,
     } = proxyBody;
     const apiKey = resolveProxyApiKeyOrSendError(
       req,
@@ -2237,12 +2260,17 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       sse: any,
       messagesForTurn: any[],
     ): Promise<TurnResult> => {
+      const atomicMiniMaxDeckResponse =
+        expectCompleteDeckArtifact === true
+        && opts.providerId === 'minimax'
+        && !minimaxTurnShouldEnableWebFetch(messagesForTurn, systemPrompt);
+      const atomicMiniMaxResponse =
+        opts.providerId === 'minimax'
+        && (expectCompleteJsonOutline === true || atomicMiniMaxDeckResponse);
       const payload: any = {
         model,
         messages: messagesForTurn,
-        stream: expectCompleteJsonOutline === true && opts.providerId === 'minimax'
-          ? false
-          : true,
+        stream: !atomicMiniMaxResponse,
         tools: opts.tools,
         tool_choice: 'auto',
       };
@@ -2250,11 +2278,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         Object.assign(payload, buildMiniMaxChatCompletionExtras({
           requestedMaxCompletionTokens:
             typeof maxTokens === 'number' && maxTokens > 0 ? maxTokens : null,
-          includeUsage: expectCompleteJsonOutline !== true,
+          includeUsage: !atomicMiniMaxResponse,
           jsonOutline: expectCompleteJsonOutline === true,
         }));
         if (
-          expectCompleteJsonOutline === true
+          atomicMiniMaxResponse
           || !minimaxTurnShouldEnableWebFetch(messagesForTurn, systemPrompt)
         ) {
           delete payload.tools;
@@ -2319,12 +2347,12 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       let providerErrorData: unknown = null;
 
       const guard = createDeltaGuard(sse);
-      if (expectCompleteJsonOutline === true && opts.providerId === 'minimax') {
+      if (atomicMiniMaxResponse) {
         let data: any;
         try {
           data = await response.json();
         } catch {
-          sendProxyError(sse, 'MiniMax returned an unreadable JSON-outline response', {
+          sendProxyError(sse, 'MiniMax returned an unreadable atomic response', {
             code: 'UPSTREAM_UNAVAILABLE',
             retryable: true,
           });
@@ -2349,10 +2377,12 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           : typeof choice?.delta?.content === 'string'
             ? choice.delta.content
             : '';
-        // The ordinary prose/role-marker stream guard treats JSON keys such as
-        // `roleHint` as chat prose. This response is buffered and parsed by the
-        // Clone host, so validate the complete raw document atomically instead.
-        if (!completeJsonOutlineText(content)) {
+        // Atomic responses bypass the ordinary streaming guard. Validate the
+        // full JSON outline or deck artifact before exposing any bytes.
+        const complete = expectCompleteJsonOutline === true
+          ? completeJsonOutlineText(content)
+          : completeDeckArtifactText(content);
+        if (!complete) {
           sendProxyUsageIfPresent(
             res,
             sse,
@@ -2360,10 +2390,16 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
             turnUsage.outputTokens,
             model,
           );
-          sendProxyError(sse, 'MiniMax response ended before the JSON outline completed', {
-            code: 'UPSTREAM_UNAVAILABLE',
-            retryable: true,
-          });
+          sendProxyError(
+            sse,
+            expectCompleteJsonOutline === true
+              ? 'MiniMax response ended before the JSON outline completed'
+              : 'MiniMax response ended before the deck artifact completed',
+            {
+              code: 'UPSTREAM_UNAVAILABLE',
+              retryable: true,
+            },
+          );
           return { kind: 'error' };
         }
         sse.send('delta', { delta: content });
@@ -2464,13 +2500,16 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         return { kind: 'error' };
       }
 
-      if (
+      const incompleteExpectedJson =
         expectCompleteJsonOutline === true
         && (
           (!sawDone && !finishReason)
           || !completeJsonOutlineText(guard.visibleText)
-        )
-      ) {
+        );
+      const incompleteExpectedDeck =
+        expectCompleteDeckArtifact === true
+        && !completeDeckArtifactText(guard.visibleText);
+      if (incompleteExpectedJson || incompleteExpectedDeck) {
         sendProxyUsageIfPresent(
           res,
           sse,
@@ -2478,10 +2517,16 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           turnUsage.outputTokens,
           model,
         );
-        sendProxyError(sse, 'MiniMax stream ended before the JSON outline completed', {
-          code: 'UPSTREAM_UNAVAILABLE',
-          retryable: true,
-        });
+        sendProxyError(
+          sse,
+          incompleteExpectedJson
+            ? 'MiniMax stream ended before the JSON outline completed'
+            : 'MiniMax stream ended before the deck artifact completed',
+          {
+            code: 'UPSTREAM_UNAVAILABLE',
+            retryable: true,
+          },
+        );
         return { kind: 'error' };
       }
 

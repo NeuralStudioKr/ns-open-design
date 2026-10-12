@@ -178,6 +178,8 @@ export interface ProxyContext {
   streamIdleTimeoutMs?: number;
   /** Hold Clone slot-fill JSON until a terminal SSE frame so a safe retry cannot duplicate text. */
   bufferJsonOutlineUntilComplete?: boolean;
+  /** Hold a first/full deck response until a complete artifact closes. */
+  bufferDeckArtifactUntilComplete?: boolean;
 }
 
 /** Embed never ships browser secrets — always request daemon-managed BYOK. */
@@ -370,6 +372,38 @@ function finishProxyStreamError(
   }
 }
 
+function isCompleteDeckArtifactResponse(text: string): boolean {
+  const raw = String(text ?? '');
+  if (/<question-form\b[\s\S]*<\/question-form\s*>/i.test(raw)) return true;
+  const open = /<artifact\b([^>]*)>/i.exec(raw);
+  if (!open) return false;
+  const type = /\btype\s*=\s*["']([^"']+)["']/i.exec(open[1] ?? '')?.[1]?.toLowerCase();
+  if (!type || !['deck', 'deck-patch', 'element-patch'].includes(type)) return false;
+  const bodyStart = (open.index ?? 0) + open[0].length;
+  const closeIndex = raw.toLowerCase().indexOf('</artifact>', bodyStart);
+  if (closeIndex < 0) return false;
+  const body = raw.slice(bodyStart, closeIndex);
+  if (type === 'deck') {
+    return /<!doctype\s+html\b|<html\b/i.test(body)
+      && /<\/html\s*>/i.test(body)
+      && /<(?:section|div|main|article)\b[^>]*(?:class\s*=\s*["'][^"']*\bslide\b|data-slide(?:-index)?\s*=)/i.test(body);
+  }
+  if (type === 'deck-patch') {
+    return /<(?:section|div|main|article)\b[^>]*(?:class\s*=\s*["'][^"']*\bslide\b|data-slide-index\s*=)/i.test(body);
+  }
+  return /<patch\b[^>]*>[\s\S]*<\/patch\s*>/i.test(body);
+}
+
+function incompleteDeckArtifactStreamError(): Error & { code: string; retryable: boolean } {
+  const error = new Error('Upstream response ended before the deck artifact completed') as Error & {
+    code: string;
+    retryable: boolean;
+  };
+  error.code = 'UPSTREAM_UNAVAILABLE';
+  error.retryable = true;
+  return error;
+}
+
 async function streamProxyEndpointOnce(
   endpoint: string,
   cfg: AppConfig,
@@ -387,6 +421,8 @@ async function streamProxyEndpointOnce(
   let sawEndEvent = false;
   let proxyStreamId = '';
   const bufferJsonOutlineUntilComplete = context?.bufferJsonOutlineUntilComplete === true;
+  const bufferDeckArtifactUntilComplete = context?.bufferDeckArtifactUntilComplete === true;
+  const bufferUntilComplete = bufferJsonOutlineUntilComplete || bufferDeckArtifactUntilComplete;
   let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
 
   const releaseStalledUpstream = () => {
@@ -426,6 +462,9 @@ async function streamProxyEndpointOnce(
           : {}),
         ...(bufferJsonOutlineUntilComplete
           ? { expectCompleteJsonOutline: true }
+          : {}),
+        ...(bufferDeckArtifactUntilComplete
+          ? { expectCompleteDeckArtifact: true }
           : {}),
         ...(context?.byokImageModel
           ? { byokImageModel: context.byokImageModel }
@@ -531,7 +570,7 @@ async function streamProxyEndpointOnce(
             // often emit a leading `\n` before a mid-stream overload/drop).
             if (text.trim().length > 0) receivedSubstantiveDelta = true;
             acc += text;
-            if (!bufferJsonOutlineUntilComplete) handlers.onDelta(text);
+            if (!bufferUntilComplete) handlers.onDelta(text);
           }
           continue;
         }
@@ -564,7 +603,7 @@ async function streamProxyEndpointOnce(
           }
           finishProxyStreamError(
             err,
-            receivedSubstantiveDelta && !bufferJsonOutlineUntilComplete,
+            receivedSubstantiveDelta && !bufferUntilComplete,
             receivedThinkingDelta,
             releaseStalledUpstream,
           );
@@ -609,7 +648,10 @@ async function streamProxyEndpointOnce(
 
         if (parsed.event === 'end') {
           sawEndEvent = true;
-          if (bufferJsonOutlineUntilComplete && acc) handlers.onDelta(acc);
+          if (bufferDeckArtifactUntilComplete && !isCompleteDeckArtifactResponse(acc)) {
+            return { error: incompleteDeckArtifactStreamError() };
+          }
+          if (bufferUntilComplete && acc) handlers.onDelta(acc);
           handlers.onDone(acc);
           return 'ok';
         }
@@ -627,7 +669,7 @@ async function streamProxyEndpointOnce(
           if (text) {
             if (text.trim().length > 0) receivedSubstantiveDelta = true;
             acc += text;
-            if (!bufferJsonOutlineUntilComplete) handlers.onDelta(text);
+            if (!bufferUntilComplete) handlers.onDelta(text);
           }
         } else if (parsed.event === 'thinking_delta') {
           const thinking = String(parsed.data.delta ?? '');
@@ -654,7 +696,7 @@ async function streamProxyEndpointOnce(
           }
           finishProxyStreamError(
             err,
-            receivedSubstantiveDelta && !bufferJsonOutlineUntilComplete,
+            receivedSubstantiveDelta && !bufferUntilComplete,
             receivedThinkingDelta,
             releaseStalledUpstream,
           );
@@ -675,7 +717,10 @@ async function streamProxyEndpointOnce(
           }
         } else if (parsed.event === 'end') {
           sawEndEvent = true;
-          if (bufferJsonOutlineUntilComplete && acc) handlers.onDelta(acc);
+          if (bufferDeckArtifactUntilComplete && !isCompleteDeckArtifactResponse(acc)) {
+            return { error: incompleteDeckArtifactStreamError() };
+          }
+          if (bufferUntilComplete && acc) handlers.onDelta(acc);
           handlers.onDone(acc);
           return 'ok';
         }
@@ -685,13 +730,13 @@ async function streamProxyEndpointOnce(
     // Graceful EOF without `end`: empty/pre-token drops are retryable.
     // Thinking-only incomplete matches daemon finalize (retryable:false — soft-retry
     // would duplicate thinking UI). Substantive text keeps historical onDone.
-    if (!sawEndEvent && (!receivedSubstantiveDelta || bufferJsonOutlineUntilComplete)) {
+    if (!sawEndEvent && (!receivedSubstantiveDelta || bufferUntilComplete)) {
       const err = new Error('Upstream stream ended before any content') as Error & {
         code?: string;
         retryable?: boolean;
       };
       err.code = 'UPSTREAM_UNAVAILABLE';
-      err.retryable = bufferJsonOutlineUntilComplete || !receivedThinkingDelta;
+      err.retryable = bufferUntilComplete || !receivedThinkingDelta;
       return { error: err };
     }
     handlers.onDone(acc);
@@ -721,7 +766,7 @@ async function streamProxyEndpointOnce(
     }
     finishProxyStreamError(
       error,
-      receivedSubstantiveDelta && !bufferJsonOutlineUntilComplete,
+      receivedSubstantiveDelta && !bufferUntilComplete,
       receivedThinkingDelta,
       releaseStalledUpstream,
     );

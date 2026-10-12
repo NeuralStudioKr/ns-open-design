@@ -14021,6 +14021,15 @@ export function ProjectView({
           byokSpeechVoice: byokSpeechVoiceOverride || config.byokSpeechVoice,
           minOutputTokens: slideOnlyMvp ? TEAMVER_DECK_MIN_MAX_TOKENS : undefined,
           bufferJsonOutlineUntilComplete: runTemplateCloneContentFillRef.current,
+          bufferDeckArtifactUntilComplete:
+            slideOnlyMvp
+            && config.apiProtocol === 'minimax'
+            && !runTemplateCloneContentFillRef.current
+            && (
+              runTemplateClonePromptFillRef.current
+              || runHeadPreambleContinueRef.current
+              || !projectFiles.some((file) => /\.html?$/i.test(file.name))
+            ),
         });
         return true;
       }

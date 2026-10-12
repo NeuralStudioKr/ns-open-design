@@ -1165,6 +1165,53 @@ describe('streamProxyEndpoint soft-retry gates', () => {
     expect(onDone).toHaveBeenCalledWith('{"title":"Teamver","slides":[{"title":"소개"}]}');
     expect(onError).not.toHaveBeenCalled();
   });
+
+  it('buffers a deck artifact and retries a head-only first response without painting it', async () => {
+    const partial = '작성 중입니다.\n<artifact type="deck" identifier="deck"><!doctype html><html><head>';
+    const complete = '작성 중입니다.\n<artifact type="deck" identifier="deck"><!doctype html><html><body><section class="slide"><h1>Teamver</h1><p>팀 협업</p></section></body></html></artifact>';
+    const proxyResponse = (content: string) => ({
+      ok: true,
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode([
+            'event: delta',
+            `data: ${JSON.stringify({ delta: content })}`,
+            '',
+            'event: end',
+            'data: {}',
+            '',
+          ].join('\n')));
+          controller.close();
+        },
+      }),
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(proxyResponse(partial))
+      .mockResolvedValueOnce(proxyResponse(complete));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const onDelta = vi.fn();
+    const onDone = vi.fn();
+    const onError = vi.fn();
+    await streamProxyEndpoint(
+      '/api/proxy/minimax/stream',
+      { apiKey: 'test-api-key', baseUrl: 'https://example.com', model: 'MiniMax-M3' } as any,
+      'System',
+      [{ id: 'm1', role: 'user', content: 'slides', createdAt: 1 }],
+      new AbortController().signal,
+      { onDelta, onDone, onError },
+      { bufferDeckArtifactUntilComplete: true },
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+      expectCompleteDeckArtifact: true,
+    });
+    expect(onDelta).toHaveBeenCalledTimes(1);
+    expect(onDelta).toHaveBeenCalledWith(complete);
+    expect(onDone).toHaveBeenCalledWith(complete);
+    expect(onError).not.toHaveBeenCalled();
+  });
 });
 
 describe('streamProxyEndpoint Motif-SVG dump abort', () => {
