@@ -255,6 +255,7 @@ import {
   shouldSkipCreateAutoSendForDeterministicClone,
   shouldUseDeterministicTemplateCloneFill,
   shouldUseJsonTemplateCloneFill,
+  isRichOfficialLookTemplateCloneFill,
   getTemplateCloneFillMode,
   applyQuantitativeSlideCountInstruction,
   renderTemplateCloneJsonShortResponseRetryPrompt,
@@ -263,6 +264,7 @@ import {
   withTemplateCloneFillPluginInputs,
   withoutCanonicalDeckAttachments,
 } from '../teamver/templateCloneContentFill';
+import { applyRichFillPersistTopicGuards } from '../teamver/templateCloneRichFill';
 import {
   classifyTooShortHtmlSnippet,
   isShortResponseAutoRetryPrompt,
@@ -3849,6 +3851,13 @@ export function ProjectView({
    * decide (loop383).
    */
   const runTemplateClonePromptFillRef = useRef(false);
+  /**
+   * 1007-N01 슬라이스 C — 이 턴이 official-rich 리치 모드인지. 리치는 prompt-fill
+   * 마커를 공유하므로 {@link runTemplateClonePromptFillRef} 는 리치에서도 true 다.
+   * 리치는 모델이 저작한 full HTML 밀도(ref0904)를 보존해야 하므로 seed 재슬롯
+   * (merge-flatten)을 건너뛰고, persist 시 데크-레벨 중립화 가드만 적용한다.
+   */
+  const runTemplateCloneRichFillRef = useRef(false);
   /** 0901-N02 B5/D — persist metadata when slot-fill fell back to LOOK seed. */
   const runTemplateCloneSlotFillFallbackRef = useRef(false);
   /** 루프550 — 이 턴이 짧은 응답 자동 재시도인지. persist가 pad 대신 재시도를 막을 때 사용. */
@@ -6467,6 +6476,9 @@ export function ProjectView({
         htmlBody = healAiGeneratedDeckMarkup(
           htmlBody,
           runVisiblePromptRef.current || '',
+          // 1007-N01 슬라이스 C 결함4 — 리치(모델 저작)는 모델 레이아웃을 보존한다:
+          // 그리드 트랙 shrink·heading-count reconcile(slot-fill 전제) 비활성.
+          { preserveModelLayout: runTemplateCloneRichFillRef.current },
         );
         const honorFirstFill =
           runTemplateCloneContentFillRef.current || runTemplateClonePromptFillRef.current;
@@ -6482,6 +6494,21 @@ export function ProjectView({
         // Top-up sentinels / empty <artifact> tags must never persist as copy.
         htmlBody = sanitizePersistedDeckHostLeaks(htmlBody);
         htmlBody = applyHonorSlideCeiling(htmlBody, messagesRef.current, honorFirstFill);
+        if (honorFirstFill) {
+          // 1007-N01 슬라이스 C — host-fill(JSON slot-fill / prompt-fill / 리치)
+          // persist 는 모두 동일한 데크-레벨 주제오염 중립화·카탈로그 demo 스크럽을
+          // 통과해야 한다. JSON 경로는 buildTemplateClonedDeckHtml 에서 이미
+          // 중립화되므로 여기선 idempotent no-op 이고, 리치/legacy prompt-fill 이
+          // 모델 full HTML 을 그대로 저장하는(merge substance gate 가 raw 를 내보내는)
+          // 경로에서 가드가 우회되지 않게 한다. content-preserving: 레이아웃·슬라이드
+          // 수를 바꾸지 않고 Teamver 하드코드·demo 카피만 제거한다. 이 패스를
+          // slide-count/artifact_regression 게이트 '앞'에 둬 게이트가 최종 HTML 을
+          // 정직하게 평가한다.
+          htmlBody = applyRichFillPersistTopicGuards(htmlBody, {
+            brief: runVisiblePromptRef.current || null,
+            deckTitle: project.name || null,
+          });
+        }
         if (runTemplateCloneContentFillRef.current || runTemplateClonePromptFillRef.current) {
           const requestedSpec = extractRequestedSlideCountSpecFromMessages(messagesRef.current);
           const slideCountIncomplete = findTemplateCloneFillSlideCountIncomplete({
@@ -9209,6 +9236,8 @@ export function ProjectView({
                           healAiGeneratedDeckMarkup(
                             withMalformed,
                             runVisiblePromptRef.current || '',
+                            // 1007-N01 슬라이스 C 결함4 — 리치는 모델 레이아웃 보존.
+                            { preserveModelLayout: runTemplateCloneRichFillRef.current },
                           ),
                           messagesRef.current,
                           honorFirstFill,
@@ -10684,6 +10713,11 @@ export function ProjectView({
       const isCloneHostFillTurn = isCloneContentFillTurn || isClonePromptFillTurn;
       runTemplateCloneContentFillRef.current = isCloneContentFillTurn;
       runTemplateClonePromptFillRef.current = isClonePromptFillTurn;
+      // 1007-N01 슬라이스 C — 리치 모드는 세션 스위치(env/localStorage)로 결정되며
+      // prompt-fill 턴에서만 의미가 있다. seed 재슬롯 없이 모델 full HTML 밀도를
+      // 보존하는 persist 분기를 켠다.
+      runTemplateCloneRichFillRef.current =
+        isClonePromptFillTurn && isRichOfficialLookTemplateCloneFill();
       pendingSlotFillRepairRef.current = false;
       if (meta?.entryFrom !== CLONE_SLOT_FILL_REPAIR_ENTRY_FROM) {
         pendingSlotFillPriorRawRef.current = null;
@@ -11714,6 +11748,31 @@ export function ProjectView({
                   artifactToPersist = null;
                 }
               }
+            } else if (
+              runTemplateClonePromptFillRef.current
+              && runTemplateCloneRichFillRef.current
+              && artifactToPersist?.html
+            ) {
+              // 1007-N01 슬라이스 C — 리치(official-rich) 는 모델이 저작한 full HTML
+              // 밀도(스탯 사이드바·코드·3기둥 다문장; ref0904 기준선)를 보존해야 한다.
+              // legacy prompt-fill 의 seed 재슬롯(merge-flatten)은 모델 레이아웃을
+              // 깎으므로 리치에서는 건너뛴다. 주제오염 중립화·demo 스크럽 가드는
+              // persist deck-heal(host-fill 게이트)에서 모델 HTML 에 직접 적용된다 →
+              // substance gate 우회로 raw HTML 이 저장되는 경로가 없어진다.
+              observeTemplateClonePersistQuality({
+                phase: 'rich-official-look-preserve',
+                beforeHtml: artifactToPersist.html,
+                html: artifactToPersist.html,
+                applied: false,
+                templateId:
+                  firstOfficialDeckTemplateId(
+                    resolveDurableDeckTemplatePin({
+                      project: project.metadata,
+                      runRef: runSelectedDeckTemplateIdRef.current,
+                      messages: messagesRef.current,
+                    })?.id,
+                  ),
+              });
             } else if (runTemplateClonePromptFillRef.current && artifactToPersist?.html) {
               // Staging default is prompt-fill (MiniMax JSON turns historically
               // AGENT_EXECUTION_FAILED). Canvas/Home/Drive still LOOK-seed first;
@@ -11847,6 +11906,8 @@ export function ProjectView({
                           healAiGeneratedDeckMarkup(
                             withMalformed,
                             runVisiblePromptRef.current || '',
+                            // 1007-N01 슬라이스 C 결함4 — 리치는 모델 레이아웃 보존.
+                            { preserveModelLayout: runTemplateCloneRichFillRef.current },
                           ),
                           messagesRef.current,
                           honorFirstFill,
@@ -11868,14 +11929,24 @@ export function ProjectView({
                           ...nextFiles.map((file) => String(file.path || file.name || '').trim()),
                           ...attachmentPaths,
                         ].filter(Boolean);
+                        // 1007-N01 슬라이스 C — same-turn write 재사용 persist 도
+                        // host-fill 턴이면 데크-레벨 주제오염 중립화·demo 스크럽을
+                        // 거쳐 모델 HTML 이 가드를 우회하지 못하게 한다(디스크 persist
+                        // chokepoint 와 동일 정책). content-preserving·idempotent.
+                        const withGuards = honorFirstFill
+                          ? applyRichFillPersistTopicGuards(withCanvas, {
+                              brief: runVisiblePromptRef.current || null,
+                              deckTitle: project.name || null,
+                            })
+                          : withCanvas;
                         const { html: healed, changed } = await healDiskHtmlAttachmentImageSrcs({
-                      html: withCanvas,
+                      html: withGuards,
                       projectFilePaths: projectPaths,
                       preferredAttachmentPaths: attachmentPaths,
                     });
                     if (
                       changed
-                      || withCanvas !== diskHtml
+                      || withGuards !== diskHtml
                       || isTemplateCloneLookSeedFile(sameTurnHtmlWrite)
                     ) {
                       await writeProjectTextFileDetailed(

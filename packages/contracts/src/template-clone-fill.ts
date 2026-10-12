@@ -20901,6 +20901,46 @@ function collapseAdjacentDuplicatedPhrasesInDeckText(html: string): string {
 }
 
 /**
+ * 1007-N01 슬라이스 C — 리치(official-rich) / legacy prompt-fill 가 모델이 저작한
+ * full HTML 을 **그대로 persist** 할 때(즉 `applyTemplateClonePromptFillLookMerge`
+ * 의 merge substance gate 가 raw 모델 HTML 을 유지하거나, 리치 모드가 seed 재슬롯
+ * 없이 모델 HTML 을 보존하는 경로), JSON slot-fill(`buildTemplateClonedDeckHtml`
+ * 꼬리)과 **동일한** 데크-레벨 주제오염 중립화·카탈로그 demo 스크럽을 적용한다.
+ *
+ * 핵심 불변:
+ *   - **content-preserving.** 레이아웃/슬롯/슬라이드 구조는 건드리지 않는다. strip*
+ *     함수들은 알려진 catalog demo 문구만 지우고 일반 본문은 깎지 않는다. 임의 합성·
+ *     하드코드 카피를 **주입하지 않는다**(빈칸은 상위 heal 의 박스 수 조절로 처리).
+ *   - **topic-guarded.** `neutralizeTeamverPackCopyInDeckHtml` 는 brief/표지가 Teamver
+ *     제품에 대한 것이면 no-op → on-topic Teamver 리치 본문은 보존된다.
+ *   - **idempotent.** 이미 중립화된 HTML(JSON slot-fill 산출물)에 다시 돌려도 no-op.
+ *     그래서 persist chokepoint 에서 모드 구분 없이 host-fill 턴에 안전하게 돌릴 수
+ *     있다.
+ *
+ * 이 함수는 `buildTemplateClonedDeckHtml` 꼬리의 중립화 세트와 1:1 로 맞춘 **데크
+ * 레벨** 패스만 모은 것이다(슬롯 refill/capsule 전용 specialty 스크럽처럼 slot-fill
+ * 재조립 구조를 전제하는 패스는 모델 full HTML 을 훼손할 수 있어 제외).
+ */
+export function neutralizeClonedDeckModelHtml(
+  html: string,
+  options: { brief?: string | null; deckTitle?: string | null } = {},
+): string {
+  const source = String(html ?? '');
+  if (!source.trim()) return source;
+  const deckTitle = sanitizeTemplateCloneDeckTitle(options.deckTitle) || null;
+  let out = stripDeckLevelDemoChrome(source);
+  out = stripCapsuleCatalogDemoCopy(out);
+  out = stripBlockFrameNeoCatalogDemoCopy(out);
+  out = stripBlueProfessionalCatalogDemoCopy(out);
+  out = stripStudioCreativeCatalogDemoCopy(out);
+  out = stripProductLaunchCatalogDemoCopy(out);
+  out = stripLeftoverCatalogDemoPhrases(out);
+  out = collapseAdjacentDuplicatedPhrasesInDeckText(out);
+  out = neutralizeTeamverPackCopyInDeckHtml(out, options.brief ?? null, deckTitle);
+  return out;
+}
+
+/**
  * 루프430 — True when every shell owns a distinct narrative slot
  * (Biennale-family: s-cover / s-manifesto / s-programme / s-chapter / s-data
  * / s-quote / s-cal / s-colophon). Duplicating any of these produces a

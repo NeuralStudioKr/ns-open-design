@@ -11,6 +11,8 @@
  * explicit 모드 스위치(`official-rich`)만 제공한다.
  */
 
+import { neutralizeClonedDeckModelHtml } from '@open-design/contracts';
+
 /** B 경로를 켜는 explicit 모드 값. */
 export const RICH_OFFICIAL_LOOK_FILL_MODE = 'official-rich' as const;
 
@@ -52,6 +54,33 @@ export function buildRichOfficialLookDensityBlock(): string[] {
     'Author a senior-grade, model-written full HTML deck: each content slide carries a 2-3 sentence lead/body (never a one-line label), not sparse single-column title slides.',
     'Where it fits, add a secondary column of REAL stats (number + what it measures) or a short labeled example/code block, using dense inline-styled layouts (text + stats sidebar, 3 cards with full descriptions).',
     'Density must come from REAL topical substance (brief/source/domain knowledge) only — never padding, repeated sentences, fabricated metrics, or Teamver boilerplate.',
+    // 1007-N01 슬라이스 C 결함1 — 콘텐츠 슬라이드가 <h1>/<h2> 제목만 남는 것을
+    // 모델 저작 단계에서 금지한다. 호스트는 임의로 본문을 합성하지 않으므로
+    // 밀도 계약으로만 막는다. 표지/섹션 간지만 제목 단독을 허용한다.
+    'Never leave a content slide as a title alone: every content slide MUST have body elements under the heading (a lead paragraph plus cards/steps/a list/a stats row). A heading with no body is a failure. ONLY a deliberate cover or section-divider slide may be title-only, and keep those rare.',
+    // 1007-N01 슬라이스 C 결함2 — step 박스에 raw 설정/코드 조각이 쪼개져 들어가
+    // 설명이 깨지는 것을 금지한다.
+    'Put any code or config inside ONE <pre><code>…</code></pre> block (keep it intact, do not split it across step/card boxes). Step and card boxes hold explanatory prose (a label plus a full sentence), never a bare raw code line like `server {` or `listen 80;`.',
     'Richer bodies, NOT fewer slides: still emit EXACTLY the requested number of slides.',
   ];
+}
+
+/**
+ * 1007-N01 슬라이스 C — 리치/legacy prompt-fill 가 모델 full HTML 을 그대로 persist
+ * 하는 경로에서, JSON slot-fill 과 동일한 주제오염 중립화·카탈로그 demo 스크럽을
+ * 적용하는 **격리된 진입점**. 내부적으로 contracts 의 `neutralizeClonedDeckModelHtml`
+ * (데크-레벨, content-preserving, topic-guarded, idempotent)만 호출한다.
+ *
+ * 왜 리치 모듈에 두는가: substance gate 가 raw 모델 HTML 을 내보낼 때 중립화 가드를
+ * 우회하지 못하도록 막는 것은 리치(official-rich) 보강의 핵심이다. 롤백 시 이 파일과
+ * 호출부만 되돌리면 된다.
+ *
+ * 밀도 보존: 레이아웃/슬라이드 구조는 건드리지 않고 Teamver 하드코드·demo 카피만
+ * 제거한다. Teamver 제품 brief 에서는 no-op → on-topic 본문 보존.
+ */
+export function applyRichFillPersistTopicGuards(
+  html: string,
+  options: { brief?: string | null; deckTitle?: string | null } = {},
+): string {
+  return neutralizeClonedDeckModelHtml(html, options);
 }

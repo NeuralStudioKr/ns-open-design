@@ -78,13 +78,15 @@ afterEach(() => {
 });
 
 describe('templateCloneContentFill', () => {
-  it('0918-N03 — defaults to AI JSON content + deterministic host layout', () => {
-    expect(normalizeTemplateCloneFillMode(undefined)).toBe('json');
-    expect(normalizeTemplateCloneFillMode('')).toBe('json');
-    expect(normalizeTemplateCloneFillMode('nonsense')).toBe('json');
-    expect(getTemplateCloneFillMode()).toBe('json');
+  it('1007-N01 슬라이스 C — defaults to official-rich (model-authored full HTML)', () => {
+    // 기본값 전환(2026-10-08): 미설정/빈값/미지원 토큰 → official-rich.
+    expect(normalizeTemplateCloneFillMode(undefined)).toBe('official-rich');
+    expect(normalizeTemplateCloneFillMode('')).toBe('official-rich');
+    expect(normalizeTemplateCloneFillMode('nonsense')).toBe('official-rich');
+    expect(getTemplateCloneFillMode()).toBe('official-rich');
     expect(shouldSkipTemplateCloneSeed()).toBe(false);
-    expect(shouldUseJsonTemplateCloneFill()).toBe(true);
+    // 리치는 json slot-fill 이 아니라 prompt-fill 변종 → fill 턴은 큐잉된다.
+    expect(shouldUseJsonTemplateCloneFill()).toBe(false);
     expect(shouldQueueAiTemplateCloneFill()).toBe(true);
     expect(shouldUsePromptTemplateCloneFill()).toBe(false);
     expect(shouldUseDeterministicTemplateCloneFill()).toBe(false);
@@ -125,7 +127,7 @@ describe('templateCloneContentFill', () => {
   });
 
   it('accepts the loop401 `pure-prompt` rollback mode via env and multiple aliases', () => {
-    expect(getTemplateCloneFillMode()).toBe('json');
+    expect(getTemplateCloneFillMode()).toBe('official-rich');
     expect(shouldSkipTemplateCloneSeed()).toBe(false);
     expect(normalizeTemplateCloneFillMode('pure-prompt')).toBe('pure-prompt');
     expect(normalizeTemplateCloneFillMode('no-seed')).toBe('pure-prompt');
@@ -166,10 +168,12 @@ describe('templateCloneContentFill', () => {
     };
     try {
       process.env.VITE_TEAMVER_EMBED = '1';
-      expect(getTemplateCloneFillMode()).toBe('json');
+      // 임베드는 leftover localStorage(pure-prompt)를 무시하고 기본값으로 떨어진다.
+      // 1007-N01 슬라이스 C 이후 기본값 = official-rich.
+      expect(getTemplateCloneFillMode()).toBe('official-rich');
       expect(shouldSkipTemplateCloneSeed()).toBe(false);
       expect(shouldUseDeterministicTemplateCloneFill()).toBe(false);
-      expect(shouldUseJsonTemplateCloneFill()).toBe(true);
+      expect(shouldUseJsonTemplateCloneFill()).toBe(false);
       expect(shouldQueueAiTemplateCloneFill()).toBe(true);
 
       process.env.VITE_TEAMVER_EMBED = '0';
@@ -222,7 +226,9 @@ describe('templateCloneContentFill', () => {
       new URL('../../../../deploy/teamver/.env.staging.example', import.meta.url),
       'utf8',
     );
-    expect(stagingEnv).toMatch(/^VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=json$/m);
+    // 1007-N01 슬라이스 C — staging 기본값을 official-rich 로 정직하게 전환.
+    // (게이트 숨김이 아니라 의도된 기본값 변경 반영. json/env 롤백은 유지.)
+    expect(stagingEnv).toMatch(/^VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=official-rich$/m);
     expect(stagingEnv).not.toMatch(/VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=pure-prompt/);
     const composer = readFileSync(
       new URL('../../src/components/ChatComposer.tsx', import.meta.url),
@@ -1230,10 +1236,10 @@ describe('template clone — official-look rich fill mode (slice B, opt-in)', ()
     seedShellCount: 8,
   } as const;
 
-  it('defaults to json; rich value only via explicit switch, revert = flip off', () => {
-    // 기본(미설정) → json. 리치 아님.
-    expect(getTemplateCloneFillMode()).toBe('json');
-    expect(isRichOfficialLookTemplateCloneFill()).toBe(false);
+  it('1007-N01 슬라이스 C — 기본값 official-rich; json 롤백은 env/localStorage 한 줄', () => {
+    // 기본(미설정) → official-rich (슬라이스 C 기본값 전환).
+    expect(getTemplateCloneFillMode()).toBe('official-rich');
+    expect(isRichOfficialLookTemplateCloneFill()).toBe(true);
 
     // 별칭들이 official-rich 로 접힌다 (기존 prompt/html 별칭은 영향 없음).
     expect(normalizeTemplateCloneFillMode('official-rich')).toBe('official-rich');
@@ -1241,23 +1247,59 @@ describe('template clone — official-look rich fill mode (slice B, opt-in)', ()
     expect(normalizeTemplateCloneFillMode('official-look')).toBe('official-rich');
     expect(normalizeTemplateCloneFillMode('html-rich')).toBe('official-rich');
     expect(normalizeTemplateCloneFillMode('b')).toBe('official-rich');
-    // 기존 값은 그대로.
+    // 기존 값은 그대로 (json 전용 분기/별칭 로직 불변).
     expect(normalizeTemplateCloneFillMode('prompt')).toBe('prompt');
     expect(normalizeTemplateCloneFillMode('html')).toBe('prompt');
     expect(normalizeTemplateCloneFillMode('json')).toBe('json');
+    expect(normalizeTemplateCloneFillMode('slot-fill')).toBe('json');
 
+    // 즉시 롤백 ①: env override 로 json 복귀 (코드 변경 없이 한 줄).
+    process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = 'json';
+    expect(getTemplateCloneFillMode()).toBe('json');
+    expect(isRichOfficialLookTemplateCloneFill()).toBe(false);
+    expect(shouldUseJsonTemplateCloneFill()).toBe(true);
+
+    // explicit official-rich env 는 리치를 켜고 json 경로를 끈다 (fill 턴 큐잉).
     process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = 'official-rich';
     expect(getTemplateCloneFillMode()).toBe('official-rich');
     expect(isRichOfficialLookTemplateCloneFill()).toBe(true);
-    // json 경로는 꺼져 있고, prompt-fill 변종으로 fill 턴은 큐잉된다.
     expect(shouldUseJsonTemplateCloneFill()).toBe(false);
     expect(shouldUsePromptTemplateCloneFill()).toBe(false);
     expect(shouldQueueAiTemplateCloneFill()).toBe(true);
 
-    // 롤백: 스위치 제거 → 즉시 json 복귀.
+    // 스위치 제거 → 기본값(official-rich)으로 복귀.
     delete process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE;
-    expect(getTemplateCloneFillMode()).toBe('json');
-    expect(isRichOfficialLookTemplateCloneFill()).toBe(false);
+    expect(getTemplateCloneFillMode()).toBe('official-rich');
+    expect(isRichOfficialLookTemplateCloneFill()).toBe(true);
+  });
+
+  it('1007-N01 슬라이스 C — localStorage json override (비임베드) 즉시 롤백', () => {
+    const store = new Map<string, string>();
+    store.set('od:template-clone-fill-mode', 'json');
+    const prev = globalThis.window;
+    (globalThis as { window?: unknown }).window = {
+      location: { hostname: 'localhost' },
+      localStorage: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => { store.set(key, value); },
+        removeItem: (key: string) => { store.delete(key); },
+      },
+    };
+    try {
+      // 비임베드 로컬: localStorage override 가 기본값(official-rich)을 json 으로 되돌린다.
+      process.env.VITE_TEAMVER_EMBED = '0';
+      expect(getTemplateCloneFillMode()).toBe('json');
+      expect(isRichOfficialLookTemplateCloneFill()).toBe(false);
+      expect(shouldUseJsonTemplateCloneFill()).toBe(true);
+
+      // override 제거 → 기본값(official-rich) 복귀.
+      store.delete('od:template-clone-fill-mode');
+      expect(getTemplateCloneFillMode()).toBe('official-rich');
+      expect(isRichOfficialLookTemplateCloneFill()).toBe(true);
+    } finally {
+      if (prev) (globalThis as { window?: unknown }).window = prev;
+      else delete (globalThis as { window?: unknown }).window;
+    }
   });
 
   it('rich seed = prompt-fill contract + density block, keeps EXACTLY N / topic-lock / KPI-ban', () => {
@@ -1278,8 +1320,25 @@ describe('template clone — official-look rich fill mode (slice B, opt-in)', ()
     expect(briefIdx).toBeGreaterThan(densityIdx);
   });
 
-  it('toggling to rich does NOT change the json seed output (0 regression)', () => {
+  it('1007-N01 슬라이스 C 결함1·2 — 리치 밀도 계약이 빈약 슬라이드/깨진 step 코드를 금지', () => {
+    const rich = buildTemplateCloneRichOfficialLookFillSeed(RICH_OPTS);
+    // 결함1 — 콘텐츠 슬라이드 타이틀 단독 금지(섹션 간지만 예외).
+    expect(rich).toMatch(/Never leave a content slide as a title alone/i);
+    expect(rich).toMatch(/MUST have body elements under the heading/i);
+    expect(rich).toMatch(/section-divider slide may be title-only/i);
+    // 결함2 — 코드/설정은 하나의 <pre><code> 블록, step/card 는 설명문.
+    expect(rich).toMatch(/<pre><code>/);
+    expect(rich).toMatch(/do not split it across step\/card boxes/i);
+    expect(rich).toMatch(/never a bare raw code line/i);
+    // slide-count 가드(EXACTLY N)는 밀도 라인 뒤에 그대로 유지.
+    expect(rich).toMatch(/EXACTLY the requested number of slides/);
+  });
+
+  it('toggling modes does NOT change the json seed builder output (0 regression)', () => {
     const jsonSeedBefore = buildTemplateCloneContentFillSeed(RICH_OPTS);
+
+    // explicit json 모드 → json slot-fill 시드.
+    process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = 'json';
     const fromModeJson = buildTemplateCloneFillSeedForCurrentMode(RICH_OPTS);
     expect(fromModeJson.jsonFill).toBe(true);
     expect(fromModeJson.seed).toBe(jsonSeedBefore);

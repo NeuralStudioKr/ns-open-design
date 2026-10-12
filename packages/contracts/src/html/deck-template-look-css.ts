@@ -1357,6 +1357,30 @@ function stripOfficialMotifInstances(slideHtml: string): string {
   return out;
 }
 
+/**
+ * 1007-N01 슬라이스 C 결함3 — 콘텐츠 슬라이드에서 `.hero-shot` 모티프 인스턴스만
+ * 제거한다(표지 전용 거대 orb). 다른 모티프/본문/구조는 건드리지 않는다.
+ */
+function stripHeroShotMotifInstances(slideHtml: string): string {
+  let out = slideHtml;
+  for (let guard = 0; guard < 8; guard += 1) {
+    let found: { index: number; length: number } | null = null;
+    const openRe = /<(div|span)\b[^>]*>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = openRe.exec(out)) !== null) {
+      const open = m[0] ?? '';
+      if (!hasExactClassToken(classAttrValue(open), 'hero-shot')) continue;
+      const block = extractBalancedElement(out, m.index);
+      if (!block) continue;
+      found = { index: m.index, length: block.length };
+      break;
+    }
+    if (!found) break;
+    out = `${out.slice(0, found.index)}${out.slice(found.index + found.length)}`;
+  }
+  return out;
+}
+
 function fillEmptyMotifShells(dest: string, instances: string[]): string {
   if (!dest || instances.length === 0) return dest;
   const daisySvg =
@@ -1395,6 +1419,9 @@ function fillEmptyMotifShells(dest: string, instances: string[]): string {
 }
 
 function insertMotifIntoSlide(slideHtml: string, motif: string): string {
+  // 1007-N01 슬라이스 C — 빈 모티프 팩(예: 콘텐츠 슬라이드에서 hero-shot 만
+  // 제외돼 남은 게 없을 때)은 공백만 삽입해 비멱등을 만든다. 그대로 반환한다.
+  if (!motif.trim()) return slideHtml;
   // Prefer after opening slide tag so Motif sits behind title (z-index) but paints.
   return slideHtml.replace(
     /^(<(?:section|div|main|article)\b[^>]*>)/i,
@@ -1582,13 +1609,23 @@ function motifPackForSlide(instances: string[], index: number, total = 0): strin
     const unique = [...new Set(parts)].slice(0, 2);
     if (unique.length > 0) return unique.join('\n');
   }
+  // 1007-N01 슬라이스 C 결함3 — `.hero-shot` 는 product-launch 표지의 640×640
+  // 블러 orb("Halo v2" 데모 라벨 포함)로, 콘텐츠 슬라이드에 깔리면 본문과 겹친다.
+  // 표지(cover) 역할에만 허용하고, body/closing 슬라이드의 모티프 풀에서는
+  // 제외해 콘텐츠 위에 stamp 되지 않게 한다.
   const heroShot = instances.find((block) => hasExactClassToken(classAttrValue(block), 'hero-shot'));
-  if (heroShot) return heroShot;
-  const titlebar = instances.find((block) => hasExactClassToken(classAttrValue(block), 'win-titlebar'));
+  if (heroShot && role === 'cover') return heroShot;
+  const nonHeroInstances = heroShot
+    ? instances.filter((block) => !hasExactClassToken(classAttrValue(block), 'hero-shot'))
+    : instances;
+  const titlebar = nonHeroInstances.find((block) => hasExactClassToken(classAttrValue(block), 'win-titlebar'));
   if (titlebar) return titlebar;
-  if (instances.length === 1) return instances[0]!;
-  const first = instances[index % instances.length]!;
-  const second = instances[(index + 1) % instances.length]!;
+  // Cover may still fall back to hero-shot; body/closing use the hero-free pool.
+  const pool = role === 'cover' ? instances : nonHeroInstances;
+  if (pool.length === 0) return '';
+  if (pool.length === 1) return pool[0]!;
+  const first = pool[index % pool.length]!;
+  const second = pool[(index + 1) % pool.length]!;
   return first === second ? first : `${first}\n${second}`;
 }
 
@@ -1735,6 +1772,12 @@ function mergeVisibleMotifInstances(
     html = healMotifOutsideCanvasOffsets(html);
     if (/deco-daisy/i.test(html) || /deco-daisy/i.test(pack)) {
       html = stripMisScaledDaisyInstances(html);
+    }
+    // 1007-N01 슬라이스 C 결함3 — hero-shot 는 표지 전용. 이미 콘텐츠(body/closing)
+    // 슬라이드에 깔린 hero-shot 모티프는 재heal 시 제거해 본문 겹침을 없앤다.
+    // (새 생성 경로는 motifPackForSlide 가 애초에 stamp 하지 않는다.)
+    if (slideMotifRole(index, slides.length) !== 'cover') {
+      html = stripHeroShotMotifInstances(html);
     }
     if (slideHasOfficialMotifPaint(html, instances, index, slides.length)) {
       return ensureMotifSafeSlideInsets(html);

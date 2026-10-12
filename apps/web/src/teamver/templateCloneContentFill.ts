@@ -101,7 +101,14 @@ export type TemplateCloneFillMode =
  * `deterministic` remains an emergency no-model fallback and `prompt` remains
  * an explicit legacy comparison path.
  */
-export const TEMPLATE_CLONE_FILL_DEFAULT_MODE: TemplateCloneFillMode = 'json';
+// 1007-N01 슬라이스 C — 기본값을 official-rich 로 전환(2026-10-08). 모델이 저작한
+// full HTML 밀도(ref0904 9/4 기준선)를 기본 경로로 쓴다. 리치 persist 는 JSON
+// slot-fill 과 동일한 데크-레벨 주제오염 중립화·demo 스크럽 가드를 통과한다
+// (applyRichFillPersistTopicGuards, host-fill 게이트). 즉시 롤백 경로:
+//   1) 이 상수 1곳을 'json' 으로 되돌린다, 또는
+//   2) env `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE=json` / localStorage
+//      `od:template-clone-fill-mode=json` override (코드 변경 없이).
+export const TEMPLATE_CLONE_FILL_DEFAULT_MODE: TemplateCloneFillMode = 'official-rich';
 
 export function normalizeTemplateCloneFillMode(value: unknown): TemplateCloneFillMode {
   const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';

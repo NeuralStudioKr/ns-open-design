@@ -5145,7 +5145,23 @@ export function stripEmptyLeftoverPresenterChrome(html: string): string {
     );
 }
 
-export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): string {
+/**
+ * 1007-N01 슬라이스 C — 리치(official-rich) 처럼 **모델이 full HTML 레이아웃을
+ * 직접 저작**한 턴에서는 slot-fill 전제(호스트가 템플릿 트랙을 over-allocate 하고
+ * 일부만 채움)로 돌아가는 그리드 재조정/heading 수 재조정을 건너뛴다.
+ * 안전 정리(고아 구조·중복·빈 쉘 제거)는 그대로 유지한다.
+ */
+export type HealAiGeneratedDeckOptions = {
+  /** 모델 저작 레이아웃을 보존(그리드 트랙 shrink·heading-count reconcile 비활성). */
+  preserveModelLayout?: boolean;
+};
+
+export function healAiGeneratedDeckMarkup(
+  html: string,
+  brief?: string | null,
+  options: HealAiGeneratedDeckOptions = {},
+): string {
+  const preserveModelLayout = options.preserveModelLayout === true;
   let out = String(html ?? '');
   if (!out.trim()) return out;
   // 루프168 — MiniMax `AGENT_EXECUTION_FAILED` recovery / same-turn-write
@@ -5263,14 +5279,24 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   // 루프198 — uniform px/rem card widths fight minmax/flex shrink and
   // make 191 treat the whole row as a sidebar. Strip first.
   out = relaxUniformPeerCardFixedMainSize(out, brief);
-  out = shrinkOverAllocatedRepeatGrid(out);
+  // 1007-N01 슬라이스 C 결함4 — 리치(모델 저작)에서는 그리드 트랙 shrink 를
+  // 건너뛴다. 모델이 선언한 열 수는 slot-fill over-allocation 이 아니라 의도된
+  // 레이아웃이므로 깎지 않는다(임의로 채우지도 않는다).
+  if (!preserveModelLayout) {
+    out = shrinkOverAllocatedRepeatGrid(out);
+  }
   out = normalizeEqualFrTracksToMinmax(out);
   out = normalizeGridAutoColumnShares(out, brief);
   out = normalizeGridAutoRowShares(out, brief);
-  out = shrinkOverAllocatedEqualTrackRows(out);
-  out = shrinkClassBoundEqualTrackGrids(out, brief);
-  out = balanceUnderfilledFlexCardRow(out);
-  out = balanceClassBoundFlexCardRow(out, brief);
+  // 1007-N01 슬라이스 C 결함4 — 리치는 모델이 선언한 트랙 수를 보존한다.
+  // 선언 트랙 > 자식 수일 때 트랙을 자식 수로 깎는 slot-fill 재조정 패밀리를
+  // 건너뛴다(빈 쉘/고아/중복 제거 같은 안전 정리는 아래에서 그대로 유지).
+  if (!preserveModelLayout) {
+    out = shrinkOverAllocatedEqualTrackRows(out);
+    out = shrinkClassBoundEqualTrackGrids(out, brief);
+    out = balanceUnderfilledFlexCardRow(out);
+    out = balanceClassBoundFlexCardRow(out, brief);
+  }
   out = normalizeHangulParticleGaps(out);
   out = neutralizeUnanchoredTranslateYInSlideContent(out);
   // 루프350 — title-only cover의 lone h1을 flow wrapper 기준 가운데 정렬.
@@ -5304,7 +5330,12 @@ export function healAiGeneratedDeckMarkup(html: string, brief?: string | null): 
   out = ensureNeoBrutalCssVariableFallback(out);
   // 루프480 — after every shrink/drop pass, so the count we compare against is
   // the one the reader will actually see.
-  out = reconcileHeadingItemCounts(out);
+  // 1007-N01 슬라이스 C 결함4 — 리치(모델 저작)에서는 heading 수 재조정을
+  // 건너뛴다. 모델 레이아웃을 보존해야 하므로 host 가 "5가지 → 3" 식으로
+  // heading 숫자를 다시 쓰지 않는다(data-od-heading-count-reconciled 미발생).
+  if (!preserveModelLayout) {
+    out = reconcileHeadingItemCounts(out);
+  }
   // 루프478 — last: an invented dark palette on a light-paper kit leaves copy
   // cream-on-cream. Judge inline colors against their effective background
   // after every structural heal so the luminance we measure is the final one.
