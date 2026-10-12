@@ -160,20 +160,79 @@ export function isTemplateClonePromptFillPrompt(text: unknown): boolean {
   return String(text ?? '').includes(TEMPLATE_CLONE_PROMPT_FILL_MARKER);
 }
 
-export function getTemplateCloneFillMode(): TemplateCloneFillMode {
+/**
+ * 1007-N01 결함1(주제 날조) A안 — 현재 fill 모드와 함께 그 모드가 **사용자의 명시
+ * override**(env `VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE` / localStorage
+ * `od:template-clone-fill-mode`)에서 온 것인지(`explicit`)를 반환한다. 기본값에 의한
+ * official-rich 는 `explicit=false` → 소스가 없으면 json 으로 강등 가능.
+ */
+export function getTemplateCloneFillModeResolution(): {
+  mode: TemplateCloneFillMode;
+  explicit: boolean;
+} {
   const fromEnv = readTeamverViteEnv('VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE');
-  if (fromEnv) return normalizeTemplateCloneFillMode(fromEnv);
+  if (fromEnv) return { mode: normalizeTemplateCloneFillMode(fromEnv), explicit: true };
   // Teamver embed follows the deployment policy. Local experiments must not
   // silently switch a production embed back to free-form prompt fill.
   if (typeof window !== 'undefined' && !isTeamverEmbedMode()) {
     try {
       const stored = window.localStorage.getItem('od:template-clone-fill-mode');
-      if (stored) return normalizeTemplateCloneFillMode(stored);
+      if (stored) return { mode: normalizeTemplateCloneFillMode(stored), explicit: true };
     } catch {
       /* no-op — sessionStorage unavailable in SSR / private mode. */
     }
   }
-  return TEMPLATE_CLONE_FILL_DEFAULT_MODE;
+  return { mode: TEMPLATE_CLONE_FILL_DEFAULT_MODE, explicit: false };
+}
+
+export function getTemplateCloneFillMode(): TemplateCloneFillMode {
+  return getTemplateCloneFillModeResolution().mode;
+}
+
+/**
+ * 1007-N01 결함1(주제 날조) A안 — 소스가 없으면 '기본값에 의한' official-rich 를
+ * json slot-fill 로 강등한다. 리치는 모델이 빈 캔버스를 자유 저작 → 소스 없이는
+ * 날조 위험. json 경로는 호스트가 LOOK 시드를 결정론적으로 채워 저작 자유도를 제한한다.
+ *
+ * - 사용자가 env/localStorage 로 직접 official-rich 를 강제한 경우(`explicit`)는 존중.
+ * - json/prompt/pure-prompt/deterministic 등 비리치 모드는 그대로(1비트 불변).
+ */
+export function resolveEffectiveTemplateCloneFillMode(input: {
+  mode: TemplateCloneFillMode;
+  explicit: boolean;
+  hasSource?: boolean | null;
+}): TemplateCloneFillMode {
+  if (
+    input.mode === RICH_OFFICIAL_LOOK_FILL_MODE
+    && !input.explicit
+    && input.hasSource === false
+  ) {
+    return 'json';
+  }
+  return input.mode;
+}
+
+/**
+ * 1007-N01 결함1 A안 — 이번 턴에 '근거 소스'가 있는지(리치 강등 게이팅 전용).
+ *
+ * `hasSourceMaterial`(첨부/Canvas·Drive 소스)이 true 이거나, 브리프에 공개 URL/도메인이
+ * 있으면 true. URL 이 있으면 handleSend 의 web-fetch 가 그 페이지를 그라운딩에 주입한다
+ * (`fetchApiWebFetchContexts`). 시드 확정 시점(큐잉/clone 전)이 web-fetch(handleSend 중)
+ * 보다 앞서므로, 소스 유무 플래그를 이 빌드 시점 추론으로 주입한다 — 명시 플래그를 넘기면
+ * 그 값이 우선한다.
+ */
+export function inferTemplateCloneFillHasSource(options: {
+  userInstruction?: string | null;
+  sourceBrief?: string | null;
+  pendingPrompt?: string | null;
+  hasSourceMaterial?: boolean;
+}): boolean {
+  if (options.hasSourceMaterial === true) return true;
+  const combinedBrief = [options.sourceBrief, options.pendingPrompt, options.userInstruction]
+    .filter(Boolean)
+    .join('\n\n');
+  if (!combinedBrief.trim()) return false;
+  return extractWebsiteAnalysisAnchorsFromBrief(combinedBrief).urls.length > 0;
 }
 
 /**
@@ -264,20 +323,35 @@ export function isRichOfficialLookTemplateCloneFill(): boolean {
 }
 
 export function buildTemplateCloneFillSeedForCurrentMode(
-  options: Parameters<typeof buildTemplateCloneContentFillSeed>[0],
+  options: Parameters<typeof buildTemplateCloneContentFillSeed>[0] & {
+    /**
+     * 1007-N01 결함1 A안 — 이번 턴 소스 유무(web-fetch ok:true / 첨부). 명시하면
+     * 우선 적용, 생략 시 브리프 URL·`hasSourceMaterial` 로 추론. 소스가 없고
+     * 리치가 기본값(비명시)일 때만 json 으로 강등한다.
+     */
+    hasSource?: boolean | null;
+  },
 ): { seed: string; jsonFill: boolean } {
-  const mode = getTemplateCloneFillMode();
+  const { hasSource: hasSourceOverride, ...seedOptions } = options;
+  const resolution = getTemplateCloneFillModeResolution();
+  // 1007-N01 결함1 A안 — 소스 없는 '기본값 리치' 는 json 으로 강등(날조 차단).
+  const hasSource = hasSourceOverride ?? inferTemplateCloneFillHasSource(seedOptions);
+  const mode = resolveEffectiveTemplateCloneFillMode({
+    mode: resolution.mode,
+    explicit: resolution.explicit,
+    hasSource,
+  });
   // 1007-N01 슬라이스 B — 리치 모드는 prompt-fill(HTML artifact) 변종. jsonFill
   // false 로 기존 prompt-fill 큐/복구 경로를 그대로 재사용한다.
   if (mode === RICH_OFFICIAL_LOOK_FILL_MODE) {
-    return { jsonFill: false, seed: buildTemplateCloneRichOfficialLookFillSeed(options) };
+    return { jsonFill: false, seed: buildTemplateCloneRichOfficialLookFillSeed(seedOptions) };
   }
   const jsonFill = mode === 'json';
   return {
     jsonFill,
     seed: jsonFill
-      ? buildTemplateCloneContentFillSeed(options)
-      : buildTemplateClonePromptFillSeed(options),
+      ? buildTemplateCloneContentFillSeed(seedOptions)
+      : buildTemplateClonePromptFillSeed(seedOptions),
   };
 }
 

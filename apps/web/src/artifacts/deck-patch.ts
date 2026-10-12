@@ -1002,6 +1002,21 @@ function firstSlideHeading(slideHtml: string): string {
 }
 
 /**
+ * 1007-N01 결함3(c) — append 병합 중복 제거용 가시 텍스트 지문.
+ * 태그/엔티티를 제거하고 공백을 접은 소문자 텍스트. 내용 생성·수정 없이 비교만.
+ */
+const DECK_APPEND_DEDUP_MIN_CHARS = 16;
+
+function slideVisibleTextFingerprint(slideHtml: string): string {
+  return String(slideHtml ?? "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&[a-z#0-9]+;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+/**
  * A real rewrite copies the saved deck (usually with `<head>`).
  * Persist salvage wraps body-only top-up slides as
  * `<!doctype html><html lang="ko"><body>…` — that is NOT a rewrite.
@@ -1051,8 +1066,26 @@ export function appendIncomingSlidesOntoExistingDeck(
 
   if (toAppend.length === 0) return null;
 
+  // 1007-N01 결함3(c) — 내용 해시 기반 중복 제거. 저장된 슬라이드(또는 이미 채택한
+  // incoming 슬라이드)와 가시 텍스트가 동일한 incoming 슬라이드는 skip 한다.
+  // ProjectView 의 인접-한정 collapse 로는 못 잡는 '산재 중복'(top-up 이 저장된
+  // 본문을 다시 토해내는 경우)을 막는다. 짧은(저지문) 슬라이드는 오탐을 피해 유지.
+  const seenFingerprints = new Set<string>();
+  for (const slide of existingSlides) {
+    const fp = slideVisibleTextFingerprint(slide.outerHtml);
+    if (fp.length >= DECK_APPEND_DEDUP_MIN_CHARS) seenFingerprints.add(fp);
+  }
+  const dedupedAppend = toAppend.filter((slide) => {
+    const fp = slideVisibleTextFingerprint(slide.outerHtml);
+    if (fp.length < DECK_APPEND_DEDUP_MIN_CHARS) return true;
+    if (seenFingerprints.has(fp)) return false;
+    seenFingerprints.add(fp);
+    return true;
+  });
+  if (dedupedAppend.length === 0) return null;
+
   const range = findBodyContentRange(existing);
-  const chunk = toAppend.map((slide) => slide.outerHtml).join("\n");
+  const chunk = dedupedAppend.map((slide) => slide.outerHtml).join("\n");
   if (!range) return `${existing.replace(/\s*$/, "\n")}${chunk}\n`;
   const insertAt = findSlideHostAppendOffset(existing, range, existingSlides);
   return `${existing.slice(0, insertAt)}\n${chunk}\n${existing.slice(insertAt)}`;

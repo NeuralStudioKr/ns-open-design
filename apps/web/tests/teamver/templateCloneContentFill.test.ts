@@ -21,6 +21,9 @@ import {
   ensureTemplateCloneContentFillContinuePrompt,
   extractTemplateCloneUserFacingRequest,
   getTemplateCloneFillMode,
+  getTemplateCloneFillModeResolution,
+  resolveEffectiveTemplateCloneFillMode,
+  inferTemplateCloneFillHasSource,
   isGenericTemplateCloneTopicBrief,
   shouldExplainGenericBriefOnLookSeedFallback,
   historyHasTemplateCloneContentFill,
@@ -1350,5 +1353,120 @@ describe('template clone — official-look rich fill mode (slice B, opt-in)', ()
 
     // 리치 모드를 켠 뒤에도 json 빌더 산출물은 1비트도 동일.
     expect(buildTemplateCloneContentFillSeed(RICH_OPTS)).toBe(jsonSeedBefore);
+  });
+});
+
+describe('1007-N01 결함1 — 소스 그라운딩 게이팅(A) + 날조 금지(D)', () => {
+  // 회사명/주제만 있고 URL·첨부가 없는 브리프(날조가 발생하던 케이스).
+  const NO_SOURCE_OPTS = {
+    userInstruction: '삼성전자 소개 발표자료 만들어줘',
+    sourceBrief: 'User instruction:\n삼성전자 소개 발표자료 만들어줘',
+    templateTitle: 'Broadside',
+    seedShellCount: 6,
+  } as const;
+  // 브리프에 실제 공개 URL(example/localhost 제외) → web-fetch 그라운딩 대상.
+  const URL_SOURCE_OPTS = {
+    userInstruction: 'https://acme-corp.io 소개 발표자료 만들어줘',
+    sourceBrief: 'User instruction:\nhttps://acme-corp.io 소개 발표자료 만들어줘',
+    templateTitle: 'Broadside',
+    seedShellCount: 6,
+  } as const;
+
+  it('resolveEffectiveTemplateCloneFillMode — 기본값 리치는 소스 없으면 json, 명시 override 는 존중', () => {
+    // 기본값(비명시) 리치 + 소스 없음 → json 강등.
+    expect(resolveEffectiveTemplateCloneFillMode({ mode: 'official-rich', explicit: false, hasSource: false })).toBe('json');
+    // 기본값 리치 + 소스 있음 → 리치 유지.
+    expect(resolveEffectiveTemplateCloneFillMode({ mode: 'official-rich', explicit: false, hasSource: true })).toBe('official-rich');
+    // 명시 override 리치 + 소스 없음 → 리치 유지(사용자가 직접 강제).
+    expect(resolveEffectiveTemplateCloneFillMode({ mode: 'official-rich', explicit: true, hasSource: false })).toBe('official-rich');
+    // 소스 플래그 미상(undefined) → 강등하지 않음(backward-compat).
+    expect(resolveEffectiveTemplateCloneFillMode({ mode: 'official-rich', explicit: false })).toBe('official-rich');
+    // 비리치 모드는 소스 유무와 무관하게 불변.
+    expect(resolveEffectiveTemplateCloneFillMode({ mode: 'json', explicit: false, hasSource: false })).toBe('json');
+    expect(resolveEffectiveTemplateCloneFillMode({ mode: 'prompt', explicit: false, hasSource: false })).toBe('prompt');
+    expect(resolveEffectiveTemplateCloneFillMode({ mode: 'pure-prompt', explicit: false, hasSource: false })).toBe('pure-prompt');
+    expect(resolveEffectiveTemplateCloneFillMode({ mode: 'deterministic', explicit: false, hasSource: false })).toBe('deterministic');
+  });
+
+  it('inferTemplateCloneFillHasSource — URL/첨부 유무로 소스 추론', () => {
+    expect(inferTemplateCloneFillHasSource(NO_SOURCE_OPTS)).toBe(false);
+    expect(inferTemplateCloneFillHasSource(URL_SOURCE_OPTS)).toBe(true);
+    expect(inferTemplateCloneFillHasSource({ ...NO_SOURCE_OPTS, hasSourceMaterial: true })).toBe(true);
+    expect(inferTemplateCloneFillHasSource({})).toBe(false);
+  });
+
+  it('getTemplateCloneFillModeResolution — 기본값은 비명시, env/localStorage 는 명시', () => {
+    expect(getTemplateCloneFillModeResolution()).toEqual({ mode: 'official-rich', explicit: false });
+    process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = 'official-rich';
+    expect(getTemplateCloneFillModeResolution()).toEqual({ mode: 'official-rich', explicit: true });
+  });
+
+  it('기본값(리치) + 소스 없음 → json 으로 강등되어 json slot-fill 시드를 낸다', () => {
+    const result = buildTemplateCloneFillSeedForCurrentMode(NO_SOURCE_OPTS);
+    expect(result.jsonFill).toBe(true);
+    // json slot-fill 마커, 리치/prompt-fill 마커 아님.
+    expect(result.seed).toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
+    expect(result.seed).not.toContain('[Official-look rich mode]');
+    // 강등 시드는 json 빌더 산출물과 1비트 동일(비리치 경로 불변).
+    expect(result.seed).toBe(buildTemplateCloneContentFillSeed(NO_SOURCE_OPTS));
+  });
+
+  it('기본값(리치) + 브리프 URL → 리치 유지(강등 안 함)', () => {
+    const result = buildTemplateCloneFillSeedForCurrentMode(URL_SOURCE_OPTS);
+    expect(result.jsonFill).toBe(false);
+    expect(result.seed).toContain('[Official-look rich mode]');
+    expect(result.seed).toBe(buildTemplateCloneRichOfficialLookFillSeed(URL_SOURCE_OPTS));
+  });
+
+  it('기본값(리치) + hasSourceMaterial:true → 리치 유지', () => {
+    const result = buildTemplateCloneFillSeedForCurrentMode({ ...NO_SOURCE_OPTS, hasSourceMaterial: true });
+    expect(result.jsonFill).toBe(false);
+    expect(result.seed).toContain('[Official-look rich mode]');
+  });
+
+  it('명시 hasSource 플래그가 추론보다 우선한다', () => {
+    // URL 있어도 hasSource:false 를 명시하면 강등.
+    expect(buildTemplateCloneFillSeedForCurrentMode({ ...URL_SOURCE_OPTS, hasSource: false }).jsonFill).toBe(true);
+    // URL 없어도 hasSource:true 를 명시하면 리치 유지.
+    expect(buildTemplateCloneFillSeedForCurrentMode({ ...NO_SOURCE_OPTS, hasSource: true }).jsonFill).toBe(false);
+  });
+
+  it('env 로 official-rich 를 명시 강제하면 소스가 없어도 리치 유지', () => {
+    process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = 'official-rich';
+    const result = buildTemplateCloneFillSeedForCurrentMode(NO_SOURCE_OPTS);
+    expect(result.jsonFill).toBe(false);
+    expect(result.seed).toContain('[Official-look rich mode]');
+  });
+
+  it('localStorage 로 official-rich 를 명시 강제하면(비임베드) 소스 없어도 리치 유지', () => {
+    const store = new Map<string, string>();
+    store.set('od:template-clone-fill-mode', 'official-rich');
+    const prev = globalThis.window;
+    (globalThis as { window?: unknown }).window = {
+      location: { hostname: 'localhost' },
+      localStorage: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => { store.set(key, value); },
+        removeItem: (key: string) => { store.delete(key); },
+      },
+    };
+    try {
+      process.env.VITE_TEAMVER_EMBED = '0';
+      expect(getTemplateCloneFillModeResolution()).toEqual({ mode: 'official-rich', explicit: true });
+      const result = buildTemplateCloneFillSeedForCurrentMode(NO_SOURCE_OPTS);
+      expect(result.jsonFill).toBe(false);
+      expect(result.seed).toContain('[Official-look rich mode]');
+    } finally {
+      if (prev) (globalThis as { window?: unknown }).window = prev;
+      else delete (globalThis as { window?: unknown }).window;
+    }
+  });
+
+  it('결함1 D — 리치 밀도 계약에 날조 금지 제약(요금·연락처·버전·제품명·수치) 포함', () => {
+    const rich = buildTemplateCloneRichOfficialLookFillSeed(URL_SOURCE_OPTS);
+    expect(rich).toMatch(/Never fabricate concrete facts/i);
+    expect(rich).toMatch(/no invented pricing, contact details/i);
+    expect(rich).toMatch(/version numbers/i);
+    expect(rich).toMatch(/describe it qualitatively/i);
   });
 });

@@ -54,6 +54,10 @@ export function buildRichOfficialLookDensityBlock(): string[] {
     'Author a senior-grade, model-written full HTML deck: each content slide carries a 2-3 sentence lead/body (never a one-line label), not sparse single-column title slides.',
     'Where it fits, add a secondary column of REAL stats (number + what it measures) or a short labeled example/code block, using dense inline-styled layouts (text + stats sidebar, 3 cards with full descriptions).',
     'Density must come from REAL topical substance (brief/source/domain knowledge) only — never padding, repeated sentences, fabricated metrics, or Teamver boilerplate.',
+    // 1007-N01 결함1(주제 날조) D안 — 소스/web-fetch-context 밖의 구체 사실을 지어내지
+    // 않는다. 기존 KPI-ban 을 요금·연락처·버전·제품명까지 확장. A안(소스 없으면 리치→json
+    // 강등)과 병행하는 soft 지시.
+    'Never fabricate concrete facts absent from the brief, attached source, or `<web-fetch-context>`: no invented pricing, contact details, email, phone, address, product names, version numbers, dates, named customers, or statistics. If the source does not state a specific fact, describe it qualitatively instead of inventing a number or proper noun.',
     // 1007-N01 슬라이스 C 결함1 — 콘텐츠 슬라이드가 <h1>/<h2> 제목만 남는 것을
     // 모델 저작 단계에서 금지한다. 호스트는 임의로 본문을 합성하지 않으므로
     // 밀도 계약으로만 막는다. 표지/섹션 간지만 제목 단독을 허용한다.

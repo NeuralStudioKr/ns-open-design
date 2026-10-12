@@ -615,6 +615,7 @@ import { consumeTeamverPublishMenuArm, maybeArmTeamverPublishMenuAfterRunSuccess
 import {
   SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX,
   SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
+  slideCountTopUpBusyRetryDelayMs,
   SLIDE_COUNT_TOP_UP_ENTRY_FROM,
   SPARSE_CONTENT_TOP_UP_ENTRY_FROM,
   THIN_PRIOR_FULL_REWRITE_ENTRY_FROM,
@@ -14187,7 +14188,7 @@ export function ProjectView({
                 setPendingSlideAutomationKind("rewrite");
                 slideCountTopUpTimerRef.current = window.setTimeout(
                   fireRewrite,
-                  SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
+                  slideCountTopUpBusyRetryDelayMs(busyRetries),
                 );
                 return;
               }
@@ -14377,7 +14378,7 @@ export function ProjectView({
               setPendingSlideAutomationKind("top_up");
               slideCountTopUpTimerRef.current = window.setTimeout(
                 fireTopUp,
-                SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
+                slideCountTopUpBusyRetryDelayMs(busyRetries),
               );
               return;
             }
@@ -14420,7 +14421,7 @@ export function ProjectView({
               setPendingSlideAutomationKind("top_up");
               slideCountTopUpTimerRef.current = window.setTimeout(
                 fireTopUp,
-                SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
+                slideCountTopUpBusyRetryDelayMs(busyRetries),
               );
               return;
             }

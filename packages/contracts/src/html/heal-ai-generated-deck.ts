@@ -3363,6 +3363,71 @@ export function ejectTrailingListFromOverfilledGrid(
   return out;
 }
 
+/**
+ * 1007-N01 결함3(b) — footer/pager/페이지번호가 멀티컬럼 카드 그리드의 **마지막
+ * 자식**으로 잘못 들어간 경우(모델이 grid close 전에 footer 를 넣음), 그리드 밖
+ * (그리드 close 직후 형제)으로 eject 한다. 트랙 수·내용은 건드리지 않는 교정 전용 →
+ * 리치(preserveModelLayout)에서도 안전하게 동작한다. 멱등: eject 후 footer 는 더 이상
+ * grid 자식이 아니므로 재실행 시 no-op.
+ */
+const CHROME_FOOTER_CLASS_RE =
+  /\b(?:deck-footer|slide-footer|page-?footer|pager|pagination|page-?number|page-?indicator|slide-?number|footer-bar|deck-pager)\b/i;
+
+export function ejectTrailingChromeFooterFromGrid(
+  html: string,
+  brief?: string | null,
+): string {
+  let out = String(html ?? '');
+  if (!out) return out;
+  if (!sourceLooksLikeAiGeneratedDeck(out, brief)) return out;
+  const gridOpenRe =
+    /<(div|section|article|main|aside)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+  const patches: Array<{ start: number; end: number; replacement: string }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = gridOpenRe.exec(out)) !== null) {
+    const attrs = match[2] ?? '';
+    const style = extractInlineStyle(attrs);
+    if (!/(?:^|;)\s*display\s*:\s*(?:inline-)?grid\b/i.test(style)) continue;
+    const colsRaw = /grid-template-columns\s*:\s*([^;]+)/i.exec(style)?.[1];
+    if (!colsRaw) continue;
+    const trackCount =
+      parseDeclaredEqualColumns(colsRaw.trim())?.count
+      ?? countCssGridTrackList(colsRaw.trim());
+    // 멀티컬럼 카드 그리드로 한정(≥2 트랙). 1-track 레이아웃 그리드의 의도된 footer-row 는
+    // 건드리지 않는다.
+    if (trackCount < 2) continue;
+    const openTag = match[0] ?? '';
+    const tag = (match[1] ?? '').toLowerCase();
+    const openEnd = match.index + openTag.length;
+    const close = findSameTagClose(out, tag, openEnd);
+    if (!close) continue;
+    const children = listDirectBlockChildSpans(out, openEnd, close.closeStart);
+    // footer + 최소 1개 카드가 함께 있어야(즉, footer-only 그리드가 아니어야) eject.
+    if (children.length < 2) continue;
+    const last = children[children.length - 1]!;
+    const isFooter = last.tag === 'footer' || CHROME_FOOTER_CLASS_RE.test(last.attrs);
+    if (!isFooter) continue;
+    const closeTok = new RegExp(`^</${tag}\\s*>`, 'i').exec(out.slice(close.closeStart));
+    if (!closeTok) continue;
+    const closeEnd = close.closeStart + closeTok[0].length;
+    const footerHtml = out.slice(last.absStart, last.absCloseEnd);
+    const withoutFooter =
+      out.slice(openEnd, last.absStart)
+      + out.slice(last.absCloseEnd, close.closeStart);
+    patches.push({
+      start: openEnd,
+      end: closeEnd,
+      replacement: `${withoutFooter}</${tag}>${footerHtml}`,
+    });
+  }
+  if (patches.length === 0) return out;
+  patches.sort((a, b) => b.start - a.start);
+  for (const patch of patches) {
+    out = `${out.slice(0, patch.start)}${patch.replacement}${out.slice(patch.end)}`;
+  }
+  return out;
+}
+
 const HEADING_TAIL_DUP_MIN = 4;
 const HEADING_TAIL_DUP_MAX = 160;
 /**
@@ -5213,6 +5278,9 @@ export function healAiGeneratedDeckMarkup(
   out = stretchEqualTrackActionChipRow(out, brief);
   // 루프464 — checklist dumped as an extra grid track → eject after the grid.
   out = ejectTrailingListFromOverfilledGrid(out, brief);
+  // 1007-N01 결함3(b) — footer/pager 가 카드 그리드 마지막 셀로 들어간 경우 eject.
+  // 교정 전용(트랙 수·내용 불변)이라 리치(preserveModelLayout)에서도 실행한다.
+  out = ejectTrailingChromeFooterFromGrid(out, brief);
   // 루프345 — flex column win-body가 heading 뒤에서 조기 종료되고 main grid가
   // 형제로 남으면 그리드를 column host 안으로 되돌린다.
   out = absorbOrphanContentGridIntoFlexColumnHost(out, brief);

@@ -31,9 +31,33 @@ export const THIN_PRIOR_FULL_REWRITE_MAX_PER_CONVERSATION = 1;
 /** One remaining-all batch finishes a default-6 miss; two batches cover 15. */
 export const SLIDE_COUNT_TOP_UP_MAX_PER_CONVERSATION = 2;
 export const SLIDE_COUNT_TOP_UP_BATCH = 6;
-/** Live-stream busy retries before giving up on a scheduled top-up (loop408). */
-export const SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX = 3;
+/**
+ * Live-stream busy retries before giving up on a scheduled top-up (loop408).
+ *
+ * 1007-N01 결함2(busy_drop) — 기존 3회×900ms(≈2.7초) 상한은 첫 fill 스트림이 아직
+ * 흐르는 동안 후속(rewrite/top-up)이 가망 없이 포기(drop)하게 만들었다. 지수 백오프 +
+ * 총예산 상한(≈20초)으로 상향해, 긴 first-fill 스트림이 끝날 때까지 기다렸다가 1회
+ * 발사한다. drop 공지는 예산 소진 후 최후수단으로만 남는다.
+ */
+export const SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX = 6;
+/** Legacy fixed delay — sparse-repair retry still uses it. Rewrite/top-up use backoff. */
 export const SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS = 900;
+/** Exponential backoff base/step-cap/budget for rewrite & slide-count top-up busy retries. */
+export const SLIDE_COUNT_TOP_UP_BUSY_RETRY_BASE_MS = 700;
+export const SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX_STEP_MS = 5000;
+export const SLIDE_COUNT_TOP_UP_BUSY_RETRY_BUDGET_MS = 20_000;
+
+/**
+ * Delay before the Nth busy retry (1-based). Exponential (base × 2^(n-1)) capped
+ * per step; summed across {@link SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX} attempts it
+ * stays within ~{@link SLIDE_COUNT_TOP_UP_BUSY_RETRY_BUDGET_MS}.
+ * attempt 1..6 → 700, 1400, 2800, 5000, 5000, 5000 ms (≈19.9s total).
+ */
+export function slideCountTopUpBusyRetryDelayMs(attempt: number): number {
+  const n = Math.max(1, Math.floor(attempt));
+  const exp = SLIDE_COUNT_TOP_UP_BUSY_RETRY_BASE_MS * 2 ** (n - 1);
+  return Math.min(exp, SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX_STEP_MS);
+}
 
 const USER_REQUESTED_SLIDE_COUNT_RE = /User requested slide count:\s*([^\n]+)/i;
 const SLIDE_COUNT_PLUGIN_INPUT_RE =

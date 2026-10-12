@@ -587,4 +587,49 @@ describe('appendIncomingSlidesOntoExistingDeck', () => {
     expect(merged).toMatch(/<header class="deck-brand">Capsule<\/header>[\s\S]*<h2>Next<\/h2>[\s\S]*<footer class="deck-foot">/);
     expect(merged).not.toMatch(/<\/div>\s*<section class="slide"><h2>Next/i);
   });
+
+  it('1007-N01 결함3(c) — 저장된 슬라이드와 내용 동일한 incoming 슬라이드는 skip', () => {
+    const prior = [
+      '<!doctype html><html><head><style>.kit{}</style></head><body>',
+      '<section class="slide"><h1>Linux Internals Overview</h1><p>Cover introduction here.</p></section>',
+      '<section class="slide"><h2>Why kernels matter</h2><p>The kernel mediates hardware access.</p></section>',
+      '</body></html>',
+    ].join('');
+    // incoming 이 기존 2번째 슬라이드를 그대로 다시 토해내고(산재 중복) 새 슬라이드 1장 추가.
+    const incoming =
+      '<section class="slide"><h2>Why kernels matter</h2><p>The kernel mediates hardware access.</p></section>'
+      + '<section class="slide"><h2>Next steps today</h2><p>Trace syscalls with strace.</p></section>';
+    const merged = appendIncomingSlidesOntoExistingDeck(prior, incoming);
+    expect(extractTopLevelSlideSections(merged ?? '').length).toBe(3);
+    expect((merged ?? '').match(/Why kernels matter/g)?.length).toBe(1);
+    expect(merged).toContain('Next steps today');
+  });
+
+  it('1007-N01 결함3(c) — incoming 내부 산재 중복도 1장만 유지', () => {
+    const prior =
+      '<!doctype html><html><body>'
+      + '<section class="slide"><h1>Cover Title Here</h1><p>Intro copy block.</p></section></body></html>';
+    const dup =
+      '<section class="slide"><h2>Shared Section Body</h2><p>Identical content block here.</p></section>';
+    const incoming =
+      dup
+      + '<section class="slide"><h2>Unique Section</h2><p>Distinct content line here.</p></section>'
+      + dup;
+    const merged = appendIncomingSlidesOntoExistingDeck(prior, incoming);
+    expect((merged ?? '').match(/Shared Section Body/g)?.length).toBe(1);
+    expect(merged).toContain('Unique Section');
+    expect(extractTopLevelSlideSections(merged ?? '').length).toBe(3);
+  });
+
+  it('1007-N01 결함3(c) — 짧은(저지문) 슬라이드는 중복 제거하지 않음(오탐 방지)', () => {
+    const prior =
+      '<!doctype html><html><body>'
+      + '<section class="slide"><h1>Overview Deck Cover</h1><p>Intro paragraph text.</p></section></body></html>';
+    // 가시 텍스트가 매우 짧은(≤16자) 두 슬라이드는 동일해 보여도 유지.
+    const incoming =
+      '<section class="slide"><h2>A</h2></section>'
+      + '<section class="slide"><h2>B</h2></section>';
+    const merged = appendIncomingSlidesOntoExistingDeck(prior, incoming);
+    expect(extractTopLevelSlideSections(merged ?? '').length).toBe(3);
+  });
 });

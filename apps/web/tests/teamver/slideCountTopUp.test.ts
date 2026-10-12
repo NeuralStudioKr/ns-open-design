@@ -5,6 +5,10 @@ import {
   SLIDE_COUNT_TOP_UP_BATCH,
   SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX,
   SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
+  SLIDE_COUNT_TOP_UP_BUSY_RETRY_BASE_MS,
+  SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX_STEP_MS,
+  SLIDE_COUNT_TOP_UP_BUSY_RETRY_BUDGET_MS,
+  slideCountTopUpBusyRetryDelayMs,
   SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL,
   SLIDE_COUNT_TOP_UP_PROMPT_SENTINEL_LEGACY,
   SLIDE_COUNT_TOP_UP_ENTRY_FROM,
@@ -400,7 +404,8 @@ describe("slideCountTopUp", () => {
 
   it("appends the remaining default-6 pages in one top-up", () => {
     expect(SLIDE_COUNT_TOP_UP_BATCH).toBe(6);
-    expect(SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX).toBe(3);
+    // 1007-N01 결함2 — busy 재시도 상한을 3→6 으로 상향(지수 백오프 + ~20초 예산).
+    expect(SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX).toBe(6);
     expect(SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS).toBe(900);
     expect(slideCountTopUpAppendUntil(1, 6)).toBe(6);
     expect(buildSlideCountTopUpPrompt({ produced: 1, requested: 6 })).toContain(
@@ -822,5 +827,33 @@ describe("slideCountTopUp", () => {
     expect(formatSlideAutomationWorkingLabel("rewrite")).toMatch(/본문/);
     expect(formatSlideAutomationWorkingLabel("top_up")).toMatch(/장수/);
     expect(formatSlideAutomationWorkingLabel("sparse_repair")).toMatch(/보완/);
+  });
+});
+
+describe("1007-N01 결함2 — busy 재시도 지수 백오프 + 총예산 상한", () => {
+  it("재시도 상한을 3→6 으로 상향(긴 first-fill 스트림을 기다림)", () => {
+    expect(SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX).toBeGreaterThanOrEqual(6);
+  });
+
+  it("지수 백오프: base × 2^(n-1), per-step 상한 적용", () => {
+    expect(slideCountTopUpBusyRetryDelayMs(1)).toBe(SLIDE_COUNT_TOP_UP_BUSY_RETRY_BASE_MS);
+    expect(slideCountTopUpBusyRetryDelayMs(2)).toBe(SLIDE_COUNT_TOP_UP_BUSY_RETRY_BASE_MS * 2);
+    expect(slideCountTopUpBusyRetryDelayMs(3)).toBe(SLIDE_COUNT_TOP_UP_BUSY_RETRY_BASE_MS * 4);
+    // 지수가 per-step 상한을 넘으면 상한으로 고정.
+    expect(slideCountTopUpBusyRetryDelayMs(4)).toBe(SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX_STEP_MS);
+    expect(slideCountTopUpBusyRetryDelayMs(99)).toBe(SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX_STEP_MS);
+    // 1-based: 0/음수 입력도 최소 1회차로 간주.
+    expect(slideCountTopUpBusyRetryDelayMs(0)).toBe(SLIDE_COUNT_TOP_UP_BUSY_RETRY_BASE_MS);
+    expect(slideCountTopUpBusyRetryDelayMs(-5)).toBe(SLIDE_COUNT_TOP_UP_BUSY_RETRY_BASE_MS);
+  });
+
+  it("최대 재시도 횟수를 모두 더해도 총예산(~20초) 이내", () => {
+    let total = 0;
+    for (let attempt = 1; attempt <= SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX; attempt += 1) {
+      total += slideCountTopUpBusyRetryDelayMs(attempt);
+    }
+    expect(total).toBeLessThanOrEqual(SLIDE_COUNT_TOP_UP_BUSY_RETRY_BUDGET_MS);
+    // 기존 상한(3×900=2700ms)보다 충분히 큼 — 긴 스트림을 기다릴 수 있어야 함.
+    expect(total).toBeGreaterThan(SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS * 3 * 3);
   });
 });
