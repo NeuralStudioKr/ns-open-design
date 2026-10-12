@@ -12869,15 +12869,45 @@ function stripForeignBlockFrameTypographyFromProductLaunch(html: string): string
     );
 }
 
+/**
+ * 1007-N01 (단계3 결함B) — 구조적 heading 을 `${topic} …` 로 접두할 때, topic 이
+ * **표지 제목 전체(문장형·장문)** 이면 접두가 "AI 협업과 AI 직원을 현실로. 핵심
+ * 내용" 처럼 표지와 중복·과길이가 된다. topic 이 짧은 명사일 때만 접두로 쓰고,
+ * 문장형/장문이면 접두 없이 짧은 섹션 라벨만 쓴다(지어낸 토픽 카피 아님 — 구조
+ * 라벨). 임의 합성 금지 정책과 양립: 표지 제목을 길게 이어붙이지 않는 것이 목적.
+ */
+function productLaunchTopicUsableAsPrefix(topic: string): boolean {
+  const t = stripProductLaunchBrandMarkText(topic);
+  if (!t) return false;
+  // 문장 종결부호로 끝나면 표지 제목 전체(문장) → 접두 금지.
+  if (/[.。!?…]$/.test(t)) return false;
+  // 한국어 서술형 종결('…한다/합니다/…요')로 끝나는 장문 → 접두 금지.
+  if (t.length >= 6 && /(?:다|요)$/.test(t)) return false;
+  // 공백 2개 이상(=3단어↑)인 장문/문장형 → 접두 금지.
+  if ((t.match(/\s/g) ?? []).length >= 2) return false;
+  // 과길이 → 접두 금지(섹션 라벨만).
+  if (t.length > 14) return false;
+  return true;
+}
+
 function productLaunchStructuralHeading(body: string, attrs: string, topic: string): string {
-  if (/\bprice-card\b/i.test(body)) return `${topic} 활용 시나리오`;
-  if (/\bcta-btn\b|\bamount\b/i.test(body)) return `${topic}에서 이어 쓰기`;
-  if (/\bstep\b/i.test(body)) return `${topic} 실행 흐름`;
-  if (/\bcenter\b/i.test(attrs) && /다음|action/i.test(body)) {
-    return `${attachKoreanJosa(topic, '을/를')} 시작하세요`;
+  const usePrefix = productLaunchTopicUsableAsPrefix(topic);
+  if (/\bprice-card\b/i.test(body)) {
+    return usePrefix ? `${topic} 활용 시나리오` : '활용 시나리오';
   }
-  if (/\b(?:feature-card|card)\b/i.test(body)) return `${topic} 핵심 근거`;
-  return `${topic} 핵심 내용`;
+  if (/\bcta-btn\b|\bamount\b/i.test(body)) {
+    return usePrefix ? `${topic}에서 이어 쓰기` : '이어 쓰기';
+  }
+  if (/\bstep\b/i.test(body)) {
+    return usePrefix ? `${topic} 실행 흐름` : '실행 흐름';
+  }
+  if (/\bcenter\b/i.test(attrs) && /다음|action/i.test(body)) {
+    return usePrefix ? `${attachKoreanJosa(topic, '을/를')} 시작하세요` : '시작하기';
+  }
+  if (/\b(?:feature-card|card)\b/i.test(body)) {
+    return usePrefix ? `${topic} 핵심 근거` : '핵심 근거';
+  }
+  return usePrefix ? `${topic} 핵심 내용` : '핵심 내용';
 }
 
 function productLaunchStepBodyForTitle(title: string, topic: string, index: number): string {
@@ -12954,6 +12984,11 @@ function healProductLaunchStructuralQuality(
     // 보정은 제거했다(임의 폴백 금지). 미완결 문장은 모델 원문 그대로 둔다.
     out = `${out.slice(0, span.bodyStart)}${body}${out.slice(span.bodyEnd)}`;
   }
+
+  // 1007-N01 (단계3 결함D) — 모델이 제목만 두고 본문을 비운 카드(예: ADVISOR
+  // 나유리 이사)를 아래 chrome-strip 들이 래퍼만 벗겨 orphan heading 으로 남기기
+  // 전에, 그리드-스코프로 "본문 빈 카드"를 통째로 제거한다(지어내 채우지 않음).
+  out = collapseBodyEmptyProductLaunchCards(out);
 
   const healedSpans = listHealSlideHostSpans(out);
   const rewrites: Array<{ start: number; end: number; html: string }> = [];
@@ -13154,6 +13189,60 @@ function productLaunchCardIsBlank(block: string): boolean {
 }
 
 /**
+ * 1007-N01 (단계3 결함D) — "본문 빈 카드" 판정: 제목(h3-5)은 있으나 본문
+ * (dim/p) 이 비어 있는(또는 없는) 카드. 모델이 제목만 쓰고 본문을 못 채운
+ * 미완성 카드다. `productLaunchCardIsBlank`(제목·본문 둘 다 없음) 와 달리,
+ * 제목만 있는 반쪽 카드를 잡는다.
+ */
+function productLaunchCardBodyIsEmpty(block: string): boolean {
+  if (!/<h[3-5]\b/i.test(block)) return false;
+  if (!productLaunchCardInnerTitle(block)) return false;
+  return !productLaunchCardInnerBody(block);
+}
+
+/**
+ * 1007-N01 (단계3 결함D) — 그리드 안에서 본문이 비어 있는 카드를 통째로 제거한다
+ * (지어내 채우지 않고 "박스 수 조절"). 같은 그리드에 **본문이 있는 카드가 하나라도
+ * 있을 때만** 제거해, 의도적으로 제목만 있는 라벨 그리드는 보존한다. 제거 뒤
+ * `normalizeProductLaunchGridColumns` 가 컬럼 수(`g{N}`·`repeat(N,…)`)를 맞춘다.
+ */
+function collapseBodyEmptyProductLaunchCards(html: string): string {
+  const source = String(html ?? '');
+  if (!/\bclass\s*=\s*["'][^"']*\bgrid\b/i.test(source)) return source;
+  const openRe = /<div\b[^>]*\bclass\s*=\s*["'][^"']*\bgrid\b[^"']*["'][^>]*>/gi;
+  type Edit = { start: number; end: number; replacement: string };
+  const edits: Edit[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = openRe.exec(source)) !== null) {
+    const block = extractBalancedFrom(source, m.index);
+    if (!block) continue;
+    const openTag = m[0];
+    const inner = block.slice(openTag.length);
+    const cards: Array<{ start: number; end: number; html: string }> = [];
+    for (const className of PRODUCT_LAUNCH_GRID_CARD_CLASSES) {
+      for (const b of exactClassBlocks(inner, className)) cards.push(b);
+    }
+    if (cards.length < 2) continue;
+    const withBody = cards.filter((c) => !!productLaunchCardInnerBody(c.html));
+    const emptyBody = cards.filter((c) => productLaunchCardBodyIsEmpty(c.html));
+    if (withBody.length === 0 || emptyBody.length === 0) continue;
+    let nextInner = inner;
+    emptyBody.sort((a, b) => b.start - a.start);
+    for (const c of emptyBody) {
+      nextInner = `${nextInner.slice(0, c.start)}${nextInner.slice(c.end)}`;
+    }
+    edits.push({ start: m.index, end: m.index + block.length, replacement: `${openTag}${nextInner}` });
+  }
+  if (edits.length === 0) return source;
+  let out = source;
+  edits.sort((a, b) => b.start - a.start);
+  for (const e of edits) {
+    out = `${out.slice(0, e.start)}${e.replacement}${out.slice(e.end)}`;
+  }
+  return normalizeProductLaunchGridColumns(out);
+}
+
+/**
  * 1007-N01 — grid의 `g{N}` 클래스와 `grid-template-columns:repeat(N,…)`를
  * 실제 남은 카드 수에 맞춘다. 카드를 지어내지 않고, 빈 박스가 남지 않도록
  * 컬럼 수만 조정한다(slide 수는 불변).
@@ -13332,6 +13421,9 @@ function collapseRepeatedProductLaunchSiblingDimBodies(html: string): string {
  */
 function collapseEmptyProductLaunchCardsAndGrids(html: string): string {
   let out = collapseRepeatedProductLaunchSiblingDimBodies(String(html ?? ''));
+  // 1007-N01 (단계3 결함D) — 본문 빈 카드(제목만 있는 반쪽 카드)를 래퍼가 벗겨져
+  // orphan 되기 전에 통째로 제거한다. 아래 empty-text-node strip 보다 먼저.
+  out = collapseBodyEmptyProductLaunchCards(out);
   out = stripEmptyProductLaunchTextNodes(out);
   out = stripEmptyProductLaunchAmountNodes(out);
   for (const className of PRODUCT_LAUNCH_GRID_CARD_CLASSES) {

@@ -391,6 +391,20 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
 .slide > :is(.pill, [class*="pill"], .stamp, [class*="stamp"]):not([data-od-official-motif-html]) {
   z-index: 3 !important;
 }
+/* od-product-launch-vertical-balance (1007-N01 단계3 결함A/C): model-authored
+ * rich product-launch decks sometimes drop the kit's own .slide column +
+ * justify-content:center, so the title/lead/cards cluster at the TOP of the
+ * 1920x1080 frame and the lower half reads as empty padding (cover looks
+ * top-pinned, content slides leave a blank bottom half). Re-assert column +
+ * vertical center for THIS kit only (keyed on the identity host class) so grid
+ * kits that need display:grid are untouched, and non-product-launch slot-fill
+ * decks are unaffected. Split rows keep their inline axis. Short content stays
+ * centered, never stretched. */
+body.tpl-product-launch .slide:not(:has(.split-left)):not(:has(.split-right)):not(:has([class*="split-"])) {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+}
 `
 
 const LOOK_NEUTRALIZE_TAIL_RE =
