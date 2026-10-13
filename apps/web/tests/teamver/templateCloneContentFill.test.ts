@@ -1542,3 +1542,36 @@ describe('1007-N01 슬라이스 E — v1.4.16 품질 회귀: 일반 지식 주�
     expect(result.seed).toBe(buildTemplateCloneContentFillSeed(ENTITY_INTRO_OPTS));
   });
 });
+
+describe('1007-N01 슬라이스 F — 글쓰기 팁은 official-rich, 합성 스켈레톤 시드 없음', () => {
+  const prevEnv = process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE;
+  afterEach(() => {
+    if (prevEnv === undefined) delete process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE;
+    else process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = prevEnv;
+  });
+
+  it('글을 매력적으로 쓰는 팁 → official-rich 시드, 합성 보일러플레이트 없음', () => {
+    const result = buildTemplateCloneFillSeedForCurrentMode({
+      userInstruction: '글을 매력적으로 쓰는 팁 슬라이드 만들어줘',
+      sourceBrief: 'User instruction:\n글을 매력적으로 쓰는 팁 슬라이드 만들어줘',
+      templateTitle: 'Broadside',
+      seedShellCount: 6,
+    });
+    expect(result.jsonFill).toBe(false);
+    expect(result.seed).toContain('[Official-look rich mode]');
+    expect(result.seed).not.toContain('지금 다뤄야 하는가');
+    expect(result.seed).not.toContain('자주 쓰이는 용어와 원리');
+    expect(result.seed).not.toContain('전체 지도를 먼저 그리고');
+    expect(result.seed).not.toContain('에 대한 2');
+  });
+
+  it('명시 json override 는 그대로 json (1비트 불변)', () => {
+    process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = 'json';
+    const result = buildTemplateCloneFillSeedForCurrentMode({
+      userInstruction: '글을 매력적으로 쓰는 팁 슬라이드 만들어줘',
+      sourceBrief: 'User instruction:\n글을 매력적으로 쓰는 팁 슬라이드 만들어줘',
+    });
+    expect(result.jsonFill).toBe(true);
+    expect(result.seed).toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
+  });
+});

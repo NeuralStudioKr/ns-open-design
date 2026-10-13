@@ -971,6 +971,11 @@ export function recoverShortDeckByPaddingToSeed(input: {
   if (producedCount <= 0) {
     const forcePad = input.forcePad !== false;
     const documentShaped = /^(?:<!doctype(?:\s+html)?\b|<html\b)/i.test(model);
+    // 1007-N01 슬라이스 F — 일반/교육/팁 주제는 빈 모델 HTML 을 합성 스켈레톤으로
+    // 메우지 않는다. 호출부가 seed 유지 또는 리치 재생성으로 처리한다.
+    if (briefLooksLikeGeneralKnowledgeHowToTopic(input.brief ?? input.deckTitle)) {
+      return null;
+    }
     if (
       forcePad
       && documentShaped
@@ -1408,6 +1413,10 @@ function resolveTemplateCloneOutlineTargetCount(
 function topicKeywordForSynthBody(title: string): string {
   return String(title ?? '')
     .replace(/\s*(?:사이트|서비스|소개|슬라이드|덱|발표\s*자료)$/gu, '')
+    // 1007-N01 슬라이스 F — MiniMax instruction leftover (`팁에 대한`) 가
+    // topic 명사에 붙으면 `에 대한을` 조사 충돌이 난다. 접미/중간 leftover 를 벗긴다.
+    .replace(/\s*에\s*대한(?:\s*\d+)?$/u, '')
+    .replace(/\s*에\s*대한\s+/u, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     || '핵심 주제';
@@ -2042,6 +2051,46 @@ function synthTemplateItems(
       body: line,
     };
   });
+}
+
+/**
+ * 1007-N01 슬라이스 F — `templatesForSynthTemplateTopic` generic preset 이
+ * 주제 문자열을 `${topic}에서 자주 쓰이는 용어와 원리…` 로 전개한 결정론적
+ * 스켈레톤 카피. 최종 덱에 남으면 '임의/합성 카피 주입' 금지 위반.
+ * json 시드(AI rewrite 전)가 아니라 persist/heal 산출물에서 이 지문이 보이면
+ * 비우고 박스 수를 줄인다(지어내 메우지 않음).
+ */
+export const DETERMINISTIC_SYNTH_SKELETON_COPY_RE =
+  /지금 다뤄야 하는가|자주 쓰이는 용어와 원리|이루는 구성 요소와 서로 연결되는 방식|전체 지도를 먼저 그리고 세부 개념을|대안·사례·실패 패턴을 비교해 차이를 명확히|핵심 원리가 실제 문제를 줄여 준 장면|비슷하지만 성과가 낮은 접근|적용할지 결정하는 비용·리스크·기대 효과|작은 범위에서 실행하고 피드백을 빠르게 반영|성과 지표와 실패 신호를 함께 정의|배경과 현재 논의가 필요한 이유를 한두 문장으로 정리|청중이 가장 먼저 이해해야 할 핵심 질문|세 갈래로 나눠 보기|이해에서 적용까지 잇는 순서|한 번에 설명하기보다 배경·구조·사례·실행 기준|실제 의사결정이나 업무에 만드는 변화|실제 상황에 적용할 기준과 다음 행동|정리와 다음 단계|개념·사례·실행 기준을 예고|필요한 자료·이해관계자·현재 상태를 먼저 확인/;
+
+export function looksLikeDeterministicSynthSkeletonCopy(
+  text: string | null | undefined,
+): boolean {
+  return DETERMINISTIC_SYNTH_SKELETON_COPY_RE.test(String(text ?? ''));
+}
+
+const GENERAL_KNOWLEDGE_HOW_TO_RE =
+  /팁|하는\s*법|공부법|기초|howto|how\s*to|tips?\b|tutorial|강의|학습/i;
+
+/**
+ * 일반 지식·교육·방법·팁 주제. 이 브리프는 official-rich 로 라우팅되며,
+ * thin 해도 합성 스켈레톤 카피를 주입하지 않는다(박스 수 축소).
+ */
+export function briefLooksLikeGeneralKnowledgeHowToTopic(
+  text: string | null | undefined,
+): boolean {
+  const value = String(text ?? '').trim();
+  if (!value) return false;
+  return GENERAL_KNOWLEDGE_HOW_TO_RE.test(value);
+}
+
+/** Persist/heal: 합성 스켈레톤 지문 텍스트만 비운다. 대체 문장 주입 없음. */
+export function stripDeterministicSynthSkeletonTextNodes(html: string): string {
+  const source = String(html ?? '');
+  if (!source || !looksLikeDeterministicSynthSkeletonCopy(source)) return source;
+  return source.replace(/>([^<]{8,})</g, (full, chunk: string) => (
+    looksLikeDeterministicSynthSkeletonCopy(chunk) ? '><' : full
+  ));
 }
 
 function templatesForSynthTemplateTopic(
@@ -4802,7 +4851,8 @@ export function polishInstructionCoverTitle(raw: string): string {
   return String(raw ?? '')
     .replace(/[,，]?\s*예시에?\s*대한$/u, '')
     .replace(/[,，]\s*예시에?$/u, '')
-    .replace(/\s*에\s*대한$/u, '')
+    .replace(/\s*에\s*대한(?:\s*\d+)?$/u, '')
+    .replace(/\s*에\s*대한\s+/u, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -12511,6 +12561,9 @@ function productLaunchHeadingNeedsRefill(
   if ((options?.slideIndex ?? 0) > 0 && slideTitleParrotsBriefFragment(title, options?.brief)) {
     return true;
   }
+  // 1007-N01 슬라이스 F — `팁에 대한 2` / `팁에 대한 핵심 포인트` leftover 제목.
+  if (/에\s*대한(?:\s*\d+)?$/u.test(title) || /에\s*대한\s+/.test(title)) return true;
+  if (looksLikeDeterministicSynthSkeletonCopy(title)) return true;
   return false;
 }
 
@@ -12547,6 +12600,7 @@ function productLaunchKickerNeedsRefill(text: string): boolean {
   if (/^The\s+(sound|fit|intelligence|ship)$/i.test(value)) return true;
   if (PRODUCT_LAUNCH_PACK_CLOSE_DUMP_RE.test(value)) return true;
   if (productLaunchKickerLooksLikeBodySentence(value)) return true;
+  if (looksLikeDeterministicSynthSkeletonCopy(value)) return true;
   return false;
 }
 
@@ -12583,6 +12637,8 @@ function productLaunchCopyIsKeepable(text: string): boolean {
   if (value.length < PRODUCT_LAUNCH_KEEPABLE_KO_MIN) return false;
   if (!/[가-힣]/.test(value)) return false;
   if (productLaunchHasHealerTitleArtifact(value)) return false;
+  // 1007-N01 슬라이스 F — 결정론적 합성 스켈레톤은 긴 한국어여도 keepable 아님.
+  if (looksLikeDeterministicSynthSkeletonCopy(value)) return false;
   if (PRODUCT_LAUNCH_LEFTOVER_BODY_RE.test(value)) return false;
   if (PRODUCT_LAUNCH_DEMO_COPY_RE.test(value)) {
     PRODUCT_LAUNCH_DEMO_COPY_RE.lastIndex = 0;
@@ -12714,6 +12770,7 @@ function productLaunchSlotNeedsRefill(text: string): boolean {
   if (!value) return true;
   if (productLaunchCopyIsKeepable(value)) return false;
   if (PRODUCT_LAUNCH_BROKEN_COPY_RE.test(value)) return true;
+  if (looksLikeDeterministicSynthSkeletonCopy(value)) return true;
   if (PRODUCT_LAUNCH_GENERIC_CARD_BODY_RE.test(value)) return true;
   if (/["“][^"”]*$/.test(value) && !/["”]$/.test(value)) return true;
   if (/Halo/i.test(value)) return true;
@@ -12743,7 +12800,11 @@ function productLaunchKitAwareCardTitle(rawTitle: string, topic: string, index: 
     return topic ? `${topic} ${plan}` : plan;
   }
   if (PRODUCT_LAUNCH_GENERIC_CARD_TITLE_RE.test(title)) {
-    if (topic && PRODUCT_LAUNCH_GENERIC_CARD_TITLE_MAP[title]) {
+    if (
+      topic
+      && PRODUCT_LAUNCH_GENERIC_CARD_TITLE_MAP[title]
+      && productLaunchTopicUsableAsPrefix(topic)
+    ) {
       return PRODUCT_LAUNCH_GENERIC_CARD_TITLE_MAP[title]!(topic);
     }
     return title;
@@ -12754,7 +12815,13 @@ function productLaunchKitAwareCardTitle(rawTitle: string, topic: string, index: 
   }
   if (!title || productLaunchSlotNeedsRefill(title) || productLaunchHasHealerTitleArtifact(title)) {
     const fallback = PRODUCT_LAUNCH_PRICE_PLAN_TITLES[index] ?? '';
-    return topic && fallback ? `${topic} ${fallback}` : fallback;
+    // 1007-N01 슬라이스 F 결함7 — price-plan 폴백(`${topic} 실무`)은 짧은
+    // 브랜드 토픽에만. 문장형/how-to 주제에 붙이면 합성 카피가 된다.
+    // 접두 불가면 빈 제목 → collapse 가 박스를 줄인다(지어내지 않음).
+    if (fallback && productLaunchTopicUsableAsPrefix(topic)) {
+      return `${topic} ${fallback}`;
+    }
+    return '';
   }
   return title;
 }
@@ -12971,7 +13038,9 @@ function healProductLaunchStructuralQuality(
   // model wrote it rather than overwritten with Teamver filler.
   allowTeamverCopy: boolean = briefIsAboutTeamverProduct(topic),
 ): string {
-  let out = stripForeignBlockFrameTypographyFromProductLaunch(html);
+  let out = stripForeignBlockFrameTypographyFromProductLaunch(
+    stripDeterministicSynthSkeletonTextNodes(html),
+  );
   const spans = listHealSlideHostSpans(out);
   for (let i = spans.length - 1; i >= 0; i -= 1) {
     const span = spans[i]!;
@@ -12983,6 +13052,8 @@ function healProductLaunchStructuralQuality(
       || /^(?:주제|핵심|차이)$/.test(heading)
       || /^주제(?:에서|의|가|를|는|와)/.test(heading)
       || /다루는 칸/.test(heading)
+      || /에\s*대한/.test(heading)
+      || looksLikeDeterministicSynthSkeletonCopy(heading)
       || productLaunchHeadingLooksLikeBodySentence(heading);
     if (productLaunchLooksLikeOrphanPricingChrome(body)) {
       body = wipeProductLaunchOrphanPriceTokens(body);
@@ -13060,6 +13131,9 @@ function healProductLaunchStructuralQuality(
   out = salvageBrokenProductLaunchMarkup(out);
   out = wipeProductLaunchEnglishDemoChrome(out);
   out = healProductLaunchCtaDisplay(out);
+  // 1007-N01 슬라이스 F 결함6 — 비제품(how-to/교육) 주제에 product-launch
+  // CTA/96px '지금' shell 이 남으면 격하(제거). 카피 주입 없음.
+  out = demoteNonProductCtaShell(out, topic);
   // 1007-N01 — fillProductLaunchSparseCenterSlides(lede 주입) 제거.
   out = ensureProductLaunchCoverHeroShot(out);
   out = wipeProductLaunchEmptyDeckFooters(out);
@@ -13783,6 +13857,17 @@ function healProductLaunchCtaDisplay(html: string): string {
       return full;
     },
   );
+}
+
+function demoteNonProductCtaShell(html: string, topic: string): string {
+  if (!briefLooksLikeGeneralKnowledgeHowToTopic(topic)) return String(html ?? '');
+  let out = String(html ?? '');
+  out = out.replace(/<a\b[^>]*\bcta-btn\b[^>]*>[\s\S]*?<\/a>/gi, '');
+  out = out.replace(
+    /<(div|p|span)\b([^>]*font-size\s*:\s*96px[^>]*)>\s*지금\s*<\/\1>/gi,
+    '',
+  );
+  return out;
 }
 
 function fillProductLaunchSparseCenterSlides(html: string, topic: string, allowTeamverCopy = true): string {
@@ -20617,6 +20702,11 @@ function enrichSparseSlideForShell(
 ): TemplateCloneSlideContent {
   if (index === 0) return slide;
   if (slide.roleHint === 'cover' || slide.roleHint === 'closing') return slide;
+  // 1007-N01 슬라이스 F — 일반/교육/팁 주제는 thin 슬롯을 합성 스켈레톤으로
+  // 채우지 않는다. 빈 카드는 persist collapse 가 박스 수로 정리한다.
+  if (briefLooksLikeGeneralKnowledgeHowToTopic(`${brief ?? ''}\n${deckTitle}`)) {
+    return slide;
+  }
   const items = Array.isArray(slide.items) ? slide.items : [];
   const bodyText = slide.body?.trim() ?? '';
   const bodyLines = bodyText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
@@ -20858,6 +20948,11 @@ export function buildTemplateClonedDeckHtml(
       })
     ) {
       padStartIndex = workingSlides.length;
+      // 1007-N01 슬라이스 F — 장수는 게이트를 위해 pad 하되, how-to 주제에는
+      // 합성 스켈레톤 카피를 넣지 않는다(제목만). 빈 박스는 heal collapse.
+      const refuseSynthCopy = briefLooksLikeGeneralKnowledgeHowToTopic(
+        `${options.brief ?? ''}\n${deckTitle}`,
+      );
       while (workingSlides.length < hint) {
         if (officialLookIsProductLaunchHalo(source) || officialLookIsNeoBrutalBlockFrame(source)) {
           const n = workingSlides.length + 1;
@@ -20865,17 +20960,19 @@ export function buildTemplateClonedDeckHtml(
             Math.min(TEMPLATE_CLONE_GENERIC_SECTION_LABELS.length - 1, Math.max(0, n - 2))
           ] ?? `핵심 ${n - 1}`;
           const label = looksLikeGenericLeftoverTitle(rawLabel) || /^핵심\s+\d+$/.test(rawLabel)
-            ? genericRoleCopyForIndex(deckTitle, options.brief, Math.max(1, n - 1)).heading
+            ? (refuseSynthCopy
+              ? `핵심 ${n - 1}`
+              : genericRoleCopyForIndex(deckTitle, options.brief, Math.max(1, n - 1)).heading)
             : rawLabel;
           workingSlides.push({
             title: label,
-            ...synthesizeTemplateCloneSlideBody(
+            ...(refuseSynthCopy ? {} : synthesizeTemplateCloneSlideBody(
               deckTitle,
               label,
               Math.max(1, n - 1),
               options.brief,
               resolveTemplateCloneKitKey(source),
-            ),
+            )),
           });
         } else {
           const n = workingSlides.length + 1;
@@ -20884,17 +20981,19 @@ export function buildTemplateClonedDeckHtml(
           // 감수 (MiniMax / kit healer 가 실제 title 을 최종 확정).
           const label = n === 1
             ? deckTitle
-            : (genericRoleCopyForIndex(deckTitle, options.brief, Math.max(1, n - 1)).heading
-              || deckTitle);
+            : (refuseSynthCopy
+              ? `핵심 ${n - 1}`
+              : (genericRoleCopyForIndex(deckTitle, options.brief, Math.max(1, n - 1)).heading
+                || deckTitle));
           workingSlides.push({
             title: label,
-            ...synthesizeTemplateCloneSlideBody(
+            ...(refuseSynthCopy ? {} : synthesizeTemplateCloneSlideBody(
               deckTitle,
               label,
               Math.max(1, n - 1),
               options.brief,
               resolveTemplateCloneKitKey(source),
-            ),
+            )),
           });
         }
       }
@@ -21135,6 +21234,9 @@ export function neutralizeClonedDeckModelHtml(
   out = stripLeftoverCatalogDemoPhrases(out);
   out = collapseAdjacentDuplicatedPhrasesInDeckText(out);
   out = neutralizeTeamverPackCopyInDeckHtml(out, options.brief ?? null, deckTitle);
+  // 1007-N01 슬라이스 F — 리치 persist 에도 합성 스켈레톤 문장이 새면 비운다.
+  // 레이아웃은 건드리지 않고 지문 텍스트만 제거. 빈 박스는 상위 heal collapse.
+  out = stripDeterministicSynthSkeletonTextNodes(out);
   return out;
 }
 
