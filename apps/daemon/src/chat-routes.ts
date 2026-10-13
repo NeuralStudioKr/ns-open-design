@@ -919,7 +919,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
   // Per-request role-marker guard for BYOK proxy streams (#3247).
   // MiniMax M3 embeds redacted_thinking markers in delta.content — split those into
   // thinking_delta so the chat surface stays clean (see docs 09-thinking-suppression).
-  function createDeltaGuard(sse: any) {
+  function createDeltaGuard(sse: any, options?: { bufferVisible?: boolean }) {
     const guard = createRoleMarkerGuard('proxy');
     let thinkingChars = 0;
     const emitThinking = (chunk: string) => {
@@ -934,12 +934,13 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     let visibleChars = 0;
     let substantiveChars = 0;
     let visibleText = '';
+    const bufferVisible = options?.bufferVisible === true;
     const emitVisible = (text: string) => {
       if (!text) return;
       visibleChars += text.length;
       visibleText += text;
       if (text.trim().length > 0) substantiveChars += text.trim().length;
-      sse.send('delta', { delta: text });
+      if (!bufferVisible) sse.send('delta', { delta: text });
     };
     return {
       sendDelta(text: string) {
@@ -992,6 +993,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       get visibleText() {
         return visibleText;
       },
+      flushBufferedVisible() {
+        if (bufferVisible && visibleText) sse.send('delta', { delta: visibleText });
+      },
     };
   }
 
@@ -1042,6 +1046,37 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     }
     return /<patch\b[^>]*>[\s\S]*<\/patch\s*>/i.test(body);
   };
+
+  const mergeDeckArtifactContinuation = (partial: string, continuation: string): string => {
+    const next = String(continuation ?? '');
+    if (!next) return partial;
+    // A continuation model may ignore the suffix-only contract and return a
+    // complete replacement. Prefer that valid replacement over nesting a
+    // second artifact inside the first incomplete document.
+    if (completeDeckArtifactText(next)) return next;
+    const maxOverlap = Math.min(partial.length, next.length, 8_192);
+    for (let size = maxOverlap; size >= 16; size -= 1) {
+      if (partial.endsWith(next.slice(0, size))) {
+        return partial + next.slice(size);
+      }
+    }
+    return partial + next;
+  };
+
+  const deckArtifactContinuationPrompt = (fullRewrite: boolean): string => fullRewrite
+    ? [
+        'The previous deck artifact was truncated and suffix continuation did not close it.',
+        'Return ONE complete replacement <artifact type="deck" identifier="deck"> now.',
+        'Keep the requested content and visual style, but make the HTML compact enough to finish.',
+        'Include real filled slide sections and close </body></html></artifact>.',
+        'Output the artifact only. Do not add status prose, markdown fences, or explanations.',
+      ].join(' ')
+    : [
+        'Continue the immediately preceding truncated deck response from the exact next byte.',
+        'Output ONLY the missing suffix. Do not repeat status prose, <artifact>, <!doctype>, <html>,',
+        'or any content already present. Finish all requested filled slides and close',
+        '</body></html></artifact> in this response.',
+      ].join(' ');
 
   /** Upstream closed without message_stop/[DONE]/error — empty streams are retryable drops. */
   const finalizeProxyUpstreamIfIncomplete = (
@@ -2346,64 +2381,123 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       let sawDone = false;
       let providerErrorData: unknown = null;
 
-      const guard = createDeltaGuard(sse);
+      const guard = createDeltaGuard(sse, {
+        bufferVisible: expectCompleteDeckArtifact === true,
+      });
       if (atomicMiniMaxResponse) {
-        let data: any;
-        try {
-          data = await response.json();
-        } catch {
-          sendProxyError(sse, 'MiniMax returned an unreadable atomic response', {
-            code: 'UPSTREAM_UNAVAILABLE',
-            retryable: true,
-          });
-          return { kind: 'error' };
-        }
-
-        const streamErr = extractStreamErrorMessage(data);
-        if (streamErr) {
-          sendProviderStreamError(sse, `Provider error: ${streamErr}`, data);
-          return { kind: 'error' };
-        }
-        const usage = data?.usage;
-        if (typeof usage?.prompt_tokens === 'number' && usage.prompt_tokens > 0) {
-          turnUsage.inputTokens += usage.prompt_tokens;
-        }
-        if (typeof usage?.completion_tokens === 'number' && usage.completion_tokens > 0) {
-          turnUsage.outputTokens += usage.completion_tokens;
-        }
-        const choice = Array.isArray(data?.choices) ? data.choices[0] : null;
-        const content = typeof choice?.message?.content === 'string'
-          ? choice.message.content
-          : typeof choice?.delta?.content === 'string'
-            ? choice.delta.content
-            : '';
-        // Atomic responses bypass the ordinary streaming guard. Validate the
-        // full JSON outline or deck artifact before exposing any bytes.
-        const complete = expectCompleteJsonOutline === true
-          ? completeJsonOutlineText(content)
-          : completeDeckArtifactText(content);
-        if (!complete) {
-          sendProxyUsageIfPresent(
-            res,
-            sse,
-            turnUsage.inputTokens,
-            turnUsage.outputTokens,
-            model,
-          );
-          sendProxyError(
-            sse,
-            expectCompleteJsonOutline === true
-              ? 'MiniMax response ended before the JSON outline completed'
-              : 'MiniMax response ended before the deck artifact completed',
-            {
+        let atomicResponse = response;
+        let atomicContent = '';
+        const maxAtomicDeckContinuationAttempts = expectCompleteDeckArtifact === true ? 2 : 0;
+        for (
+          let continuationAttempt = 0;
+          continuationAttempt <= maxAtomicDeckContinuationAttempts;
+          continuationAttempt += 1
+        ) {
+          let data: any;
+          try {
+            data = await atomicResponse.json();
+          } catch {
+            sendProxyError(sse, 'MiniMax returned an unreadable atomic response', {
               code: 'UPSTREAM_UNAVAILABLE',
               retryable: true,
+            });
+            return { kind: 'error' };
+          }
+
+          const streamErr = extractStreamErrorMessage(data);
+          if (streamErr) {
+            sendProviderStreamError(sse, `Provider error: ${streamErr}`, data);
+            return { kind: 'error' };
+          }
+          const usage = data?.usage;
+          if (typeof usage?.prompt_tokens === 'number' && usage.prompt_tokens > 0) {
+            turnUsage.inputTokens += usage.prompt_tokens;
+          }
+          if (typeof usage?.completion_tokens === 'number' && usage.completion_tokens > 0) {
+            turnUsage.outputTokens += usage.completion_tokens;
+          }
+          const choice = Array.isArray(data?.choices) ? data.choices[0] : null;
+          const responseContent = typeof choice?.message?.content === 'string'
+            ? choice.message.content
+            : typeof choice?.delta?.content === 'string'
+              ? choice.delta.content
+              : '';
+          atomicContent = continuationAttempt === 0
+            ? responseContent
+            : mergeDeckArtifactContinuation(atomicContent, responseContent);
+
+          // Atomic responses bypass the ordinary streaming guard. Validate the
+          // full JSON outline or deck artifact before exposing any bytes.
+          const complete = expectCompleteJsonOutline === true
+            ? completeJsonOutlineText(atomicContent)
+            : completeDeckArtifactText(atomicContent);
+          if (complete) {
+            sse.send('delta', { delta: atomicContent });
+            return { kind: 'text_end' };
+          }
+          if (continuationAttempt >= maxAtomicDeckContinuationAttempts) break;
+
+          const fullRewrite = continuationAttempt > 0;
+          const continuationPayload = {
+            ...payload,
+            messages: [
+              ...messagesForTurn,
+              ...(fullRewrite ? [] : [{ role: 'assistant', content: atomicContent }]),
+              {
+                role: 'user',
+                content: deckArtifactContinuationPrompt(fullRewrite),
+              },
+            ],
+          };
+          atomicResponse = await fetch(url, {
+            ...toolCtx.requestInit,
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...opts.buildHeaders(apiKey),
             },
-          );
-          return { kind: 'error' };
+            body: JSON.stringify(continuationPayload),
+            redirect: 'error',
+            ...(byokProxyAbortSignalFromRes(res)
+              ? { signal: byokProxyAbortSignalFromRes(res)! }
+              : {}),
+          });
+          if (!atomicResponse.ok) {
+            const errorText = await atomicResponse.text();
+            sendProxyUsageIfPresent(
+              res,
+              sse,
+              turnUsage.inputTokens,
+              turnUsage.outputTokens,
+              model,
+            );
+            sendProxyError(sse, formatUpstreamHttpErrorMessage(atomicResponse.status, errorText), {
+              code: proxyErrorCode(atomicResponse.status),
+              details: errorText,
+              retryable: proxyHttpRetryable(atomicResponse.status),
+            });
+            return { kind: 'error' };
+          }
         }
-        sse.send('delta', { delta: content });
-        return { kind: 'text_end' };
+
+        sendProxyUsageIfPresent(
+          res,
+          sse,
+          turnUsage.inputTokens,
+          turnUsage.outputTokens,
+          model,
+        );
+        sendProxyError(
+          sse,
+          expectCompleteJsonOutline === true
+            ? 'MiniMax response ended before the JSON outline completed'
+            : 'MiniMax response ended before the deck artifact completed after continuation repair',
+          {
+            code: 'UPSTREAM_UNAVAILABLE',
+            retryable: true,
+          },
+        );
+        return { kind: 'error' };
       }
 
       await streamUpstreamSse(response, ({ payload, data }: any) => {
@@ -2500,36 +2594,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         return { kind: 'error' };
       }
 
-      const incompleteExpectedJson =
-        expectCompleteJsonOutline === true
-        && (
-          (!sawDone && !finishReason)
-          || !completeJsonOutlineText(guard.visibleText)
-        );
-      const incompleteExpectedDeck =
-        expectCompleteDeckArtifact === true
-        && !completeDeckArtifactText(guard.visibleText);
-      if (incompleteExpectedJson || incompleteExpectedDeck) {
-        sendProxyUsageIfPresent(
-          res,
-          sse,
-          turnUsage.inputTokens,
-          turnUsage.outputTokens,
-          model,
-        );
-        sendProxyError(
-          sse,
-          incompleteExpectedJson
-            ? 'MiniMax stream ended before the JSON outline completed'
-            : 'MiniMax stream ended before the deck artifact completed',
-          {
-            code: 'UPSTREAM_UNAVAILABLE',
-            retryable: true,
-          },
-        );
-        return { kind: 'error' };
-      }
-
+      // Tool turns are intentionally not deck deliverables. Execute the tool
+      // first, then enforce the complete-artifact contract on the final model
+      // turn that receives the tool result. Checking deck completeness before
+      // this branch rejected every legitimate web_fetch call as a truncated
+      // deck and explains the immediate first-turn UPSTREAM_UNAVAILABLE loop.
       if (finishReason === 'tool_calls' && Object.keys(accum).length > 0) {
         const indices = Object.keys(accum)
           .map(Number)
@@ -2553,6 +2622,101 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         };
       }
 
+      const incompleteExpectedJson =
+        expectCompleteJsonOutline === true
+        && (
+          (!sawDone && !finishReason)
+          || !completeJsonOutlineText(guard.visibleText)
+        );
+      const incompleteExpectedDeck =
+        expectCompleteDeckArtifact === true
+        && !completeDeckArtifactText(guard.visibleText);
+      if (incompleteExpectedDeck) {
+        let repairedDeck = guard.visibleText;
+        for (let continuationAttempt = 0; continuationAttempt < 2; continuationAttempt += 1) {
+          const fullRewrite = continuationAttempt > 0;
+          const continuationPayload: any = {
+            ...payload,
+            stream: false,
+            tool_choice: 'none',
+            messages: [
+              ...messagesForTurn,
+              ...(fullRewrite ? [] : [{ role: 'assistant', content: repairedDeck }]),
+              {
+                role: 'user',
+                content: deckArtifactContinuationPrompt(fullRewrite),
+              },
+            ],
+          };
+          delete continuationPayload.tools;
+          delete continuationPayload.stream_options;
+          const continuationResponse = await fetch(url, {
+            ...toolCtx.requestInit,
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...opts.buildHeaders(apiKey),
+            },
+            body: JSON.stringify(continuationPayload),
+            redirect: 'error',
+            ...(byokProxyAbortSignalFromRes(res)
+              ? { signal: byokProxyAbortSignalFromRes(res)! }
+              : {}),
+          });
+          if (!continuationResponse.ok) break;
+          let continuationData: any;
+          try {
+            continuationData = await continuationResponse.json();
+          } catch {
+            break;
+          }
+          if (extractStreamErrorMessage(continuationData)) break;
+          const usage = continuationData?.usage;
+          if (typeof usage?.prompt_tokens === 'number' && usage.prompt_tokens > 0) {
+            turnUsage.inputTokens += usage.prompt_tokens;
+          }
+          if (typeof usage?.completion_tokens === 'number' && usage.completion_tokens > 0) {
+            turnUsage.outputTokens += usage.completion_tokens;
+          }
+          const choice = Array.isArray(continuationData?.choices)
+            ? continuationData.choices[0]
+            : null;
+          const continuationText = typeof choice?.message?.content === 'string'
+            ? choice.message.content
+            : typeof choice?.delta?.content === 'string'
+              ? choice.delta.content
+              : '';
+          repairedDeck = fullRewrite
+            ? continuationText
+            : mergeDeckArtifactContinuation(repairedDeck, continuationText);
+          if (completeDeckArtifactText(repairedDeck)) {
+            sse.send('delta', { delta: repairedDeck });
+            return { kind: 'text_end' };
+          }
+        }
+      }
+      if (incompleteExpectedJson || incompleteExpectedDeck) {
+        sendProxyUsageIfPresent(
+          res,
+          sse,
+          turnUsage.inputTokens,
+          turnUsage.outputTokens,
+          model,
+        );
+        sendProxyError(
+          sse,
+          incompleteExpectedJson
+            ? 'MiniMax stream ended before the JSON outline completed'
+            : 'MiniMax stream ended before the deck artifact completed',
+          {
+            code: 'UPSTREAM_UNAVAILABLE',
+            retryable: true,
+          },
+        );
+        return { kind: 'error' };
+      }
+
+      guard.flushBufferedVisible();
       return { kind: 'text_end' };
     };
 

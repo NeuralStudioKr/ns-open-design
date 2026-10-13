@@ -2431,6 +2431,55 @@ describe('API proxy routes', () => {
     expect(upstreamChatBodies[0]).not.toHaveProperty('stream_options');
   });
 
+  it('continues a truncated atomic MiniMax deck inside the same proxy request', async () => {
+    const upstreamChatBodies: any[] = [];
+    const fetchMock = vi.fn(async (input: FetchInput, init?: FetchInit) => {
+      const url = String(input);
+      if (url.startsWith(baseUrl)) return realFetch(input, init);
+      if (url === 'https://api.minimax.io/v1/chat/completions') {
+        const requestBody = JSON.parse(String(init?.body || '{}'));
+        upstreamChatBodies.push(requestBody);
+        const content = upstreamChatBodies.length === 1
+          ? '<artifact type="deck" identifier="deck"><!doctype html><html><head><style>.slide{color:#111}</style></head>'
+          : '<body><section class="slide"><h1>Teamver</h1><p>팀 협업</p></section></body></html></artifact>';
+        return new Response(JSON.stringify({
+          choices: [{
+            index: 0,
+            message: { role: 'assistant', content },
+            finish_reason: 'stop',
+          }],
+          usage: { prompt_tokens: 20, completion_tokens: 30 },
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await realFetch(`${baseUrl}/api/proxy/minimax/stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: 'https://api.minimax.io/v1',
+        apiKey: 'sk-cp-test',
+        projectId: 'test-project',
+        model: 'MiniMax-M3',
+        expectCompleteDeckArtifact: true,
+        messages: [{ role: 'user', content: '회사 소개 슬라이드를 만들어줘' }],
+      }),
+    });
+
+    const body = await res.text();
+    expect(body).toContain('Teamver');
+    expect(body).toContain('event: end');
+    expect(body).not.toContain('event: error');
+    expect(upstreamChatBodies).toHaveLength(2);
+    expect(upstreamChatBodies[1].stream).toBe(false);
+    expect(upstreamChatBodies[1].messages.at(-2)).toMatchObject({
+      role: 'assistant',
+      content: expect.stringContaining('<html><head>'),
+    });
+  });
+
   it('rejects a head-only atomic MiniMax deck instead of ending the turn', async () => {
     const fetchMock = vi.fn(async (input: FetchInput, init?: FetchInit) => {
       const url = String(input);
@@ -2470,6 +2519,81 @@ describe('API proxy routes', () => {
     expect(body).toContain('before the deck artifact completed');
     expect(body).not.toContain('event: end');
     expect(body).not.toContain('event: delta');
+  });
+
+  it('executes web_fetch before deck validation and repairs a truncated final deck internally', async () => {
+    const upstreamChatBodies: any[] = [];
+    const completeDeck = '<artifact type="deck" identifier="deck"><!doctype html><html><body><section class="slide"><h1>Website</h1><p>분석 완료</p></section></body></html></artifact>';
+    const fetchMock = vi.fn(async (input: FetchInput, init?: FetchInit) => {
+      const url = String(input);
+      if (url.startsWith(baseUrl)) return realFetch(input, init);
+      if (url === 'https://example.com/') {
+        return new Response('<html><body>Example company</body></html>', {
+          status: 200,
+          headers: { 'content-type': 'text/html' },
+        });
+      }
+      if (url === 'https://api.minimax.io/v1/chat/completions') {
+        const requestBody = JSON.parse(String(init?.body || '{}'));
+        upstreamChatBodies.push(requestBody);
+        const hasToolResult = requestBody.messages?.some((message: any) => message.role === 'tool');
+        const isContinuation = requestBody.stream === false;
+        if (isContinuation) {
+          return new Response(JSON.stringify({
+            choices: [{
+              index: 0,
+              message: { role: 'assistant', content: completeDeck },
+              finish_reason: 'stop',
+            }],
+            usage: { prompt_tokens: 12, completion_tokens: 30 },
+          }), { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+        if (hasToolResult) {
+          return sseResponse([
+            'data: {"choices":[{"index":0,"delta":{"content":"<artifact type=\\"deck\\" identifier=\\"deck\\"><!doctype html><html><head>BROKEN_HEAD_MARKER"}}]}',
+            '',
+            'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+            '',
+            'data: [DONE]',
+            '',
+          ].join('\n'));
+        }
+        return sseResponse([
+          'data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_web","type":"function","function":{"name":"web_fetch","arguments":"{\\"url\\":\\"https://example.com/\\"}"}}]},"finish_reason":null}]}',
+          '',
+          'data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}',
+          '',
+          'data: [DONE]',
+          '',
+        ].join('\n'));
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await realFetch(`${baseUrl}/api/proxy/minimax/stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: 'https://api.minimax.io/v1',
+        apiKey: 'sk-cp-test',
+        projectId: 'test-project',
+        model: 'MiniMax-M3',
+        expectCompleteDeckArtifact: true,
+        messages: [{ role: 'user', content: 'https://example.com 분석해서 슬라이드 만들어줘' }],
+      }),
+    });
+
+    const body = await res.text();
+    expect(body).toContain('Website');
+    expect(body).toContain('event: end');
+    expect(body).not.toContain('event: error');
+    expect(body).not.toContain('BROKEN_HEAD_MARKER');
+    expect(upstreamChatBodies).toHaveLength(3);
+    expect(upstreamChatBodies[0].stream).toBe(true);
+    expect(upstreamChatBodies[1].messages.some((message: any) => message.role === 'tool')).toBe(true);
+    expect(upstreamChatBodies[2].stream).toBe(false);
+    expect(upstreamChatBodies[2].tool_choice).toBe('none');
   });
 
   it('omits MiniMax web_fetch on greenfield turns without a page URL', async () => {
