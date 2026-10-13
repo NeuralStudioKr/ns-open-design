@@ -21,6 +21,7 @@ import {
   briefLooksLikeGeneralKnowledgeHowToTopic,
   catalogExampleShouldBeScrubbed,
   healBrokenServiceIntroLeftoverRemnants,
+  injectSCoverKitSlotCss,
   officialLookIsCapsule,
   officialLookIsEightBitOrbit,
   scrubLeftoverCatalogExampleHtml,
@@ -5483,6 +5484,9 @@ export function healAiGeneratedDeckMarkup(
   // `#ffffff!important` on a paper cover. Strip it so persist bleed / --ink
   // inheritance can show the title. Dark covers stay white.
   out = stripForcedWhiteTitlesOnLightCovers(out);
+  // 1007-N01 슬라이스 I — after H: restore s-cover titlewrap kit position
+  // (persist wraps it in [data-od-slide-flow]). No synthetic lede/brand.
+  out = injectSCoverKitSlotCss(out);
   return out;
 }
 

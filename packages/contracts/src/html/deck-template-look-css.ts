@@ -190,8 +190,12 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
 /* 루프451 — Cobalt Grid authored slots stay presentation-absolute.
  * Neutralize flattened titlewrap / col-footer / pagenum into document
  * flow, so the colophon title overlaps the left pixel-glitch and the
- * page number drifts to the far left. Restore those kit slots only. */
+ * page number drifts to the far left. Restore those kit slots only.
+ * 1007-N01 I — official-rich persist wraps titlewrap in [data-od-slide-flow],
+ * so the direct-child selector alone left the cover title in document flow
+ * (top-pinned empty lower half). Restore descendants too. */
 .slide.s-cover > .titlewrap,
+.slide.s-cover .titlewrap,
 .slide.s-cover > .cfooter,
 .slide.s-cover > .vstack,
 .slide.s-cover > .qr-block,
@@ -362,8 +366,18 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
   min-width: 0 !important;
 }
 /* od-look-slot-flow-ext: Creative Mode also parks arrows, titles,
- * kickers, charts, stamps as presentation-absolute. MiniMax reuses the names. */
-.slide [data-od-slide-flow] :is(.arrow, .arr, .h, .kicker, .body-col, .ix, .cell, .poster, .tagline, .footnote, .legend, .iso, .chart, .header-line, .badge, .strap, .stamp, .title, .topbar, .slide-meta, .pill):not([data-od-official-motif-html]) {
+ * kickers, charts, stamps as presentation-absolute. MiniMax reuses the names.
+ * 1007-N01 I — do not flatten .title on s-cover; kit titlewrap owns it. */
+.slide [data-od-slide-flow] :is(.arrow, .arr, .h, .kicker, .body-col, .ix, .cell, .poster, .tagline, .footnote, .legend, .iso, .chart, .header-line, .badge, .strap, .stamp, .topbar, .slide-meta, .pill):not([data-od-official-motif-html]) {
+  position: relative !important;
+  inset: auto !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  transform: none !important;
+}
+.slide:not(.s-cover) [data-od-slide-flow] :is(.title):not([data-od-official-motif-html]) {
   position: relative !important;
   inset: auto !important;
   top: auto !important;
@@ -399,8 +413,9 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
  * vertical center for THIS kit only (keyed on the identity host class) so grid
  * kits that need display:grid are untouched, and non-product-launch slot-fill
  * decks are unaffected. Split rows keep their inline axis. Short content stays
- * centered, never stretched. */
-body.tpl-product-launch .slide:not(:has(.split-left)):not(:has(.split-right)):not(:has([class*="split-"])) {
+ * centered, never stretched.
+ * 1007-N01 I — s-cover keeps kit titlewrap (absolute bottom), not flex-center. */
+body.tpl-product-launch .slide:not(.s-cover):not(:has(.split-left)):not(:has(.split-right)):not(:has([class*="split-"])) {
   display: flex !important;
   flex-direction: column !important;
   justify-content: center !important;
@@ -2568,7 +2583,8 @@ export function appendCompactOfficialTypeLock(css: string): string {
   }
   if (faces.display) {
     rules.push(`.slide :is(h1, h2, h3, .title, .display, .h1, .h2) { font-family: ${faces.display}; }`);
-    rules.push(`.slide.slide-title h1:not(.display), .slide.cover h1:not(.display) { font-family: ${faces.display}; font-size: 72px; line-height: 1.05; letter-spacing: -0.02em; }`);
+    // 1007-N01 I — skip s-cover; kit/Hangul tracking must not glue 한글 띄어쓰기.
+    rules.push(`.slide.slide-title:not(.s-cover) h1:not(.display), .slide.cover:not(.s-cover) h1:not(.display) { font-family: ${faces.display}; font-size: 72px; line-height: 1.05; letter-spacing: -0.02em; }`);
   }
   if (rules.length === 1) return src;
   return `${src.trimEnd()}\n${rules.join('\n')}\n`;

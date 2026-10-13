@@ -21,6 +21,7 @@ import {
   healCobaltOrphanDataStats,
   injectBiennaleSparseFillCss,
   injectCobaltAbsoluteSlotCss,
+  injectSCoverKitSlotCss,
   restyleBiennaleSparseChapterBodies,
   restyleBiennaleSparseDataBodies,
   restyleBiennaleSparseQuoteBodies,
@@ -1405,7 +1406,8 @@ export function healOfficialMagazineLayoutDensity(
     ),
     ),
   );
-  return injectCobaltAbsoluteSlotCss(
+  return injectSCoverKitSlotCss(
+  injectCobaltAbsoluteSlotCss(
     healCobaltGridLeftoverCatalogCopy(
     healCobaltOrphanDataStats(
       healLongTableLeftoverCatalogCopy(
@@ -1421,5 +1423,6 @@ export function healOfficialMagazineLayoutDensity(
     ),
     brief,
     ),
+  ),
   );
 }

@@ -4769,6 +4769,52 @@ export function injectCobaltAbsoluteSlotCss(html: string): string {
   return `${dest}${tag}`;
 }
 
+const S_COVER_KIT_SLOT_MARK = 'data-od-s-cover-kit-slots';
+
+function officialLookCssHasSCoverTitlewrapBox(html: string): boolean {
+  const css = officialLookCssBodiesFromDeck(html);
+  return /\.s-cover[\s\S]{0,80}\.titlewrap[\s\S]{0,160}(?:position\s*:\s*absolute|bottom\s*:)/i.test(css);
+}
+
+/**
+ * 1007-N01 슬라이스 I — official-rich persist wraps `.titlewrap` in
+ * `[data-od-slide-flow]`. Neutralize only restored `.slide.s-cover > .titlewrap`
+ * (direct child), so the cover title sat in flow at the top and the lower
+ * half read empty. Restore kit absolute titlewrap. When look CSS already
+ * declares titlewrap bottom/position (Biennale), only restore position so
+ * kit insets win. When look CSS has no titlewrap box (product-launch LOOK
+ * + model s-cover), supply left/bottom. Hangul cover titles drop tight
+ * letter-spacing so 원문 공백 stays visible. Never invent lede/brand.
+ */
+export function injectSCoverKitSlotCss(html: string): string {
+  const dest = String(html ?? '');
+  if (!dest.trim()) return dest;
+  if (!/\bs-cover\b/i.test(dest)) return dest;
+  if (!/<[^>]*\bclass\s*=\s*["'][^"']*\btitlewrap\b/i.test(dest)) return dest;
+  if (dest.includes(S_COVER_KIT_SLOT_MARK)) return dest;
+  const hangul = ((dest.match(/[가-힣]/g) ?? []).length >= 2);
+  const rules = [
+    '/* od-s-cover-kit-slots (1007-N01 I) */',
+    '.slide.s-cover .titlewrap{position:absolute!important;z-index:5}',
+    '.slide.s-cover>[data-od-slide-flow]{justify-content:unset!important}',
+  ];
+  if (!officialLookCssHasSCoverTitlewrapBox(dest)) {
+    rules.push(
+      '.slide.s-cover [data-od-slide-flow] .titlewrap{'
+        + 'left:clamp(40px,4vw,76px);top:auto;right:auto;'
+        + 'bottom:clamp(48px,6vh,96px);max-width:min(72%,1280px)}',
+    );
+  }
+  if (hangul) {
+    rules.push(
+      'html:lang(ko) .slide.s-cover :is(h1,h2,.title),'
+        + 'html[lang="ko"] .slide.s-cover :is(h1,h2,.title){'
+        + 'letter-spacing:0!important;word-break:keep-all;overflow-wrap:break-word}',
+    );
+  }
+  return injectStyleMark(dest, S_COVER_KIT_SLOT_MARK, rules.join(''));
+}
+
 function magazineLeftoverRibbonLabel(text: string): boolean {
   return /^(?:학습\s*노트|Study Notes|Working notes|Notes|표지|Cover|Title|슬라이드)$/i.test(
     String(text ?? '').replace(/\s+/g, ' ').trim(),
@@ -7544,6 +7590,7 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = restyleBiennaleSparseColophonBodies(next);
   next = injectBiennaleSparseFillCss(next);
   next = injectCobaltAbsoluteSlotCss(next);
+  next = injectSCoverKitSlotCss(next);
   next = salvageOrphan2x2GridCards(next);
   // 0921-N02 — kit healer 뒤에만 공통 leftover. catalog demo strip은
   // IB/Hartfield chrome을 지우므로 여기서 호출하지 않는다.
