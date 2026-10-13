@@ -146,6 +146,8 @@ services:
       MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
       TEAMVER_MINIMAX_BASE_URL: ${TEAMVER_MINIMAX_BASE_URL:-}
       TEAMVER_MINIMAX_CHAT_MODEL: ${TEAMVER_MINIMAX_CHAT_MODEL:-}
+      # Parallel provider-neutral API. Default OFF; current web never calls it.
+      TEAMVER_HOSTED_CHAT_API_ENABLED: ${TEAMVER_HOSTED_CHAT_API_ENABLED:-0}
       # Track B5 — Postgres DaemonDb (multi-node chat SSOT). Default sqlite.
       OD_DAEMON_DB: ${OD_DAEMON_DB:-sqlite}
       OD_PG_HOST: ${OD_PG_HOST:-}

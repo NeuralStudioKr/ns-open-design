@@ -72,6 +72,14 @@ import {
   normalizeMiniMaxBaseUrl,
   resolveMiniMaxToolLoopLimit,
 } from './minimax-runtime.js';
+import {
+  HOSTED_MANAGED_CHAT_PUBLIC_ERRORS,
+  HOSTED_MANAGED_CHAT_ROUTE,
+  isHostedManagedChatApiEnabled,
+  resolveHostedManagedChatRuntime,
+  validateHostedManagedChatBody,
+  type HostedManagedChatRuntime,
+} from './hosted-managed-chat-api.js';
 
 // Allowlist for the `/feedback` route. Mirrors the
 // ChatMessageFeedbackReasonCode union in packages/contracts/src/api/chat.ts.
@@ -217,9 +225,20 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     req: Request,
     res: Response,
     proxyBody: { apiKey?: unknown; useManagedApiKey?: unknown; apiProtocol?: unknown },
+    options: { publicOpaque?: boolean } = {},
   ): string | null {
     const resolution = resolveProxyStreamApiKeyDetailed(req, proxyBody);
     if (resolution.ok) return resolution.apiKey;
+    if (options.publicOpaque) {
+      const httpStatus = resolution.failure.reason === 'managed_identity_missing' ? 400 : 503;
+      sendApiError(
+        res,
+        httpStatus,
+        'MANAGED_CHAT_UNAVAILABLE',
+        'Managed AI service is unavailable',
+      );
+      return null;
+    }
     const { httpStatus, code, message } = proxyApiKeyFailureToErrorCode(
       resolution.failure,
       { provider: proxyBody.apiProtocol === 'minimax' ? 'minimax' : 'anthropic' },
@@ -631,6 +650,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     err: unknown,
     logTag: string,
     flushUsage: () => void,
+    options: { publicOpaque?: boolean } = {},
   ) => {
     const classified = classifyProxyCatchError(err);
     if (classified.silent) {
@@ -639,10 +659,16 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     }
     console.error(`[${logTag}] ${classified.code}: ${classified.message}`);
     flushUsage();
-    sendProxyError(sse, classified.message, {
-      code: classified.code,
-      retryable: classified.retryable,
-    });
+    sendProxyError(
+      sse,
+      options.publicOpaque
+        ? HOSTED_MANAGED_CHAT_PUBLIC_ERRORS.unavailable
+        : classified.message,
+      {
+        code: classified.code,
+        retryable: classified.retryable,
+      },
+    );
     sse.end();
   };
 
@@ -1112,10 +1138,16 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     },
   ) => {
     if (inputTokens > 0 || outputTokens > 0) {
+      const publicModel = Object.prototype.hasOwnProperty.call(
+        res.locals,
+        'proxyPublicUsageModel',
+      )
+        ? (res.locals as { proxyPublicUsageModel?: string | null }).proxyPublicUsageModel
+        : model;
       sse.send('usage', {
         input_tokens: inputTokens,
         output_tokens: outputTokens,
-        model,
+        ...(publicModel ? { model: publicModel } : {}),
         ...(extras?.cache_read_input_tokens != null && extras.cache_read_input_tokens > 0
           ? { cache_read_input_tokens: extras.cache_read_input_tokens }
           : {}),
@@ -2149,14 +2181,42 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     thinking?: { type: 'disabled' | 'adaptive' };
     includeUsage?: boolean;
     maxToolLoops?: number;
+    /** Opt-in hosted route. Omitted for every legacy BYOK provider route. */
+    hostedManaged?: HostedManagedChatRuntime;
   }
 
   const registerByokToolChatProxy = (
     routePath: string,
     opts: ByokToolChatProxyOptions,
   ) => {
-   app.post(routePath, async (req, res) => {
-    const proxyBody = req.body || {};
+    app.post(routePath, async (req, res) => {
+    const requestBody = req.body || {};
+    if (opts.hostedManaged) {
+      const validation = validateHostedManagedChatBody(requestBody);
+      if (!validation.ok) {
+        return sendApiError(
+          res,
+          400,
+          'INVALID_MANAGED_CHAT_REQUEST',
+          `Managed chat request contains forbidden routing fields: ${validation.fields.join(', ')}`,
+        );
+      }
+      // Public usage frames omit the actual model. The private billing stager
+      // still receives `proxyBody.model` below.
+      (res.locals as { proxyPublicUsageModel?: string | null }).proxyPublicUsageModel = null;
+    }
+    const proxyBody = opts.hostedManaged
+      ? {
+          ...requestBody,
+          useManagedApiKey: true,
+          apiProtocol: opts.hostedManaged.providerId,
+          baseUrl: opts.hostedManaged.baseUrl,
+          model: opts.hostedManaged.model,
+          ...(typeof requestBody.maxOutputTokens === 'number'
+            ? { maxTokens: requestBody.maxOutputTokens }
+            : {}),
+        }
+      : requestBody;
     if (rejectProxyPluginContext(proxyBody, res)) return;
     const {
       baseUrl,
@@ -2178,6 +2238,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       opts.providerId === 'minimax'
         ? { ...proxyBody, apiProtocol: 'minimax' }
         : proxyBody,
+      { publicOpaque: Boolean(opts.hostedManaged) },
     );
     if (!apiKey) return;
     if (!model) {
@@ -2290,6 +2351,26 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     // outer loop reads from this accumulator before sending the terminal
     // `end` SSE. See docs-teamver/24_AI_API_usage_capture_경로별_분석.md.
     const turnUsage = { inputTokens: 0, outputTokens: 0 };
+    const upstreamHttpErrorMessage = (status: number, errorText: string) =>
+      opts.hostedManaged
+        ? `${HOSTED_MANAGED_CHAT_PUBLIC_ERRORS.unavailable} (${status})`
+        : formatUpstreamHttpErrorMessage(status, errorText);
+    const sendRouteProviderError = (
+      sse: any,
+      message: string,
+      data: unknown,
+      options?: { fallbackCode?: string; forceNonRetryable?: boolean },
+    ) => {
+      if (!opts.hostedManaged) {
+        sendProviderStreamError(sse, message, data, options);
+        return;
+      }
+      const classified = classifyProviderStreamError(data, options);
+      sendProxyError(sse, HOSTED_MANAGED_CHAT_PUBLIC_ERRORS.unavailable, {
+        code: classified.code,
+        retryable: classified.retryable,
+      });
+    };
 
     const runTurn = async (
       sse: any,
@@ -2368,9 +2449,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           turnUsage.outputTokens,
           model,
         );
-        sendProxyError(sse, formatUpstreamHttpErrorMessage(response.status, errorText), {
+        sendProxyError(sse, upstreamHttpErrorMessage(response.status, errorText), {
           code: proxyErrorCode(response.status),
-          details: errorText,
+          ...(opts.hostedManaged ? {} : { details: errorText }),
           retryable: proxyHttpRetryable(response.status),
         });
         return { kind: 'error' };
@@ -2397,7 +2478,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           try {
             data = await atomicResponse.json();
           } catch {
-            sendProxyError(sse, 'MiniMax returned an unreadable atomic response', {
+            sendProxyError(sse, opts.hostedManaged
+              ? HOSTED_MANAGED_CHAT_PUBLIC_ERRORS.unreadable
+              : 'MiniMax returned an unreadable atomic response', {
               code: 'UPSTREAM_UNAVAILABLE',
               retryable: true,
             });
@@ -2406,7 +2489,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
 
           const streamErr = extractStreamErrorMessage(data);
           if (streamErr) {
-            sendProviderStreamError(sse, `Provider error: ${streamErr}`, data);
+            sendRouteProviderError(sse, `Provider error: ${streamErr}`, data);
             return { kind: 'error' };
           }
           const usage = data?.usage;
@@ -2471,9 +2554,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
               turnUsage.outputTokens,
               model,
             );
-            sendProxyError(sse, formatUpstreamHttpErrorMessage(atomicResponse.status, errorText), {
+            sendProxyError(sse, upstreamHttpErrorMessage(atomicResponse.status, errorText), {
               code: proxyErrorCode(atomicResponse.status),
-              details: errorText,
+              ...(opts.hostedManaged ? {} : { details: errorText }),
               retryable: proxyHttpRetryable(atomicResponse.status),
             });
             return { kind: 'error' };
@@ -2490,8 +2573,12 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         sendProxyError(
           sse,
           expectCompleteJsonOutline === true
-            ? 'MiniMax response ended before the JSON outline completed'
-            : 'MiniMax response ended before the deck artifact completed after continuation repair',
+            ? (opts.hostedManaged
+                ? HOSTED_MANAGED_CHAT_PUBLIC_ERRORS.incompleteJson
+                : 'MiniMax response ended before the JSON outline completed')
+            : (opts.hostedManaged
+                ? HOSTED_MANAGED_CHAT_PUBLIC_ERRORS.incompleteArtifact
+                : 'MiniMax response ended before the deck artifact completed after continuation repair'),
           {
             code: 'UPSTREAM_UNAVAILABLE',
             retryable: true,
@@ -2590,7 +2677,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           model,
         );
         const streamMessage = extractStreamErrorMessage(providerErrorData) || 'provider error';
-        sendProviderStreamError(sse, `Provider error: ${streamMessage}`, providerErrorData);
+        sendRouteProviderError(sse, `Provider error: ${streamMessage}`, providerErrorData);
         return { kind: 'error' };
       }
 
@@ -2706,8 +2793,12 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         sendProxyError(
           sse,
           incompleteExpectedJson
-            ? 'MiniMax stream ended before the JSON outline completed'
-            : 'MiniMax stream ended before the deck artifact completed',
+            ? (opts.hostedManaged
+                ? HOSTED_MANAGED_CHAT_PUBLIC_ERRORS.incompleteJson
+                : 'MiniMax stream ended before the JSON outline completed')
+            : (opts.hostedManaged
+                ? HOSTED_MANAGED_CHAT_PUBLIC_ERRORS.incompleteArtifact
+                : 'MiniMax stream ended before the deck artifact completed'),
           {
             code: 'UPSTREAM_UNAVAILABLE',
             retryable: true,
@@ -2941,7 +3032,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         proxyDispatcher = proxyDispatcherRequestInit();
         const signal = byokProxyAbortSignalFromRes(res);
         toolCtx.requestInit = { ...proxyDispatcher.requestInit, ...(signal ? { signal } : {}) };
-        sse.send('start', { model });
+        sse.send('start', opts.hostedManaged ? {} : { model });
         const convMessages: any[] = Array.isArray(messages) ? [...messages] : [];
         for (let loop = 0; loop < maxToolLoops; loop++) {
           if (signal?.aborted) return sse.end();
@@ -3174,7 +3265,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         proxyDispatcher = proxyDispatcherRequestInit();
         const signal = byokProxyAbortSignalFromRes(res);
         toolCtx.requestInit = { ...proxyDispatcher.requestInit, ...(signal ? { signal } : {}) };
-        sse.send('start', { model });
+        sse.send('start', opts.hostedManaged ? {} : { model });
         const contents: any[] = (Array.isArray(messages) ? messages : []).map((m: any) => ({
           role: m.role === 'assistant' ? 'model' : 'user',
           parts: [{ text: typeof m.content === 'string' ? m.content : '' }],
@@ -3327,7 +3418,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       proxyDispatcher = proxyDispatcherRequestInit();
       const signal = byokProxyAbortSignalFromRes(res);
       toolCtx.requestInit = { ...proxyDispatcher.requestInit, ...(signal ? { signal } : {}) };
-      sse.send('start', { model });
+      sse.send('start', opts.hostedManaged ? {} : { model });
       for (let loop = 0; loop < maxToolLoops; loop++) {
         if (signal?.aborted) return sse.end();
         const turn = await runTurn(sse, workingMessages);
@@ -3396,17 +3487,25 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       sse.send('end', {});
       return sse.end();
     } catch (err: any) {
-      sendProxyCatchError(sse, err, opts.logTag, () => {
-        sendProxyUsageIfPresent(res,
+      sendProxyCatchError(
         sse,
-        turnUsage.inputTokens,
-        turnUsage.outputTokens,
-        model,);
-      });
+        err,
+        opts.logTag,
+        () => {
+          sendProxyUsageIfPresent(
+            res,
+            sse,
+            turnUsage.inputTokens,
+            turnUsage.outputTokens,
+            model,
+          );
+        },
+        { publicOpaque: Boolean(opts.hostedManaged) },
+      );
     } finally {
       await proxyDispatcher?.close();
     }
-   });
+    });
   };
 
   // SenseAudio: proprietary image (/v1/image/sync) + TTS (/v1/t2a_v2) + video
@@ -3461,4 +3560,30 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     maxToolLoops: resolveMiniMaxToolLoopLimit(),
   });
 
+  // Parallel hosted contract. It is intentionally dark by default and the web
+  // app does not call it yet. Removing TEAMVER_HOSTED_CHAT_API_ENABLED fully
+  // restores the pre-existing route table without a frontend rollback.
+  if (isHostedManagedChatApiEnabled()) {
+    const hostedRuntime = resolveHostedManagedChatRuntime();
+    registerByokToolChatProxy(HOSTED_MANAGED_CHAT_ROUTE, {
+      providerId: hostedRuntime.providerId,
+      logTag: 'proxy:hosted-chat',
+      defaultBaseUrl: hostedRuntime.baseUrl,
+      tools: BYOK_MINIMAX_TOOLS,
+      buildHeaders: (apiKey) => ({ Authorization: `Bearer ${apiKey}` }),
+      isImageModel: () => false,
+      runImage: async () => ({
+        ok: false,
+        error: 'image generation is not enabled for hosted chat yet',
+      }),
+      runSpeech: async () => ({
+        ok: false,
+        error: 'speech generation is not enabled for hosted chat yet',
+      }),
+      runWebFetch: executeWebFetch,
+      omitMaxTokens: true,
+      maxToolLoops: resolveMiniMaxToolLoopLimit(),
+      hostedManaged: hostedRuntime,
+    });
+  }
 }

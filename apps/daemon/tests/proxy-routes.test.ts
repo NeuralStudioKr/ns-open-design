@@ -36,6 +36,16 @@ describe('API proxy routes', () => {
 
   afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
 
+  it('does not register the parallel hosted chat route by default', async () => {
+    const res = await realFetch(`${baseUrl}/api/proxy/chat/stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ projectId: 'test-project', messages: [] }),
+    });
+
+    expect(res.status).toBe(404);
+  });
+
   it('converts OpenAI-compatible CRLF SSE chunks into proxy delta/end events', async () => {
     const fetchMock = vi.fn((input: FetchInput, init?: FetchInit) => {
       const url = String(input);

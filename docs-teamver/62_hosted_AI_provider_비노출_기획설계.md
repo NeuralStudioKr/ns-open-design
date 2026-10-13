@@ -1,11 +1,13 @@
 # Hosted AI provider 비노출 기획·설계
 
 **작성일:** 2026-10-13  
-**상태:** 설계 완료, 구현 전  
+**상태:** Phase 1 shadow API 구현, 기본 OFF, web 미연결
 **대상:** Teamver Design hosted/embed 실행 경로  
 **관련 문서:** [29 BYOK API mode](./29_BYOK_api_mode_vs_runs_아키텍처.md) · [54 MiniMax 전환](./54_MiniMax_전환_기획_설계.md) · [54-1 개발설계](./54-1_MiniMax_전환_개발설계.md)
 
-> 이 문서는 기획·설계만 정의한다. 작성 시점에는 제품 코드, API, 환경변수, 배포 설정을 변경하지 않는다.
+> 이 문서는 기획·설계 SSOT이며, 하단 단계 중 실제 구현된 범위는 별도 상태 문구로 추적한다.
+
+> **2026-10-13 구현 상태:** 기존 API와 web 호출은 변경하지 않고, 별도 daemon 모듈 및 `/api/proxy/chat/stream`을 추가했다. `TEAMVER_HOSTED_CHAT_API_ENABLED`의 기본값은 `0`이며, OFF이면 route 자체가 등록되지 않는다. runtime-config v2, web transport 전환, 기존 endpoint 폐쇄는 아직 구현하지 않았다.
 
 **2026-10-13 재검토 결론:** 최초안의 방향은 맞지만, (1) hosted에서 provider별 endpoint를 계속 허용하는 문제, (2) 단일 프로필인데도 browser가 `executionProfile`을 보내는 불필요한 계약, (3) design-api와 daemon의 provider 설정 중복을 제거해야 한다. 아래 설계는 이 세 항목을 반영한 최종 권고안이다.
 
@@ -442,6 +444,21 @@ embed boot 시 과거 managed config의 `apiProtocol`, 실제 `model`, `baseUrl`
 - 필요 시 embed 전용 build에서 BYOK provider UI/module을 제외해 L2 달성.
 
 완료 조건: 구버전 사용률 0, rollback window 종료, staging/production sign-off.
+
+### 7.5 현재 구현 경계와 즉시 롤백
+
+2026-10-13 현재 구현된 것은 Phase 1의 shadow API 기반뿐이다.
+
+| 항목 | 상태 |
+|---|---|
+| 기존 `/api/proxy/minimax/stream` | 변경 없이 유지, web이 계속 사용 |
+| 신규 `/api/proxy/chat/stream` | 별도 모듈, flag ON일 때만 등록 |
+| web 호출 전환 | 미구현 |
+| runtime-config v2 | 미구현 |
+| 기존 endpoint 폐쇄 | 미구현 |
+| 기본 배포값 | `TEAMVER_HOSTED_CHAT_API_ENABLED=0` |
+
+즉시 롤백은 env에서 `TEAMVER_HOSTED_CHAT_API_ENABLED=0` 또는 미설정 후 daemon 재시작이다. 이 상태에서는 신규 route가 404이며 frontend 재배포가 필요 없다. 코드 롤백이 필요한 경우 shadow API 커밋만 revert하며, 기존 provider API contract에는 migration이나 데이터 변경이 없다.
 
 ---
 
