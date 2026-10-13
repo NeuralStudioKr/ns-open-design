@@ -134,7 +134,8 @@ describe("ProjectView message loading", () => {
     expect(source).not.toContain("fetch('/api/memory/extract'");
     expect(source).toContain("firstFillSlideCountHint:");
     expect(source).toContain("slideCountHint:");
-    expect(source).toContain("const persistedUserContent = persistableUserMessageContent(");
+    expect(source).toContain("const visiblePersistedUserContent = persistableUserMessageContent(");
+    expect(source).toContain("const persistedUserContent = meta?.autoRetryForShortResponse === true");
     expect(source).toContain("const userText = stripUserVisibleUserMessageText(prompt).trim()");
     expect(source).not.toContain("const userText = (userMsg.content ?? '').trim()");
     expect(source).toContain("const assistantText = stripAllClosedArtifacts(accumulatedAssistantText).trim()");

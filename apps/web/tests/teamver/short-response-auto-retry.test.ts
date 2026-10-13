@@ -18,6 +18,8 @@ import {
 } from '../../src/artifacts/validate';
 import {
   applyQuantitativeSlideCountInstruction,
+  buildPromptFillJsonRecoverySeed,
+  buildTemplateCloneContentFillSeed,
   buildTemplateClonePromptFillSeed,
   renderTemplateCloneJsonShortResponseRetryPrompt,
   templateCloneContentFillHardRules,
@@ -91,6 +93,22 @@ describe('루프550 short-response auto-retry decision', () => {
     expect(prompt).toContain('Do not emit HTML');
     expect(prompt).not.toContain('<section class="slide">');
   });
+
+  it('switches a collapsed prompt-fill deck to an exact AI JSON slot-fill recovery', () => {
+    const prompt = buildPromptFillJsonRecoverySeed({
+      userInstruction: '글을 매력적으로 쓰는 팁을 8장으로 만들어줘',
+      templateTitle: 'Html Ppt Product Launch',
+      returnedCount: 1,
+      slideCount: 8,
+    });
+
+    expect(prompt).toContain('[Template clone content fill]');
+    expect(prompt).toContain('JSON outline only');
+    expect(prompt).toContain('EXACTLY 8 entries in slides[]');
+    expect(prompt.match(/EXACTLY 8 entries in slides\[\]/g)).toHaveLength(2);
+    expect(prompt).toContain('글을 매력적으로 쓰는 팁');
+    expect(prompt).not.toContain('Return EXACTLY 8 <section class="slide">');
+  });
 });
 
 describe('루프550 quantitative slide-count prompt pins', () => {
@@ -112,15 +130,15 @@ describe('루프550 quantitative slide-count prompt pins', () => {
     expect(joined).toContain('Seed contains 10');
   });
 
-  it('null seedShellCount keeps the v1.4.15 fallback constant', () => {
+  it('keeps HTML and JSON count contracts distinct when the seed count is unknown', () => {
     const seed = buildTemplateClonePromptFillSeed({
       userInstruction: '글을 매력적으로 쓰는 팁 정리해줘',
       slideCountHint: '6-8',
     });
     expect(seed).toContain(SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION);
-    expect(templateCloneContentFillHardRules().join('\n')).toContain(
-      SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION,
-    );
+    const jsonRules = templateCloneContentFillHardRules().join('\n');
+    expect(jsonRules).toContain('Return one slides[] entry for every slide layout in the seed');
+    expect(jsonRules).not.toContain(SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION);
   });
 
   it('handleSend helper replaces the fallback constant once N is known', () => {
@@ -132,6 +150,17 @@ describe('루프550 quantitative slide-count prompt pins', () => {
     expect(after).toContain('Return EXACTLY 10');
     expect(after).toContain('Seed contains 10');
     expect(after).not.toContain(SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION);
+  });
+
+  it('handleSend quantifies JSON slot-fill with slides[] entries, never HTML sections', () => {
+    const before = buildTemplateCloneContentFillSeed({
+      userInstruction: '8장으로 만들어줘',
+    });
+    const after = applyQuantitativeSlideCountInstruction(before, 8);
+
+    expect(after).toContain('Return EXACTLY 8 entries in slides[]');
+    expect(after.match(/Return EXACTLY 8 entries in slides\[\]/g)).toHaveLength(1);
+    expect(after).not.toContain('Return EXACTLY 8 <section class="slide">');
   });
 
   it('replaces a stale seed count with the user-requested count', () => {

@@ -544,9 +544,9 @@ describe('templateCloneContentFill', () => {
     expect(joined).toMatch(/items\[\] with 3–4 \{title, body\}/);
     expect(joined).not.toMatch(/items\[\] with 2–4 \{title, body\}/);
     expect(joined).toMatch(/♪ ♫ 🎵 ♩ ◈ ◐ ✦ ✧/);
-    expect(joined).toMatch(/Deliver the same number of `<section class="slide">` slides as the seed/);
-    expect(joined).toMatch(/do not merge or drop slides/);
-    const keepAt = joined.indexOf('Deliver the same number of');
+    expect(joined).toMatch(/Return one slides\[\] entry for every slide layout in the seed/);
+    expect(joined).toMatch(/do not merge or drop entries/);
+    const keepAt = joined.indexOf('Return one slides[] entry');
     const uniqueAt = joined.indexOf('Each slot takes a distinct angle');
     expect(uniqueAt).toBeGreaterThan(keepAt);
     expect(uniqueAt - keepAt).toBeLessThan(500);
@@ -577,7 +577,7 @@ describe('templateCloneContentFill', () => {
     expect(ruleUnique - ruleCount).toBeLessThan(220);
   });
 
-  it('루프546 — "장 수 유지"는 별도 상수로 분리되어 prompt seed / hard rules 양쪽에 emit', () => {
+  it('루프546 — HTML prompt-fill과 JSON slot-fill에 각 출력 형식의 장수 계약을 emit', () => {
     // penalty framing과 상충 표현이 한 상수 안에 공존하지 않도록 v1.4.15 회귀
     // 원복 슬라이스에서 분리됨.
     const seed = buildTemplateClonePromptFillSeed({
@@ -589,8 +589,9 @@ describe('templateCloneContentFill', () => {
     expect(seed).toMatch(/do not merge or drop slides/);
 
     const rules = templateCloneContentFillHardRules().join('\n');
-    expect(rules).toMatch(/Deliver the same number of `<section class="slide">` slides as the seed/);
-    expect(rules).toMatch(/do not merge or drop slides/);
+    expect(rules).toMatch(/Return one slides\[\] entry for every slide layout in the seed/);
+    expect(rules).toMatch(/do not merge or drop entries/);
+    expect(rules).not.toMatch(/Deliver the same number of `<section class="slide">` slides as the seed/);
   });
 
   it('binds website-analysis outline anchors from headings/preview in the brief', () => {

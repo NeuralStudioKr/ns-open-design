@@ -957,6 +957,20 @@ const FILL_QUALITY_LINES_JSON = [
   FILL_MUSIC_DECO_GLYPH_BAN_LINE,
 ] as const;
 
+function renderJsonOutlineSlideCountRequirement(
+  seedShellCount: number | null | undefined,
+): string {
+  if (
+    seedShellCount == null
+    || !Number.isFinite(seedShellCount)
+    || seedShellCount <= 0
+  ) {
+    return 'Return one slides[] entry for every slide layout in the seed; do not merge or drop entries.';
+  }
+  const n = Math.max(1, Math.floor(seedShellCount));
+  return `Seed contains ${n} slide layouts. Return EXACTLY ${n} entries in slides[].`;
+}
+
 /**
  * 루프536 — LOOK seed 배너에 N09 generic-brief 문장을 붙일지.
  * Canvas/Drive 소스나 topical brief에는 붙이지 않는다.
@@ -977,14 +991,15 @@ export function shouldExplainGenericBriefOnLookSeedFallback(input: {
 /**
  * Shared hard rules for Clone → first AI content fill (JSON slot-fill, 0901-N02).
  *
- * 루프550 — optional `seedShellCount`가 있으면 정량·강제 문구
- * (`renderSlideCountRequirementInstruction`) 로 slide-count 순응을 못박는다.
- * null이면 기존 `SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION` fallback (backward-compat).
+ * JSON turns must express count in `slides[]` entries. Reusing the HTML
+ * `<section class="slide">` requirement here gives the model contradictory
+ * output contracts and is a common cause of one-slide / incomplete responses.
  */
 export function templateCloneContentFillHardRules(options: {
   seedShellCount?: number | null;
+  includeSlideCountRequirement?: boolean;
 } = {}): string[] {
-  const slideCountRequirement = renderSlideCountRequirementInstruction(
+  const slideCountRequirement = renderJsonOutlineSlideCountRequirement(
     options.seedShellCount ?? null,
   );
   return [
@@ -998,7 +1013,9 @@ export function templateCloneContentFillHardRules(options: {
     // 루프554 — N이 있으면 짧은 정량 한 줄만 (v1.4.15 길이 + EXACTLY N).
     // 1007-N01 — unique-slot / kicker / topic-lock / glyph sit on the next
     // lines. Slide-count text stays unchanged and adjacent.
-    `- ${slideCountRequirement}`,
+    ...(options.includeSlideCountRequirement === false
+      ? []
+      : [`- ${slideCountRequirement}`]),
     ...FILL_QUALITY_LINES_JSON.map((line) => `- ${line}`),
     '- Expand THIS turn\'s brief only. Do not copy host-contract examples or the user instruction onto slides.',
     '- JSON shape: {"title":"...","slides":[{"title":"...","kicker":"...","lead":"...","roleHint":"cover|list|cards|timeline|stat|quote|team|process|closing|body","items":[{"title":"...","body":"..."}]}]}',
@@ -1033,6 +1050,33 @@ export function renderTemplateCloneJsonShortResponseRetryPrompt(input: {
     'Use the existing JSON schema: {"title":"...","slides":[{"title":"...","kicker":"...","lead":"...","roleHint":"cover|list|cards|timeline|stat|quote|team|process|closing|body","items":[{"title":"...","body":"..."}]}]}.',
     'Every body slide must contain a concrete lead and 3-4 substantive items or an equally substantive body. Close the JSON object.',
   ].join(' ');
+}
+
+/**
+ * Prompt-fill HTML that collapses to a short deck gets one bounded recovery
+ * through the smaller JSON outline contract. The host still owns the LOOK
+ * seed and renders the model-authored copy into its existing slide layouts.
+ */
+export function buildPromptFillJsonRecoverySeed(input: {
+  userInstruction: string;
+  templateTitle?: string | null;
+  returnedCount: number;
+  slideCount: number;
+}): string {
+  const slideCount = Math.max(1, Math.floor(input.slideCount));
+  return [
+    buildTemplateCloneContentFillSeed({
+      userInstruction: input.userInstruction,
+      templateTitle: input.templateTitle,
+      slideCountHint: slideCount,
+      seedShellCount: slideCount,
+    }),
+    '',
+    renderTemplateCloneJsonShortResponseRetryPrompt({
+      returnedCount: input.returnedCount,
+      slideCount,
+    }),
+  ].join('\n');
 }
 
 const FIRST_FILL_SLIDE_COUNT_STABILITY_CAP =
@@ -1230,8 +1274,15 @@ export function buildTemplateCloneContentFillSeed(options: {
       : 'Fill REAL presentation CONTENT for this create (user prompt may be empty; invent clear topical copy — do not paste boilerplate leads into titles).',
     'The visible request above is a BRIEF/TOPIC. Expand it into a real presentation with domain knowledge. Do NOT paste the request onto the cover or body slides.',
     topic ? `Cover topic (use as the title — not the instruction): ${topic}.` : '',
-    renderSlideCountSeedHeaderHint(options.seedShellCount ?? null) ?? '',
-    ...templateCloneContentFillHardRules({ seedShellCount: options.seedShellCount ?? null }),
+    options.seedShellCount != null
+      ? renderJsonOutlineSlideCountRequirement(options.seedShellCount)
+      : '',
+    ...templateCloneContentFillHardRules({
+      seedShellCount: options.seedShellCount ?? null,
+      // The exact count already sits near the top of this prompt. Keep one
+      // authoritative count sentence instead of repeating it in hard rules.
+      includeSlideCountRequirement: options.seedShellCount == null,
+    }),
     websiteOutline ?? '',
   ].filter((line) => line !== '');
   if (templateTitle) {
@@ -1402,12 +1453,20 @@ export function applyQuantitativeSlideCountInstruction(
     return next;
   }
   const n = Math.max(1, Math.floor(seedShellCount));
-  const requirement = renderSlideCountRequirementInstruction(n);
-  const header = renderSlideCountSeedHeaderHint(n);
+  const jsonSlotFill = isTemplateCloneContentFillPrompt(next);
+  const requirement = jsonSlotFill
+    ? renderJsonOutlineSlideCountRequirement(n)
+    : renderSlideCountRequirementInstruction(n);
+  const header = jsonSlotFill
+    ? renderJsonOutlineSlideCountRequirement(n)
+    : renderSlideCountSeedHeaderHint(n);
   // The seed builder may already have stamped its own count. User-requested
   // counts win, so keep one authoritative quantitative requirement.
   let out = next.replace(
     /^Seed contains \d+ slides\. Return EXACTLY \d+ <section class="slide"> elements\.\s*$/gim,
+    '',
+  ).replace(
+    /^Seed contains \d+ slide layouts\. Return EXACTLY \d+ entries in slides\[\]\.\s*$/gim,
     '',
   ).trim();
   if (out.includes(`Return EXACTLY ${n}`)) {
@@ -1416,7 +1475,10 @@ export function applyQuantitativeSlideCountInstruction(
     }
     return out;
   }
-  if (out.includes(SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION)) {
+  const genericJsonRequirement = renderJsonOutlineSlideCountRequirement(null);
+  if (jsonSlotFill && out.includes(genericJsonRequirement)) {
+    out = out.replace(genericJsonRequirement, requirement);
+  } else if (out.includes(SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION)) {
     out = out.replace(SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION, requirement);
   } else if (!out.includes(requirement)) {
     out = `${out.trim()}\n${requirement}`;

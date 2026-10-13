@@ -258,6 +258,7 @@ import {
   isRichOfficialLookTemplateCloneFill,
   getTemplateCloneFillMode,
   applyQuantitativeSlideCountInstruction,
+  buildPromptFillJsonRecoverySeed,
   renderTemplateCloneJsonShortResponseRetryPrompt,
   templateCloneContentFillHardRules,
   templateCloneFillSlideCountOverrideNotice,
@@ -12008,8 +12009,26 @@ export function ProjectView({
                 terminalPersistResult = persistResult;
                 nextFiles = await refreshProjectFiles();
                 if (persistResult?.kind === 'needs-short-response-retry') {
+                  const retryAsJsonSlotFill =
+                    persistResult.retryKind !== 'head-preamble'
+                    && runTemplateClonePromptFillRef.current;
+                  const retryTemplatePin = resolveDurableDeckTemplatePin({
+                    project: project.metadata,
+                    runRef: runSelectedDeckTemplateIdRef.current,
+                    messages: messagesRef.current,
+                  });
+                  const retrySlideCount =
+                    extractRequestedSlideCountSpecFromMessages(messagesRef.current)?.max
+                    ?? persistResult.expectedCount;
                   const retryPrompt = persistResult.retryKind === 'head-preamble'
                     ? buildHeadPreambleContinuePrompt()
+                    : retryAsJsonSlotFill
+                      ? buildPromptFillJsonRecoverySeed({
+                          userInstruction: runVisiblePromptRef.current || prompt,
+                          templateTitle: retryTemplatePin?.title ?? null,
+                          returnedCount: persistResult.producedCount,
+                          slideCount: retrySlideCount,
+                        })
                     : [
                     runModelPromptRef.current.trim() || prompt,
                     '',
@@ -12036,17 +12055,13 @@ export function ProjectView({
                     ...(persistResult.retryKind === 'head-preamble'
                       ? {}
                       : { autoRetryForShortResponse: true as const }),
-                    ...(runTemplateCloneContentFillRef.current
+                    ...(runTemplateCloneContentFillRef.current || retryAsJsonSlotFill
                       ? { templateCloneContentFill: true as const }
                       : {}),
-                    ...(runTemplateClonePromptFillRef.current
+                    ...(runTemplateClonePromptFillRef.current && !retryAsJsonSlotFill
                       ? { templateClonePromptFill: true as const }
                       : {}),
-                    ...deckTemplateSendMetaFromPin(resolveDurableDeckTemplatePin({
-                      project: project.metadata,
-                      runRef: runSelectedDeckTemplateIdRef.current,
-                      messages: messagesRef.current,
-                    })),
+                    ...deckTemplateSendMetaFromPin(retryTemplatePin),
                   };
                   window.setTimeout(() => {
                     if (project.id !== scheduledProjectId) return;
