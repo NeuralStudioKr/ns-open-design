@@ -2070,7 +2070,7 @@ export function looksLikeDeterministicSynthSkeletonCopy(
 }
 
 const GENERAL_KNOWLEDGE_HOW_TO_RE =
-  /팁|하는\s*법|공부법|기초|howto|how\s*to|tips?\b|tutorial|강의|학습/i;
+  /팁|하는\s*법|공부법|기초|howto|how\s*to|tips?\b|tutorial|강의|학습|글쓰기|작문|한\s*문장|쓸모\s*있는\s*글|writing|copywriting|독자를?\s*사로잡/i;
 
 /**
  * 일반 지식·교육·방법·팁 주제. 이 브리프는 official-rich 로 라우팅되며,

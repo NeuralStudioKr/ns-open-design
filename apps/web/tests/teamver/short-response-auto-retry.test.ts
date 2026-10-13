@@ -22,6 +22,7 @@ import {
   buildTemplateCloneContentFillSeed,
   buildTemplateClonePromptFillSeed,
   renderTemplateCloneJsonShortResponseRetryPrompt,
+  shouldRecoverCollapsedPromptFillViaJson,
   templateCloneContentFillHardRules,
 } from '../../src/teamver/templateCloneContentFill';
 import { SLIDE_DECK_KEEP_SLIDE_COUNT_INSTRUCTION } from '@open-design/contracts';
@@ -96,7 +97,7 @@ describe('루프550 short-response auto-retry decision', () => {
 
   it('switches a collapsed prompt-fill deck to an exact AI JSON slot-fill recovery', () => {
     const prompt = buildPromptFillJsonRecoverySeed({
-      userInstruction: '글을 매력적으로 쓰는 팁을 8장으로 만들어줘',
+      userInstruction: '삼성전자 소개 발표자료 8장으로 만들어줘',
       templateTitle: 'Html Ppt Product Launch',
       returnedCount: 1,
       slideCount: 8,
@@ -106,8 +107,19 @@ describe('루프550 short-response auto-retry decision', () => {
     expect(prompt).toContain('JSON outline only');
     expect(prompt).toContain('EXACTLY 8 entries in slides[]');
     expect(prompt.match(/EXACTLY 8 entries in slides\[\]/g)).toHaveLength(2);
-    expect(prompt).toContain('글을 매력적으로 쓰는 팁');
+    expect(prompt).toContain('삼성전자 소개');
     expect(prompt).not.toContain('Return EXACTLY 8 <section class="slide">');
+  });
+
+  it('how-to / official-rich collapsed 재시도는 JSON LOOK 복구를 쓰지 않는다', () => {
+    expect(shouldRecoverCollapsedPromptFillViaJson({
+      brief: '독자를 사로잡는 한 문장',
+      richFill: true,
+    })).toBe(false);
+    expect(shouldRecoverCollapsedPromptFillViaJson({
+      brief: '글을 매력적으로 쓰는 팁을 8장으로 만들어줘',
+      richFill: false,
+    })).toBe(false);
   });
 });
 

@@ -10,6 +10,7 @@
 
 import type { ChatAttachment } from '../types';
 import {
+  briefLooksLikeGeneralKnowledgeHowToTopic,
   looksLikeTemplateCloneServiceIntroBrief,
   SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION,
   SLIDE_DECK_COPY_DENSITY_INSTRUCTION,
@@ -1053,9 +1054,44 @@ export function renderTemplateCloneJsonShortResponseRetryPrompt(input: {
 }
 
 /**
+ * 1007-N01 슬라이스 G — collapsed prompt-fill 을 JSON LOOK 으로 되돌릴지.
+ *
+ * v1.4.16 official-rich / how-to 는 HTML 재시도를 유지한다. 7832c6e044 가
+ * official-rich 붕괴를 json product-launch slot-fill 로 보내 밀도를 깎았다.
+ * 명시 json 턴은 이미 JSON 재시도 분기를 쓰므로 여기선 false.
+ */
+export function shouldRecoverCollapsedPromptFillViaJson(input: {
+  brief?: string | null;
+  richFill?: boolean;
+  explicitJson?: boolean;
+}): boolean {
+  if (input.explicitJson) return false;
+  if (input.richFill) return false;
+  if (briefLooksLikeGeneralKnowledgeHowToTopic(input.brief)) return false;
+  return true;
+}
+
+/**
+ * how-to / official-rich persist 는 LOOK 재슬롯·heading-count reconcile 을 건너뛴다.
+ * 명시 json override 는 존중한다.
+ */
+export function shouldPreserveOfficialRichHowToPersist(input: {
+  brief?: string | null;
+  html?: string | null;
+  explicitJson?: boolean;
+}): boolean {
+  if (input.explicitJson) return false;
+  if (briefLooksLikeGeneralKnowledgeHowToTopic(input.brief)) return true;
+  return /\bdata-od-official-look-css\b/i.test(String(input.html ?? ''));
+}
+
+/**
  * Prompt-fill HTML that collapses to a short deck gets one bounded recovery
  * through the smaller JSON outline contract. The host still owns the LOOK
  * seed and renders the model-authored copy into its existing slide layouts.
+ *
+ * 슬라이스 G — how-to/official-rich 호출부는 `shouldRecoverCollapsedPromptFillViaJson`
+ * 이 false 이면 이 시드를 쓰지 않는다.
  */
 export function buildPromptFillJsonRecoverySeed(input: {
   userInstruction: string;

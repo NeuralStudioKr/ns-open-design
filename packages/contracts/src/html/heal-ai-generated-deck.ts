@@ -17,6 +17,7 @@ import {
 } from './heal-official-look-contrast.js';
 import { reconcileHeadingItemCounts } from './heal-heading-item-count.js';
 import {
+  briefLooksLikeGeneralKnowledgeHowToTopic,
   catalogExampleShouldBeScrubbed,
   healBrokenServiceIntroLeftoverRemnants,
   officialLookIsCapsule,
@@ -316,6 +317,64 @@ function slideBodyLooksTitleOnly(body: string): boolean {
 
 function removeSlideSpan(html: string, slide: SlideSpan): string {
   return `${html.slice(0, slide.start)}${html.slice(slide.end)}`;
+}
+
+function slideLooksTitleOnlyHowToContent(body: string): boolean {
+  if (/<(?:svg|img|video|canvas|iframe|picture|figure)\b/i.test(body)) return false;
+  if (!/<h[1-6]\b/i.test(body)) return false;
+  const withoutHeading = body.replace(/<h[1-6]\b[^>]*>[\s\S]*?<\/h[1-6]>/gi, '');
+  return visibleText(withoutHeading).replace(/\s+/g, '').length < 2;
+}
+
+/**
+ * 1007-N01 슬라이스 G — how-to 제목만/빈 본문 슬라이드를 합성 없이 제거한다.
+ * 표지(첫 장·cover)는 남기고, 최소 2장은 유지한다.
+ */
+export function collapseTitleOnlyHowToContentSlides(
+  html: string,
+  brief?: string | null,
+): string {
+  let out = String(html ?? '');
+  if (!out || !briefLooksLikeGeneralKnowledgeHowToTopic(brief)) return out;
+  if (listAiSlideSpans(out).length < 3) return out;
+  for (let i = listAiSlideSpans(out).length - 1; i >= 1; i -= 1) {
+    const slides = listAiSlideSpans(out);
+    if (slides.length <= 2) break;
+    const slide = slides[i];
+    if (!slide) continue;
+    if (attrsLookLikeRealCoverSlide(slide.attrs)) continue;
+    if (/\b(?:s-chapter|chapter|s-cover|slide-title)\b/i.test(slide.attrs) && i === 0) {
+      continue;
+    }
+    const body = out.slice(slide.openEnd, slide.bodyEnd);
+    if (!slideLooksTitleOnlyHowToContent(body)) continue;
+    out = removeSlideSpan(out, slide);
+  }
+  return out;
+}
+
+/**
+ * 빈 `%` 구절(이탈률은 %까지)을 날조 숫자 없이 문장 단위로 제거한다.
+ * `60%` / `2.3%` 처럼 숫자가 있는 구절은 보존한다.
+ */
+export function stripIncompleteNumericPlaceholders(html: string): string {
+  const source = String(html ?? '');
+  if (!source || !/%/.test(source)) return source;
+  return source.replace(/>([^<]{6,})</g, (full, chunk: string) => {
+    if (!/%/.test(chunk)) return full;
+    const next = stripDanglingPercentSentences(chunk);
+    return next === chunk ? full : `>${next}<`;
+  });
+}
+
+function stripDanglingPercentSentences(text: string): string {
+  const parts = String(text ?? '').split(/(?<=[.。!?]|다\.)\s+/);
+  const kept = parts.filter((sentence) => {
+    const trimmed = sentence.trim();
+    if (!trimmed || !/%/.test(trimmed)) return true;
+    return !/(?<!\d)%/.test(trimmed);
+  });
+  return kept.join(' ').replace(/\s{2,}/g, ' ').replace(/\s+([.。,，])/g, '$1').trim();
 }
 
 /**
@@ -5227,6 +5286,8 @@ export function healAiGeneratedDeckMarkup(
   options: HealAiGeneratedDeckOptions = {},
 ): string {
   const preserveModelLayout = options.preserveModelLayout === true;
+  const howToTopic = briefLooksLikeGeneralKnowledgeHowToTopic(brief);
+  const preserveRichHowToLayout = preserveModelLayout || howToTopic;
   let out = String(html ?? '');
   if (!out.trim()) return out;
   // 루프168 — MiniMax `AGENT_EXECUTION_FAILED` recovery / same-turn-write
@@ -5401,8 +5462,14 @@ export function healAiGeneratedDeckMarkup(
   // 1007-N01 슬라이스 C 결함4 — 리치(모델 저작)에서는 heading 수 재조정을
   // 건너뛴다. 모델 레이아웃을 보존해야 하므로 host 가 "5가지 → 3" 식으로
   // heading 숫자를 다시 쓰지 않는다(data-od-heading-count-reconciled 미발생).
-  if (!preserveModelLayout) {
+  // 슬라이스 G — how-to 도 같은 스킵. json LOOK 잔류 덱에서 7:3 reconcile 이
+  // 레이아웃을 깨지 않게 한다.
+  if (!preserveRichHowToLayout) {
     out = reconcileHeadingItemCounts(out);
+  }
+  if (howToTopic) {
+    out = stripIncompleteNumericPlaceholders(out);
+    out = collapseTitleOnlyHowToContentSlides(out, brief);
   }
   // 루프478 — last: an invented dark palette on a light-paper kit leaves copy
   // cream-on-cream. Judge inline colors against their effective background

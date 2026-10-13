@@ -79,6 +79,7 @@ describe('1007-N01 슬라이스 F — 합성 스켈레톤 지문', () => {
 
   it('글쓰기 팁·공부법·기초는 일반 지식/교육 주제로 본다', () => {
     expect(briefLooksLikeGeneralKnowledgeHowToTopic(WRITING_TIPS)).toBe(true);
+    expect(briefLooksLikeGeneralKnowledgeHowToTopic('독자를 사로잡는 한 문장')).toBe(true);
     expect(briefLooksLikeGeneralKnowledgeHowToTopic('영어 회화 공부법')).toBe(true);
     expect(briefLooksLikeGeneralKnowledgeHowToTopic('React 기초 정리')).toBe(true);
     expect(briefLooksLikeGeneralKnowledgeHowToTopic('삼성전자 소개 발표자료')).toBe(false);

@@ -26,6 +26,8 @@ import {
   inferTemplateCloneFillHasSource,
   templateCloneBriefRequiresSourceGrounding,
   briefLooksLikeEntityIntroPresentation,
+  shouldRecoverCollapsedPromptFillViaJson,
+  shouldPreserveOfficialRichHowToPersist,
   isGenericTemplateCloneTopicBrief,
   shouldExplainGenericBriefOnLookSeedFallback,
   historyHasTemplateCloneContentFill,
@@ -1574,5 +1576,72 @@ describe('1007-N01 슬라이스 F — 글쓰기 팁은 official-rich, 합성 스
     });
     expect(result.jsonFill).toBe(true);
     expect(result.seed).toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
+  });
+});
+
+describe('1007-N01 슬라이스 G — 독자를 사로잡는 한 문장은 official-rich 유지', () => {
+  const prevEnv = process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE;
+  afterEach(() => {
+    if (prevEnv === undefined) delete process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE;
+    else process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = prevEnv;
+  });
+
+  const SENTENCE_OPTS = {
+    userInstruction: '독자를 사로잡는 한 문장 슬라이드 만들어줘',
+    sourceBrief: 'User instruction:\n독자를 사로잡는 한 문장 슬라이드 만들어줘',
+    templateTitle: 'Broadside',
+    seedShellCount: 8,
+  } as const;
+
+  it('독자를 사로잡는 한 문장 → official-rich 시드, json LOOK 시드 아님', () => {
+    const result = buildTemplateCloneFillSeedForCurrentMode(SENTENCE_OPTS);
+    expect(result.jsonFill).toBe(false);
+    expect(result.seed).toContain('[Official-look rich mode]');
+    expect(result.seed).toContain(TEMPLATE_CLONE_PROMPT_FILL_MARKER);
+    expect(result.seed).not.toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
+    expect(templateCloneBriefRequiresSourceGrounding(SENTENCE_OPTS)).toBe(false);
+  });
+
+  it('how-to / official-rich collapsed 재시도는 JSON LOOK 으로 보내지 않는다', () => {
+    expect(shouldRecoverCollapsedPromptFillViaJson({
+      brief: SENTENCE_OPTS.userInstruction,
+      richFill: true,
+    })).toBe(false);
+    expect(shouldRecoverCollapsedPromptFillViaJson({
+      brief: '글을 매력적으로 쓰는 팁',
+      richFill: false,
+    })).toBe(false);
+    expect(shouldRecoverCollapsedPromptFillViaJson({
+      brief: '삼성전자 소개 발표자료',
+      richFill: false,
+    })).toBe(true);
+    expect(shouldRecoverCollapsedPromptFillViaJson({
+      brief: '글을 매력적으로 쓰는 팁',
+      explicitJson: true,
+    })).toBe(false);
+  });
+
+  it('persist 는 how-to / official-look-css 를 LOOK 재작성에서 보존한다', () => {
+    expect(shouldPreserveOfficialRichHowToPersist({
+      brief: SENTENCE_OPTS.userInstruction,
+    })).toBe(true);
+    expect(shouldPreserveOfficialRichHowToPersist({
+      html: '<style data-od-official-look-css>.s-cover{}</style>',
+    })).toBe(true);
+    expect(shouldPreserveOfficialRichHowToPersist({
+      brief: SENTENCE_OPTS.userInstruction,
+      explicitJson: true,
+    })).toBe(false);
+  });
+
+  it('명시 json override 는 이 제목도 json (1비트 불변)', () => {
+    process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = 'json';
+    const result = buildTemplateCloneFillSeedForCurrentMode(SENTENCE_OPTS);
+    expect(result.jsonFill).toBe(true);
+    expect(result.seed).toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
+    expect(shouldPreserveOfficialRichHowToPersist({
+      brief: SENTENCE_OPTS.userInstruction,
+      explicitJson: true,
+    })).toBe(false);
   });
 });

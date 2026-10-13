@@ -259,6 +259,8 @@ import {
   getTemplateCloneFillMode,
   applyQuantitativeSlideCountInstruction,
   buildPromptFillJsonRecoverySeed,
+  shouldRecoverCollapsedPromptFillViaJson,
+  shouldPreserveOfficialRichHowToPersist,
   renderTemplateCloneJsonShortResponseRetryPrompt,
   templateCloneContentFillHardRules,
   templateCloneFillSlideCountOverrideNotice,
@@ -6481,7 +6483,12 @@ export function ProjectView({
           runVisiblePromptRef.current || '',
           // 1007-N01 슬라이스 C 결함4 — 리치(모델 저작)는 모델 레이아웃을 보존한다:
           // 그리드 트랙 shrink·heading-count reconcile(slot-fill 전제) 비활성.
-          { preserveModelLayout: runTemplateCloneRichFillRef.current },
+          {
+            preserveModelLayout: runTemplateCloneRichFillRef.current
+              || shouldPreserveOfficialRichHowToPersist({
+                brief: runVisiblePromptRef.current || '',
+              }),
+          },
         );
         const honorFirstFill =
           runTemplateCloneContentFillRef.current || runTemplateClonePromptFillRef.current;
@@ -9239,8 +9246,12 @@ export function ProjectView({
                           healAiGeneratedDeckMarkup(
                             withMalformed,
                             runVisiblePromptRef.current || '',
-                            // 1007-N01 슬라이스 C 결함4 — 리치는 모델 레이아웃 보존.
-                            { preserveModelLayout: runTemplateCloneRichFillRef.current },
+                            {
+                              preserveModelLayout: runTemplateCloneRichFillRef.current
+                                || shouldPreserveOfficialRichHowToPersist({
+                                  brief: runVisiblePromptRef.current || '',
+                                }),
+                            },
                           ),
                           messagesRef.current,
                           honorFirstFill,
@@ -11756,8 +11767,14 @@ export function ProjectView({
               }
             } else if (
               runTemplateClonePromptFillRef.current
-              && runTemplateCloneRichFillRef.current
               && artifactToPersist?.html
+              && (
+                runTemplateCloneRichFillRef.current
+                || shouldPreserveOfficialRichHowToPersist({
+                  brief: runVisiblePromptRef.current || '',
+                  html: artifactToPersist.html,
+                })
+              )
             ) {
               // 1007-N01 슬라이스 C — 리치(official-rich) 는 모델이 저작한 full HTML
               // 밀도(스탯 사이드바·코드·3기둥 다문장; ref0904 기준선)를 보존해야 한다.
@@ -11912,8 +11929,12 @@ export function ProjectView({
                           healAiGeneratedDeckMarkup(
                             withMalformed,
                             runVisiblePromptRef.current || '',
-                            // 1007-N01 슬라이스 C 결함4 — 리치는 모델 레이아웃 보존.
-                            { preserveModelLayout: runTemplateCloneRichFillRef.current },
+                            {
+                              preserveModelLayout: runTemplateCloneRichFillRef.current
+                                || shouldPreserveOfficialRichHowToPersist({
+                                  brief: runVisiblePromptRef.current || '',
+                                }),
+                            },
                           ),
                           messagesRef.current,
                           honorFirstFill,
@@ -12011,7 +12032,12 @@ export function ProjectView({
                 if (persistResult?.kind === 'needs-short-response-retry') {
                   const retryAsJsonSlotFill =
                     persistResult.retryKind !== 'head-preamble'
-                    && runTemplateClonePromptFillRef.current;
+                    && runTemplateClonePromptFillRef.current
+                    && shouldRecoverCollapsedPromptFillViaJson({
+                      brief: runVisiblePromptRef.current || prompt,
+                      richFill: runTemplateCloneRichFillRef.current,
+                      explicitJson: runTemplateCloneContentFillRef.current,
+                    });
                   const retryTemplatePin = resolveDurableDeckTemplatePin({
                     project: project.metadata,
                     runRef: runSelectedDeckTemplateIdRef.current,
