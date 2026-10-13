@@ -18,12 +18,17 @@ describe('readTeamverClientBuildEnv', () => {
     expect(TEAMVER_CLIENT_BUILD_ENV_KEYS).toContain('VITE_TEAMVER_SOURCE_HTML_COPY_ENABLE');
   });
 
+  it('exports the staging hosted chat switch for Next client env inlining', () => {
+    expect(TEAMVER_CLIENT_BUILD_ENV_KEYS).toContain('VITE_TEAMVER_HOSTED_CHAT_API_ENABLED');
+  });
+
   it('passes through non-empty bake-time values', () => {
     expect(
       readTeamverClientBuildEnv({
         VITE_TEAMVER_DRAW_ANNOTATION_ENABLE: '1',
         VITE_TEAMVER_SOURCE_HTML_COPY_ENABLE: '1',
         VITE_TEAMVER_MANUAL_EDIT_BOX_DRAG_ENABLE: '1',
+        VITE_TEAMVER_HOSTED_CHAT_API_ENABLED: '1',
         VITE_TEAMVER_SITE_URL: 'https://stg-design.teamver.com',
         EMPTY: '',
       }),
@@ -31,6 +36,7 @@ describe('readTeamverClientBuildEnv', () => {
       VITE_TEAMVER_DRAW_ANNOTATION_ENABLE: '1',
       VITE_TEAMVER_SOURCE_HTML_COPY_ENABLE: '1',
       VITE_TEAMVER_MANUAL_EDIT_BOX_DRAG_ENABLE: '1',
+      VITE_TEAMVER_HOSTED_CHAT_API_ENABLED: '1',
       VITE_TEAMVER_SITE_URL: 'https://stg-design.teamver.com',
     });
   });

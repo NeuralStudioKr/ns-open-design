@@ -1018,6 +1018,58 @@ describe('streamProxyEndpoint soft-retry gates', () => {
     vi.unstubAllGlobals();
   });
 
+  it('sends a provider-neutral body to the hosted managed chat endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode([
+            'event: delta',
+            'data: {"delta":"ok"}',
+            '',
+            'event: end',
+            'data: {}',
+            '',
+          ].join('\n')));
+          controller.close();
+        },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await streamProxyEndpoint(
+      '/api/proxy/chat/stream',
+      {
+        apiKey: 'browser-secret',
+        baseUrl: 'https://provider.example.com',
+        model: 'private-model',
+        apiProtocol: 'minimax',
+        apiVersion: 'private-version',
+        maxTokens: 4096,
+      } as any,
+      'System',
+      [{ id: 'm1', role: 'user', content: 'hello', createdAt: 1 }],
+      new AbortController().signal,
+      { onDelta: vi.fn(), onDone: vi.fn(), onError: vi.fn() },
+      { projectId: 'project-1', conversationId: 'conversation-1' },
+    );
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body).toMatchObject({
+      systemPrompt: 'System',
+      maxOutputTokens: 4096,
+      projectId: 'project-1',
+      conversationId: 'conversation-1',
+    });
+    expect(body).not.toHaveProperty('apiKey');
+    expect(body).not.toHaveProperty('useManagedApiKey');
+    expect(body).not.toHaveProperty('apiProtocol');
+    expect(body).not.toHaveProperty('baseUrl');
+    expect(body).not.toHaveProperty('model');
+    expect(body).not.toHaveProperty('apiVersion');
+    expect(body).not.toHaveProperty('maxTokens');
+  });
+
   it('treats thinking-only EOF without end as non-retryable upstream error', async () => {
     vi.stubGlobal(
       'fetch',

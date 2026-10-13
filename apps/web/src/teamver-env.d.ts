@@ -26,6 +26,8 @@ interface ImportMetaEnv {
   readonly VITE_TEAMVER_MANUAL_EDIT_BOX_DRAG_ENABLE?: string;
   /** Template clone fill mode. Default prompt; deterministic is opt-in rollback-safe path. */
   readonly VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE?: string;
+  /** Staging-only provider-neutral hosted chat shadow transport. */
+  readonly VITE_TEAMVER_HOSTED_CHAT_API_ENABLED?: string;
   readonly VITE_TEAMVER_SITE_URL?: string;
   readonly VITE_TEAMVER_OG_IMAGE_URL?: string;
   /** BYOK streaming daemon message PUT throttle (ms). Set at Docker build via deploy .env. */

@@ -36,6 +36,7 @@ import {
 } from '../utils/projectFileFetchCache';
 import { loadAuthenticatedProjectFileBlob } from '../hooks/useAuthenticatedProjectFileObjectUrl';
 import { looksLikeHeadOpenedDeckPreamble } from '../artifacts/deck-html-content';
+import { HOSTED_MANAGED_CHAT_ENDPOINT } from '../teamver/hostedManagedChat';
 
 /** No *content* SSE events for this long → stall (keepalive comments ignored). */
 export const PROXY_STREAM_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
@@ -462,43 +463,55 @@ async function streamProxyEndpointOnce(
 
   try {
     const messages = await buildProxyMessages(endpoint, history, context);
+    const maxOutputTokens = effectiveMaxTokensWithFloor(cfg, context?.minOutputTokens);
+    const requestContext = {
+      ...(context?.projectId ? { projectId: context.projectId } : {}),
+      ...(context?.conversationId ? { conversationId: context.conversationId } : {}),
+      ...(context?.assistantMessageId
+        ? { assistantMessageId: context.assistantMessageId }
+        : {}),
+      ...(bufferJsonOutlineUntilComplete
+        ? { expectCompleteJsonOutline: true }
+        : {}),
+      ...(bufferDeckArtifactUntilComplete
+        ? { expectCompleteDeckArtifact: true }
+        : {}),
+      ...(context?.byokImageModel
+        ? { byokImageModel: context.byokImageModel }
+        : {}),
+      ...(context?.byokVideoModel
+        ? { byokVideoModel: context.byokVideoModel }
+        : {}),
+      ...(context?.byokSpeechModel
+        ? { byokSpeechModel: context.byokSpeechModel }
+        : {}),
+      ...(context?.byokSpeechVoice
+        ? { byokSpeechVoice: context.byokSpeechVoice }
+        : {}),
+    };
+    const requestBody = endpoint === HOSTED_MANAGED_CHAT_ENDPOINT
+      ? {
+          systemPrompt: system,
+          messages,
+          maxOutputTokens,
+          ...requestContext,
+        }
+      : {
+          baseUrl: cfg.baseUrl,
+          ...(managed ? { useManagedApiKey: true } : { apiKey: cfg.apiKey }),
+          model: cfg.model,
+          apiProtocol: cfg.apiProtocol,
+          systemPrompt: system,
+          messages,
+          maxTokens: maxOutputTokens,
+          apiVersion: cfg.apiVersion,
+          ...requestContext,
+        };
     const resp = await fetchTeamverDaemon(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       teamverProjectId: context?.projectId,
-      body: JSON.stringify({
-        baseUrl: cfg.baseUrl,
-        ...(managed ? { useManagedApiKey: true } : { apiKey: cfg.apiKey }),
-        model: cfg.model,
-        apiProtocol: cfg.apiProtocol,
-        systemPrompt: system,
-        messages,
-        maxTokens: effectiveMaxTokensWithFloor(cfg, context?.minOutputTokens),
-        apiVersion: cfg.apiVersion,
-        ...(context?.projectId ? { projectId: context.projectId } : {}),
-        ...(context?.conversationId ? { conversationId: context.conversationId } : {}),
-        ...(context?.assistantMessageId
-          ? { assistantMessageId: context.assistantMessageId }
-          : {}),
-        ...(bufferJsonOutlineUntilComplete
-          ? { expectCompleteJsonOutline: true }
-          : {}),
-        ...(bufferDeckArtifactUntilComplete
-          ? { expectCompleteDeckArtifact: true }
-          : {}),
-        ...(context?.byokImageModel
-          ? { byokImageModel: context.byokImageModel }
-          : {}),
-        ...(context?.byokVideoModel
-          ? { byokVideoModel: context.byokVideoModel }
-          : {}),
-        ...(context?.byokSpeechModel
-          ? { byokSpeechModel: context.byokSpeechModel }
-          : {}),
-        ...(context?.byokSpeechVoice
-          ? { byokSpeechVoice: context.byokSpeechVoice }
-          : {}),
-      }),
+      body: JSON.stringify(requestBody),
       signal,
     });
 

@@ -1,13 +1,13 @@
 # Hosted AI provider 비노출 기획·설계
 
 **작성일:** 2026-10-13  
-**상태:** Phase 1 shadow API 구현, 기본 OFF, web 미연결
+**상태:** Phase 1 shadow API + staging 전용 web switch 구현, base/production OFF · staging ON
 **대상:** Teamver Design hosted/embed 실행 경로  
 **관련 문서:** [29 BYOK API mode](./29_BYOK_api_mode_vs_runs_아키텍처.md) · [54 MiniMax 전환](./54_MiniMax_전환_기획_설계.md) · [54-1 개발설계](./54-1_MiniMax_전환_개발설계.md)
 
 > 이 문서는 기획·설계 SSOT이며, 하단 단계 중 실제 구현된 범위는 별도 상태 문구로 추적한다.
 
-> **2026-10-13 구현 상태:** 기존 API와 web 호출은 변경하지 않고, 별도 daemon 모듈 및 `/api/proxy/chat/stream`을 추가했다. `TEAMVER_HOSTED_CHAT_API_ENABLED`의 기본값은 `0`이며, OFF이면 route 자체가 등록되지 않는다. runtime-config v2, web transport 전환, 기존 endpoint 폐쇄는 아직 구현하지 않았다.
+> **2026-10-13 구현 상태:** 별도 daemon 모듈 및 `/api/proxy/chat/stream`을 추가했다. daemon의 `TEAMVER_HOSTED_CHAT_API_ENABLED`와 web bake-time `VITE_TEAMVER_HOSTED_CHAT_API_ENABLED`가 모두 켜지고 host가 `stg-design.teamver.com`일 때만 staging web이 신규 contract를 사용한다. base/production 기본값은 `0`, staging compose 기본값은 검증을 위해 `1`이며 production host는 web flag가 잘못 켜져도 기존 endpoint를 유지한다. runtime-config v2와 기존 endpoint 폐쇄는 아직 구현하지 않았다.
 
 **2026-10-13 재검토 결론:** 최초안의 방향은 맞지만, (1) hosted에서 provider별 endpoint를 계속 허용하는 문제, (2) 단일 프로필인데도 browser가 `executionProfile`을 보내는 불필요한 계약, (3) design-api와 daemon의 provider 설정 중복을 제거해야 한다. 아래 설계는 이 세 항목을 반영한 최종 권고안이다.
 
@@ -451,14 +451,16 @@ embed boot 시 과거 managed config의 `apiProtocol`, 실제 `model`, `baseUrl`
 
 | 항목 | 상태 |
 |---|---|
-| 기존 `/api/proxy/minimax/stream` | 변경 없이 유지, web이 계속 사용 |
+| 기존 `/api/proxy/minimax/stream` | 변경 없이 유지, 기본/production 및 staging fallback이 사용 |
 | 신규 `/api/proxy/chat/stream` | 별도 모듈, flag ON일 때만 등록 |
-| web 호출 전환 | 미구현 |
+| web 호출 전환 | staging 전용 bake-time flag로 선택 가능, 기본 OFF |
 | runtime-config v2 | 미구현 |
 | 기존 endpoint 폐쇄 | 미구현 |
-| 기본 배포값 | `TEAMVER_HOSTED_CHAT_API_ENABLED=0` |
+| 기본 배포값 | base/production `0`; staging override `1` |
 
-즉시 롤백은 env에서 `TEAMVER_HOSTED_CHAT_API_ENABLED=0` 또는 미설정 후 daemon 재시작이다. 이 상태에서는 신규 route가 404이며 frontend 재배포가 필요 없다. 코드 롤백이 필요한 경우 shadow API 커밋만 revert하며, 기존 provider API contract에는 migration이나 데이터 변경이 없다.
+staging compose는 바로 검증할 수 있도록 `TEAMVER_HOSTED_CHAT_API_ENABLED=1`과 `VITE_TEAMVER_HOSTED_CHAT_API_ENABLED=1`을 기본으로 사용한다. `.env.staging`의 명시값이 우선하며, web 플래그는 정적 번들에 bake되므로 변경 후 image rebuild가 필요하다.
+
+즉시 서버 롤백은 `TEAMVER_HOSTED_CHAT_API_ENABLED=0` 또는 미설정 후 daemon 재시작이다. 신규 route가 404이면 이미 배포된 staging web이 기존 `/api/proxy/minimax/stream`으로 한 번만 fallback하므로 frontend 재빌드 없이 현재 동작으로 복귀한다. 완전한 UI 롤백은 `VITE_TEAMVER_HOSTED_CHAT_API_ENABLED=0`으로 재빌드한다. 404 외의 신규 API 오류는 숨기지 않고 그대로 표시한다. 코드 롤백이 필요한 경우 shadow API 커밋만 revert하며, 기존 provider API contract에는 migration이나 데이터 변경이 없다.
 
 ---
 

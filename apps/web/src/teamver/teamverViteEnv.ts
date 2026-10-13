@@ -59,6 +59,10 @@ const STATIC_TEAMVER_VITE_ENV: Record<string, string | undefined> = {
     typeof process !== "undefined"
       ? process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE
       : undefined,
+  VITE_TEAMVER_HOSTED_CHAT_API_ENABLED:
+    typeof process !== "undefined"
+      ? process.env.VITE_TEAMVER_HOSTED_CHAT_API_ENABLED
+      : undefined,
 };
 
 export function readTeamverViteEnv(key: string): string | undefined {

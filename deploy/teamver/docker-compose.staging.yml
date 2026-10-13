@@ -4,7 +4,13 @@
 
 services:
   open-design-daemon:
+    build:
+      args:
+        # Staging shadow evaluation only. Override to 0 for an immediate web rollback build.
+        VITE_TEAMVER_HOSTED_CHAT_API_ENABLED: ${VITE_TEAMVER_HOSTED_CHAT_API_ENABLED:-1}
     environment:
+      # Staging shadow evaluation only. Override to 0 to remove the generic route.
+      TEAMVER_HOSTED_CHAT_API_ENABLED: ${TEAMVER_HOSTED_CHAT_API_ENABLED:-1}
       OD_SCRATCH_EVICT_AFTER_RUN: "1"
       OD_SCRATCH_EVICT_IDLE: ${OD_SCRATCH_EVICT_IDLE:-1}
       OD_SCRATCH_EVICT_IDLE_AFTER_MS: ${OD_SCRATCH_EVICT_IDLE_AFTER_MS:-}
