@@ -201,15 +201,85 @@ export function resolveEffectiveTemplateCloneFillMode(input: {
   mode: TemplateCloneFillMode;
   explicit: boolean;
   hasSource?: boolean | null;
+  /**
+   * 1007-N01 슬라이스 E(v1.4.16 품질 회귀) — 소스가 없을 때 리치→json 강등을 적용할지.
+   *
+   * 결함1 A안(a8d30f3bcd)은 "소스(URL/첨부) 없음"을 곧바로 날조 위험으로 보고 **모든**
+   * no-source 리치 기본값을 json slot-fill 로 강등했다. 그 결과 '글을 매력적으로 쓰는 팁'
+   * 같은 **일반 지식/교육 주제**(특정 실존 엔티티의 사실을 주장하지 않음 → 날조 위험 없음)
+   * 까지 구조적으로 얇은 json product-launch slot-fill 로 떨어져 v1.4.16(기본 official-rich,
+   * 강등 없음) 대비 밀도·주제 일관성이 회귀했다.
+   *
+   * 날조 위험의 실제 트리거는 "소스 없이 **특정 실존 엔티티의 사실**(회사·제품 소개/IR/
+   * pitch 등)을 발표"하는 브리프다. 그런 브리프는 그대로 json 으로 강등(날조 방지 유지, D
+   * 가드와 중복 안전망). 일반 지식/교육/방법/팁 주제는 리치 유지(모델 자유 저작 = 정상
+   * 사용, 밀도 회복). 빈/제네릭 브리프도 json 유지(리치가 가짜 주제를 지어내는 것 방지).
+   *
+   * `undefined`(미지정) → 기존 동작(강등)로 backward-compat. 호출부가 명시적으로 false 를
+   * 넘기면 강등하지 않는다.
+   */
+  requiresGrounding?: boolean | null;
 }): TemplateCloneFillMode {
   if (
     input.mode === RICH_OFFICIAL_LOOK_FILL_MODE
     && !input.explicit
     && input.hasSource === false
+    && input.requiresGrounding !== false
   ) {
     return 'json';
   }
   return input.mode;
+}
+
+/**
+ * 1007-N01 슬라이스 E — 소스가 없을 때 리치→json 강등을 적용해야 하는 브리프인지.
+ *
+ * true(= 강등해 날조 방지):
+ *   - 빈/제네릭 브리프(실 주제 없음) — 리치가 가짜 주제를 지어낼 위험.
+ *   - 특정 실존 엔티티의 **소개/발표**(회사·제품·서비스·브랜드 소개, 소개 자료/발표자료/
+ *     소개서, IR, pitch deck, 사업계획서, 투자 유치/제안) — 소스 없이 사실을 날조할 위험.
+ *
+ * false(= 리치 유지, 밀도 회복):
+ *   - 일반 지식·교육·방법·팁·개념 주제('글을 매력적으로 쓰는 팁', '영어 회화 공부법',
+ *     'React 기초' 등). 모델이 자신의 일반 지식으로 저작 = 정상 사용, 날조 아님.
+ *     D 가드가 요금·연락처·버전·수치 날조는 별도로 차단한다.
+ */
+export function templateCloneBriefRequiresSourceGrounding(options: {
+  userInstruction?: string | null;
+  sourceBrief?: string | null;
+  pendingPrompt?: string | null;
+  hasSourceMaterial?: boolean;
+}): boolean {
+  if (options.hasSourceMaterial === true) return false;
+  const combinedBrief = [options.sourceBrief, options.pendingPrompt, options.userInstruction]
+    .filter(Boolean)
+    .join('\n\n');
+  // 빈/제네릭 브리프(실 주제 없음)는 리치가 가짜 주제를 지어낼 위험 → 강등.
+  if (isGenericTemplateCloneTopicBrief(combinedBrief, {
+    hasSourceMaterial: options.hasSourceMaterial ?? false,
+  })) {
+    return true;
+  }
+  const visible = extractTemplateCloneUserFacingRequest({
+    userInstruction: options.userInstruction,
+    sourceBrief: options.sourceBrief,
+    pendingPrompt: options.pendingPrompt,
+  });
+  const hay = `${visible}\n${combinedBrief}`;
+  return briefLooksLikeEntityIntroPresentation(hay);
+}
+
+/**
+ * 특정 실존 엔티티(회사/제품/서비스/브랜드)의 소개·발표 성격 브리프 판정.
+ * 일반 how-to/팁/개념 주제('…하는 팁', '…하는 법', '…란', '…기초')는 매칭하지 않는다.
+ */
+const ENTITY_INTRO_PRESENTATION_RE =
+  /(?:회사|기업|제품|서비스|브랜드|스타트업|사업|조직|기관|앱|어플|플랫폼|솔루션|프로덕트)\s*소개|소개\s*(?:발표\s*)?자료|소개서|소개\s*(?:피피티|ppt|슬라이드|프레젠테이션|덱|deck)|회사소개|제품소개|서비스소개|사업\s*계획서|\bIR\b|pitch\s*deck|투자\s*(?:유치|제안|설명)|company\s+(?:intro|profile|overview)|product\s+(?:launch|intro)/i;
+
+export function briefLooksLikeEntityIntroPresentation(text: string | null | undefined): boolean {
+  const value = String(text ?? '');
+  if (!value.trim()) return false;
+  return ENTITY_INTRO_PRESENTATION_RE.test(value);
 }
 
 /**
@@ -334,12 +404,16 @@ export function buildTemplateCloneFillSeedForCurrentMode(
 ): { seed: string; jsonFill: boolean } {
   const { hasSource: hasSourceOverride, ...seedOptions } = options;
   const resolution = getTemplateCloneFillModeResolution();
-  // 1007-N01 결함1 A안 — 소스 없는 '기본값 리치' 는 json 으로 강등(날조 차단).
+  // 1007-N01 결함1 A안 — 소스 없는 '기본값 리치' 는 날조 위험 브리프일 때만 json 으로
+  // 강등(날조 차단). 1007-N01 슬라이스 E — 일반 지식/교육/팁 주제는 소스가 없어도
+  // 날조 위험이 없으므로 리치를 유지해 v1.4.16 밀도를 회복한다.
   const hasSource = hasSourceOverride ?? inferTemplateCloneFillHasSource(seedOptions);
+  const requiresGrounding = templateCloneBriefRequiresSourceGrounding(seedOptions);
   const mode = resolveEffectiveTemplateCloneFillMode({
     mode: resolution.mode,
     explicit: resolution.explicit,
     hasSource,
+    requiresGrounding,
   });
   // 1007-N01 슬라이스 B — 리치 모드는 prompt-fill(HTML artifact) 변종. jsonFill
   // false 로 기존 prompt-fill 큐/복구 경로를 그대로 재사용한다.

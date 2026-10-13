@@ -24,6 +24,8 @@ import {
   getTemplateCloneFillModeResolution,
   resolveEffectiveTemplateCloneFillMode,
   inferTemplateCloneFillHasSource,
+  templateCloneBriefRequiresSourceGrounding,
+  briefLooksLikeEntityIntroPresentation,
   isGenericTemplateCloneTopicBrief,
   shouldExplainGenericBriefOnLookSeedFallback,
   historyHasTemplateCloneContentFill,
@@ -1468,5 +1470,75 @@ describe('1007-N01 결함1 — 소스 그라운딩 게이팅(A) + 날조 금지(
     expect(rich).toMatch(/no invented pricing, contact details/i);
     expect(rich).toMatch(/version numbers/i);
     expect(rich).toMatch(/describe it qualitatively/i);
+  });
+});
+
+describe('1007-N01 슬라이스 E — v1.4.16 품질 회귀: 일반 지식 주제는 리치 유지', () => {
+  const prevEnv = process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE;
+  afterEach(() => {
+    if (prevEnv === undefined) delete process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE;
+    else process.env.VITE_TEAMVER_TEMPLATE_CLONE_FILL_MODE = prevEnv;
+  });
+
+  const GENERAL_KNOWLEDGE_OPTS = {
+    userInstruction: '글을 매력적으로 쓰는 팁 슬라이드 만들어줘',
+    sourceBrief: 'User instruction:\n글을 매력적으로 쓰는 팁 슬라이드 만들어줘',
+    templateTitle: 'Broadside',
+    seedShellCount: 6,
+  } as const;
+  const ENTITY_INTRO_OPTS = {
+    userInstruction: '삼성전자 소개 발표자료 만들어줘',
+    sourceBrief: 'User instruction:\n삼성전자 소개 발표자료 만들어줘',
+    templateTitle: 'Broadside',
+    seedShellCount: 6,
+  } as const;
+
+  it('briefLooksLikeEntityIntroPresentation — 엔티티 소개/IR/pitch 만 매칭', () => {
+    expect(briefLooksLikeEntityIntroPresentation('삼성전자 소개 발표자료 만들어줘')).toBe(true);
+    expect(briefLooksLikeEntityIntroPresentation('우리 회사 소개 슬라이드')).toBe(true);
+    expect(briefLooksLikeEntityIntroPresentation('제품 소개 자료')).toBe(true);
+    expect(briefLooksLikeEntityIntroPresentation('IR 피치덱')).toBe(true);
+    // 일반 지식/교육/팁/방법 주제는 매칭하지 않는다.
+    expect(briefLooksLikeEntityIntroPresentation('글을 매력적으로 쓰는 팁')).toBe(false);
+    expect(briefLooksLikeEntityIntroPresentation('영어 회화 공부법')).toBe(false);
+    expect(briefLooksLikeEntityIntroPresentation('React 기초 정리')).toBe(false);
+  });
+
+  it('templateCloneBriefRequiresSourceGrounding — 날조 위험 브리프만 true', () => {
+    // 일반 지식 주제 → 리치 유지(grounding 불필요).
+    expect(templateCloneBriefRequiresSourceGrounding(GENERAL_KNOWLEDGE_OPTS)).toBe(false);
+    // 엔티티 소개 → grounding 필요(강등).
+    expect(templateCloneBriefRequiresSourceGrounding(ENTITY_INTRO_OPTS)).toBe(true);
+    // 빈/제네릭 브리프 → grounding 필요(리치가 가짜 주제 지어내는 것 방지).
+    expect(templateCloneBriefRequiresSourceGrounding({ userInstruction: '슬라이드 만들어줘' })).toBe(true);
+    // Canvas/Drive 소스 → grounding 불필요(리치 유지).
+    expect(templateCloneBriefRequiresSourceGrounding({ userInstruction: '', hasSourceMaterial: true })).toBe(false);
+  });
+
+  it('resolveEffectiveTemplateCloneFillMode — requiresGrounding:false 면 소스 없어도 리치 유지', () => {
+    expect(resolveEffectiveTemplateCloneFillMode({
+      mode: 'official-rich', explicit: false, hasSource: false, requiresGrounding: false,
+    })).toBe('official-rich');
+    // requiresGrounding:true/undefined 는 기존대로 강등.
+    expect(resolveEffectiveTemplateCloneFillMode({
+      mode: 'official-rich', explicit: false, hasSource: false, requiresGrounding: true,
+    })).toBe('json');
+    expect(resolveEffectiveTemplateCloneFillMode({
+      mode: 'official-rich', explicit: false, hasSource: false,
+    })).toBe('json');
+  });
+
+  it('기본값(리치) + 소스 없음 + 일반 지식 주제 → 리치 유지(v1.4.16 밀도 회복)', () => {
+    const result = buildTemplateCloneFillSeedForCurrentMode(GENERAL_KNOWLEDGE_OPTS);
+    expect(result.jsonFill).toBe(false);
+    expect(result.seed).toContain('[Official-look rich mode]');
+  });
+
+  it('기본값(리치) + 소스 없음 + 엔티티 소개 → json 강등(날조 방지 유지)', () => {
+    const result = buildTemplateCloneFillSeedForCurrentMode(ENTITY_INTRO_OPTS);
+    expect(result.jsonFill).toBe(true);
+    expect(result.seed).toContain(TEMPLATE_CLONE_CONTENT_FILL_MARKER);
+    // 강등 시드는 json 빌더 산출물과 1비트 동일(비리치 경로 불변).
+    expect(result.seed).toBe(buildTemplateCloneContentFillSeed(ENTITY_INTRO_OPTS));
   });
 });

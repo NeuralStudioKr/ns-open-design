@@ -12664,11 +12664,44 @@ const PRODUCT_LAUNCH_PRICE_PLAN_BULLETS: readonly string[][] = [
   ],
 ];
 
+/**
+ * 1007-N01 슬라이스 E 결함2 — hero-shot 오브의 `::before{content}` 라벨은 **짧은
+ * 제품/브랜드 이름**(예: "Halo v2")용 장식이다. '글을 매력적으로 쓰는 팁에 대한' 같은
+ * 문장형 주제가 16자로 **잘려** 라벨로 새어 들어가던 결함을 막는다. 브랜드로 보기 어려운
+ * 문장(토큰 3+ · 종결/연결 어미 · 조사로 끝나는 미완결 구절)은 라벨에 쓰지 않는다.
+ */
+function looksLikeHeroShotBrandLabel(value: string): boolean {
+  const v = String(value ?? '').replace(/\s+/g, ' ').trim();
+  if (!v) return false;
+  // 공백으로 끊어 3토큰 이상이면 문장(브랜드명은 1~2토큰: "Halo v2").
+  if (v.split(' ').filter(Boolean).length >= 3) return false;
+  // 한국어 조사/연결·종결 어미가 섞인 구절은 브랜드가 아니다(잘린 주제 방지).
+  if (/(?:에\s*대한|에\s*관한|을|를|은|는|이|가|의|과|와|로|으로|에서|하는|되는|쓰는|위한|라는)(?:\s|$)/.test(v)) {
+    return false;
+  }
+  // 조사/구절 토큰으로 끝나는 미완결 꼬리(잘림 흔적).
+  if (/(?:대|에|의|을|를|은|는|과|와|로)$/.test(v) && /[가-힣]/.test(v) && v.length > 6) {
+    return false;
+  }
+  return true;
+}
+
 function productLaunchShortBrand(brief?: string | null, topic?: string | null): string {
   const fromTopic = String(topic ?? '').replace(/\s+/g, ' ').trim();
-  if (fromTopic && !isGenericSynthTopicNoun(fromTopic) && fromTopic.length <= 16) return fromTopic;
+  if (
+    fromTopic
+    && !isGenericSynthTopicNoun(fromTopic)
+    && fromTopic.length <= 16
+    && looksLikeHeroShotBrandLabel(fromTopic)
+  ) {
+    return fromTopic;
+  }
   const fromBrief = resolveLockedTopicNoun(brief, topic);
-  if (fromBrief && !isGenericSynthTopicNoun(fromBrief)) return fromBrief.slice(0, 16);
+  if (fromBrief && !isGenericSynthTopicNoun(fromBrief)) {
+    const trimmed = fromBrief.replace(/\s+/g, ' ').trim();
+    // 1007-N01 슬라이스 E — 16자 **절단** 금지. 통째로 짧은 브랜드일 때만 라벨에 쓴다.
+    if (trimmed.length <= 16 && looksLikeHeroShotBrandLabel(trimmed)) return trimmed;
+  }
   return '';
 }
 
@@ -13051,6 +13084,8 @@ function healProductLaunchStructuralQuality(
   // 1007-N01 — 빈 박스를 지어내 채우지 않고, 모델이 못 채운 빈 카드/빈 텍스트
   // 노드는 제거한 뒤 grid 컬럼 수를 남은 카드 수에 맞춘다("박스 갯수 조절").
   out = collapseEmptyProductLaunchCardsAndGrids(out);
+  // 1007-N01 슬라이스 E 결함1 — <title>↔커버 제목 일치 + 커버 brand 중복 제거.
+  out = healProductLaunchCoverTitleAndBrand(out);
   return out;
 }
 
@@ -13419,6 +13454,75 @@ function collapseRepeatedProductLaunchSiblingDimBodies(html: string): string {
  * 수를 남은 카드 수에 맞춘다. "적절한 내용을 채우거나, 빈칸이 없도록 박스
  * 갯수를 조절" 정책의 (b) 경로.
  */
+/**
+ * 1007-N01 슬라이스 E 결함3 — 모델이 카드를 하나도 못 채워 완전히 빈 그리드
+ * (`<div class="grid g3 mt-l"></div>` — 카드 0개·보이는 텍스트 0)를 통째로 제거한다.
+ * `normalizeProductLaunchGridColumns` 는 카드 수 1~4 일 때만 컬럼을 맞추므로 0-카드
+ * 그리드는 빈 g3 박스로 남아 "제목만 + 빈 그리드" 결함을 만든다. 빈 그리드만 제거하고
+ * (박스 수 축소, 임의 카드 주입 금지) 카드가 1개라도 있으면 건드리지 않는다.
+ */
+function removeEmptyProductLaunchGrids(html: string): string {
+  const source = String(html ?? '');
+  const openRe = /<div\b[^>]*\bclass\s*=\s*["'][^"']*\bgrid\b[^"']*["'][^>]*>/gi;
+  type Edit = { start: number; end: number };
+  const edits: Edit[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = openRe.exec(source)) !== null) {
+    const block = extractBalancedFrom(source, m.index);
+    if (!block) continue;
+    const openTag = m[0];
+    const inner = block.slice(openTag.length, block.length - '</div>'.length);
+    let cardCount = 0;
+    for (const className of PRODUCT_LAUNCH_GRID_CARD_CLASSES) {
+      cardCount += exactClassBlocks(inner, className).length;
+    }
+    if (cardCount > 0) continue;
+    // 모티프/장식 전용 그리드는 유지(보이는 텍스트 없음은 OK지만 motif-html 포함 시 보존).
+    if (/\bdata-od-official-motif-html\b/i.test(inner)) continue;
+    if (/[가-힣A-Za-z0-9]/.test(visibleDeckCopy(inner))) continue;
+    edits.push({ start: m.index, end: m.index + block.length });
+  }
+  let out = source;
+  for (let i = edits.length - 1; i >= 0; i -= 1) {
+    const e = edits[i]!;
+    out = `${out.slice(0, e.start)}${out.slice(e.end)}`;
+  }
+  return out;
+}
+
+/**
+ * 1007-N01 슬라이스 E 결함1 — `<title>` 태그와 커버 제목(h1) 불일치 + 커버 `.brand`
+ * 가 커버 h1 과 동일 문자열로 중복되던 결함을 교정한다.
+ *   - `.brand` 의 가시 텍스트가 커버 h1 과 같으면 비운다(중복 제거). 다른 짧은 브랜드명은 보존.
+ *   - `<title>` 을 **보이는 커버 제목**(h1)에 맞춘다. 브리프 원문이 아니라 화면에 보이는
+ *     제목을 권위로 삼아 title 태그/모티프와 본문 제목을 일치시킨다.
+ * 임의 카피 주입 없음(기존 가시 텍스트만 사용). product-launch halo 덱 한정 호출.
+ */
+function healProductLaunchCoverTitleAndBrand(html: string): string {
+  let out = String(html ?? '');
+  const coverTitle = visibleDeckCopy(
+    /<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(out)?.[1] ?? '',
+  ).replace(/\s+/g, ' ').trim();
+  if (!coverTitle) return out;
+  // 커버 h1 과 동일한 .brand 는 중복이므로 비운다(다른 브랜드명은 보존).
+  out = out.replace(
+    /(<div\b[^>]*\bbrand\b[^>]*>)([\s\S]*?)(<\/div>)/gi,
+    (full, open: string, inner: string, close: string) => {
+      const t = visibleDeckCopy(inner).replace(/\s+/g, ' ').trim();
+      return t && t === coverTitle ? `${open}${close}` : full;
+    },
+  );
+  // <title> 을 보이는 커버 제목에 맞춘다.
+  out = out.replace(
+    /(<title\b[^>]*>)([\s\S]*?)(<\/title>)/i,
+    (full, open: string, inner: string, close: string) => {
+      const t = visibleDeckCopy(inner).replace(/\s+/g, ' ').trim();
+      return t === coverTitle ? full : `${open}${escapeHtml(coverTitle)}${close}`;
+    },
+  );
+  return out;
+}
+
 function collapseEmptyProductLaunchCardsAndGrids(html: string): string {
   let out = collapseRepeatedProductLaunchSiblingDimBodies(String(html ?? ''));
   // 1007-N01 (단계3 결함D) — 본문 빈 카드(제목만 있는 반쪽 카드)를 래퍼가 벗겨져
@@ -13435,7 +13539,9 @@ function collapseEmptyProductLaunchCardsAndGrids(html: string): string {
     }
   }
   out = dedupeProductLaunchDuplicateCards(out);
-  return normalizeProductLaunchGridColumns(out);
+  out = normalizeProductLaunchGridColumns(out);
+  // 1007-N01 슬라이스 E 결함3 — 카드가 모두 제거돼 완전히 빈 그리드는 통째로 제거.
+  return removeEmptyProductLaunchGrids(out);
 }
 
 function refillProductLaunchLeftoverCardLeaves(
