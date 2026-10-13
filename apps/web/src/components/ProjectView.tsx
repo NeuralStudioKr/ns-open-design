@@ -271,6 +271,7 @@ import {
   parseTooShortHtmlCharCount,
   renderShortResponseAutoRetryPrompt,
   renderTooShortHtmlAutoRetryPrompt,
+  SHORT_RESPONSE_AUTO_RETRY_PROMPT_SENTINEL,
   shouldAutoRetryShortSlideResponse,
 } from '../teamver/shortResponseAutoRetry';
 import { resolveTooShortHtmlArtifactPersist } from '../teamver/tooShortHtmlPersist';
@@ -11044,10 +11045,13 @@ export function ProjectView({
       clearRunRecoveryBannerState(runConversationId);
       setError(null);
       const startedAt = Date.now();
-      const persistedUserContent = persistableUserMessageContent(
+      const visiblePersistedUserContent = persistableUserMessageContent(
         modelPrompt,
         scopedCommentAttachments,
       );
+      const persistedUserContent = meta?.autoRetryForShortResponse === true
+        ? `${SHORT_RESPONSE_AUTO_RETRY_PROMPT_SENTINEL}\n${visiblePersistedUserContent}`
+        : visiblePersistedUserContent;
       const userMsg: ChatMessage = retryTarget
         ? {
             ...retryTarget.userMsg,
@@ -11087,7 +11091,7 @@ export function ProjectView({
       runVisiblePromptRef.current = isCloneHostFillTurn
         ? resolveTemplateCloneRunBrief({
             prompt,
-            persistedUserContent,
+            persistedUserContent: visiblePersistedUserContent,
             retryUserContent: retryTarget?.userMsg.content ?? null,
             pendingPrompt: project.pendingPrompt ?? null,
             projectName: project.name,

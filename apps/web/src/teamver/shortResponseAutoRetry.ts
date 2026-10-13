@@ -14,6 +14,10 @@ export type ShortResponseAutoRetryInput = {
   isCreateOrFullFill: boolean;
 };
 
+/** Model-only retry marker. Chat/queue renderers must never expose this turn. */
+export const SHORT_RESPONSE_AUTO_RETRY_PROMPT_SENTINEL =
+  '<!--od:short_response_auto_retry-->';
+
 function finiteSlideCount(value: number | null | undefined): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
   const n = Math.floor(value);

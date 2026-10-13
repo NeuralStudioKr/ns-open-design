@@ -24,6 +24,7 @@ import {
   CLONE_SLOT_FILL_REPAIR_ENTRY_FROM,
   TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER,
 } from "../../src/teamver/templateCloneContentFill";
+import { SHORT_RESPONSE_AUTO_RETRY_PROMPT_SENTINEL } from "../../src/teamver/shortResponseAutoRetry";
 import { resolveLastAssistantMessageId } from "../../src/runtime/conversation-message-dedupe";
 import { buildChatRenderItems } from "../../src/components/ChatPane";
 
@@ -50,6 +51,9 @@ describe("chat-message-render", () => {
     expect(isHiddenAutomationUserPrompt(
       `${TEMPLATE_CLONE_SLOT_FILL_REPAIR_MARKER}\nrepair`,
     )).toBe(true);
+    expect(isHiddenAutomationUserPrompt(
+      `원래 사용자 요청\n${SHORT_RESPONSE_AUTO_RETRY_PROMPT_SENTINEL}\nretry`,
+    )).toBe(true);
     expect(isHiddenAutomationUserPrompt("슬라이드 8장으로 만들어줘")).toBe(false);
 
     expect(isHiddenAutomationQueuedSend({
@@ -74,6 +78,10 @@ describe("chat-message-render", () => {
     expect(isHiddenAutomationQueuedSend({
       prompt: "user follow-up",
       meta: { entryFrom: CLONE_SLOT_FILL_REPAIR_ENTRY_FROM },
+    })).toBe(true);
+    expect(isHiddenAutomationQueuedSend({
+      prompt: "원래 사용자 요청",
+      meta: { autoRetryForShortResponse: true },
     })).toBe(true);
     expect(isHiddenAutomationQueuedSend({
       prompt: "제목만 바꿔줘",

@@ -9,6 +9,7 @@ import {
   CLONE_SLOT_FILL_REPAIR_ENTRY_FROM,
   isTemplateCloneSlotFillRepairPrompt,
 } from "../teamver/templateCloneContentFill";
+import { SHORT_RESPONSE_AUTO_RETRY_PROMPT_SENTINEL } from "../teamver/shortResponseAutoRetry";
 import {
   SLIDE_COUNT_TOP_UP_ENTRY_FROM,
   SPARSE_CONTENT_TOP_UP_ENTRY_FROM,
@@ -29,15 +30,20 @@ export function isHiddenAutomationUserPrompt(content: string | null | undefined)
     || isSparseContentTopUpPrompt(content)
     || isThinPriorFullRewritePrompt(content)
     || isTemplateCloneSlotFillRepairPrompt(content)
+    || String(content ?? "").includes(SHORT_RESPONSE_AUTO_RETRY_PROMPT_SENTINEL)
   );
 }
 
 /** Queued-send strip: hide by prompt fingerprint or analytics entryFrom. */
 export function isHiddenAutomationQueuedSend(item: {
   prompt?: string | null;
-  meta?: { entryFrom?: string | null } | null;
+  meta?: {
+    entryFrom?: string | null;
+    autoRetryForShortResponse?: boolean;
+  } | null;
 }): boolean {
   if (isHiddenAutomationUserPrompt(item.prompt)) return true;
+  if (item.meta?.autoRetryForShortResponse === true) return true;
   const entryFrom = String(item.meta?.entryFrom ?? "").trim();
   return (
     entryFrom === AUTO_CONTINUE_ENTRY_FROM
