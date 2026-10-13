@@ -14,6 +14,7 @@ import { attrsLookLikeDeckOrTemplateSlideHost } from './deck-slide-class.js';
 import {
   conformInlinePaletteToOfficialLook,
   repairLowContrastDeckHeadings,
+  stripForcedWhiteTitlesOnLightCovers,
 } from './heal-official-look-contrast.js';
 import { reconcileHeadingItemCounts } from './heal-heading-item-count.js';
 import {
@@ -5478,6 +5479,10 @@ export function healAiGeneratedDeckMarkup(
   // 루프555 — Freeform decks do not always carry official-look metadata.
   // Repair unreadable h1-h3 against their final slide background as a last pass.
   out = repairLowContrastDeckHeadings(out);
+  // 1007-N01 슬라이스 H — after 555: a dark-body fallback can keep/re-add
+  // `#ffffff!important` on a paper cover. Strip it so persist bleed / --ink
+  // inheritance can show the title. Dark covers stay white.
+  out = stripForcedWhiteTitlesOnLightCovers(out);
   return out;
 }
 

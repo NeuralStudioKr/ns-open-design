@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   conformInlinePaletteToOfficialLook,
   repairLowContrastDeckHeadings,
+  stripForcedWhiteTitlesOnLightCovers,
 } from '../src/html/heal-official-look-contrast.js';
 
 /** Biennale Yellow kit — cream paper, indigo ink (사용자 리포트 2026-09-08). */
@@ -121,5 +122,24 @@ describe('루프555 freeform heading contrast repair', () => {
       + '<section class="slide"><h2 class="hero">Dark title</h2></section>';
     const once = repairLowContrastDeckHeadings(source);
     expect(repairLowContrastDeckHeadings(once)).toBe(once);
+  });
+});
+
+describe('1007-N01 슬라이스 H light-cover white title strip', () => {
+  it('drops #ffffff!important on a paper s-cover and keeps the model title', () => {
+    const source = '<section class="slide s-cover" style="background:var(--paper);color:var(--ink)">'
+      + '<h1 class="title" style="text-align:center;color:#ffffff!important">'
+      + '사람을 멈추게 하는 한<br><em>문장의 힘</em></h1></section>';
+    const out = stripForcedWhiteTitlesOnLightCovers(source);
+    expect(out).toContain('사람을 멈추게 하는 한');
+    expect(out).toContain('문장의 힘');
+    expect(out).toContain('text-align:center');
+    expect(out).not.toMatch(/color\s*:\s*#ffffff\s*!important/i);
+  });
+
+  it('keeps white titles on a dark s-cover', () => {
+    const source = '<section class="slide s-cover" style="background:#0a0a12">'
+      + '<h1 class="title" style="color:#ffffff!important">다크 커버</h1></section>';
+    expect(stripForcedWhiteTitlesOnLightCovers(source)).toBe(source);
   });
 });

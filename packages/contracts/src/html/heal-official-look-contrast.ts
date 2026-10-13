@@ -558,3 +558,100 @@ export function repairLowContrastDeckHeadings(html: string): string {
     return `${open}${healedInner}${close}`;
   });
 }
+
+const LIGHT_PAPER_TOKEN_RE =
+  /var\(\s*--(?:paper|bg|background|surface|cream|offwhite|off-white|canvas|shell)\b/i;
+const LIGHT_PAPER_LITERAL_RE =
+  /^(?:#(?:fff(?:fff)?|f5f5f0|e9e5db|f8fafc|fafafa|f5f5f5)|white)$/i;
+const FORCED_WHITE_COLOR_DECL_RE =
+  /(^|;)\s*color\s*:\s*(?:#(?:fff(?:fff)?)|white)\s*(?:!important)?\s*(?=;|$)/gi;
+const SURFACE_BLEED_STYLE_RE =
+  /<style\b[^>]*\bdata-od-slide-surface-bleed\b[^>]*>([\s\S]*?)<\/style>/i;
+
+function looksLikeCoverSlide(open: string): boolean {
+  return /\b(?:s-cover|slide-cover)\b/i.test(open)
+    || /\bdata-screen-label\s*=\s*(['"])[^'"]*\bCover\b/i.test(open);
+}
+
+function documentHasLightSurfaceBleed(html: string): boolean {
+  const css = SURFACE_BLEED_STYLE_RE.exec(html)?.[1];
+  if (!css) return false;
+  return /background(?:-color)?\s*:\s*(?:#(?:fff(?:fff)?|f5f5f0)|white)/i.test(css);
+}
+
+function rawBackgroundLooksLight(raw: string): boolean {
+  const value = raw.replace(/\s*!important\s*$/i, '').trim();
+  return LIGHT_PAPER_TOKEN_RE.test(value) || LIGHT_PAPER_LITERAL_RE.test(value);
+}
+
+function coverBackgroundLooksDark(raw: string, tokens: Map<string, string>): boolean {
+  if (rawBackgroundLooksLight(raw)) return false;
+  const value = raw.replace(/\s*!important\s*$/i, '').trim();
+  if (/var\(\s*--(?:ink|fg|foreground|text|void|night|black)\b/i.test(value)) return true;
+  const gradient = gradientLuminance(value, tokens, 1);
+  if (gradient !== null) return gradient < 0.4;
+  const color = parseColorValue(value, tokens);
+  if (color && color.alpha > 0.5) return relativeLuminance(color.rgb) < 0.4;
+  return false;
+}
+
+function lightCoverShouldInheritInk(open: string, documentHtml: string): boolean {
+  const attrs = open.replace(/^<section\b|>$/gi, '');
+  if (attrClassTokens(attrs).includes('dark')) return false;
+  const style = styleAttrValue(attrs);
+  const bgRaw = declarationValue(style, 'background-color')
+    ?? declarationValue(style, 'background');
+  const tokens = readLookTokens(documentHtml);
+  if (bgRaw) {
+    if (coverBackgroundLooksDark(bgRaw, tokens)) return false;
+    if (rawBackgroundLooksLight(bgRaw)) return true;
+    const color = parseColorValue(bgRaw, tokens);
+    if (color && color.alpha > 0.5) return relativeLuminance(color.rgb) >= 0.5;
+    const gradient = gradientLuminance(bgRaw, tokens, 1);
+    if (gradient !== null) return gradient >= 0.5;
+    return false;
+  }
+  if (documentHasLightSurfaceBleed(documentHtml)) return true;
+  const colorRaw = declarationValue(style, 'color');
+  return Boolean(colorRaw && /var\(\s*--ink\b/i.test(colorRaw));
+}
+
+function stripForcedWhiteColorDecl(style: string): string {
+  return style
+    .replace(FORCED_WHITE_COLOR_DECL_RE, '$1')
+    .replace(/;{2,}/g, ';')
+    .replace(/^;+|;+$/g, '')
+    .trim();
+}
+
+/**
+ * 1007-N01 슬라이스 H — MiniMax paints cover titles `color:#ffffff!important`
+ * after reading a dark `body` (`#0a0a12`). Persist then washes the slide
+ * with paper / `data-od-slide-surface-bleed` white, so the title vanishes
+ * and only the hero-shot remains. Drop that forced white on light covers
+ * so `--ink` / inherited color shows. Dark covers (`.dark` or a dark
+ * background) keep white titles. Never rewrite title text.
+ */
+export function stripForcedWhiteTitlesOnLightCovers(html: string): string {
+  const source = String(html ?? '');
+  if (!source.trim()) return source;
+  return source.replace(SLIDE_SECTION_RE, (whole, open: string, inner: string, close: string) => {
+    if (!looksLikeCoverSlide(open)) return whole;
+    if (!lightCoverShouldInheritInk(open, source)) return whole;
+    const healedInner = inner.replace(
+      /<(h[1-3])\b((?:"[^"]*"|'[^']*'|[^>"'])*)>/gi,
+      (headingOpen, tag: string, attrs: string) => {
+        if (/\bdata-od-official-motif-html\b/i.test(attrs)) return headingOpen;
+        const style = styleAttrValue(attrs);
+        if (!style) return headingOpen;
+        const nextStyle = stripForcedWhiteColorDecl(style);
+        if (nextStyle === style) return headingOpen;
+        if (!nextStyle) {
+          return `<${tag}${attrs.replace(/\s*style\s*=\s*(['"])[\s\S]*?\1/i, '')}>`;
+        }
+        return `<${tag}${replaceStyleAttr(attrs, nextStyle)}>`;
+      },
+    );
+    return `${open}${healedInner}${close}`;
+  });
+}
