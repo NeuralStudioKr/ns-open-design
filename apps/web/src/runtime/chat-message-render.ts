@@ -192,6 +192,19 @@ function findVisibleUserTurnEnd(
   return messages.length;
 }
 
+function assistantBelongsToSparseContentRepair(
+  messages: readonly ChatMessage[],
+  messageIndex: number,
+): boolean {
+  if (messages[messageIndex]?.role !== "assistant") return false;
+  for (let index = messageIndex - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role !== "user") continue;
+    return isSparseContentTopUpPrompt(message.content);
+  }
+  return false;
+}
+
 function hasLaterAssistantInVisibleUserTurn(
   messages: readonly ChatMessage[],
   messageIndex: number,
@@ -440,6 +453,19 @@ export function shouldOmitMessageFromChatRender(
     return isHiddenAutomationUserPrompt(message.content);
   }
   if (message.role !== "assistant") return false;
+  // Sparse-content repair is an internal follow-up turn. Its model prose can
+  // contain implementation notes and DOM identifiers intended only for the
+  // repair pipeline. Keep actionable failures visible, but do not expose the
+  // repair plan while it streams or after it succeeds.
+  if (
+    options?.messages
+    && typeof options.messageIndex === "number"
+    && assistantBelongsToSparseContentRepair(options.messages, options.messageIndex)
+    && message.runStatus !== "failed"
+    && message.resumable !== true
+  ) {
+    return true;
+  }
   // Persist/HTML strip can move the hidden APPEND prompt onto the assistant
   // row as "The / Keep / APPEND / This is an explicit slide-count expansion".
   // Keep the row when producedFiles exist so the completion lead can render;

@@ -140,6 +140,79 @@ describe("chat-message-render", () => {
     expect(shouldOmitMessageFromChatRender(message, embedCtx)).toBe(true);
   });
 
+  it("hides internal sparse-content repair prose while it streams and after success", () => {
+    const user: ChatMessage = {
+      id: "u1",
+      role: "user",
+      content: "회사 소개 슬라이드를 만들어줘",
+      createdAt: 1,
+    };
+    const originalAssistant: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "슬라이드 초안을 생성했습니다.",
+      runStatus: "succeeded",
+      endedAt: 2,
+      createdAt: 2,
+    };
+    const repairUser: ChatMessage = {
+      id: "u-repair",
+      role: "user",
+      content: `${SPARSE_CONTENT_TOP_UP_PROMPT_SENTINEL}\npatch sparse slides`,
+      createdAt: 3,
+    };
+    const repairAssistant: ChatMessage = {
+      id: "a-repair",
+      role: "assistant",
+      content: [
+        "수정 반영 중입니다. 누락된 슬라이드 본문을 채워 패치합니다.",
+        '- 슬라이드 4 (`data-slide-index="3"`): 본문을 보강합니다.',
+      ].join("\n"),
+      runStatus: "running",
+      startedAt: 4,
+      createdAt: 4,
+    };
+    const messages = [user, originalAssistant, repairUser, repairAssistant];
+
+    expect(buildChatRenderItems(messages, {
+      ...embedCtx,
+      streaming: true,
+      lastAssistantId: "a-repair",
+    }).map((item) => item.message.id)).toEqual(["u1", "a1"]);
+
+    repairAssistant.runStatus = "succeeded";
+    repairAssistant.endedAt = 5;
+    expect(buildChatRenderItems(messages, embedCtx).map((item) => item.message.id)).toEqual([
+      "u1",
+      "a1",
+    ]);
+  });
+
+  it("keeps sparse-content repair failures visible", () => {
+    const user: ChatMessage = { id: "u1", role: "user", content: "make deck", createdAt: 1 };
+    const repairUser: ChatMessage = {
+      id: "u-repair",
+      role: "user",
+      content: `${SPARSE_CONTENT_TOP_UP_PROMPT_SENTINEL}\npatch sparse slides`,
+      createdAt: 2,
+    };
+    const failedRepair: ChatMessage = {
+      id: "a-repair",
+      role: "assistant",
+      content: "슬라이드 보강에 실패했습니다.",
+      runStatus: "failed",
+      resumable: true,
+      endedAt: 3,
+      createdAt: 3,
+    };
+    const messages = [user, repairUser, failedRepair];
+
+    expect(buildChatRenderItems(messages, embedCtx).map((item) => item.message.id)).toEqual([
+      "u1",
+      "a-repair",
+    ]);
+  });
+
   it("keeps terminal succeeded empty shells when called without turn context", () => {
     const shell: ChatMessage = {
       id: "a-shell",
