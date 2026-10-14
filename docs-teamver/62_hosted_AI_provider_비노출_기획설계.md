@@ -3,11 +3,13 @@
 **작성일:** 2026-10-13  
 **상태:** Phase 1 shadow API + staging 전용 web switch 구현, base/production OFF · staging ON
 **대상:** Teamver Design hosted/embed 실행 경로  
-**관련 문서:** [29 BYOK API mode](./29_BYOK_api_mode_vs_runs_아키텍처.md) · [54 MiniMax 전환](./54_MiniMax_전환_기획_설계.md) · [54-1 개발설계](./54-1_MiniMax_전환_개발설계.md)
+**관련 문서:** [29 BYOK API mode](./29_BYOK_api_mode_vs_runs_아키텍처.md) · [54 MiniMax 전환](./54_MiniMax_전환_기획_설계.md) · [54-1 개발설계](./54-1_MiniMax_전환_개발설계.md) · [63 buffered stream](./63_hosted_AI_buffered_stream_기획설계.md)
 
 > 이 문서는 기획·설계 SSOT이며, 하단 단계 중 실제 구현된 범위는 별도 상태 문구로 추적한다.
 
 > **2026-10-13 구현 상태:** 별도 daemon 모듈 및 `/api/proxy/chat/stream`을 추가했다. daemon의 `TEAMVER_HOSTED_CHAT_API_ENABLED`와 web bake-time `VITE_TEAMVER_HOSTED_CHAT_API_ENABLED`가 모두 켜지고 host가 `stg-design.teamver.com`일 때만 staging web이 신규 contract를 사용한다. base/production 기본값은 `0`, staging compose 기본값은 검증을 위해 `1`이며 production host는 web flag가 잘못 켜져도 기존 endpoint를 유지한다. runtime-config v2와 기존 endpoint 폐쇄는 아직 구현하지 않았다.
+
+> **2026-10-14 stream 검토 상태:** complete deck/JSON의 `stream:false` atomic upstream 때문에 public SSE가 `start` 뒤 keepalive-only로 보이는 문제가 확인되었다. 해결 설계는 [63번 문서](./63_hosted_AI_buffered_stream_기획설계.md)의 upstream streamed collection + daemon atomic publication이다. **아직 미구현이며 현재 route/env 동작은 변경하지 않았다.**
 
 **2026-10-13 재검토 결론:** 최초안의 방향은 맞지만, (1) hosted에서 provider별 endpoint를 계속 허용하는 문제, (2) 단일 프로필인데도 browser가 `executionProfile`을 보내는 불필요한 계약, (3) design-api와 daemon의 provider 설정 중복을 제거해야 한다. 아래 설계는 이 세 항목을 반영한 최종 권고안이다.
 
@@ -248,6 +250,7 @@ hosted config의 공개 값:
 
 ```text
 event: delta
+event: progress      // provider-neutral ephemeral phase; 63번 문서, 아직 미구현
 event: thinking_delta
 event: usage       // token counts only
 event: error       // stable public error envelope
@@ -513,6 +516,7 @@ provider 추상화는 슬라이드 품질 로직을 바꾸지 않아야 한다.
 
 - 8~10장 요청의 slide count
 - complete deck atomic gate
+- buffered upstream stream의 progress/timeout/repair/final publication 계약은 [63번 문서](./63_hosted_AI_buffered_stream_기획설계.md)를 따른다.
 - template representative motif/style 유지
 - retry/continuation 횟수
 - first-token/total latency

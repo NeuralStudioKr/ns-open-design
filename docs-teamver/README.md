@@ -47,6 +47,7 @@
 | **[53-0~2 위치 승격](./53-0_수동편집_위치_승격_기획.md)** | **flow→positioned 승격 · [53-0](./53-0_수동편집_위치_승격_기획.md) · [53-1](./53-1_수동편집_위치_승격_설계.md) · [53-2](./53-2_수동편집_위치_승격_구현현황.md)** |
 | **[54 MiniMax 전환 기획·설계](./54_MiniMax_전환_기획_설계.md)** | **2026-08-03 현재 판단 · Claude 비용 절감 · server-only MiniMax · deck-only · web_fetch · S3/DB/백그라운드 계약** |
 | **[54-1 MiniMax 전환 개발설계](./54-1_MiniMax_전환_개발설계.md)** | **구현자용 상세 설계 · MiniMax stream/web_fetch 1차 구현 현황 · API/env 계약 · 테스트·배포 순서** |
+| **[62 Hosted AI provider 비노출](./62_hosted_AI_provider_비노출_기획설계.md)** · **[63 buffered stream](./63_hosted_AI_buffered_stream_기획설계.md)** | **generic managed endpoint · provider-neutral progress · daemon 완성본 버퍼 · timeout/repair/롤백 설계** |
 | **[55 Main↔Design UI 스타일](./55_Main_Teamver_vs_Design_UI_스타일_통일_분석.md)** | **분석·보류 — indigo/Geist 통일은 합의 전 재개 금지** |
 | **[56 UI polish a11y·터치](./56_UI_polish_a11y_터치_개선.md)** | **focus·hit·touch · soft/28 포화·리뷰 교정** |
 | **[57-0~1 Docker 배포 빌드](./57-0_Docker_배포_빌드_가속_현황.md)** | **Phase 0 가속 현황 · [57-1 CI·ECR 설계](./57-1_Docker_이미지_CI_ECR_배포_설계.md) (미구현) · 구 52-x Docker에서 재번호** |
@@ -105,6 +106,7 @@
 | 58 | **[덱 Preview letterbox / 빈 화면](./58_덱_미리보기_letterbox_빈화면_안정화.md)** — 재진입·사용 중 검정 Preview · host-viewport |
 | 60 | **[Canvas→Slide 시스템 프롬프트·템플릿 적용](./60_Canvas_Slide_시스템_프롬프트_템플릿적용_개선.md)** — Daisy Days→Neutral RCA · compose SSOT |
 | 62 | **[Hosted AI provider 비노출 기획·설계](./62_hosted_AI_provider_비노출_기획설계.md)** — DevTools 노출 감사 · generic managed endpoint · runtime-config/usage/error 중립화 · 단계적 전환 |
+| 63 | **[Hosted AI buffered stream 기획·설계](./63_hosted_AI_buffered_stream_기획설계.md)** — upstream stream + daemon atomic publication · progress/timeout/repair · legacy 무영향 rollout |
 | 46 | **[embed 슬라이드 품질 원인분석·로드맵](./46_embed_슬라이드_품질_원인분석_개선로드맵.md)** — Phase 1~3 |
 | 47 | **[body-first compact deck 검토·0716 이후 판단](./47_body-first_compact_deck_아키텍처_검토_및_0716이후_변경판단.md)** — 유지/롤백 SSOT |
 | 17 | **[Production 출시 작업 순서](./17_Production_출시_작업_순서.md)** |
