@@ -28,6 +28,7 @@ import {
   briefLooksLikeEntityIntroPresentation,
   shouldRecoverCollapsedPromptFillViaJson,
   shouldPreserveOfficialRichHowToPersist,
+  shouldPersistOfficialRichPartialAndContinue,
   isGenericTemplateCloneTopicBrief,
   shouldExplainGenericBriefOnLookSeedFallback,
   historyHasTemplateCloneContentFill,
@@ -1642,6 +1643,30 @@ describe('1007-N01 슬라이스 G — 독자를 사로잡는 한 문장은 offic
     expect(shouldPreserveOfficialRichHowToPersist({
       brief: SENTENCE_OPTS.userInstruction,
       explicitJson: true,
+    })).toBe(false);
+  });
+
+  it('슬라이스 J — how-to official-rich 불완전은 JSON LOOK 복구 없이 persist+이어쓰기', () => {
+    expect(shouldRecoverCollapsedPromptFillViaJson({
+      brief: SENTENCE_OPTS.userInstruction,
+      richFill: true,
+    })).toBe(false);
+    expect(shouldPersistOfficialRichPartialAndContinue({
+      brief: SENTENCE_OPTS.userInstruction,
+      html: '<style data-od-official-look-css>.s-cover{}</style><section class="slide"><h1>왜</h1></section>',
+      richFill: true,
+      producedCount: 3,
+    })).toBe(true);
+    expect(shouldPersistOfficialRichPartialAndContinue({
+      brief: SENTENCE_OPTS.userInstruction,
+      richFill: true,
+      explicitJson: true,
+      producedCount: 3,
+    })).toBe(false);
+    expect(shouldPersistOfficialRichPartialAndContinue({
+      brief: '삼성전자 소개 발표자료',
+      richFill: false,
+      producedCount: 2,
     })).toBe(false);
   });
 });

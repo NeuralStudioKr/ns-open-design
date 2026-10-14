@@ -1308,6 +1308,54 @@ describe('streamProxyEndpoint soft-retry gates', () => {
     expect(onDone).toHaveBeenCalledWith(complete);
     expect(onError).not.toHaveBeenCalled();
   });
+
+  it('1007-N01 J — official-rich 불완전 아티팩트는 받은 슬라이드를 salvage 하고 처음부터 재시도하지 않는다', async () => {
+    const partial = [
+      '<artifact type="deck" identifier="deck">',
+      '<!doctype html><html lang="ko"><body>',
+      '<section class="slide"><h1>왜 쓸모 있는 글이 필요한가</h1>',
+      '<p>첫 문장이 기대를 잡지 못하면 독자는 3초 안에 떠난다.</p></section>',
+      '<section class="slide"><h2>첫 문장</h2><p>호기심을 한 줄에 압축한다.</p></section>',
+    ].join('');
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode([
+            'event: delta',
+            `data: ${JSON.stringify({ delta: partial })}`,
+            '',
+            'event: end',
+            'data: {}',
+            '',
+          ].join('\n')));
+          controller.close();
+        },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const onDelta = vi.fn();
+    const onDone = vi.fn();
+    const onError = vi.fn();
+    await streamProxyEndpoint(
+      '/api/proxy/minimax/stream',
+      { apiKey: 'test-api-key', baseUrl: 'https://example.com', model: 'MiniMax-M3' } as any,
+      'System',
+      [{ id: 'm1', role: 'user', content: 'how-to', createdAt: 1 }],
+      new AbortController().signal,
+      { onDelta, onDone, onError },
+      { bufferDeckArtifactUntilComplete: true },
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(onError).not.toHaveBeenCalled();
+    const done = String(onDone.mock.calls[0]?.[0] ?? '');
+    expect(done).toContain('왜 쓸모 있는 글이 필요한가');
+    expect(done).toContain('</html>');
+    expect(done).toContain('</artifact>');
+    expect(onDelta).toHaveBeenCalledWith(done);
+  });
 });
 
 describe('streamProxyEndpoint Motif-SVG dump abort', () => {
@@ -1439,7 +1487,8 @@ describe('streamProxyEndpoint idle-timeout stall (AGENT_EXECUTION_STALLED)', () 
   it('1007-N01 — rich (official-rich) deck preamble waits longer than json before stalling', () => {
     // Rich full-HTML decks author a large <head>/<style> before the first
     // titled slide; the 60s json preamble clamp cut them as AGENT_EXECUTION_STALLED.
-    expect(PROXY_STREAM_HEAD_PREAMBLE_IDLE_RICH_DECK_MS).toBe(3 * 60 * 1000);
+    expect(PROXY_STREAM_HEAD_PREAMBLE_IDLE_RICH_DECK_MS).toBe(PROXY_STREAM_IDLE_TIMEOUT_MS);
+    expect(PROXY_STREAM_HEAD_PREAMBLE_IDLE_MS).toBe(60 * 1000);
     expect(PROXY_STREAM_HEAD_PREAMBLE_IDLE_RICH_DECK_MS).toBeGreaterThan(
       PROXY_STREAM_HEAD_PREAMBLE_IDLE_MS,
     );

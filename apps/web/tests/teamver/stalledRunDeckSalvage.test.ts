@@ -32,6 +32,17 @@ describe('루프477 stalled deck salvage eligibility', () => {
     ).toBe(partialDeck);
   });
 
+  it('슬라이스 J — UPSTREAM_UNAVAILABLE 아티팩트 미완료도 부분 덱을 살린다', () => {
+    expect(
+      stalledRunPartialDeckText({
+        errorCode: 'UPSTREAM_UNAVAILABLE',
+        errorDetail: 'MiniMax stream ended before the deck artifact completed',
+        slideOnlyMvp: true,
+        streamedText: partialDeck,
+      }),
+    ).toBe(partialDeck);
+  });
+
   it('keeps the plain failure path for non-stall errors', () => {
     expect(
       stalledRunPartialDeckText({

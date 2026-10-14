@@ -66,6 +66,7 @@ export * from './html/heal-official-magazine-layout.js';
 export * from './html/heal-official-look-contrast.js';
 export * from './html/heal-heading-item-count.js';
 export * from './html/heal-ai-generated-deck.js';
+export * from './html/incomplete-deck-artifact.js';
 export * from './html/deck-fixed-canvas.js';
 export * from './html/collapse-adjacent-duplicate-siblings.js';
 export * from './html/deck-slide-class.js';

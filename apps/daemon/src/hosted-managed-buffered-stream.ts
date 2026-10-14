@@ -9,7 +9,7 @@ export type HostedBufferedUsage = {
 
 export type HostedBufferedStreamResult =
   | { kind: 'complete'; text: string; usage: HostedBufferedUsage }
-  | { kind: 'incomplete'; usage: HostedBufferedUsage }
+  | { kind: 'incomplete'; usage: HostedBufferedUsage; text: string }
   | { kind: 'provider_error'; data: unknown; usage: HostedBufferedUsage };
 
 export type HostedBufferedRepairRequest = {
@@ -341,7 +341,7 @@ export async function collectHostedBufferedStream(
     });
   }
 
-  return { kind: 'incomplete', usage: totalUsage };
+  return { kind: 'incomplete', usage: totalUsage, text: accumulated };
 }
 
 export function splitHostedBufferedFinalText(

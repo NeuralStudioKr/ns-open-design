@@ -37,6 +37,7 @@ import {
 import { loadAuthenticatedProjectFileBlob } from '../hooks/useAuthenticatedProjectFileObjectUrl';
 import { looksLikeHeadOpenedDeckPreamble } from '../artifacts/deck-html-content';
 import { HOSTED_MANAGED_CHAT_ENDPOINT } from '../teamver/hostedManagedChat';
+import { closeIncompleteDeckArtifactForSalvage } from '@open-design/contracts';
 
 /** No *content* SSE events for this long → stall (keepalive comments ignored). */
 export const PROXY_STREAM_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
@@ -62,11 +63,12 @@ export const PROXY_STREAM_HEAD_PREAMBLE_IDLE_MS = 60 * 1000;
  * old json default and now cuts live rich heads as AGENT_EXECUTION_STALLED
  * (e.g. the retry after `MiniMax stream ended before the deck artifact completed`
  * tripped on a >60s silent gap mid-head). Only buffered rich-deck runs
- * ({@link ProxyContext.bufferDeckArtifactUntilComplete}) use this wider budget;
- * it stays below {@link PROXY_STREAM_IDLE_TIMEOUT_DECK_MS} so a genuine total
- * hang still fails faster than the full deck idle, and json/clone-fill keep 60s.
+ * ({@link ProxyContext.bufferDeckArtifactUntilComplete}) use this wider budget
+ * ({@link PROXY_STREAM_IDLE_TIMEOUT_MS} = 5 min). It stays below
+ * {@link PROXY_STREAM_IDLE_TIMEOUT_DECK_MS} so a genuine total hang still
+ * fails faster than the full deck idle, and json/clone-fill keep 60s.
  */
-export const PROXY_STREAM_HEAD_PREAMBLE_IDLE_RICH_DECK_MS = 3 * 60 * 1000;
+export const PROXY_STREAM_HEAD_PREAMBLE_IDLE_RICH_DECK_MS = PROXY_STREAM_IDLE_TIMEOUT_MS;
 
 /** @internal vitest + ProjectView deck runs */
 export function resolveProxyStreamIdleTimeoutMs(context?: ProxyContext): number {
@@ -687,7 +689,12 @@ async function streamProxyEndpointOnce(
         if (parsed.event === 'end') {
           sawEndEvent = true;
           if (bufferDeckArtifactUntilComplete && !isCompleteDeckArtifactResponse(acc)) {
-            return { error: incompleteDeckArtifactStreamError() };
+            const salvaged = closeIncompleteDeckArtifactForSalvage(acc);
+            if (salvaged) {
+              acc = salvaged;
+            } else {
+              return { error: incompleteDeckArtifactStreamError() };
+            }
           }
           if (bufferUntilComplete && acc) handlers.onDelta(acc);
           handlers.onDone(acc);
@@ -756,7 +763,12 @@ async function streamProxyEndpointOnce(
         } else if (parsed.event === 'end') {
           sawEndEvent = true;
           if (bufferDeckArtifactUntilComplete && !isCompleteDeckArtifactResponse(acc)) {
-            return { error: incompleteDeckArtifactStreamError() };
+            const salvaged = closeIncompleteDeckArtifactForSalvage(acc);
+            if (salvaged) {
+              acc = salvaged;
+            } else {
+              return { error: incompleteDeckArtifactStreamError() };
+            }
           }
           if (bufferUntilComplete && acc) handlers.onDelta(acc);
           handlers.onDone(acc);
@@ -768,7 +780,17 @@ async function streamProxyEndpointOnce(
     // Graceful EOF without `end`: empty/pre-token drops are retryable.
     // Thinking-only incomplete matches daemon finalize (retryable:false — soft-retry
     // would duplicate thinking UI). Substantive text keeps historical onDone.
+    // 1007-N01 J — buffered official-rich with titled slides must salvage
+    // instead of discarding acc and retrying from scratch.
     if (!sawEndEvent && (!receivedSubstantiveDelta || bufferUntilComplete)) {
+      if (bufferDeckArtifactUntilComplete) {
+        const salvaged = closeIncompleteDeckArtifactForSalvage(acc);
+        if (salvaged) {
+          handlers.onDelta(salvaged);
+          handlers.onDone(salvaged);
+          return 'ok';
+        }
+      }
       const err = new Error('Upstream stream ended before any content') as Error & {
         code?: string;
         retryable?: boolean;

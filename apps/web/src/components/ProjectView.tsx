@@ -261,6 +261,7 @@ import {
   buildPromptFillJsonRecoverySeed,
   shouldRecoverCollapsedPromptFillViaJson,
   shouldPreserveOfficialRichHowToPersist,
+  shouldPersistOfficialRichPartialAndContinue,
   renderTemplateCloneJsonShortResponseRetryPrompt,
   templateCloneContentFillHardRules,
   templateCloneFillSlideCountOverrideNotice,
@@ -621,6 +622,7 @@ import {
   SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX,
   SLIDE_COUNT_TOP_UP_BUSY_RETRY_MS,
   slideCountTopUpBusyRetryDelayMs,
+  shouldContinueSlideAutomationBusyRetry,
   SLIDE_COUNT_TOP_UP_ENTRY_FROM,
   SPARSE_CONTENT_TOP_UP_ENTRY_FROM,
   THIN_PRIOR_FULL_REWRITE_ENTRY_FROM,
@@ -6548,7 +6550,20 @@ export function ProjectView({
               const scopedFill =
                 persistCommentAttachments.length > 0
                 || runImagePaths.length > 0;
+              // 1007-N01 J — official-rich/how-to already has titled slides:
+              // persist them and let top-up append. Do not JSON LOOK or
+              // rewrite the first turn from scratch.
               if (
+                shouldPersistOfficialRichPartialAndContinue({
+                  brief: runVisiblePromptRef.current || '',
+                  html: htmlBody,
+                  richFill: runTemplateCloneRichFillRef.current,
+                  explicitJson: runTemplateCloneContentFillRef.current,
+                  producedCount,
+                })
+              ) {
+                // fall through to persist
+              } else if (
                 !runHeadPreambleContinueRef.current
                 && shouldAutoRetryShortSlideResponse({
                   seedCount: expectedCount,
@@ -6571,8 +6586,7 @@ export function ProjectView({
                   expectedCount,
                   reason: slideCountIncomplete.reason,
                 };
-              }
-              if (
+              } else if (
                 !runHeadPreambleContinueRef.current
                 && shouldEscalateRepeatedPromptFillToJson({
                   promptFill: runTemplateClonePromptFillRef.current,
@@ -6591,13 +6605,20 @@ export function ProjectView({
                   reason: slideCountIncomplete.reason,
                   retryKind: 'prompt-collapse-json',
                 };
+              } else {
+                return {
+                  kind: 'skipped-incomplete',
+                  fileName,
+                  reason: slideCountIncomplete.reason,
+                };
               }
+            } else {
+              return {
+                kind: 'skipped-incomplete',
+                fileName,
+                reason: slideCountIncomplete.reason,
+              };
             }
-            return {
-              kind: 'skipped-incomplete',
-              fileName,
-              reason: slideCountIncomplete.reason,
-            };
           }
           const structureIncomplete = findTemplateCloneFillStructureIncomplete({
             fileName,
@@ -12272,7 +12293,9 @@ export function ProjectView({
 
             if (producedHtmlToOpen && runIsVisible()) {
               maybeArmTeamverPublishMenuAfterRunSuccess(project.id, producedHtmlToOpen);
-              requestSlideCountTopUpRef.current(producedHtmlToOpen);
+              if (!shortResponseRetryArmed) {
+                requestSlideCountTopUpRef.current(producedHtmlToOpen);
+              }
               requestOpenFile(producedHtmlToOpen);
               const navTarget = queuedSlideNavTarget(runCommentAttachmentsRef.current, {
                 fallbackDeckFilePath: producedHtmlToOpen,
@@ -14239,6 +14262,7 @@ export function ProjectView({
             userBrief: runVisiblePromptRef.current || '',
           });
           let busyRetries = 0;
+          let busyStartedAt = 0;
           const fireRewrite = () => {
             slideCountTopUpTimerRef.current = null;
             pendingSlideCountTopUpConversationIdRef.current = null;
@@ -14256,7 +14280,8 @@ export function ProjectView({
               }
             }
             if (abortRef.current) {
-              if (busyRetries < SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX) {
+              if (!busyStartedAt) busyStartedAt = Date.now();
+              if (shouldContinueSlideAutomationBusyRetry({ startedAtMs: busyStartedAt })) {
                 busyRetries += 1;
                 pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
                 setPendingSlideAutomationKind("rewrite");
@@ -14408,6 +14433,7 @@ export function ProjectView({
           requested: topUpTarget,
         });
         let busyRetries = 0;
+        let busyStartedAt = 0;
         const fireTopUp = () => {
           slideCountTopUpTimerRef.current = null;
           pendingSlideCountTopUpConversationIdRef.current = null;
@@ -14446,7 +14472,8 @@ export function ProjectView({
             }
           }
           if (abortRef.current) {
-            if (busyRetries < SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX) {
+            if (!busyStartedAt) busyStartedAt = Date.now();
+            if (shouldContinueSlideAutomationBusyRetry({ startedAtMs: busyStartedAt })) {
               busyRetries += 1;
               pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
               setPendingSlideAutomationKind("top_up");
@@ -14486,8 +14513,9 @@ export function ProjectView({
           );
           void Promise.resolve(started).then((ok) => {
             if (ok !== false) return;
+            if (!busyStartedAt) busyStartedAt = Date.now();
             if (
-              busyRetries < SLIDE_COUNT_TOP_UP_BUSY_RETRY_MAX
+              shouldContinueSlideAutomationBusyRetry({ startedAtMs: busyStartedAt })
               && slideCountTopUpTimerRef.current === null
             ) {
               busyRetries += 1;

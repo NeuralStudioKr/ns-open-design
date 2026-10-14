@@ -19,6 +19,8 @@ export const STALLED_PARTIAL_DECK_MIN_CHARS = 400;
 const STALL_ERROR_CODE = 'AGENT_EXECUTION_STALLED';
 const DAEMON_STALL_FAILED_CODE = 'AGENT_EXECUTION_FAILED';
 const DAEMON_STALL_MESSAGE_RE = /Agent stalled without emitting/i;
+const INCOMPLETE_DECK_UPSTREAM_RE =
+  /stream ended before the deck artifact completed|ended before the deck artifact/i;
 const DECK_DOCUMENT_START_RE = /<!doctype\s+html|<html[\s>]/i;
 
 export function formatStalledPartialDeckNotice(): string {
@@ -34,6 +36,9 @@ export function looksLikeStalledRunError(input: {
 }): boolean {
   const code = String(input.errorCode ?? '').trim();
   if (code === STALL_ERROR_CODE) return true;
+  if (code === 'UPSTREAM_UNAVAILABLE' && INCOMPLETE_DECK_UPSTREAM_RE.test(String(input.errorDetail ?? ''))) {
+    return true;
+  }
   if (code !== DAEMON_STALL_FAILED_CODE) return false;
   return DAEMON_STALL_MESSAGE_RE.test(String(input.errorDetail ?? ''));
 }

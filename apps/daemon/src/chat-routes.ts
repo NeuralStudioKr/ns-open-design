@@ -39,6 +39,7 @@ import {
 } from './teamver-managed-api-key.js';
 import { isSafeId as isSafeProjectId } from './projects.js';
 import { projectKindToTracking } from '@open-design/contracts/analytics';
+import { closeIncompleteDeckArtifactForSalvage } from '@open-design/contracts';
 import { proxyDispatcherRequestInit, validateBaseUrlResolved } from './connectionTest.js';
 import { googleStreamGenerateContentUrl } from './google-models.js';
 import { createRoleMarkerGuard } from './role-marker-guard.js';
@@ -1057,7 +1058,32 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     return false;
   };
 
-  const completeDeckArtifactText = (text: string): boolean => {
+  const expectedDeckSlideCountFromMessages = (messages: any[]): number | null => {
+    const joined = messages.map((message) => {
+      const content = message?.content;
+      if (typeof content === 'string') return content;
+      if (!Array.isArray(content)) return '';
+      return content
+        .map((block: any) => (typeof block?.text === 'string' ? block.text : ''))
+        .join('\n');
+    }).join('\n');
+    const matches = [...joined.matchAll(
+      /Seed contains\s+(\d{1,2})\s+slides\.\s*Return EXACTLY\s+(\d{1,2})\s+<section class=["']slide["']>\s+elements\./gi,
+    )];
+    for (let index = matches.length - 1; index >= 0; index -= 1) {
+      const first = Number(matches[index]?.[1]);
+      const second = Number(matches[index]?.[2]);
+      if (first === second && Number.isInteger(first) && first > 0 && first <= 40) {
+        return first;
+      }
+    }
+    return null;
+  };
+
+  const completeDeckArtifactText = (
+    text: string,
+    expectedSlideCount: number | null = null,
+  ): boolean => {
     const raw = String(text ?? '');
     if (/<question-form\b[\s\S]*<\/question-form\s*>/i.test(raw)) return true;
     const open = /<artifact\b([^>]*)>/i.exec(raw);
@@ -1069,12 +1095,22 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     if (closeIndex < 0) return false;
     const body = raw.slice(bodyStart, closeIndex);
     if (type === 'deck') {
-      return /<!doctype\s+html\b|<html\b/i.test(body)
+      const structurallyComplete = /<!doctype\s+html\b|<html\b/i.test(body)
         && /<\/html\s*>/i.test(body)
         && /<(?:section|div|main|article)\b[^>]*(?:class\s*=\s*["'][^"']*\bslide\b|data-slide(?:-index)?\s*=)/i.test(body);
+      if (!structurallyComplete) return false;
+      if (expectedSlideCount == null) return true;
+      const slides = body.match(
+        /<(?:section|div|main|article)\b[^>]*(?:class\s*=\s*["'][^"']*\bslide\b|data-slide(?:-index)?\s*=)[^>]*>/gi,
+      ) ?? [];
+      return slides.length === expectedSlideCount;
     }
     if (type === 'deck-patch') {
-      return /<(?:section|div|main|article)\b[^>]*(?:class\s*=\s*["'][^"']*\bslide\b|data-slide-index\s*=)/i.test(body);
+      const slides = body.match(
+        /<section\b[^>]*(?:class\s*=\s*["'][^"']*\bslide\b|data-slide-index\s*=)[^>]*>/gi,
+      ) ?? [];
+      if (slides.length === 0) return false;
+      return expectedSlideCount == null || slides.length === expectedSlideCount;
     }
     return /<patch\b[^>]*>[\s\S]*<\/patch\s*>/i.test(body);
   };
@@ -1095,20 +1131,41 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     return partial + next;
   };
 
-  const deckArtifactContinuationPrompt = (fullRewrite: boolean): string => fullRewrite
-    ? [
+  const deckArtifactContinuationPrompt = (
+    fullRewrite: boolean,
+    partial = '',
+  ): string => {
+    const deckPatch = /<artifact\b[^>]*\btype\s*=\s*["']deck-patch["']/i.test(partial);
+    if (fullRewrite && deckPatch) {
+      return [
+        'The previous official-rich deck-patch was incomplete or had too few slides.',
+        'Return ONE complete replacement <artifact type="deck-patch" identifier="deck"> now.',
+        'Include every requested replacement <section class="slide" data-slide-index="N"> in ascending 0-based order.',
+        'Do not emit <!doctype>, html, head, body, global CSS, status prose, markdown fences, or explanations.',
+        'Close </artifact> only after every requested slide is present.',
+      ].join(' ');
+    }
+    return fullRewrite
+      ? [
         'The previous deck artifact was truncated and suffix continuation did not close it.',
         'Return ONE complete replacement <artifact type="deck" identifier="deck"> now.',
         'Keep the requested content and visual style, but make the HTML compact enough to finish.',
         'Include real filled slide sections and close </body></html></artifact>.',
         'Output the artifact only. Do not add status prose, markdown fences, or explanations.',
       ].join(' ')
-    : [
+      : deckPatch
+        ? [
+            'Continue the immediately preceding truncated deck-patch from the exact next byte.',
+            'Output ONLY the missing suffix without repeating existing sections or the artifact opener.',
+            'Finish every remaining indexed replacement slide in ascending order and close </artifact>.',
+          ].join(' ')
+        : [
         'Continue the immediately preceding truncated deck response from the exact next byte.',
         'Output ONLY the missing suffix. Do not repeat status prose, <artifact>, <!doctype>, <html>,',
         'or any content already present. Finish all requested filled slides and close',
         '</body></html></artifact> in this response.',
       ].join(' ');
+  };
 
   /** Upstream closed without message_stop/[DONE]/error — empty streams are retryable drops. */
   const finalizeProxyUpstreamIfIncomplete = (
@@ -2393,6 +2450,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         Boolean(opts.hostedManaged)
         && atomicMiniMaxResponse
         && isHostedManagedBufferedStreamEnabled();
+      const expectedDeckSlideCount = expectCompleteDeckArtifact === true
+        ? expectedDeckSlideCountFromMessages(messagesForTurn)
+        : null;
       const payload: any = {
         model,
         messages: messagesForTurn,
@@ -2485,7 +2545,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       if (bufferedHostedResponse) {
         const validateBufferedText = expectCompleteJsonOutline === true
           ? completeJsonOutlineText
-          : completeDeckArtifactText;
+          : (text: string) => completeDeckArtifactText(text, expectedDeckSlideCount);
         const maxRepairAttempts = 2;
         const jsonContinuationPrompt = (fullRewrite: boolean) => fullRewrite
           ? [
@@ -2511,17 +2571,23 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
             turnUsage.outputTokens += usage.outputTokens;
           },
           createRepairResponse: async ({ fullRewrite, partial }) => {
+            // A syntactically closed artifact that failed semantic validation
+            // (normally a 2-of-10 deck-patch) cannot accept a suffix after its
+            // closing tag. Ask for one complete replacement immediately while
+            // keeping the collector's retry budget unchanged.
+            const replaceClosedArtifact = /<\/artifact\s*>/i.test(partial);
+            const rewrite = fullRewrite || replaceClosedArtifact;
             const continuationPayload = {
               ...payload,
               stream: true,
               messages: [
                 ...messagesForTurn,
-                ...(fullRewrite ? [] : [{ role: 'assistant', content: partial }]),
+                ...(rewrite ? [] : [{ role: 'assistant', content: partial }]),
                 {
                   role: 'user',
                   content: expectCompleteJsonOutline === true
                     ? jsonContinuationPrompt(fullRewrite)
-                    : deckArtifactContinuationPrompt(fullRewrite),
+                    : deckArtifactContinuationPrompt(rewrite, partial),
                 },
               ],
             };
@@ -2565,6 +2631,16 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           return { kind: 'error' };
         }
         if (buffered.kind === 'incomplete') {
+          if (expectCompleteDeckArtifact === true) {
+            const salvaged = closeIncompleteDeckArtifactForSalvage(buffered.text);
+            if (salvaged) {
+              sse.send('progress', { phase: 'publishing' });
+              for (const chunk of splitHostedBufferedFinalText(salvaged)) {
+                sse.send('delta', { delta: chunk });
+              }
+              return { kind: 'text_end' };
+            }
+          }
           sendProxyUsageIfPresent(
             res,
             sse,
@@ -2591,6 +2667,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       if (atomicMiniMaxResponse) {
         let atomicResponse = response;
         let atomicContent = '';
+        let replaceAtomicResponse = true;
         const maxAtomicDeckContinuationAttempts = expectCompleteDeckArtifact === true ? 2 : 0;
         for (
           let continuationAttempt = 0;
@@ -2628,7 +2705,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
             : typeof choice?.delta?.content === 'string'
               ? choice.delta.content
               : '';
-          atomicContent = continuationAttempt === 0
+          atomicContent = replaceAtomicResponse
             ? responseContent
             : mergeDeckArtifactContinuation(atomicContent, responseContent);
 
@@ -2636,7 +2713,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           // full JSON outline or deck artifact before exposing any bytes.
           const complete = expectCompleteJsonOutline === true
             ? completeJsonOutlineText(atomicContent)
-            : completeDeckArtifactText(atomicContent);
+            : completeDeckArtifactText(atomicContent, expectedDeckSlideCount);
           if (complete) {
             sse.send('delta', { delta: atomicContent });
             return { kind: 'text_end' };
@@ -2644,14 +2721,16 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           if (continuationAttempt >= maxAtomicDeckContinuationAttempts) break;
 
           const fullRewrite = continuationAttempt > 0;
+          const rewrite = fullRewrite || /<\/artifact\s*>/i.test(atomicContent);
+          replaceAtomicResponse = rewrite;
           const continuationPayload = {
             ...payload,
             messages: [
               ...messagesForTurn,
-              ...(fullRewrite ? [] : [{ role: 'assistant', content: atomicContent }]),
+              ...(rewrite ? [] : [{ role: 'assistant', content: atomicContent }]),
               {
                 role: 'user',
-                content: deckArtifactContinuationPrompt(fullRewrite),
+                content: deckArtifactContinuationPrompt(rewrite, atomicContent),
               },
             ],
           };
@@ -2686,6 +2765,13 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           }
         }
 
+        if (expectCompleteDeckArtifact === true) {
+          const salvaged = closeIncompleteDeckArtifactForSalvage(atomicContent);
+          if (salvaged) {
+            sse.send('delta', { delta: salvaged });
+            return { kind: 'text_end' };
+          }
+        }
         sendProxyUsageIfPresent(
           res,
           sse,
@@ -2840,21 +2926,23 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         );
       const incompleteExpectedDeck =
         expectCompleteDeckArtifact === true
-        && !completeDeckArtifactText(guard.visibleText);
+        && !completeDeckArtifactText(guard.visibleText, expectedDeckSlideCount);
+      let repairedDeckForSalvage = guard.visibleText;
       if (incompleteExpectedDeck) {
         let repairedDeck = guard.visibleText;
         for (let continuationAttempt = 0; continuationAttempt < 2; continuationAttempt += 1) {
           const fullRewrite = continuationAttempt > 0;
+          const rewrite = fullRewrite || /<\/artifact\s*>/i.test(repairedDeck);
           const continuationPayload: any = {
             ...payload,
             stream: false,
             tool_choice: 'none',
             messages: [
               ...messagesForTurn,
-              ...(fullRewrite ? [] : [{ role: 'assistant', content: repairedDeck }]),
+              ...(rewrite ? [] : [{ role: 'assistant', content: repairedDeck }]),
               {
                 role: 'user',
-                content: deckArtifactContinuationPrompt(fullRewrite),
+                content: deckArtifactContinuationPrompt(rewrite, repairedDeck),
               },
             ],
           };
@@ -2896,16 +2984,24 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
             : typeof choice?.delta?.content === 'string'
               ? choice.delta.content
               : '';
-          repairedDeck = fullRewrite
+          repairedDeck = rewrite
             ? continuationText
             : mergeDeckArtifactContinuation(repairedDeck, continuationText);
-          if (completeDeckArtifactText(repairedDeck)) {
+          if (completeDeckArtifactText(repairedDeck, expectedDeckSlideCount)) {
             sse.send('delta', { delta: repairedDeck });
             return { kind: 'text_end' };
           }
         }
+        repairedDeckForSalvage = repairedDeck;
       }
       if (incompleteExpectedJson || incompleteExpectedDeck) {
+        if (incompleteExpectedDeck) {
+          const salvaged = closeIncompleteDeckArtifactForSalvage(repairedDeckForSalvage);
+          if (salvaged) {
+            sse.send('delta', { delta: salvaged });
+            return { kind: 'text_end' };
+          }
+        }
         sendProxyUsageIfPresent(
           res,
           sse,

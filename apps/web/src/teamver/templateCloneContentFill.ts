@@ -1086,6 +1086,27 @@ export function shouldPreserveOfficialRichHowToPersist(input: {
 }
 
 /**
+ * 1007-N01 슬라이스 J — official-rich / how-to 가 장수 미달이어도
+ * JSON LOOK 복구·처음부터 HTML 재생성 대신 부분 덱을 persist 하고 top-up 한다.
+ */
+export function shouldPersistOfficialRichPartialAndContinue(input: {
+  brief?: string | null;
+  html?: string | null;
+  richFill?: boolean;
+  explicitJson?: boolean;
+  producedCount: number;
+}): boolean {
+  if (input.explicitJson) return false;
+  if (!Number.isFinite(input.producedCount) || input.producedCount < 1) return false;
+  if (input.richFill) return true;
+  return shouldPreserveOfficialRichHowToPersist({
+    brief: input.brief,
+    html: input.html,
+    explicitJson: input.explicitJson,
+  });
+}
+
+/**
  * Prompt-fill HTML that collapses to a short deck gets one bounded recovery
  * through the smaller JSON outline contract. The host still owns the LOOK
  * seed and renders the model-authored copy into its existing slide layouts.
@@ -1461,15 +1482,50 @@ export function buildTemplateClonePromptFillSeed(options: {
 export function buildTemplateCloneRichOfficialLookFillSeed(
   options: Parameters<typeof buildTemplateClonePromptFillSeed>[0],
 ): string {
-  const base = buildTemplateClonePromptFillSeed(options);
+  const base = buildTemplateClonePromptFillSeed(options)
+    .replace(
+      'A visual deck template was selected. Create ONE complete final deck artifact now.',
+      'A visual deck template was selected and its complete LOOK seed already exists on disk. Fill every seed slide now.',
+    )
+    .replace(
+      'Emit slides immediately; do not stop after </head>.',
+      'Emit replacement slide sections immediately; do not regenerate the document head.',
+    )
+    .replace(
+      'Emit `<artifact type="deck" identifier="deck">` with a complete HTML document and filled slides. Do not emit JSON outline.',
+      'Emit ONE `<artifact type="deck-patch" identifier="deck">` containing every filled replacement slide. Do not emit JSON outline.',
+    )
+    .replace(
+      'Never emit `<artifact type="deck-patch">` on this create turn — this is a first fill, not a surgical edit. Emit ONE full `<artifact type="deck">` only.',
+      'This is a full first-fill patch, not a surgical edit: replace EVERY seed slide exactly once in ascending 0-based `data-slide-index` order.',
+    )
+    .replace(
+      'Use the cloned `deck.html` only as a look reference. Do not treat it as an existing-deck edit, copy demo placeholders, or paste this host contract onto slides.',
+      'Use the cloned `deck.html` as the patch target and visual authority. Replace its demo content; do not copy demo placeholders or paste this host contract onto slides.',
+    )
+    .replace(
+      'Reuse LOOK seed :root tokens already on disk. Do not re-emit full kit CSS in <head>. Never emit var(--pink) without defining tokens.',
+      'Reuse LOOK seed :root tokens and classes already on disk. Do not emit `<!doctype>`, `<html>`, `<head>`, `<body>`, global `<style>`, or navigation `<script>` inside the patch.',
+    )
+    .replace(
+      'Do not stop after a status sentence, outline, or partial `<head>`; close `</html></artifact>`.',
+      'Do not stop after a status sentence or partial slide list; close `</artifact>` only after every indexed replacement section is present.',
+    );
   const densityBlock = buildRichOfficialLookDensityBlock().join('\n');
+  const patchContract = [
+    '[Official-rich deck-patch contract — READ LAST]',
+    'Output shape: `<artifact type="deck-patch" identifier="deck"><section class="slide …" data-slide-index="0">…</section>…</artifact>`.',
+    'Every replacement section MUST include `class="slide"` and its explicit 0-based `data-slide-index`. Start at 0, use each index once, keep ascending order, and include the exact requested/seed slide count.',
+    'Use replacement sections only (no append/remove operations). Keep the selected kit class vocabulary, CSS variables, motif/deco elements, palette, typography, borders, shadows, and layout rhythm in the authored slide markup.',
+    'The host merges these sections into the existing standalone deck, preserving its CSS/fonts/scripts. Never repeat the document shell or global stylesheet.',
+  ].join('\n');
   const briefMarker = '\n\n[Source brief]';
   const briefIdx = base.indexOf(briefMarker);
   if (briefIdx === -1) {
-    return `${base}\n${densityBlock}`;
+    return `${base}\n${densityBlock}\n${patchContract}`;
   }
   // [Source brief] 는 맨 끝 블록이어야 하므로 density 계약을 그 앞에 끼운다.
-  return `${base.slice(0, briefIdx)}\n${densityBlock}${base.slice(briefIdx)}`;
+  return `${base.slice(0, briefIdx)}\n${densityBlock}\n${patchContract}${base.slice(briefIdx)}`;
 }
 
 /**
