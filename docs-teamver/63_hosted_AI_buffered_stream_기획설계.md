@@ -1,11 +1,11 @@
 # Hosted AI buffered stream 기획·설계
 
 **작성일:** 2026-10-14
-**상태:** Phase 1 구현 완료, default/staging flag OFF · canary/metric 관측 미실시
+**상태:** Phase 1 구현 완료, staging canary ON · production/base default OFF
 **대상:** staging 전용 `/api/proxy/chat/stream`의 complete deck/JSON 실행
 **관련 문서:** [62 provider 비노출](./62_hosted_AI_provider_비노출_기획설계.md) · [54-1 MiniMax 개발설계](./54-1_MiniMax_전환_개발설계.md) · [29 BYOK API mode](./29_BYOK_api_mode_vs_runs_아키텍처.md)
 
-> 이 문서는 기획·설계와 구현 경계의 SSOT다. 2026-10-14에 web progress parser, 별도 daemon collector, hosted route flag 분기까지 구현했다. `TEAMVER_HOSTED_CHAT_BUFFERED_STREAM_ENABLED`의 base/staging/production 기본값은 모두 `0`이며 canary는 아직 활성화하지 않았다.
+> 이 문서는 기획·설계와 구현 경계의 SSOT다. 2026-10-14에 web progress parser, 별도 daemon collector, hosted route flag 분기까지 구현했다. base compose와 production 기본값은 `0`을 유지하고, staging override만 `1`로 활성화했다. 실제 canary는 변경된 daemon image를 staging에 재배포한 뒤 시작된다.
 
 ---
 
@@ -335,14 +335,14 @@ apps/daemon/src/chat-routes.ts
 ### 8.2 rollout flag
 
 ```env
-TEAMVER_HOSTED_CHAT_BUFFERED_STREAM_ENABLED=0
+TEAMVER_HOSTED_CHAT_BUFFERED_STREAM_ENABLED=1 # staging only
 ```
 
-- 기본값, base compose, production은 `0`이다.
+- base compose와 production은 `0`이다. staging compose와 staging env만 `1`이다.
 - `TEAMVER_HOSTED_CHAT_API_ENABLED=1`인 hosted generic route에서만 의미가 있다.
 - legacy `/api/proxy/minimax/stream`에는 적용하지 않는다.
 - web은 unknown progress를 안전하게 무시하는 parser를 먼저 배포한다.
-- staging daemon에서만 flag를 켜 canary한다.
+- staging daemon에서만 flag를 켜 canary한다. 적용에는 daemon image 재빌드·재시작이 필요하다.
 
 ### 8.3 즉시 롤백
 
