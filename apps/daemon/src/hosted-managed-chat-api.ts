@@ -13,6 +13,8 @@ import {
  */
 export const HOSTED_MANAGED_CHAT_ROUTE = '/api/proxy/chat/stream';
 export const HOSTED_MANAGED_CHAT_FLAG = 'TEAMVER_HOSTED_CHAT_API_ENABLED';
+export const HOSTED_MANAGED_BUFFERED_STREAM_FLAG =
+  'TEAMVER_HOSTED_CHAT_BUFFERED_STREAM_ENABLED';
 
 const FORBIDDEN_PUBLIC_FIELDS = Object.freeze([
   'apiKey',
@@ -40,6 +42,13 @@ export function isHostedManagedChatApiEnabled(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
   const raw = (env[HOSTED_MANAGED_CHAT_FLAG] ?? '').trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+
+export function isHostedManagedBufferedStreamEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const raw = (env[HOSTED_MANAGED_BUFFERED_STREAM_FLAG] ?? '').trim().toLowerCase();
   return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
 }
 

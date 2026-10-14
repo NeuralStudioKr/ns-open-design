@@ -51,6 +51,7 @@ export const exampleChatSseEvents: ChatSseEvent[] = [
 
 export const exampleProxySseEvents: ProxySseEvent[] = [
   { event: 'start', data: { model: 'gpt-4o-mini' } },
+  { event: 'progress', data: { phase: 'generating', activity: 'content' } },
   { event: 'delta', data: { delta: 'Hello' } },
   { event: 'end', data: { code: 0 } },
 ];

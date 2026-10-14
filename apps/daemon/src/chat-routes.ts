@@ -76,10 +76,16 @@ import {
   HOSTED_MANAGED_CHAT_PUBLIC_ERRORS,
   HOSTED_MANAGED_CHAT_ROUTE,
   isHostedManagedChatApiEnabled,
+  isHostedManagedBufferedStreamEnabled,
   resolveHostedManagedChatRuntime,
   validateHostedManagedChatBody,
   type HostedManagedChatRuntime,
 } from './hosted-managed-chat-api.js';
+import {
+  collectHostedBufferedStream,
+  fetchHostedBufferedUpstream,
+  splitHostedBufferedFinalText,
+} from './hosted-managed-buffered-stream.js';
 
 // Allowlist for the `/feedback` route. Mirrors the
 // ChatMessageFeedbackReasonCode union in packages/contracts/src/api/chat.ts.
@@ -2383,10 +2389,14 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       const atomicMiniMaxResponse =
         opts.providerId === 'minimax'
         && (expectCompleteJsonOutline === true || atomicMiniMaxDeckResponse);
+      const bufferedHostedResponse =
+        Boolean(opts.hostedManaged)
+        && atomicMiniMaxResponse
+        && isHostedManagedBufferedStreamEnabled();
       const payload: any = {
         model,
         messages: messagesForTurn,
-        stream: !atomicMiniMaxResponse,
+        stream: bufferedHostedResponse || !atomicMiniMaxResponse,
         tools: opts.tools,
         tool_choice: 'auto',
       };
@@ -2394,7 +2404,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         Object.assign(payload, buildMiniMaxChatCompletionExtras({
           requestedMaxCompletionTokens:
             typeof maxTokens === 'number' && maxTokens > 0 ? maxTokens : null,
-          includeUsage: !atomicMiniMaxResponse,
+          includeUsage: bufferedHostedResponse || !atomicMiniMaxResponse,
           jsonOutline: expectCompleteJsonOutline === true,
         }));
         if (
@@ -2421,7 +2431,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           payload.stream_options = { include_usage: true };
         }
       }
-      const response = await fetch(url, {
+      const bufferedStartedAt = bufferedHostedResponse ? Date.now() : undefined;
+      if (bufferedHostedResponse) {
+        sse.send('progress', { phase: 'connecting' });
+      }
+      const upstreamRequestInit: any = {
         ...toolCtx.requestInit,
         method: 'POST',
         headers: {
@@ -2433,7 +2447,10 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         ...(byokProxyAbortSignalFromRes(res)
           ? { signal: byokProxyAbortSignalFromRes(res)! }
           : {}),
-      });
+      };
+      const response = bufferedHostedResponse
+        ? await fetchHostedBufferedUpstream(url, upstreamRequestInit)
+        : await fetch(url, upstreamRequestInit);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -2465,6 +2482,112 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       const guard = createDeltaGuard(sse, {
         bufferVisible: expectCompleteDeckArtifact === true,
       });
+      if (bufferedHostedResponse) {
+        const validateBufferedText = expectCompleteJsonOutline === true
+          ? completeJsonOutlineText
+          : completeDeckArtifactText;
+        const maxRepairAttempts = 2;
+        const jsonContinuationPrompt = (fullRewrite: boolean) => fullRewrite
+          ? [
+              'Return ONE complete replacement JSON outline object now.',
+              'It must include a non-empty slides array and valid closed JSON.',
+              'Output JSON only without markdown fences, status prose, or explanations.',
+            ].join(' ')
+          : [
+              'Continue the immediately preceding truncated JSON outline from the exact next byte.',
+              'Output ONLY the missing suffix without repeating existing bytes or adding markdown.',
+              'Finish the slides array and close the JSON object.',
+            ].join(' ');
+        const buffered = await collectHostedBufferedStream({
+          initialResponse: response,
+          ...(bufferedStartedAt === undefined ? {} : { startedAtMs: bufferedStartedAt }),
+          isComplete: validateBufferedText,
+          merge: mergeDeckArtifactContinuation,
+          maxRepairAttempts,
+          extractProviderError: (data) => extractStreamErrorMessage(data),
+          onProgress: (progress) => sse.send('progress', progress),
+          onUsage: (usage) => {
+            turnUsage.inputTokens += usage.inputTokens;
+            turnUsage.outputTokens += usage.outputTokens;
+          },
+          createRepairResponse: async ({ fullRewrite, partial }) => {
+            const continuationPayload = {
+              ...payload,
+              stream: true,
+              messages: [
+                ...messagesForTurn,
+                ...(fullRewrite ? [] : [{ role: 'assistant', content: partial }]),
+                {
+                  role: 'user',
+                  content: expectCompleteJsonOutline === true
+                    ? jsonContinuationPrompt(fullRewrite)
+                    : deckArtifactContinuationPrompt(fullRewrite),
+                },
+              ],
+            };
+            const repairResponse = await fetchHostedBufferedUpstream(url, {
+              ...toolCtx.requestInit,
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...opts.buildHeaders(apiKey),
+              },
+              body: JSON.stringify(continuationPayload),
+              redirect: 'error',
+              ...(byokProxyAbortSignalFromRes(res)
+                ? { signal: byokProxyAbortSignalFromRes(res)! }
+                : {}),
+            });
+            if (!repairResponse.ok) {
+              const errorText = await repairResponse.text();
+              throw Object.assign(
+                new Error(upstreamHttpErrorMessage(repairResponse.status, errorText)),
+                {
+                  code: proxyErrorCode(repairResponse.status),
+                  retryable: proxyHttpRetryable(repairResponse.status),
+                },
+              );
+            }
+            return repairResponse;
+          },
+        });
+
+        if (buffered.kind === 'provider_error') {
+          sendProxyUsageIfPresent(
+            res,
+            sse,
+            turnUsage.inputTokens,
+            turnUsage.outputTokens,
+            model,
+          );
+          const streamErr = extractStreamErrorMessage(buffered.data) || 'provider error';
+          sendRouteProviderError(sse, `Provider error: ${streamErr}`, buffered.data);
+          return { kind: 'error' };
+        }
+        if (buffered.kind === 'incomplete') {
+          sendProxyUsageIfPresent(
+            res,
+            sse,
+            turnUsage.inputTokens,
+            turnUsage.outputTokens,
+            model,
+          );
+          sendProxyError(
+            sse,
+            expectCompleteJsonOutline === true
+              ? HOSTED_MANAGED_CHAT_PUBLIC_ERRORS.incompleteJson
+              : HOSTED_MANAGED_CHAT_PUBLIC_ERRORS.incompleteArtifact,
+            { code: 'UPSTREAM_UNAVAILABLE', retryable: true },
+          );
+          return { kind: 'error' };
+        }
+
+        sse.send('progress', { phase: 'publishing' });
+        for (const chunk of splitHostedBufferedFinalText(buffered.text)) {
+          sse.send('delta', { delta: chunk });
+        }
+        return { kind: 'text_end' };
+      }
       if (atomicMiniMaxResponse) {
         let atomicResponse = response;
         let atomicContent = '';

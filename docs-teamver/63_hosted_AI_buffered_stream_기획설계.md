@@ -1,11 +1,11 @@
 # Hosted AI buffered stream 기획·설계
 
 **작성일:** 2026-10-14
-**상태:** 설계 검토 완료, 미구현
+**상태:** Phase 1 구현 완료, default/staging flag OFF · canary/metric 관측 미실시
 **대상:** staging 전용 `/api/proxy/chat/stream`의 complete deck/JSON 실행
 **관련 문서:** [62 provider 비노출](./62_hosted_AI_provider_비노출_기획설계.md) · [54-1 MiniMax 개발설계](./54-1_MiniMax_전환_개발설계.md) · [29 BYOK API mode](./29_BYOK_api_mode_vs_runs_아키텍처.md)
 
-> 이 문서는 구현 전 기획·설계 SSOT다. 이 문서 작성으로 동작하는 코드, env 기본값, staging route는 변경하지 않는다.
+> 이 문서는 기획·설계와 구현 경계의 SSOT다. 2026-10-14에 web progress parser, 별도 daemon collector, hosted route flag 분기까지 구현했다. `TEAMVER_HOSTED_CHAT_BUFFERED_STREAM_ENABLED`의 base/staging/production 기본값은 모두 `0`이며 canary는 아직 활성화하지 않았다.
 
 ---
 
@@ -461,11 +461,11 @@ staging 합격 기준:
 
 ## 13. 구현 순서
 
-1. 본 문서와 contract fixture를 먼저 반영한다. 코드 동작은 바꾸지 않는다.
-2. progress SSE parser와 content-activity 판정을 web에 additive하게 추가하되 chat bubble/persist에는 연결하지 않는다.
-3. daemon 별도 collector와 fake upstream 테스트를 구현한다. route flag는 계속 OFF다.
-4. hosted generic route에만 flag 분기를 연결한다.
-5. staging 단일 workspace canary에서 flag를 켠다.
+1. [완료] 본 문서와 contract fixture를 먼저 반영한다. 코드 동작은 바꾸지 않는다.
+2. [완료] progress SSE parser와 content-activity 판정을 web에 additive하게 추가하되 chat bubble/persist에는 연결하지 않는다.
+3. [완료] daemon 별도 collector와 fake upstream 테스트를 구현한다. route flag는 계속 OFF다.
+4. [완료] hosted generic route에만 flag 분기를 연결한다.
+5. [미실시] staging 단일 workspace canary에서 flag를 켠다.
 6. timeout/repair/latency metric을 확인하고 staging 전체로 확대한다.
 7. 충분한 관측 기간 후에만 기존 atomic implementation 제거 여부를 별도 결정한다.
 

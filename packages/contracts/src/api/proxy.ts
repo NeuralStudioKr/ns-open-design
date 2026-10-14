@@ -49,6 +49,12 @@ export interface ProxyStreamDeltaPayload {
   delta: string;
 }
 
+export interface ProxyStreamProgressPayload {
+  phase: 'connecting' | 'generating' | 'tool' | 'validating' | 'repairing' | 'publishing';
+  activity?: 'content';
+  attempt?: number;
+}
+
 export interface ProxyStreamEndPayload {
   code?: number;
 }

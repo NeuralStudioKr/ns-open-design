@@ -11,6 +11,8 @@ services:
     environment:
       # Staging shadow evaluation only. Override to 0 to remove the generic route.
       TEAMVER_HOSTED_CHAT_API_ENABLED: ${TEAMVER_HOSTED_CHAT_API_ENABLED:-1}
+      # Additive canary. Keep OFF until compatible web + daemon tests are deployed.
+      TEAMVER_HOSTED_CHAT_BUFFERED_STREAM_ENABLED: ${TEAMVER_HOSTED_CHAT_BUFFERED_STREAM_ENABLED:-0}
       OD_SCRATCH_EVICT_AFTER_RUN: "1"
       OD_SCRATCH_EVICT_IDLE: ${OD_SCRATCH_EVICT_IDLE:-1}
       OD_SCRATCH_EVICT_IDLE_AFTER_MS: ${OD_SCRATCH_EVICT_IDLE_AFTER_MS:-}

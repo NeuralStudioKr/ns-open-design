@@ -200,6 +200,49 @@ describe('buildProxyMessages', () => {
     expect(onDone).toHaveBeenCalled();
   });
 
+  it('treats hosted progress as ephemeral and never appends it to assistant content', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode([
+              'event: progress',
+              'data: {"phase":"generating","activity":"content"}',
+              '',
+              'event: progress',
+              'data: {"phase":"validating"}',
+              '',
+              'event: delta',
+              'data: {"delta":"final artifact"}',
+              '',
+              'event: end',
+              'data: {}',
+              '',
+            ].join('\n')));
+            controller.close();
+          },
+        }),
+      }),
+    );
+
+    const onDelta = vi.fn();
+    const onDone = vi.fn();
+    await streamProxyEndpoint(
+      '/api/proxy/anthropic/stream',
+      { apiKey: 'test-key', baseUrl: 'https://example.com', model: 'test-model' } as any,
+      'System prompt',
+      [{ id: 'm1', role: 'user', content: 'hi', createdAt: 1 }],
+      new AbortController().signal,
+      { onDelta, onDone, onError: vi.fn() },
+    );
+
+    expect(onDelta).toHaveBeenCalledTimes(1);
+    expect(onDelta).toHaveBeenCalledWith('final artifact');
+    expect(onDone).toHaveBeenCalledWith('final artifact');
+  });
+
   it('dispatches thinking_delta SSE events to onThinkingDelta', async () => {
     vi.stubGlobal(
       'fetch',
@@ -1976,6 +2019,28 @@ describe('streamProxyEndpoint idle-timeout stall (AGENT_EXECUTION_STALLED)', () 
         parseSseFrame('event: delta\ndata: {"delta":"x"}'),
       ),
     ).toBe(true);
+    expect(
+      isProxySseContentActivityFrame(
+        parseSseFrame('event: delta\ndata: {"delta":"   "}'),
+      ),
+    ).toBe(false);
+    expect(
+      isProxySseContentActivityFrame(
+        parseSseFrame('event: progress\ndata: {"phase":"validating"}'),
+      ),
+    ).toBe(false);
+    expect(
+      isProxySseContentActivityFrame(
+        parseSseFrame(
+          'event: progress\ndata: {"phase":"generating","activity":"content"}',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      isProxySseContentActivityFrame(
+        parseSseFrame('event: usage\ndata: {"input_tokens":1,"output_tokens":1}'),
+      ),
+    ).toBe(false);
 
     vi.useFakeTimers();
     vi.stubGlobal(

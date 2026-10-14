@@ -9,7 +9,7 @@
 
 > **2026-10-13 구현 상태:** 별도 daemon 모듈 및 `/api/proxy/chat/stream`을 추가했다. daemon의 `TEAMVER_HOSTED_CHAT_API_ENABLED`와 web bake-time `VITE_TEAMVER_HOSTED_CHAT_API_ENABLED`가 모두 켜지고 host가 `stg-design.teamver.com`일 때만 staging web이 신규 contract를 사용한다. base/production 기본값은 `0`, staging compose 기본값은 검증을 위해 `1`이며 production host는 web flag가 잘못 켜져도 기존 endpoint를 유지한다. runtime-config v2와 기존 endpoint 폐쇄는 아직 구현하지 않았다.
 
-> **2026-10-14 stream 검토 상태:** complete deck/JSON의 `stream:false` atomic upstream 때문에 public SSE가 `start` 뒤 keepalive-only로 보이는 문제가 확인되었다. 해결 설계는 [63번 문서](./63_hosted_AI_buffered_stream_기획설계.md)의 upstream streamed collection + daemon atomic publication이다. **아직 미구현이며 현재 route/env 동작은 변경하지 않았다.**
+> **2026-10-14 stream 구현 상태:** complete deck/JSON의 `stream:false` atomic upstream 때문에 public SSE가 `start` 뒤 keepalive-only로 보이는 문제를 [63번 문서](./63_hosted_AI_buffered_stream_기획설계.md)의 upstream streamed collection + daemon atomic publication으로 구현했다. 신규 flag의 base/staging/production 기본값은 모두 `0`이며, 현재 실행 동작은 기존 atomic 경로를 유지한다.
 
 **2026-10-13 재검토 결론:** 최초안의 방향은 맞지만, (1) hosted에서 provider별 endpoint를 계속 허용하는 문제, (2) 단일 프로필인데도 browser가 `executionProfile`을 보내는 불필요한 계약, (3) design-api와 daemon의 provider 설정 중복을 제거해야 한다. 아래 설계는 이 세 항목을 반영한 최종 권고안이다.
 
@@ -250,7 +250,7 @@ hosted config의 공개 값:
 
 ```text
 event: delta
-event: progress      // provider-neutral ephemeral phase; 63번 문서, 아직 미구현
+event: progress      // provider-neutral ephemeral phase; 63번 문서, buffered flag ON에서만 송신
 event: thinking_delta
 event: usage       // token counts only
 event: error       // stable public error envelope

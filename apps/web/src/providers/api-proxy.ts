@@ -97,11 +97,16 @@ export function resolveAdaptiveProxyStreamIdleTimeoutMs(
   return base;
 }
 
-/** Daemon `: keepalive` comments must not reset the stall clock (loop423). */
+/** Only real upstream content resets the stall clock; phase/usage events do not. */
 export function isProxySseContentActivityFrame(
   parsed: ReturnType<typeof parseSseFrame>,
 ): boolean {
-  return parsed?.kind === 'event';
+  if (parsed?.kind !== 'event') return false;
+  if (parsed.event === 'delta' || parsed.event === 'thinking_delta') {
+    const text = String(parsed.data.delta ?? parsed.data.text ?? '');
+    return text.trim().length > 0;
+  }
+  return parsed.event === 'progress' && parsed.data.activity === 'content';
 }
 
 function createProxyStreamIdleError(): Error & {

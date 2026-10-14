@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
+  HOSTED_MANAGED_BUFFERED_STREAM_FLAG,
   HOSTED_MANAGED_CHAT_FLAG,
   HOSTED_MANAGED_CHAT_ROUTE,
+  isHostedManagedBufferedStreamEnabled,
   isHostedManagedChatApiEnabled,
   resolveHostedManagedChatRuntime,
   validateHostedManagedChatBody,
@@ -24,6 +26,16 @@ describe('hosted managed chat API contract', () => {
     expect(isHostedManagedChatApiEnabled({ [HOSTED_MANAGED_CHAT_FLAG]: '0' })).toBe(false);
     expect(isHostedManagedChatApiEnabled({ [HOSTED_MANAGED_CHAT_FLAG]: 'true' })).toBe(true);
     expect(HOSTED_MANAGED_CHAT_ROUTE).toBe('/api/proxy/chat/stream');
+  });
+
+  it('keeps buffered streaming behind a separate default-off flag', () => {
+    expect(isHostedManagedBufferedStreamEnabled({})).toBe(false);
+    expect(isHostedManagedBufferedStreamEnabled({
+      [HOSTED_MANAGED_BUFFERED_STREAM_FLAG]: '0',
+    })).toBe(false);
+    expect(isHostedManagedBufferedStreamEnabled({
+      [HOSTED_MANAGED_BUFFERED_STREAM_FLAG]: 'on',
+    })).toBe(true);
   });
 
   it('accepts provider-neutral request fields', () => {
