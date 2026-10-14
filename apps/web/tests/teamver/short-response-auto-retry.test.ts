@@ -10,6 +10,7 @@ import {
   renderTooShortHtmlAutoRetryPrompt,
   shouldAutoRetryShortSlideResponse,
   shouldAutoRetryTooShortHtmlResponse,
+  shouldEscalateRepeatedPromptFillToJson,
 } from '../../src/teamver/shortResponseAutoRetry';
 import { resolveTooShortHtmlArtifactPersist } from '../../src/teamver/tooShortHtmlPersist';
 import {
@@ -119,6 +120,41 @@ describe('루프550 short-response auto-retry decision', () => {
     expect(shouldRecoverCollapsedPromptFillViaJson({
       brief: '글을 매력적으로 쓰는 팁을 8장으로 만들어줘',
       richFill: false,
+    })).toBe(false);
+  });
+
+  it('escalates a repeatedly collapsed rich prompt-fill to JSON exactly after its HTML retry', () => {
+    expect(shouldEscalateRepeatedPromptFillToJson({
+      promptFill: true,
+      contentFill: false,
+      alreadyRetried: true,
+      scopedEdit: false,
+      returnedCount: 1,
+      expectedCount: 6,
+    })).toBe(true);
+    expect(shouldEscalateRepeatedPromptFillToJson({
+      promptFill: true,
+      contentFill: false,
+      alreadyRetried: false,
+      scopedEdit: false,
+      returnedCount: 1,
+      expectedCount: 6,
+    })).toBe(false);
+    expect(shouldEscalateRepeatedPromptFillToJson({
+      promptFill: false,
+      contentFill: true,
+      alreadyRetried: true,
+      scopedEdit: false,
+      returnedCount: 1,
+      expectedCount: 6,
+    })).toBe(false);
+    expect(shouldEscalateRepeatedPromptFillToJson({
+      promptFill: true,
+      contentFill: false,
+      alreadyRetried: true,
+      scopedEdit: true,
+      returnedCount: 1,
+      expectedCount: 6,
     })).toBe(false);
   });
 });

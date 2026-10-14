@@ -50,6 +50,27 @@ export function shouldAutoRetryShortSlideResponse(
   });
 }
 
+/**
+ * A rich prompt-fill gets one HTML retry to preserve model-authored layout.
+ * If that retry still collapses, escalate once to the smaller JSON slot-fill
+ * contract instead of ending on the untouched LOOK seed.
+ */
+export function shouldEscalateRepeatedPromptFillToJson(input: {
+  promptFill: boolean;
+  contentFill: boolean;
+  alreadyRetried: boolean;
+  scopedEdit: boolean;
+  returnedCount: number;
+  expectedCount: number;
+}): boolean {
+  if (!input.promptFill || input.contentFill) return false;
+  if (!input.alreadyRetried || input.scopedEdit) return false;
+  return isLargeSlideCountShortfall({
+    seedCount: input.expectedCount,
+    returnedCount: input.returnedCount,
+  });
+}
+
 export function renderShortResponseAutoRetryPrompt(input: {
   returnedCount: number;
   seedCount: number;

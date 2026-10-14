@@ -1353,4 +1353,12 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("retryKind === 'too-short-html'");
     expect(source).toContain("isNotHtmlDeliverableValidationReason(terminalPersistResult.reason)");
   });
+
+  it("repeated rich prompt-fill collapse escalates to JSON before LOOK seed fallback", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("shouldEscalateRepeatedPromptFillToJson({");
+    expect(source).toContain("retryKind: 'prompt-collapse-json'");
+    expect(source).toContain("persistResult.retryKind === 'prompt-collapse-json'");
+    expect(source).toContain("buildPromptFillJsonRecoverySeed({");
+  });
 });

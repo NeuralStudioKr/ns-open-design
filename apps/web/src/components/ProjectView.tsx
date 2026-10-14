@@ -276,6 +276,7 @@ import {
   renderTooShortHtmlAutoRetryPrompt,
   SHORT_RESPONSE_AUTO_RETRY_PROMPT_SENTINEL,
   shouldAutoRetryShortSlideResponse,
+  shouldEscalateRepeatedPromptFillToJson,
 } from '../teamver/shortResponseAutoRetry';
 import { resolveTooShortHtmlArtifactPersist } from '../teamver/tooShortHtmlPersist';
 import { resolveIncompleteHtmlShellPersist } from '../teamver/incompleteHtmlShellPersist';
@@ -2996,7 +2997,11 @@ type ArtifactPersistResult =
     producedCount: number;
     expectedCount: number;
     reason?: string;
-    retryKind?: 'slide-count' | 'too-short-html' | 'head-preamble';
+    retryKind?:
+      | 'slide-count'
+      | 'too-short-html'
+      | 'head-preamble'
+      | 'prompt-collapse-json';
     previousSnippet?: string;
   };
 
@@ -6540,6 +6545,9 @@ export function ProjectView({
             });
             if (producedCount > 0) {
               const runImagePaths = imageAttachmentPathsForSlideEmbed(runAttachmentsRef.current);
+              const scopedFill =
+                persistCommentAttachments.length > 0
+                || runImagePaths.length > 0;
               if (
                 !runHeadPreambleContinueRef.current
                 && shouldAutoRetryShortSlideResponse({
@@ -6550,9 +6558,7 @@ export function ProjectView({
                     ?? requestedSpec?.max
                     ?? expectedCount,
                   alreadyRetried: runAutoRetryForShortResponseRef.current,
-                  scopedEdit:
-                    persistCommentAttachments.length > 0
-                    || runImagePaths.length > 0,
+                  scopedEdit: scopedFill,
                   isCreateOrFullFill:
                     runTemplateCloneContentFillRef.current
                     || runTemplateClonePromptFillRef.current,
@@ -6564,6 +6570,26 @@ export function ProjectView({
                   producedCount,
                   expectedCount,
                   reason: slideCountIncomplete.reason,
+                };
+              }
+              if (
+                !runHeadPreambleContinueRef.current
+                && shouldEscalateRepeatedPromptFillToJson({
+                  promptFill: runTemplateClonePromptFillRef.current,
+                  contentFill: runTemplateCloneContentFillRef.current,
+                  alreadyRetried: runAutoRetryForShortResponseRef.current,
+                  scopedEdit: scopedFill,
+                  returnedCount: producedCount,
+                  expectedCount,
+                })
+              ) {
+                return {
+                  kind: 'needs-short-response-retry',
+                  fileName,
+                  producedCount,
+                  expectedCount,
+                  reason: slideCountIncomplete.reason,
+                  retryKind: 'prompt-collapse-json',
                 };
               }
             }
@@ -12031,13 +12057,16 @@ export function ProjectView({
                 nextFiles = await refreshProjectFiles();
                 if (persistResult?.kind === 'needs-short-response-retry') {
                   const retryAsJsonSlotFill =
-                    persistResult.retryKind !== 'head-preamble'
-                    && runTemplateClonePromptFillRef.current
-                    && shouldRecoverCollapsedPromptFillViaJson({
-                      brief: runVisiblePromptRef.current || prompt,
-                      richFill: runTemplateCloneRichFillRef.current,
-                      explicitJson: runTemplateCloneContentFillRef.current,
-                    });
+                    persistResult.retryKind === 'prompt-collapse-json'
+                    || (
+                      persistResult.retryKind !== 'head-preamble'
+                      && runTemplateClonePromptFillRef.current
+                      && shouldRecoverCollapsedPromptFillViaJson({
+                        brief: runVisiblePromptRef.current || prompt,
+                        richFill: runTemplateCloneRichFillRef.current,
+                        explicitJson: runTemplateCloneContentFillRef.current,
+                      })
+                    );
                   const retryTemplatePin = resolveDurableDeckTemplatePin({
                     project: project.metadata,
                     runRef: runSelectedDeckTemplateIdRef.current,
