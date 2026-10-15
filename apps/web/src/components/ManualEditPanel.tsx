@@ -418,6 +418,14 @@ export function ManualEditPanel({
                     type="button"
                     className="manual-edit-footer-btn subtle"
                     disabled={busy}
+                    onMouseDown={(event) => {
+                      // Keep iframe contenteditable focused so blur cannot
+                      // commit the in-progress text before Cancel restores it.
+                      // Abort on mousedown: iframe blur already queued a
+                      // commit postMessage that runs before click.
+                      event.preventDefault();
+                      onCancelDraft();
+                    }}
                     onClick={onCancelDraft}
                   >
                     {t('common.cancel')}

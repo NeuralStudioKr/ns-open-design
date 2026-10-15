@@ -554,6 +554,11 @@ import {
   shouldHoldDiskPreviewDuringManualEdit,
   shouldSkipManualEditHistoryConfirm,
 } from '../edit-mode/manual-edit-session';
+import {
+  beginInlineTextEditGeneration,
+  shouldAbortInlineTextEditOnHostAction,
+  shouldPersistInlineTextCommit,
+} from '../edit-mode/manual-edit-inline-text';
 import { diffManualEditStylePatch } from '../edit-mode/manual-edit-style-batch';
 import {
   applyManualEditPatches,
@@ -5775,6 +5780,10 @@ function HtmlViewer({
   const [manualEditInlineTextEditing, setManualEditInlineTextEditing] = useState(false);
   const manualEditInlineTextEditingRef = useRef(false);
   manualEditInlineTextEditingRef.current = manualEditInlineTextEditing;
+  const inlineTextEditGenerationRef = useRef(0);
+  const inlineTextCancelledGenerationRef = useRef(0);
+  const inlineTextCommitInFlightRef = useRef<number | null>(null);
+  const inlineTextPendingCommitGenerationRef = useRef<number | null>(null);
   const [manualEditResizeDraftSize, setManualEditResizeDraftSize] = useState<{
     width: number;
     height: number;
@@ -11664,41 +11673,78 @@ function HtmlViewer({
       if (data.type === 'od-edit-text-commit') {
         // Text commits remount the freeze from saved source; flush style
         // drafts first or postMessage-only previews are lost on reload.
+        const editGeneration = inlineTextEditGenerationRef.current;
+        if (!shouldPersistInlineTextCommit({
+          editGeneration,
+          cancelledGeneration: inlineTextCancelledGenerationRef.current,
+        })) {
+          return;
+        }
+        inlineTextCommitInFlightRef.current = editGeneration;
+        if (inlineTextPendingCommitGenerationRef.current === editGeneration) {
+          inlineTextPendingCommitGenerationRef.current = null;
+        }
         void (async () => {
-          if (!(await flushManualEditStyleSave({ force: true }))) {
-            setManualEditError(t('manualEdit.styleFlushBeforeTextFailed'));
-            return;
+          try {
+            if (!shouldPersistInlineTextCommit({
+              editGeneration,
+              cancelledGeneration: inlineTextCancelledGenerationRef.current,
+            })) {
+              return;
+            }
+            if (!(await flushManualEditStyleSave({ force: true }))) {
+              setManualEditError(t('manualEdit.styleFlushBeforeTextFailed'));
+              return;
+            }
+            if (!shouldPersistInlineTextCommit({
+              editGeneration,
+              cancelledGeneration: inlineTextCancelledGenerationRef.current,
+            })) {
+              return;
+            }
+            const targetId = String(data.id);
+            const target = selectedManualEditTargetRef.current?.id === targetId
+              ? selectedManualEditTargetRef.current
+              : manualEditTargets.find((item) => item.id === targetId) ?? null;
+            const slideIndex = effectiveDeck
+              ? htmlPreviewSlideState.get(previewStateKey)?.active
+              : undefined;
+            await applyManualEdit(
+              {
+                id: targetId,
+                kind: 'set-text',
+                value: String(data.value),
+                flattenNestedMarkup: data.flattenNestedMarkup === true,
+              },
+              embedUiLabel('Edit text', '텍스트 편집'),
+              typeof slideIndex === 'number' ? { slideIndex } : undefined,
+              target
+                ? {
+                    id: target.id,
+                    currentText: target.fields.text ?? target.text,
+                    htmlHint: target.outerHtml,
+                  }
+                : undefined,
+            );
+          } finally {
+            if (inlineTextCommitInFlightRef.current === editGeneration) {
+              inlineTextCommitInFlightRef.current = null;
+            }
           }
-          const targetId = String(data.id);
-          const target = selectedManualEditTargetRef.current?.id === targetId
-            ? selectedManualEditTargetRef.current
-            : manualEditTargets.find((item) => item.id === targetId) ?? null;
-          const slideIndex = effectiveDeck
-            ? htmlPreviewSlideState.get(previewStateKey)?.active
-            : undefined;
-          await applyManualEdit(
-            {
-              id: targetId,
-              kind: 'set-text',
-              value: String(data.value),
-              flattenNestedMarkup: data.flattenNestedMarkup === true,
-            },
-            embedUiLabel('Edit text', '텍스트 편집'),
-            typeof slideIndex === 'number' ? { slideIndex } : undefined,
-            target
-              ? {
-                  id: target.id,
-                  currentText: target.fields.text ?? target.text,
-                  htmlHint: target.outerHtml,
-                }
-              : undefined,
-          );
         })();
         return;
       }
       if (data.type === 'od-edit-text-active') {
         const nextActive = Boolean(data.active);
         if (nextActive === manualEditInlineTextEditingRef.current) return;
+        if (nextActive) {
+          inlineTextEditGenerationRef.current = beginInlineTextEditGeneration(
+            inlineTextEditGenerationRef.current,
+          );
+          inlineTextPendingCommitGenerationRef.current = null;
+        } else {
+          inlineTextPendingCommitGenerationRef.current = inlineTextEditGenerationRef.current;
+        }
         manualEditInlineTextEditingRef.current = nextActive;
         setManualEditInlineTextEditing(nextActive);
         return;
@@ -13039,7 +13085,31 @@ function HtmlViewer({
     setManualEditError(null);
   }
 
+  function postManualEditInlineTextCancel() {
+    for (const win of slideMessageTargets()) {
+      win.postMessage({ type: 'od-edit-cancel-text-edit' }, '*');
+    }
+  }
+
+  function abortInProgressInlineTextEdit() {
+    const currentGeneration = inlineTextEditGenerationRef.current;
+    if (!shouldAbortInlineTextEditOnHostAction({
+      inlineTextEditing: manualEditInlineTextEditingRef.current,
+      commitInFlightGeneration: inlineTextCommitInFlightRef.current,
+      pendingCommitGeneration: inlineTextPendingCommitGenerationRef.current,
+      currentGeneration,
+    })) {
+      return;
+    }
+    inlineTextCancelledGenerationRef.current = currentGeneration;
+    inlineTextPendingCommitGenerationRef.current = null;
+    postManualEditInlineTextCancel();
+  }
+
   async function exitManualEditModeAfterFlush(): Promise<boolean> {
+    // Leaving edit mode without Save is cancel for in-progress inline text.
+    // Do not persist a blur-raced set-text (empty nodes then vanish in heal).
+    abortInProgressInlineTextEdit();
     // Force: geometry gestures pause autosave; a soft flush would no-op and the
     // mode-off effect would then drop the pending draft.
     const ok = await flushManualEditStyleSave({ force: true });
@@ -13351,6 +13421,7 @@ function HtmlViewer({
   }
 
   function cancelManualEditPanel() {
+    abortInProgressInlineTextEdit();
     if (selectedManualEditTarget) {
       void clearManualEditTargetSelection({ discardPendingStyles: true });
     } else {
@@ -17466,6 +17537,12 @@ function HtmlViewer({
                 title={t('fileViewer.edit')}
                 aria-label={t('fileViewer.edit')}
                 aria-pressed={manualEditMode}
+                onMouseDown={() => {
+                  // Iframe blur posts commit before this click. Mark the
+                  // in-flight generation cancelled on mousedown so persist
+                  // is ignored even if click has not run yet.
+                  if (manualEditMode) abortInProgressInlineTextEdit();
+                }}
                 onClick={activateManualEditTool}
               >
                 <RemixIcon name="edit-line" size={15} />

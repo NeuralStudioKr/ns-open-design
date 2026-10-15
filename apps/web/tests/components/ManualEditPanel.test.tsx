@@ -258,6 +258,21 @@ describe('ManualEditPanel', () => {
     expect(onSaveDraft).toHaveBeenCalledTimes(1);
   });
 
+  it('prevents mousedown default on footer cancel and aborts before click', () => {
+    const onCancelDraft = vi.fn<OnCancelDraft>();
+    renderPanel({ onCancelDraft });
+    const footerButtons = Array.from(host.querySelectorAll('.manual-edit-footer button'));
+    const cancel = footerButtons.find((button) => button.textContent === 'Cancel') as HTMLButtonElement | undefined;
+    if (!cancel) throw new Error('Footer cancel button not found');
+
+    const event = new dom.window.MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    act(() => {
+      cancel.dispatchEvent(event);
+    });
+    expect(event.defaultPrevented).toBe(true);
+    expect(onCancelDraft).toHaveBeenCalledTimes(1);
+  });
+
   it('normalizes font stacks and writes a usable font-family value', () => {
     const onDraftChange = vi.fn();
     const onStyleChange = vi.fn();

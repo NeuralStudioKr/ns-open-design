@@ -1009,6 +1009,124 @@ describe('manual edit bridge target normalization', () => {
     dom.window.close();
   });
 
+  it('restores original text on od-edit-cancel-text-edit after a blur-commit race', () => {
+    const dom = new JSDOM(
+      `<main><h1 data-od-id="title">Original title</h1></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const title = dom.window.document.querySelector('[data-od-id="title"]') as HTMLElement;
+    const postMessage = vi.spyOn(dom.window.parent, 'postMessage');
+
+    title.dispatchEvent(new dom.window.MouseEvent('dblclick', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 8,
+      clientY: 8,
+    }));
+    title.textContent = 'Draft title';
+    title.dispatchEvent(new dom.window.FocusEvent('blur', { bubbles: false }));
+
+    expect(postMessage).toHaveBeenCalledWith({
+      type: 'od-edit-text-commit',
+      id: 'title',
+      value: 'Draft title',
+      flattenNestedMarkup: true,
+    }, '*');
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-cancel-text-edit' },
+    }));
+
+    expect(title.isConnected).toBe(true);
+    expect(title.textContent).toBe('Original title');
+    expect(title.hasAttribute('data-od-editing')).toBe(false);
+
+    dom.window.close();
+  });
+
+  it('does not restore a blur-committed snapshot when another element starts editing', () => {
+    const dom = new JSDOM(
+      `<main><h1 data-od-id="title">Original title</h1><p data-od-id="chip">Keep me</p></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const title = dom.window.document.querySelector('[data-od-id="title"]') as HTMLElement;
+    const chip = dom.window.document.querySelector('[data-od-id="chip"]') as HTMLElement;
+
+    title.dispatchEvent(new dom.window.MouseEvent('dblclick', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 8,
+      clientY: 8,
+    }));
+    title.textContent = 'Draft title';
+    title.dispatchEvent(new dom.window.FocusEvent('blur', { bubbles: false }));
+
+    chip.dispatchEvent(new dom.window.MouseEvent('dblclick', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 8,
+      clientY: 8,
+    }));
+
+    expect(title.isConnected).toBe(true);
+    expect(title.textContent).toBe('Draft title');
+    expect(chip.getAttribute('data-od-editing')).toBe('true');
+
+    dom.window.close();
+  });
+
+  it('ignores a late blur commit after od-edit-cancel-text-edit already restored', () => {
+    const dom = new JSDOM(
+      `<main><h1 data-od-id="title">Original title</h1></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const title = dom.window.document.querySelector('[data-od-id="title"]') as HTMLElement;
+    const postMessage = vi.spyOn(dom.window.parent, 'postMessage');
+
+    title.dispatchEvent(new dom.window.MouseEvent('dblclick', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 8,
+      clientY: 8,
+    }));
+    title.textContent = 'Draft title';
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-cancel-text-edit' },
+    }));
+    postMessage.mockClear();
+    title.dispatchEvent(new dom.window.FocusEvent('blur', { bubbles: false }));
+
+    expect(postMessage).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: 'od-edit-text-commit',
+    }), '*');
+    expect(title.textContent).toBe('Original title');
+
+    dom.window.close();
+  });
+
+  it('restores emptied text and keeps the node when leaving edit mode without save', () => {
+    const dom = new JSDOM(
+      `<main><p data-od-id="chip">Keep me</p></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const chip = dom.window.document.querySelector('[data-od-id="chip"]') as HTMLElement;
+
+    chip.dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    chip.textContent = '';
+    expect(chip.getAttribute('data-od-editing')).toBe('true');
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-mode', enabled: false },
+    }));
+
+    expect(chip.isConnected).toBe(true);
+    expect(chip.textContent).toBe('Keep me');
+    expect(chip.hasAttribute('data-od-editing')).toBe(false);
+
+    dom.window.close();
+  });
+
   it('posts od-edit-rect after od-edit-remeasure for a mapped target', async () => {
     const posts: Array<{ type?: string; id?: string; ok?: boolean; target?: { id: string; rect?: { width: number } } }> = [];
     const dom = new JSDOM(

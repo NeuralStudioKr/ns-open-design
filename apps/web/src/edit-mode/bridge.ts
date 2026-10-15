@@ -562,8 +562,61 @@ export function buildManualEditBridge(enabled: boolean): string {
       sel.addRange(range);
     } catch (e) {}
   }
+  // Survives a blur-commit so host 취소 / edit-mode exit can still restore
+  // pre-edit HTML after the iframe already posted od-edit-text-commit.
+  var textEdit = null;
+  function closeTextEditChrome(){
+    if (!textEdit || textEdit.closed) return;
+    textEdit.closed = true;
+    var el = textEdit.el;
+    el.removeAttribute('contenteditable');
+    el.removeAttribute('data-od-editing');
+    el.removeEventListener('blur', textEdit.onBlur);
+    el.removeEventListener('keydown', textEdit.onKeyCapture, true);
+    el.removeEventListener('keydown', textEdit.onKey);
+    try {
+      window.parent.postMessage({ type: 'od-edit-text-active', active: false }, '*');
+    } catch (e) {}
+  }
+  function abortTextEdit(){
+    if (!textEdit) return;
+    var el = textEdit.el;
+    var originalHtml = textEdit.originalHtml;
+    closeTextEditChrome();
+    if (el && el.isConnected) el.innerHTML = originalHtml;
+    textEdit = null;
+  }
+  function commitTextEdit(){
+    if (!textEdit || textEdit.closed) return;
+    var el = textEdit.el;
+    var originalText = textEdit.originalText;
+    // Do not .trim() — that silently drops leading/trailing newlines the
+    // user kept. Only normalize newline shape for a stable compare/commit.
+    var value = plainTextFrom(el);
+    closeTextEditChrome();
+    if (value !== originalText) {
+      try {
+        window.parent.postMessage({
+          type: 'od-edit-text-commit',
+          id: stableId(el),
+          value: value,
+          flattenNestedMarkup: true
+        }, '*');
+      } catch (e) {}
+      // Keep snapshot: host Cancel can still restore if this blur raced the
+      // 취소 click. Explicit od-edit-cancel-text-edit consumes it.
+      return;
+    }
+    textEdit = null;
+  }
   function makeEditable(el, clickEvent){
-    if (!el || el.getAttribute('contenteditable') === 'true') return;
+    if (!el || el.getAttribute('data-od-editing') === 'true') return;
+    if (textEdit && textEdit.el !== el) {
+      // A closed snapshot is for host Cancel only. Starting another edit
+      // must not restore the previous element's pre-edit HTML.
+      if (textEdit.closed) textEdit = null;
+      else abortTextEdit();
+    }
     var originalHtml = el.innerHTML;
     var originalText = plainTextFrom(el);
     clearSelectedTarget();
@@ -574,30 +627,7 @@ export function buildManualEditBridge(enabled: boolean): string {
     try {
       window.parent.postMessage({ type: 'od-edit-text-active', active: true }, '*');
     } catch (e) {}
-    function finish(commit){
-      el.removeAttribute('contenteditable');
-      el.removeAttribute('data-od-editing');
-      el.removeEventListener('blur', onBlur);
-      el.removeEventListener('keydown', onKeyCapture, true);
-      el.removeEventListener('keydown', onKey);
-      try {
-        window.parent.postMessage({ type: 'od-edit-text-active', active: false }, '*');
-      } catch (e) {}
-      // Do not .trim() — that silently drops leading/trailing newlines the
-      // user kept. Only normalize newline shape for a stable compare/commit.
-      var value = plainTextFrom(el);
-      if (commit && value !== originalText) {
-        window.parent.postMessage({
-          type: 'od-edit-text-commit',
-          id: stableId(el),
-          value: value,
-          flattenNestedMarkup: true
-        }, '*');
-      } else if (!commit) {
-        el.innerHTML = originalHtml;
-      }
-    }
-    function onBlur(){ finish(true); }
+    function onBlur(){ commitTextEdit(); }
     function onKeyCapture(ev){
       if (
         ev.key === 'ArrowLeft' || ev.key === 'ArrowRight' || ev.key === 'ArrowUp' || ev.key === 'ArrowDown'
@@ -611,16 +641,25 @@ export function buildManualEditBridge(enabled: boolean): string {
       // Cmd/Ctrl+Enter or by blurring (click outside). Escape cancels.
       if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)) {
         ev.preventDefault();
-        finish(true);
+        commitTextEdit();
         try { el.blur(); } catch (e) {}
         return;
       }
       if (ev.key === 'Escape') {
         ev.preventDefault();
-        finish(false);
+        abortTextEdit();
         try { el.blur(); } catch (e) {}
       }
     }
+    textEdit = {
+      el: el,
+      originalHtml: originalHtml,
+      originalText: originalText,
+      closed: false,
+      onBlur: onBlur,
+      onKeyCapture: onKeyCapture,
+      onKey: onKey
+    };
     el.addEventListener('blur', onBlur);
     el.addEventListener('keydown', onKeyCapture, true);
     el.addEventListener('keydown', onKey);
@@ -742,8 +781,18 @@ export function buildManualEditBridge(enabled: boolean): string {
     if (ev.data.type === 'od-edit-mode') {
       enabled = !!ev.data.enabled;
       document.documentElement.toggleAttribute('data-od-edit-mode', enabled);
-      if (!enabled) clearSelectedTarget();
+      if (!enabled) {
+        // Still-open editor only. A blur-commit snapshot is kept for host
+        // Cancel (od-edit-cancel-text-edit), not silently restored here.
+        if (textEdit && !textEdit.closed) abortTextEdit();
+        else textEdit = null;
+        clearSelectedTarget();
+      }
       if (enabled) setTimeout(postTargets, 0);
+      return;
+    }
+    if (ev.data.type === 'od-edit-cancel-text-edit') {
+      abortTextEdit();
       return;
     }
     if (ev.data.type === 'od-edit-selected-target') {
