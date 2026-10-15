@@ -256,25 +256,51 @@ export function deckHasPerSlideSurfacePaint(html: string): boolean {
   return false;
 }
 
-function surfaceBleedSelectors(preserveSlidePaint: boolean): string {
-  return preserveSlidePaint
-    ? 'html, body'
-    : 'html, body, .slide, section.slide, [data-screen-label], .deck-slide, .ppt-slide';
+function deckReferencesKitPaper(html: string): boolean {
+  return /var\(\s*--(?:paper|bg|background|surface|cream)\b/i.test(html)
+    || /\bs-cover\b/i.test(html);
 }
 
-function renderSurfaceBleedStyle(paper: DeckSlidePaperSurface, preserveSlidePaint: boolean): string {
+function isForcedWhitePaper(value: string | null | undefined): boolean {
+  return /^(?:#fff(?:fff)?|white)$/i.test(String(value ?? '').replace(/\s+/g, ''));
+}
+
+function surfaceBleedSelectors(preserveSlidePaint: boolean, spareCoverKit = false): string {
+  // 1007-N01 S — kit decks must not !important-paint `.slide`. Dark body
+  // cards and light covers keep their own tokens; only the letterbox is
+  // repaired. Forcing var(--paper) onto every non-cover slide flattened
+  // mixed light/dark kits.
+  if (preserveSlidePaint || spareCoverKit) return 'html, body';
+  return 'html, body, .slide, section.slide, [data-screen-label], .deck-slide, .ppt-slide';
+}
+
+function renderSurfaceBleedStyle(
+  paper: DeckSlidePaperSurface,
+  preserveSlidePaint: boolean,
+  spareCoverKit = false,
+): string {
+  const surface = (isForcedWhitePaper(paper.background) && spareCoverKit)
+    ? 'var(--paper, var(--bg, var(--surface)))'
+    : paper.background;
+  const ink = (isForcedWhitePaper(paper.background) && spareCoverKit)
+    ? 'var(--ink, inherit)'
+    : paper.color;
   const rules = [
     `<style ${SURFACE_STYLE_ATTR}>`,
-    `${surfaceBleedSelectors(preserveSlidePaint)} { background: ${paper.background} !important; color: ${paper.color} !important; }`,
+    `${surfaceBleedSelectors(preserveSlidePaint, spareCoverKit)} { background: ${surface} !important; color: ${ink} !important; }`,
   ];
-  if (preserveSlidePaint) {
+  if (preserveSlidePaint || spareCoverKit) {
     // 루프556 — Mixed light/dark decks often leave the base `.slide`
     // transparent and paint only `.slide.dark`. In the standalone document the
     // white body shows through, but stacked preview mounts each slide over the
     // dark app stage. Give transparent base slides a zero-specificity paper;
     // role/variant selectors and inline backgrounds still win naturally.
+    // 1007-N01 S — never flatten s-cover kit paper with :where white.
+    const whereSel = spareCoverKit
+      ? ':where(.slide, section.slide, [data-screen-label], .deck-slide, .ppt-slide):not(.s-cover):not(.s-colophon)'
+      : ':where(.slide, section.slide, [data-screen-label], .deck-slide, .ppt-slide)';
     rules.push(
-      `:where(.slide, section.slide, [data-screen-label], .deck-slide, .ppt-slide) { background: ${paper.background}; color: ${paper.color}; }`,
+      `${whereSel} { background: ${surface}; color: ${ink}; }`,
     );
   }
   rules.push('</style>');
@@ -636,34 +662,52 @@ export function repairDeckSlideSurfaceBleed(html: string): string {
   const paper = inferDeckSlidePaperSurface(source);
   const officialLook = htmlHasOfficialLookCss(source);
   const slideBackground = extractSlideBackground(source);
+  const kitPaper = deckReferencesKitPaper(source);
   const preserveSlidePaint =
     !(officialLook && isNeutralFallbackPaint(slideBackground))
     && (
       isDecorativeBackground(slideBackground, officialLook)
       || deckHasPerSlideSurfacePaint(source)
+      || kitPaper
     );
   // 루프556 — fixed-canvas CSS comments mention the attribute by name.
   // A loose substring check therefore claimed the repair already existed and
   // returned early while the slides were still transparent. Require the real
   // tagged style block.
   const hasBleed = SURFACE_STYLE_RE.test(source);
+  const kitPaperSurface: DeckSlidePaperSurface | null = paper
+    ? (
+      isForcedWhitePaper(paper.background) && kitPaper
+        ? { background: 'var(--paper, var(--bg, var(--surface)))', color: paper.color }
+        : paper
+    )
+    : (kitPaper ? { background: 'var(--paper, var(--bg, var(--surface)))', color: 'var(--ink, inherit)' } : null);
 
   if (hasBleed) {
-    if (paper && preserveSlidePaint && bleedStyleTargetsSlides(source)) {
-      return source.replace(SURFACE_STYLE_RE, renderSurfaceBleedStyle(paper, true));
+    if (kitPaperSurface && preserveSlidePaint && bleedStyleTargetsSlides(source)) {
+      return source.replace(SURFACE_STYLE_RE, renderSurfaceBleedStyle(kitPaperSurface, true, kitPaper));
     }
     // Upgrade cream/white flatten bleed after official look merge injects
     // identity dark tokens (Hermes `--hc-bg`) or Motif role washes.
-    if (paper && bleedBackgroundDisagrees(source, paper)) {
-      return source.replace(SURFACE_STYLE_RE, renderSurfaceBleedStyle(paper, preserveSlidePaint));
+    if (kitPaperSurface && bleedBackgroundDisagrees(source, kitPaperSurface)) {
+      return source.replace(
+        SURFACE_STYLE_RE,
+        renderSurfaceBleedStyle(kitPaperSurface, preserveSlidePaint, kitPaper),
+      );
+    }
+    // 1007-N01 S — existing white flatten on .slide still washes kit paper
+    // even when inferred paper equals the bleed token.
+    if (kitPaper && /background(?:-color)?\s*:\s*(?:#fff(?:fff)?|white)/i.test(source.match(SURFACE_STYLE_RE)?.[0] ?? '')) {
+      const nextPaper = kitPaperSurface ?? { background: 'var(--paper, var(--bg, var(--surface)))', color: 'var(--ink, inherit)' };
+      return source.replace(SURFACE_STYLE_RE, renderSurfaceBleedStyle(nextPaper, true, true));
     }
     return source;
   }
 
-  if (!paper) return source;
-  if (!bodyOrSlideNeedsSurfacePromotion(source, paper, preserveSlidePaint)) return source;
+  if (!kitPaperSurface) return source;
+  if (!bodyOrSlideNeedsSurfacePromotion(source, kitPaperSurface, preserveSlidePaint)) return source;
 
-  const style = renderSurfaceBleedStyle(paper, preserveSlidePaint);
+  const style = renderSurfaceBleedStyle(kitPaperSurface, preserveSlidePaint, kitPaper);
 
   if (/<\/body>/i.test(source)) {
     return source.replace(/<\/body>/i, `${style}</body>`);

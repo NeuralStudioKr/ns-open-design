@@ -1813,6 +1813,23 @@ function mergeVisibleMotifInstances(
     if (slideMotifRole(index, slides.length) !== 'cover') {
       html = stripHeroShotMotifInstances(html);
     }
+    // 1007-N01 S — Biennale/Cobalt s-cover already has poster deco. Do not
+    // stamp a product-launch hero-shot onto that kit. Exact class tokens
+    // only — `\bblocks\b` matches "Building blocks" / `feature-blocks`.
+    const slideOpen = /^<[^>]+>/.exec(html)?.[0] ?? '';
+    if (
+      hasExactClassToken(classAttrValue(slideOpen), 's-cover')
+      && (
+        destHasExactClassToken(html, 'sunglow')
+        || destHasExactClassToken(html, 'blocks')
+        || destHasExactClassToken(html, 'pixel-glitch')
+      )
+    ) {
+      html = stripHeroShotMotifInstances(html);
+      if (hasExactClassToken(classAttrValue(pack), 'hero-shot')) {
+        return ensureMotifSafeSlideInsets(html);
+      }
+    }
     if (slideHasOfficialMotifPaint(html, instances, index, slides.length)) {
       return ensureMotifSafeSlideInsets(html);
     }

@@ -22,6 +22,8 @@ import {
   injectBiennaleSparseFillCss,
   injectCobaltAbsoluteSlotCss,
   injectSCoverKitSlotCss,
+  repairCoverKitSurfaceBleed,
+  stripForeignCoverKitMotifs,
   restyleBiennaleSparseChapterBodies,
   restyleBiennaleSparseDataBodies,
   restyleBiennaleSparseQuoteBodies,
@@ -1454,7 +1456,8 @@ export function healOfficialMagazineLayoutDensity(
     ),
     ),
   );
-  return stripCoverLedeDuplicatingCardKpi(injectSCoverKitSlotCss(
+  return stripCoverLedeDuplicatingCardKpi(repairCoverKitSurfaceBleed(injectSCoverKitSlotCss(
+  stripForeignCoverKitMotifs(
   injectCobaltAbsoluteSlotCss(
     healCobaltGridLeftoverCatalogCopy(
     healCobaltOrphanDataStats(
@@ -1472,5 +1475,5 @@ export function healOfficialMagazineLayoutDensity(
     brief,
     ),
   ),
-  ));
+  ))));
 }

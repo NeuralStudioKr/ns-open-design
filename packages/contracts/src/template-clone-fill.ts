@@ -3836,10 +3836,15 @@ export function sanitizePersistedDeckHostLeaks(html: string): string {
       stripLeftoverMotifDemoCopy(stripHostProtocolLeakFromDeckHtml(html)),
     ),
   );
+  // 1007-N01 S — drop leaked hero-shot / poster deco before Halo re-heal
+  // so persist cannot stamp an orb back onto a Biennale cover.
+  const foreignStripped = stripForeignCoverKitMotifs(stripped);
   // 1006-N01 슬라이스 7 — salvage가 표지에 넣은 빈 hero-shot을 motif
   // strip이 지운 뒤, 조사 치환이 최종 HTML에 한 번 더 닿게 한다.
-  if (!officialLookIsProductLaunchHalo(stripped)) return stripped;
-  return healProductLaunchBrokenParticles(ensureProductLaunchCoverHeroShot(stripped));
+  if (!officialLookIsProductLaunchHalo(foreignStripped)) return foreignStripped;
+  return stripForeignCoverKitMotifs(
+    healProductLaunchBrokenParticles(ensureProductLaunchCoverHeroShot(foreignStripped)),
+  );
 }
 
 const BROKEN_EMPTY_ATTR_OPEN_RE = /<([a-zA-Z][\w-]*)=""(?=[\s>])/g;
@@ -4821,6 +4826,11 @@ export function injectCobaltAbsoluteSlotCss(html: string): string {
 }
 
 const S_COVER_KIT_SLOT_MARK = 'data-od-s-cover-kit-slots';
+const COVER_KIT_SURFACE_MARK = 'data-od-cover-kit-surface';
+const SURFACE_BLEED_STYLE_RE =
+  /<style\b[^>]*\bdata-od-slide-surface-bleed\b[^>]*>([\s\S]*?)<\/style>/i;
+const POSTER_DECO_CLASS_NAMES = ['sunglow', 'blocks', 'pixel-glitch'] as const;
+const KIT_PAPER_TOKEN_RE = /var\(\s*--(?:paper|bg|background|surface|cream)\b/i;
 
 const EMPTY_SLIDE_CHIP_CLASS_RE = /^(?:chip|pill|cta|btn|tag)$/i;
 const COVER_MOTIF_CLASS_RE =
@@ -4914,21 +4924,41 @@ function officialLookCssHasSCoverTitlewrapBox(html: string): boolean {
  * + model s-cover), supply left/bottom. Hangul cover titles drop tight
  * letter-spacing so 원문 공백 stays visible. Never invent lede/brand.
  */
+function htmlHasStyleMark(html: string, mark: string): boolean {
+  const escaped = mark.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`<style\\b[^>]*\\b${escaped}\\b`, 'i').test(html);
+}
+
+/** Persist sometimes copies a style-mark name onto the flow wrapper, so
+ * `includes(mark)` skipped the actual kit CSS and left titlewrap in flow. */
+function stripLeakedStyleMarkFromNonStyleTags(html: string, mark: string): string {
+  const escaped = mark.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return String(html ?? '').replace(
+    new RegExp(`<(?!/?style\\b)([a-zA-Z][\\w-]*)(\\b[^>]*?)\\s+${escaped}(?=\\s|/|>)`, 'gi'),
+    '<$1$2',
+  );
+}
+
 export function injectSCoverKitSlotCss(html: string): string {
   let dest = stripEmptySlideChips(String(html ?? ''));
+  dest = stripLeakedStyleMarkFromNonStyleTags(dest, S_COVER_KIT_SLOT_MARK);
   dest = ensureSCoverTitlewrap(dest);
   if (!dest.trim()) return dest;
   if (!/\bs-cover\b/i.test(dest)) return dest;
-  if (dest.includes(S_COVER_KIT_SLOT_MARK)) return dest;
+  if (htmlHasStyleMark(dest, S_COVER_KIT_SLOT_MARK)) return dest;
   const hasTitlewrap = /<[^>]*\bclass\s*=\s*["'][^"']*\btitlewrap\b/i.test(dest);
   const hangul = ((dest.match(/[가-힣]/g) ?? []).length >= 2);
   const rules = [
-    '/* od-s-cover-kit-slots (1007-N01 I/O) */',
+    '/* od-s-cover-kit-slots (1007-N01 I/O/S) */',
     '.slide.s-cover :is(.chip,.pill,.cta,.btn,.tag):empty{display:none!important}',
   ];
   if (hasTitlewrap) {
-    rules.push('.slide.s-cover .titlewrap{position:absolute!important;z-index:5}');
-    rules.push('.slide.s-cover>[data-od-slide-flow]{justify-content:unset!important}');
+    rules.push(
+      '.slide.s-cover .titlewrap{position:absolute!important;z-index:5;text-align:start}',
+    );
+    rules.push(
+      '.slide.s-cover>[data-od-slide-flow]{justify-content:unset!important;text-align:start}',
+    );
     if (!officialLookCssHasSCoverTitlewrapBox(dest)) {
       rules.push(
         '.slide.s-cover [data-od-slide-flow] .titlewrap{'
@@ -4941,7 +4971,7 @@ export function injectSCoverKitSlotCss(html: string): string {
     // stack in the upper-left void. Do not flatten kit covers.
     rules.push(
       '.slide.s-cover>[data-od-slide-flow]{'
-        + 'justify-content:flex-end!important;align-items:flex-start!important}',
+        + 'justify-content:flex-end!important;align-items:flex-start!important;text-align:start}',
     );
   }
   if (hangul) {
@@ -4952,6 +4982,141 @@ export function injectSCoverKitSlotCss(html: string): string {
     );
   }
   return injectStyleMark(dest, S_COVER_KIT_SLOT_MARK, rules.join(''));
+}
+
+function firstCoverHealSpan(html: string): HealHostSpan | undefined {
+  const spans = listHealSlideHostSpans(html);
+  // Do not fall back to spans[0]: a Biennale body chapter with `.blocks`
+  // plus a leaked hero-shot is not a cover, and stripping host deco there
+  // would smash non-cover slides.
+  return spans.find((span) => (
+    /\b(?:s-cover|slide-cover|slide-title)\b/i.test(span.attrs)
+  ));
+}
+
+function hostHasExactPosterDecoClass(html: string): boolean {
+  const openRe = /<(?:div|span|figure|section|i|em)\b[^>]*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(html)) !== null) {
+    if (POSTER_DECO_CLASS_NAMES.some((name) => openHasExactClass(match?.[0] ?? '', name))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function coverHostLooksLikePosterKit(coverHtml: string, attrs: string): boolean {
+  return /\bs-cover\b/i.test(attrs) && hostHasExactPosterDecoClass(coverHtml);
+}
+
+export function coverHasPosterKitDeco(html: string): boolean {
+  const dest = String(html ?? '');
+  const cover = firstCoverHealSpan(dest);
+  if (!cover) return hostHasExactPosterDecoClass(dest) && /\bs-cover\b/i.test(dest);
+  const host = extractBalancedFrom(dest, cover.start) ?? dest.slice(cover.start, cover.bodyEnd);
+  return coverHostLooksLikePosterKit(host, cover.attrs);
+}
+
+function stripExactClassBlocks(html: string, className: string): string {
+  let out = String(html ?? '');
+  for (let guard = 0; guard < 12; guard += 1) {
+    const openRe = /<(div|span|figure)\b[^>]*>/gi;
+    let found: { start: number; end: number } | null = null;
+    let match: RegExpExecArray | null;
+    while ((match = openRe.exec(out)) !== null) {
+      if (!openHasExactClass(match[0] ?? '', className)) continue;
+      const block = extractBalancedFrom(out, match.index);
+      if (!block) continue;
+      found = { start: match.index, end: match.index + block.length };
+      break;
+    }
+    if (!found) break;
+    out = `${out.slice(0, found.start)}${out.slice(found.end)}`;
+  }
+  return out;
+}
+
+/**
+ * 1007-N01 S — Mixed persist stamps product-launch `.hero-shot` onto a
+ * Biennale/Cobalt `s-cover`, or Biennale `.blocks`/`.sunglow` onto a
+ * product-launch cover. Strip the foreign motif only. Keep host kit deco.
+ * Never invent kicker/lede/speaker copy. Body slides are untouched.
+ */
+export function stripForeignCoverKitMotifs(html: string): string {
+  const dest = String(html ?? '');
+  if (!dest.trim()) return dest;
+  const cover = firstCoverHealSpan(dest);
+  if (!cover) return dest;
+  const host = extractBalancedFrom(dest, cover.start);
+  if (!host) return dest;
+  const poster = coverHostLooksLikePosterKit(host, cover.attrs);
+  let nextHost = host;
+  if (poster) {
+    nextHost = stripExactClassBlocks(nextHost, 'hero-shot');
+  } else if (
+    /\bhero-shot\b/i.test(host)
+    && hostHasExactPosterDecoClass(host)
+    && !/\bs-cover\b/i.test(cover.attrs)
+  ) {
+    nextHost = stripExactClassBlocks(nextHost, 'blocks');
+    nextHost = stripExactClassBlocks(nextHost, 'sunglow');
+    nextHost = stripExactClassBlocks(nextHost, 'pixel-glitch');
+  }
+  if (nextHost === host) return dest;
+  return `${dest.slice(0, cover.start)}${nextHost}${dest.slice(cover.start + host.length)}`;
+}
+
+function rewriteWhiteBleedCssToSpareKitPaper(css: string): string {
+  let out = String(css ?? '');
+  if (!/background(?:-color)?\s*:\s*(?:#fff(?:fff)?|white)/i.test(out)) return out;
+  out = out.replace(
+    /(html,\s*body)((?:\s*,\s*(?:\.slide\b[^,{]*|section\.slide|\[data-screen-label\]|\.deck-slide|\.ppt-slide))+)(\s*\{)/gi,
+    '$1$3',
+  );
+  out = out.replace(
+    /:where\(([^)]+)\)/gi,
+    (_full, inner: string) => {
+      const next = String(inner)
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .map((sel) => (
+          /^(?:\.slide|section\.slide)$/i.test(sel)
+            ? `${sel}:not(.s-cover):not(.s-colophon)`
+            : sel
+        ))
+        .join(', ');
+      return `:where(${next})`;
+    },
+  );
+  return out;
+}
+
+/**
+ * 1007-N01 S — `data-od-slide-surface-bleed` often paints html/body/.slide
+ * `#ffffff`, which wins over kit `--paper`/`--bg` on `s-cover`. Keep letterbox
+ * repair, but do not flatten cover paper to white. Dark kits stay dark.
+ */
+export function repairCoverKitSurfaceBleed(html: string): string {
+  let dest = String(html ?? '');
+  if (!dest.trim()) return dest;
+  if (!/\bs-cover\b/i.test(dest) && !KIT_PAPER_TOKEN_RE.test(dest)) return dest;
+  dest = dest.replace(SURFACE_BLEED_STYLE_RE, (_full, css: string) => (
+    `<style data-od-slide-surface-bleed>${rewriteWhiteBleedCssToSpareKitPaper(css)}</style>`
+  ));
+  if (htmlHasStyleMark(dest, COVER_KIT_SURFACE_MARK)) return dest;
+  if (!/\bs-cover\b/i.test(dest)) return dest;
+  // No !important — inline `#0a0a12` dark covers and kit `.dark` rules must
+  // win over `--paper` (often cream on mixed persist). White flatten is
+  // already removed from `.slide` / `:where(.slide)` above. Color is left
+  // alone so slice H light-cover titles stay visible.
+  const css = [
+    '/* od-cover-kit-surface (1007-N01 S) */',
+    '.slide.s-cover,.slide.s-colophon{',
+    'background:var(--paper,var(--bg,var(--surface)));',
+    '}',
+  ].join('');
+  return injectStyleMark(dest, COVER_KIT_SURFACE_MARK, css);
 }
 
 function magazineLeftoverRibbonLabel(text: string): boolean {
@@ -7737,7 +7902,9 @@ export function salvageMalformedMiniMaxSlideMarkup(html: string, brief?: string 
   next = restyleBiennaleSparseColophonBodies(next);
   next = injectBiennaleSparseFillCss(next);
   next = injectCobaltAbsoluteSlotCss(next);
+  next = stripForeignCoverKitMotifs(next);
   next = injectSCoverKitSlotCss(next);
+  next = repairCoverKitSurfaceBleed(next);
   next = salvageOrphan2x2GridCards(next);
   // 0921-N02 — kit healer 뒤에만 공통 leftover. catalog demo strip은
   // IB/Hartfield chrome을 지우므로 여기서 호출하지 않는다.
@@ -8146,7 +8313,8 @@ export function stripEmptyOfficialMotifInstances(html: string): string {
     }
     if (end > start) spans.push({ start, end });
   }
-  const keepProductLaunchHeroShot = officialLookIsProductLaunchHalo(out);
+  const keepProductLaunchHeroShot = officialLookIsProductLaunchHalo(out)
+    && !coverHasPosterKitDeco(out);
   for (let i = spans.length - 1; i >= 0; i -= 1) {
     const span = spans[i]!;
     const block = out.slice(span.start, span.end);
@@ -14202,7 +14370,13 @@ function ensureProductLaunchCoverHeroShot(html: string): string {
   // is not a node. Only an element with class hero-shot counts.
   // An existing shot — including a flat cover child with no flow wrapper —
   // is left in place so this heal does not duplicate it.
-  if (!officialLookIsProductLaunchHalo(dest) || productLaunchHasHeroShotElement(dest)) return dest;
+  // 1007-N01 S — poster s-cover (Biennale/Cobalt deco) must not receive a
+  // product-launch orb. Body class `tpl-product-launch` is not enough.
+  if (
+    !officialLookIsProductLaunchHalo(dest)
+    || productLaunchHasHeroShotElement(dest)
+    || coverHasPosterKitDeco(dest)
+  ) return dest;
   const spans = listHealSlideHostSpans(dest);
   const cover = spans[0];
   if (!cover) return dest;

@@ -23,6 +23,8 @@ import {
   healBrokenServiceIntroLeftoverRemnants,
   injectSCoverKitSlotCss,
   injectSparseG2FillCss,
+  repairCoverKitSurfaceBleed,
+  stripForeignCoverKitMotifs,
   officialLookIsCapsule,
   officialLookIsEightBitOrbit,
   scrubLeftoverCatalogExampleHtml,
@@ -4354,6 +4356,9 @@ export function centerSparseTitleSlideHeading(html: string): string {
   let out = source;
   const patches: Array<{ start: number; end: number; replacement: string }> = [];
   for (const slide of slides) {
+    // 1007-N01 S — `s-cover` matches `\bcover\b` and was getting
+    // text-align:center, flattening kit titlewrap into a top-center pin.
+    if (/\b(?:s-cover|s-colophon)\b/i.test(slide.attrs)) continue;
     if (!/\bslide-title\b/i.test(slide.attrs) && !/\bcover\b/i.test(slide.attrs)) continue;
     const inner = out.slice(slide.openEnd, slide.bodyEnd);
     if (/<(?:ul|ol|figure|table|img|svg|video)\b/i.test(inner)) continue;
@@ -5558,9 +5563,14 @@ export function healAiGeneratedDeckMarkup(
   // `#ffffff!important` on a paper cover. Strip it so persist bleed / --ink
   // inheritance can show the title. Dark covers stay white.
   out = stripForcedWhiteTitlesOnLightCovers(out);
+  // 1007-N01 슬라이스 S — drop leaked product-launch hero-shot on poster
+  // s-cover (or Biennale deco on product-launch) before kit CSS. No copy.
+  out = stripForeignCoverKitMotifs(out);
   // 1007-N01 슬라이스 I — after H: restore s-cover titlewrap kit position
   // (persist wraps it in [data-od-slide-flow]). No synthetic lede/brand.
   out = injectSCoverKitSlotCss(out);
+  // 1007-N01 슬라이스 S — surface-bleed must not force #ffffff over kit paper.
+  out = repairCoverKitSurfaceBleed(out);
   // 1007-N01 슬라이스 K/L — g2·quote·rule·dark 빈 하반신을 합성 없이 16:9 stretch·센터.
   out = injectSparseG2FillCss(out);
   return out;
