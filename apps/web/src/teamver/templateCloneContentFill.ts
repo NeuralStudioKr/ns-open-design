@@ -11,6 +11,9 @@
 import type { ChatAttachment } from '../types';
 import {
   briefLooksLikeGeneralKnowledgeHowToTopic,
+  htmlLooksLikeJsonLookSlotFill,
+  htmlLooksLikeMixedLookAndOfficialRich,
+  htmlLooksLikeOfficialRichDeck,
   looksLikeTemplateCloneServiceIntroBrief,
   SLIDE_DECK_CONTENT_EXPANSION_INSTRUCTION,
   SLIDE_DECK_COPY_DENSITY_INSTRUCTION,
@@ -1062,12 +1065,16 @@ export function renderTemplateCloneJsonShortResponseRetryPrompt(input: {
  */
 export function shouldRecoverCollapsedPromptFillViaJson(input: {
   brief?: string | null;
+  html?: string | null;
   richFill?: boolean;
   explicitJson?: boolean;
 }): boolean {
   if (input.explicitJson) return false;
   if (input.richFill) return false;
   if (briefLooksLikeGeneralKnowledgeHowToTopic(input.brief)) return false;
+  if (htmlLooksLikeOfficialRichDeck(input.html) || htmlLooksLikeMixedLookAndOfficialRich(input.html)) {
+    return false;
+  }
   return true;
 }
 
@@ -1082,7 +1089,9 @@ export function shouldPreserveOfficialRichHowToPersist(input: {
 }): boolean {
   if (input.explicitJson) return false;
   if (briefLooksLikeGeneralKnowledgeHowToTopic(input.brief)) return true;
-  return /\bdata-od-official-look-css\b/i.test(String(input.html ?? ''));
+  if (htmlLooksLikeOfficialRichDeck(input.html)) return true;
+  if (htmlLooksLikeMixedLookAndOfficialRich(input.html)) return true;
+  return false;
 }
 
 /**
@@ -1098,12 +1107,47 @@ export function shouldPersistOfficialRichPartialAndContinue(input: {
 }): boolean {
   if (input.explicitJson) return false;
   if (!Number.isFinite(input.producedCount) || input.producedCount < 1) return false;
+  // 슬라이스 K — 얇은 json LOOK 만 있는 부분 덱은 salvage 최종본으로 굳히지 않는다.
+  // 부분 보존은 official-rich 슬라이드(look-css / Playfair·gradient)여야 한다.
+  if (
+    htmlLooksLikeJsonLookSlotFill(input.html)
+    && !htmlLooksLikeOfficialRichDeck(input.html)
+    && !htmlLooksLikeMixedLookAndOfficialRich(input.html)
+  ) {
+    return false;
+  }
   if (input.richFill) return true;
   return shouldPreserveOfficialRichHowToPersist({
     brief: input.brief,
     html: input.html,
     explicitJson: input.explicitJson,
   });
+}
+
+/**
+ * 1007-N01 슬라이스 K — LOOK 앞장 위에 official-rich 뒷장을 이어붙이지 않는다.
+ * 혼합 덱(얇은 feature-card + Playfair)이 최종본이 된다. 리치 incoming 이
+ * 앞장을 통째로 대체할 수 있으면 persist 가 replace 경로를 쓰고, 아니면
+ * append 를 거절해 첫 official-rich 시도를 성공시키게 한다.
+ */
+export function shouldAppendTopUpOntoExistingDeck(input: {
+  priorHtml?: string | null;
+  incomingHtml?: string | null;
+}): boolean {
+  const prior = String(input.priorHtml ?? '');
+  const incoming = String(input.incomingHtml ?? '');
+  if (!prior.trim() || !incoming.trim()) return false;
+  if (
+    htmlLooksLikeJsonLookSlotFill(prior)
+    && !htmlLooksLikeOfficialRichDeck(prior)
+    && (
+      htmlLooksLikeOfficialRichDeck(incoming)
+      || htmlLooksLikeMixedLookAndOfficialRich(incoming)
+    )
+  ) {
+    return false;
+  }
+  return true;
 }
 
 /**

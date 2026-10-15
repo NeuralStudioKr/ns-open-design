@@ -53,6 +53,8 @@ describe('1007-N01 슬라이스 G — how-to 판정기 (v1.4.16 경로)', () => 
     expect(briefLooksLikeGeneralKnowledgeHowToTopic(`${WRITING_SENTENCE} 슬라이드 만들어줘`)).toBe(true);
     expect(briefLooksLikeGeneralKnowledgeHowToTopic(WRITING_TIPS)).toBe(true);
     expect(briefLooksLikeGeneralKnowledgeHowToTopic('영어 회화 공부법')).toBe(true);
+    expect(briefLooksLikeGeneralKnowledgeHowToTopic('읽히지 않는 글, 왜 매력적으로 들리지 않을까?')).toBe(true);
+    expect(briefLooksLikeGeneralKnowledgeHowToTopic('논리적 설득력의 비밀')).toBe(true);
     expect(briefLooksLikeGeneralKnowledgeHowToTopic('삼성전자 소개 발표자료')).toBe(false);
     expect(briefLooksLikeGeneralKnowledgeHowToTopic('')).toBe(false);
   });

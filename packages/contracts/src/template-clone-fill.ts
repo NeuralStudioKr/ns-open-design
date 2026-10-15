@@ -898,6 +898,15 @@ export function applyTemplateClonePromptFillLookMerge(
   const seed = String(seedHtml ?? '').trim();
   const model = String(modelHtml ?? '').trim();
   if (!seed || !model) return null;
+  // 1007-N01 슬라이스 K — official-rich / 혼합 리치 HTML 은 product-launch
+  // 슬롯필로 재작성하지 않는다. how-to 브리프만으로는 막지 않는다(명시 json
+  // pad 경로 유지). persist 는 shouldPreserveOfficialRichHowToPersist 가 스킵.
+  if (
+    htmlLooksLikeOfficialRichDeck(model)
+    || htmlLooksLikeMixedLookAndOfficialRich(model)
+  ) {
+    return null;
+  }
   if (listTemplateCloneSlideShells(seed).length === 0) return null;
   const outline = extractTemplateCloneOutlineFromDeckHtml(model);
   if (!outline) return null;
@@ -2070,10 +2079,15 @@ export function looksLikeDeterministicSynthSkeletonCopy(
 }
 
 const GENERAL_KNOWLEDGE_HOW_TO_RE =
-  /팁|하는\s*법|공부법|기초|howto|how\s*to|tips?\b|tutorial|강의|학습|글쓰기|작문|한\s*문장|쓸모\s*있는\s*글|writing|copywriting|독자를?\s*사로잡/i;
+  /팁|하는\s*법|공부법|기초|howto|how\s*to|tips?\b|tutorial|강의|학습|글쓰기|작문|한\s*문장|쓸모\s*있는\s*글|writing|copywriting|독자를?\s*사로잡|읽히지\s*않는\s*글|매력적|설득력|논리적?\s*설득|문장력|카피라이팅|레토릭|왜.{0,24}(?:들리지|읽히지|설득)/i;
+
+const JSON_LOOK_SLOT_FILL_RE =
+  /\b(?:feature-card|price-card|class="step"|class='step'|grid g[23]|class="g[23]")\b/i;
+const OFFICIAL_RICH_INLINE_RE =
+  /Playfair(?:\s+Display)?|font-family:\s*['"]Playfair|linear-gradient\s*\(|data-od-official-look-css/i;
 
 /**
- * 일반 지식·교육·방법·팁 주제. 이 브리프는 official-rich 로 라우팅되며,
+ * 일반 지식·교육·방법·팁·설득/글쓰기 주제. official-rich 로 라우팅되며,
  * thin 해도 합성 스켈레톤 카피를 주입하지 않는다(박스 수 축소).
  */
 export function briefLooksLikeGeneralKnowledgeHowToTopic(
@@ -2082,6 +2096,35 @@ export function briefLooksLikeGeneralKnowledgeHowToTopic(
   const value = String(text ?? '').trim();
   if (!value) return false;
   return GENERAL_KNOWLEDGE_HOW_TO_RE.test(value);
+}
+
+/** Persist/salvage: json product-launch 슬롯필(얇은 LOOK)인지. */
+export function htmlLooksLikeJsonLookSlotFill(html: string | null | undefined): boolean {
+  const dest = String(html ?? '');
+  if (!dest.trim()) return false;
+  if (/\bdata-od-official-look-css\b/i.test(dest)) return false;
+  if (OFFICIAL_RICH_INLINE_RE.test(dest) && !JSON_LOOK_SLOT_FILL_RE.test(dest)) return false;
+  return JSON_LOOK_SLOT_FILL_RE.test(dest);
+}
+
+/** Persist: 모델 저작 official-rich(look-css 또는 Playfair/gradient 밀도). */
+export function htmlLooksLikeOfficialRichDeck(html: string | null | undefined): boolean {
+  const dest = String(html ?? '');
+  if (!dest.trim()) return false;
+  if (/\bdata-od-official-look-css\b/i.test(dest)) return true;
+  return OFFICIAL_RICH_INLINE_RE.test(dest);
+}
+
+/**
+ * 한 덱에 json LOOK 앞장 + official-rich 뒷장이 섞인 회귀.
+ * persist LOOK merge / salvage 가 앞장을 LOOK 으로 굳히면 이 모양이 된다.
+ */
+export function htmlLooksLikeMixedLookAndOfficialRich(
+  html: string | null | undefined,
+): boolean {
+  const dest = String(html ?? '');
+  if (!dest.trim()) return false;
+  return JSON_LOOK_SLOT_FILL_RE.test(dest) && OFFICIAL_RICH_INLINE_RE.test(dest);
 }
 
 /** Persist/heal: 합성 스켈레톤 지문 텍스트만 비운다. 대체 문장 주입 없음. */
@@ -4770,6 +4813,31 @@ export function injectCobaltAbsoluteSlotCss(html: string): string {
 }
 
 const S_COVER_KIT_SLOT_MARK = 'data-od-s-cover-kit-slots';
+const SPARSE_G2_FILL_MARK = 'data-od-sparse-g2-fill';
+
+/**
+ * 1007-N01 슬라이스 K — g2 두 카드가 16:9 상단에만 붙고 하반신이 비는 레이아웃을
+ * 합성 카피 없이 stretch·센터. flow 가 inset:0 이라 slide 의 justify-content 만으로는
+ * 안 메워진다.
+ */
+export function injectSparseG2FillCss(html: string): string {
+  const dest = String(html ?? '');
+  if (!dest.trim()) return dest;
+  if (dest.includes(SPARSE_G2_FILL_MARK)) return dest;
+  if (!/\b(?:grid\s+g2|g2\s+grid|class="g2"|class='g2')\b/i.test(dest)) return dest;
+  const rules = [
+    '/* od-sparse-g2-fill (1007-N01 K) */',
+    'body.tpl-product-launch .slide:not(.s-cover) [data-od-slide-flow]:has(.grid.g2){',
+    'display:flex!important;flex-direction:column!important;',
+    'justify-content:center!important;min-height:100%!important;height:100%!important;',
+    'box-sizing:border-box!important}',
+    'body.tpl-product-launch .slide:not(.s-cover) [data-od-slide-flow]:has(.grid.g2) .grid.g2{',
+    'flex:1 1 auto!important;align-content:stretch!important;min-height:0!important}',
+    'body.tpl-product-launch .slide:not(.s-cover) [data-od-slide-flow]:has(.grid.g2) .grid.g2>.feature-card{',
+    'display:flex!important;flex-direction:column!important;justify-content:center!important}',
+  ].join('');
+  return injectStyleMark(dest, SPARSE_G2_FILL_MARK, rules);
+}
 
 function officialLookCssHasSCoverTitlewrapBox(html: string): boolean {
   const css = officialLookCssBodiesFromDeck(html);
@@ -13644,11 +13712,41 @@ function healProductLaunchCoverTitleAndBrand(html: string): string {
   return out;
 }
 
+/**
+ * 1007-N01 슬라이스 K — `.step` 이 제목만 있고 `<p>` 본문이 없으면 합성하지
+ * 않고 해당 step 을 제거한다. stack 이 비면 stack 도 접는다.
+ */
+function collapseEmptyProductLaunchSteps(html: string): string {
+  let out = String(html ?? '');
+  for (let guard = 0; guard < 32; guard += 1) {
+    const steps = exactClassBlocks(out, 'step');
+    const empty = steps.find((block) => productLaunchCardBodyIsEmpty(block.html));
+    if (!empty) break;
+    out = `${out.slice(0, empty.start)}${out.slice(empty.end)}`;
+  }
+  const stackRe = /<div\b[^>]*\bclass\s*=\s*["'][^"']*\bstack\b[^"']*["'][^>]*>/gi;
+  const edits: Array<{ start: number; end: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = stackRe.exec(out)) !== null) {
+    const block = extractBalancedFrom(out, match.index);
+    if (!block) continue;
+    if (exactClassBlocks(block, 'step').length > 0) continue;
+    if (/[가-힣A-Za-z0-9]/.test(visibleDeckCopy(block))) continue;
+    edits.push({ start: match.index, end: match.index + block.length });
+  }
+  for (let i = edits.length - 1; i >= 0; i -= 1) {
+    const edit = edits[i]!;
+    out = `${out.slice(0, edit.start)}${out.slice(edit.end)}`;
+  }
+  return out;
+}
+
 function collapseEmptyProductLaunchCardsAndGrids(html: string): string {
   let out = collapseRepeatedProductLaunchSiblingDimBodies(String(html ?? ''));
   // 1007-N01 (단계3 결함D) — 본문 빈 카드(제목만 있는 반쪽 카드)를 래퍼가 벗겨져
   // orphan 되기 전에 통째로 제거한다. 아래 empty-text-node strip 보다 먼저.
   out = collapseBodyEmptyProductLaunchCards(out);
+  out = collapseEmptyProductLaunchSteps(out);
   out = stripEmptyProductLaunchTextNodes(out);
   out = stripEmptyProductLaunchAmountNodes(out);
   for (const className of PRODUCT_LAUNCH_GRID_CARD_CLASSES) {

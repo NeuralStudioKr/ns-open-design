@@ -29,6 +29,7 @@ import {
   shouldRecoverCollapsedPromptFillViaJson,
   shouldPreserveOfficialRichHowToPersist,
   shouldPersistOfficialRichPartialAndContinue,
+  shouldAppendTopUpOntoExistingDeck,
   isGenericTemplateCloneTopicBrief,
   shouldExplainGenericBriefOnLookSeedFallback,
   historyHasTemplateCloneContentFill,
@@ -1668,5 +1669,51 @@ describe('1007-N01 슬라이스 G — 독자를 사로잡는 한 문장은 offic
       richFill: false,
       producedCount: 2,
     })).toBe(false);
+  });
+
+  it('슬라이스 K — 설득/글쓰기 how-to 는 official-rich 시드, LOOK salvage 금지', () => {
+    const persuasion = {
+      userInstruction: '읽히지 않는 글, 왜 매력적으로 들리지 않을까?',
+      sourceBrief: 'User instruction:\n읽히지 않는 글, 왜 매력적으로 들리지 않을까?',
+      templateTitle: 'Broadside',
+      seedShellCount: 8,
+    };
+    const result = buildTemplateCloneFillSeedForCurrentMode(persuasion);
+    expect(result.jsonFill).toBe(false);
+    expect(result.seed).toContain('[Official-look rich mode]');
+    expect(templateCloneBriefRequiresSourceGrounding(persuasion)).toBe(false);
+    expect(shouldPreserveOfficialRichHowToPersist({
+      brief: persuasion.userInstruction,
+    })).toBe(true);
+    expect(shouldRecoverCollapsedPromptFillViaJson({
+      brief: persuasion.userInstruction,
+      richFill: false,
+    })).toBe(false);
+    const lookOnly = [
+      '<body class="tpl-product-launch">',
+      '<section class="slide"><h2>논리적 설득력의 비밀</h2>',
+      '<div class="grid g2"><div class="feature-card"><h4>데이터</h4><p>통계</p></div></div>',
+      '</section></body>',
+    ].join('');
+    expect(shouldPersistOfficialRichPartialAndContinue({
+      brief: persuasion.userInstruction,
+      html: lookOnly,
+      richFill: true,
+      producedCount: 7,
+    })).toBe(false);
+    const richTail = [
+      lookOnly,
+      '<section class="slide" style="background:linear-gradient(120deg,#ff5a36,#ffb36b)">',
+      `<h2 style="font-family:'Playfair Display',serif">닫는 장</h2></section>`,
+    ].join('');
+    expect(shouldPreserveOfficialRichHowToPersist({ html: richTail })).toBe(true);
+    expect(shouldAppendTopUpOntoExistingDeck({
+      priorHtml: lookOnly,
+      incomingHtml: richTail,
+    })).toBe(false);
+    expect(shouldAppendTopUpOntoExistingDeck({
+      priorHtml: '<style data-od-official-look-css>.x{}</style><section class="slide"><h1>왜</h1></section>',
+      incomingHtml: richTail,
+    })).toBe(true);
   });
 });

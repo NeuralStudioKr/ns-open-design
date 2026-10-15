@@ -156,6 +156,16 @@ describe('루프550 short-response auto-retry decision', () => {
       returnedCount: 1,
       expectedCount: 6,
     })).toBe(false);
+    expect(shouldEscalateRepeatedPromptFillToJson({
+      promptFill: true,
+      contentFill: false,
+      alreadyRetried: true,
+      scopedEdit: false,
+      returnedCount: 1,
+      expectedCount: 6,
+      brief: '읽히지 않는 글, 왜 매력적으로 들리지 않을까?',
+      richFill: true,
+    })).toBe(false);
   });
 });
 

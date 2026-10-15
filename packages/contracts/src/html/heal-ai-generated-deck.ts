@@ -22,6 +22,7 @@ import {
   catalogExampleShouldBeScrubbed,
   healBrokenServiceIntroLeftoverRemnants,
   injectSCoverKitSlotCss,
+  injectSparseG2FillCss,
   officialLookIsCapsule,
   officialLookIsEightBitOrbit,
   scrubLeftoverCatalogExampleHtml,
@@ -5487,6 +5488,8 @@ export function healAiGeneratedDeckMarkup(
   // 1007-N01 슬라이스 I — after H: restore s-cover titlewrap kit position
   // (persist wraps it in [data-od-slide-flow]). No synthetic lede/brand.
   out = injectSCoverKitSlotCss(out);
+  // 1007-N01 슬라이스 K — g2 빈 하반신을 합성 없이 16:9 stretch·센터.
+  out = injectSparseG2FillCss(out);
   return out;
 }
 

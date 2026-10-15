@@ -262,6 +262,7 @@ import {
   shouldRecoverCollapsedPromptFillViaJson,
   shouldPreserveOfficialRichHowToPersist,
   shouldPersistOfficialRichPartialAndContinue,
+  shouldAppendTopUpOntoExistingDeck,
   renderTemplateCloneJsonShortResponseRetryPrompt,
   templateCloneContentFillHardRules,
   templateCloneFillSlideCountOverrideNotice,
@@ -6104,12 +6105,19 @@ export function ProjectView({
               };
             }
           } else if (priorHtml) {
-            const merged =
-              appendIncomingSlidesOntoExistingDeck(priorHtml, incomingBeforeSalvage)
-              ?? appendIncomingSlidesOntoExistingDeck(
-                priorHtml,
-                artifactToPersist.html,
-              );
+            const allowLookRichAppend = shouldAppendTopUpOntoExistingDeck({
+              priorHtml,
+              incomingHtml: incomingBeforeSalvage || artifactToPersist.html,
+            });
+            const merged = allowLookRichAppend
+              ? (
+                appendIncomingSlidesOntoExistingDeck(priorHtml, incomingBeforeSalvage)
+                ?? appendIncomingSlidesOntoExistingDeck(
+                  priorHtml,
+                  artifactToPersist.html,
+                )
+              )
+              : null;
             if (merged) {
               artifactToPersist = { ...artifactToPersist, html: merged };
             } else if (
@@ -6595,6 +6603,9 @@ export function ProjectView({
                   scopedEdit: scopedFill,
                   returnedCount: producedCount,
                   expectedCount,
+                  brief: runVisiblePromptRef.current || '',
+                  html: htmlBody,
+                  richFill: runTemplateCloneRichFillRef.current,
                 })
               ) {
                 return {
@@ -12084,6 +12095,7 @@ export function ProjectView({
                       && runTemplateClonePromptFillRef.current
                       && shouldRecoverCollapsedPromptFillViaJson({
                         brief: runVisiblePromptRef.current || prompt,
+                        html: artifactToPersist?.html,
                         richFill: runTemplateCloneRichFillRef.current,
                         explicitJson: runTemplateCloneContentFillRef.current,
                       })

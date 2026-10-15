@@ -1120,9 +1120,28 @@ function replaceHostStyle(attrs: string, style: string): string {
   return `${attrs} style="${style}"`;
 }
 
+function collectLaterCardKpiPhrases(html: string): Set<string> {
+  const phrases = new Set<string>();
+  const cardRe = /<(?:div|article)\b[^>]*\b(?:feature-card|price-card|stat-card|card)\b[^>]*>([\s\S]*?)<\/(?:div|article)>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = cardRe.exec(String(html ?? ''))) !== null) {
+    const inner = match[1] ?? '';
+    const heading = visibleText(/<h[3-5]\b[^>]*>([\s\S]*?)<\/h[3-5]>/i.exec(inner)?.[1] ?? '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const body = visibleText(/<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(inner)?.[1] ?? '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (heading) phrases.add(heading);
+    if (body) phrases.add(body);
+  }
+  return phrases;
+}
+
 function collectCoverLeadFromLaterSlides(html: string, title: string): string {
   const slides = listMagazineSlideSpans(html);
   const titleNorm = title.replace(/\s+/g, ' ').trim();
+  const cardKpis = collectLaterCardKpiPhrases(html);
   for (let i = 1; i < slides.length; i += 1) {
     const body = html.slice(slides[i]!.openEnd, slides[i]!.bodyEnd);
     const prose = firstSlideProse(body);
@@ -1131,6 +1150,7 @@ function collectCoverLeadFromLaterSlides(html: string, title: string): string {
       && prose.length <= 220
       && prose !== titleNorm
       && !looksLikeLeftoverOutlineChip(prose)
+      && !cardKpis.has(prose)
     ) {
       return prose;
     }
@@ -1169,6 +1189,34 @@ function buildFallbackLeftoverCoverInner(title: string, lead: string): string {
     + leadHtml
     + `</div>`
   );
+}
+
+/**
+ * 1007-N01 슬라이스 K — 커버 lede 가 뒤 장 feature-card KPI 와 같으면 제거.
+ * 원문 제목은 유지. 합성 lede 를 넣지 않는다.
+ */
+export function stripCoverLedeDuplicatingCardKpi(html: string): string {
+  const dest = String(html ?? '');
+  if (!dest.trim()) return dest;
+  const slides = listMagazineSlideSpans(dest);
+  if (slides.length < 2) return dest;
+  const first = slides[0]!;
+  const coverBody = dest.slice(first.openEnd, first.bodyEnd);
+  const kpis = collectLaterCardKpiPhrases(dest.slice(first.end));
+  if (kpis.size === 0) return dest;
+  let nextCover = coverBody;
+  const pRe = /<p\b[^>]*>[\s\S]*?<\/p>/gi;
+  const drops: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = pRe.exec(coverBody)) !== null) {
+    const prose = visibleText(match[0]).replace(/\s+/g, ' ').trim();
+    if (prose && kpis.has(prose)) drops.push(match[0]);
+  }
+  if (drops.length === 0) return dest;
+  for (const block of drops) {
+    nextCover = nextCover.replace(block, '');
+  }
+  return `${dest.slice(0, first.openEnd)}${nextCover}${dest.slice(first.bodyEnd)}`;
 }
 
 /**
@@ -1406,7 +1454,7 @@ export function healOfficialMagazineLayoutDensity(
     ),
     ),
   );
-  return injectSCoverKitSlotCss(
+  return stripCoverLedeDuplicatingCardKpi(injectSCoverKitSlotCss(
   injectCobaltAbsoluteSlotCss(
     healCobaltGridLeftoverCatalogCopy(
     healCobaltOrphanDataStats(
@@ -1424,5 +1472,5 @@ export function healOfficialMagazineLayoutDensity(
     brief,
     ),
   ),
-  );
+  ));
 }

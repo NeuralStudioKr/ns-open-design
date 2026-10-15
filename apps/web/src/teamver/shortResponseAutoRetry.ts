@@ -5,6 +5,8 @@
  * 루프552 — 같은 카운터로 `<64` 초단 HTML(저장 거절)도 1회 재시도한다.
  */
 
+import { shouldRecoverCollapsedPromptFillViaJson } from './templateCloneContentFill';
+
 export type ShortResponseAutoRetryInput = {
   seedCount: number;
   returnedCount: number;
@@ -54,6 +56,9 @@ export function shouldAutoRetryShortSlideResponse(
  * A rich prompt-fill gets one HTML retry to preserve model-authored layout.
  * If that retry still collapses, escalate once to the smaller JSON slot-fill
  * contract instead of ending on the untouched LOOK seed.
+ *
+ * 1007-N01 슬라이스 G/K — how-to / official-rich / 혼합 리치 덱은 JSON LOOK
+ * 으로 강등하지 않는다. 엔티티 소개·명시 json 만 기존 escalate 를 유지한다.
  */
 export function shouldEscalateRepeatedPromptFillToJson(input: {
   promptFill: boolean;
@@ -62,9 +67,20 @@ export function shouldEscalateRepeatedPromptFillToJson(input: {
   scopedEdit: boolean;
   returnedCount: number;
   expectedCount: number;
+  brief?: string | null;
+  html?: string | null;
+  richFill?: boolean;
 }): boolean {
   if (!input.promptFill || input.contentFill) return false;
   if (!input.alreadyRetried || input.scopedEdit) return false;
+  if (input.richFill) return false;
+  if (shouldRecoverCollapsedPromptFillViaJson({
+    brief: input.brief,
+    html: input.html,
+    richFill: input.richFill,
+  }) === false) {
+    return false;
+  }
   return isLargeSlideCountShortfall({
     seedCount: input.expectedCount,
     returnedCount: input.returnedCount,
