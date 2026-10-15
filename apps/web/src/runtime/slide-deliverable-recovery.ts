@@ -30,7 +30,7 @@ import {
   isSlideCountTopUpPrompt,
   isSparseContentTopUpPrompt,
   isThinPriorFullRewritePrompt,
-  isThinPriorRewriteContinueFillReason,
+  isPersistKeepDeckForContinueFillReason,
 } from '../teamver/slideCountTopUp';
 import { findPrecedingUserMessage } from './auto-continue-comment-scope';
 import {
@@ -288,7 +288,7 @@ export function persistResultKeepsDeckForContinueFill(
 ): boolean {
   if (isEmergencyArtifactPersistSuccess(result)) return true;
   return result?.kind === 'skipped-noop'
-    && isThinPriorRewriteContinueFillReason(result.reason);
+    && isPersistKeepDeckForContinueFillReason(result.reason);
 }
 
 export function findIncompleteSlideAssistantForRecovery(

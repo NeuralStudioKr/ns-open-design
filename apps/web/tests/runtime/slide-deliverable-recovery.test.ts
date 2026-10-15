@@ -445,6 +445,26 @@ describe('resolveSlideProducedHtmlToOpen', () => {
       fileName: 'deck.html',
       reason: 'thin-prior-rewrite-salvage-keep',
     })).toBe(false);
+    expect(persistResultKeepsDeckForContinueFill({
+      kind: 'skipped-noop',
+      fileName: 'deck.html',
+      reason: 'slide-count-regression-continue-fill',
+    })).toBe(true);
+    expect(persistResultKeepsDeckForContinueFill({
+      kind: 'skipped-noop',
+      fileName: 'deck.html',
+      reason: 'slide-count-regression-keep-prior',
+    })).toBe(true);
+    expect(persistResultKeepsDeckForContinueFill({
+      kind: 'skipped-noop',
+      fileName: 'deck.html',
+      reason: 'top-up-did-not-append-slides',
+    })).toBe(true);
+    expect(persistResultKeepsDeckForContinueFill({
+      kind: 'artifact-regression',
+      fileName: 'deck.html',
+      reason: 'slide-count',
+    })).toBe(false);
     await expect(
       resolveSlideProducedHtmlToOpen(
         'deck.html',
@@ -452,6 +472,17 @@ describe('resolveSlideProducedHtmlToOpen', () => {
           kind: 'skipped-noop',
           fileName: 'deck.html',
           reason: 'thin-prior-rewrite-continue-fill',
+        },
+        async () => null,
+      ),
+    ).resolves.toBe('deck.html');
+    await expect(
+      resolveSlideProducedHtmlToOpen(
+        'deck.html',
+        {
+          kind: 'skipped-noop',
+          fileName: 'deck.html',
+          reason: 'slide-count-regression-continue-fill',
         },
         async () => null,
       ),

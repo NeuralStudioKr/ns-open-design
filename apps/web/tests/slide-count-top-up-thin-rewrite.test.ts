@@ -10,8 +10,13 @@ import {
 import {
   SLIDE_COUNT_TOP_UP_ENTRY_FROM,
   SPARSE_CONTENT_TOP_UP_ENTRY_FROM,
+  SLIDE_COUNT_REGRESSION_CONTINUE_FILL_REASON,
+  SLIDE_COUNT_REGRESSION_KEEP_PRIOR_REASON,
+  TOP_UP_DID_NOT_APPEND_REASON,
   buildThinPriorFullRewritePrompt,
+  classifySlideCountRegressionPersist,
   classifyThinPriorRewriteTerminalPersist,
+  isPersistKeepDeckForContinueFillReason,
   isSoftImprovementAutomationEntryFrom,
   isThinPriorFullRewritePrompt,
   isThinPriorRewriteContinueFillReason,
@@ -518,5 +523,105 @@ describe('1007-N01 R cover-only first persist continue-fill', () => {
       topUpCount: 0,
       rewriteCount: 0,
     })).toBe(true);
+  });
+});
+
+describe('1007-N01 T slide-count regression persist is continue-fill, not chat error', () => {
+  it('8–10 prior + incoming 1-slide cover is skipped-noop continue-fill, not artifact-regression', () => {
+    const persist = classifySlideCountRegressionPersist({
+      severity: 'reject',
+      strict: false,
+      continueFillOrRewriteTurn: true,
+      incomingCoverOnlyOrThin: true,
+      stillShort: false,
+    });
+    expect(persist).toEqual({
+      kind: 'skipped-noop',
+      reason: SLIDE_COUNT_REGRESSION_CONTINUE_FILL_REASON,
+    });
+    expect(persist.kind).not.toBe('artifact-regression');
+    expect(isPersistKeepDeckForContinueFillReason(persist.reason)).toBe(true);
+  });
+
+  it('cover-only rewrite of a complete deck still keeps prior and arms continue-fill', () => {
+    const persist = classifySlideCountRegressionPersist({
+      severity: 'reject',
+      strict: false,
+      continueFillOrRewriteTurn: false,
+      incomingCoverOnlyOrThin: true,
+      stillShort: false,
+    });
+    expect(persist.kind).toBe('skipped-noop');
+    expect(persist.reason).toBe(SLIDE_COUNT_REGRESSION_CONTINUE_FILL_REASON);
+  });
+
+  it('hostile shrink of a complete deck keeps prior without artifact-regression chat error', () => {
+    const persist = classifySlideCountRegressionPersist({
+      severity: 'warn',
+      strict: false,
+      continueFillOrRewriteTurn: false,
+      incomingCoverOnlyOrThin: false,
+      stillShort: false,
+    });
+    expect(persist).toEqual({
+      kind: 'skipped-noop',
+      reason: SLIDE_COUNT_REGRESSION_KEEP_PRIOR_REASON,
+    });
+    expect(persist.kind).not.toBe('artifact-regression');
+    expect(isPersistKeepDeckForContinueFillReason(persist.reason)).toBe(true);
+  });
+
+  it('kept short prior still queues APPEND top-up', () => {
+    expect(shouldQueueSlideCountTopUp({
+      produced: 8,
+      requested: 10,
+      requestedMin: 8,
+      topUpCount: 0,
+    })).toBe(false);
+    expect(shouldQueueSlideCountTopUp({
+      produced: 4,
+      requested: 10,
+      requestedMin: 8,
+      topUpCount: 0,
+      rewriteCount: 1,
+    })).toBe(true);
+  });
+
+  it('continue-fill merge skipped-noop still keeps disk so APPEND can schedule', () => {
+    expect(isPersistKeepDeckForContinueFillReason(TOP_UP_DID_NOT_APPEND_REASON)).toBe(true);
+    expect(isPersistKeepDeckForContinueFillReason(
+      SLIDE_COUNT_REGRESSION_CONTINUE_FILL_REASON,
+    )).toBe(true);
+    expect(shouldQueueSlideCountTopUp({
+      produced: 4,
+      requested: 10,
+      requestedMin: 8,
+      topUpCount: 1,
+      rewriteCount: 0,
+    })).toBe(true);
+  });
+
+  it('strict comment/image persist still returns artifact-regression', () => {
+    expect(classifySlideCountRegressionPersist({
+      severity: 'reject',
+      strict: true,
+      continueFillOrRewriteTurn: true,
+      incomingCoverOnlyOrThin: true,
+      stillShort: true,
+    })).toEqual({ kind: 'artifact-regression' });
+  });
+
+  it('never re-enables thin_prior_rewrite_exhausted fatal', () => {
+    expect(shouldSurfaceThinPriorRewriteExhaustedError({
+      thinPrior: true,
+      rewriteCount: 1,
+      salvageableArtifact: true,
+      produced: 1,
+      bodyCount: 0,
+      requestedMin: 8,
+    })).toBe(false);
+    expect(isThinPriorRewriteContinueFillReason(
+      THIN_PRIOR_REWRITE_CONTINUE_FILL_REASON,
+    )).toBe(true);
   });
 });

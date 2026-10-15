@@ -1325,6 +1325,8 @@ describe("ProjectView message loading", () => {
     expect(block).toContain("retryKind: 'slide-count'");
     expect(block).not.toContain("recoverShortDeckByPaddingToSeed({");
     expect(block).toContain("kind: 'artifact-regression'");
+    expect(block).toContain("classifySlideCountRegressionPersist({");
+    expect(block).toContain("kind: 'skipped-noop'");
   });
 
   it("head-preamble continue skips short-response retry without padding", () => {

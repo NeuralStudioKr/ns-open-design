@@ -345,6 +345,77 @@ export function isThinPriorRewriteContinueFillReason(
 }
 
 /**
+ * 1007-N01 T — `findClientSlideCountRegression` already refused the write.
+ * Cover-only / thin rewrite / continue-fill shorter drafts are expected
+ * intermediates: keep the longer prior and APPEND. Never surface
+ * `artifact-regression` chat error on non-strict turns. Strict
+ * comment/image persists still return artifact-regression.
+ * Numeric thresholds in `findClientSlideCountRegression` stay unchanged.
+ */
+export const SLIDE_COUNT_REGRESSION_CONTINUE_FILL_REASON =
+  "slide-count-regression-continue-fill";
+export const SLIDE_COUNT_REGRESSION_KEEP_PRIOR_REASON =
+  "slide-count-regression-keep-prior";
+/** Continue-fill merge that did not grow a substance-rich prior. Keep disk + APPEND. */
+export const TOP_UP_DID_NOT_APPEND_REASON = "top-up-did-not-append-slides";
+
+export type SlideCountRegressionPersist = {
+  kind: "skipped-noop" | "artifact-regression";
+  reason?: string;
+};
+
+export function classifySlideCountRegressionPersist(input: {
+  severity: "reject" | "warn";
+  /** Image-embed / comment-scoped persist — keep the user-facing regression. */
+  strict: boolean;
+  continueFillOrRewriteTurn: boolean;
+  /** Incoming cover-only or 1–2 slide thin rewrite. */
+  incomingCoverOnlyOrThin: boolean;
+  /** Kept prior is still short of requestedMin. */
+  stillShort: boolean;
+}): SlideCountRegressionPersist {
+  if (input.strict) {
+    return { kind: "artifact-regression" };
+  }
+  if (
+    input.incomingCoverOnlyOrThin
+    || input.continueFillOrRewriteTurn
+    || input.stillShort
+  ) {
+    return {
+      kind: "skipped-noop",
+      reason: SLIDE_COUNT_REGRESSION_CONTINUE_FILL_REASON,
+    };
+  }
+  // Hostile shrink of a complete deck: keep prior, no "다시 요청" chat error.
+  // requestSlideCountTopUp still runs; shouldQueue decides if APPEND is needed.
+  void input.severity;
+  return {
+    kind: "skipped-noop",
+    reason: SLIDE_COUNT_REGRESSION_KEEP_PRIOR_REASON,
+  };
+}
+
+export function isSlideCountRegressionContinueFillReason(
+  reason: string | null | undefined,
+): boolean {
+  return String(reason ?? "").trim() === SLIDE_COUNT_REGRESSION_CONTINUE_FILL_REASON;
+}
+
+/** skipped-noop reasons that still have a disk deck for APPEND / preview. */
+export function isPersistKeepDeckForContinueFillReason(
+  reason: string | null | undefined,
+): boolean {
+  const value = String(reason ?? "").trim();
+  return (
+    value === THIN_PRIOR_REWRITE_CONTINUE_FILL_REASON
+    || value === SLIDE_COUNT_REGRESSION_CONTINUE_FILL_REASON
+    || value === SLIDE_COUNT_REGRESSION_KEEP_PRIOR_REASON
+    || value === TOP_UP_DID_NOT_APPEND_REASON
+  );
+}
+
+/**
  * 루프480 — Slides that rendered but stopped short: a heading we had to
  * renumber down («4가지» with 3 cards) or a card whose body never arrived
  * («Enterprise / SSO»). The deck is a real deliverable, so this is a content

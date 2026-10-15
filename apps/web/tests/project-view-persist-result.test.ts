@@ -7,6 +7,10 @@ import {
   priorDeckAllowsCompactReplacement,
   shouldFailRunForArtifactPersistResult,
 } from '../src/components/ProjectView';
+import {
+  classifySlideCountRegressionPersist,
+  SLIDE_COUNT_REGRESSION_CONTINUE_FILL_REASON,
+} from '../src/teamver/slideCountTopUp';
 
 const compactThree =
   '<!doctype html><html lang="ko"><body>'
@@ -244,5 +248,42 @@ describe('shouldFailRunForArtifactPersistResult', () => {
         { scopedCommentEdit: true },
       ),
     ).toBe(false);
+  });
+
+  it('1007-N01 T · 8-slide prior + 1-slide cover still trips the gate, persist is continue-fill not user error', () => {
+    const oneSlideCover =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide s-cover"><h1>표지</h1><p>한 줄 표지.</p></section>'
+      + '</body></html>';
+    const gate = findClientSlideCountRegression({
+      fileName: 'deck.html',
+      htmlBody: oneSlideCover,
+      priorHtml: fullEight,
+    });
+    expect(gate).toMatchObject({
+      priorCount: 8,
+      newCount: 1,
+      severity: 'reject',
+    });
+    const persist = classifySlideCountRegressionPersist({
+      severity: gate!.severity,
+      strict: false,
+      continueFillOrRewriteTurn: true,
+      incomingCoverOnlyOrThin: true,
+      stillShort: false,
+    });
+    expect(persist.kind).toBe('skipped-noop');
+    expect(persist.reason).toBe(SLIDE_COUNT_REGRESSION_CONTINUE_FILL_REASON);
+    expect(shouldFailRunForArtifactPersistResult({
+      kind: 'skipped-noop',
+      fileName: 'deck.html',
+      reason: persist.reason,
+    })).toBe(false);
+    expect(shouldFailRunForArtifactPersistResult({
+      kind: 'artifact-regression',
+      fileName: 'deck.html',
+      reason: gate!.reason,
+      bannerKind: 'slide-count',
+    })).toBe(true);
   });
 });

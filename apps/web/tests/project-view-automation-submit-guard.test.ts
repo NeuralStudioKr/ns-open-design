@@ -38,6 +38,7 @@ describe("ProjectView automation submit guard", () => {
     expect(projectViewSource).toContain("shouldSurfaceThinPriorRewriteExhaustedError");
     expect(projectViewSource).toContain("isSalvageableThinPriorArtifact");
     expect(projectViewSource).toContain("classifyThinPriorRewriteTerminalPersist");
+    expect(projectViewSource).toContain("classifySlideCountRegressionPersist");
     expect(projectViewSource).toMatch(
       /rewriteTerminal\?\.kind === 'skipped-noop'[\s\S]{0,220}thin-prior-rewrite-salvage-keep/,
     );
@@ -53,6 +54,10 @@ describe("ProjectView automation submit guard", () => {
     expect(projectViewSource).toContain("bodyCount");
     expect(projectViewSource).toMatch(/!preferCoverOnlyAppend\s*&&\s*shouldQueueThinPriorFullRewrite/);
     expect(projectViewSource).toContain("await requestSlideCountTopUpRef.current(producedHtmlToOpen)");
+    expect(projectViewSource).toContain("SLIDE_COUNT_REGRESSION_CONTINUE_FILL_REASON");
+    expect(projectViewSource).toMatch(
+      /runSlideCountTopUpRef\.current[\s\S]{0,220}isThinPriorFullRewritePrompt/,
+    );
     expect(projectViewSource).toMatch(
       /slideCountTopUpTimerRef\.current = window\.setTimeout\(fireTopUp, 700\)/,
     );

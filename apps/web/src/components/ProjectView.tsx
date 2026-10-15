@@ -652,6 +652,8 @@ import {
   rollbackSlideCountTopUpCount,
   shouldQueueSlideCountTopUp,
   classifyThinPriorRewriteTerminalPersist,
+  classifySlideCountRegressionPersist,
+  SLIDE_COUNT_REGRESSION_CONTINUE_FILL_REASON,
   shouldPreferCoverOnlyContinueFillAppend,
   resolveSlideCountTopUpTarget,
   shouldSurfaceThinPriorRewriteExhaustedError,
@@ -6192,13 +6194,14 @@ export function ProjectView({
                   };
                 }
               } else {
-                // 루프283 — Substance-rich prior (cover+body / filled multi-slide)
-                // keeps calm skipped-noop. Flashing incomplete_output over an
-                // already-deliverable deck is worse than a quiet no-append.
+                // 루프283 / 1007-N01 T — Substance-rich prior keeps calm
+                // skipped-noop (no overwrite). Continue-fill reason so
+                // persistResultKeepsDeckForContinueFill can still APPEND
+                // when the kept prior is short of requestedMin.
                 return {
                   kind: 'skipped-noop',
                   fileName,
-                  reason: 'top-up-did-not-append-slides',
+                  reason: SLIDE_COUNT_REGRESSION_CONTINUE_FILL_REASON,
                 };
               }
             }
@@ -6863,6 +6866,37 @@ export function ProjectView({
               commentScoped: persistCommentAttachments.length > 0,
               strict: strictSlideCount,
             });
+            // 1007-N01 T — Gate numbers unchanged (write still refused). Cover-only
+            // / thin rewrite / continue-fill shorter drafts keep the longer prior
+            // and APPEND instead of artifact-regression chat error.
+            const latestUserContent = [...messagesRef.current]
+              .reverse()
+              .find((message) => message.role === 'user')?.content ?? '';
+            const requestedSpec = extractRequestedSlideCountSpecFromMessages(messagesRef.current);
+            const requestedMin = requestedSpec?.min ?? requestedSpec?.max ?? null;
+            const regressionPersist = classifySlideCountRegressionPersist({
+              severity: slideRegression.severity,
+              strict: strictSlideCount,
+              continueFillOrRewriteTurn:
+                runSlideCountTopUpRef.current
+                || isSlideCountTopUpPrompt(latestUserContent)
+                || isThinPriorFullRewritePrompt(latestUserContent),
+              incomingCoverOnlyOrThin:
+                slideRegression.newCount <= 2
+                || countBodySlideSections(htmlBody) === 0
+                || deckLooksLikeThinTopUpHostPrior(htmlBody),
+              stillShort:
+                requestedMin != null
+                && Number.isFinite(requestedMin)
+                && slideRegression.priorCount < requestedMin,
+            });
+            if (regressionPersist.kind === 'skipped-noop') {
+              return {
+                kind: 'skipped-noop',
+                fileName: slideRegression.fileName,
+                reason: regressionPersist.reason ?? 'slide-count-regression-continue-fill',
+              };
+            }
             if (slideRegression.severity === 'reject') {
               return {
                 kind: 'artifact-regression',
@@ -6871,7 +6905,6 @@ export function ProjectView({
                 bannerKind: 'slide-count',
               };
             }
-            const requestedSpec = extractRequestedSlideCountSpecFromMessages(messagesRef.current);
             const requestedCount =
               requestedSpec?.min
               ?? requestedSpec?.max
