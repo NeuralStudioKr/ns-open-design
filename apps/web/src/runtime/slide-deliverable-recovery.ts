@@ -30,6 +30,7 @@ import {
   isSlideCountTopUpPrompt,
   isSparseContentTopUpPrompt,
   isThinPriorFullRewritePrompt,
+  isThinPriorRewriteContinueFillReason,
 } from '../teamver/slideCountTopUp';
 import { findPrecedingUserMessage } from './auto-continue-comment-scope';
 import {
@@ -69,7 +70,8 @@ type ArtifactPersistResult =
   | { kind: 'rejected'; fileName: string; reason: string }
   | { kind: 'save-failed'; fileName: string; status?: number; code?: string; message?: string }
   | { kind: 'auth-replay-queued'; fileName: string }
-  | { kind: 'skipped-discovery-turn'; fileName: string };
+  | { kind: 'skipped-discovery-turn'; fileName: string }
+  | { kind: 'skipped-noop'; fileName: string; reason?: string };
 
 export type EmergencySlideDeckRecoveryResult = {
   recovered: boolean;
@@ -260,7 +262,7 @@ export async function resolveSlideProducedHtmlToOpen(
   healContext?: { brief?: string | null; deckTitle?: string | null },
 ): Promise<string | null> {
   if (!producedHtmlToOpen) {
-    return isEmergencyArtifactPersistSuccess(persistResult) ? persistResult!.fileName : null;
+    return persistResultKeepsDeckForContinueFill(persistResult) ? persistResult!.fileName : null;
   }
   const verified = await verifySlideProducedHtmlDeliverable(
     producedHtmlToOpen,
@@ -268,7 +270,7 @@ export async function resolveSlideProducedHtmlToOpen(
     healContext,
   );
   if (verified) return verified;
-  return isEmergencyArtifactPersistSuccess(persistResult) ? persistResult!.fileName : null;
+  return persistResultKeepsDeckForContinueFill(persistResult) ? persistResult!.fileName : null;
 }
 
 export function isEmergencyArtifactPersistSuccess(
@@ -278,6 +280,15 @@ export function isEmergencyArtifactPersistSuccess(
     || result?.kind === 'pointer'
     || result?.kind === 'skipped-duplicate'
     || result?.kind === 'auth-replay-queued';
+}
+
+/** Cover-only rewrite that kept slides still has a deck to APPEND onto. */
+export function persistResultKeepsDeckForContinueFill(
+  result: ArtifactPersistResult | null | undefined,
+): boolean {
+  if (isEmergencyArtifactPersistSuccess(result)) return true;
+  return result?.kind === 'skipped-noop'
+    && isThinPriorRewriteContinueFillReason(result.reason);
 }
 
 export function findIncompleteSlideAssistantForRecovery(

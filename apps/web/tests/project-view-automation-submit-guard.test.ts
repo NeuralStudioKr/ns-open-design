@@ -43,10 +43,19 @@ describe("ProjectView automation submit guard", () => {
     );
     expect(projectViewSource).toContain("produced: countDeckSlideSections(priorHtml)");
     expect(projectViewSource).toMatch(
-      /classifyThinPriorRewriteTerminalPersist\(\{[\s\S]{0,420}requestedMin:/,
+      /classifyThinPriorRewriteTerminalPersist\(\{[\s\S]{0,700}bodyCount:[\s\S]{0,180}requestedMin:/,
     );
     expect(projectViewSource).toContain("wantsCountTopUp");
     expect(projectViewSource).toContain("requestedMin: requestedSpec?.min");
+    expect(projectViewSource).toContain("shouldPreferCoverOnlyContinueFillAppend");
+    expect(projectViewSource).toContain("resolveSlideCountTopUpTarget");
+    expect(projectViewSource).toContain("countBodySlideSections");
+    expect(projectViewSource).toContain("bodyCount");
+    expect(projectViewSource).toMatch(/!preferCoverOnlyAppend\s*&&\s*shouldQueueThinPriorFullRewrite/);
+    expect(projectViewSource).toContain("await requestSlideCountTopUpRef.current(producedHtmlToOpen)");
+    expect(projectViewSource).toMatch(
+      /slideCountTopUpTimerRef\.current = window\.setTimeout\(fireTopUp, 700\)/,
+    );
     expect(projectViewSource).toContain("userBrief: runVisiblePromptRef.current || ''");
     // Count gate is computed before sparse evidence is consulted.
     const countIdx = projectViewSource.indexOf("const wantsCountTopUp = sparseOnly");
@@ -63,7 +72,9 @@ describe("ProjectView automation submit guard", () => {
     expect(projectViewSource).toContain("shouldRunDeterministicSparseCheck");
     expect(projectViewSource).toContain('mode: "sparse-only"');
     expect(projectViewSource).toContain('phase: "deterministic-fill"');
-    expect(projectViewSource).toMatch(/!sparseOnly\s*&&\s*shouldQueueThinPriorFullRewrite/);
+    expect(projectViewSource).toMatch(
+      /!sparseOnly\s*&&\s*!preferCoverOnlyAppend\s*&&\s*shouldQueueThinPriorFullRewrite/,
+    );
     expect(projectViewSource).toMatch(/!sparseOnly\s*&&\s*shouldSurfaceThinPriorRewriteExhaustedError/);
     expect(projectViewSource).toMatch(/wantsCountTopUp = sparseOnly\s*\n\s*\? false/);
     const landingIdx = projectViewSource.indexOf("루프535 — Deterministic Home/Canvas/Drive persist");

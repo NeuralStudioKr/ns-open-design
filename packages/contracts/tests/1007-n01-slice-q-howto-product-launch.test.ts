@@ -201,3 +201,25 @@ describe('1007-N01 슬라이스 Q — 사용자 회귀 픽스처 persist heal', 
     expect(out).toContain('독자가 끝까지 읽었다는 회신이 왔다.');
   });
 });
+
+describe('1007-N01 슬라이스 R — 커버만 있는 how-to 첫 persist', () => {
+  it('커버 제목을 유지하고 합성 글쓰기 팁을 넣지 않는다', () => {
+    const html = [
+      '<!doctype html><html lang="ko"><head><meta charset="utf-8"/>',
+      `<title>${WRITING_TIPS}</title></head>`,
+      '<body class="tpl-product-launch">',
+      '<section class="slide s-cover">',
+      '<div data-od-slide-flow><div class="blocks"><div class="b1"></div><div class="b2"></div>',
+      '<div class="b3"></div><div class="b4"></div></div>',
+      `<div class="titlewrap"><h1 class="title">글을 매력적으로<br><em>쓰는 팁</em></h1></div>`,
+      '<div class="sunglow"></div></div>',
+      '<div data-od-official-motif-html class="hero-shot"></div>',
+      '</section></body></html>',
+    ].join('');
+    const out = persistHeal(html);
+    expect(out).toContain(WRITING_TIPS);
+    expect(out).toMatch(/<em>쓰는 팁<\/em>/);
+    expect(out).not.toMatch(/첫 문장에서 결론을|한 문장 한 메시지|지금 다뤄야/);
+    expect((out.match(/<section\b[^>]*class="[^"]*\bslide\b/gi) ?? []).length).toBe(1);
+  });
+});

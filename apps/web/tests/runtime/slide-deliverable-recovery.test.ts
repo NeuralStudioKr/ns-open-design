@@ -12,6 +12,7 @@ import {
   extractRequestedSlideCountHintFromMessages,
   findIncompleteSlideAssistantForRecovery,
   parseSlideCountPhrase,
+  persistResultKeepsDeckForContinueFill,
   resolveSlideProducedHtmlToOpen,
   syncAutoContinueCountFromMessages,
   verifySlideProducedHtmlDeliverable,
@@ -431,6 +432,30 @@ describe('resolveSlideProducedHtmlToOpen', () => {
         async () => null,
       ),
     ).resolves.toBeNull();
+  });
+
+  it('keeps cover-only continue-fill persist so APPEND can still run', async () => {
+    expect(persistResultKeepsDeckForContinueFill({
+      kind: 'skipped-noop',
+      fileName: 'deck.html',
+      reason: 'thin-prior-rewrite-continue-fill',
+    })).toBe(true);
+    expect(persistResultKeepsDeckForContinueFill({
+      kind: 'skipped-noop',
+      fileName: 'deck.html',
+      reason: 'thin-prior-rewrite-salvage-keep',
+    })).toBe(false);
+    await expect(
+      resolveSlideProducedHtmlToOpen(
+        'deck.html',
+        {
+          kind: 'skipped-noop',
+          fileName: 'deck.html',
+          reason: 'thin-prior-rewrite-continue-fill',
+        },
+        async () => null,
+      ),
+    ).resolves.toBe('deck.html');
   });
 });
 

@@ -68,6 +68,7 @@ import {
 } from '../artifacts/pendingWriteRecovery';
 import {
   deckArtifactStartsWithMotifSvgDump,
+  countBodySlideSections,
   countFilledSlideSections,
   deckLooksLikeThinTopUpHostPrior,
   deckLooksLikeUnfilledCatalogExample,
@@ -394,7 +395,7 @@ import {
   extractRequestedSlideCountHintFromMessages,
   findCloneSlotFillStuckRepairNoticeAssistant,
   findIncompleteSlideAssistantForRecovery,
-  isEmergencyArtifactPersistSuccess,
+  persistResultKeepsDeckForContinueFill,
   CLONE_LOOK_SEED_FALLBACK_STATUS_CODE,
   OUTLINE_DECK_FALLBACK_STATUS_CODE,
   resolveSlideProducedHtmlToOpen,
@@ -651,6 +652,8 @@ import {
   rollbackSlideCountTopUpCount,
   shouldQueueSlideCountTopUp,
   classifyThinPriorRewriteTerminalPersist,
+  shouldPreferCoverOnlyContinueFillAppend,
+  resolveSlideCountTopUpTarget,
   shouldSurfaceThinPriorRewriteExhaustedError,
   shouldQueueSparseContentTopUp,
   shouldQueueThinPriorFullRewrite,
@@ -3938,8 +3941,8 @@ export function ProjectView({
   const [pendingSlideAutomationKind, setPendingSlideAutomationKind] =
     useState<SlideAutomationPhase | null>(null);
   const requestSlideCountTopUpRef = useRef<
-    (htmlPath: string | null, options?: { mode?: "full" | "sparse-only" }) => void
-  >(() => {});
+    (htmlPath: string | null, options?: { mode?: "full" | "sparse-only" }) => Promise<boolean>
+  >(async () => false);
   /**
    * Live streaming buffer mutator for the in-flight assistant row. `surfaceChatVisibleError`
    * updates React `messages` + saves, but the stream scheduler persists from a separate
@@ -6170,6 +6173,7 @@ export function ProjectView({
                     ),
                     salvageableArtifact: isSalvageableThinPriorArtifact(priorHtml),
                     produced: countDeckSlideSections(priorHtml),
+                    bodyCount: countBodySlideSections(priorHtml),
                     requestedMin: extractRequestedSlideCountSpecFromMessages(
                       messagesRef.current,
                     )?.min,
@@ -12332,7 +12336,7 @@ export function ProjectView({
             if (producedHtmlToOpen && runIsVisible()) {
               maybeArmTeamverPublishMenuAfterRunSuccess(project.id, producedHtmlToOpen);
               if (!shortResponseRetryArmed) {
-                requestSlideCountTopUpRef.current(producedHtmlToOpen);
+                await requestSlideCountTopUpRef.current(producedHtmlToOpen);
               }
               requestOpenFile(producedHtmlToOpen);
               const navTarget = queuedSlideNavTarget(runCommentAttachmentsRef.current, {
@@ -12567,7 +12571,7 @@ export function ProjectView({
                   );
                   if (runIsVisible()) {
                     maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
-                    requestSlideCountTopUpRef.current(emergency.htmlToOpen);
+                    await requestSlideCountTopUpRef.current(emergency.htmlToOpen);
                     requestOpenFile(emergency.htmlToOpen);
                   }
                 }
@@ -14234,15 +14238,15 @@ export function ProjectView({
   useLayoutEffect(() => {
     handleSendRef.current = handleSend;
     requestSlideCountTopUpRef.current = (htmlPath, options) => {
-      void (async () => {
-        if (!htmlPath || !activeConversationId || !slideOnlyMvp) return;
-        if (runCommentAttachmentsRef.current.length > 0) return;
+      return (async () => {
+        if (!htmlPath || !activeConversationId || !slideOnlyMvp) return false;
+        if (runCommentAttachmentsRef.current.length > 0) return false;
         if (autoContinueTimerRef.current !== null || pendingAutoContinueConversationIdRef.current) {
-          return;
+          return false;
         }
-        if (slideCountTopUpTimerRef.current !== null) return;
+        if (slideCountTopUpTimerRef.current !== null) return true;
         const html = await readProjectHtml(htmlPath);
-        if (!html) return;
+        if (!html) return false;
         const sparseOnly = options?.mode === "sparse-only";
         if (sparseOnly) {
           // 루프535 — observe deterministic persist without rewriting HTML.
@@ -14261,7 +14265,7 @@ export function ProjectView({
         }
         const produced = countDeckSlideSections(html);
         const conversationMessages = messagesRef.current;
-        if (findIncompleteSlideAssistantForRecovery(conversationMessages)) return;
+        if (findIncompleteSlideAssistantForRecovery(conversationMessages)) return false;
         const allowDefaultShortDeckTopUp =
           runTemplateCloneContentFillRef.current
           || runTemplateClonePromptFillRef.current
@@ -14274,8 +14278,20 @@ export function ProjectView({
         const rewriteAlready = countThinPriorFullRewriteAttemptsInConversation(
           conversationMessages,
         );
+        const bodyCount = countBodySlideSections(html);
+        // 1007-N01 R — Cover-only first persist must APPEND body slides in
+        // this same run. Do not spend rewrite (or skip top-up) because cover
+        // chrome looked like 3 filled slides.
+        const preferCoverOnlyAppend = shouldPreferCoverOnlyContinueFillAppend({
+          bodyCount,
+          produced,
+          requestedMin: requestedSpec?.min,
+          requested,
+          defaultRequested: 6,
+        });
         if (
           !sparseOnly
+          && !preferCoverOnlyAppend
           && shouldQueueThinPriorFullRewrite({
             hostCount: produced,
             thinPrior,
@@ -14283,6 +14299,7 @@ export function ProjectView({
             commentAttachmentCount: runCommentAttachmentsRef.current.length,
             requested,
             filledCount: countFilledSlideSections(html),
+            bodyCount,
             howToTopic: briefLooksLikeGeneralKnowledgeHowToTopic(
               runVisiblePromptRef.current || '',
             ),
@@ -14351,7 +14368,7 @@ export function ProjectView({
           };
           setPendingSlideAutomationKind("rewrite");
           slideCountTopUpTimerRef.current = window.setTimeout(fireRewrite, 600);
-          return;
+          return true;
         }
         // 루프505 — Rewrite already spent and deck is still thin: APPEND
         // remaining slides (not a cover restart). Never paint
@@ -14371,7 +14388,7 @@ export function ProjectView({
             formatThinPriorRewriteExhaustedNotice(),
             "thin_prior_rewrite_exhausted",
           );
-          return;
+          return false;
         }
         const already = syncSlideCountTopUpCountFromMessages(
           conversationSlideCountTopUpCountRef.current,
@@ -14384,7 +14401,9 @@ export function ProjectView({
             produced,
             requested,
             requestedMin: requestedSpec?.min,
-            defaultRequested: allowDefaultShortDeckTopUp ? 6 : undefined,
+            defaultRequested: allowDefaultShortDeckTopUp || preferCoverOnlyAppend
+              ? 6
+              : undefined,
             topUpCount: already,
             commentAttachmentCount: runCommentAttachmentsRef.current.length,
             rewriteCount: rewriteAlready,
@@ -14458,21 +14477,26 @@ export function ProjectView({
             }
             setPendingSlideAutomationKind("sparse_repair");
             slideCountTopUpTimerRef.current = window.setTimeout(fireRepair, 600);
+            return true;
           }
-          return;
+          return false;
         }
         conversationSlideCountTopUpCountRef.current.set(activeConversationId, already + 1);
         const scheduledProjectId = project.id;
         const scheduledConversationId = activeConversationId;
         pendingSlideCountTopUpConversationIdRef.current = scheduledConversationId;
-        const topUpTarget = requested ?? (allowDefaultShortDeckTopUp ? 6 : null);
+        const topUpTarget = resolveSlideCountTopUpTarget({
+          requested,
+          requestedMin: requestedSpec?.min,
+          defaultRequested: allowDefaultShortDeckTopUp || preferCoverOnlyAppend ? 6 : null,
+        });
         if (topUpTarget == null) {
           rollbackSlideCountTopUpCount(
             conversationSlideCountTopUpCountRef.current,
             scheduledConversationId,
           );
           pendingSlideCountTopUpConversationIdRef.current = null;
-          return;
+          return false;
         }
         const topUpPrompt = buildSlideCountTopUpPrompt({
           produced,
@@ -14585,6 +14609,7 @@ export function ProjectView({
         };
         setPendingSlideAutomationKind("top_up");
         slideCountTopUpTimerRef.current = window.setTimeout(fireTopUp, 700);
+        return true;
       })();
     };
   }, [
@@ -17901,7 +17926,7 @@ export function projectFileFromPersistedHtmlFallback(
   mtime = Date.now(),
 ): ProjectFile | null {
   if (!fileName || !fileName.toLowerCase().endsWith('.html')) return null;
-  if (!isEmergencyArtifactPersistSuccess(persistResult)) return null;
+  if (!persistResultKeepsDeckForContinueFill(persistResult)) return null;
   if (persistResult?.fileName !== fileName) return null;
   return {
     name: fileName,

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  countBodySlideSections,
+  countFilledSlideSections,
+  deckLooksLikeCoverOnlyFirstPersist,
   deckLooksLikeThinTopUpHostPrior,
   isSalvageableThinPriorArtifact,
   hasFilledSlideSection,
@@ -13,6 +16,8 @@ import {
   isThinPriorFullRewritePrompt,
   isThinPriorRewriteContinueFillReason,
   shouldBlockSlideCountAppendOntoThinPrior,
+  shouldPreferCoverOnlyContinueFillAppend,
+  resolveSlideCountTopUpTarget,
   shouldQueueSlideCountTopUp,
   shouldQueueThinPriorFullRewrite,
   shouldSurfaceThinPriorRewriteExhaustedError,
@@ -355,5 +360,163 @@ describe('1007-N01 M thin_prior_rewrite_exhausted salvage', () => {
     expect(isThinPriorFullRewritePrompt(
       'CONTINUE from the saved cover: emit that cover plus filled body slides',
     )).toBe(true);
+  });
+});
+
+/** User first-attempt persist: one s-cover, biennale chrome + hero-shot, LOOK CSS after. */
+function writingTipsCoverOnlyHtml(): string {
+  return [
+    '<!doctype html><html lang="ko"><head><meta charset="utf-8"/>',
+    '<title>글을 매력적으로 쓰는 팁</title></head>',
+    '<body class="tpl-product-launch">',
+    '<section class="slide s-cover" style="width:1920px;height:1080px">',
+    '<div data-od-slide-flow data-od-s-cover-kit-slots>',
+    '<div class="blocks" aria-hidden="true"><div class="b1"></div><div class="b2"></div>',
+    '<div class="b3"></div><div class="b4"></div></div>',
+    '<div class="titlewrap"><h1 class="title">글을 매력적으로<br><em>쓰는 팁</em></h1></div>',
+    '<div class="sunglow" aria-hidden="true"></div></div>',
+    '<div data-od-official-motif-html class="hero-shot"></div>',
+    '</section>',
+    '<style data-od-official-look-css>.slide-1{} .slide-2{} .slide-8{} .slide-10{}</style>',
+    '<style data-od-sparse-g2-fill></style>',
+    '<style data-od-biennale-sparse-fill></style>',
+    '</body></html>',
+  ].join('');
+}
+
+describe('1007-N01 R cover-only first persist continue-fill', () => {
+  it('does not count cover chrome or LOOK CSS as body slides', () => {
+    const html = writingTipsCoverOnlyHtml();
+    expect(deckLooksLikeCoverOnlyFirstPersist(html)).toBe(true);
+    expect(countBodySlideSections(html)).toBe(0);
+    expect(countFilledSlideSections(html)).toBeLessThan(3);
+  });
+
+  it('Q skip-rewrite does not apply when bodyCount is 0 even if filledCount looks high', () => {
+    expect(shouldQueueThinPriorFullRewrite({
+      hostCount: 1,
+      thinPrior: true,
+      rewriteCount: 0,
+      filledCount: 4,
+      bodyCount: 0,
+      howToTopic: true,
+    })).toBe(true);
+    expect(shouldQueueThinPriorFullRewrite({
+      hostCount: 4,
+      thinPrior: true,
+      rewriteCount: 0,
+      filledCount: 4,
+      bodyCount: 4,
+      howToTopic: true,
+    })).toBe(false);
+  });
+
+  it('cover-only how-to prefers APPEND top-up over cover rewrite', () => {
+    const html = writingTipsCoverOnlyHtml();
+    expect(shouldPreferCoverOnlyContinueFillAppend({
+      bodyCount: countBodySlideSections(html),
+      produced: 1,
+      requestedMin: 8,
+      requested: 10,
+    })).toBe(true);
+    expect(shouldQueueSlideCountTopUp({
+      produced: 1,
+      requested: 10,
+      requestedMin: 8,
+      topUpCount: 0,
+      rewriteCount: 0,
+    })).toBe(true);
+    expect(shouldQueueSlideCountTopUp({
+      produced: 1,
+      requested: 10,
+      requestedMin: 8,
+      topUpCount: 0,
+      rewriteCount: 1,
+    })).toBe(true);
+  });
+
+  it('cover-only after rewriteCount>=1 is continue-fill APPEND, not terminal salvage-keep', () => {
+    const html = writingTipsCoverOnlyHtml();
+    const persist = classifyThinPriorRewriteTerminalPersist({
+      thinPrior: true,
+      rewriteCount: 1,
+      salvageableArtifact: isSalvageableThinPriorArtifact(html),
+      produced: 1,
+      bodyCount: 0,
+      requestedMin: 8,
+    });
+    expect(persist).toEqual({
+      kind: 'skipped-noop',
+      reason: THIN_PRIOR_REWRITE_CONTINUE_FILL_REASON,
+    });
+    expect(persist?.reason).not.toBe(THIN_PRIOR_REWRITE_SALVAGE_KEEP_REASON);
+    expect(persist?.kind).not.toBe('surface-chat-error');
+    expect(shouldSurfaceThinPriorRewriteExhaustedError({
+      thinPrior: true,
+      rewriteCount: 1,
+      salvageableArtifact: true,
+      produced: 1,
+      bodyCount: 0,
+      requestedMin: 8,
+    })).toBe(false);
+  });
+
+  it('does not honor cover-only as complete when the user asked for 8–10', () => {
+    expect(shouldPreferCoverOnlyContinueFillAppend({
+      bodyCount: 0,
+      produced: 1,
+      requested: 1,
+      requestedMin: 1,
+    })).toBe(false);
+    expect(shouldPreferCoverOnlyContinueFillAppend({
+      bodyCount: 0,
+      produced: 1,
+    })).toBe(true);
+  });
+
+  it('uses parsed requestedMin for APPEND, not silent 6', () => {
+    expect(resolveSlideCountTopUpTarget({
+      requestedMin: 8,
+      defaultRequested: 6,
+    })).toBe(8);
+    expect(resolveSlideCountTopUpTarget({
+      requested: 10,
+      requestedMin: 8,
+      defaultRequested: 6,
+    })).toBe(10);
+    expect(resolveSlideCountTopUpTarget({
+      defaultRequested: 6,
+    })).toBe(6);
+    expect(shouldQueueSlideCountTopUp({
+      produced: 1,
+      requested: null,
+      requestedMin: 8,
+      topUpCount: 0,
+    })).toBe(true);
+    expect(shouldPreferCoverOnlyContinueFillAppend({
+      bodyCount: 0,
+      produced: 1,
+      requestedMin: 8,
+      defaultRequested: 6,
+    })).toBe(true);
+  });
+
+  it('Q skip-rewrite at bodyCount>=3 still queues count top-up when short of requestedMin', () => {
+    expect(shouldQueueThinPriorFullRewrite({
+      hostCount: 4,
+      thinPrior: true,
+      rewriteCount: 0,
+      filledCount: 4,
+      bodyCount: 4,
+      howToTopic: true,
+      requested: 10,
+    })).toBe(false);
+    expect(shouldQueueSlideCountTopUp({
+      produced: 4,
+      requested: 10,
+      requestedMin: 8,
+      topUpCount: 0,
+      rewriteCount: 0,
+    })).toBe(true);
   });
 });

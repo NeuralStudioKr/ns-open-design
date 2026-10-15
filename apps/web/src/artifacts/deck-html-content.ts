@@ -721,6 +721,46 @@ export function countFilledSlideSections(html: string): number {
   return listSlideSectionInners(html).filter(slideInnerHasDeliverableCopy).length;
 }
 
+function attrsLookLikeCoverSlideHost(attrs: string): boolean {
+  return (
+    /(?:^|[\s"'=])(?:s-cover|slide-title)(?:[\s"']|$)/i.test(attrs)
+    || /\bdata-title\s*=\s*["']Cover["']/i.test(attrs)
+    || /\bdata-screen-label\s*=\s*["'][^"']*Cover["']/i.test(attrs)
+  );
+}
+
+/**
+ * 1007-N01 R — Non-cover slide hosts. Cover chrome (titlewrap / blocks /
+ * sunglow / hero-shot) lives inside `s-cover` and must not count as body
+ * slides for Q skip-rewrite.
+ */
+export function countBodySlideSections(html: string): number {
+  const withoutComments = String(html ?? "").replace(/<!--[\s\S]*?-->/g, "");
+  const chromeRanges = styleScriptRanges(withoutComments);
+  const openRe = new RegExp(SLIDE_HOST_OPEN_RE.source, "gi");
+  let body = 0;
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(withoutComments)) !== null) {
+    const attrs = match[2] ?? "";
+    if (indexInsideRanges(match.index, chromeRanges) || !attrsLookLikeSlideHost(attrs)) {
+      continue;
+    }
+    if (attrsLookLikeCoverSlideHost(attrs)) continue;
+    body += 1;
+  }
+  return body;
+}
+
+/** One or more cover hosts and zero body sections. LOOK CSS after the cover is not a slide. */
+export function deckLooksLikeCoverOnlyFirstPersist(html: string): boolean {
+  const withoutComments = String(html ?? "").replace(/<!--[\s\S]*?-->/g, "");
+  if (!documentContainsSlideSection(withoutComments)) return false;
+  return (
+    countBodySlideSections(withoutComments) === 0
+    && eachSlideHostOpenIndex(withoutComments).length >= 1
+  );
+}
+
 /**
  * 루프468 — Top-up APPEND failed on a thin LOOK/scaffold prior. Accept the
  * incoming body as a full replacement when it clearly improves substance

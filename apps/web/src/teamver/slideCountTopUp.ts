@@ -135,8 +135,14 @@ export function shouldQueueThinPriorFullRewrite(input: {
   /**
    * 1007-N01 Q — how-to 가 이미 본문 장을 채웠으면 cover-rewrite+APPEND 클론
    * 대신 continue-fill 만 한다. 빈 셸 thin prior 는 기존처럼 rewrite.
+   * Legacy alias: treat as bodyCount when bodyCount is omitted.
    */
   filledCount?: number | null;
+  /**
+   * 1007-N01 R — Non-cover hosts only. Cover chrome (blocks/sunglow/hero-shot/
+   * titlewrap) must not count as 3 filled slides.
+   */
+  bodyCount?: number | null;
   howToTopic?: boolean;
 }): boolean {
   if ((input.commentAttachmentCount ?? 0) > 0) return false;
@@ -146,8 +152,49 @@ export function shouldQueueThinPriorFullRewrite(input: {
   const requested = input.requested ?? null;
   // User asked for exactly this many (or fewer) pages — do not force a 6-up.
   if (requested != null && requested <= input.hostCount) return false;
-  if (input.howToTopic === true && (input.filledCount ?? 0) >= 3) return false;
+  const bodySlides = input.bodyCount ?? input.filledCount ?? 0;
+  // Cover-only (0 body) never trips this skip. Only skip cover-from-scratch
+  // rewrite when how-to already has 3+ real body slides.
+  if (input.howToTopic === true && bodySlides >= 3) return false;
   return true;
+}
+
+/**
+ * 1007-N01 R — Cover persist with zero body sections must APPEND remaining
+ * slides instead of spending the thin-prior rewrite budget (and stopping).
+ * Honor an explicit 1-page request.
+ */
+export function shouldPreferCoverOnlyContinueFillAppend(input: {
+  bodyCount: number;
+  produced: number;
+  requestedMin?: number | null;
+  requested?: number | null;
+  defaultRequested?: number | null;
+}): boolean {
+  if (!Number.isFinite(input.bodyCount) || input.bodyCount !== 0) return false;
+  if (!Number.isFinite(input.produced) || input.produced < 1) return false;
+  const targetMin =
+    input.requestedMin
+    ?? input.requested
+    ?? input.defaultRequested
+    ?? 6;
+  if (targetMin <= input.produced) return false;
+  return true;
+}
+
+/**
+ * APPEND target for a short deck. Range max (`8-10` → 10) wins; if only the
+ * floor was parsed, use that — never fall through to silent 6.
+ */
+export function resolveSlideCountTopUpTarget(input: {
+  requested?: number | null;
+  requestedMin?: number | null;
+  defaultRequested?: number | null;
+}): number | null {
+  for (const value of [input.requested, input.requestedMin, input.defaultRequested ?? null]) {
+    if (value != null && Number.isFinite(value) && value > 0) return value;
+  }
+  return null;
 }
 
 export function buildThinPriorFullRewritePrompt(input: {
@@ -231,17 +278,39 @@ export function classifyThinPriorRewriteTerminalPersist(input: {
   produced?: number | null;
   /** Range floor (`8-10` → 8). Exact counts omit this. */
   requestedMin?: number | null;
+  /** Non-cover hosts. 0 → cover-only continue-fill, never terminal salvage-keep. */
+  bodyCount?: number | null;
 }): ThinPriorRewriteTerminalPersist | null {
   // salvageableArtifact is caller-compat only — N never gates keep on it.
   void input.salvageableArtifact;
   if (!shouldBlockSlideCountAppendOntoThinPrior(input)) return null;
   const requestedMin = input.requestedMin;
   const produced = input.produced;
-  const stillShort =
+  const coverOnly = input.bodyCount === 0
+    || (
+      (input.bodyCount == null || !Number.isFinite(input.bodyCount))
+      && produced != null
+      && Number.isFinite(produced)
+      && produced === 1
+    );
+  const honorExactlyOne =
     requestedMin != null
-    && Number.isFinite(requestedMin)
-    && requestedMin > 0
-    && (produced == null || !Number.isFinite(produced) || produced < requestedMin);
+    && requestedMin <= 1
+    && (produced == null || produced <= 1);
+  if (honorExactlyOne) {
+    return {
+      kind: "skipped-noop",
+      reason: THIN_PRIOR_REWRITE_SALVAGE_KEEP_REASON,
+    };
+  }
+  const stillShort =
+    coverOnly
+    || (
+      requestedMin != null
+      && Number.isFinite(requestedMin)
+      && requestedMin > 0
+      && (produced == null || !Number.isFinite(produced) || produced < requestedMin)
+    );
   if (stillShort) {
     return {
       kind: "skipped-noop",
@@ -735,7 +804,11 @@ export function shouldQueueSlideCountTopUp(input: {
 }): boolean {
   if (input.hasIncompleteAssistant) return false;
   if ((input.commentAttachmentCount ?? 0) > 0) return false;
-  const targetMax = input.requested ?? input.defaultRequested ?? null;
+  const targetMax = resolveSlideCountTopUpTarget({
+    requested: input.requested,
+    requestedMin: input.requestedMin,
+    defaultRequested: input.defaultRequested,
+  });
   const targetMin = input.requestedMin ?? input.requested ?? input.defaultRequested ?? null;
   if (targetMax == null || targetMin == null) return false;
   // 루프503 — Explicit 8–10 (or default-6) must expand a 1-slide persist.
@@ -747,7 +820,8 @@ export function shouldQueueSlideCountTopUp(input: {
   if (input.topUpCount >= topUpMax) return false;
   // Implicit default 6 is only for short first fills. A closed 5-page deck
   // already matches "short" / typed 5 — do not start a hidden follow-up.
-  if (input.requested == null && input.produced >= 5) return false;
+  // A parsed floor (8 of 8–10) still expands past 5.
+  if (input.requested == null && input.requestedMin == null && input.produced >= 5) return false;
   return input.produced < targetMin;
 }
 

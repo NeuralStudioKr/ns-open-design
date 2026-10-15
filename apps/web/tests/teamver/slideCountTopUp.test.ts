@@ -44,6 +44,8 @@ import {
   parseSlideCountSpec,
   parseSlideCountTarget,
   shouldQueueThinPriorFullRewrite,
+  shouldPreferCoverOnlyContinueFillAppend,
+  resolveSlideCountTopUpTarget,
   honorSlideCountCeiling,
   honorSlideCountCeilingFromMessages,
   applyHonorSlideCeilingToHtml,
@@ -590,6 +592,41 @@ describe("slideCountTopUp", () => {
       filledCount: 1,
       howToTopic: true,
     })).toBe(true);
+    // 1007-N01 R — cover chrome is not 3 body slides.
+    expect(shouldQueueThinPriorFullRewrite({
+      hostCount: 1,
+      thinPrior: true,
+      rewriteCount: 0,
+      filledCount: 4,
+      bodyCount: 0,
+      howToTopic: true,
+    })).toBe(true);
+    expect(shouldPreferCoverOnlyContinueFillAppend({
+      bodyCount: 0,
+      produced: 1,
+      requestedMin: 8,
+      requested: 10,
+    })).toBe(true);
+    expect(resolveSlideCountTopUpTarget({
+      requestedMin: 8,
+      defaultRequested: 6,
+    })).toBe(8);
+    expect(resolveSlideCountTopUpTarget({
+      requested: 10,
+      requestedMin: 8,
+      defaultRequested: 6,
+    })).toBe(10);
+    expect(classifyThinPriorRewriteTerminalPersist({
+      thinPrior: true,
+      rewriteCount: 1,
+      salvageableArtifact: true,
+      produced: 1,
+      bodyCount: 0,
+      requestedMin: 8,
+    })).toEqual({
+      kind: "skipped-noop",
+      reason: "thin-prior-rewrite-continue-fill",
+    });
     // Rewrite skip must not eat count top-up: 4 of 8–10 still APPEND.
     expect(shouldQueueSlideCountTopUp({
       produced: 4,
