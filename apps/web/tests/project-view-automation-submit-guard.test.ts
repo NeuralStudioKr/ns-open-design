@@ -35,7 +35,8 @@ describe("ProjectView automation submit guard", () => {
   });
 
   it("prefers slide-count shortfall over sparse repair and blocks thin APPEND after rewrite (루프505)", () => {
-    expect(projectViewSource).toContain("shouldBlockSlideCountAppendOntoThinPrior");
+    expect(projectViewSource).toContain("shouldSurfaceThinPriorRewriteExhaustedError");
+    expect(projectViewSource).toContain("isSalvageableThinPriorArtifact");
     expect(projectViewSource).toContain("wantsCountTopUp");
     expect(projectViewSource).toContain("requestedMin: requestedSpec?.min");
     expect(projectViewSource).toContain("userBrief: runVisiblePromptRef.current || ''");
@@ -55,7 +56,7 @@ describe("ProjectView automation submit guard", () => {
     expect(projectViewSource).toContain('mode: "sparse-only"');
     expect(projectViewSource).toContain('phase: "deterministic-fill"');
     expect(projectViewSource).toMatch(/!sparseOnly\s*&&\s*shouldQueueThinPriorFullRewrite/);
-    expect(projectViewSource).toMatch(/!sparseOnly\s*&&\s*shouldBlockSlideCountAppendOntoThinPrior/);
+    expect(projectViewSource).toMatch(/!sparseOnly\s*&&\s*shouldSurfaceThinPriorRewriteExhaustedError/);
     expect(projectViewSource).toMatch(/wantsCountTopUp = sparseOnly\s*\n\s*\? false/);
     const landingIdx = projectViewSource.indexOf("루프535 — Deterministic Home/Canvas/Drive persist");
     const rewriteIdx = projectViewSource.indexOf("shouldQueueThinPriorFullRewrite({");

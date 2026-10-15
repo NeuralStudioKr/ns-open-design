@@ -913,6 +913,7 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).toContain("forceArtifactStubGuardReject: true");
     expect(projectView).toContain("deckLooksLikeThinTopUpHostPrior(");
     expect(projectView).toContain("thin-prior-top-up-no-append");
+    expect(projectView).toContain("thin-prior-rewrite-salvage-keep");
     expect(projectView).toMatch(
       /thin-prior-top-up-no-append[\s\S]{0,120}skipped-incomplete|skipped-incomplete[\s\S]{0,200}thin-prior-top-up-no-append/,
     );

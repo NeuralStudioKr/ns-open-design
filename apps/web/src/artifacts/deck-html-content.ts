@@ -867,6 +867,26 @@ export function deckLooksLikeThinTopUpHostPrior(html: string): boolean {
   return true;
 }
 
+/**
+ * 1007-N01 M — A thin prior that still has a titled cover (or cover + empty
+ * hosts) is salvageable. Fatal `thin_prior_rewrite_exhausted` is worse than
+ * showing that cover. CSS stretch / empty boxes never count as filled copy.
+ */
+export function isSalvageableThinPriorArtifact(html: string): boolean {
+  if (isPersistableShortDeckDraft(html)) return true;
+  if (deckLooksLikeTitleOnlyCoverWithEmptyHosts(html)) return true;
+  const withoutComments = html.replace(/<!--[\s\S]*?-->/g, "");
+  if (!documentContainsSlideSection(withoutComments)) return false;
+  const inners = listSlideSectionInners(withoutComments);
+  return inners.some((inner) => {
+    if (slideInnerLooksLikeStylesheetDump(inner)) return false;
+    if (slideSectionInnerLooksLikeStatusOnly(inner)) return false;
+    const heading = firstSlideHeading(inner);
+    if (heading && visibleTextFromHtmlFragment(heading).length >= 2) return true;
+    return slideInnerHasPersistableDraftCopy(inner);
+  });
+}
+
 export function isPersistableShortDeckDraft(html: string): boolean {
   const withoutComments = html.replace(/<!--[\s\S]*?-->/g, "");
   if (!documentContainsSlideSection(withoutComments)) return false;

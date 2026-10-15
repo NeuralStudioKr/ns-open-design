@@ -74,6 +74,7 @@ import {
   incomingImprovesThinTopUpPrior,
   isClosedSoftSalvageDeckHtml,
   isPersistableShortDeckDraft,
+  isSalvageableThinPriorArtifact,
   isPersistableShortDeckDraftAfterHeal,
   meetsMinimumDeckDeliverableQuality,
   shouldAbortStreamForHeadOnlyKitDump,
@@ -647,7 +648,7 @@ import {
   parseSlideCountSpec,
   rollbackSlideCountTopUpCount,
   shouldQueueSlideCountTopUp,
-  shouldBlockSlideCountAppendOntoThinPrior,
+  shouldSurfaceThinPriorRewriteExhaustedError,
   shouldQueueSparseContentTopUp,
   shouldQueueThinPriorFullRewrite,
   shouldRunDeterministicSparseCheck,
@@ -6155,6 +6156,22 @@ export function ProjectView({
                 ) {
                   // Keep artifactToPersist — full replace of thin prior.
                 } else {
+                  // 1007-N01 M — After rewrite spent, keep the salvageable
+                  // cover instead of failing the run as thin-prior-no-append.
+                  const rewriteSpent =
+                    countThinPriorFullRewriteAttemptsInConversation(
+                      messagesRef.current,
+                    ) >= 1;
+                  if (
+                    rewriteSpent
+                    && isSalvageableThinPriorArtifact(priorHtml)
+                  ) {
+                    return {
+                      kind: 'skipped-noop',
+                      fileName,
+                      reason: 'thin-prior-rewrite-salvage-keep',
+                    };
+                  }
                   return {
                     kind: 'skipped-incomplete',
                     fileName,
@@ -14325,12 +14342,16 @@ export function ProjectView({
         }
         // 루프505 — Rewrite already spent and deck is still thin: APPEND would
         // hit thin-prior-no-append and leave the shortfall silent.
+        // 1007-N01 M — Salvageable cover/partial stays on disk. Do not paint
+        // thin_prior_rewrite_exhausted; fall through so one APPEND can try
+        // continue-fill. Persist keeps the cover as skipped-noop on miss.
         // 루프535 — deterministic landing never rewrites or APPEND-expands.
         if (
           !sparseOnly
-          && shouldBlockSlideCountAppendOntoThinPrior({
+          && shouldSurfaceThinPriorRewriteExhaustedError({
             thinPrior,
             rewriteCount: rewriteAlready,
+            salvageableArtifact: isSalvageableThinPriorArtifact(html),
           })
         ) {
           surfaceChatVisibleError(

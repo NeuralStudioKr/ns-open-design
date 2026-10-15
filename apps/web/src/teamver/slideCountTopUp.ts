@@ -86,7 +86,7 @@ export function isSlideCountTopUpPrompt(content: string | null | undefined): boo
   if (!text) return false;
   if (
     text.startsWith(THIN_PRIOR_FULL_REWRITE_PROMPT_SENTINEL)
-    || /\[od:thin_prior_full_rewrite\]|replace the thin look seed|rewrite the entire deck with real content/i.test(
+    || /\[od:thin_prior_full_rewrite\]|replace the thin look seed|rewrite the entire deck with real content|continue from the saved cover/i.test(
       text,
     )
   ) {
@@ -108,7 +108,7 @@ export function isThinPriorFullRewritePrompt(content: string | null | undefined)
   if (!text) return false;
   if (text.startsWith(THIN_PRIOR_FULL_REWRITE_PROMPT_SENTINEL)) return true;
   // 루프505 — Avoid mid-body `[od:thin_prior_full_rewrite]` in NEVER-copy lists.
-  return /replace the thin look seed|rewrite the entire deck with real content/i.test(text);
+  return /replace the thin look seed|rewrite the entire deck with real content|continue from the saved cover/i.test(text);
 }
 
 export function countThinPriorFullRewriteAttemptsInConversation(
@@ -157,13 +157,14 @@ export function buildThinPriorFullRewritePrompt(input: {
     ? Math.min(input.requestedMin, targetMax)
     : targetMax;
   const countLine = targetMin < targetMax
-    ? `REWRITE the entire deck with real presentation content — emit at least ${targetMin} and at most ${targetMax} slides (target ${targetMax}; fewer than ${targetMin} is a failure).`
-    : `REWRITE the entire deck with real presentation content — emit exactly ${targetMax} slides (no fewer).`;
+    ? `CONTINUE from the saved cover: emit that cover plus filled body slides — at least ${targetMin} and at most ${targetMax} slides total (target ${targetMax}; cover-only / fewer than ${targetMin} is a failure).`
+    : `CONTINUE from the saved cover: emit that cover plus filled body slides — exactly ${targetMax} slides total (cover-only is a failure).`;
   const brief = String(input.userBrief ?? "").replace(/\s+/g, " ").trim().slice(0, 220);
   return [
     THIN_PRIOR_FULL_REWRITE_PROMPT_SENTINEL,
     "The saved deck is a THIN LOOK seed / title-only scaffold — empty shells, not a closed deliverable.",
-    "Do NOT append-only. Do NOT emit a slide-count expansion.",
+    "Keep the saved cover slide (title, kit classes, palette). Do NOT restart from a new cover and do NOT discard the cover.",
+    "Fill remaining body slides this turn. Do NOT emit a slide-count expansion that only repeats the cover.",
     countLine,
     brief ? `Source brief (cover/topic must reflect this, never paste it verbatim as a heading): ${brief}` : "",
     "Emit `<artifact type=\"deck\" identifier=\"deck\">` with a complete HTML document.",
@@ -188,6 +189,22 @@ export function shouldBlockSlideCountAppendOntoThinPrior(input: {
     input.thinPrior
     && input.rewriteCount >= THIN_PRIOR_FULL_REWRITE_MAX_PER_CONVERSATION
   );
+}
+
+/**
+ * 1007-N01 M — Rewrite budget spent and the disk deck is still thin.
+ * Surface the fatal chat error ONLY when there is nothing salvageable.
+ * A titled cover / cover+empty hosts must stay on disk (APPEND continue-fill
+ * may still run) instead of `thin_prior_rewrite_exhausted`.
+ */
+export function shouldSurfaceThinPriorRewriteExhaustedError(input: {
+  thinPrior: boolean;
+  rewriteCount: number;
+  salvageableArtifact: boolean;
+}): boolean {
+  if (!shouldBlockSlideCountAppendOntoThinPrior(input)) return false;
+  if (input.salvageableArtifact) return false;
+  return true;
 }
 
 /**
@@ -379,6 +396,7 @@ export function formatSlideAutomationBusyDropNotice(kind: "rewrite" | "top_up"):
 
 /**
  * 루프507 — Rewrite budget already spent and the disk deck is still thin.
+ * 1007-N01 M — Only used when nothing salvageable remains on disk.
  */
 export function formatThinPriorRewriteExhaustedNotice(): string {
   return "표지 초안을 채우는 생성이 한 번 끝났지만 본문이 비어 있습니다. 같은 요청을 다시 보내 주세요.";

@@ -8,6 +8,7 @@ import {
   hasFilledSlideSection,
   hasSalvageableDeckSlideContent,
   incomingImprovesThinTopUpPrior,
+  isSalvageableThinPriorArtifact,
   isClosedSoftSalvageDeckHtml,
   isDeckStatusProseOnlyBody,
   isPersistableShortDeckDraft,
@@ -132,6 +133,8 @@ describe("deck-html-content", () => {
       + '<section class="slide"></section>'
       + '</body></html>';
     expect(deckLooksLikeThinTopUpHostPrior(titlePlusEmpty)).toBe(true);
+    expect(isSalvageableThinPriorArtifact(soloTitle)).toBe(true);
+    expect(isSalvageableThinPriorArtifact(titlePlusEmpty)).toBe(true);
   });
 
   it("accepts substance rewrite over thin LOOK prior (루프468)", () => {

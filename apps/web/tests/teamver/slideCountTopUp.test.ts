@@ -49,6 +49,7 @@ import {
   applyHonorSlideCeilingToHtml,
   THIN_PRIOR_FULL_REWRITE_PROMPT_SENTINEL,
   shouldBlockSlideCountAppendOntoThinPrior,
+  shouldSurfaceThinPriorRewriteExhaustedError,
   shouldRunDeterministicSparseCheck,
   deterministicSparseCheckSessionKey,
   claimDeterministicSparseCheck,
@@ -578,8 +579,9 @@ describe("slideCountTopUp", () => {
     expect(prompt.startsWith(THIN_PRIOR_FULL_REWRITE_PROMPT_SENTINEL)).toBe(true);
     expect(isThinPriorFullRewritePrompt(prompt)).toBe(true);
     expect(isSlideCountTopUpPrompt(prompt)).toBe(false);
-    expect(prompt).toMatch(/REWRITE the entire deck/i);
-    expect(prompt).toMatch(/emit exactly 8 slides/i);
+    expect(prompt).toMatch(/CONTINUE from the saved cover/i);
+    expect(prompt).toMatch(/Keep the saved cover slide/i);
+    expect(prompt).toMatch(/exactly 8 slides total/i);
     expect(prompt).toMatch(/NEVER copy host protocol tokens/i);
     expect(prompt).toMatch(/Never emit `<artifact type="deck-patch">` on this rewrite turn/);
     const ranged = buildThinPriorFullRewritePrompt({
@@ -602,6 +604,16 @@ describe("slideCountTopUp", () => {
     expect(shouldBlockSlideCountAppendOntoThinPrior({
       thinPrior: false,
       rewriteCount: 1,
+    })).toBe(false);
+    expect(shouldSurfaceThinPriorRewriteExhaustedError({
+      thinPrior: true,
+      rewriteCount: 1,
+      salvageableArtifact: false,
+    })).toBe(true);
+    expect(shouldSurfaceThinPriorRewriteExhaustedError({
+      thinPrior: true,
+      rewriteCount: 1,
+      salvageableArtifact: true,
     })).toBe(false);
     // 루프505 — count shortfall (4 of 8–10) must win over sparse repair.
     expect(shouldQueueSlideCountTopUp({
