@@ -137,6 +137,48 @@ describe("deck-html-content", () => {
     expect(isSalvageableThinPriorArtifact(titlePlusEmpty)).toBe(true);
   });
 
+  it("treats empty LOOK cover + L CSS / titlewrap without h1 as salvageable (1007-N01 N)", () => {
+    const emptyLook = [
+      '<!doctype html><html lang="ko"><body class="tpl-product-launch">',
+      '<section class="slide s-cover">',
+      '<div data-od-slide-flow=""><div class="titlewrap"><div class="title"></div></div></div>',
+      "</section>",
+      '<style data-od-sparse-g2-fill="">',
+      "body.tpl-product-launch .slide>[data-od-slide-flow]{min-height:100%!important}",
+      "</style>",
+      "</body></html>",
+    ].join("");
+    expect(deckLooksLikeThinTopUpHostPrior(emptyLook)).toBe(true);
+    expect(isSalvageableThinPriorArtifact(emptyLook)).toBe(true);
+
+    const titlewrapNoH1 = [
+      '<!doctype html><html lang="ko"><body>',
+      '<section class="slide s-cover">',
+      '<div class="titlewrap"><div class="title">논리적 설득력의 비밀</div></div>',
+      "</section>",
+      "</body></html>",
+    ].join("");
+    expect(isSalvageableThinPriorArtifact(titlewrapNoH1)).toBe(true);
+
+    const emptySectionCover = [
+      '<!doctype html><html lang="ko"><body>',
+      '<section class="slide s-cover"></section>',
+      "</body></html>",
+    ].join("");
+    expect(deckLooksLikeThinTopUpHostPrior(emptySectionCover)).toBe(true);
+    expect(isSalvageableThinPriorArtifact(emptySectionCover)).toBe(true);
+
+    const twoEmptyHosts = [
+      '<!doctype html><html lang="ko"><body>',
+      '<section class="slide s-cover"></section>',
+      '<section class="slide"></section>',
+      '<section class="slide"></section>',
+      "</body></html>",
+    ].join("");
+    expect(deckLooksLikeThinTopUpHostPrior(twoEmptyHosts)).toBe(true);
+    expect(isSalvageableThinPriorArtifact(twoEmptyHosts)).toBe(true);
+  });
+
   it("accepts substance rewrite over thin LOOK prior (루프468)", () => {
     const thin =
       '<!doctype html><html lang="ko"><body>'

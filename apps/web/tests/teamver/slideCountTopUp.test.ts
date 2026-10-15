@@ -49,6 +49,7 @@ import {
   applyHonorSlideCeilingToHtml,
   THIN_PRIOR_FULL_REWRITE_PROMPT_SENTINEL,
   shouldBlockSlideCountAppendOntoThinPrior,
+  classifyThinPriorRewriteTerminalPersist,
   shouldSurfaceThinPriorRewriteExhaustedError,
   shouldRunDeterministicSparseCheck,
   deterministicSparseCheckSessionKey,
@@ -609,12 +610,20 @@ describe("slideCountTopUp", () => {
       thinPrior: true,
       rewriteCount: 1,
       salvageableArtifact: false,
-    })).toBe(true);
+    })).toBe(false);
     expect(shouldSurfaceThinPriorRewriteExhaustedError({
       thinPrior: true,
       rewriteCount: 1,
       salvageableArtifact: true,
     })).toBe(false);
+    expect(classifyThinPriorRewriteTerminalPersist({
+      thinPrior: true,
+      rewriteCount: 1,
+      salvageableArtifact: false,
+    })).toEqual({
+      kind: "skipped-noop",
+      reason: "thin-prior-rewrite-salvage-keep",
+    });
     // 루프505 — count shortfall (4 of 8–10) must win over sparse repair.
     expect(shouldQueueSlideCountTopUp({
       produced: 4,

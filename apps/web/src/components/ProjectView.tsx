@@ -648,6 +648,7 @@ import {
   parseSlideCountSpec,
   rollbackSlideCountTopUpCount,
   shouldQueueSlideCountTopUp,
+  classifyThinPriorRewriteTerminalPersist,
   shouldSurfaceThinPriorRewriteExhaustedError,
   shouldQueueSparseContentTopUp,
   shouldQueueThinPriorFullRewrite,
@@ -6156,20 +6157,21 @@ export function ProjectView({
                 ) {
                   // Keep artifactToPersist — full replace of thin prior.
                 } else {
-                  // 1007-N01 M — After rewrite spent, keep the salvageable
-                  // cover instead of failing the run as thin-prior-no-append.
-                  const rewriteSpent =
-                    countThinPriorFullRewriteAttemptsInConversation(
+                  // 1007-N01 N — After rewrite spent, keep the cover even when
+                  // M's salvage predicate missed empty LOOK / titlewrap / L CSS.
+                  // Never surface-chat-error / thin_prior_rewrite_exhausted.
+                  const rewriteTerminal = classifyThinPriorRewriteTerminalPersist({
+                    thinPrior: true,
+                    rewriteCount: countThinPriorFullRewriteAttemptsInConversation(
                       messagesRef.current,
-                    ) >= 1;
-                  if (
-                    rewriteSpent
-                    && isSalvageableThinPriorArtifact(priorHtml)
-                  ) {
+                    ),
+                    salvageableArtifact: isSalvageableThinPriorArtifact(priorHtml),
+                  });
+                  if (rewriteTerminal?.kind === 'skipped-noop') {
                     return {
                       kind: 'skipped-noop',
                       fileName,
-                      reason: 'thin-prior-rewrite-salvage-keep',
+                      reason: rewriteTerminal.reason ?? 'thin-prior-rewrite-salvage-keep',
                     };
                   }
                   return {
@@ -14342,9 +14344,9 @@ export function ProjectView({
         }
         // 루프505 — Rewrite already spent and deck is still thin: APPEND would
         // hit thin-prior-no-append and leave the shortfall silent.
-        // 1007-N01 M — Salvageable cover/partial stays on disk. Do not paint
-        // thin_prior_rewrite_exhausted; fall through so one APPEND can try
-        // continue-fill. Persist keeps the cover as skipped-noop on miss.
+        // 1007-N01 N — Never paint thin_prior_rewrite_exhausted. Fall through
+        // so one APPEND can try continue-fill. Persist keeps the cover as
+        // skipped-noop / salvage-keep even when M's salvage predicate missed.
         // 루프535 — deterministic landing never rewrites or APPEND-expands.
         if (
           !sparseOnly

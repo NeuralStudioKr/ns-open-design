@@ -8,6 +8,7 @@ import {
   SLIDE_COUNT_TOP_UP_ENTRY_FROM,
   SPARSE_CONTENT_TOP_UP_ENTRY_FROM,
   buildThinPriorFullRewritePrompt,
+  classifyThinPriorRewriteTerminalPersist,
   isSoftImprovementAutomationEntryFrom,
   isThinPriorFullRewritePrompt,
   shouldBlockSlideCountAppendOntoThinPrior,
@@ -157,18 +158,102 @@ describe('1007-N01 M thin_prior_rewrite_exhausted salvage', () => {
       thinPrior: true,
       rewriteCount: 1,
     })).toBe(true);
-    // Pre-M behavior: this combination painted surface-chat-error.
-    expect(shouldSurfaceThinPriorRewriteExhaustedError({
+    // N: cover-only after rewriteCount≥1 is salvage-keep, never surface-chat-error.
+    expect(classifyThinPriorRewriteTerminalPersist({
       thinPrior: true,
       rewriteCount: 1,
-      salvageableArtifact: false,
-    })).toBe(true);
-    // M: salvageable cover must not become a fatal exhausted error.
+      salvageableArtifact: isSalvageableThinPriorArtifact(cover),
+    })).toEqual({
+      kind: 'skipped-noop',
+      reason: 'thin-prior-rewrite-salvage-keep',
+    });
     expect(shouldSurfaceThinPriorRewriteExhaustedError({
       thinPrior: true,
       rewriteCount: 1,
       salvageableArtifact: isSalvageableThinPriorArtifact(cover),
     })).toBe(false);
+  });
+
+  function expectCoverSalvageKeep(html: string, opts?: { thinHost?: boolean }) {
+    if (opts?.thinHost !== false) {
+      expect(deckLooksLikeThinTopUpHostPrior(html)).toBe(true);
+    }
+    expect(isSalvageableThinPriorArtifact(html)).toBe(true);
+    expect(classifyThinPriorRewriteTerminalPersist({
+      thinPrior: true,
+      rewriteCount: 0,
+      salvageableArtifact: isSalvageableThinPriorArtifact(html),
+    })).toBeNull();
+    const persist = classifyThinPriorRewriteTerminalPersist({
+      thinPrior: true,
+      rewriteCount: 1,
+      salvageableArtifact: isSalvageableThinPriorArtifact(html),
+    });
+    expect(persist).toEqual({
+      kind: 'skipped-noop',
+      reason: 'thin-prior-rewrite-salvage-keep',
+    });
+    expect(persist?.kind).not.toBe('surface-chat-error');
+    expect(persist?.code).not.toBe('thin_prior_rewrite_exhausted');
+    expect(shouldSurfaceThinPriorRewriteExhaustedError({
+      thinPrior: true,
+      rewriteCount: 1,
+      salvageableArtifact: false,
+    })).toBe(false);
+  }
+
+  it('empty LOOK cover + L CSS after rewriteCount≥1 is salvage-keep, not surface-chat-error', () => {
+    const emptyLookCover = [
+      '<!doctype html><html lang="ko"><body class="tpl-product-launch">',
+      '<section class="slide s-cover">',
+      '<div data-od-slide-flow=""><div class="titlewrap"><div class="title"></div></div></div>',
+      '</section>',
+      lStretchCss,
+      '</body></html>',
+    ].join('');
+    expectCoverSalvageKeep(emptyLookCover);
+  });
+
+  it('titlewrap without h1 / empty s-cover / 1–2 empty hosts are salvage-keep after rewriteCount≥1', () => {
+    const titlewrapNoH1 = [
+      '<!doctype html><html lang="ko"><body>',
+      '<section class="slide s-cover">',
+      '<div class="titlewrap"><div class="title">논리적 설득력의 비밀</div></div>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    // Title text without <h1> is persistable draft copy, so it may not be a
+    // thin host — still salvageable, and rewrite-spent persist is keep.
+    expectCoverSalvageKeep(titlewrapNoH1, { thinHost: false });
+
+    const emptySectionCover = [
+      '<!doctype html><html lang="ko"><body>',
+      '<section class="slide s-cover"></section>',
+      lStretchCss,
+      '</body></html>',
+    ].join('');
+    expectCoverSalvageKeep(emptySectionCover);
+
+    const oneEmptyHost = [
+      '<!doctype html><html lang="ko"><body class="tpl-product-launch">',
+      '<section class="slide s-cover">',
+      '<div class="titlewrap"><div class="title"></div></div>',
+      '</section>',
+      '<section class="slide"></section>',
+      lStretchCss,
+      '</body></html>',
+    ].join('');
+    expectCoverSalvageKeep(oneEmptyHost);
+
+    const twoEmptyHosts = [
+      '<!doctype html><html lang="ko"><body class="tpl-product-launch">',
+      '<section class="slide s-cover"></section>',
+      '<section class="slide"></section>',
+      '<section class="slide"></section>',
+      lStretchCss,
+      '</body></html>',
+    ].join('');
+    expectCoverSalvageKeep(twoEmptyHosts);
   });
 
   it('keeps title-only cover + empty hosts salvageable (not fatal)', () => {

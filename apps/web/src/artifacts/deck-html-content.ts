@@ -867,20 +867,35 @@ export function deckLooksLikeThinTopUpHostPrior(html: string): boolean {
   return true;
 }
 
+function htmlLooksLikeLookCoverChrome(html: string): boolean {
+  // Host opening attrs (`class="slide s-cover"`) are not in slide inners.
+  // CSS `.s-cover{` does not match: the token must be preceded by space/'/"/= .
+  return /(?:^|[\s"'=])(?:s-cover|titlewrap|hero-title|hero-frame|hero-label)(?:[\s"']|$)/i.test(
+    html,
+  );
+}
+
 /**
- * 1007-N01 M — A thin prior that still has a titled cover (or cover + empty
+ * 1007-N01 M/N — A thin prior that still has a titled cover (or cover + empty
  * hosts) is salvageable. Fatal `thin_prior_rewrite_exhausted` is worse than
  * showing that cover. CSS stretch / empty boxes never count as filled copy.
+ *
+ * N: MiniMax often lands empty `s-cover` + L stretch `<style>`, titlewrap
+ * without `<h1>`, or 1–2 empty extra `.slide`s. Those are thin priors but M's
+ * heading gate returned false and the chat still died.
  */
 export function isSalvageableThinPriorArtifact(html: string): boolean {
   if (isPersistableShortDeckDraft(html)) return true;
   if (deckLooksLikeTitleOnlyCoverWithEmptyHosts(html)) return true;
+  if (deckLooksLikeThinTopUpHostPrior(html)) return true;
   const withoutComments = html.replace(/<!--[\s\S]*?-->/g, "");
   if (!documentContainsSlideSection(withoutComments)) return false;
+  if (htmlLooksLikeLookCoverChrome(withoutComments)) return true;
   const inners = listSlideSectionInners(withoutComments);
   return inners.some((inner) => {
     if (slideInnerLooksLikeStylesheetDump(inner)) return false;
     if (slideSectionInnerLooksLikeStatusOnly(inner)) return false;
+    if (htmlLooksLikeLookCoverChrome(inner)) return true;
     const heading = firstSlideHeading(inner);
     if (heading && visibleTextFromHtmlFragment(heading).length >= 2) return true;
     return slideInnerHasPersistableDraftCopy(inner);

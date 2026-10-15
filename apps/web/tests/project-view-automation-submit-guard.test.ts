@@ -37,6 +37,10 @@ describe("ProjectView automation submit guard", () => {
   it("prefers slide-count shortfall over sparse repair and blocks thin APPEND after rewrite (루프505)", () => {
     expect(projectViewSource).toContain("shouldSurfaceThinPriorRewriteExhaustedError");
     expect(projectViewSource).toContain("isSalvageableThinPriorArtifact");
+    expect(projectViewSource).toContain("classifyThinPriorRewriteTerminalPersist");
+    expect(projectViewSource).toMatch(
+      /rewriteTerminal\?\.kind === 'skipped-noop'[\s\S]{0,220}thin-prior-rewrite-salvage-keep/,
+    );
     expect(projectViewSource).toContain("wantsCountTopUp");
     expect(projectViewSource).toContain("requestedMin: requestedSpec?.min");
     expect(projectViewSource).toContain("userBrief: runVisiblePromptRef.current || ''");

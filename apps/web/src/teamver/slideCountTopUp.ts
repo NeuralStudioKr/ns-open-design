@@ -192,19 +192,46 @@ export function shouldBlockSlideCountAppendOntoThinPrior(input: {
 }
 
 /**
- * 1007-N01 M — Rewrite budget spent and the disk deck is still thin.
- * Surface the fatal chat error ONLY when there is nothing salvageable.
- * A titled cover / cover+empty hosts must stay on disk (APPEND continue-fill
- * may still run) instead of `thin_prior_rewrite_exhausted`.
+ * Persist kind after rewrite budget is spent and the deck is still thin.
+ * Cover-only / empty-host drafts stay on disk — never `surface-chat-error`.
+ */
+export type ThinPriorRewriteTerminalPersist = {
+  kind: "skipped-noop" | "surface-chat-error";
+  reason?: string;
+  code?: string;
+};
+
+/**
+ * 1007-N01 N — Rewrite spent + still thin → keep the cover.
+ * M still returned `surface-chat-error` / `thin_prior_rewrite_exhausted` when
+ * `salvageableArtifact` was false (empty LOOK cover + L CSS, titlewrap without
+ * h1, 1–2 empty hosts). That is the remaining hole: never kill chat.
+ */
+export function classifyThinPriorRewriteTerminalPersist(input: {
+  thinPrior: boolean;
+  rewriteCount: number;
+  salvageableArtifact: boolean;
+}): ThinPriorRewriteTerminalPersist | null {
+  // salvageableArtifact is caller-compat only — N never gates keep on it.
+  void input.salvageableArtifact;
+  if (!shouldBlockSlideCountAppendOntoThinPrior(input)) return null;
+  return {
+    kind: "skipped-noop",
+    reason: "thin-prior-rewrite-salvage-keep",
+  };
+}
+
+/**
+ * 1007-N01 N — Never paint `thin_prior_rewrite_exhausted`.
+ * A thin prior is already on disk; APPEND continue-fill may still run and
+ * persist keeps the cover as skipped-noop / salvage-keep.
  */
 export function shouldSurfaceThinPriorRewriteExhaustedError(input: {
   thinPrior: boolean;
   rewriteCount: number;
   salvageableArtifact: boolean;
 }): boolean {
-  if (!shouldBlockSlideCountAppendOntoThinPrior(input)) return false;
-  if (input.salvageableArtifact) return false;
-  return true;
+  return classifyThinPriorRewriteTerminalPersist(input)?.kind === "surface-chat-error";
 }
 
 /**
