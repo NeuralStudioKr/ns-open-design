@@ -68,6 +68,7 @@ import {
 } from '../artifacts/pendingWriteRecovery';
 import {
   deckArtifactStartsWithMotifSvgDump,
+  countFilledSlideSections,
   deckLooksLikeThinTopUpHostPrior,
   deckLooksLikeUnfilledCatalogExample,
   deckSlideHeadingsLookLikeFailedGenerate,
@@ -189,6 +190,7 @@ import {
   decideTemplateCloneSlotFillTerminal,
   TEMPLATE_CLONE_SLOT_FILL_JSON_REPAIR_REASON,
   applyTemplateClonePromptFillLookMerge,
+  briefLooksLikeGeneralKnowledgeHowToTopic,
   listTemplateCloneSlideShells,
   prepareTemplateCloneSlotFillAssistantText,
   recoverPartialTemplateCloneOutline,
@@ -14280,6 +14282,10 @@ export function ProjectView({
             rewriteCount: rewriteAlready,
             commentAttachmentCount: runCommentAttachmentsRef.current.length,
             requested,
+            filledCount: countFilledSlideSections(html),
+            howToTopic: briefLooksLikeGeneralKnowledgeHowToTopic(
+              runVisiblePromptRef.current || '',
+            ),
           })
           && (
             runTemplateCloneContentFillRef.current

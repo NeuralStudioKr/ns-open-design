@@ -1,3 +1,5 @@
+import { productLaunchSlideLayoutFingerprint } from '@open-design/contracts';
+
 /**
  * `<artifact type="deck-patch">` — partial deck edit contract.
  *
@@ -1017,6 +1019,14 @@ function slideVisibleTextFingerprint(slideHtml: string): string {
 }
 
 /**
+ * 1007-N01 Q — APPEND 가 제목만 바꾼 Sound 클론을 붙이지 않게
+ * data-title + 카드 본문 트리플릿으로도 중복을 본다. 본문이 다른 장은 유지.
+ */
+function slideLayoutCloneFingerprint(slideHtml: string): string {
+  return productLaunchSlideLayoutFingerprint(slideHtml);
+}
+
+/**
  * A real rewrite copies the saved deck (usually with `<head>`).
  * Persist salvage wraps body-only top-up slides as
  * `<!doctype html><html lang="ko"><body>…` — that is NOT a rewrite.
@@ -1071,15 +1081,24 @@ export function appendIncomingSlidesOntoExistingDeck(
   // ProjectView 의 인접-한정 collapse 로는 못 잡는 '산재 중복'(top-up 이 저장된
   // 본문을 다시 토해내는 경우)을 막는다. 짧은(저지문) 슬라이드는 오탐을 피해 유지.
   const seenFingerprints = new Set<string>();
+  const seenLayouts = new Set<string>();
   for (const slide of existingSlides) {
     const fp = slideVisibleTextFingerprint(slide.outerHtml);
     if (fp.length >= DECK_APPEND_DEDUP_MIN_CHARS) seenFingerprints.add(fp);
+    const layout = slideLayoutCloneFingerprint(slide.outerHtml);
+    if (layout) seenLayouts.add(layout);
   }
   const dedupedAppend = toAppend.filter((slide) => {
+    const layout = slideLayoutCloneFingerprint(slide.outerHtml);
+    if (layout && seenLayouts.has(layout)) return false;
     const fp = slideVisibleTextFingerprint(slide.outerHtml);
-    if (fp.length < DECK_APPEND_DEDUP_MIN_CHARS) return true;
+    if (fp.length < DECK_APPEND_DEDUP_MIN_CHARS) {
+      if (layout) seenLayouts.add(layout);
+      return true;
+    }
     if (seenFingerprints.has(fp)) return false;
     seenFingerprints.add(fp);
+    if (layout) seenLayouts.add(layout);
     return true;
   });
   if (dedupedAppend.length === 0) return null;

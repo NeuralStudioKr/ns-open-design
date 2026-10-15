@@ -576,6 +576,27 @@ describe("slideCountTopUp", () => {
       thinPrior: true,
       rewriteCount: 1,
     })).toBe(false);
+    expect(shouldQueueThinPriorFullRewrite({
+      hostCount: 4,
+      thinPrior: true,
+      rewriteCount: 0,
+      filledCount: 4,
+      howToTopic: true,
+    })).toBe(false);
+    expect(shouldQueueThinPriorFullRewrite({
+      hostCount: 4,
+      thinPrior: true,
+      rewriteCount: 0,
+      filledCount: 1,
+      howToTopic: true,
+    })).toBe(true);
+    // Rewrite skip must not eat count top-up: 4 of 8–10 still APPEND.
+    expect(shouldQueueSlideCountTopUp({
+      produced: 4,
+      requested: 10,
+      requestedMin: 8,
+      topUpCount: 0,
+    })).toBe(true);
     const prompt = buildThinPriorFullRewritePrompt({ hostCount: 9, requested: 8 });
     expect(prompt.startsWith(THIN_PRIOR_FULL_REWRITE_PROMPT_SENTINEL)).toBe(true);
     expect(isThinPriorFullRewritePrompt(prompt)).toBe(true);

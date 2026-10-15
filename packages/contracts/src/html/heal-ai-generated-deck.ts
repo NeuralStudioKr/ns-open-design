@@ -434,6 +434,78 @@ export function dropDuplicateConsecutiveTitleOnlyLeftoverSlides(html: string): s
  * 문장부호만 다른 연속 장도 접는다. 커버·챕터·비인접 재사용·추가 문장은 유지.
  * 카피 발명 없음.
  */
+const PRODUCT_LAUNCH_LAYOUT_CLONE_TITLE_RE =
+  /\bdata-title\s*=\s*["']([^"']+)["']/i;
+const PRODUCT_LAUNCH_LAYOUT_CLONE_CARD_HEADING_RE =
+  /<(?:h4|h3)\b[^>]*>[\s\S]*?<\/(?:h4|h3)>/gi;
+
+function productLaunchCardUnitFingerprints(slideHtml: string): string[] {
+  const source = String(slideHtml ?? '');
+  const headings = [...source.matchAll(PRODUCT_LAUNCH_LAYOUT_CLONE_CARD_HEADING_RE)];
+  const units: string[] = [];
+  for (let i = 0; i < headings.length; i += 1) {
+    const start = headings[i]!.index ?? 0;
+    const end = i + 1 < headings.length
+      ? (headings[i + 1]!.index ?? source.length)
+      : source.length;
+    const text = visibleText(source.slice(start, end)).toLowerCase();
+    if (text) units.push(text);
+  }
+  return units.slice(0, 3);
+}
+
+/**
+ * 1007-N01 Q — continue-fill APPEND 가 같은 data-title + 같은 카드 본문
+ * 트리플릿을 복제한 장을 제거한다. h4 라벨만 같고 본문이 다른 장은 유지.
+ */
+export function productLaunchSlideLayoutFingerprint(slideHtml: string): string {
+  const source = String(slideHtml ?? '');
+  const dataTitle = (source.match(PRODUCT_LAUNCH_LAYOUT_CLONE_TITLE_RE)?.[1] ?? '')
+    .trim()
+    .toLowerCase();
+  const cards = productLaunchCardUnitFingerprints(source);
+  const trio = cards.join('|');
+  if (dataTitle && cards.length >= 2) return `${dataTitle}::${trio}`;
+  if (cards.length >= 3) return `trio::${trio}`;
+  if (dataTitle && /\b(?:center|tc)\b/i.test(source)) {
+    const heading = visibleText(
+      source.match(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? '',
+    ).toLowerCase();
+    const body = visibleText(source).toLowerCase();
+    if (!heading || /^(?:성과 지표|핵심 포인트|핵심 내용)$/.test(heading)) {
+      return `${dataTitle}::center::${body}`;
+    }
+  }
+  return '';
+}
+
+export function dropDuplicateProductLaunchLayoutClones(html: string): string {
+  let out = String(html ?? '');
+  if (!out || !/\btpl-product-launch\b|\b(?:feature-card|price-card)\b/i.test(out)) {
+    return out;
+  }
+  const slides = listAiSlideSpans(out);
+  if (slides.length < 3) return out;
+  const seen = new Set<string>();
+  const remove: SlideSpan[] = [];
+  for (let i = 0; i < slides.length; i += 1) {
+    const slide = slides[i]!;
+    const body = out.slice(slide.start, slide.end);
+    const fp = productLaunchSlideLayoutFingerprint(body);
+    if (!fp) continue;
+    if (i === 0 || attrsLookLikeRealCoverSlide(slide.attrs)) {
+      seen.add(fp);
+      continue;
+    }
+    if (seen.has(fp)) remove.push(slide);
+    else seen.add(fp);
+  }
+  for (let i = remove.length - 1; i >= 0; i -= 1) {
+    out = removeSlideSpan(out, remove[i]!);
+  }
+  return out;
+}
+
 export function dropDuplicateConsecutiveSubstanceSlides(html: string): string {
   let out = String(html ?? '');
   if (!out) return out;
@@ -4479,10 +4551,10 @@ export function polishTruncatedInstructionTitles(html: string): string {
     (full, tag: string, attrs: string, inner: string) => {
       if (/<(?:div|ul|ol|section|article|aside|table)\b/i.test(inner)) return full;
       const text = visibleText(inner);
-      if (!/에\s*대한$|예시에?$/u.test(text)) return full;
+      if (!/에\s*대한(?:\s*\d+)?$|예시에?$/u.test(text)) return full;
       const next = String(inner)
-        .replace(/(?:<br\s*\/?>\s*)?[,，]?\s*예시에?\s*대한\s*$/u, '')
-        .replace(/(?:<br\s*\/?>\s*)?\s*에\s*대한\s*$/u, '')
+        .replace(/(?:<br\s*\/?>\s*)?[,，]?\s*예시에?\s*대한(?:\s*\d+)?\s*$/u, '')
+        .replace(/(?:<br\s*\/?>\s*)?\s*에\s*대한(?:\s*\d+)?\s*$/u, '')
         .replace(/(?:<br\s*\/?>\s*)+$/g, '')
         .trim();
       if (!next || next === inner) return full;
@@ -5473,6 +5545,7 @@ export function healAiGeneratedDeckMarkup(
   if (howToTopic) {
     out = stripIncompleteNumericPlaceholders(out);
     out = collapseTitleOnlyHowToContentSlides(out, brief);
+    out = dropDuplicateProductLaunchLayoutClones(out);
   }
   // 루프478 — last: an invented dark palette on a light-paper kit leaves copy
   // cream-on-cream. Judge inline colors against their effective background

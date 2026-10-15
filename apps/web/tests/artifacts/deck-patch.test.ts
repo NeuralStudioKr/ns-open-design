@@ -632,4 +632,52 @@ describe('appendIncomingSlidesOntoExistingDeck', () => {
     const merged = appendIncomingSlidesOntoExistingDeck(prior, incoming);
     expect(extractTopLevelSlideSections(merged ?? '').length).toBe(3);
   });
+
+  it('1007-N01 Q — APPEND 가 같은 data-title + 같은 카드 본문 클론을 붙이지 않는다', () => {
+    const prior = [
+      '<!doctype html><html><body class="tpl-product-launch">',
+      '<section class="slide dark" data-title="Cover"><h1>글을 매력적으로 쓰는 팁</h1></section>',
+      '<section class="slide" data-title="Sound"><h2>핵심 포인트</h2><div class="grid g3">',
+      '<div class="feature-card"><h4>개념</h4><p class="dim">팁에서 자주 쓰이는 용어와 원리를 짧고 정확하게 정의</p></div>',
+      '<div class="feature-card"><h4>구조</h4><p class="dim">팁을 이루는 구성 요소와 서로 연결되는 방식을 설명</p></div>',
+      '<div class="feature-card"><h4>영향</h4><p class="dim">팁이 실제 의사결정이나 업무에 만드는 변화를 정리</p></div>',
+      '</div></section></body></html>',
+    ].join('');
+    const incoming = [
+      '<section class="slide" data-title="Sound"><h2>경로</h2><div class="grid g3">',
+      '<div class="feature-card"><h4>개념</h4><p class="dim">팁에서 자주 쓰이는 용어와 원리를 짧고 정확하게 정의</p></div>',
+      '<div class="feature-card"><h4>구조</h4><p class="dim">팁을 이루는 구성 요소와 서로 연결되는 방식을 설명</p></div>',
+      '<div class="feature-card"><h4>영향</h4><p class="dim">팁이 실제 의사결정이나 업무에 만드는 변화를 정리</p></div>',
+      '</div></section>',
+      '<section class="slide"><h2>오늘 바로 쓰는 세 연습</h2><p>첫 문장만 다섯 번 다시 쓴다.</p></section>',
+    ].join('');
+    const merged = appendIncomingSlidesOntoExistingDeck(prior, incoming);
+    expect(extractTopLevelSlideSections(merged ?? '').length).toBe(3);
+    expect((merged ?? '').match(/data-title="Sound"/g)?.length).toBe(1);
+    expect(merged).toContain('오늘 바로 쓰는 세 연습');
+    expect(merged).not.toContain('<h2>경로</h2>');
+  });
+
+  it('1007-N01 Q — 같은 Sound 레이아웃이어도 카드 본문이 다르면 APPEND 한다', () => {
+    const prior = [
+      '<!doctype html><html><body class="tpl-product-launch">',
+      '<section class="slide dark" data-title="Cover"><h1>글을 매력적으로 쓰는 팁</h1></section>',
+      '<section class="slide" data-title="Sound"><h2>핵심 포인트</h2><div class="grid g3">',
+      '<div class="feature-card"><h4>개념</h4><p class="dim">첫 문장에서 결론을 말해 기대를 잡는다.</p></div>',
+      '<div class="feature-card"><h4>구조</h4><p class="dim">한 문단은 한 생각만 담는다.</p></div>',
+      '<div class="feature-card"><h4>영향</h4><p class="dim">독자가 끝까지 읽게 된다.</p></div>',
+      '</div></section></body></html>',
+    ].join('');
+    const incoming = [
+      '<section class="slide" data-title="Sound"><h2>연습</h2><div class="grid g3">',
+      '<div class="feature-card"><h4>개념</h4><p class="dim">제목 없이 본문만 쓰고 나중에 붙인다.</p></div>',
+      '<div class="feature-card"><h4>구조</h4><p class="dim">소리 내어 읽고 걸리는 곳을 고친다.</p></div>',
+      '<div class="feature-card"><h4>영향</h4><p class="dim">다음 초안이 짧아진다.</p></div>',
+      '</div></section>',
+    ].join('');
+    const merged = appendIncomingSlidesOntoExistingDeck(prior, incoming);
+    expect(extractTopLevelSlideSections(merged ?? '').length).toBe(3);
+    expect((merged ?? '').match(/data-title="Sound"/g)?.length).toBe(2);
+    expect(merged).toContain('제목 없이 본문만 쓰고 나중에 붙인다.');
+  });
 });

@@ -132,6 +132,12 @@ export function shouldQueueThinPriorFullRewrite(input: {
   commentAttachmentCount?: number;
   /** Exact/range max from the user brief. Honor 1장 → do not expand. */
   requested?: number | null;
+  /**
+   * 1007-N01 Q — how-to 가 이미 본문 장을 채웠으면 cover-rewrite+APPEND 클론
+   * 대신 continue-fill 만 한다. 빈 셸 thin prior 는 기존처럼 rewrite.
+   */
+  filledCount?: number | null;
+  howToTopic?: boolean;
 }): boolean {
   if ((input.commentAttachmentCount ?? 0) > 0) return false;
   if (!input.thinPrior) return false;
@@ -140,6 +146,7 @@ export function shouldQueueThinPriorFullRewrite(input: {
   const requested = input.requested ?? null;
   // User asked for exactly this many (or fewer) pages — do not force a 6-up.
   if (requested != null && requested <= input.hostCount) return false;
+  if (input.howToTopic === true && (input.filledCount ?? 0) >= 3) return false;
   return true;
 }
 

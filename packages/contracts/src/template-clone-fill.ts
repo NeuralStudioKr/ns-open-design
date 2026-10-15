@@ -2075,12 +2075,15 @@ function synthTemplateItems(
  * 비우고 박스 수를 줄인다(지어내 메우지 않음).
  */
 export const DETERMINISTIC_SYNTH_SKELETON_COPY_RE =
-  /지금 다뤄야 하는가|자주 쓰이는 용어와 원리|이루는 구성 요소와 서로 연결되는 방식|전체 지도를 먼저 그리고 세부 개념을|대안·사례·실패 패턴을 비교해 차이를 명확히|핵심 원리가 실제 문제를 줄여 준 장면|비슷하지만 성과가 낮은 접근|적용할지 결정하는 비용·리스크·기대 효과|작은 범위에서 실행하고 피드백을 빠르게 반영|성과 지표와 실패 신호를 함께 정의|배경과 현재 논의가 필요한 이유를 한두 문장으로 정리|청중이 가장 먼저 이해해야 할 핵심 질문|세 갈래로 나눠 보기|이해에서 적용까지 잇는 순서|한 번에 설명하기보다 배경·구조·사례·실행 기준|실제 의사결정이나 업무에 만드는 변화|실제 상황에 적용할 기준과 다음 행동|정리와 다음 단계|개념·사례·실행 기준을 예고|필요한 자료·이해관계자·현재 상태를 먼저 확인/;
+  /지금 다뤄야 하는가|자주 쓰이는 용어와 원리|이루는 구성 요소와 서로 연결되는 방식|전체 지도를 먼저 그리고 세부 개념을|대안·사례·실패 패턴을 비교해 차이를 명확히|핵심 원리가 실제 문제를 줄여 준 장면|비슷하지만 성과가 낮은 접근|적용할지 결정하는 비용·리스크·기대 효과|작은 범위에서 실행하고 피드백을 빠르게 반영|성과 지표와 실패 신호를 함께 정의|배경과 현재 논의가 필요한 이유를 한두 문장으로 정리|청중이 가장 먼저 이해해야 할 핵심 질문|세 갈래로 나눠 보기|이해에서 적용까지 잇는 순서|한 번에 설명하기보다 배경·구조·사례·실행 기준|실제 의사결정이나 업무에 만드는 변화|실제 상황에 적용할 기준과 다음 행동|정리와 다음 단계|개념·사례·실행 기준을 예고|필요한 자료·이해관계자·현재 상태를 먼저 확인|핵심 맥락과 다음 단계/;
 
 export function looksLikeDeterministicSynthSkeletonCopy(
   text: string | null | undefined,
 ): boolean {
-  return DETERMINISTIC_SYNTH_SKELETON_COPY_RE.test(String(text ?? ''));
+  const value = String(text ?? '');
+  if (DETERMINISTIC_SYNTH_SKELETON_COPY_RE.test(value)) return true;
+  // 1007-N01 Q — 잘린 토픽 조각(`팁에서/을`) + 정의/구성/변화 스켈레톤.
+  return /(?:팁에서|팁을|팁이)\s*.{0,24}(?:정의|구성|변화)/.test(value);
 }
 
 const GENERAL_KNOWLEDGE_HOW_TO_RE =
@@ -5026,6 +5029,14 @@ export function looksLikeRawUrlSiteCoverTitle(text: string): boolean {
   if (/^(?:https?:\/\/)?www\.[a-z0-9.-]+\/?$/i.test(t)) return true;
   const polished = polishUrlSiteCoverTitle(t, t);
   return polished !== t && polished.length >= 2 && /(?:www\.|https?:\/\/)/i.test(t);
+}
+
+/**
+ * Dangling incomplete `에 대한` / `에 대한 2` at the end of a title.
+ * Mid-phrase copy (`개인정보에 대한 안내`) is real Korean and must stay.
+ */
+export function headingHasDanglingInstructionParticle(text: string): boolean {
+  return /에\s*대한(?:\s*\d+)?\s*$/u.test(String(text ?? '').replace(/\s+/g, ' ').trim());
 }
 
 /** Instruction leftovers MiniMax parks on cover titles (`연습 팁에 대한`). */
@@ -12849,6 +12860,9 @@ function productLaunchBodyHasLeftoverCards(body: string): boolean {
 
 function sanitizeProductLaunchHeading(rawTitle: string): string {
   let title = stripProductLaunchBrandMarkText(rawTitle).replace(/Teamver을/g, 'Teamver를');
+  if (headingHasDanglingInstructionParticle(title)) {
+    title = polishInstructionCoverTitle(title);
+  }
   if (/^핵심\s+\d+$/.test(title) || PRODUCT_LAUNCH_GENERIC_HEADING_RE.test(title)) {
     return '';
   }
@@ -13235,7 +13249,7 @@ function healProductLaunchStructuralQuality(
       || /^(?:주제|핵심|차이)$/.test(heading)
       || /^주제(?:에서|의|가|를|는|와)/.test(heading)
       || /다루는 칸/.test(heading)
-      || /에\s*대한/.test(heading)
+      || headingHasDanglingInstructionParticle(heading)
       || looksLikeDeterministicSynthSkeletonCopy(heading)
       || productLaunchHeadingLooksLikeBodySentence(heading);
     if (productLaunchLooksLikeOrphanPricingChrome(body)) {
@@ -13247,10 +13261,15 @@ function healProductLaunchStructuralQuality(
     // collapseEmptyProductLaunchCardsAndGrids가 담당한다.
     const structuralTitle = productLaunchStructuralHeading(body, span.attrs, topic);
     if (brokenHeading && headingMatch) {
-      // 제목(label)은 덱 자신의 topic/본문에서 끌어온 요약이므로 유지한다.
+      // 1007-N01 Q — dangling `에 대한` / `에 대한 2` 만 조사 벗긴다.
+      // 중간 구절(`에 대한 안내`)과 온토픽 제목은 유지. 구조 라벨 금지.
+      const polishedHeading = polishInstructionCoverTitle(heading);
+      const nextHeading = headingHasDanglingInstructionParticle(heading) && polishedHeading
+        ? polishedHeading
+        : structuralTitle;
       body = body.replace(
         headingMatch[0],
-        `<h${headingMatch[1]}${headingMatch[2]}>${escapeHtml(structuralTitle)}</h${headingMatch[1]}>`,
+        `<h${headingMatch[1]}${headingMatch[2]}>${escapeHtml(nextHeading)}</h${headingMatch[1]}>`,
       );
     } else if (brokenHeading && /\bcta-btn\b/i.test(body)) {
       // 1007-N01 — lede 문장을 지어내지 않는다. 제목만 복원하고 본문은 비워 둔다
@@ -13314,15 +13333,15 @@ function healProductLaunchStructuralQuality(
   out = salvageBrokenProductLaunchMarkup(out);
   out = wipeProductLaunchEnglishDemoChrome(out);
   out = healProductLaunchCtaDisplay(out);
-  // 1007-N01 슬라이스 F 결함6 — 비제품(how-to/교육) 주제에 product-launch
-  // CTA/96px '지금' shell 이 남으면 격하(제거). 카피 주입 없음.
-  out = demoteNonProductCtaShell(out, topic);
   // 1007-N01 — fillProductLaunchSparseCenterSlides(lede 주입) 제거.
   out = ensureProductLaunchCoverHeroShot(out);
   out = wipeProductLaunchEmptyDeckFooters(out);
   // packCloseDump은 덤프된 보일러플레이트를 "지어낸 문장으로 교체"가 아니라
   // "비우기"로 바뀌었다(함수 내부 참조).
   out = healProductLaunchPackCloseDump(out, topic, allowTeamverCopy);
+  // 1007-N01 F/Q — how-to 킷 CTA/빈 96px 격하는 packCloseDump 가
+  // `시작하기` 로 되돌린 뒤에 한다. 모델이 채운 CTA 는 유지.
+  out = demoteNonProductCtaShell(out, topic);
   out = wipeProductLaunchOrphanDimDots(out);
   out = stripProductLaunchTrailingSeparatorDots(out);
   out = healProductLaunchKickerParrotsHeading(out, topic);
@@ -14075,10 +14094,32 @@ function healProductLaunchCtaDisplay(html: string): string {
 function demoteNonProductCtaShell(html: string, topic: string): string {
   if (!briefLooksLikeGeneralKnowledgeHowToTopic(topic)) return String(html ?? '');
   let out = String(html ?? '');
-  out = out.replace(/<a\b[^>]*\bcta-btn\b[^>]*>[\s\S]*?<\/a>/gi, '');
+  out = out.replace(/<a\b[^>]*\bcta-btn\b[^>]*>[\s\S]*?<\/a>/gi, (full) => {
+    const plain = visibleDeckCopy(full);
+    if (!plain) return '';
+    if (looksLikeDeterministicSynthSkeletonCopy(plain)) return '';
+    if (/시작하기$|get started$/i.test(plain)) return '';
+    if (/^(?:지금|지금 시작)$/u.test(plain)) return '';
+    if (/early review|2-year warranty|pre-order|\bhalo\b/i.test(plain)) return '';
+    return full;
+  });
   out = out.replace(
-    /<(div|p|span)\b([^>]*font-size\s*:\s*96px[^>]*)>\s*지금\s*<\/\1>/gi,
-    '',
+    /<(div|p|span)\b([^>]*font-size\s*:\s*96px[^>]*)>([\s\S]*?)<\/\1>/gi,
+    (full, _tag: string, _attrs: string, inner: string) => {
+      const plain = visibleDeckCopy(inner);
+      if (!plain || /^지금$/.test(plain)) return '';
+      return full;
+    },
+  );
+  out = out.replace(
+    /<(p|div|span)\b([^>]*\bwarranty\b[^>]*)>([\s\S]*?)<\/\1>/gi,
+    (full, _tag: string, _attrs: string, inner: string) => {
+      const plain = visibleDeckCopy(inner);
+      if (!plain || /2-year warranty|\bwarranty\b/i.test(plain) || /^[·\s,.—\-from]*$/i.test(plain)) {
+        return '';
+      }
+      return full;
+    },
   );
   return out;
 }
@@ -14736,9 +14777,11 @@ function stripProductLaunchHostTemplateLeftovers(html: string, _topic: string): 
     ),
   );
   out = out.replace(
-    /(<p\b[^>]*\bkicker\b[^>]*>)([\s\S]*?)(<\/p>)/gi,
-    (full, open: string, inner: string, close: string) => (
-      productLaunchKickerIsHostTemplate(visibleDeckCopy(inner)) ? `${open}${close}` : full
+    /<(p|div|span)\b([^>]*\bkicker\b[^>]*)>([\s\S]*?)<\/\1>/gi,
+    (full, tag: string, attrs: string, inner: string) => (
+      productLaunchKickerIsHostTemplate(visibleDeckCopy(inner))
+        ? `<${tag}${attrs}></${tag}>`
+        : full
     ),
   );
   out = cleanProductLaunchLeakedBrand(out);
@@ -14914,17 +14957,22 @@ function fillProductLaunchKitSlide(
     slideIndex,
   });
   const rewrittenTitle = rewriteProductLaunchLeakedHeading(heading || input.title);
+  const sourceTitle = heading || input.title || '';
+  const polishedTitle = polishInstructionCoverTitle(sourceTitle);
   const resolvedTitle = headingNeedsRefill
     ? (
-      rewrittenTitle
-      && rewrittenTitle !== heading
-      && !productLaunchHeadingNeedsRefill(rewrittenTitle, {
-        ...(refillBrief !== undefined ? { brief: refillBrief } : {}),
-        slideIndex,
-      })
-        ? rewrittenTitle
-        // 지어낸 제목(role.heading) 대신 모델 원문/제목을 유지한다.
-        : (heading || input.title || '')
+      // 1007-N01 Q — dangling `에 대한` 만 조사 벗긴다. 중간 구절은 유지.
+      headingHasDanglingInstructionParticle(sourceTitle) && polishedTitle
+        ? polishedTitle
+        : rewrittenTitle
+          && rewrittenTitle !== heading
+          && !productLaunchHeadingNeedsRefill(rewrittenTitle, {
+            ...(refillBrief !== undefined ? { brief: refillBrief } : {}),
+            slideIndex,
+          })
+            ? rewrittenTitle
+            // 지어낸 제목(role.heading) 대신 모델 원문/제목을 유지한다.
+            : (heading || input.title || '')
     )
     : rewrittenTitle;
   const suppliedLines = Array.isArray(input.fillLines) ? input.fillLines : [];
