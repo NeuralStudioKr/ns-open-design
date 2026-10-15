@@ -11,6 +11,11 @@
 
 import { attrsLookLikeDeckOrTemplateSlideHost } from './html/deck-slide-class.js';
 import {
+  htmlNeedsSparseSixteenNineFill,
+  SPARSE_SIXTEEN_NINE_FILL_CSS,
+  SPARSE_SIXTEEN_NINE_FILL_MARK,
+} from './html/sparse-sixteen-nine-fill-css.js';
+import {
   resolveTemplateCloneSlotMap,
   type TemplateCloneSlotMap,
 } from './template-clone-slot-maps.js';
@@ -4813,30 +4818,18 @@ export function injectCobaltAbsoluteSlotCss(html: string): string {
 }
 
 const S_COVER_KIT_SLOT_MARK = 'data-od-s-cover-kit-slots';
-const SPARSE_G2_FILL_MARK = 'data-od-sparse-g2-fill';
 
 /**
- * 1007-N01 슬라이스 K — g2 두 카드가 16:9 상단에만 붙고 하반신이 비는 레이아웃을
- * 합성 카피 없이 stretch·센터. flow 가 inset:0 이라 slide 의 justify-content 만으로는
- * 안 메워진다.
+ * 1007-N01 슬라이스 K/L — g2·quote·rule·dark 클러스터가 persist flow
+ * (inset:0 flex-column) 안에서 상단 핀되어 16:9 하반신이 비는 레이아웃을
+ * 합성 카피 없이 stretch·센터. slide 의 justify-content 만으로는 안 메워진다.
  */
 export function injectSparseG2FillCss(html: string): string {
   const dest = String(html ?? '');
   if (!dest.trim()) return dest;
-  if (dest.includes(SPARSE_G2_FILL_MARK)) return dest;
-  if (!/\b(?:grid\s+g2|g2\s+grid|class="g2"|class='g2')\b/i.test(dest)) return dest;
-  const rules = [
-    '/* od-sparse-g2-fill (1007-N01 K) */',
-    'body.tpl-product-launch .slide:not(.s-cover) [data-od-slide-flow]:has(.grid.g2){',
-    'display:flex!important;flex-direction:column!important;',
-    'justify-content:center!important;min-height:100%!important;height:100%!important;',
-    'box-sizing:border-box!important}',
-    'body.tpl-product-launch .slide:not(.s-cover) [data-od-slide-flow]:has(.grid.g2) .grid.g2{',
-    'flex:1 1 auto!important;align-content:stretch!important;min-height:0!important}',
-    'body.tpl-product-launch .slide:not(.s-cover) [data-od-slide-flow]:has(.grid.g2) .grid.g2>.feature-card{',
-    'display:flex!important;flex-direction:column!important;justify-content:center!important}',
-  ].join('');
-  return injectStyleMark(dest, SPARSE_G2_FILL_MARK, rules);
+  if (dest.includes(SPARSE_SIXTEEN_NINE_FILL_MARK)) return dest;
+  if (!htmlNeedsSparseSixteenNineFill(dest)) return dest;
+  return injectStyleMark(dest, SPARSE_SIXTEEN_NINE_FILL_MARK, SPARSE_SIXTEEN_NINE_FILL_CSS);
 }
 
 function officialLookCssHasSCoverTitlewrapBox(html: string): boolean {

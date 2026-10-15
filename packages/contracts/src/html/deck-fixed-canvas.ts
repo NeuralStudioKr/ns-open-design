@@ -14,6 +14,7 @@ import {
   dropCollidingOfficialMotifInstances,
   looksLikeOfficialFullscreenPresenterDeck,
 } from './deck-template-look-css.js';
+import { SPARSE_SIXTEEN_NINE_FILL_CSS } from './sparse-sixteen-nine-fill-css.js';
 
 export const DECK_FIXED_CANVAS_PIN_ATTR = 'data-od-deck-fixed-canvas-pin';
 export const DECK_SLIDE_FLOW_ATTR = 'data-od-slide-flow';
@@ -218,6 +219,9 @@ html:has(#od-stacked-deck-stage) .slide > [data-od-slide-flow] > .slide-inner {
 .slide > :is(.pill, [class*="pill"], .stamp, [class*="stamp"]):not([data-od-official-motif-html]) {
   z-index: 3;
 }
+/* 1007-N01 L — persist flow is inset:0 flex-column; vertical-balance on
+ * .slide never reaches quote/rule/g2/dark clusters. Layout only. */
+${SPARSE_SIXTEEN_NINE_FILL_CSS}
 `.trim();
 
 function extractClassAttr(attrs: string): string {

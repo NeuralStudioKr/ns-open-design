@@ -4,6 +4,7 @@ import {
   DECK_SLIDE_HOST_CSS_CLASS,
 } from './deck-slide-class.js';
 import { stripEmptyOfficialTextChromeMotifs } from './heal-official-magazine-layout.js';
+import { SPARSE_SIXTEEN_NINE_FILL_CSS } from './sparse-sixteen-nine-fill-css.js';
 
 /**
  * Compact BYOK fill is forbidden from dumping the official example.html
@@ -415,25 +416,15 @@ section[data-screen-label], main[data-screen-label], article[data-screen-label] 
  * decks are unaffected. Split rows keep their inline axis. Short content stays
  * centered, never stretched.
  * 1007-N01 I — s-cover keeps kit titlewrap (absolute bottom), not flex-center.
- * 1007-N01 K — persist wraps content in [data-od-slide-flow] (absolute inset:0),
- * so slide-level justify-content never reaches the g2 cluster. Center/stretch
- * the flow itself. No synthetic copy. */
+ * 1007-N01 K/L — persist wraps content in [data-od-slide-flow] (absolute inset:0),
+ * so slide-level justify-content never reaches g2 / quote / rule / dark clusters.
+ * Center/stretch the flow itself. No synthetic copy. */
 body.tpl-product-launch .slide:not(.s-cover):not(:has(.split-left)):not(:has(.split-right)):not(:has([class*="split-"])) {
   display: flex !important;
   flex-direction: column !important;
   justify-content: center !important;
 }
-body.tpl-product-launch .slide:not(.s-cover) [data-od-slide-flow]:has(.grid.g2) {
-  display: flex !important;
-  flex-direction: column !important;
-  justify-content: center !important;
-  min-height: 100% !important;
-  height: 100% !important;
-}
-body.tpl-product-launch .slide:not(.s-cover) [data-od-slide-flow]:has(.grid.g2) .grid.g2 {
-  flex: 1 1 auto !important;
-  align-content: stretch !important;
-}
+${SPARSE_SIXTEEN_NINE_FILL_CSS}
 `
 
 const LOOK_NEUTRALIZE_TAIL_RE =
