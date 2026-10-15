@@ -59,12 +59,21 @@ export const SPARSE_SIXTEEN_NINE_FILL_CSS = [
   'display:flex!important;flex-direction:column!important;justify-content:center!important}',
   `${FLOW}:is(:has(blockquote),:has(.quote),:has(.quote-box),:has(.quote-frame),:has(.qframe),:has(.statement-box)) :is(${QUOTE}),`,
   `${DARK_FLOW}>:is(${QUOTE}),`,
-  `${DARK_FLOW}:not(:has(> .card ~ .card))>.card,`,
-  `${DARK_FLOW}:not(:has(> [style*="border:"] ~ [style*="border:"]))>[style*="border:"]:not(.deck-header):not(.deck-footer):not(.slide-number){`,
+  // Quote-dominant dark slides (title + one quote card). Title+bullets+card
+  // body slides must NOT get this min-height — it becomes a hollow gray
+  // panel with the one-liner pinned to the bottom (1007-N01 O).
+  `${DARK_FLOW}:not(:has(ul)):not(:has(ol)):not(:has(li)):not(:has(> .card ~ .card))>.card,`,
+  `${DARK_FLOW}:not(:has(ul)):not(:has(ol)):not(:has(li))`
+    + ':not(:has(> [style*="border:"] ~ [style*="border:"]))>[style*="border:"]:not(.deck-header):not(.deck-footer):not(.slide-number){',
   'flex:1 1 auto!important;align-self:stretch!important;width:100%!important;max-width:100%!important;',
   'min-height:clamp(240px,36%,420px)!important;box-sizing:border-box!important;',
   'padding-block:clamp(32px,5%,72px)!important;',
   'display:flex!important;flex-direction:column!important;justify-content:center!important}',
+  `${DARK_FLOW}:is(:has(ul),:has(ol),:has(li))>.card,`,
+  `${DARK_FLOW}:is(:has(ul),:has(ol),:has(li))>[style*="border:"]:not(.deck-header):not(.deck-footer){`,
+  'flex:0 1 auto!important;min-height:0!important;align-self:stretch!important;',
+  'justify-content:flex-start!important}',
+  `${PL} .slide.s-cover :is(.chip,.pill,.cta,.btn,.tag):empty{display:none!important}`,
 ].join('');
 
 const SPARSE_NEEDLE_RE =

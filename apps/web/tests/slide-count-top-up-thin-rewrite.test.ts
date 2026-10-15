@@ -11,10 +11,13 @@ import {
   classifyThinPriorRewriteTerminalPersist,
   isSoftImprovementAutomationEntryFrom,
   isThinPriorFullRewritePrompt,
+  isThinPriorRewriteContinueFillReason,
   shouldBlockSlideCountAppendOntoThinPrior,
   shouldQueueSlideCountTopUp,
   shouldQueueThinPriorFullRewrite,
   shouldSurfaceThinPriorRewriteExhaustedError,
+  THIN_PRIOR_REWRITE_CONTINUE_FILL_REASON,
+  THIN_PRIOR_REWRITE_SALVAGE_KEEP_REASON,
 } from '../src/teamver/slideCountTopUp';
 
 /** Block Frame–style: official look CSS for 10 slides, body is cover-only. */
@@ -191,7 +194,7 @@ describe('1007-N01 M thin_prior_rewrite_exhausted salvage', () => {
     });
     expect(persist).toEqual({
       kind: 'skipped-noop',
-      reason: 'thin-prior-rewrite-salvage-keep',
+      reason: THIN_PRIOR_REWRITE_SALVAGE_KEEP_REASON,
     });
     expect(persist?.kind).not.toBe('surface-chat-error');
     expect(persist?.code).not.toBe('thin_prior_rewrite_exhausted');
@@ -281,6 +284,61 @@ describe('1007-N01 M thin_prior_rewrite_exhausted salvage', () => {
       thinPrior: false,
       rewriteCount: 1,
       salvageableArtifact: true,
+    })).toBe(false);
+  });
+
+  it('requested 8–10 / thin 4-slide prior after rewriteCount≥1 APPEND remaining, not terminal salvage-keep', () => {
+    const fourSlideThin = [
+      '<!doctype html><html lang="ko"><body class="tpl-product-launch">',
+      '<section class="slide s-cover"><div data-od-slide-flow=""><h1 class="title">표지</h1></div></section>',
+      '<section class="slide"></section>',
+      '<section class="slide"></section>',
+      '<section class="slide"></section>',
+      '</body></html>',
+    ].join('');
+    expect(deckLooksLikeThinTopUpHostPrior(fourSlideThin)).toBe(true);
+    const persist = classifyThinPriorRewriteTerminalPersist({
+      thinPrior: true,
+      rewriteCount: 1,
+      salvageableArtifact: isSalvageableThinPriorArtifact(fourSlideThin),
+      produced: 4,
+      requestedMin: 8,
+    });
+    expect(persist).toEqual({
+      kind: 'skipped-noop',
+      reason: THIN_PRIOR_REWRITE_CONTINUE_FILL_REASON,
+    });
+    expect(persist?.reason).not.toBe(THIN_PRIOR_REWRITE_SALVAGE_KEEP_REASON);
+    expect(isThinPriorRewriteContinueFillReason(persist?.reason)).toBe(true);
+    expect(persist?.kind).not.toBe('surface-chat-error');
+    expect(persist?.code).not.toBe('thin_prior_rewrite_exhausted');
+    expect(shouldSurfaceThinPriorRewriteExhaustedError({
+      thinPrior: true,
+      rewriteCount: 1,
+      salvageableArtifact: true,
+      produced: 4,
+      requestedMin: 8,
+    })).toBe(false);
+    expect(shouldQueueSlideCountTopUp({
+      produced: 4,
+      requested: 10,
+      requestedMin: 8,
+      topUpCount: 0,
+      rewriteCount: 1,
+    })).toBe(true);
+    expect(shouldQueueSlideCountTopUp({
+      produced: 4,
+      requested: 10,
+      requestedMin: 8,
+      topUpCount: 1,
+      rewriteCount: 1,
+    })).toBe(true);
+    expect(shouldQueueSlideCountTopUp({
+      produced: 8,
+      requested: 10,
+      requestedMin: 8,
+      topUpCount: 1,
+      rewriteCount: 1,
     })).toBe(false);
   });
 

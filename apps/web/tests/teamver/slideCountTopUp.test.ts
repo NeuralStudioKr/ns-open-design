@@ -624,6 +624,16 @@ describe("slideCountTopUp", () => {
       kind: "skipped-noop",
       reason: "thin-prior-rewrite-salvage-keep",
     });
+    expect(classifyThinPriorRewriteTerminalPersist({
+      thinPrior: true,
+      rewriteCount: 1,
+      salvageableArtifact: true,
+      produced: 4,
+      requestedMin: 8,
+    })).toEqual({
+      kind: "skipped-noop",
+      reason: "thin-prior-rewrite-continue-fill",
+    });
     // 루프505 — count shortfall (4 of 8–10) must win over sparse repair.
     expect(shouldQueueSlideCountTopUp({
       produced: 4,
@@ -804,9 +814,9 @@ describe("slideCountTopUp", () => {
     })).toBe(false);
   });
 
-  it("caps slide-count top-up after a thin rewrite (루프508)", () => {
+  it("still APPEND after a thin rewrite until requested min (1007-N01 O)", () => {
     expect(slideCountTopUpMaxForConversation(0)).toBe(2);
-    expect(slideCountTopUpMaxForConversation(1)).toBe(1);
+    expect(slideCountTopUpMaxForConversation(1)).toBe(2);
     expect(
       shouldQueueSlideCountTopUp({
         produced: 4,
@@ -818,7 +828,16 @@ describe("slideCountTopUp", () => {
     ).toBe(true);
     expect(
       shouldQueueSlideCountTopUp({
-        produced: 6,
+        produced: 4,
+        requested: 10,
+        requestedMin: 8,
+        topUpCount: 1,
+        rewriteCount: 1,
+      }),
+    ).toBe(true);
+    expect(
+      shouldQueueSlideCountTopUp({
+        produced: 8,
         requested: 10,
         requestedMin: 8,
         topUpCount: 1,

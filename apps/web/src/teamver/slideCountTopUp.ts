@@ -194,6 +194,9 @@ export function shouldBlockSlideCountAppendOntoThinPrior(input: {
 /**
  * Persist kind after rewrite budget is spent and the deck is still thin.
  * Cover-only / empty-host drafts stay on disk — never `surface-chat-error`.
+ *
+ * `thin-prior-rewrite-continue-fill` is skipped-noop (keep slides) but NOT a
+ * terminal salvage-keep: the caller must still APPEND remaining slides.
  */
 export type ThinPriorRewriteTerminalPersist = {
   kind: "skipped-noop" | "surface-chat-error";
@@ -201,37 +204,68 @@ export type ThinPriorRewriteTerminalPersist = {
   code?: string;
 };
 
+export const THIN_PRIOR_REWRITE_CONTINUE_FILL_REASON =
+  "thin-prior-rewrite-continue-fill";
+export const THIN_PRIOR_REWRITE_SALVAGE_KEEP_REASON =
+  "thin-prior-rewrite-salvage-keep";
+
 /**
- * 1007-N01 N — Rewrite spent + still thin → keep the cover.
- * M still returned `surface-chat-error` / `thin_prior_rewrite_exhausted` when
- * `salvageableArtifact` was false (empty LOOK cover + L CSS, titlewrap without
- * h1, 1–2 empty hosts). That is the remaining hole: never kill chat.
+ * 1007-N01 O — Rewrite spent + still thin:
+ * - produced < requestedMin (e.g. 4 of 8–10) → keep slides, continue-fill
+ *   APPEND. Not terminal salvage-keep (N kept the cover but stopped top-up).
+ * - no remaining shortfall → salvage-keep (cover stays, no fatal chat).
+ * Never `surface-chat-error` / `thin_prior_rewrite_exhausted`.
  */
 export function classifyThinPriorRewriteTerminalPersist(input: {
   thinPrior: boolean;
   rewriteCount: number;
   salvageableArtifact: boolean;
+  /** Hosts already on disk. */
+  produced?: number | null;
+  /** Range floor (`8-10` → 8). Exact counts omit this. */
+  requestedMin?: number | null;
 }): ThinPriorRewriteTerminalPersist | null {
   // salvageableArtifact is caller-compat only — N never gates keep on it.
   void input.salvageableArtifact;
   if (!shouldBlockSlideCountAppendOntoThinPrior(input)) return null;
+  const requestedMin = input.requestedMin;
+  const produced = input.produced;
+  const stillShort =
+    requestedMin != null
+    && Number.isFinite(requestedMin)
+    && requestedMin > 0
+    && (produced == null || !Number.isFinite(produced) || produced < requestedMin);
+  if (stillShort) {
+    return {
+      kind: "skipped-noop",
+      reason: THIN_PRIOR_REWRITE_CONTINUE_FILL_REASON,
+    };
+  }
   return {
     kind: "skipped-noop",
-    reason: "thin-prior-rewrite-salvage-keep",
+    reason: THIN_PRIOR_REWRITE_SALVAGE_KEEP_REASON,
   };
 }
 
 /**
- * 1007-N01 N — Never paint `thin_prior_rewrite_exhausted`.
- * A thin prior is already on disk; APPEND continue-fill may still run and
- * persist keeps the cover as skipped-noop / salvage-keep.
+ * 1007-N01 N/O — Never paint `thin_prior_rewrite_exhausted`.
+ * A thin prior is already on disk; APPEND continue-fill may still run.
  */
 export function shouldSurfaceThinPriorRewriteExhaustedError(input: {
   thinPrior: boolean;
   rewriteCount: number;
   salvageableArtifact: boolean;
+  produced?: number | null;
+  requestedMin?: number | null;
 }): boolean {
   return classifyThinPriorRewriteTerminalPersist(input)?.kind === "surface-chat-error";
+}
+
+/** Persist reason that must not stop slide-count top-up after rewrite. */
+export function isThinPriorRewriteContinueFillReason(
+  reason: string | null | undefined,
+): boolean {
+  return String(reason ?? "").trim() === THIN_PRIOR_REWRITE_CONTINUE_FILL_REASON;
 }
 
 /**
@@ -454,11 +488,13 @@ export function formatSlideAutomationWorkingLabel(phase: SlideAutomationPhase): 
 }
 
 /**
- * 루프508 — After a thin-prior rewrite, allow at most one slide-count top-up
- * so rewrite→top-up→top-up cannot stack three MiniMax turns.
+ * 1007-N01 O — After a thin-prior rewrite, still allow the normal APPEND
+ * budget. Loop508 capped this at 1, so a 4-slide salvage-keep consumed the
+ * only top-up and the deck never reached 8–10. Rewrite remains 1/conversation;
+ * remaining-all APPEND still uses {@link SLIDE_COUNT_TOP_UP_MAX_PER_CONVERSATION}.
  */
 export function slideCountTopUpMaxForConversation(rewriteCount: number): number {
-  if (Number.isFinite(rewriteCount) && rewriteCount >= 1) return 1;
+  void rewriteCount;
   return SLIDE_COUNT_TOP_UP_MAX_PER_CONVERSATION;
 }
 
@@ -687,7 +723,7 @@ export function shouldQueueSlideCountTopUp(input: {
   hasIncompleteAssistant?: boolean;
   /** First fill / short draft: allow 1–2 slides and default to 6. */
   defaultRequested?: number;
-  /** 루프508 — Thin rewrite already spent → cap top-up budget at 1. */
+  /** Thin rewrite already spent — APPEND budget stays the normal max (O). */
   rewriteCount?: number;
 }): boolean {
   if (input.hasIncompleteAssistant) return false;

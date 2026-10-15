@@ -41,6 +41,10 @@ describe("ProjectView automation submit guard", () => {
     expect(projectViewSource).toMatch(
       /rewriteTerminal\?\.kind === 'skipped-noop'[\s\S]{0,220}thin-prior-rewrite-salvage-keep/,
     );
+    expect(projectViewSource).toContain("produced: countDeckSlideSections(priorHtml)");
+    expect(projectViewSource).toMatch(
+      /classifyThinPriorRewriteTerminalPersist\(\{[\s\S]{0,420}requestedMin:/,
+    );
     expect(projectViewSource).toContain("wantsCountTopUp");
     expect(projectViewSource).toContain("requestedMin: requestedSpec?.min");
     expect(projectViewSource).toContain("userBrief: runVisiblePromptRef.current || ''");

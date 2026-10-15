@@ -105,6 +105,8 @@ describe('1007-N01 슬라이스 L — 셀렉터 범위', () => {
     expect(SPARSE_SIXTEEN_NINE_FILL_CSS).toContain(':not(.s-cover)');
     expect(SPARSE_SIXTEEN_NINE_FILL_CSS).toContain(':not(.s-quote)');
     expect(SPARSE_SIXTEEN_NINE_FILL_CSS).toContain('>.card');
+    expect(SPARSE_SIXTEEN_NINE_FILL_CSS).toContain(':not(:has(ul))');
+    expect(SPARSE_SIXTEEN_NINE_FILL_CSS).toContain(':is(:has(ul),:has(ol),:has(li))>.card');
     expect(SPARSE_SIXTEEN_NINE_FILL_CSS).toContain('padding-bottom:56px');
   });
 });

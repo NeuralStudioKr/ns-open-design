@@ -4819,6 +4819,70 @@ export function injectCobaltAbsoluteSlotCss(html: string): string {
 
 const S_COVER_KIT_SLOT_MARK = 'data-od-s-cover-kit-slots';
 
+const EMPTY_SLIDE_CHIP_CLASS_RE = /^(?:chip|pill|cta|btn|tag)$/i;
+const COVER_MOTIF_CLASS_RE =
+  /\b(?:hero-shot|motif|deco|blob|orb|cover-blob|geo-decoration|gd-orb)\b/i;
+
+/**
+ * 1007-N01 O — Blank CTA chips render as empty white rounded rects next to a
+ * filled pill (WRITING | ▯). Hide/remove them. Never invent chip copy.
+ */
+export function stripEmptySlideChips(html: string): string {
+  let out = String(html ?? '');
+  if (!out.trim()) return out;
+  const openRe = /<(div|span|a|button)\b[^>]*>/gi;
+  const starts: number[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) {
+    const open = match[0] ?? '';
+    const tokens = classTokensFromAttrs(open);
+    if (!tokens.some((token) => EMPTY_SLIDE_CHIP_CLASS_RE.test(token))) continue;
+    starts.push(match.index);
+  }
+  for (let i = starts.length - 1; i >= 0; i -= 1) {
+    const start = starts[i]!;
+    const block = extractBalancedFrom(out, start);
+    if (!block) continue;
+    if (/<(?:svg|img|video|canvas)\b/i.test(block)) continue;
+    if (/[가-힣A-Za-z0-9]/.test(visibleDeckCopy(block))) continue;
+    out = `${out.slice(0, start)}${out.slice(start + block.length)}`;
+  }
+  return out;
+}
+
+/**
+ * 1007-N01 O — Model covers often emit h1.title in persist flow without a
+ * kit `.titlewrap`, so slice I CSS never fires and the title stacks at the
+ * top next to the motif. Wrap the heading only (no synthetic lede/brand).
+ */
+export function ensureSCoverTitlewrap(html: string): string {
+  const dest = String(html ?? '');
+  if (!/\bs-cover\b/i.test(dest)) return dest;
+  const spans = listHealSlideHostSpans(dest);
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    if (!/\bs-cover\b/i.test(span.attrs)) continue;
+    if (/\b(?:split-left|split-right)\b/i.test(span.attrs)) continue;
+    const host = extractBalancedFrom(out, span.start);
+    if (!host) continue;
+    if (/\btitlewrap\b/i.test(host)) continue;
+    const headingRe =
+      /<(h1|h2)\b[^>]*>[\s\S]*?<\/\1>|<[^>]*\bclass\s*=\s*["'][^"']*\btitle\b[^"']*["'][^>]*>[\s\S]*?<\/(?:h1|h2|div|p)>/i;
+    const heading = headingRe.exec(host);
+    if (!heading || heading.index == null) continue;
+    const before = host.slice(0, heading.index);
+    if (COVER_MOTIF_CLASS_RE.test(before.slice(Math.max(0, before.lastIndexOf('<'))) )) {
+      continue;
+    }
+    const wrapped =
+      `${host.slice(0, heading.index)}<div class="titlewrap">${heading[0]}</div>`
+      + `${host.slice(heading.index + heading[0].length)}`;
+    out = `${out.slice(0, span.start)}${wrapped}${out.slice(span.start + host.length)}`;
+  }
+  return out;
+}
+
 /**
  * 1007-N01 슬라이스 K/L — g2·quote·rule·dark 클러스터가 persist flow
  * (inset:0 flex-column) 안에서 상단 핀되어 16:9 하반신이 비는 레이아웃을
@@ -4848,22 +4912,33 @@ function officialLookCssHasSCoverTitlewrapBox(html: string): boolean {
  * letter-spacing so 원문 공백 stays visible. Never invent lede/brand.
  */
 export function injectSCoverKitSlotCss(html: string): string {
-  const dest = String(html ?? '');
+  let dest = stripEmptySlideChips(String(html ?? ''));
+  dest = ensureSCoverTitlewrap(dest);
   if (!dest.trim()) return dest;
   if (!/\bs-cover\b/i.test(dest)) return dest;
-  if (!/<[^>]*\bclass\s*=\s*["'][^"']*\btitlewrap\b/i.test(dest)) return dest;
   if (dest.includes(S_COVER_KIT_SLOT_MARK)) return dest;
+  const hasTitlewrap = /<[^>]*\bclass\s*=\s*["'][^"']*\btitlewrap\b/i.test(dest);
   const hangul = ((dest.match(/[가-힣]/g) ?? []).length >= 2);
   const rules = [
-    '/* od-s-cover-kit-slots (1007-N01 I) */',
-    '.slide.s-cover .titlewrap{position:absolute!important;z-index:5}',
-    '.slide.s-cover>[data-od-slide-flow]{justify-content:unset!important}',
+    '/* od-s-cover-kit-slots (1007-N01 I/O) */',
+    '.slide.s-cover :is(.chip,.pill,.cta,.btn,.tag):empty{display:none!important}',
   ];
-  if (!officialLookCssHasSCoverTitlewrapBox(dest)) {
+  if (hasTitlewrap) {
+    rules.push('.slide.s-cover .titlewrap{position:absolute!important;z-index:5}');
+    rules.push('.slide.s-cover>[data-od-slide-flow]{justify-content:unset!important}');
+    if (!officialLookCssHasSCoverTitlewrapBox(dest)) {
+      rules.push(
+        '.slide.s-cover [data-od-slide-flow] .titlewrap{'
+          + 'left:clamp(40px,4vw,76px);top:auto;right:auto;'
+          + 'bottom:clamp(48px,6vh,96px);max-width:min(72%,1280px)}',
+      );
+    }
+  } else {
+    // No heading to wrap: still drop the flow top-pin so motif/title do not
+    // stack in the upper-left void. Do not flatten kit covers.
     rules.push(
-      '.slide.s-cover [data-od-slide-flow] .titlewrap{'
-        + 'left:clamp(40px,4vw,76px);top:auto;right:auto;'
-        + 'bottom:clamp(48px,6vh,96px);max-width:min(72%,1280px)}',
+      '.slide.s-cover>[data-od-slide-flow]{'
+        + 'justify-content:flex-end!important;align-items:flex-start!important}',
     );
   }
   if (hangul) {

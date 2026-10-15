@@ -6157,8 +6157,9 @@ export function ProjectView({
                 ) {
                   // Keep artifactToPersist — full replace of thin prior.
                 } else {
-                  // 1007-N01 N — After rewrite spent, keep the cover even when
-                  // M's salvage predicate missed empty LOOK / titlewrap / L CSS.
+                  // 1007-N01 O — After rewrite spent, keep existing slides.
+                  // If still short of 8–10, persist is continue-fill (not
+                  // terminal salvage-keep) so APPEND top-up still runs.
                   // Never surface-chat-error / thin_prior_rewrite_exhausted.
                   const rewriteTerminal = classifyThinPriorRewriteTerminalPersist({
                     thinPrior: true,
@@ -6166,6 +6167,10 @@ export function ProjectView({
                       messagesRef.current,
                     ),
                     salvageableArtifact: isSalvageableThinPriorArtifact(priorHtml),
+                    produced: countDeckSlideSections(priorHtml),
+                    requestedMin: extractRequestedSlideCountSpecFromMessages(
+                      messagesRef.current,
+                    )?.min,
                   });
                   if (rewriteTerminal?.kind === 'skipped-noop') {
                     return {
@@ -14342,11 +14347,11 @@ export function ProjectView({
           slideCountTopUpTimerRef.current = window.setTimeout(fireRewrite, 600);
           return;
         }
-        // 루프505 — Rewrite already spent and deck is still thin: APPEND would
-        // hit thin-prior-no-append and leave the shortfall silent.
-        // 1007-N01 N — Never paint thin_prior_rewrite_exhausted. Fall through
-        // so one APPEND can try continue-fill. Persist keeps the cover as
-        // skipped-noop / salvage-keep even when M's salvage predicate missed.
+        // 루프505 — Rewrite already spent and deck is still thin: APPEND
+        // remaining slides (not a cover restart). Never paint
+        // thin_prior_rewrite_exhausted (N). Persist of a failed append is
+        // continue-fill when still short of the request (O) — not a terminal
+        // salvage-keep that blocks top-up.
         // 루프535 — deterministic landing never rewrites or APPEND-expands.
         if (
           !sparseOnly
