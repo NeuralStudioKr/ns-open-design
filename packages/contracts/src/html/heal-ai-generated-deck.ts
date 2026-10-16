@@ -21,9 +21,11 @@ import {
   briefLooksLikeGeneralKnowledgeHowToTopic,
   catalogExampleShouldBeScrubbed,
   healBrokenServiceIntroLeftoverRemnants,
+  healBodySlideTitleThenCluster,
   injectSCoverKitSlotCss,
   injectSparseG2FillCss,
   repairCoverKitSurfaceBleed,
+  stripEmptyBodyLayoutChrome,
   stripForeignCoverKitMotifs,
   officialLookIsCapsule,
   officialLookIsEightBitOrbit,
@@ -5571,7 +5573,11 @@ export function healAiGeneratedDeckMarkup(
   out = injectSCoverKitSlotCss(out);
   // 1007-N01 슬라이스 S — surface-bleed must not force #ffffff over kit paper.
   out = repairCoverKitSurfaceBleed(out);
-  // 1007-N01 슬라이스 K/L — g2·quote·rule·dark 빈 하반신을 합성 없이 16:9 stretch·센터.
+  // 1007-N01 슬라이스 W — body title-then-cluster, overlapping steps, empty chrome.
+  // Covers already handled above. Reorder before L CSS so selectors see the new DOM.
+  out = stripEmptyBodyLayoutChrome(out);
+  out = healBodySlideTitleThenCluster(out);
+  // 1007-N01 슬라이스 K/L/W — g2·quote·rule·dark stretch + title-then-cluster CSS.
   out = injectSparseG2FillCss(out);
   return out;
 }

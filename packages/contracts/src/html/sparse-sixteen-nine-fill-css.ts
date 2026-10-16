@@ -74,10 +74,33 @@ export const SPARSE_SIXTEEN_NINE_FILL_CSS = [
   'flex:0 1 auto!important;min-height:0!important;align-self:stretch!important;',
   'justify-content:flex-start!important}',
   `${PL} .slide.s-cover :is(.chip,.pill,.cta,.btn,.tag):empty{display:none!important}`,
+  '/* od-title-then-cluster (1007-N01 W) */',
+  `${FLOW}:has(:is(h1,h2)):is(:has(.od-body-fill-cluster),:has(.od-step-track-stack),:has(.grid.g3)){`,
+  'justify-content:flex-start!important}',
+  `${FLOW}:has(:is(h1,h2)):is(:has(.od-body-fill-cluster),:has(.od-step-track-stack),:has(.grid.g3))>:is(h1,h2,h3,.kicker,.lede,.title,.titlewrap){flex:0 0 auto!important}`,
+  `${FLOW}:has(:is(h1,h2))>:is(.od-body-fill-cluster,.od-step-track-stack){`,
+  'display:flex!important;flex-direction:column!important;',
+  'flex:1 1 auto!important;min-height:0!important}',
+  `${FLOW}:has(:is(h1,h2)) .od-body-fill-cluster .grid,`,
+  `${FLOW}:has(:is(h1,h2)) .od-body-fill-cluster>[style*="grid-template-columns"]{`,
+  'flex:1 1 auto!important;min-height:0!important;align-content:stretch!important}',
+  `${FLOW}:has(:is(h1,h2)) .grid:not(.g2)>*,`,
+  `${FLOW}:has(:is(h1,h2)) .od-body-fill-cluster .card{`,
+  'justify-content:flex-start!important}',
+  `${FLOW} .od-step-track-stack{`,
+  'display:flex!important;flex-direction:column!important;flex:1 1 auto!important;',
+  'min-height:0!important;max-height:100%!important;gap:clamp(8px,1.2vh,16px)!important;',
+  'justify-content:flex-start!important}',
+  `${FLOW} .od-step-track-stack>*,`,
+  `${FLOW} .od-step-track-stack :is(.step,[class*="step-bar"]){`,
+  'position:relative!important;inset:auto!important;top:auto!important;left:auto!important;',
+  'right:auto!important;bottom:auto!important;transform:none!important;',
+  'width:100%!important;max-width:100%!important;margin:0!important;',
+  'flex:1 1 auto!important;min-height:0!important;max-height:min(160px,22%)!important}',
 ].join('');
 
 const SPARSE_NEEDLE_RE =
-  /\b(?:grid\s+g2|g2\s+grid|class="g2"|class='g2')\b|<(?:blockquote|figure)\b|\bclass\s*=\s*["'][^"']*\b(?:quote|qframe|quote-box|quote-frame|statement-box|pull-?quote|rule-label)\b|\bRULE\s*0?\d\b|<section\b[^>]*\bclass\s*=\s*["'][^"']*\bdark\b|grid-template-columns|style\s*=\s*["'][^"']*border\s*:/i;
+  /\b(?:grid\s+g2|g2\s+grid|class="g2"|class='g2')\b|<(?:blockquote|figure)\b|\bclass\s*=\s*["'][^"']*\b(?:quote|qframe|quote-box|quote-frame|statement-box|pull-?quote|rule-label)\b|\bRULE\s*0?\d\b|<section\b[^>]*\bclass\s*=\s*["'][^"']*\bdark\b|grid-template-columns|style\s*=\s*["'][^"']*border\s*:|\bod-body-fill-cluster\b|\bod-step-track-stack\b|\bSTEP\s*0?\d\b/i;
 
 export function htmlNeedsSparseSixteenNineFill(html: string): boolean {
   return SPARSE_NEEDLE_RE.test(String(html ?? ''));

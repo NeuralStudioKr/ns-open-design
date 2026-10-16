@@ -65,6 +65,8 @@ export function buildRichOfficialLookDensityBlock(): string[] {
     // 1007-N01 슬라이스 C 결함2 — step 박스에 raw 설정/코드 조각이 쪼개져 들어가
     // 설명이 깨지는 것을 금지한다.
     'Put any code or config inside ONE <pre><code>…</code></pre> block (keep it intact, do not split it across step/card boxes). Step and card boxes hold explanatory prose (a label plus a full sentence), never a bare raw code line like `server {` or `listen 80;`.',
+    // 1007-N01 W — layout-only; persist heal is the guarantee for already-emitted HTML.
+    'On content slides put heading (and kicker/lede) above the card/step cluster; stack or shrink timelines so every step fits 1920×1080 without overlapping position:absolute bars.',
     'Richer bodies, NOT fewer slides: still emit EXACTLY the requested number of slides.',
   ];
 }

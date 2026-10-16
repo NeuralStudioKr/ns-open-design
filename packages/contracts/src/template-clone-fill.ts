@@ -4902,11 +4902,281 @@ export function ensureSCoverTitlewrap(html: string): string {
  * 합성 카피 없이 stretch·센터. slide 의 justify-content 만으로는 안 메워진다.
  */
 export function injectSparseG2FillCss(html: string): string {
+  let dest = String(html ?? '');
+  if (!dest.trim()) return dest;
+  dest = dest.replace(
+    new RegExp(
+      `<(?!/?style\\b)([a-zA-Z][\\w-]*)(\\b[^>]*?)\\s+${SPARSE_SIXTEEN_NINE_FILL_MARK}(?=\\s|/|>)`,
+      'gi',
+    ),
+    '<$1$2',
+  );
+  const needs = htmlNeedsSparseSixteenNineFill(dest)
+    || /\bod-body-fill-cluster\b|\bod-step-track-stack\b/.test(dest);
+  if (!needs) return dest;
+  const tagged = new RegExp(
+    `<style\\b[^>]*\\b${SPARSE_SIXTEEN_NINE_FILL_MARK}\\b[^>]*>([\\s\\S]*?)</style>`,
+    'i',
+  );
+  const existing = tagged.exec(dest);
+  if (existing) {
+    if (existing[1]?.includes('od-title-then-cluster')) return dest;
+    return `${dest.slice(0, existing.index)}<style ${SPARSE_SIXTEEN_NINE_FILL_MARK}>${SPARSE_SIXTEEN_NINE_FILL_CSS}</style>${dest.slice(existing.index + existing[0].length)}`;
+  }
+  return injectStyleMark(dest, SPARSE_SIXTEEN_NINE_FILL_MARK, SPARSE_SIXTEEN_NINE_FILL_CSS);
+}
+
+const BODY_LAYOUT_SKIP_HOST_RE = /\b(?:s-cover|slide-title|s-quote|s-colophon)\b/i;
+const BODY_LAYOUT_CHROME_RE = /\b(?:deck-header|deck-footer|slide-number|pagenum|nav-hint)\b/i;
+const BODY_HEADING_OPEN_RE = /^<(?:h[1-3])\b/i;
+const BODY_HEADING_CLASS_RE = /\b(?:kicker|lede|titlewrap|subkicker)\b/i;
+const BODY_CLUSTER_OPEN_RE =
+  /\b(?:grid|g[23]|od-body-fill-cluster|od-step-track-stack|timeline|stack)\b|grid-template-columns/i;
+const BODY_CARD_TOKEN_RE =
+  /\b(?:feature-card|price-card|class="card"|class='card'|class="[^"]*\bcard\b)/i;
+const BODY_STEP_TOKEN_RE = /\bSTEP\s*0?\d\b|\bclass\s*=\s*["'][^"']*\bstep\b/i;
+
+function hostLooksLikeCoverOrTitleSlide(attrs: string): boolean {
+  if (BODY_LAYOUT_SKIP_HOST_RE.test(attrs)) return true;
+  const tokens = classTokensFromAttrs(attrs);
+  return tokens.includes('cover');
+}
+
+function listTopLevelMarkupBlocks(inner: string): { start: number; html: string }[] {
+  const source = String(inner ?? '');
+  const blocks: { start: number; html: string }[] = [];
+  let i = 0;
+  while (i < source.length) {
+    const rest = source.slice(i);
+    const comment = /^<!--[\s\S]*?-->/.exec(rest);
+    if (comment) {
+      i += comment[0].length;
+      continue;
+    }
+    const space = /^\s+/.exec(rest);
+    if (space) {
+      i += space[0].length;
+      continue;
+    }
+    const open = /^<([a-zA-Z][\w-]*)\b[^>]*>/.exec(rest);
+    if (!open) break;
+    const tag = open[1] ?? '';
+    if (/^(?:br|img|hr|meta|input|source|path|use)$/i.test(tag) || /\/\s*>$/.test(open[0])) {
+      blocks.push({ start: i, html: open[0] });
+      i += open[0].length;
+      continue;
+    }
+    const block = extractBalancedFrom(source, i);
+    if (!block) break;
+    blocks.push({ start: i, html: block });
+    i += block.length;
+  }
+  return blocks;
+}
+
+function classifyBodyLayoutBlock(block: string): 'chrome' | 'heading' | 'cluster' | 'other' {
+  const open = /^<[^>]+>/.exec(block)?.[0] ?? '';
+  if (BODY_LAYOUT_CHROME_RE.test(open)) return 'chrome';
+  if (BODY_HEADING_OPEN_RE.test(block) || BODY_HEADING_CLASS_RE.test(open)) return 'heading';
+  if (/\bclass\s*=\s*["'][^"']*\btitle\b/i.test(open) && BODY_HEADING_OPEN_RE.test(block)) {
+    return 'heading';
+  }
+  if (BODY_CLUSTER_OPEN_RE.test(open)) return 'cluster';
+  const inner = block.replace(/^<[^>]+>/, '').replace(/<\/[a-zA-Z][\w-]*>\s*$/, '');
+  const cardCount = (block.match(BODY_CARD_TOKEN_RE) ?? []).length;
+  const stepCount = (block.match(BODY_STEP_TOKEN_RE) ?? []).length;
+  if (cardCount >= 2 || stepCount >= 3) return 'cluster';
+  if (countDirectChildOpens(inner) >= 3 && /border\s*:/i.test(block)) return 'cluster';
+  return 'other';
+}
+
+function isPrimaryBodyHeading(block: string): boolean {
+  return BODY_HEADING_OPEN_RE.test(block) || /\btitlewrap\b/i.test(/^<[^>]+>/.exec(block)?.[0] ?? '');
+}
+
+function withExtraClassToken(block: string, token: string): string {
+  const open = /^<[^>]+>/.exec(block)?.[0] ?? '';
+  if (new RegExp(`\\b${token}\\b`).test(open)) return block;
+  return block.replace(/^<([a-zA-Z][\w-]*)\b([^>]*)>/, (_full, tag: string, attrs: string) => {
+    if (/\bclass\s*=/i.test(attrs)) {
+      return `<${tag}${attrs.replace(/\bclass\s*=\s*(["'])/i, `class=$1${token} `)}>`;
+    }
+    return `<${tag} class="${token}"${attrs}>`;
+  });
+}
+
+function looksLikeOverlappingStepTrack(block: string): boolean {
+  const absKids = (block.match(/\bstyle\s*=\s*["'][^"']*\bposition\s*:\s*absolute/gi) ?? []).length;
+  const stepKids = (block.match(BODY_STEP_TOKEN_RE) ?? []).length;
+  if (stepKids < 2) return false;
+  return absKids >= 2 || (stepKids >= 3 && /\bposition\s*:\s*absolute/i.test(block));
+}
+
+function isStepLikeBodyBlock(block: string): boolean {
+  const open = /^<[^>]+>/.exec(block)?.[0] ?? '';
+  if (/\bod-step-track-stack\b|\bod-body-fill-cluster\b/i.test(open)) return false;
+  if (/\bstep\b/i.test(open) && !/\bstepper\b/i.test(open)) return true;
+  if (/\bSTEP\s*0?\d\b/.test(block.slice(0, 480))) return true;
+  return /\bposition\s*:\s*absolute/i.test(open)
+    && /(?:background|border|width)\s*:/i.test(open);
+}
+
+function wrapConsecutiveStepSiblings(
+  blocks: { start: number; html: string }[],
+): { start: number; html: string }[] {
+  let bestStart = -1;
+  let bestCount = 0;
+  let start = -1;
+  let count = 0;
+  for (let i = 0; i <= blocks.length; i += 1) {
+    const stepLike = i < blocks.length && isStepLikeBodyBlock(blocks[i]!.html);
+    if (stepLike) {
+      if (start < 0) start = i;
+      count += 1;
+      continue;
+    }
+    if (count > bestCount) {
+      bestStart = start;
+      bestCount = count;
+    }
+    start = -1;
+    count = 0;
+  }
+  if (bestCount < 3 || bestStart < 0) return blocks;
+  const group = blocks.slice(bestStart, bestStart + bestCount).map((block) => block.html).join('\n');
+  const stackClass = looksLikeOverlappingStepTrack(group)
+    ? 'od-body-fill-cluster od-step-track-stack'
+    : 'od-body-fill-cluster';
+  const wrapped = `<div class="${stackClass}">${group}</div>`;
+  return [
+    ...blocks.slice(0, bestStart),
+    { start: blocks[bestStart]!.start, html: wrapped },
+    ...blocks.slice(bestStart + bestCount),
+  ];
+}
+
+function wrapBodyFillCluster(block: string): string {
+  if (/^<div\b[^>]*\bod-body-fill-cluster\b/i.test(block)) return block;
+  if (/^<div\b[^>]*\bod-step-track-stack\b/i.test(block)) return block;
+  return `<div class="od-body-fill-cluster">${block}</div>`;
+}
+
+function rebuildInnerFromBlocks(
+  inner: string,
+  original: { start: number; html: string }[],
+  next: { start: number; html: string }[],
+): string {
+  if (original.length === 0) return inner;
+  const first = original[0]!;
+  const last = original[original.length - 1]!;
+  const prefix = inner.slice(0, first.start);
+  const suffix = inner.slice(last.start + last.html.length);
+  return `${prefix}${next.map((block) => block.html).join('\n')}${suffix}`;
+}
+
+function reorderInnerTitleBeforeCluster(inner: string): string {
+  const blocks = listTopLevelMarkupBlocks(inner);
+  if (blocks.length < 2) return inner;
+  const kinds = blocks.map((block) => classifyBodyLayoutBlock(block.html));
+  const clusterAt = kinds.findIndex((kind) => kind === 'cluster');
+  const headingAt = kinds.findIndex((kind, index) => (
+    kind === 'heading' && isPrimaryBodyHeading(blocks[index]!.html)
+  ));
+  let next = blocks.map((block) => ({ ...block }));
+  if (clusterAt >= 0 && headingAt > clusterAt) {
+    let from = headingAt;
+    while (from > clusterAt && kinds[from - 1] === 'heading') from -= 1;
+    let to = headingAt;
+    while (to + 1 < kinds.length && kinds[to + 1] === 'heading') to += 1;
+    const moved = next.slice(from, to + 1);
+    next = [...next.slice(0, from), ...next.slice(to + 1)];
+    const insertAt = Math.min(clusterAt, next.length);
+    next.splice(insertAt, 0, ...moved);
+  }
+  next = wrapConsecutiveStepSiblings(next);
+  const clusterIndex = next.findIndex((block) => classifyBodyLayoutBlock(block.html) === 'cluster');
+  if (clusterIndex >= 0) {
+    let clusterHtml = next[clusterIndex]!.html;
+    if (looksLikeOverlappingStepTrack(clusterHtml)) {
+      clusterHtml = withExtraClassToken(clusterHtml, 'od-step-track-stack');
+    }
+    clusterHtml = wrapBodyFillCluster(clusterHtml);
+    next[clusterIndex] = { ...next[clusterIndex]!, html: clusterHtml };
+  }
+  return rebuildInnerFromBlocks(inner, blocks, next);
+}
+
+function applyBodyLayoutInner(host: string, transform: (inner: string) => string): string {
+  const flowOpen = /<div\b([^>]*\bdata-od-slide-flow\b[^>]*)>/i.exec(host);
+  if (flowOpen && flowOpen.index != null) {
+    const flow = extractBalancedFrom(host, flowOpen.index);
+    if (flow) {
+      const openLen = flowOpen[0].length;
+      const close = /<\/div>\s*$/i.exec(flow);
+      const innerEnd = close ? flow.length - close[0].length : flow.length;
+      const inner = flow.slice(openLen, innerEnd);
+      const nextInner = transform(inner);
+      if (nextInner === inner) return host;
+      const nextFlow = `${flow.slice(0, openLen)}${nextInner}${flow.slice(innerEnd)}`;
+      return `${host.slice(0, flowOpen.index)}${nextFlow}${host.slice(flowOpen.index + flow.length)}`;
+    }
+  }
+  const open = /^<([a-zA-Z][\w-]*)\b[^>]*>/.exec(host);
+  if (!open) return host;
+  const close = new RegExp(`</${open[1]}\\s*>$`, 'i').exec(host);
+  const innerEnd = close ? host.length - close[0].length : host.length;
+  const inner = host.slice(open[0].length, innerEnd);
+  const nextInner = transform(inner);
+  if (nextInner === inner) return host;
+  return `${host.slice(0, open[0].length)}${nextInner}${host.slice(innerEnd)}`;
+}
+
+/**
+ * 1007-N01 W — Body slides only. Move heading(+kicker/lede) above the
+ * card/step cluster, wrap the cluster so CSS can fill the 16:9 well, and
+ * mark overlapping absolute step tracks. No synthetic copy. Covers untouched.
+ */
+export function healBodySlideTitleThenCluster(html: string): string {
   const dest = String(html ?? '');
   if (!dest.trim()) return dest;
-  if (dest.includes(SPARSE_SIXTEEN_NINE_FILL_MARK)) return dest;
-  if (!htmlNeedsSparseSixteenNineFill(dest)) return dest;
-  return injectStyleMark(dest, SPARSE_SIXTEEN_NINE_FILL_MARK, SPARSE_SIXTEEN_NINE_FILL_CSS);
+  const spans = listHealSlideHostSpans(dest);
+  let out = dest;
+  for (let i = spans.length - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    if (hostLooksLikeCoverOrTitleSlide(span.attrs)) continue;
+    const host = extractBalancedFrom(out, span.start);
+    if (!host) continue;
+    const next = applyBodyLayoutInner(host, reorderInnerTitleBeforeCluster);
+    if (next === host) continue;
+    out = `${out.slice(0, span.start)}${next}${out.slice(span.start + host.length)}`;
+  }
+  return out;
+}
+
+const EMPTY_BODY_BOX_CLASS_RE = /^(?:card|step|box|panel|tile)$/i;
+
+/** Empty step/card chrome with no copy. Never invent replacement text. */
+export function stripEmptyBodyLayoutChrome(html: string): string {
+  let out = stripEmptySlideChips(String(html ?? ''));
+  if (!out.trim()) return out;
+  const openRe = /<(div|section|article|li)\b[^>]*>/gi;
+  const starts: number[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(out)) !== null) {
+    const open = match[0] ?? '';
+    const tokens = classTokensFromAttrs(open);
+    if (!tokens.some((token) => EMPTY_BODY_BOX_CLASS_RE.test(token))) continue;
+    starts.push(match.index);
+  }
+  for (let i = starts.length - 1; i >= 0; i -= 1) {
+    const start = starts[i]!;
+    const block = extractBalancedFrom(out, start);
+    if (!block) continue;
+    if (/<(?:svg|img|video|canvas)\b/i.test(block)) continue;
+    if (/[가-힣A-Za-z0-9]/.test(visibleDeckCopy(block))) continue;
+    out = `${out.slice(0, start)}${out.slice(start + block.length)}`;
+  }
+  return out;
 }
 
 function officialLookCssHasSCoverTitlewrapBox(html: string): boolean {
