@@ -13687,8 +13687,72 @@ export function ProjectView({
             const softImprovementTurn =
               isSoftImprovementAutomationEntryFrom(meta?.entryFrom)
               && (latestAssistantMsg.producedFiles?.length ?? 0) === 0;
-            let finalizedAssistant = latestAssistantMsg;
+            const failEmptyApiResponse = (finalizedForSoft?: ChatMessage) => {
+              let finalizedAssistant = finalizedForSoft ?? latestAssistantMsg;
+              if (!finalizedForSoft) {
+                // 루프490 — Persist status:error with empty_response diag so
+                // copy-diagnostics is not stuck on reason=unavailable.
+                const persisted = formatPersistedEmptyApiResponseError({
+                  userMessage: t('assistant.emptyResponseMessage'),
+                  model: config.model,
+                });
+                updateAssistant(
+                  (prev) => {
+                    const withError = attachPersistedChatError(
+                      prev,
+                      persisted.detail,
+                      persisted.code,
+                    );
+                    const events = withError.events ?? [];
+                    const hasEmptyLabel = events.some(
+                      (ev) => ev.kind === 'status' && ev.label === 'empty_response',
+                    );
+                    finalizedAssistant = {
+                      ...withError,
+                      endedAt,
+                      runStatus: 'failed',
+                      events: hasEmptyLabel
+                        ? events
+                        : [
+                            ...events,
+                            {
+                              kind: 'status',
+                              label: 'empty_response',
+                              detail: config.model,
+                            },
+                          ],
+                    };
+                    return finalizedAssistant;
+                  },
+                );
+              }
+              void saveMessage(project.id, runConversationId, finalizedAssistant, {
+                telemetryFinalized: true,
+              });
+              if (runCommentAttachments.length > 0) {
+                void patchAttachedStatuses(runCommentAttachments, 'failed');
+              }
+              const ownsCurrentRun = clearCurrentRunStreamingMarker(
+                runConversationId,
+                controller,
+                cancelController,
+              );
+              if (ownsCurrentRun) {
+                updateConversationLatestRun(
+                  softImprovementTurn ? 'canceled' : 'failed',
+                  endedAt,
+                );
+              }
+              runPersistTargetFileRef.current = null;
+              runSkipDiscoveryBriefRef.current = false;
+              runSelectedDeckTemplateIdRef.current = null;
+              runCommentAttachmentsRef.current = [];
+              void refreshProjectFiles();
+              onProjectsRefresh();
+              releaseOwnedDaemonRun();
+            };
             if (softImprovementTurn) {
+              let finalizedAssistant = latestAssistantMsg;
               updateAssistant((prev) => {
                 finalizedAssistant = {
                   ...appendWarningStatusEvent(
@@ -13701,67 +13765,84 @@ export function ProjectView({
                 };
                 return finalizedAssistant;
               });
-            } else {
-              // 루프490 — Persist status:error with empty_response diag so
-              // copy-diagnostics is not stuck on reason=unavailable.
-              const persisted = formatPersistedEmptyApiResponseError({
-                userMessage: t('assistant.emptyResponseMessage'),
-                model: config.model,
-              });
-              updateAssistant(
-                (prev) => {
-                  const withError = attachPersistedChatError(
-                    prev,
-                    persisted.detail,
-                    persisted.code,
-                  );
-                  const events = withError.events ?? [];
-                  const hasEmptyLabel = events.some(
-                    (ev) => ev.kind === 'status' && ev.label === 'empty_response',
-                  );
-                  finalizedAssistant = {
-                    ...withError,
-                    endedAt,
-                    runStatus: 'failed',
-                    events: hasEmptyLabel
-                      ? events
-                      : [
-                          ...events,
-                          {
-                            kind: 'status',
-                            label: 'empty_response',
-                            detail: config.model,
-                          },
-                        ],
-                  };
-                  return finalizedAssistant;
-                },
-              );
+              failEmptyApiResponse(finalizedAssistant);
+              return;
             }
-            void saveMessage(project.id, runConversationId, finalizedAssistant, {
-              telemetryFinalized: true,
-            });
-            if (runCommentAttachments.length > 0) {
-              void patchAttachedStatuses(runCommentAttachments, 'failed');
+            // 1007-N01 X — Comment font×2 / bg-color must not fatal on MiniMax
+            // EMPTY_RESPONSE. Graft onto the prior pinned slide, then persist.
+            const commentInstruction = [
+              runVisiblePromptRef.current,
+              ...runCommentAttachments.map((attachment) => attachment.comment),
+            ].filter(Boolean).join('\n');
+            const tryLocalStyleGraft =
+              runCommentAttachments.length > 0
+              && canGraftLocalCommentStyleWithoutModel(commentInstruction);
+            if (tryLocalStyleGraft) {
+              void (async () => {
+                try {
+                  const fileName = runPersistTargetFileRef.current
+                    ?? resolvePrimaryDeckFilePath(
+                      projectFilesRef.current,
+                      project.metadata?.entryFile,
+                    )
+                    ?? 'deck.html';
+                  const priorHtml = await fetchProjectFileText(project.id, fileName, {
+                    cache: 'no-store',
+                  });
+                  const grafted = priorHtml
+                    ? graftLocalCommentStyleOntoPrior({
+                        priorHtml,
+                        commentAttachments: runCommentAttachments,
+                        instructionText: runVisiblePromptRef.current,
+                      })
+                    : { ok: false as const, reason: 'no prior deck' };
+                  if (
+                    grafted.ok
+                    && !shouldSurfaceEmptyApiResponseChatError({
+                      commentScoped: true,
+                      localStyleGraftSucceeded: true,
+                    })
+                  ) {
+                    parsedArtifact = {
+                      identifier: 'deck',
+                      artifactType: 'deck',
+                      title: project.name || '슬라이드',
+                      html: grafted.html,
+                    };
+                    liveHtml = grafted.html;
+                    if (runCommentAttachments.length > 0) {
+                      void patchAttachedStatuses(runCommentAttachments, 'needs_review');
+                    }
+                    const ownsCurrentRun = clearCurrentRunStreamingMarker(
+                      runConversationId,
+                      controller,
+                      cancelController,
+                    );
+                    if (ownsCurrentRun) {
+                      // Defer endedAt / succeeded / failed to scheduleStreamRunHtmlAutoOpen
+                      // so slide-only runs never flash "완료됨" before deliverable checks.
+                    }
+                    if (config.mode === 'api') {
+                      dispatchTeamverBackgroundChat({
+                        projectId: project.id,
+                        conversationId: runConversationId,
+                        assistantMessageId: assistantId,
+                        active: false,
+                      });
+                    }
+                    scheduleStreamRunHtmlAutoOpen(grafted.html);
+                    onProjectsRefresh();
+                    releaseOwnedDaemonRun();
+                    return;
+                  }
+                } catch (error) {
+                  devLog.warn('[comment-style-graft] empty_response local graft failed', error);
+                }
+                failEmptyApiResponse();
+              })();
+              return;
             }
-            const ownsCurrentRun = clearCurrentRunStreamingMarker(
-              runConversationId,
-              controller,
-              cancelController,
-            );
-            if (ownsCurrentRun) {
-              updateConversationLatestRun(
-                softImprovementTurn ? 'canceled' : 'failed',
-                endedAt,
-              );
-            }
-            runPersistTargetFileRef.current = null;
-            runSkipDiscoveryBriefRef.current = false;
-            runSelectedDeckTemplateIdRef.current = null;
-            runCommentAttachmentsRef.current = [];
-            void refreshProjectFiles();
-            onProjectsRefresh();
-            releaseOwnedDaemonRun();
+            failEmptyApiResponse();
             return;
           }
           if (runCommentAttachments.length > 0) {

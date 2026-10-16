@@ -655,7 +655,7 @@ describe("ProjectView message loading", () => {
 
     const autoOpenStart = source.indexOf("const scheduleStreamRunHtmlAutoOpen");
     expect(autoOpenStart).toBeGreaterThan(0);
-    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 72000);
+    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 82000);
 
     expect(autoOpenBlock).toContain("const cloneFillSourceText = streamedText || fullText || latestAssistantMsg.content || ''");
     expect(autoOpenBlock).toContain("const rawFinalText = prepareTemplateCloneSlotFillAssistantText(cloneFillSourceText)");
@@ -1260,7 +1260,7 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const start = source.indexOf("if (emergencyRecovered) {");
     expect(start).toBeGreaterThan(0);
-    const block = source.slice(start, start + 900);
+    const block = source.slice(start, start + 1400);
     expect(block).toContain("EMERGENCY_DECK_FALLBACK_STATUS_CODE");
     expect(block).toContain("resolveSucceededRunStatus");
     expect(block).toContain("updateConversationLatestRun('succeeded'");
@@ -1334,6 +1334,14 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     expect(source).toContain("mergeCommentEditIncomingIntoPrior({");
     expect(source).toContain("commentHeal.ok && commentHeal.merged");
+  });
+
+  it("comment empty_response grafts local font/bg style instead of fatal EMPTY_RESPONSE", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("graftLocalCommentStyleOntoPrior({");
+    expect(source).toContain("canGraftLocalCommentStyleWithoutModel(");
+    expect(source).toContain("shouldSurfaceEmptyApiResponseChatError(");
+    expect(source).toContain("tryLocalStyleGraft");
   });
 
   it("head-preamble continue skips short-response retry without padding", () => {

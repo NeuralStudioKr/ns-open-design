@@ -15,6 +15,9 @@ import {
   resolveScopedCommentSlideCandidates,
   scopedCommentElementIds,
   graftVisualMarksIntoDeckHtml,
+  graftLocalCommentStyleOntoPrior,
+  canGraftLocalCommentStyleWithoutModel,
+  shouldSurfaceEmptyApiResponseChatError,
   repairWipedSlidesForVisualMarks,
   stabilizeVisualMarkDeckHtml,
   hasElementScopedCommentAttachments,
@@ -1247,7 +1250,7 @@ describe('1007-N01 U comment short incoming merge', () => {
     expect(result.reason).toBe('not a comment-scoped edit');
   });
 
-  it('background comment without extractable color does not rewrite titles', () => {
+  it('background comment without extractable incoming color grafts from the instruction', () => {
     const incoming =
       '<!doctype html><html lang="ko"><body>'
       + '<section class="slide"><h2>완전히 다른 제목</h2><p>날조된 본문</p></section>'
@@ -1258,11 +1261,13 @@ describe('1007-N01 U comment short incoming merge', () => {
       commentAttachments: [bgComment],
       instructionText: '배경색을 파란색으로 바꿔줘',
     });
-    expect(result.ok).toBe(false);
-    if (result.ok) {
-      expect(result.html).toContain('슬라이드 3');
-      expect(result.html).not.toContain('완전히 다른 제목');
-    }
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(slides).toHaveLength(8);
+    expect(slides[2]?.outerHtml).toMatch(/background(?:-color)?:\s*#2563eb/i);
+    expect(slides[2]?.outerHtml).toContain('슬라이드 3');
+    expect(slides[2]?.outerHtml).not.toContain('완전히 다른 제목');
   });
 
   it('aligns a 1-slide incoming onto the pinned index for scoped merge', () => {
@@ -1282,5 +1287,217 @@ describe('1007-N01 U comment short incoming merge', () => {
     const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
     expect(slides).toHaveLength(8);
     expect(result.narrowed).toBe(true);
+  });
+});
+
+describe('1007-N01 X comment local style graft without model HTML', () => {
+  function eightSlideDeck(): string {
+    return [
+      '<!doctype html><html lang="ko"><head><style>:root{--paper:#ffffff}</style></head><body>',
+      ...Array.from({ length: 8 }, (_, i) =>
+        `<section class="slide" data-slide-index="${i}">`
+        + `<p class="kicker" style="font-size:12px">KICKER ${i + 1}</p>`
+        + `<h2 style="font-size:32px">슬라이드 ${i + 1}</h2>`
+        + `<p style="font-size:16px">본문입니다.</p>`
+        + '</section>',
+      ),
+      '</body></html>',
+    ].join('');
+  }
+
+  const fontComment: ChatCommentAttachment = {
+    id: 'c-font',
+    order: 1,
+    filePath: 'deck.html',
+    elementId: 'title-2',
+    selector: '[data-od-id="title-2"]',
+    label: 'h2',
+    comment: '폰트를 두배 키우자',
+    currentText: '슬라이드 3',
+    htmlHint: '<h2>슬라이드 3</h2>',
+    pagePosition: { x: 0, y: 0, width: 10, height: 10 },
+    selectionKind: 'element',
+    slideIndex: 2,
+  };
+
+  it('empty MiniMax + 폰트를 두배 키우자 doubles pinned title/body and keeps 8 slides', () => {
+    const result = graftLocalCommentStyleOntoPrior({
+      priorHtml: eightSlideDeck(),
+      commentAttachments: [fontComment],
+      instructionText: '폰트를 두배 키우자',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.kind).toBe('font-scale');
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(slides).toHaveLength(8);
+    expect(slides[2]?.outerHtml).toMatch(/font-size:\s*64px/i);
+    expect(slides[2]?.outerHtml).toMatch(/font-size:\s*32px/i);
+    expect(slides[2]?.outerHtml).toContain('슬라이드 3');
+    expect(slides[2]?.outerHtml).toContain('본문입니다.');
+    expect(slides[2]?.outerHtml).toMatch(/font-size:\s*12px/i);
+    expect(slides[0]?.outerHtml).toMatch(/font-size:\s*32px/i);
+    expect(slides[0]?.outerHtml).not.toMatch(/font-size:\s*64px/i);
+    for (const index of [0, 1, 3, 4, 5, 6, 7]) {
+      expect(slides[index]?.outerHtml, `slide ${index} must stay unscaled`).not.toMatch(
+        /font-size:\s*64px/i,
+      );
+    }
+    expect(shouldSurfaceEmptyApiResponseChatError({
+      commentScoped: true,
+      localStyleGraftSucceeded: true,
+    })).toBe(false);
+  });
+
+  it('empty incoming merge still grafts font double onto the pinned slide', () => {
+    const result = mergeCommentEditIncomingIntoPrior({
+      priorHtml: eightSlideDeck(),
+      incomingHtml: '',
+      commentAttachments: [fontComment],
+      instructionText: '폰트를 두배 키우자',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.merged).toBe(true);
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(slides).toHaveLength(8);
+    expect(slides[2]?.outerHtml).toMatch(/font-size:\s*64px/i);
+    expect(slides[2]?.outerHtml).toContain('슬라이드 3');
+  });
+
+  it('empty incoming background comment grafts blue from the instruction', () => {
+    const bgComment: ChatCommentAttachment = {
+      ...fontComment,
+      id: 'c-bg-empty',
+      comment: '배경색을 파란색으로 바꿔줘',
+    };
+    const result = mergeCommentEditIncomingIntoPrior({
+      priorHtml: eightSlideDeck(),
+      incomingHtml: '',
+      commentAttachments: [bgComment],
+      instructionText: '배경색을 파란색으로 바꿔줘',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(slides).toHaveLength(8);
+    expect(slides[2]?.outerHtml).toMatch(/background(?:-color)?:\s*#2563eb/i);
+    expect(slides[2]?.outerHtml).toContain('슬라이드 3');
+    expect(slides[0]?.outerHtml).not.toMatch(/background(?:-color)?:\s*#2563eb/i);
+  });
+
+  it('adds 2em when the pinned title/body have no explicit font-size', () => {
+    const prior = [
+      '<!doctype html><html lang="ko"><body>',
+      ...Array.from({ length: 8 }, (_, i) =>
+        `<section class="slide" data-slide-index="${i}"><h2>슬라이드 ${i + 1}</h2><p>본문입니다.</p></section>`,
+      ),
+      '</body></html>',
+    ].join('');
+    const result = graftLocalCommentStyleOntoPrior({
+      priorHtml: prior,
+      commentAttachments: [fontComment],
+      instructionText: '폰트를 두배 키우자',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(slides).toHaveLength(8);
+    expect(slides[2]?.outerHtml).toMatch(/font-size:\s*2em/i);
+    expect(slides[0]?.outerHtml).not.toMatch(/font-size:\s*2em/i);
+  });
+
+  it('vague comments are not local grafts; empty_response can still error', () => {
+    expect(canGraftLocalCommentStyleWithoutModel('이 슬라이드를 더 멋지게')).toBe(false);
+    expect(canGraftLocalCommentStyleWithoutModel('폰트 더 크게하자')).toBe(false);
+    const result = graftLocalCommentStyleOntoPrior({
+      priorHtml: eightSlideDeck(),
+      commentAttachments: [{ ...fontComment, comment: '이 슬라이드를 더 멋지게' }],
+      instructionText: '이 슬라이드를 더 멋지게',
+    });
+    expect(result.ok).toBe(false);
+    expect(shouldSurfaceEmptyApiResponseChatError({
+      commentScoped: true,
+      localStyleGraftSucceeded: false,
+    })).toBe(true);
+    expect(shouldSurfaceEmptyApiResponseChatError({
+      commentScoped: false,
+      localStyleGraftSucceeded: false,
+    })).toBe(true);
+  });
+
+  it('retry of the same font×2 comment does not double twice', () => {
+    const first = graftLocalCommentStyleOntoPrior({
+      priorHtml: eightSlideDeck(),
+      commentAttachments: [fontComment],
+      instructionText: '폰트를 두배 키우자',
+    });
+    expect(first.ok, JSON.stringify(first)).toBe(true);
+    if (!first.ok) return;
+    const second = graftLocalCommentStyleOntoPrior({
+      priorHtml: first.html,
+      commentAttachments: [fontComment],
+      instructionText: '폰트를 두배 키우자',
+    });
+    expect(second.ok, JSON.stringify(second)).toBe(true);
+    if (!second.ok) return;
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(second.html));
+    expect(slides).toHaveLength(8);
+    expect(slides[2]?.outerHtml).toMatch(/font-size:\s*64px/i);
+    expect(slides[2]?.outerHtml).not.toMatch(/font-size:\s*128px/i);
+    expect((slides[2]?.outerHtml.match(/font-size:\s*64px/gi) ?? []).length).toBe(1);
+    expect(shouldSurfaceEmptyApiResponseChatError({
+      commentScoped: true,
+      localStyleGraftSucceeded: true,
+    })).toBe(false);
+  });
+
+  it('kicker-only pinned slide doubles the kicker', () => {
+    const prior = [
+      '<!doctype html><html lang="ko"><body>',
+      ...Array.from({ length: 8 }, (_, i) =>
+        `<section class="slide" data-slide-index="${i}">`
+        + `<p class="kicker" style="font-size:12px">KICKER ${i + 1}</p>`
+        + '</section>',
+      ),
+      '</body></html>',
+    ].join('');
+    const result = graftLocalCommentStyleOntoPrior({
+      priorHtml: prior,
+      commentAttachments: [fontComment],
+      instructionText: '폰트를 두배 키우자',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(slides[2]?.outerHtml).toMatch(/font-size:\s*24px/i);
+    expect(slides[2]?.outerHtml).not.toMatch(/font-size:\s*12px/i);
+    expect(slides[0]?.outerHtml).toMatch(/font-size:\s*12px/i);
+    expect(slides[0]?.outerHtml).not.toMatch(/font-size:\s*24px/i);
+  });
+
+  it('explicit 1em title becomes 2em on the pinned slide only', () => {
+    const prior = [
+      '<!doctype html><html lang="ko"><body>',
+      ...Array.from({ length: 8 }, (_, i) =>
+        `<section class="slide" data-slide-index="${i}">`
+        + `<h2 style="font-size:1em">슬라이드 ${i + 1}</h2>`
+        + `<p style="font-size:1em">본문입니다.</p>`
+        + '</section>',
+      ),
+      '</body></html>',
+    ].join('');
+    const result = graftLocalCommentStyleOntoPrior({
+      priorHtml: prior,
+      commentAttachments: [fontComment],
+      instructionText: '폰트를 두배 키우자',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(slides[2]?.outerHtml).toMatch(/font-size:\s*2em/i);
+    expect(slides[2]?.outerHtml).not.toMatch(/font-size:\s*1em/i);
+    expect(slides[0]?.outerHtml).toMatch(/font-size:\s*1em/i);
+    expect(slides[0]?.outerHtml).not.toMatch(/font-size:\s*2em/i);
   });
 });

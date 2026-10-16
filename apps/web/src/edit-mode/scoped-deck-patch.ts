@@ -1135,6 +1135,274 @@ export function isBackgroundColorCommentInstruction(
   return BACKGROUND_COMMENT_INSTRUCTION_RE.test(String(text ?? ''));
 }
 
+const FONT_DOUBLE_COMMENT_INSTRUCTION_RE =
+  /(?:폰트|font)[\s\S]{0,16}(?:두\s*배|2\s*배|\+\s*100\s*%|200\s*%|×\s*2|x\s*2|\*\s*2)|(?:두\s*배|2\s*배).{0,12}(?:키우|크게|확대|늘)|(?:font[- ]?size|font).{0,16}(?:double|twice|×\s*2|x\s*2|\*\s*2|2x)|(?:double|twice).{0,12}font/i;
+
+const COMMENT_STYLE_CHROME_RE =
+  /\b(kicker|brand|speaker|eyebrow|chip|tag|meta|footer|nav|logo|byline|page-?num)\b/i;
+
+const COMMENT_STYLE_CONTENT_SELECTOR =
+  'h1, h2, h3, h4, h5, h6, p, li, blockquote, .title, .headline, .lede, .body, .copy';
+
+const COMMENT_STYLE_KICKER_SELECTOR =
+  '.kicker, .eyebrow, [data-role="kicker"], [data-role="eyebrow"]';
+
+/** Marks a pinned slide that already received a local font×2 graft. */
+export const COMMENT_FONT_SCALE_ATTR = 'data-od-comment-font-scale';
+const COMMENT_FONT_SCALE_FACTOR = 2;
+
+const COMMENT_BACKGROUND_COLOR_WORDS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/파란|블루|\bblue\b/i, '#2563eb'],
+  [/빨간|레드|\bred\b/i, '#dc2626'],
+  [/초록|그린|\bgreen\b/i, '#16a34a'],
+  [/검은|블랙|\bblack\b/i, '#111827'],
+  [/회색|그레이|\bgr[ae]y\b/i, '#6b7280'],
+  [/노란|옐로|\byellow\b/i, '#eab308'],
+  [/주황|오렌지|\borange\b/i, '#ea580c'],
+  [/보라|퍼플|\bpurple\b/i, '#7c3aed'],
+  [/흰|화이트|\bwhite\b/i, '#ffffff'],
+];
+
+export type LocalCommentStyleGraftKind = 'font-scale' | 'background';
+
+/** True when the user asked to double font size (×2 / +100%), not a vague "bigger". */
+export function isFontScaleCommentInstruction(
+  text: string | null | undefined,
+): boolean {
+  return FONT_DOUBLE_COMMENT_INSTRUCTION_RE.test(String(text ?? ''));
+}
+
+export function parseCommentBackgroundColor(
+  text: string | null | undefined,
+): string | null {
+  const source = String(text ?? '');
+  const hex = source.match(/#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})\b/i);
+  if (hex) return hex[0];
+  const rgb = source.match(/\brgba?\(\s*[\d.]+(?:\s*,\s*[\d.]+){2,3}\s*\)/i);
+  if (rgb) return rgb[0];
+  for (const [pattern, color] of COMMENT_BACKGROUND_COLOR_WORDS) {
+    if (pattern.test(source)) return color;
+  }
+  return null;
+}
+
+/**
+ * Font-double and named background restyles can be applied to the pinned
+ * slide without a model HTML body. Vague comments still need the model.
+ */
+export function canGraftLocalCommentStyleWithoutModel(
+  text: string | null | undefined,
+): boolean {
+  if (isFontScaleCommentInstruction(text)) return true;
+  return isBackgroundColorCommentInstruction(text)
+    && Boolean(parseCommentBackgroundColor(text));
+}
+
+/**
+ * EMPTY_RESPONSE is a chat fatal only when a local comment style graft
+ * did not land. Successful font×2 / bg grafts must not surface it.
+ */
+export function shouldSurfaceEmptyApiResponseChatError(input: {
+  commentScoped?: boolean;
+  localStyleGraftSucceeded?: boolean;
+}): boolean {
+  return !(Boolean(input.commentScoped) && Boolean(input.localStyleGraftSucceeded));
+}
+
+function scaleCssLength(value: string, factor: number): string | null {
+  const important = /\s*!important\s*$/i.test(value);
+  const core = value.replace(/\s*!important\s*$/i, '').trim();
+  const match = /^([+-]?(?:\d+\.?\d*|\.\d+))\s*(px|em|rem|%)$/i.exec(core);
+  if (!match) return null;
+  const next = Number(match[1]) * factor;
+  if (!Number.isFinite(next)) return null;
+  const rendered = Number.isInteger(next)
+    ? String(next)
+    : String(Math.round(next * 1000) / 1000);
+  return `${rendered}${match[2]}${important ? ' !important' : ''}`;
+}
+
+function isChromeTypeElement(el: Element): boolean {
+  let node: Element | null = el;
+  while (node && node.tagName.toLowerCase() !== 'section') {
+    const cls = node.getAttribute('class') || '';
+    const role = node.getAttribute('data-role') || node.getAttribute('role') || '';
+    if (COMMENT_STYLE_CHROME_RE.test(cls) || COMMENT_STYLE_CHROME_RE.test(role)) {
+      return true;
+    }
+    node = node.parentElement;
+  }
+  return false;
+}
+
+function scaleInlineFontSize(style: string, factor: number): string {
+  const decls = parseInlineStyleDeclarations(style);
+  const current = decls['font-size'];
+  if (current) {
+    const scaled = scaleCssLength(current, factor);
+    if (scaled) {
+      decls['font-size'] = scaled;
+      return serializeInlineStyle(decls);
+    }
+  }
+  decls['font-size'] = `${factor}em`;
+  return serializeInlineStyle(decls);
+}
+
+function readCommentFontScaleFactor(slideHtml: string): number | null {
+  const open = slideHtml.match(/^<section\b[^>]*>/i)?.[0] ?? '';
+  const match = new RegExp(
+    `\\b${COMMENT_FONT_SCALE_ATTR}\\s*=\\s*["']?(\\d+(?:\\.\\d+)?)`,
+    'i',
+  ).exec(open);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function collectFontScaleTargets(section: Element): Element[] {
+  const nodes = [...section.querySelectorAll(COMMENT_STYLE_CONTENT_SELECTOR)];
+  const content = nodes.filter((node) => !isChromeTypeElement(node));
+  if (content.length > 0) return content;
+  // Kicker/eyebrow stay chrome when title/body exist. If they are the only
+  // type on the pinned slide, they are the content — scale them.
+  return [...new Set([
+    ...nodes.filter((node) => isChromeTypeElement(node)),
+    ...section.querySelectorAll(COMMENT_STYLE_KICKER_SELECTOR),
+  ])];
+}
+
+function graftFontScaleOntoSlideOuterHtml(
+  slideHtml: string,
+  factor: number,
+): { html: string; alreadyApplied: boolean } | null {
+  if (readCommentFontScaleFactor(slideHtml) === factor) {
+    return { html: slideHtml, alreadyApplied: true };
+  }
+  const doc = parseManualEditSource(`<!doctype html><html><body>${slideHtml}</body></html>`);
+  if (!doc) return null;
+  const section = doc.querySelector('section') ?? doc.body.firstElementChild;
+  if (!section) return null;
+  if (section.getAttribute(COMMENT_FONT_SCALE_ATTR) === String(factor)) {
+    return { html: slideHtml, alreadyApplied: true };
+  }
+  const targets = collectFontScaleTargets(section);
+  let changed = 0;
+  for (const node of targets) {
+    const style = node.getAttribute('style') || '';
+    const nextStyle = scaleInlineFontSize(style, factor);
+    if (nextStyle === style) continue;
+    node.setAttribute('style', nextStyle);
+    changed += 1;
+  }
+  if (changed === 0) return null;
+  section.setAttribute(COMMENT_FONT_SCALE_ATTR, String(factor));
+  return { html: section.outerHTML, alreadyApplied: false };
+}
+
+function graftBackgroundColorOntoSlideOuterHtml(
+  slideHtml: string,
+  color: string,
+): string {
+  const currentDecls = parseInlineStyleDeclarations(readSectionStyleAttr(
+    slideHtml.match(/^<section\b[^>]*>/i)?.[0] ?? '',
+  ));
+  const nextDecls = {
+    ...currentDecls,
+    background: color,
+    'background-color': color,
+    '--paper': color,
+    '--bg': color,
+  };
+  return writeSectionStyleAttr(slideHtml, serializeInlineStyle(nextDecls));
+}
+
+function joinCommentStyleInstruction(input: {
+  instructionText?: string;
+  commentAttachments: readonly ChatCommentAttachment[];
+}): string {
+  return [
+    input.instructionText,
+    ...input.commentAttachments.map((attachment) => attachment.comment),
+  ].filter(Boolean).join('\n');
+}
+
+/**
+ * 1007-N01 X — Apply font×2 or a named background onto the pinned slide
+ * using the prior deck only. MiniMax may return nothing.
+ */
+export function graftLocalCommentStyleOntoPrior(input: {
+  priorHtml: string;
+  commentAttachments: readonly ChatCommentAttachment[];
+  instructionText?: string;
+}): { ok: true; html: string; kind: LocalCommentStyleGraftKind } | { ok: false; reason: string } {
+  if (input.commentAttachments.length === 0) {
+    return { ok: false, reason: 'not a comment-scoped edit' };
+  }
+  const instruction = joinCommentStyleInstruction(input);
+  const fontScale = isFontScaleCommentInstruction(instruction);
+  const backgroundColor = isBackgroundColorCommentInstruction(instruction)
+    ? parseCommentBackgroundColor(instruction)
+    : null;
+  if (!fontScale && !backgroundColor) {
+    return { ok: false, reason: 'comment is not a local style graft' };
+  }
+  const priorSlides = extractTopLevelSlideSections(extractDeckBodyContent(input.priorHtml));
+  if (priorSlides.length === 0) {
+    return { ok: false, reason: 'prior deck has no slides' };
+  }
+  const targets = resolveCommentEditTargetSlideIndexes({
+    priorSlideCount: priorSlides.length,
+    incomingSlides: [],
+    commentAttachments: input.commentAttachments,
+    priorHtml: input.priorHtml,
+    priorSlides,
+  });
+  if (targets.length === 0) {
+    return { ok: false, reason: 'comment target slide could not be resolved' };
+  }
+  const ops: Array<{ op: 'replace'; slideIndex: number; html: string }> = [];
+  let fontScaleAlreadyApplied = false;
+  for (const slideIndex of targets) {
+    const priorSlide = priorSlides[slideIndex];
+    if (!priorSlide) continue;
+    let nextHtml = priorSlide.outerHtml;
+    if (fontScale) {
+      const scaled = graftFontScaleOntoSlideOuterHtml(nextHtml, COMMENT_FONT_SCALE_FACTOR);
+      if (scaled) {
+        nextHtml = scaled.html;
+        if (scaled.alreadyApplied) fontScaleAlreadyApplied = true;
+      }
+    }
+    if (backgroundColor) {
+      nextHtml = graftBackgroundColorOntoSlideOuterHtml(nextHtml, backgroundColor);
+    }
+    if (nextHtml !== priorSlide.outerHtml) {
+      ops.push({ op: 'replace', slideIndex, html: nextHtml });
+    }
+  }
+  if (ops.length === 0) {
+    // Persist + empty_response (or a user retry) must not 64→128, and must
+    // still count as a successful local graft so EMPTY_RESPONSE stays quiet.
+    if (fontScale && fontScaleAlreadyApplied) {
+      return { ok: true, html: input.priorHtml, kind: 'font-scale' };
+    }
+    return { ok: false, reason: 'local comment style did not graft' };
+  }
+  const patched = applyDeckPatch({
+    currentHtml: input.priorHtml,
+    patch: { ops },
+  });
+  if (!patched.ok) {
+    return { ok: false, reason: 'local comment style patch failed' };
+  }
+  return {
+    ok: true,
+    html: patched.html,
+    kind: fontScale ? 'font-scale' : 'background',
+  };
+}
+
 function parseInlineStyleDeclarations(styleAttr: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const part of styleAttr.split(';')) {
@@ -1342,6 +1610,7 @@ export function graftIncomingSlideBackgroundOntoPrior(input: {
  * 1007-N01 U — Comment edits must not require a full 8–10 slide rewrite.
  * If MiniMax returns only the edited slide, merge it onto the prior deck
  * (background/color onto the pinned slide; keep other slides and copy).
+ * 1007-N01 X — Font×2 / named background must also work when incoming is empty.
  */
 export function mergeCommentEditIncomingIntoPrior(input: {
   priorHtml: string;
@@ -1357,17 +1626,18 @@ export function mergeCommentEditIncomingIntoPrior(input: {
   if (priorSlides.length === 0) {
     return { ok: false, reason: 'prior deck has no slides' };
   }
+
+  const instruction = joinCommentStyleInstruction(input);
+  const localStyle = canGraftLocalCommentStyleWithoutModel(instruction);
   if (incomingSlides.length === 0) {
-    return { ok: false, reason: 'incoming comment edit has no slides' };
-  }
-  if (incomingSlides.length >= priorSlides.length) {
-    return { ok: true, html: input.incomingHtml, merged: false };
+    if (!localStyle) {
+      return { ok: false, reason: 'incoming comment edit has no slides' };
+    }
+    const grafted = graftLocalCommentStyleOntoPrior(input);
+    if (grafted.ok) return { ok: true, html: grafted.html, merged: true };
+    return { ok: false, reason: grafted.reason };
   }
 
-  const instruction = [
-    input.instructionText,
-    ...input.commentAttachments.map((attachment) => attachment.comment),
-  ].filter(Boolean).join('\n');
   const targets = resolveCommentEditTargetSlideIndexes({
     priorSlideCount: priorSlides.length,
     incomingSlides,
@@ -1376,6 +1646,12 @@ export function mergeCommentEditIncomingIntoPrior(input: {
     priorSlides,
   });
 
+  if (isFontScaleCommentInstruction(instruction)) {
+    const grafted = graftLocalCommentStyleOntoPrior(input);
+    if (grafted.ok) return { ok: true, html: grafted.html, merged: true };
+    return { ok: false, reason: grafted.reason };
+  }
+
   if (isBackgroundColorCommentInstruction(instruction)) {
     const grafted = graftIncomingSlideBackgroundOntoPrior({
       priorHtml: input.priorHtml,
@@ -1383,8 +1659,14 @@ export function mergeCommentEditIncomingIntoPrior(input: {
       targetSlideIndexes: targets,
     });
     if (grafted) return { ok: true, html: grafted, merged: true };
+    const fromInstruction = graftLocalCommentStyleOntoPrior(input);
+    if (fromInstruction.ok) return { ok: true, html: fromInstruction.html, merged: true };
     // Do not fall through to whole-slide align — that rewrites titles.
     return { ok: false, reason: 'background comment did not graft' };
+  }
+
+  if (incomingSlides.length >= priorSlides.length) {
+    return { ok: true, html: input.incomingHtml, merged: false };
   }
 
   const scoped = mergeScopedCommentTargetsFromPatchedDeck({

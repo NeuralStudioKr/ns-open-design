@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -12,6 +14,15 @@ import {
   SLIDE_COUNT_REGRESSION_CONTINUE_FILL_REASON,
   SLIDE_COUNT_REGRESSION_KEEP_PRIOR_REASON,
 } from '../src/teamver/slideCountTopUp';
+import {
+  extractDeckBodyContent,
+  extractTopLevelSlideSections,
+} from '../src/artifacts/deck-patch';
+import {
+  graftLocalCommentStyleOntoPrior,
+  shouldSurfaceEmptyApiResponseChatError,
+} from '../src/edit-mode/scoped-deck-patch';
+import type { ChatCommentAttachment } from '../src/types';
 
 const compactThree =
   '<!doctype html><html lang="ko"><body>'
@@ -322,5 +333,110 @@ describe('shouldFailRunForArtifactPersistResult', () => {
       fileName: 'deck.html',
       reason: persist.reason,
     }, { scopedCommentEdit: true })).toBe(false);
+  });
+
+  it('1007-N01 X · comment 폰트를 두배 키우자 + empty MiniMax keeps 8 slides and does not fail', () => {
+    const prior = [
+      '<!doctype html><html lang="ko"><body>',
+      ...Array.from({ length: 8 }, (_, i) =>
+        `<section class="slide" data-slide-index="${i}">`
+        + `<h2 style="font-size:32px">슬라이드 ${i + 1}</h2>`
+        + `<p style="font-size:16px">${'본문입니다. '.repeat(8)}</p>`
+        + '</section>',
+      ),
+      '</body></html>',
+    ].join('');
+    const fontComment: ChatCommentAttachment = {
+      id: 'c-font',
+      order: 1,
+      filePath: 'deck.html',
+      elementId: 'title-2',
+      selector: 'h2',
+      label: 'h2',
+      comment: '폰트를 두배 키우자',
+      currentText: '슬라이드 3',
+      pagePosition: { x: 0, y: 0, width: 10, height: 10 },
+      selectionKind: 'element',
+      slideIndex: 2,
+    };
+    const grafted = graftLocalCommentStyleOntoPrior({
+      priorHtml: prior,
+      commentAttachments: [fontComment],
+      instructionText: '폰트를 두배 키우자',
+    });
+    expect(grafted.ok, JSON.stringify(grafted)).toBe(true);
+    if (!grafted.ok) return;
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(grafted.html));
+    expect(slides).toHaveLength(8);
+    expect(slides[2]?.outerHtml).toMatch(/font-size:\s*64px/i);
+    expect(slides[2]?.outerHtml).toContain('슬라이드 3');
+    expect(shouldSurfaceEmptyApiResponseChatError({
+      commentScoped: true,
+      localStyleGraftSucceeded: true,
+    })).toBe(false);
+    expect(shouldFailRunForArtifactPersistResult({
+      kind: 'persisted',
+      fileName: 'deck.html',
+    }, { scopedCommentEdit: true })).toBe(false);
+  });
+
+  it('1007-N01 X · non-comment empty_response still surfaces as a chat fail', () => {
+    expect(shouldSurfaceEmptyApiResponseChatError({
+      commentScoped: false,
+      localStyleGraftSucceeded: false,
+    })).toBe(true);
+    expect(shouldFailRunForArtifactPersistResult({
+      kind: 'skipped-incomplete',
+      fileName: 'deck.html',
+      reason: 'empty_response',
+    })).toBe(true);
+  });
+
+  it('1007-N01 X · persist then empty_response retry does not 64→128', () => {
+    const prior = [
+      '<!doctype html><html lang="ko"><body>',
+      ...Array.from({ length: 8 }, (_, i) =>
+        `<section class="slide" data-slide-index="${i}">`
+        + `<h2 style="font-size:32px">슬라이드 ${i + 1}</h2>`
+        + `<p style="font-size:16px">${'본문입니다. '.repeat(8)}</p>`
+        + '</section>',
+      ),
+      '</body></html>',
+    ].join('');
+    const fontComment: ChatCommentAttachment = {
+      id: 'c-font-retry',
+      order: 1,
+      filePath: 'deck.html',
+      elementId: 'title-2',
+      selector: 'h2',
+      label: 'h2',
+      comment: '폰트를 두배 키우자',
+      currentText: '슬라이드 3',
+      pagePosition: { x: 0, y: 0, width: 10, height: 10 },
+      selectionKind: 'element',
+      slideIndex: 2,
+    };
+    const first = graftLocalCommentStyleOntoPrior({
+      priorHtml: prior,
+      commentAttachments: [fontComment],
+      instructionText: '폰트를 두배 키우자',
+    });
+    expect(first.ok, JSON.stringify(first)).toBe(true);
+    if (!first.ok) return;
+    const retry = graftLocalCommentStyleOntoPrior({
+      priorHtml: first.html,
+      commentAttachments: [fontComment],
+      instructionText: '폰트를 두배 키우자',
+    });
+    expect(retry.ok, JSON.stringify(retry)).toBe(true);
+    if (!retry.ok) return;
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(retry.html));
+    expect(slides).toHaveLength(8);
+    expect(slides[2]?.outerHtml).toMatch(/font-size:\s*64px/i);
+    expect(slides[2]?.outerHtml).not.toMatch(/font-size:\s*128px/i);
+    expect(shouldSurfaceEmptyApiResponseChatError({
+      commentScoped: true,
+      localStyleGraftSucceeded: true,
+    })).toBe(false);
   });
 });
