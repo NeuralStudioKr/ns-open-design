@@ -292,6 +292,8 @@ def _teamver_upload_error_code(exc: TeamverAPIError) -> str:
                 return "drive_upload_failed_403_insufficient_role"
             if lowered.startswith("drive_"):
                 return normalized
+            if lowered.startswith("drive."):
+                return lowered
             if lowered.startswith("error.drive."):
                 return lowered.replace("error.", "", 1).replace(".", "_")
     if status in (401, 403):

@@ -19,7 +19,6 @@ from app.routers.internal_billing import (
     refund_run,
     reserve_run,
 )
-from app.services import credit_meter
 from app.services import run_lifecycle
 
 
@@ -50,24 +49,19 @@ async def test_estimate_reserve_returns_billing_disabled_when_kill_switch_on(
 
 
 @pytest.mark.asyncio
-async def test_estimate_reserve_endpoint_returns_metered_amount(
+async def test_estimate_reserve_endpoint_returns_balance_policy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        credit_meter.settings,
-        "design_model_prices_json",
-        '{"claude-sonnet-4-5":{"prompt_cost_per_1k":0.003,"completion_cost_per_1k":0.015}}',
-    )
-    monkeypatch.setattr(credit_meter.settings, "design_billing_usd_krw_rate", 1550)
-    monkeypatch.setattr(credit_meter.settings, "design_billing_credit_krw_rate", 0.5)
-    monkeypatch.setattr(credit_meter.settings, "design_billing_price_to_cost_ratio", 2.0)
-    monkeypatch.setattr(credit_meter.settings, "design_billing_reserve_input_tokens", 1000)
-    monkeypatch.setattr(credit_meter.settings, "design_billing_reserve_output_tokens", 0)
+    async def fake_policy(*, workspace_id: str | None) -> str:
+        assert workspace_id == "ws-1"
+        return "billing_deferred"
 
-    response = await estimate_reserve(EstimateReserveBody(model_name="claude-sonnet-4-5"), True)
-    # 1000 in × 0.003 USD/1k → 0.003 USD → round(0.003×6200)=19
-    assert response.amount_t == 19
-    assert response.policy == "metered"
+    monkeypatch.setattr(internal_billing, "estimate_balance_policy", fake_policy)
+    response = await estimate_reserve(
+        EstimateReserveBody(model_name="MiniMax-M3", workspace_id="ws-1"), True
+    )
+    assert response.amount_t == 0
+    assert response.policy == "billing_deferred"
 
 
 @pytest.mark.asyncio

@@ -150,6 +150,7 @@ services:
       # Provider-neutral hosted API and its separately reversible buffered mode.
       TEAMVER_HOSTED_CHAT_API_ENABLED: ${TEAMVER_HOSTED_CHAT_API_ENABLED:-0}
       TEAMVER_HOSTED_CHAT_BUFFERED_STREAM_ENABLED: ${TEAMVER_HOSTED_CHAT_BUFFERED_STREAM_ENABLED:-0}
+      OD_BYOK_PROXY_INACTIVITY_TIMEOUT_MS: ${OD_BYOK_PROXY_INACTIVITY_TIMEOUT_MS:-}
       # Track B5 — Postgres DaemonDb (multi-node chat SSOT). Default sqlite.
       OD_DAEMON_DB: ${OD_DAEMON_DB:-sqlite}
       OD_PG_HOST: ${OD_PG_HOST:-}

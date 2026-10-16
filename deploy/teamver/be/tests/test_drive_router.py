@@ -36,6 +36,8 @@ def _drive_request(
         "raw_path": f"/api/v1/drive/{path.lstrip('/')}".encode(),
         "query_string": query,
         "headers": headers,
+        # Hosted app always installs SessionMiddleware before Drive routes.
+        "session": {},
         "client": ("testclient", 50000),
         "server": ("testserver", 443),
     }
