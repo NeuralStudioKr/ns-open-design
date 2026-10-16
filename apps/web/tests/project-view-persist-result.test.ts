@@ -10,6 +10,7 @@ import {
 import {
   classifySlideCountRegressionPersist,
   SLIDE_COUNT_REGRESSION_CONTINUE_FILL_REASON,
+  SLIDE_COUNT_REGRESSION_KEEP_PRIOR_REASON,
 } from '../src/teamver/slideCountTopUp';
 
 const compactThree =
@@ -285,5 +286,41 @@ describe('shouldFailRunForArtifactPersistResult', () => {
       reason: gate!.reason,
       bannerKind: 'slide-count',
     })).toBe(true);
+  });
+
+  it('1007-N01 U · comment 8→1 still trips the gate but persist is keep-prior not chat error', () => {
+    const oneSlideBlue =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide" style="background:#2563eb"><h2>다른 제목</h2></section>'
+      + '</body></html>';
+    const gate = findClientSlideCountRegression({
+      fileName: 'deck.html',
+      htmlBody: oneSlideBlue,
+      priorHtml: fullEight,
+      strict: true,
+    });
+    expect(gate).toMatchObject({
+      priorCount: 8,
+      newCount: 1,
+      severity: 'reject',
+    });
+    const persist = classifySlideCountRegressionPersist({
+      severity: gate!.severity,
+      strict: true,
+      commentScoped: true,
+      continueFillOrRewriteTurn: false,
+      incomingCoverOnlyOrThin: true,
+      stillShort: false,
+    });
+    expect(persist.kind).not.toBe('artifact-regression');
+    expect(persist).toEqual({
+      kind: 'skipped-noop',
+      reason: SLIDE_COUNT_REGRESSION_KEEP_PRIOR_REASON,
+    });
+    expect(shouldFailRunForArtifactPersistResult({
+      kind: 'skipped-noop',
+      fileName: 'deck.html',
+      reason: persist.reason,
+    }, { scopedCommentEdit: true })).toBe(false);
   });
 });

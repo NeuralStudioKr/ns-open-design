@@ -32,6 +32,7 @@ import {
   applyScopedDeckPatchToHtml,
   attachmentMergeHint,
   inferSlideIndexFromDeckHtml,
+  mergeCommentEditIncomingIntoPrior,
   mergeScopedCommentTargetsFromPatchedDeck,
   finalizeScopedDeckMergeHtml,
   reconcileCommentScopeForPersist,
@@ -6465,6 +6466,27 @@ export function ProjectView({
             repairArtifactDocumentHeadIfNeeded(artifactToPersist.html),
           )
           : artifactToPersist.html;
+      // 1007-N01 U — Comment edits often return one edited slide. Merge onto
+      // the prior deck before byte/slide-count regression so persist keeps
+      // the full count and applies the local change (e.g. background color).
+      if (ext === '.html' && persistCommentAttachments.length > 0) {
+        const priorForComment = (diskHtmlCache?.fileName === fileName
+          ? diskHtmlCache.html
+          : null)
+          ?? (targetFileName === fileName ? diskHtmlForTarget : null)
+          ?? await readDiskHtml(fileName);
+        if (priorForComment) {
+          const commentHeal = mergeCommentEditIncomingIntoPrior({
+            priorHtml: priorForComment,
+            incomingHtml: htmlBody,
+            commentAttachments: persistCommentAttachments,
+            instructionText: runVisiblePromptRef.current,
+          });
+          if (commentHeal.ok && commentHeal.merged) {
+            htmlBody = commentHeal.html;
+          }
+        }
+      }
       if (
         ext === '.html'
         && persistCommentAttachments.some(isVisualCommentAttachment)
@@ -6877,6 +6899,7 @@ export function ProjectView({
             const regressionPersist = classifySlideCountRegressionPersist({
               severity: slideRegression.severity,
               strict: strictSlideCount,
+              commentScoped: persistCommentAttachments.length > 0,
               continueFillOrRewriteTurn:
                 runSlideCountTopUpRef.current
                 || isSlideCountTopUpPrompt(latestUserContent)

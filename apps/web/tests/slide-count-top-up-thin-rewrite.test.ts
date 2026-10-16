@@ -601,14 +601,31 @@ describe('1007-N01 T slide-count regression persist is continue-fill, not chat e
     })).toBe(true);
   });
 
-  it('strict comment/image persist still returns artifact-regression', () => {
+  it('strict image persist still returns artifact-regression', () => {
     expect(classifySlideCountRegressionPersist({
       severity: 'reject',
       strict: true,
+      commentScoped: false,
       continueFillOrRewriteTurn: true,
       incomingCoverOnlyOrThin: true,
       stillShort: true,
     })).toEqual({ kind: 'artifact-regression' });
+  });
+
+  it('comment-scoped persist is keep-prior, not artifact-regression', () => {
+    const persist = classifySlideCountRegressionPersist({
+      severity: 'reject',
+      strict: true,
+      commentScoped: true,
+      continueFillOrRewriteTurn: false,
+      incomingCoverOnlyOrThin: true,
+      stillShort: false,
+    });
+    expect(persist.kind).not.toBe('artifact-regression');
+    expect(persist).toEqual({
+      kind: 'skipped-noop',
+      reason: SLIDE_COUNT_REGRESSION_KEEP_PRIOR_REASON,
+    });
   });
 
   it('never re-enables thin_prior_rewrite_exhausted fatal', () => {

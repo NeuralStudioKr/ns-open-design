@@ -345,11 +345,13 @@ export function isThinPriorRewriteContinueFillReason(
 }
 
 /**
- * 1007-N01 T — `findClientSlideCountRegression` already refused the write.
+ * 1007-N01 T/U — `findClientSlideCountRegression` already refused the write.
  * Cover-only / thin rewrite / continue-fill shorter drafts are expected
  * intermediates: keep the longer prior and APPEND. Never surface
- * `artifact-regression` chat error on non-strict turns. Strict
- * comment/image persists still return artifact-regression.
+ * `artifact-regression` chat error on non-strict turns.
+ * 1007-N01 U — Comment-scoped persists also must not artifact-regression:
+ * persist merges the short incoming onto the prior (or keep-prior).
+ * Image-embed strict without a comment still returns artifact-regression.
  * Numeric thresholds in `findClientSlideCountRegression` stay unchanged.
  */
 export const SLIDE_COUNT_REGRESSION_CONTINUE_FILL_REASON =
@@ -366,14 +368,25 @@ export type SlideCountRegressionPersist = {
 
 export function classifySlideCountRegressionPersist(input: {
   severity: "reject" | "warn";
-  /** Image-embed / comment-scoped persist — keep the user-facing regression. */
+  /** Image-embed persist — keep the user-facing regression. */
   strict: boolean;
+  /**
+   * Comment-scoped persist. A shorter incoming draft is a local edit, not a
+   * hostile full-deck shrink — merge/keep-prior, never chat artifact-regression.
+   */
+  commentScoped?: boolean;
   continueFillOrRewriteTurn: boolean;
   /** Incoming cover-only or 1–2 slide thin rewrite. */
   incomingCoverOnlyOrThin: boolean;
   /** Kept prior is still short of requestedMin. */
   stillShort: boolean;
 }): SlideCountRegressionPersist {
+  if (input.commentScoped) {
+    return {
+      kind: "skipped-noop",
+      reason: SLIDE_COUNT_REGRESSION_KEEP_PRIOR_REASON,
+    };
+  }
   if (input.strict) {
     return { kind: "artifact-regression" };
   }

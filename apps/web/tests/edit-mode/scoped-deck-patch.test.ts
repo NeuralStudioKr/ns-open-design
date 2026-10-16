@@ -5,7 +5,9 @@ import {
   applyScopedDeckPatchToHtml,
   coerceDeckPatchToAllowedScope,
   inferSlideIndexFromDeckHtml,
+  mergeCommentEditIncomingIntoPrior,
   mergeScopedCommentTargetsFromPatchedDeck,
+  resolveCommentEditTargetSlideIndexes,
   reconcileCommentAttachmentElementId,
   reconcileCommentAttachmentSlideIndex,
   reconcileCommentScopeForPersist,
@@ -1135,6 +1137,150 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(result.ok, JSON.stringify(result)).toBe(true);
     if (!result.ok) return;
     expect(result.html).toContain('<strong>뉴럴스튜디오㈜</strong>');
+    expect(result.narrowed).toBe(true);
+  });
+});
+
+describe('1007-N01 U comment short incoming merge', () => {
+  function eightSlideDeck(): string {
+    return [
+      '<!doctype html><html lang="ko"><head><style>:root{--paper:#ffffff}</style></head><body>',
+      ...Array.from({ length: 8 }, (_, i) =>
+        `<section class="slide" data-slide-index="${i}"><h2>슬라이드 ${i + 1}</h2><p>본문입니다.</p></section>`,
+      ),
+      '</body></html>',
+    ].join('');
+  }
+
+  const bgComment = {
+    id: 'c-bg',
+    order: 1,
+    filePath: 'deck.html',
+    elementId: 'title-2',
+    selector: '[data-od-id="title-2"]',
+    label: 'h2',
+    comment: '배경색을 파란색으로 바꿔줘',
+    currentText: '슬라이드 3',
+    htmlHint: '<h2>슬라이드 3</h2>',
+    pagePosition: { x: 0, y: 0, width: 10, height: 10 },
+    selectionKind: 'element' as const,
+    slideIndex: 2,
+  };
+
+  it('8-slide prior + 1-slide blue incoming applies color on the pinned slide and keeps count', () => {
+    const incoming =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide" style="background:#2563eb">'
+      + '<h2>완전히 다른 제목</h2><p>날조된 본문</p>'
+      + '</section></body></html>';
+    const result = mergeCommentEditIncomingIntoPrior({
+      priorHtml: eightSlideDeck(),
+      incomingHtml: incoming,
+      commentAttachments: [bgComment],
+      instructionText: '배경색을 파란색으로 바꿔줘',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.merged).toBe(true);
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(slides).toHaveLength(8);
+    expect(slides[2]?.outerHtml).toMatch(/background(?:-color)?:\s*#2563eb/i);
+    expect(slides[2]?.outerHtml).toContain('슬라이드 3');
+    expect(slides[2]?.outerHtml).not.toContain('완전히 다른 제목');
+    expect(slides[0]?.outerHtml).toContain('슬라이드 1');
+    expect(slides[7]?.outerHtml).toContain('슬라이드 8');
+    expect(slides[0]?.outerHtml).not.toMatch(/background(?:-color)?:\s*#2563eb/i);
+    for (const index of [0, 1, 3, 4, 5, 6, 7]) {
+      expect(slides[index]?.outerHtml, `slide ${index} must stay unpainted`).not.toMatch(
+        /background(?:-color)?:\s*#2563eb/i,
+      );
+    }
+  });
+
+  it('1-slide incoming with data-slide-index=0 still paints only the pinned slide', () => {
+    const incoming =
+      '<!doctype html><html lang="ko"><head><style>:root{--paper:#2563eb;--bg:#1d4ed8}</style></head><body>'
+      + '<section class="slide" data-slide-index="0" style="background:#2563eb">'
+      + '<h2>완전히 다른 제목</h2><p>날조된 본문</p>'
+      + '</section></body></html>';
+    const result = mergeCommentEditIncomingIntoPrior({
+      priorHtml: eightSlideDeck(),
+      incomingHtml: incoming,
+      commentAttachments: [bgComment],
+      instructionText: '배경색을 파란색으로 바꿔줘',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(slides).toHaveLength(8);
+    expect(resolveCommentEditTargetSlideIndexes({
+      priorSlideCount: 8,
+      incomingSlides: extractTopLevelSlideSections(extractDeckBodyContent(incoming)),
+      commentAttachments: [bgComment],
+      priorHtml: eightSlideDeck(),
+    })).toEqual([2]);
+    expect(slides[2]?.outerHtml).toMatch(/background(?:-color)?:\s*#2563eb/i);
+    expect(slides[2]?.outerHtml).toContain('슬라이드 3');
+    expect(slides[0]?.outerHtml).toContain('슬라이드 1');
+    expect(slides[0]?.outerHtml).not.toMatch(/background(?:-color)?:\s*#2563eb/i);
+    expect(slides[0]?.outerHtml).not.toMatch(/--paper:\s*#2563eb/i);
+    for (const index of [0, 1, 3, 4, 5, 6, 7]) {
+      expect(slides[index]?.outerHtml, `slide ${index} must stay unpainted`).not.toMatch(
+        /background(?:-color)?:\s*#2563eb/i,
+      );
+    }
+  });
+
+  it('refuses to merge a short incoming without comment attachments', () => {
+    const incoming =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide" style="background:#2563eb"><h2>다른 제목</h2></section>'
+      + '</body></html>';
+    const result = mergeCommentEditIncomingIntoPrior({
+      priorHtml: eightSlideDeck(),
+      incomingHtml: incoming,
+      commentAttachments: [],
+      instructionText: '전체 다시 만들어줘',
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe('not a comment-scoped edit');
+  });
+
+  it('background comment without extractable color does not rewrite titles', () => {
+    const incoming =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h2>완전히 다른 제목</h2><p>날조된 본문</p></section>'
+      + '</body></html>';
+    const result = mergeCommentEditIncomingIntoPrior({
+      priorHtml: eightSlideDeck(),
+      incomingHtml: incoming,
+      commentAttachments: [bgComment],
+      instructionText: '배경색을 파란색으로 바꿔줘',
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      expect(result.html).toContain('슬라이드 3');
+      expect(result.html).not.toContain('완전히 다른 제목');
+    }
+  });
+
+  it('aligns a 1-slide incoming onto the pinned index for scoped merge', () => {
+    const incoming =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide" style="background-color:blue">'
+      + '<h2>슬라이드 3</h2><p>본문입니다.</p>'
+      + '</section></body></html>';
+    const result = mergeScopedCommentTargetsFromPatchedDeck({
+      currentHtml: eightSlideDeck(),
+      patchedHtml: incoming,
+      commentAttachments: [bgComment],
+      instructionText: '배경색을 파란색으로 바꿔줘',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(slides).toHaveLength(8);
     expect(result.narrowed).toBe(true);
   });
 });

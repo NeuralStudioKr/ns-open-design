@@ -1108,6 +1108,314 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
   return { ok: false, reason: merged.reason };
 }
 
+const BACKGROUND_COMMENT_INSTRUCTION_RE =
+  /배경\s*색|배경색|background(?:-color)?|\bbg[\s-]*color|색을?\s*(파란|빨간|초록|검은|흰|회색|노란|블루|레드)|바꿔.*색|색으로\s*바꿔/i;
+
+const SURFACE_PRESENTATION_PROP_RE =
+  /(?:^|[;\s{])((?:background(?:-color|-image|-size|-position|-repeat)?|--(?:paper|bg|shell|surface|fill)))\s*:\s*([^;}{]+)/gi;
+
+const SURFACE_PRESENTATION_PROPS = new Set([
+  'background',
+  'background-color',
+  'background-image',
+  'background-size',
+  'background-position',
+  'background-repeat',
+  '--paper',
+  '--bg',
+  '--shell',
+  '--surface',
+  '--fill',
+]);
+
+/** True when the user asked a local color/background restyle, not a copy rewrite. */
+export function isBackgroundColorCommentInstruction(
+  text: string | null | undefined,
+): boolean {
+  return BACKGROUND_COMMENT_INSTRUCTION_RE.test(String(text ?? ''));
+}
+
+function parseInlineStyleDeclarations(styleAttr: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const part of styleAttr.split(';')) {
+    const idx = part.indexOf(':');
+    if (idx <= 0) continue;
+    const prop = part.slice(0, idx).trim().toLowerCase();
+    const value = part.slice(idx + 1).trim();
+    if (prop && value) out[prop] = value;
+  }
+  return out;
+}
+
+function serializeInlineStyle(decls: Record<string, string>): string {
+  return Object.entries(decls)
+    .filter(([, value]) => value.trim())
+    .map(([prop, value]) => `${prop}: ${value}`)
+    .join('; ');
+}
+
+function readSectionStyleAttr(openTag: string): string {
+  const match = openTag.match(/\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+  return match ? (match[1] ?? match[2] ?? '') : '';
+}
+
+function writeSectionStyleAttr(sectionHtml: string, style: string): string {
+  const tagMatch = sectionHtml.match(/^<section\b([^>]*)>/i);
+  if (!tagMatch) return sectionHtml;
+  const attrs = tagMatch[1] ?? '';
+  const styleMatch = attrs.match(/\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+  let nextAttrs: string;
+  if (!style.trim()) {
+    nextAttrs = styleMatch
+      ? attrs.replace(styleMatch[0], '').replace(/\s{2,}/g, ' ')
+      : attrs;
+  } else if (styleMatch) {
+    nextAttrs = attrs.replace(styleMatch[0], `style="${style}"`);
+  } else {
+    nextAttrs = `${attrs} style="${style}"`;
+  }
+  return `<section${nextAttrs}>${sectionHtml.slice(tagMatch[0].length)}`;
+}
+
+function isSurfacePresentationProp(prop: string): boolean {
+  return SURFACE_PRESENTATION_PROPS.has(prop.trim().toLowerCase());
+}
+
+function takeSurfacePresentation(
+  decls: Record<string, string>,
+  into: Record<string, string>,
+): void {
+  for (const [prop, value] of Object.entries(decls)) {
+    if (isSurfacePresentationProp(prop) && value) into[prop] = value;
+  }
+}
+
+function extractIncomingSurfacePresentation(
+  incomingHtml: string,
+  incomingSlide: { openTag: string; outerHtml: string },
+): Record<string, string> {
+  const found: Record<string, string> = {};
+  takeSurfacePresentation(
+    parseInlineStyleDeclarations(readSectionStyleAttr(incomingSlide.openTag)),
+    found,
+  );
+  takeSurfacePresentation(
+    parseInlineStyleDeclarations(readSectionStyleAttr(incomingSlide.outerHtml)),
+    found,
+  );
+  for (const match of incomingHtml.matchAll(SURFACE_PRESENTATION_PROP_RE)) {
+    const prop = match[1].trim().toLowerCase();
+    const value = match[2].trim();
+    if (!isSurfacePresentationProp(prop) || !value || found[prop]) continue;
+    found[prop] = value;
+  }
+  return found;
+}
+
+function dataSlideIndexFromOpenTag(openTag: string): number | null {
+  const match = openTag.match(/\bdata-slide-index\s*=\s*["']?(\d+)/i);
+  if (!match) return null;
+  const index = Number(match[1]);
+  return Number.isInteger(index) && index >= 0 ? index : null;
+}
+
+export function resolveCommentEditTargetSlideIndexes(input: {
+  priorSlideCount: number;
+  incomingSlides: readonly { openTag: string }[];
+  commentAttachments: readonly ChatCommentAttachment[];
+  priorHtml?: string;
+  priorSlides?: readonly { outerHtml: string }[];
+}): number[] {
+  const max = input.priorSlideCount;
+  if (max <= 0) return [];
+  // Pinned comment indexes win. Do not union with incoming data-slide-index:
+  // a 1-slide draft almost always declares index 0 because it is the only
+  // section, not because the user commented on slide 0.
+  const fromAttachments = (scopedCommentSlideIndexesFromAttachments(input.commentAttachments) ?? [])
+    .filter((index) => index < max);
+  if (fromAttachments.length > 0) return [...new Set(fromAttachments)];
+
+  if (input.commentAttachments.length > 0 && (input.priorHtml || input.priorSlides)) {
+    const inferred: number[] = [];
+    for (const attachment of input.commentAttachments) {
+      const index = inferSlideIndexFromDeckHtml(
+        input.priorHtml ?? '',
+        attachment,
+        input.priorSlides,
+      );
+      if (index != null && index >= 0 && index < max) inferred.push(index);
+    }
+    const uniqueInferred = [...new Set(inferred)];
+    if (uniqueInferred.length > 0) return uniqueInferred;
+  }
+
+  const incomingIsShort =
+    input.incomingSlides.length > 0 && input.incomingSlides.length < max;
+  const fromIncoming = input.incomingSlides.flatMap((slide) => {
+    const index = dataSlideIndexFromOpenTag(slide.openTag);
+    return index != null && index < max ? [index] : [];
+  });
+  const incomingPins = incomingIsShort
+    ? fromIncoming.filter((index) => !(input.incomingSlides.length === 1 && index === 0))
+    : fromIncoming;
+  if (incomingPins.length > 0) return [...new Set(incomingPins)];
+  return [0];
+}
+
+/**
+ * MiniMax often returns only the edited slide (index 0 in a 1-section
+ * document). Expand that onto the prior deck at the pinned slide index so
+ * later element/style merge sees matching counts.
+ */
+export function alignShortCommentIncomingToPriorDeck(input: {
+  priorHtml: string;
+  incomingHtml: string;
+  commentAttachments: readonly ChatCommentAttachment[];
+}): string {
+  if (input.commentAttachments.length === 0) return input.incomingHtml;
+  const priorSlides = extractTopLevelSlideSections(extractDeckBodyContent(input.priorHtml));
+  const incomingSlides = extractTopLevelSlideSections(extractDeckBodyContent(input.incomingHtml));
+  if (incomingSlides.length === 0 || priorSlides.length === 0) return input.incomingHtml;
+  if (incomingSlides.length >= priorSlides.length) return input.incomingHtml;
+  const targets = resolveCommentEditTargetSlideIndexes({
+    priorSlideCount: priorSlides.length,
+    incomingSlides,
+    commentAttachments: input.commentAttachments,
+    priorHtml: input.priorHtml,
+    priorSlides,
+  });
+  if (targets.length === 0) return input.incomingHtml;
+  const ops: Array<{ op: 'replace'; slideIndex: number; html: string }> = [];
+  // Only write pinned targets. A 3-slide short draft must not spray onto
+  // neighbors via targets[0]+offset.
+  for (const [offset, slideIndex] of targets.entries()) {
+    const replacement = incomingSlides.length === 1
+      ? incomingSlides[0]!.outerHtml
+      : incomingSlides[offset]?.outerHtml ?? incomingSlides[0]!.outerHtml;
+    if (slideIndex >= 0 && slideIndex < priorSlides.length && replacement.trim()) {
+      ops.push({ op: 'replace', slideIndex, html: replacement });
+    }
+  }
+  if (ops.length === 0) return input.incomingHtml;
+  const patched = applyDeckPatch({
+    currentHtml: input.priorHtml,
+    patch: { ops },
+  });
+  return patched.ok ? patched.html : input.incomingHtml;
+}
+
+export function graftIncomingSlideBackgroundOntoPrior(input: {
+  priorHtml: string;
+  incomingHtml: string;
+  targetSlideIndexes: readonly number[];
+}): string | null {
+  const priorSlides = extractTopLevelSlideSections(extractDeckBodyContent(input.priorHtml));
+  const incomingSlides = extractTopLevelSlideSections(extractDeckBodyContent(input.incomingHtml));
+  if (priorSlides.length === 0 || incomingSlides.length === 0) return null;
+  const ops: Array<{ op: 'replace'; slideIndex: number; html: string }> = [];
+  for (const [offset, slideIndex] of input.targetSlideIndexes.entries()) {
+    const priorSlide = priorSlides[slideIndex];
+    if (!priorSlide) continue;
+    const incomingSlide = incomingSlides.length === 1
+      ? incomingSlides[0]!
+      : incomingSlides[offset] ?? incomingSlides[slideIndex] ?? incomingSlides[0]!;
+    const presentation = extractIncomingSurfacePresentation(input.incomingHtml, incomingSlide);
+    if (Object.keys(presentation).length === 0) continue;
+    const currentDecls = parseInlineStyleDeclarations(readSectionStyleAttr(priorSlide.openTag));
+    const nextDecls = { ...currentDecls, ...presentation };
+    const nextStyle = serializeInlineStyle(nextDecls);
+    if (nextStyle === serializeInlineStyle(currentDecls)) continue;
+    const nextSlide = writeSectionStyleAttr(priorSlide.outerHtml, nextStyle);
+    if (nextSlide !== priorSlide.outerHtml) {
+      ops.push({ op: 'replace', slideIndex, html: nextSlide });
+    }
+  }
+  if (ops.length === 0) return null;
+  const patched = applyDeckPatch({
+    currentHtml: input.priorHtml,
+    patch: { ops },
+  });
+  return patched.ok ? patched.html : null;
+}
+
+/**
+ * 1007-N01 U — Comment edits must not require a full 8–10 slide rewrite.
+ * If MiniMax returns only the edited slide, merge it onto the prior deck
+ * (background/color onto the pinned slide; keep other slides and copy).
+ */
+export function mergeCommentEditIncomingIntoPrior(input: {
+  priorHtml: string;
+  incomingHtml: string;
+  commentAttachments: readonly ChatCommentAttachment[];
+  instructionText?: string;
+}): { ok: true; html: string; merged: boolean } | { ok: false; reason: string } {
+  if (input.commentAttachments.length === 0) {
+    return { ok: false, reason: 'not a comment-scoped edit' };
+  }
+  const priorSlides = extractTopLevelSlideSections(extractDeckBodyContent(input.priorHtml));
+  const incomingSlides = extractTopLevelSlideSections(extractDeckBodyContent(input.incomingHtml));
+  if (priorSlides.length === 0) {
+    return { ok: false, reason: 'prior deck has no slides' };
+  }
+  if (incomingSlides.length === 0) {
+    return { ok: false, reason: 'incoming comment edit has no slides' };
+  }
+  if (incomingSlides.length >= priorSlides.length) {
+    return { ok: true, html: input.incomingHtml, merged: false };
+  }
+
+  const instruction = [
+    input.instructionText,
+    ...input.commentAttachments.map((attachment) => attachment.comment),
+  ].filter(Boolean).join('\n');
+  const targets = resolveCommentEditTargetSlideIndexes({
+    priorSlideCount: priorSlides.length,
+    incomingSlides,
+    commentAttachments: input.commentAttachments,
+    priorHtml: input.priorHtml,
+    priorSlides,
+  });
+
+  if (isBackgroundColorCommentInstruction(instruction)) {
+    const grafted = graftIncomingSlideBackgroundOntoPrior({
+      priorHtml: input.priorHtml,
+      incomingHtml: input.incomingHtml,
+      targetSlideIndexes: targets,
+    });
+    if (grafted) return { ok: true, html: grafted, merged: true };
+    // Do not fall through to whole-slide align — that rewrites titles.
+    return { ok: false, reason: 'background comment did not graft' };
+  }
+
+  const scoped = mergeScopedCommentTargetsFromPatchedDeck({
+    currentHtml: input.priorHtml,
+    patchedHtml: input.incomingHtml,
+    commentAttachments: input.commentAttachments,
+    instructionText: input.instructionText,
+    currentSlides: priorSlides,
+  });
+  if (scoped.ok && scoped.narrowed) {
+    const count = extractTopLevelSlideSections(extractDeckBodyContent(scoped.html)).length;
+    if (count === priorSlides.length) {
+      return { ok: true, html: scoped.html, merged: true };
+    }
+  }
+
+  const aligned = alignShortCommentIncomingToPriorDeck({
+    priorHtml: input.priorHtml,
+    incomingHtml: input.incomingHtml,
+    commentAttachments: input.commentAttachments,
+  });
+  const alignedCount = extractTopLevelSlideSections(extractDeckBodyContent(aligned)).length;
+  if (alignedCount === priorSlides.length && aligned !== input.priorHtml) {
+    return { ok: true, html: aligned, merged: true };
+  }
+  return {
+    ok: false,
+    reason: !scoped.ok ? scoped.reason : 'comment short incoming did not merge',
+  };
+}
+
 export function mergeScopedCommentTargetsFromPatchedDeck(input: {
   currentHtml: string;
   patchedHtml: string;
@@ -1130,9 +1438,28 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
   // attachments remain (single-attachment persist is the common path).
   let nextSlides = input.currentSlides
     ?? extractTopLevelSlideSections(extractDeckBodyContent(nextHtml));
-  const patchedSlides = input.patchedSlides
-    ?? extractTopLevelSlideSections(extractDeckBodyContent(input.patchedHtml));
+  let patchedHtml = input.patchedHtml;
+  let patchedSlides = input.patchedSlides
+    ?? extractTopLevelSlideSections(extractDeckBodyContent(patchedHtml));
   const attachments = input.commentAttachments;
+  // 1007-N01 U — 1-slide comment drafts live at patched index 0, not the
+  // pinned slideIndex. Expand onto prior shape before element/style merge.
+  // Never align a non-comment short regenerate onto slide 0.
+  if (
+    attachments.length > 0
+    && patchedSlides.length > 0
+    && patchedSlides.length < nextSlides.length
+  ) {
+    const aligned = alignShortCommentIncomingToPriorDeck({
+      priorHtml: nextHtml,
+      incomingHtml: patchedHtml,
+      commentAttachments: attachments,
+    });
+    if (aligned !== patchedHtml) {
+      patchedHtml = aligned;
+      patchedSlides = extractTopLevelSlideSections(extractDeckBodyContent(patchedHtml));
+    }
+  }
   for (let attachmentIndex = 0; attachmentIndex < attachments.length; attachmentIndex += 1) {
     const attachment = attachments[attachmentIndex]!;
     const refreshSectionsIfNeeded = () => {
@@ -1145,7 +1472,7 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
       const slideCandidates = resolveScopedCommentSlideCandidates({
         attachment,
         currentHtml: nextHtml,
-        patchedHtml: input.patchedHtml,
+        patchedHtml,
         currentSlides: nextSlides,
         patchedSlides,
       });
@@ -1160,13 +1487,13 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
       // One Document pair for id-less hint-only attempts across slide candidates.
       let idLessDocs = (() => {
         const current = parseManualEditSource(nextHtml);
-        const patched = parseManualEditSource(input.patchedHtml);
+        const patched = parseManualEditSource(patchedHtml);
         return current && patched ? { current, next: patched } : undefined;
       })();
       for (const slideIndex of slideCandidates) {
         const attempt = tryHintOnlyScopedMerge({
           nextHtml,
-          patchedHtml: input.patchedHtml,
+          patchedHtml,
           attachment,
           slideIndex,
           instructionText: input.instructionText,
@@ -1187,10 +1514,11 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
         // resolve an element target — fall back to slide-level swap when
         // the model produced a real slide diff on a candidate slide.
         for (const slideIndex of slideCandidates) {
-          const patchedOuter = patchedSlides[slideIndex]?.outerHtml ?? null;
+          const patchedOuter = patchedSlides[slideIndex]?.outerHtml
+            ?? (patchedSlides.length === 1 ? patchedSlides[0]?.outerHtml ?? null : null);
           const swap = tryVisualOrAnchorlessSlideSwap({
             nextHtml,
-            patchedHtml: input.patchedHtml,
+            patchedHtml,
             attachment,
             slideIndex,
             nextSlide: nextSlides[slideIndex]?.outerHtml ?? null,
@@ -1222,7 +1550,7 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
     const slideCandidates = resolveScopedCommentSlideCandidates({
       attachment,
       currentHtml: nextHtml,
-      patchedHtml: input.patchedHtml,
+      patchedHtml,
       currentSlides: nextSlides,
       patchedSlides,
     });
@@ -1238,7 +1566,7 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
     // One Document pair across slide candidates (stale slideIndex often tries 2+).
     let idBearingDocs = (() => {
       const current = parseManualEditSource(nextHtml);
-      const patched = parseManualEditSource(input.patchedHtml);
+      const patched = parseManualEditSource(patchedHtml);
       return current && patched
         ? { current, next: patched, patched }
         : undefined;
@@ -1246,13 +1574,14 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
     for (const slideIndex of slideCandidates) {
       const attempt = tryMergeScopedCommentAttachmentAtSlide({
         nextHtml,
-        patchedHtml: input.patchedHtml,
+        patchedHtml,
         attachment,
         slideIndex,
         instructionText: input.instructionText,
         parsedDocs: idBearingDocs,
         nextSlide: nextSlides[slideIndex]?.outerHtml ?? null,
-        patchedSlide: patchedSlides[slideIndex]?.outerHtml ?? null,
+        patchedSlide: patchedSlides[slideIndex]?.outerHtml
+          ?? (patchedSlides.length === 1 ? patchedSlides[0]?.outerHtml ?? null : null),
       });
       if (attempt.ok) {
         nextHtml = attempt.html;

@@ -1326,7 +1326,14 @@ describe("ProjectView message loading", () => {
     expect(block).not.toContain("recoverShortDeckByPaddingToSeed({");
     expect(block).toContain("kind: 'artifact-regression'");
     expect(block).toContain("classifySlideCountRegressionPersist({");
+    expect(block).toContain("commentScoped:");
     expect(block).toContain("kind: 'skipped-noop'");
+  });
+
+  it("comment short incoming heals onto prior before slide-count regression", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("mergeCommentEditIncomingIntoPrior({");
+    expect(source).toContain("commentHeal.ok && commentHeal.merged");
   });
 
   it("head-preamble continue skips short-response retry without padding", () => {
