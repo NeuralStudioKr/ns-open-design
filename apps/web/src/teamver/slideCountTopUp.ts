@@ -648,6 +648,32 @@ export function formatSlideAutomationWorkingLabel(phase: SlideAutomationPhase): 
 }
 
 /**
+ * 1007-N01 V — Cover-only first persist schedules same-turn APPEND/rewrite.
+ * Painting `succeeded` / 완료됨 there makes the user retry and kills the
+ * 700ms continue-fill. Sparse repair of an already-closed deck may complete.
+ */
+export function shouldDeferFirstFillSucceededForContinueFill(
+  phase: SlideAutomationPhase | false | null | undefined,
+): boolean {
+  return phase === "top_up" || phase === "rewrite";
+}
+
+/**
+ * Working copy is valid only while continue-fill is still armed.
+ * `running` + `endedAt` is locally terminal for stale-run polling, so a
+ * dropped timer must not keep 「이어서 채우는 중」 forever.
+ */
+export function shouldKeepDeferredContinueFillWorkingCopy(input: {
+  runStatus?: ChatMessage["runStatus"] | null;
+  endedAt?: number | null;
+  pendingPhase?: SlideAutomationPhase | false | null;
+}): boolean {
+  if (input.runStatus !== "running") return false;
+  if (input.endedAt == null) return false;
+  return shouldDeferFirstFillSucceededForContinueFill(input.pendingPhase);
+}
+
+/**
  * 1007-N01 O — After a thin-prior rewrite, still allow the normal APPEND
  * budget. Loop508 capped this at 1, so a 4-slide salvage-keep consumed the
  * only top-up and the deck never reached 8–10. Rewrite remains 1/conversation;

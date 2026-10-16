@@ -84,6 +84,7 @@ import {
 import {
   formatSlideAutomationWorkingLabel,
   resolveSlideAutomationPhaseFromUserPrompt,
+  shouldKeepDeferredContinueFillWorkingCopy,
   type SlideAutomationPhase,
 } from '../teamver/slideCountTopUp';
 import { AUTO_CONTINUE_STATUS_CODE, RESUME_CONTINUE_PROMPT } from '../runtime/resume';
@@ -2675,6 +2676,21 @@ function ChatRows({
         pendingSlideAutomationKind
         && message.id === lastAssistantId
         && !streaming
+      ) {
+        map.set(message.id, pendingSlideAutomationKind);
+        continue;
+      }
+      // Cover persist stays running+endedAt until APPEND. Pane streaming can
+      // still be true, which skips the branch above — keep Working only while
+      // top_up/rewrite is actually armed, never after a dropped fill.
+      if (
+        pendingSlideAutomationKind
+        && message.id === lastAssistantId
+        && shouldKeepDeferredContinueFillWorkingCopy({
+          runStatus: message.runStatus,
+          endedAt: message.endedAt,
+          pendingPhase: pendingSlideAutomationKind,
+        })
       ) {
         map.set(message.id, pendingSlideAutomationKind);
       }

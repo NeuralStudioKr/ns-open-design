@@ -39,6 +39,9 @@ import {
   resolveElementPatchAllowedSlideIndexes,
   scopedCommentElementIds,
   graftVisualMarksIntoDeckHtml,
+  graftLocalCommentStyleOntoPrior,
+  canGraftLocalCommentStyleWithoutModel,
+  shouldSurfaceEmptyApiResponseChatError,
   stabilizeVisualMarkDeckHtml,
   hasElementScopedCommentAttachments,
   isDrawnVisualMarkAttachment,
@@ -656,6 +659,7 @@ import {
   classifySlideCountRegressionPersist,
   SLIDE_COUNT_REGRESSION_CONTINUE_FILL_REASON,
   shouldPreferCoverOnlyContinueFillAppend,
+  shouldDeferFirstFillSucceededForContinueFill,
   resolveSlideCountTopUpTarget,
   shouldSurfaceThinPriorRewriteExhaustedError,
   shouldQueueSparseContentTopUp,
@@ -3943,8 +3947,15 @@ export function ProjectView({
   /** 루프508 — Armed rewrite/top-up/sparse timer → ChatPane Working 단계 문구. */
   const [pendingSlideAutomationKind, setPendingSlideAutomationKind] =
     useState<SlideAutomationPhase | null>(null);
+  /** Cover persist kept running+endedAt until APPEND/rewrite starts or is dropped. */
+  const deferredContinueFillRef = useRef<{
+    assistantId: string;
+    conversationId: string;
+    snapshot: ChatMessage;
+  } | null>(null);
+  const settleDeferredContinueFillAssistantRef = useRef<() => void>(() => {});
   const requestSlideCountTopUpRef = useRef<
-    (htmlPath: string | null, options?: { mode?: "full" | "sparse-only" }) => Promise<boolean>
+    (htmlPath: string | null, options?: { mode?: "full" | "sparse-only" }) => Promise<false | SlideAutomationPhase>
   >(async () => false);
   /**
    * Live streaming buffer mutator for the in-flight assistant row. `surfaceChatVisibleError`
@@ -3957,10 +3968,17 @@ export function ProjectView({
     apply: (updater: (prev: ChatMessage) => ChatMessage) => void;
   } | null>(null);
 
-  const clearPendingSlideCountTopUpTimer = useCallback((options?: { rollback?: boolean }) => {
+  const clearPendingSlideCountTopUpTimer = useCallback((options?: {
+    rollback?: boolean;
+    skipSettle?: boolean;
+  }) => {
+    const hadTimer = slideCountTopUpTimerRef.current !== null;
     if (slideCountTopUpTimerRef.current === null) {
       pendingSlideCountTopUpConversationIdRef.current = null;
       setPendingSlideAutomationKind(null);
+      if (!options?.skipSettle) {
+        settleDeferredContinueFillAssistantRef.current();
+      }
       return;
     }
     window.clearTimeout(slideCountTopUpTimerRef.current);
@@ -3970,6 +3988,9 @@ export function ProjectView({
     setPendingSlideAutomationKind(null);
     if (options?.rollback && scheduledId) {
       rollbackSlideCountTopUpCount(conversationSlideCountTopUpCountRef.current, scheduledId);
+    }
+    if (!options?.skipSettle && hadTimer) {
+      settleDeferredContinueFillAssistantRef.current();
     }
   }, []);
 
@@ -8025,6 +8046,32 @@ export function ProjectView({
     [project.id, activeConversationId],
   );
 
+  const settleDeferredContinueFillAssistant = useCallback(() => {
+    const deferred = deferredContinueFillRef.current;
+    if (!deferred) return;
+    deferredContinueFillRef.current = null;
+    const live = messagesRef.current.find((message) => message.id === deferred.assistantId);
+    const base = live ?? deferred.snapshot;
+    if (base.runStatus !== 'running') return;
+    const settled: ChatMessage = {
+      ...base,
+      runStatus: resolveSucceededRunStatus(base.runStatus),
+    };
+    messagesRef.current = messagesRef.current.map((message) =>
+      message.id === deferred.assistantId ? settled : message,
+    );
+    setMessages((curr) => {
+      if (!curr.some((message) => message.id === deferred.assistantId)) return curr;
+      return curr.map((message) =>
+        message.id === deferred.assistantId ? settled : message,
+      );
+    });
+    void saveMessage(project.id, deferred.conversationId, settled, {
+      telemetryFinalized: true,
+    });
+  }, [project.id]);
+  settleDeferredContinueFillAssistantRef.current = settleDeferredContinueFillAssistant;
+
   const appendConversationMessage = useCallback(
     (
       conversationId: string,
@@ -11641,6 +11688,7 @@ export function ProjectView({
               await auditDesignSystemWorkspaceAfterRun(latestAssistantMsg.id);
               return;
             }
+            let continueFillPhase: false | SlideAutomationPhase = false;
             let terminalArtifactPersistFailed = false;
             // Track the *kind* of the persist result separately so the
             // auto-continue gate below can distinguish "content is bad"
@@ -12010,6 +12058,41 @@ export function ProjectView({
                   '[teamver] template clone prompt-fill look merge failed',
                   error,
                 );
+              }
+            }
+            // 1007-N01 X — MiniMax empty artifact / empty_response: apply
+            // font×2 or named background onto the pinned slide from prior HTML.
+            if (
+              !artifactToPersist?.html
+              && runCommentAttachments.length > 0
+            ) {
+              const commentInstruction = [
+                runVisiblePromptRef.current,
+                ...runCommentAttachments.map((attachment) => attachment.comment),
+              ].filter(Boolean).join('\n');
+              if (canGraftLocalCommentStyleWithoutModel(commentInstruction)) {
+                const fileName = runPersistTargetFileRef.current
+                  ?? resolvePrimaryDeckFilePath(
+                    projectFilesRef.current,
+                    project.metadata?.entryFile,
+                  )
+                  ?? 'deck.html';
+                const priorHtml = await readProjectHtml(fileName);
+                if (priorHtml) {
+                  const grafted = graftLocalCommentStyleOntoPrior({
+                    priorHtml,
+                    commentAttachments: runCommentAttachments,
+                    instructionText: runVisiblePromptRef.current,
+                  });
+                  if (grafted.ok) {
+                    artifactToPersist = {
+                      identifier: 'deck',
+                      artifactType: 'deck',
+                      title: project.name || '슬라이드',
+                      html: grafted.html,
+                    };
+                  }
+                }
               }
             }
             if (artifactToPersist?.html) {
@@ -12390,9 +12473,11 @@ export function ProjectView({
               );
 
             if (producedHtmlToOpen && runIsVisible()) {
-              maybeArmTeamverPublishMenuAfterRunSuccess(project.id, producedHtmlToOpen);
               if (!shortResponseRetryArmed) {
-                await requestSlideCountTopUpRef.current(producedHtmlToOpen);
+                continueFillPhase = await requestSlideCountTopUpRef.current(producedHtmlToOpen);
+              }
+              if (!shouldDeferFirstFillSucceededForContinueFill(continueFillPhase)) {
+                maybeArmTeamverPublishMenuAfterRunSuccess(project.id, producedHtmlToOpen);
               }
               requestOpenFile(producedHtmlToOpen);
               const navTarget = queuedSlideNavTarget(runCommentAttachmentsRef.current, {
@@ -12626,8 +12711,10 @@ export function ProjectView({
                     emergency.htmlToOpen,
                   );
                   if (runIsVisible()) {
-                    maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
-                    await requestSlideCountTopUpRef.current(emergency.htmlToOpen);
+                    continueFillPhase = await requestSlideCountTopUpRef.current(emergency.htmlToOpen);
+                    if (!shouldDeferFirstFillSucceededForContinueFill(continueFillPhase)) {
+                      maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
+                    }
                     requestOpenFile(emergency.htmlToOpen);
                   }
                 }
@@ -12690,18 +12777,35 @@ export function ProjectView({
 
               if (emergencyRecovered) {
                 const emergencyNotice = formatEmergencyDeckFallbackNotice();
-                updateAssistant((prev) => ({
-                  ...appendWarningStatusEvent(
-                    clearDurableDeliverableErrorsAfterRecovery(prev),
-                    emergencyNotice,
-                    EMERGENCY_DECK_FALLBACK_STATUS_CODE,
-                  ),
-                  producedFiles: emergencyProduced,
-                  runStatus: resolveSucceededRunStatus(prev.runStatus),
-                  resumable: false,
-                  endedAt: prev.endedAt ?? endedAt,
-                }));
-                updateConversationLatestRun('succeeded', endedAt);
+                const deferContinueFill = shouldDeferFirstFillSucceededForContinueFill(
+                  continueFillPhase,
+                );
+                updateAssistant((prev) => {
+                  const next: ChatMessage = {
+                    ...appendWarningStatusEvent(
+                      clearDurableDeliverableErrorsAfterRecovery(prev),
+                      emergencyNotice,
+                      EMERGENCY_DECK_FALLBACK_STATUS_CODE,
+                    ),
+                    producedFiles: emergencyProduced,
+                    runStatus: deferContinueFill
+                      ? 'running'
+                      : resolveSucceededRunStatus(prev.runStatus),
+                    resumable: false,
+                    endedAt: prev.endedAt ?? endedAt,
+                  };
+                  if (deferContinueFill) {
+                    deferredContinueFillRef.current = {
+                      assistantId: next.id,
+                      conversationId: runConversationId,
+                      snapshot: next,
+                    };
+                  }
+                  return next;
+                });
+                if (!deferContinueFill) {
+                  updateConversationLatestRun('succeeded', endedAt);
+                }
               } else if (outlineFallbackRecovered) {
                 // Outline-only fallback: a temporary TOC deck was saved, not a
                 // finished deliverable. 루프528 — Mirror LOOK seed (루프525):
@@ -13105,6 +13209,24 @@ export function ProjectView({
               if (runIsVisible()) {
                 requestOpenFile('deck.html');
               }
+            } else if (shouldDeferFirstFillSucceededForContinueFill(continueFillPhase)) {
+              // 1007-N01 V — Cover persist is not a closed first generate.
+              // Keep running + endedAt so in-flight recovery does not re-arm,
+              // and so 완료됨 / publish do not fire before APPEND starts.
+              updateAssistant((prev) => {
+                const next: ChatMessage = {
+                  ...prev,
+                  producedFiles: produced,
+                  runStatus: 'running',
+                  endedAt: prev.endedAt ?? endedAt,
+                };
+                deferredContinueFillRef.current = {
+                  assistantId: next.id,
+                  conversationId: runConversationId,
+                  snapshot: next,
+                };
+                return next;
+              });
             } else {
               updateAssistant((prev) => ({
                 ...prev,
@@ -14300,7 +14422,9 @@ export function ProjectView({
         if (autoContinueTimerRef.current !== null || pendingAutoContinueConversationIdRef.current) {
           return false;
         }
-        if (slideCountTopUpTimerRef.current !== null) return true;
+        if (slideCountTopUpTimerRef.current !== null) {
+          return pendingSlideAutomationKind ?? "top_up";
+        }
         const html = await readProjectHtml(htmlPath);
         if (!html) return false;
         const sparseOnly = options?.mode === "sparse-only";
@@ -14382,9 +14506,19 @@ export function ProjectView({
             slideCountTopUpTimerRef.current = null;
             pendingSlideCountTopUpConversationIdRef.current = null;
             setPendingSlideAutomationKind(null);
-            if (project.id !== scheduledProjectId) return;
-            if (messagesConversationIdRef.current !== scheduledConversationId) return;
-            if (autoContinueTimerRef.current !== null) return;
+            const settleCover = () => settleDeferredContinueFillAssistantRef.current();
+            if (project.id !== scheduledProjectId) {
+              settleCover();
+              return;
+            }
+            if (messagesConversationIdRef.current !== scheduledConversationId) {
+              settleCover();
+              return;
+            }
+            if (autoContinueTimerRef.current !== null) {
+              settleCover();
+              return;
+            }
             if (!abortRef.current) {
               if (apiBackgroundRecoveryRef.current) {
                 apiBackgroundRecoveryRef.current = false;
@@ -14411,20 +14545,26 @@ export function ProjectView({
                 formatSlideAutomationBusyDropNotice("rewrite"),
                 "slide_automation_busy_drop",
               );
+              settleCover();
               return;
             }
             const sendNow = handleSendRef.current;
-            if (!sendNow) return;
+            if (!sendNow) {
+              settleCover();
+              return;
+            }
             void Promise.resolve(
               sendNow(rewritePrompt, [], [], {
                 entryFrom: THIN_PRIOR_FULL_REWRITE_ENTRY_FROM,
                 templateClonePromptFill: true,
               }),
-            );
+            ).then(() => {
+              settleCover();
+            });
           };
           setPendingSlideAutomationKind("rewrite");
           slideCountTopUpTimerRef.current = window.setTimeout(fireRewrite, 600);
-          return true;
+          return "rewrite";
         }
         // 루프505 — Rewrite already spent and deck is still thin: APPEND
         // remaining slides (not a cover restart). Never paint
@@ -14533,7 +14673,7 @@ export function ProjectView({
             }
             setPendingSlideAutomationKind("sparse_repair");
             slideCountTopUpTimerRef.current = window.setTimeout(fireRepair, 600);
-            return true;
+            return "sparse_repair";
           }
           return false;
         }
@@ -14564,11 +14704,13 @@ export function ProjectView({
           slideCountTopUpTimerRef.current = null;
           pendingSlideCountTopUpConversationIdRef.current = null;
           setPendingSlideAutomationKind(null);
+          const settleCover = () => settleDeferredContinueFillAssistantRef.current();
           if (project.id !== scheduledProjectId) {
             rollbackSlideCountTopUpCount(
               conversationSlideCountTopUpCountRef.current,
               scheduledConversationId,
             );
+            settleCover();
             return;
           }
           if (messagesConversationIdRef.current !== scheduledConversationId) {
@@ -14576,6 +14718,7 @@ export function ProjectView({
               conversationSlideCountTopUpCountRef.current,
               scheduledConversationId,
             );
+            settleCover();
             return;
           }
           if (autoContinueTimerRef.current !== null) {
@@ -14583,6 +14726,7 @@ export function ProjectView({
               conversationSlideCountTopUpCountRef.current,
               scheduledConversationId,
             );
+            settleCover();
             return;
           }
           // Mirror auto-continue: drop phantom BYOK recovery "streaming" so
@@ -14617,6 +14761,7 @@ export function ProjectView({
               formatSlideAutomationBusyDropNotice("top_up"),
               "slide_automation_busy_drop",
             );
+            settleCover();
             return;
           }
           const sendNow = handleSendRef.current;
@@ -14629,6 +14774,7 @@ export function ProjectView({
               formatSlideAutomationBusyDropNotice("top_up"),
               "slide_automation_busy_drop",
             );
+            settleCover();
             return;
           }
           const started = sendNow(
@@ -14638,7 +14784,10 @@ export function ProjectView({
             { entryFrom: SLIDE_COUNT_TOP_UP_ENTRY_FROM as ChatAnalyticsEntryFrom },
           );
           void Promise.resolve(started).then((ok) => {
-            if (ok !== false) return;
+            if (ok !== false) {
+              settleCover();
+              return;
+            }
             if (!busyStartedAt) busyStartedAt = Date.now();
             if (
               shouldContinueSlideAutomationBusyRetry({ startedAtMs: busyStartedAt })
@@ -14661,11 +14810,12 @@ export function ProjectView({
               formatSlideAutomationBusyDropNotice("top_up"),
               "slide_automation_busy_drop",
             );
+            settleCover();
           });
         };
         setPendingSlideAutomationKind("top_up");
         slideCountTopUpTimerRef.current = window.setTimeout(fireTopUp, 700);
-        return true;
+        return "top_up";
       })();
     };
   }, [
@@ -14686,6 +14836,8 @@ export function ProjectView({
   // make room for the prioritized send.
   const handleStop = useCallback(() => {
     const stoppedAt = Date.now();
+    deferredContinueFillRef.current = null;
+    clearPendingSlideCountTopUpTimer({ rollback: true, skipSettle: true });
     cancelSendTextBuffer(true);
     cancelReattachTextBuffers(true);
     if (config.mode === 'api' && (apiBackgroundRecoveryRef.current || !abortRef.current)) {
@@ -14774,7 +14926,7 @@ export function ProjectView({
     setStreaming(false);
     streamingConversationIdRef.current = null;
     setStreamingConversationId(null);
-  }, [activeConversationId, cancelSendTextBuffer, cancelReattachTextBuffers, clearApiBackgroundRecoveryBanner, config.mode, hideAssistantThinkingDetails, persistMessage, project.id, slideOnlyMvp]);
+  }, [activeConversationId, cancelSendTextBuffer, cancelReattachTextBuffers, clearApiBackgroundRecoveryBanner, clearPendingSlideCountTopUpTimer, config.mode, hideAssistantThinkingDetails, persistMessage, project.id, slideOnlyMvp]);
 
   // Flip the deck preview to the slide a queued send's marked element lives on
   // the moment that send starts processing. No-op for plain prompts or marks

@@ -1323,8 +1323,8 @@ function AssistantFooter({
       data-last={isLast ? "true" : "false"}
     >
       <span className="dot" data-active={streaming ? "true" : "false"} />
-      <span className={`assistant-label${streaming && (preparing || streamingPhaseLabel) ? " shimmer-text shimmer-prepare" : ""}`}>
-        {streaming
+      <span className={`assistant-label${(streaming || streamingPhaseLabel) && (preparing || streamingPhaseLabel) ? " shimmer-text shimmer-prepare" : ""}`}>
+        {streaming || streamingPhaseLabel
           ? streamingLabel
           : hasEmptyResponse
           ? t("assistant.emptyResponseLabel")

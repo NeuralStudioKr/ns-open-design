@@ -45,6 +45,8 @@ import {
   parseSlideCountTarget,
   shouldQueueThinPriorFullRewrite,
   shouldPreferCoverOnlyContinueFillAppend,
+  shouldDeferFirstFillSucceededForContinueFill,
+  shouldKeepDeferredContinueFillWorkingCopy,
   resolveSlideCountTopUpTarget,
   honorSlideCountCeiling,
   honorSlideCountCeilingFromMessages,
@@ -607,6 +609,49 @@ describe("slideCountTopUp", () => {
       requestedMin: 8,
       requested: 10,
     })).toBe(true);
+    expect(shouldDeferFirstFillSucceededForContinueFill("top_up")).toBe(true);
+    expect(shouldDeferFirstFillSucceededForContinueFill("rewrite")).toBe(true);
+    expect(shouldDeferFirstFillSucceededForContinueFill("sparse_repair")).toBe(false);
+    expect(shouldDeferFirstFillSucceededForContinueFill(false)).toBe(false);
+    expect(shouldDeferFirstFillSucceededForContinueFill(null)).toBe(false);
+    expect(shouldKeepDeferredContinueFillWorkingCopy({
+      runStatus: "running",
+      endedAt: 1,
+      pendingPhase: "top_up",
+    })).toBe(true);
+    expect(shouldKeepDeferredContinueFillWorkingCopy({
+      runStatus: "running",
+      endedAt: 1,
+      pendingPhase: "rewrite",
+    })).toBe(true);
+    expect(shouldKeepDeferredContinueFillWorkingCopy({
+      runStatus: "running",
+      endedAt: 1,
+      pendingPhase: "sparse_repair",
+    })).toBe(false);
+    expect(shouldKeepDeferredContinueFillWorkingCopy({
+      runStatus: "running",
+      endedAt: 1,
+      pendingPhase: null,
+    })).toBe(false);
+    expect(shouldKeepDeferredContinueFillWorkingCopy({
+      runStatus: "running",
+      endedAt: 1,
+    })).toBe(false);
+    expect(shouldKeepDeferredContinueFillWorkingCopy({
+      runStatus: "succeeded",
+      endedAt: 1,
+      pendingPhase: "top_up",
+    })).toBe(false);
+    expect(shouldKeepDeferredContinueFillWorkingCopy({
+      runStatus: "failed",
+      endedAt: 1,
+      pendingPhase: "top_up",
+    })).toBe(false);
+    expect(shouldKeepDeferredContinueFillWorkingCopy({
+      runStatus: "running",
+      pendingPhase: "top_up",
+    })).toBe(false);
     expect(resolveSlideCountTopUpTarget({
       requestedMin: 8,
       defaultRequested: 6,
