@@ -17,6 +17,8 @@ import {
   graftVisualMarksIntoDeckHtml,
   graftLocalCommentStyleOntoPrior,
   canGraftLocalCommentStyleWithoutModel,
+  isBackgroundColorCommentInstruction,
+  isNamedTextColorCommentInstruction,
   shouldSurfaceEmptyApiResponseChatError,
   repairWipedSlidesForVisualMarks,
   stabilizeVisualMarkDeckHtml,
@@ -1499,5 +1501,231 @@ describe('1007-N01 X comment local style graft without model HTML', () => {
     expect(slides[2]?.outerHtml).not.toMatch(/font-size:\s*1em/i);
     expect(slides[0]?.outerHtml).toMatch(/font-size:\s*1em/i);
     expect(slides[0]?.outerHtml).not.toMatch(/font-size:\s*2em/i);
+  });
+});
+
+describe('1007-N01 Y comment named bottom-most text color', () => {
+  const COMMENT = '맨 아래에 있는 Teamver를 빨간색으로';
+
+  function pitchDeck(): string {
+    return [
+      '<!doctype html><html lang="ko"><head><style>:root{--paper:#f4efe4}</style></head><body>',
+      '<section class="slide" data-slide-index="0" style="--paper:#f4efe4">',
+      '<h2>Teamver</h2><p>피치 덱</p></section>',
+      '<section class="slide" data-slide-index="1" style="--paper:#f4efe4">',
+      '<h2>문제</h2>',
+      '<div class="card">툴 1</div><div class="card">툴 2</div>',
+      '<div class="card">툴 3</div><div class="card">툴 4</div>',
+      '<p>Teamver 워크스페이스에서 초안을 고친다</p>',
+      '<div style="background:#99E885;font-size:32px;font-weight:800">Teamver</div>',
+      '</section>',
+      ...Array.from({ length: 5 }, (_, i) =>
+        `<section class="slide" data-slide-index="${i + 2}" style="--paper:#f4efe4">`
+        + `<h2>슬라이드 ${i + 3}</h2>`
+        + `<p>본문에 Teamver 가 들어 있다</p>`
+        + '</section>',
+      ),
+      '<section class="slide" data-slide-index="7" style="--paper:#f4efe4">',
+      '<h2>Closing</h2>',
+      '<p>Teamver와 함께 다음을 연다</p>',
+      '<span style="margin-left:auto">© teamver</span>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+  }
+
+  function commentOn(slideIndex: number): ChatCommentAttachment {
+    return {
+      id: `c-teamver-${slideIndex}`,
+      order: 1,
+      filePath: 'deck.html',
+      elementId: `chip-${slideIndex}`,
+      selector: 'div',
+      label: 'div',
+      comment: COMMENT,
+      currentText: slideIndex === 7 ? '© teamver' : 'Teamver',
+      htmlHint: slideIndex === 7
+        ? '<span style="margin-left:auto">© teamver</span>'
+        : '<div style="background:#99E885">Teamver</div>',
+      pagePosition: { x: 0, y: 0, width: 10, height: 10 },
+      selectionKind: 'element',
+      slideIndex,
+    };
+  }
+
+  function chipHtml(slideHtml: string): string | null {
+    return slideHtml.match(/<div[^>]*>\s*Teamver\s*<\/div>/i)?.[0] ?? null;
+  }
+
+  function paragraphHtml(slideHtml: string): string | null {
+    return slideHtml.match(/<p[^>]*>\s*Teamver 워크스페이스[^<]*<\/p>/i)?.[0] ?? null;
+  }
+
+  function footerHtml(slideHtml: string): string | null {
+    return slideHtml.match(/<span[^>]*>\s*© teamver\s*<\/span>/i)?.[0] ?? null;
+  }
+
+  it('classifies the comment as named text color, not slide background', () => {
+    expect(isNamedTextColorCommentInstruction(COMMENT)).toBe(true);
+    expect(isBackgroundColorCommentInstruction(COMMENT)).toBe(false);
+    expect(canGraftLocalCommentStyleWithoutModel(COMMENT)).toBe(true);
+    expect(isNamedTextColorCommentInstruction(`${COMMENT} 바꿔줘`)).toBe(true);
+    expect(isBackgroundColorCommentInstruction(`${COMMENT} 바꿔줘`)).toBe(false);
+    expect(canGraftLocalCommentStyleWithoutModel('배경색을 빨간색으로')).toBe(true);
+    expect(isNamedTextColorCommentInstruction('배경색을 빨간색으로')).toBe(false);
+    expect(isBackgroundColorCommentInstruction('배경색을 빨간색으로')).toBe(true);
+    expect(canGraftLocalCommentStyleWithoutModel('폰트를 두배 키우자')).toBe(true);
+  });
+
+  it('slide 2 comment recolors only the bottom Teamver chip text', () => {
+    const result = graftLocalCommentStyleOntoPrior({
+      priorHtml: pitchDeck(),
+      commentAttachments: [commentOn(1)],
+      instructionText: COMMENT,
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.kind).toBe('text-color');
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(slides).toHaveLength(8);
+    const chip = chipHtml(slides[1]?.outerHtml ?? '');
+    const paragraph = paragraphHtml(slides[1]?.outerHtml ?? '');
+    expect(chip).toMatch(/color:\s*#dc2626/i);
+    expect(chip).toMatch(/background:\s*#99E885/i);
+    expect(paragraph).not.toMatch(/color:\s*#dc2626/i);
+    expect(slides[1]?.outerHtml).toContain('Teamver 워크스페이스에서 초안을 고친다');
+    expect(slides[1]?.openTag).not.toMatch(/background(?:-color)?:\s*#dc2626/i);
+    expect(slides[1]?.outerHtml).not.toMatch(/--paper:\s*#dc2626/i);
+    expect(footerHtml(slides[7]?.outerHtml ?? '')).not.toMatch(/color:\s*#dc2626/i);
+    expect(slides[0]?.outerHtml).not.toMatch(/color:\s*#dc2626/i);
+    for (const index of [0, 2, 3, 4, 5, 6, 7]) {
+      expect(slides[index]?.outerHtml, `slide ${index} must stay uncolored`).not.toMatch(
+        /color:\s*#dc2626/i,
+      );
+    }
+    expect(shouldSurfaceEmptyApiResponseChatError({
+      commentScoped: true,
+      localStyleGraftSucceeded: true,
+    })).toBe(false);
+  });
+
+  it('last-slide comment recolors only © teamver', () => {
+    const result = graftLocalCommentStyleOntoPrior({
+      priorHtml: pitchDeck(),
+      commentAttachments: [commentOn(7)],
+      instructionText: COMMENT,
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.kind).toBe('text-color');
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(slides).toHaveLength(8);
+    expect(footerHtml(slides[7]?.outerHtml ?? '')).toMatch(/color:\s*#dc2626/i);
+    expect(slides[7]?.outerHtml).toContain('Teamver와 함께 다음을 연다');
+    expect(slides[7]?.outerHtml).not.toMatch(/--paper:\s*#dc2626/i);
+    expect(chipHtml(slides[1]?.outerHtml ?? '')).toMatch(/background:\s*#99E885/i);
+    expect(chipHtml(slides[1]?.outerHtml ?? '')).not.toMatch(/color:\s*#dc2626/i);
+    expect(paragraphHtml(slides[1]?.outerHtml ?? '')).not.toMatch(/color:\s*#dc2626/i);
+  });
+
+  it('empty MiniMax merge keeps 8 slides and suppresses EMPTY_RESPONSE', () => {
+    const result = mergeCommentEditIncomingIntoPrior({
+      priorHtml: pitchDeck(),
+      incomingHtml: '',
+      commentAttachments: [commentOn(1)],
+      instructionText: COMMENT,
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.merged).toBe(true);
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(slides).toHaveLength(8);
+    expect(chipHtml(slides[1]?.outerHtml ?? '')).toMatch(/color:\s*#dc2626/i);
+    expect(chipHtml(slides[1]?.outerHtml ?? '')).toMatch(/background:\s*#99E885/i);
+    expect(shouldSurfaceEmptyApiResponseChatError({
+      commentScoped: true,
+      localStyleGraftSucceeded: true,
+    })).toBe(false);
+  });
+
+  it('short incoming rewrite does not replace titles; only the chip goes red', () => {
+    const incoming =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h2>완전히 다른 제목</h2><p>날조된 본문</p></section>'
+      + '</body></html>';
+    const result = mergeCommentEditIncomingIntoPrior({
+      priorHtml: pitchDeck(),
+      incomingHtml: incoming,
+      commentAttachments: [commentOn(1)],
+      instructionText: COMMENT,
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(slides).toHaveLength(8);
+    expect(slides[1]?.outerHtml).toContain('문제');
+    expect(slides[1]?.outerHtml).not.toContain('완전히 다른 제목');
+    expect(chipHtml(slides[1]?.outerHtml ?? '')).toMatch(/color:\s*#dc2626/i);
+  });
+
+  it('same-slide title, paragraph, wrapper, and extra chip stay uncolored; only the last chip goes red', () => {
+    const prior = [
+      '<!doctype html><html lang="ko"><body>',
+      '<section class="slide" data-slide-index="0"><h2>표지</h2></section>',
+      '<section class="slide" data-slide-index="1" style="--paper:#f4efe4">',
+      '<h2>Teamver</h2>',
+      '<p>Teamver 워크스페이스에서 초안을 고친다</p>',
+      '<div class="wrap"><div id="upper-chip" style="background:#99E885">Teamver</div></div>',
+      '<div id="bottom-chip" style="background:#99E885;font-size:32px;font-weight:800">Teamver</div>',
+      '<svg><text>Teamver</text></svg>',
+      '</section>',
+      ...Array.from({ length: 6 }, (_, i) =>
+        `<section class="slide" data-slide-index="${i + 2}"><h2>슬라이드 ${i + 3}</h2></section>`,
+      ),
+      '</body></html>',
+    ].join('');
+    const result = graftLocalCommentStyleOntoPrior({
+      priorHtml: prior,
+      commentAttachments: [commentOn(1)],
+      instructionText: COMMENT,
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(slides).toHaveLength(8);
+    const html = slides[1]?.outerHtml ?? '';
+    expect(html).not.toMatch(/<h2[^>]*color:\s*#dc2626[^>]*>\s*Teamver/i);
+    expect(paragraphHtml(html)).not.toMatch(/color:\s*#dc2626/i);
+    expect(html).not.toMatch(/<div class="wrap"[^>]*color:\s*#dc2626/i);
+    expect(html).not.toMatch(/id="upper-chip"[^>]*color:\s*#dc2626/i);
+    expect(html).toMatch(/id="bottom-chip"[^>]*color:\s*#dc2626/i);
+    expect(html).toMatch(/id="bottom-chip"[^>]*background:\s*#99E885/i);
+    expect(html).not.toMatch(/<text[^>]*color:\s*#dc2626/i);
+    expect(html).not.toMatch(/--paper:\s*#dc2626/i);
+  });
+
+  it('retry of the same comment does not fail or paint the slide paper', () => {
+    const first = graftLocalCommentStyleOntoPrior({
+      priorHtml: pitchDeck(),
+      commentAttachments: [commentOn(1)],
+      instructionText: COMMENT,
+    });
+    expect(first.ok, JSON.stringify(first)).toBe(true);
+    if (!first.ok) return;
+    const second = graftLocalCommentStyleOntoPrior({
+      priorHtml: first.html,
+      commentAttachments: [commentOn(1)],
+      instructionText: COMMENT,
+    });
+    expect(second.ok, JSON.stringify(second)).toBe(true);
+    if (!second.ok) return;
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(second.html));
+    expect(slides).toHaveLength(8);
+    expect(chipHtml(slides[1]?.outerHtml ?? '')).toMatch(/color:\s*#dc2626/i);
+    expect(slides[1]?.outerHtml).not.toMatch(/--paper:\s*#dc2626/i);
+    expect(shouldSurfaceEmptyApiResponseChatError({
+      commentScoped: true,
+      localStyleGraftSucceeded: true,
+    })).toBe(false);
   });
 });

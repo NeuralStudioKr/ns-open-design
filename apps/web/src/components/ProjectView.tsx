@@ -12060,8 +12060,9 @@ export function ProjectView({
                 );
               }
             }
-            // 1007-N01 X — MiniMax empty artifact / empty_response: apply
-            // font×2 or named background onto the pinned slide from prior HTML.
+            // 1007-N01 X/Y — MiniMax empty artifact / empty_response: apply
+            // font×2, named text color, or named background onto the pinned
+            // slide from prior HTML.
             if (
               !artifactToPersist?.html
               && runCommentAttachments.length > 0
@@ -13768,8 +13769,9 @@ export function ProjectView({
               failEmptyApiResponse(finalizedAssistant);
               return;
             }
-            // 1007-N01 X — Comment font×2 / bg-color must not fatal on MiniMax
-            // EMPTY_RESPONSE. Graft onto the prior pinned slide, then persist.
+            // 1007-N01 X/Y — Comment font×2 / named text color / bg-color
+            // must not fatal on MiniMax EMPTY_RESPONSE. Graft onto the prior
+            // pinned slide, then persist.
             const commentInstruction = [
               runVisiblePromptRef.current,
               ...runCommentAttachments.map((attachment) => attachment.comment),

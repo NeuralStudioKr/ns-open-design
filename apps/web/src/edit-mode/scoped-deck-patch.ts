@@ -1109,7 +1109,7 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
 }
 
 const BACKGROUND_COMMENT_INSTRUCTION_RE =
-  /배경\s*색|배경색|background(?:-color)?|\bbg[\s-]*color|색을?\s*(파란|빨간|초록|검은|흰|회색|노란|블루|레드)|바꿔.*색|색으로\s*바꿔/i;
+  /배경\s*색|배경색|(?:slide\s+)?background(?:-color)?|\bbg[\s-]*color/i;
 
 const SURFACE_PRESENTATION_PROP_RE =
   /(?:^|[;\s{])((?:background(?:-color|-image|-size|-position|-repeat)?|--(?:paper|bg|shell|surface|fill)))\s*:\s*([^;}{]+)/gi;
@@ -1163,7 +1163,56 @@ const COMMENT_BACKGROUND_COLOR_WORDS: ReadonlyArray<readonly [RegExp, string]> =
   [/흰|화이트|\bwhite\b/i, '#ffffff'],
 ];
 
-export type LocalCommentStyleGraftKind = 'font-scale' | 'background';
+export type LocalCommentStyleGraftKind = 'font-scale' | 'background' | 'text-color';
+
+const TEXT_COLOR_CUE_RE =
+  /글자\s*색|글씨\s*색|텍스트\s*색|텍스트\s*컬러|text[- ]?color|font[- ]?color|color\s+(?:the\s+)?text/i;
+
+const COLOR_AS_TEXT_RE =
+  /(?:빨간|레드|파란|블루|초록|그린|검은|블랙|회색|그레이|노란|옐로|주황|오렌지|보라|퍼플|흰|화이트|red|blue|green|black|gr[ae]y|yellow|orange|purple|white)(?:색)?\s*(?:으로|로)/i;
+
+const NAMED_TEXT_TOKEN_QUOTE_RE =
+  /["'`“”‘’「」『』]([^"'`“”‘’「」『』]{1,64})["'`“”‘’「」『』]/;
+
+const NAMED_TEXT_BOTTOM_RE =
+  /맨\s*아래|제일\s*아래|가장\s*아래|하단|(?:bottom(?:-most)?)/i;
+
+const NAMED_TEXT_SKIP_TAGS = new Set([
+  'SCRIPT', 'STYLE', 'TEMPLATE', 'NOSCRIPT', 'META', 'LINK', 'BR', 'HR', 'IMG', 'SVG',
+]);
+
+const NAMED_TEXT_SKIP_ANCESTOR_SELECTOR = 'svg, script, style, template, noscript';
+
+/** Marks a node that already received a local named text-color graft. */
+export const COMMENT_TEXT_COLOR_ATTR = 'data-od-comment-text-color';
+
+export function parseCommentNamedTextToken(
+  text: string | null | undefined,
+): { token: string; bottomMost: boolean } | null {
+  const source = String(text ?? '');
+  const bottomMost = NAMED_TEXT_BOTTOM_RE.test(source);
+  const quoted = source.match(NAMED_TEXT_TOKEN_QUOTE_RE)?.[1]?.trim();
+  if (quoted) return { token: quoted, bottomMost };
+  const named = source.match(/\bteamver\b/i)?.[0];
+  if (named) return { token: named, bottomMost: true };
+  if (bottomMost) return { token: 'teamver', bottomMost: true };
+  return null;
+}
+
+/**
+ * True when the user asked to recolor a named word / bottom-most chip,
+ * not the slide `--paper` background.
+ */
+export function isNamedTextColorCommentInstruction(
+  text: string | null | undefined,
+): boolean {
+  const source = String(text ?? '');
+  if (!source.trim()) return false;
+  if (isBackgroundColorCommentInstruction(source)) return false;
+  if (!parseCommentBackgroundColor(source)) return false;
+  if (!TEXT_COLOR_CUE_RE.test(source) && !COLOR_AS_TEXT_RE.test(source)) return false;
+  return Boolean(parseCommentNamedTextToken(source));
+}
 
 /** True when the user asked to double font size (×2 / +100%), not a vague "bigger". */
 export function isFontScaleCommentInstruction(
@@ -1187,20 +1236,22 @@ export function parseCommentBackgroundColor(
 }
 
 /**
- * Font-double and named background restyles can be applied to the pinned
- * slide without a model HTML body. Vague comments still need the model.
+ * Font-double, named text color, and named background restyles can be
+ * applied to the pinned slide without a model HTML body. Vague comments
+ * still need the model.
  */
 export function canGraftLocalCommentStyleWithoutModel(
   text: string | null | undefined,
 ): boolean {
   if (isFontScaleCommentInstruction(text)) return true;
+  if (isNamedTextColorCommentInstruction(text)) return true;
   return isBackgroundColorCommentInstruction(text)
     && Boolean(parseCommentBackgroundColor(text));
 }
 
 /**
  * EMPTY_RESPONSE is a chat fatal only when a local comment style graft
- * did not land. Successful font×2 / bg grafts must not surface it.
+ * did not land. Successful font×2 / text-color / bg grafts must not surface it.
  */
 export function shouldSurfaceEmptyApiResponseChatError(input: {
   commentScoped?: boolean;
@@ -1300,6 +1351,95 @@ function graftFontScaleOntoSlideOuterHtml(
   return { html: section.outerHTML, alreadyApplied: false };
 }
 
+function normalizeCommentTargetText(value: string): string {
+  return value.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function isExactOrCopyrightTokenText(text: string, token: string): boolean {
+  const normalized = normalizeCommentTargetText(text);
+  if (!normalized) return false;
+  const needle = token.trim();
+  if (!needle) return false;
+  if (normalized.toLowerCase() === needle.toLowerCase()) return true;
+  const withoutCopyright = normalizeCommentTargetText(
+    normalized.replace(/^(?:©|&copy;|\(c\)|copyright)\s*/i, ''),
+  );
+  return withoutCopyright.length > 0
+    && withoutCopyright.length < normalized.length
+    && withoutCopyright.toLowerCase() === needle.toLowerCase();
+}
+
+function isHiddenCommentStyleElement(el: Element): boolean {
+  if (el.hasAttribute('hidden') || el.getAttribute('aria-hidden') === 'true') {
+    return true;
+  }
+  const decls = parseInlineStyleDeclarations(el.getAttribute('style') || '');
+  if (/^none$/i.test(decls.display || '')) return true;
+  if (/^hidden$/i.test(decls.visibility || '')) return true;
+  return decls.opacity === '0';
+}
+
+function isSkippedNamedTextColorNode(el: Element, section: Element): boolean {
+  if (NAMED_TEXT_SKIP_TAGS.has(el.tagName)) return true;
+  if (isHiddenCommentStyleElement(el)) return true;
+  const skippedAncestor = el.closest(NAMED_TEXT_SKIP_ANCESTOR_SELECTOR);
+  return Boolean(
+    skippedAncestor
+    && skippedAncestor !== section
+    && section.contains(skippedAncestor),
+  );
+}
+
+/** Innermost matches only, then the last in tree order (bottom-most chip / © line). */
+function selectBottomMostNamedTextTarget(matches: readonly Element[]): Element | null {
+  if (matches.length === 0) return null;
+  const leaves = matches.filter((node) =>
+    !matches.some((other) => other !== node && node.contains(other)),
+  );
+  return (leaves.length > 0 ? leaves : matches).at(-1) ?? null;
+}
+
+function collectNamedTextColorTargets(section: Element, token: string): Element[] {
+  const matches: Element[] = [];
+  for (const node of section.querySelectorAll('*')) {
+    if (node === section) continue;
+    if (isSkippedNamedTextColorNode(node, section)) continue;
+    if (!isExactOrCopyrightTokenText(node.textContent || '', token)) continue;
+    matches.push(node);
+  }
+  return matches;
+}
+
+function applyInlineTextColor(el: Element, color: string): void {
+  const decls = parseInlineStyleDeclarations(el.getAttribute('style') || '');
+  decls.color = color;
+  el.setAttribute('style', serializeInlineStyle(decls));
+  el.setAttribute(COMMENT_TEXT_COLOR_ATTR, color);
+}
+
+function graftNamedTextColorOntoSlideOuterHtml(
+  slideHtml: string,
+  token: string,
+  color: string,
+): { html: string; alreadyApplied: boolean } | null {
+  const doc = parseManualEditSource(`<!doctype html><html><body>${slideHtml}</body></html>`);
+  if (!doc) return null;
+  const section = doc.querySelector('section') ?? doc.body.firstElementChild;
+  if (!section) return null;
+  const target = selectBottomMostNamedTextTarget(
+    collectNamedTextColorTargets(section, token),
+  );
+  if (!target) return null;
+  if (target.getAttribute(COMMENT_TEXT_COLOR_ATTR) === color) {
+    const decls = parseInlineStyleDeclarations(target.getAttribute('style') || '');
+    if (decls.color?.trim().toLowerCase() === color.toLowerCase()) {
+      return { html: slideHtml, alreadyApplied: true };
+    }
+  }
+  applyInlineTextColor(target, color);
+  return { html: section.outerHTML, alreadyApplied: false };
+}
+
 function graftBackgroundColorOntoSlideOuterHtml(
   slideHtml: string,
   color: string,
@@ -1328,8 +1468,8 @@ function joinCommentStyleInstruction(input: {
 }
 
 /**
- * 1007-N01 X — Apply font×2 or a named background onto the pinned slide
- * using the prior deck only. MiniMax may return nothing.
+ * 1007-N01 X/Y — Apply font×2, named text color, or a named background
+ * onto the pinned slide using the prior deck only. MiniMax may return nothing.
  */
 export function graftLocalCommentStyleOntoPrior(input: {
   priorHtml: string;
@@ -1341,10 +1481,14 @@ export function graftLocalCommentStyleOntoPrior(input: {
   }
   const instruction = joinCommentStyleInstruction(input);
   const fontScale = isFontScaleCommentInstruction(instruction);
-  const backgroundColor = isBackgroundColorCommentInstruction(instruction)
+  const textColor = isNamedTextColorCommentInstruction(instruction)
     ? parseCommentBackgroundColor(instruction)
     : null;
-  if (!fontScale && !backgroundColor) {
+  const textToken = textColor ? parseCommentNamedTextToken(instruction) : null;
+  const backgroundColor = !textColor && isBackgroundColorCommentInstruction(instruction)
+    ? parseCommentBackgroundColor(instruction)
+    : null;
+  if (!fontScale && !backgroundColor && !(textColor && textToken)) {
     return { ok: false, reason: 'comment is not a local style graft' };
   }
   const priorSlides = extractTopLevelSlideSections(extractDeckBodyContent(input.priorHtml));
@@ -1363,6 +1507,7 @@ export function graftLocalCommentStyleOntoPrior(input: {
   }
   const ops: Array<{ op: 'replace'; slideIndex: number; html: string }> = [];
   let fontScaleAlreadyApplied = false;
+  let textColorAlreadyApplied = false;
   for (const slideIndex of targets) {
     const priorSlide = priorSlides[slideIndex];
     if (!priorSlide) continue;
@@ -1372,6 +1517,17 @@ export function graftLocalCommentStyleOntoPrior(input: {
       if (scaled) {
         nextHtml = scaled.html;
         if (scaled.alreadyApplied) fontScaleAlreadyApplied = true;
+      }
+    }
+    if (textColor && textToken) {
+      const colored = graftNamedTextColorOntoSlideOuterHtml(
+        nextHtml,
+        textToken.token,
+        textColor,
+      );
+      if (colored) {
+        nextHtml = colored.html;
+        if (colored.alreadyApplied) textColorAlreadyApplied = true;
       }
     }
     if (backgroundColor) {
@@ -1387,6 +1543,9 @@ export function graftLocalCommentStyleOntoPrior(input: {
     if (fontScale && fontScaleAlreadyApplied) {
       return { ok: true, html: input.priorHtml, kind: 'font-scale' };
     }
+    if (textColor && textColorAlreadyApplied) {
+      return { ok: true, html: input.priorHtml, kind: 'text-color' };
+    }
     return { ok: false, reason: 'local comment style did not graft' };
   }
   const patched = applyDeckPatch({
@@ -1399,7 +1558,7 @@ export function graftLocalCommentStyleOntoPrior(input: {
   return {
     ok: true,
     html: patched.html,
-    kind: fontScale ? 'font-scale' : 'background',
+    kind: textColor && textToken ? 'text-color' : fontScale ? 'font-scale' : 'background',
   };
 }
 
@@ -1611,6 +1770,7 @@ export function graftIncomingSlideBackgroundOntoPrior(input: {
  * If MiniMax returns only the edited slide, merge it onto the prior deck
  * (background/color onto the pinned slide; keep other slides and copy).
  * 1007-N01 X — Font×2 / named background must also work when incoming is empty.
+ * 1007-N01 Y — Named bottom-most text color (Teamver / © teamver) is local too.
  */
 export function mergeCommentEditIncomingIntoPrior(input: {
   priorHtml: string;
@@ -1647,6 +1807,12 @@ export function mergeCommentEditIncomingIntoPrior(input: {
   });
 
   if (isFontScaleCommentInstruction(instruction)) {
+    const grafted = graftLocalCommentStyleOntoPrior(input);
+    if (grafted.ok) return { ok: true, html: grafted.html, merged: true };
+    return { ok: false, reason: grafted.reason };
+  }
+
+  if (isNamedTextColorCommentInstruction(instruction)) {
     const grafted = graftLocalCommentStyleOntoPrior(input);
     if (grafted.ok) return { ok: true, html: grafted.html, merged: true };
     return { ok: false, reason: grafted.reason };
