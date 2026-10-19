@@ -1163,13 +1163,22 @@ const COMMENT_BACKGROUND_COLOR_WORDS: ReadonlyArray<readonly [RegExp, string]> =
   [/흰|화이트|\bwhite\b/i, '#ffffff'],
 ];
 
-export type LocalCommentStyleGraftKind = 'font-scale' | 'background' | 'text-color';
+export type LocalCommentStyleGraftKind = 'font-scale' | 'background' | 'text-color' | 'chip-fill';
+
+const DEFAULT_NAMED_TOKEN_COLOR = '#dc2626';
 
 const TEXT_COLOR_CUE_RE =
   /글자\s*색|글씨\s*색|텍스트\s*색|텍스트\s*컬러|text[- ]?color|font[- ]?color|color\s+(?:the\s+)?text/i;
 
 const COLOR_AS_TEXT_RE =
   /(?:빨간|레드|파란|블루|초록|그린|검은|블랙|회색|그레이|노란|옐로|주황|오렌지|보라|퍼플|흰|화이트|red|blue|green|black|gr[ae]y|yellow|orange|purple|white)(?:색)?\s*(?:으로|로)/i;
+
+const ELEMENT_CUE_RE = /요소/;
+
+const TEXT_ONLY_COLOR_RE =
+  /글자\s*만|텍스트\s*만|글씨\s*만|(?:text|color)\s+only/i;
+
+const COMMENT_PAGE_INDEX_RE = /(\d{1,2})\s*페이지/;
 
 const NAMED_TEXT_TOKEN_QUOTE_RE =
   /["'`“”‘’「」『』]([^"'`“”‘’「」『』]{1,64})["'`“”‘’「」『』]/;
@@ -1186,6 +1195,9 @@ const NAMED_TEXT_SKIP_ANCESTOR_SELECTOR = 'svg, script, style, template, noscrip
 /** Marks a node that already received a local named text-color graft. */
 export const COMMENT_TEXT_COLOR_ATTR = 'data-od-comment-text-color';
 
+/** Marks a filled chip/box whose background was painted by a named-token graft. */
+export const COMMENT_CHIP_FILL_ATTR = 'data-od-comment-chip-fill';
+
 export function parseCommentNamedTextToken(
   text: string | null | undefined,
 ): { token: string; bottomMost: boolean } | null {
@@ -1196,12 +1208,37 @@ export function parseCommentNamedTextToken(
   const named = source.match(/\bteamver\b/i)?.[0];
   if (named) return { token: named, bottomMost: true };
   if (bottomMost) return { token: 'teamver', bottomMost: true };
+  // Bare `요소` is not Teamver — `요소 삭제` / move comments must stay with the model.
+  if (
+    ELEMENT_CUE_RE.test(source)
+    && (parseCommentPageSlideIndex(source) != null || Boolean(parseCommentBackgroundColor(source)))
+  ) {
+    return { token: 'teamver', bottomMost: true };
+  }
   return null;
+}
+
+/** `2페이지` → slide index 1. Used when the comment pin is missing. */
+export function parseCommentPageSlideIndex(
+  text: string | null | undefined,
+): number | null {
+  const match = String(text ?? '').match(COMMENT_PAGE_INDEX_RE);
+  if (!match) return null;
+  const page = Number(match[1]);
+  if (!Number.isInteger(page) || page < 1) return null;
+  return page - 1;
+}
+
+export function isTextOnlyNamedColorInstruction(
+  text: string | null | undefined,
+): boolean {
+  return TEXT_ONLY_COLOR_RE.test(String(text ?? ''));
 }
 
 /**
  * True when the user asked to recolor a named word / bottom-most chip,
- * not the slide `--paper` background.
+ * not the slide `--paper` background. `요소` / unnamed 빨간색 on a
+ * filled Teamver chip paints the chip fill; `글자만` stays text-only.
  */
 export function isNamedTextColorCommentInstruction(
   text: string | null | undefined,
@@ -1209,8 +1246,22 @@ export function isNamedTextColorCommentInstruction(
   const source = String(text ?? '');
   if (!source.trim()) return false;
   if (isBackgroundColorCommentInstruction(source)) return false;
-  if (!parseCommentBackgroundColor(source)) return false;
-  if (!TEXT_COLOR_CUE_RE.test(source) && !COLOR_AS_TEXT_RE.test(source)) return false;
+  const hasColor = Boolean(parseCommentBackgroundColor(source));
+  const hasElementCue = ELEMENT_CUE_RE.test(source);
+  const hasBottom = NAMED_TEXT_BOTTOM_RE.test(source);
+  const hasPage = parseCommentPageSlideIndex(source) != null;
+  // `요소` alone (`왼쪽 상단 요소 삭제`) must not steal MiniMax into chip-fill.
+  if (!hasColor && !(hasElementCue && (hasBottom || hasPage))) {
+    return false;
+  }
+  if (
+    !TEXT_COLOR_CUE_RE.test(source)
+    && !COLOR_AS_TEXT_RE.test(source)
+    && !hasElementCue
+    && !hasBottom
+  ) {
+    return false;
+  }
   return Boolean(parseCommentNamedTextToken(source));
 }
 
@@ -1355,18 +1406,59 @@ function normalizeCommentTargetText(value: string): string {
   return value.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+function isExactNamedTokenText(text: string, token: string): boolean {
+  const normalized = normalizeCommentTargetText(text);
+  const needle = token.trim();
+  return Boolean(normalized) && Boolean(needle)
+    && normalized.toLowerCase() === needle.toLowerCase();
+}
+
 function isExactOrCopyrightTokenText(text: string, token: string): boolean {
+  if (isExactNamedTokenText(text, token)) return true;
   const normalized = normalizeCommentTargetText(text);
   if (!normalized) return false;
   const needle = token.trim();
   if (!needle) return false;
-  if (normalized.toLowerCase() === needle.toLowerCase()) return true;
   const withoutCopyright = normalizeCommentTargetText(
     normalized.replace(/^(?:©|&copy;|\(c\)|copyright)\s*/i, ''),
   );
   return withoutCopyright.length > 0
     && withoutCopyright.length < normalized.length
     && withoutCopyright.toLowerCase() === needle.toLowerCase();
+}
+
+function isCopyrightTokenLine(text: string, token: string): boolean {
+  return isExactOrCopyrightTokenText(text, token) && !isExactNamedTokenText(text, token);
+}
+
+function readElementFillColor(el: Element): string | null {
+  const decls = parseInlineStyleDeclarations(el.getAttribute('style') || '');
+  const bg = (decls['background-color'] || decls.background || '').trim();
+  if (!bg) return null;
+  if (/^(transparent|none|inherit|initial|unset)$/i.test(bg)) return null;
+  if (/^url\(/i.test(bg)) return null;
+  return bg;
+}
+
+function isFilledChipBox(el: Element): boolean {
+  return Boolean(readElementFillColor(el));
+}
+
+/** Prefer the filled chip that still reads as exact `Teamver`, not a sentence wrap. */
+function resolveFilledChipTarget(
+  leaf: Element,
+  section: Element,
+  token: string,
+): Element | null {
+  if (isCopyrightTokenLine(leaf.textContent || '', token)) return null;
+  let node: Element | null = leaf;
+  while (node && node !== section) {
+    if (isFilledChipBox(node) && isExactNamedTokenText(node.textContent || '', token)) {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return null;
 }
 
 function isHiddenCommentStyleElement(el: Element): boolean {
@@ -1417,27 +1509,55 @@ function applyInlineTextColor(el: Element, color: string): void {
   el.setAttribute(COMMENT_TEXT_COLOR_ATTR, color);
 }
 
+function applyInlineChipFill(el: Element, color: string): void {
+  const decls = parseInlineStyleDeclarations(el.getAttribute('style') || '');
+  decls.background = color;
+  decls['background-color'] = color;
+  el.setAttribute('style', serializeInlineStyle(decls));
+  el.setAttribute(COMMENT_CHIP_FILL_ATTR, color);
+}
+
+function elementFillMatches(el: Element, color: string): boolean {
+  const bg = readElementFillColor(el);
+  if (!bg) return false;
+  const hex = bg.match(/#(?:[0-9a-f]{3,8})/i)?.[0];
+  return (hex ?? bg).toLowerCase() === color.toLowerCase();
+}
+
 function graftNamedTextColorOntoSlideOuterHtml(
   slideHtml: string,
   token: string,
   color: string,
-): { html: string; alreadyApplied: boolean } | null {
+  instruction = '',
+): { html: string; alreadyApplied: boolean; kind: 'text-color' | 'chip-fill' } | null {
   const doc = parseManualEditSource(`<!doctype html><html><body>${slideHtml}</body></html>`);
   if (!doc) return null;
   const section = doc.querySelector('section') ?? doc.body.firstElementChild;
   if (!section) return null;
-  const target = selectBottomMostNamedTextTarget(
+  const leaf = selectBottomMostNamedTextTarget(
     collectNamedTextColorTargets(section, token),
   );
-  if (!target) return null;
-  if (target.getAttribute(COMMENT_TEXT_COLOR_ATTR) === color) {
-    const decls = parseInlineStyleDeclarations(target.getAttribute('style') || '');
+  if (!leaf) return null;
+  const textOnly = isTextOnlyNamedColorInstruction(instruction);
+  const chip = !textOnly ? resolveFilledChipTarget(leaf, section, token) : null;
+  if (chip) {
+    if (
+      chip.getAttribute(COMMENT_CHIP_FILL_ATTR) === color
+      && elementFillMatches(chip, color)
+    ) {
+      return { html: slideHtml, alreadyApplied: true, kind: 'chip-fill' };
+    }
+    applyInlineChipFill(chip, color);
+    return { html: section.outerHTML, alreadyApplied: false, kind: 'chip-fill' };
+  }
+  if (leaf.getAttribute(COMMENT_TEXT_COLOR_ATTR) === color) {
+    const decls = parseInlineStyleDeclarations(leaf.getAttribute('style') || '');
     if (decls.color?.trim().toLowerCase() === color.toLowerCase()) {
-      return { html: slideHtml, alreadyApplied: true };
+      return { html: slideHtml, alreadyApplied: true, kind: 'text-color' };
     }
   }
-  applyInlineTextColor(target, color);
-  return { html: section.outerHTML, alreadyApplied: false };
+  applyInlineTextColor(leaf, color);
+  return { html: section.outerHTML, alreadyApplied: false, kind: 'text-color' };
 }
 
 function graftBackgroundColorOntoSlideOuterHtml(
@@ -1468,7 +1588,7 @@ function joinCommentStyleInstruction(input: {
 }
 
 /**
- * 1007-N01 X/Y — Apply font×2, named text color, or a named background
+ * 1007-N01 X/Y — Apply font×2, named text/chip color, or a named background
  * onto the pinned slide using the prior deck only. MiniMax may return nothing.
  */
 export function graftLocalCommentStyleOntoPrior(input: {
@@ -1481,14 +1601,16 @@ export function graftLocalCommentStyleOntoPrior(input: {
   }
   const instruction = joinCommentStyleInstruction(input);
   const fontScale = isFontScaleCommentInstruction(instruction);
-  const textColor = isNamedTextColorCommentInstruction(instruction)
+  const namedToken = isNamedTextColorCommentInstruction(instruction)
+    ? parseCommentNamedTextToken(instruction)
+    : null;
+  const namedColor = namedToken
+    ? (parseCommentBackgroundColor(instruction) ?? DEFAULT_NAMED_TOKEN_COLOR)
+    : null;
+  const backgroundColor = !namedColor && isBackgroundColorCommentInstruction(instruction)
     ? parseCommentBackgroundColor(instruction)
     : null;
-  const textToken = textColor ? parseCommentNamedTextToken(instruction) : null;
-  const backgroundColor = !textColor && isBackgroundColorCommentInstruction(instruction)
-    ? parseCommentBackgroundColor(instruction)
-    : null;
-  if (!fontScale && !backgroundColor && !(textColor && textToken)) {
+  if (!fontScale && !backgroundColor && !(namedColor && namedToken)) {
     return { ok: false, reason: 'comment is not a local style graft' };
   }
   const priorSlides = extractTopLevelSlideSections(extractDeckBodyContent(input.priorHtml));
@@ -1501,13 +1623,15 @@ export function graftLocalCommentStyleOntoPrior(input: {
     commentAttachments: input.commentAttachments,
     priorHtml: input.priorHtml,
     priorSlides,
+    instructionText: input.instructionText,
   });
   if (targets.length === 0) {
     return { ok: false, reason: 'comment target slide could not be resolved' };
   }
   const ops: Array<{ op: 'replace'; slideIndex: number; html: string }> = [];
   let fontScaleAlreadyApplied = false;
-  let textColorAlreadyApplied = false;
+  let namedAlreadyApplied = false;
+  let namedKind: 'text-color' | 'chip-fill' = 'text-color';
   for (const slideIndex of targets) {
     const priorSlide = priorSlides[slideIndex];
     if (!priorSlide) continue;
@@ -1519,15 +1643,17 @@ export function graftLocalCommentStyleOntoPrior(input: {
         if (scaled.alreadyApplied) fontScaleAlreadyApplied = true;
       }
     }
-    if (textColor && textToken) {
+    if (namedColor && namedToken) {
       const colored = graftNamedTextColorOntoSlideOuterHtml(
         nextHtml,
-        textToken.token,
-        textColor,
+        namedToken.token,
+        namedColor,
+        instruction,
       );
       if (colored) {
         nextHtml = colored.html;
-        if (colored.alreadyApplied) textColorAlreadyApplied = true;
+        namedKind = colored.kind;
+        if (colored.alreadyApplied) namedAlreadyApplied = true;
       }
     }
     if (backgroundColor) {
@@ -1543,8 +1669,8 @@ export function graftLocalCommentStyleOntoPrior(input: {
     if (fontScale && fontScaleAlreadyApplied) {
       return { ok: true, html: input.priorHtml, kind: 'font-scale' };
     }
-    if (textColor && textColorAlreadyApplied) {
-      return { ok: true, html: input.priorHtml, kind: 'text-color' };
+    if (namedColor && namedAlreadyApplied) {
+      return { ok: true, html: input.priorHtml, kind: namedKind };
     }
     return { ok: false, reason: 'local comment style did not graft' };
   }
@@ -1558,7 +1684,7 @@ export function graftLocalCommentStyleOntoPrior(input: {
   return {
     ok: true,
     html: patched.html,
-    kind: textColor && textToken ? 'text-color' : fontScale ? 'font-scale' : 'background',
+    kind: namedColor && namedToken ? namedKind : fontScale ? 'font-scale' : 'background',
   };
 }
 
@@ -1652,6 +1778,7 @@ export function resolveCommentEditTargetSlideIndexes(input: {
   commentAttachments: readonly ChatCommentAttachment[];
   priorHtml?: string;
   priorSlides?: readonly { outerHtml: string }[];
+  instructionText?: string;
 }): number[] {
   const max = input.priorSlideCount;
   if (max <= 0) return [];
@@ -1661,6 +1788,12 @@ export function resolveCommentEditTargetSlideIndexes(input: {
   const fromAttachments = (scopedCommentSlideIndexesFromAttachments(input.commentAttachments) ?? [])
     .filter((index) => index < max);
   if (fromAttachments.length > 0) return [...new Set(fromAttachments)];
+
+  const pageHint = parseCommentPageSlideIndex(joinCommentStyleInstruction({
+    instructionText: input.instructionText,
+    commentAttachments: input.commentAttachments,
+  }));
+  if (pageHint != null && pageHint < max) return [pageHint];
 
   if (input.commentAttachments.length > 0 && (input.priorHtml || input.priorSlides)) {
     const inferred: number[] = [];
@@ -1770,7 +1903,7 @@ export function graftIncomingSlideBackgroundOntoPrior(input: {
  * If MiniMax returns only the edited slide, merge it onto the prior deck
  * (background/color onto the pinned slide; keep other slides and copy).
  * 1007-N01 X — Font×2 / named background must also work when incoming is empty.
- * 1007-N01 Y — Named bottom-most text color (Teamver / © teamver) is local too.
+ * 1007-N01 Y — Named bottom-most Teamver chip fill / © teamver text color is local too.
  */
 export function mergeCommentEditIncomingIntoPrior(input: {
   priorHtml: string;
@@ -1804,6 +1937,7 @@ export function mergeCommentEditIncomingIntoPrior(input: {
     commentAttachments: input.commentAttachments,
     priorHtml: input.priorHtml,
     priorSlides,
+    instructionText: input.instructionText,
   });
 
   if (isFontScaleCommentInstruction(instruction)) {

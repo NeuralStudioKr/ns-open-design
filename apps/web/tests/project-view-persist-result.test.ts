@@ -440,17 +440,21 @@ describe('shouldFailRunForArtifactPersistResult', () => {
     })).toBe(false);
   });
 
-  it('1007-N01 Y · comment 맨 아래 Teamver 빨간색 + empty MiniMax keeps 8 slides', () => {
+  it('1007-N01 Y · comment 맨 아래 Teamver 칩 배경 빨간색 + empty MiniMax keeps 8 slides', () => {
     const prior = [
       '<!doctype html><html lang="ko"><body>',
       '<section class="slide" data-slide-index="0"><h2>표지</h2></section>',
       '<section class="slide" data-slide-index="1">',
       '<h2>문제</h2>',
       '<p>Teamver 워크스페이스에서 초안을 고친다</p>',
+      '<div style="position:relative;display:flex;align-items:center;gap:24px">',
+      '<div>→</div>',
       '<div style="background:#99E885;font-size:32px;font-weight:800">Teamver</div>',
+      '</div>',
       '</section>',
-      ...Array.from({ length: 5 }, (_, i) =>
-        `<section class="slide" data-slide-index="${i + 2}"><h2>슬라이드 ${i + 3}</h2><p>본문입니다. </p></section>`,
+      '<section class="slide" data-slide-index="2"><h2>슬라이드 3</h2><p>Teamver 워크스페이스</p></section>',
+      ...Array.from({ length: 4 }, (_, i) =>
+        `<section class="slide" data-slide-index="${i + 3}"><h2>슬라이드 ${i + 4}</h2><p>본문입니다. </p></section>`,
       ),
       '<section class="slide" data-slide-index="7"><h2>Closing</h2><span style="margin-left:auto">© teamver</span></section>',
       '</body></html>',
@@ -475,15 +479,20 @@ describe('shouldFailRunForArtifactPersistResult', () => {
     });
     expect(grafted.ok, JSON.stringify(grafted)).toBe(true);
     if (!grafted.ok) return;
-    expect(grafted.kind).toBe('text-color');
+    expect(grafted.kind).toBe('chip-fill');
     const slides = extractTopLevelSlideSections(extractDeckBodyContent(grafted.html));
     expect(slides).toHaveLength(8);
-    expect(slides[1]?.outerHtml).toMatch(/color:\s*#dc2626/i);
-    expect(slides[1]?.outerHtml).toMatch(/background:\s*#99E885/i);
+    const chip = slides[1]?.outerHtml.match(/<div[^>]*>\s*Teamver\s*<\/div>/i)?.[0] ?? '';
+    expect(chip).toMatch(/background(?:-color)?:\s*#dc2626/i);
+    expect(chip).not.toMatch(/background(?:-color)?:\s*#99E885/i);
+    expect(chip).toContain('Teamver');
+    expect(slides[1]?.outerHtml).toContain('<div>→</div>');
     expect(slides[1]?.outerHtml).toContain('Teamver 워크스페이스에서 초안을 고친다');
-    expect(slides[1]?.outerHtml).not.toMatch(/<p[^>]*color:\s*#dc2626/i);
+    expect(slides[1]?.outerHtml).not.toMatch(/<p[^>]*(?:color|background(?:-color)?):\s*#dc2626/i);
     expect(slides[1]?.outerHtml).not.toMatch(/--paper:\s*#dc2626/i);
-    expect(slides[7]?.outerHtml).not.toMatch(/color:\s*#dc2626/i);
+    expect(slides[2]?.outerHtml).toContain('Teamver 워크스페이스');
+    expect(slides[2]?.outerHtml).not.toMatch(/#dc2626/i);
+    expect(slides[7]?.outerHtml).not.toMatch(/#dc2626/i);
     expect(shouldSurfaceEmptyApiResponseChatError({
       commentScoped: true,
       localStyleGraftSucceeded: true,
