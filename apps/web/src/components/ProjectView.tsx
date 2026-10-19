@@ -12071,7 +12071,10 @@ export function ProjectView({
                 runVisiblePromptRef.current,
                 ...runCommentAttachments.map((attachment) => attachment.comment),
               ].filter(Boolean).join('\n');
-              if (canGraftLocalCommentStyleWithoutModel(commentInstruction)) {
+              if (canGraftLocalCommentStyleWithoutModel(
+                commentInstruction,
+                runCommentAttachments,
+              )) {
                 const fileName = runPersistTargetFileRef.current
                   ?? resolvePrimaryDeckFilePath(
                     projectFilesRef.current,
@@ -13778,7 +13781,10 @@ export function ProjectView({
             ].filter(Boolean).join('\n');
             const tryLocalStyleGraft =
               runCommentAttachments.length > 0
-              && canGraftLocalCommentStyleWithoutModel(commentInstruction);
+              && canGraftLocalCommentStyleWithoutModel(
+                commentInstruction,
+                runCommentAttachments,
+              );
             if (tryLocalStyleGraft) {
               void (async () => {
                 try {

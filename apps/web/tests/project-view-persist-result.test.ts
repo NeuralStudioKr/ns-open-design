@@ -502,4 +502,63 @@ describe('shouldFailRunForArtifactPersistResult', () => {
       fileName: 'deck.html',
     }, { scopedCommentEdit: true })).toBe(false);
   });
+
+  it('1007-N01 Z · selected chip 빨간색으로 paints chip fill, not slide --paper', () => {
+    const prior = [
+      '<!doctype html><html lang="ko"><body>',
+      '<section class="slide" data-slide-index="0"><h2>표지</h2></section>',
+      '<section class="slide" data-slide-index="1" style="--paper:#f4efe4;background-color:#f4efe4;background-image:radial-gradient(circle, #111 1.2px, transparent 1.2px)">',
+      '<h2>문제</h2>',
+      '<p>대화는 메신저에</p>',
+      '<div data-od-id="chip-teamver" style="background:#99E885;font-size:32px;font-weight:800">Teamver</div>',
+      '</section>',
+      '<section class="slide" data-slide-index="2"><h2>슬라이드 3</h2><p>Teamver 워크스페이스</p></section>',
+      ...Array.from({ length: 4 }, (_, i) =>
+        `<section class="slide" data-slide-index="${i + 3}"><h2>슬라이드 ${i + 4}</h2><p>본문입니다. </p></section>`,
+      ),
+      '<section class="slide" data-slide-index="7"><h2>Closing</h2><span>© teamver</span></section>',
+      '</body></html>',
+    ].join('');
+    const comment: ChatCommentAttachment = {
+      id: 'c-chip-red',
+      order: 1,
+      filePath: 'deck.html',
+      elementId: 'chip-teamver',
+      selector: '[data-od-id="chip-teamver"]',
+      label: 'div',
+      comment: '빨간색으로',
+      currentText: 'Teamver',
+      htmlHint: '<div data-od-id="chip-teamver" style="background:#99E885">Teamver</div>',
+      pagePosition: { x: 0, y: 0, width: 10, height: 10 },
+      selectionKind: 'element',
+      slideIndex: 1,
+    };
+    const grafted = graftLocalCommentStyleOntoPrior({
+      priorHtml: prior,
+      commentAttachments: [comment],
+      instructionText: '빨간색으로',
+    });
+    expect(grafted.ok, JSON.stringify(grafted)).toBe(true);
+    if (!grafted.ok) return;
+    expect(grafted.kind).toBe('chip-fill');
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(grafted.html));
+    expect(slides).toHaveLength(8);
+    const chip = slides[1]?.outerHtml.match(/<div[^>]*data-od-id="chip-teamver"[^>]*>\s*Teamver\s*<\/div>/i)?.[0] ?? '';
+    expect(chip).toMatch(/background(?:-color)?:\s*#dc2626/i);
+    expect(chip).not.toMatch(/background(?:-color)?:\s*#99E885/i);
+    expect(chip).toContain('Teamver');
+    expect(slides[1]?.openTag).toMatch(/--paper:\s*#f4efe4/i);
+    expect(slides[1]?.openTag).not.toMatch(/--paper:\s*#dc2626/i);
+    expect(slides[1]?.outerHtml).toMatch(/radial-gradient/i);
+    expect(slides[1]?.outerHtml).toContain('대화는 메신저에');
+    expect(slides[2]?.outerHtml).not.toMatch(/#dc2626/i);
+    expect(shouldSurfaceEmptyApiResponseChatError({
+      commentScoped: true,
+      localStyleGraftSucceeded: true,
+    })).toBe(false);
+    expect(shouldFailRunForArtifactPersistResult({
+      kind: 'persisted',
+      fileName: 'deck.html',
+    }, { scopedCommentEdit: true })).toBe(false);
+  });
 });

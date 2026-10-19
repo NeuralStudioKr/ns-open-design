@@ -17,6 +17,7 @@ import {
   graftVisualMarksIntoDeckHtml,
   graftLocalCommentStyleOntoPrior,
   canGraftLocalCommentStyleWithoutModel,
+  commentAttachmentHasElementTarget,
   isBackgroundColorCommentInstruction,
   isNamedTextColorCommentInstruction,
   isTextOnlyNamedColorInstruction,
@@ -1828,5 +1829,253 @@ describe('1007-N01 Y comment named bottom-most Teamver chip fill', () => {
       commentScoped: true,
       localStyleGraftSucceeded: true,
     })).toBe(false);
+  });
+});
+
+describe('1007-N01 Z selected-element color never paints slide paper', () => {
+  const CREAM = '#f4efe4';
+  const DOTS =
+    `background-image:radial-gradient(circle, #111 1.2px, transparent 1.2px);`
+    + 'background-size:18px 18px';
+
+  function creamDotsDeck(): string {
+    return [
+      '<!doctype html><html lang="ko"><head><style>:root{--paper:#f4efe4}</style></head><body>',
+      `<section class="slide" data-slide-index="0" style="--paper:${CREAM}"><h2>표지</h2></section>`,
+      `<section class="slide" data-slide-index="1" style="--paper:${CREAM};background-color:${CREAM};${DOTS}">`,
+      '<h2>지금 팀의 일은 너무 많이 흩어져 있습니다.</h2>',
+      '<p>대화는 메신저에, 문서는 노션에</p>',
+      '<div class="card">SLACK 대화</div><div class="card">NOTION 문서</div>',
+      '<div class="card">DRIVE 파일</div><div class="card">CHATGPT AI</div>',
+      '<div style="position:relative;display:flex;align-items:center;gap:24px">',
+      '<div>→</div>',
+      '<div data-od-id="chip-teamver" data-od-edit-id="chip-teamver" style="background:#99E885;font-size:32px;font-weight:800">Teamver</div>',
+      '</div>',
+      '</section>',
+      `<section class="slide" data-slide-index="2" style="--paper:${CREAM}">`,
+      '<h2>슬라이드 3</h2><p>Teamver 워크스페이스</p></section>',
+      ...Array.from({ length: 4 }, (_, i) =>
+        `<section class="slide" data-slide-index="${i + 3}" style="--paper:${CREAM}">`
+        + `<h2>슬라이드 ${i + 4}</h2><p>본문입니다.</p></section>`,
+      ),
+      `<section class="slide" data-slide-index="7" style="--paper:${CREAM}">`,
+      '<h2>Closing</h2><span>© teamver</span></section>',
+      '</body></html>',
+    ].join('');
+  }
+
+  function chipComment(comment: string): ChatCommentAttachment {
+    return {
+      id: 'c-chip-red',
+      order: 1,
+      filePath: 'deck.html',
+      elementId: 'chip-teamver',
+      selector: '[data-od-id="chip-teamver"]',
+      label: 'div',
+      comment,
+      currentText: 'Teamver',
+      htmlHint: '<div data-od-id="chip-teamver" style="background:#99E885">Teamver</div>',
+      pagePosition: { x: 0, y: 0, width: 10, height: 10 },
+      selectionKind: 'element',
+      slideIndex: 1,
+    };
+  }
+
+  function slidePinComment(comment: string): ChatCommentAttachment {
+    return {
+      id: 'c-slide-pin',
+      order: 1,
+      filePath: 'deck.html',
+      elementId: 'pin-slide-1',
+      selector: 'section.slide',
+      label: 'section',
+      comment,
+      currentText: '',
+      htmlHint: '',
+      pagePosition: { x: 0, y: 0, width: 10, height: 10 },
+      selectionKind: 'element',
+      slideIndex: 1,
+    };
+  }
+
+  function chipHtml(slideHtml: string): string | null {
+    return slideHtml.match(/<div[^>]*data-od-id="chip-teamver"[^>]*>\s*Teamver\s*<\/div>/i)?.[0]
+      ?? slideHtml.match(/<div[^>]*>\s*Teamver\s*<\/div>/i)?.[0]
+      ?? null;
+  }
+
+  function expectChipFillRed(slideHtml: string): void {
+    const chip = chipHtml(slideHtml);
+    expect(chip).toMatch(/background(?:-color)?:\s*#dc2626/i);
+    expect(chip).not.toMatch(/background(?:-color)?:\s*#99E885/i);
+    expect(chip).toContain('Teamver');
+  }
+
+  function expectSlidePaperCream(slideHtml: string, openTag: string): void {
+    expect(openTag).toMatch(/--paper:\s*#f4efe4/i);
+    expect(openTag).not.toMatch(/--paper:\s*#dc2626/i);
+    expect(openTag).not.toMatch(/background(?:-color)?:\s*#dc2626/i);
+    expect(slideHtml).toMatch(/radial-gradient/i);
+  }
+
+  it('classifies selected-element 빨간색으로 as element fill, not slide paper', () => {
+    const onChip = chipComment('빨간색으로');
+    expect(commentAttachmentHasElementTarget(onChip)).toBe(true);
+    expect(commentAttachmentHasElementTarget(slidePinComment('배경색을 빨간색으로'))).toBe(false);
+    expect(isNamedTextColorCommentInstruction('빨간색으로')).toBe(false);
+    expect(isBackgroundColorCommentInstruction('빨간색으로')).toBe(false);
+    expect(canGraftLocalCommentStyleWithoutModel('빨간색으로')).toBe(false);
+    expect(canGraftLocalCommentStyleWithoutModel('빨간색으로', [onChip])).toBe(true);
+    expect(canGraftLocalCommentStyleWithoutModel('배경색을 빨간색으로', [onChip])).toBe(true);
+    expect(canGraftLocalCommentStyleWithoutModel('배경색을 빨간색으로')).toBe(true);
+    expect(isNamedTextColorCommentInstruction('배경색을 빨간색으로')).toBe(false);
+  });
+
+  it('chip comment 빨간색으로 paints the Teamver chip only; slide stays cream+dots', () => {
+    const result = graftLocalCommentStyleOntoPrior({
+      priorHtml: creamDotsDeck(),
+      commentAttachments: [chipComment('빨간색으로')],
+      instructionText: '빨간색으로',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.kind).toBe('chip-fill');
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(slides).toHaveLength(8);
+    expectChipFillRed(slides[1]?.outerHtml ?? '');
+    expectSlidePaperCream(slides[1]?.outerHtml ?? '', slides[1]?.openTag ?? '');
+    expect(slides[1]?.outerHtml).toContain('지금 팀의 일은 너무 많이 흩어져 있습니다.');
+    expect(slides[1]?.outerHtml).toContain('<div>→</div>');
+    expect(slides[2]?.outerHtml).toContain('Teamver 워크스페이스');
+    expect(slides[2]?.outerHtml).not.toMatch(/#dc2626/i);
+    expect(slides[0]?.outerHtml).not.toMatch(/#dc2626/i);
+  });
+
+  it('배경색을 빨간색으로 on the selected chip still fills the chip, not --paper', () => {
+    const result = graftLocalCommentStyleOntoPrior({
+      priorHtml: creamDotsDeck(),
+      commentAttachments: [chipComment('배경색을 빨간색으로')],
+      instructionText: '배경색을 빨간색으로',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.kind).toBe('chip-fill');
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(slides).toHaveLength(8);
+    expectChipFillRed(slides[1]?.outerHtml ?? '');
+    expectSlidePaperCream(slides[1]?.outerHtml ?? '', slides[1]?.openTag ?? '');
+  });
+
+  it('slide-level 배경색을 빨간색으로 paints paper red and leaves the green chip', () => {
+    const result = graftLocalCommentStyleOntoPrior({
+      priorHtml: creamDotsDeck(),
+      commentAttachments: [slidePinComment('배경색을 빨간색으로')],
+      instructionText: '배경색을 빨간색으로',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.kind).toBe('background');
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(slides).toHaveLength(8);
+    expect(slides[1]?.openTag).toMatch(/--paper:\s*#dc2626/i);
+    expect(chipHtml(slides[1]?.outerHtml ?? '')).toMatch(/background:\s*#99E885/i);
+    expect(chipHtml(slides[1]?.outerHtml ?? '')).not.toMatch(/#dc2626/i);
+    expect(slides[0]?.outerHtml).not.toMatch(/--paper:\s*#dc2626/i);
+    expect(slides[2]?.outerHtml).not.toMatch(/#dc2626/i);
+  });
+
+  it('글자만 on the selected chip colors text only', () => {
+    const result = graftLocalCommentStyleOntoPrior({
+      priorHtml: creamDotsDeck(),
+      commentAttachments: [chipComment('글자만 빨간색으로')],
+      instructionText: '글자만 빨간색으로',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.kind).toBe('text-color');
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    const chip = chipHtml(slides[1]?.outerHtml ?? '');
+    expect(chip).toMatch(/color:\s*#dc2626/i);
+    expect(chip).toMatch(/background:\s*#99E885/i);
+    expectSlidePaperCream(slides[1]?.outerHtml ?? '', slides[1]?.openTag ?? '');
+  });
+
+  it('slide-level 빨간색으로 without Teamver does not paint paper or the chip', () => {
+    const result = graftLocalCommentStyleOntoPrior({
+      priorHtml: creamDotsDeck(),
+      commentAttachments: [slidePinComment('빨간색으로')],
+      instructionText: '빨간색으로',
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it('empty MiniMax merge keeps 8 slides and paints only the chip', () => {
+    const result = mergeCommentEditIncomingIntoPrior({
+      priorHtml: creamDotsDeck(),
+      incomingHtml: '',
+      commentAttachments: [chipComment('빨간색으로')],
+      instructionText: '빨간색으로',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(slides).toHaveLength(8);
+    expectChipFillRed(slides[1]?.outerHtml ?? '');
+    expectSlidePaperCream(slides[1]?.outerHtml ?? '', slides[1]?.openTag ?? '');
+  });
+
+  it('incoming red-paper 1-slide does not wipe cream paper when the chip is selected', () => {
+    const incoming =
+      '<!doctype html><html lang="ko"><body>'
+      + `<section class="slide" style="--paper:#dc2626;background:#dc2626">`
+      + '<h2>완전히 다른 제목</h2><div style="background:#99E885">Teamver</div>'
+      + '</section></body></html>';
+    const result = mergeCommentEditIncomingIntoPrior({
+      priorHtml: creamDotsDeck(),
+      incomingHtml: incoming,
+      commentAttachments: [chipComment('배경색을 빨간색으로')],
+      instructionText: '배경색을 빨간색으로',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(slides).toHaveLength(8);
+    expect(slides[1]?.outerHtml).toContain('지금 팀의 일은 너무 많이 흩어져 있습니다.');
+    expect(slides[1]?.outerHtml).not.toContain('완전히 다른 제목');
+    expectChipFillRed(slides[1]?.outerHtml ?? '');
+    expectSlidePaperCream(slides[1]?.outerHtml ?? '', slides[1]?.openTag ?? '');
+  });
+
+  it('stale path-N id + htmlHint still fills the chip, not paper', () => {
+    const stale: ChatCommentAttachment = {
+      ...chipComment('빨간색으로'),
+      elementId: 'path-9-9',
+      selector: 'div',
+    };
+    const result = graftLocalCommentStyleOntoPrior({
+      priorHtml: creamDotsDeck(),
+      commentAttachments: [stale],
+      instructionText: '빨간색으로',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.kind).toBe('chip-fill');
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expectChipFillRed(slides[1]?.outerHtml ?? '');
+    expectSlidePaperCream(slides[1]?.outerHtml ?? '', slides[1]?.openTag ?? '');
+  });
+
+  it('named Teamver on a slide pin still fills the bottom chip, not paper', () => {
+    const result = graftLocalCommentStyleOntoPrior({
+      priorHtml: creamDotsDeck(),
+      commentAttachments: [slidePinComment('맨 아래 Teamver를 빨간색으로')],
+      instructionText: '맨 아래 Teamver를 빨간색으로',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.kind).toBe('chip-fill');
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expectChipFillRed(slides[1]?.outerHtml ?? '');
+    expectSlidePaperCream(slides[1]?.outerHtml ?? '', slides[1]?.openTag ?? '');
   });
 });

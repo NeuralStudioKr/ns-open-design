@@ -192,6 +192,59 @@ export function hasElementScopedCommentAttachments(
   );
 }
 
+function isGenericTagSelector(selector: string): boolean {
+  return /^[a-z][a-z0-9-]*$/i.test(selector.trim().replace(/^dom:/i, ''));
+}
+
+function isSlideSurfaceSelector(selector: string): boolean {
+  const normalized = selector.trim().replace(/^dom:/i, '');
+  return /^(?:html|body|section(?:\.slide)?)$/i.test(normalized);
+}
+
+function isSlideSurfaceHtmlHint(hint: string): boolean {
+  return /^<\s*(?:html|body|section)\b/i.test(hint.trim());
+}
+
+function isPageLevelCommentId(id: string): boolean {
+  return id.startsWith('pin-') || id.startsWith('file-comment-');
+}
+
+/**
+ * True when the comment is pinned to a concrete node (chip, box, title),
+ * not a slide/page pin. Selected-element color grafts must use this so
+ * `--paper` / section.slide background is never the target.
+ */
+export function commentAttachmentHasElementTarget(
+  attachment: ChatCommentAttachment,
+): boolean {
+  if (isScreenshotOnlyVisualCommentTarget(attachment)) return false;
+  const id = String(attachment.elementId || '').trim();
+  const hint = String(attachment.htmlHint || '').trim();
+  if (isPageLevelCommentId(id)) {
+    return Boolean(hint) && !isSlideSurfaceHtmlHint(hint);
+  }
+  if (id && !id.startsWith('visual-mark-') && !isUnsafeCommentElementTargetId(id)) {
+    return true;
+  }
+  if (scopedCommentElementIds(attachment).length > 0) return true;
+  if (hint && !isSlideSurfaceHtmlHint(hint)) return true;
+  const selector = String(attachment.selector || '').trim();
+  if (
+    selector
+    && !isGenericTagSelector(selector)
+    && !isUnsafeCommentElementTargetId(selector)
+    && !isSlideSurfaceSelector(selector)
+  ) {
+    return true;
+  }
+  const text = String(attachment.currentText || '').trim();
+  return Boolean(
+    text
+    && (attachment.selectionKind === 'element' || attachment.selectionKind === 'pod')
+    && !id.startsWith('visual-mark-'),
+  );
+}
+
 export function isUnsafeCommentElementTargetId(targetId: string): boolean {
   const normalized = String(targetId || '').trim().toLowerCase();
   return (
@@ -1287,17 +1340,27 @@ export function parseCommentBackgroundColor(
 }
 
 /**
- * Font-double, named text color, and named background restyles can be
- * applied to the pinned slide without a model HTML body. Vague comments
- * still need the model.
+ * Font-double, named text/chip color, selected-element fill, and named
+ * background restyles can be applied to the pinned slide without a model
+ * HTML body. Vague comments still need the model.
  */
 export function canGraftLocalCommentStyleWithoutModel(
   text: string | null | undefined,
+  commentAttachments?: readonly ChatCommentAttachment[],
 ): boolean {
   if (isFontScaleCommentInstruction(text)) return true;
   if (isNamedTextColorCommentInstruction(text)) return true;
-  return isBackgroundColorCommentInstruction(text)
-    && Boolean(parseCommentBackgroundColor(text));
+  if (
+    isBackgroundColorCommentInstruction(text)
+    && Boolean(parseCommentBackgroundColor(text))
+  ) {
+    return true;
+  }
+  const source = String(text ?? '');
+  return Boolean(
+    commentAttachments?.some((attachment) => commentAttachmentHasElementTarget(attachment))
+    && (parseCommentBackgroundColor(source) || COLOR_AS_TEXT_RE.test(source)),
+  );
 }
 
 /**
@@ -1524,6 +1587,158 @@ function elementFillMatches(el: Element, color: string): boolean {
   return (hex ?? bg).toLowerCase() === color.toLowerCase();
 }
 
+function cssQuotedAttrValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function isSlideSurfaceElement(el: Element, section?: Element | null): boolean {
+  if (section && el === section) return true;
+  const tag = el.tagName.toLowerCase();
+  if (tag === 'html' || tag === 'body') return true;
+  if (tag === 'section' && (el.classList.contains('slide') || el.hasAttribute('data-slide-index'))) {
+    return true;
+  }
+  return el.classList.contains('slide');
+}
+
+function querySelectorInSection(section: Element, selector: string): Element | null {
+  const trimmed = selector.replace(/^dom:/i, '').trim();
+  if (!trimmed || /[<{}]/.test(trimmed) || isGenericTagSelector(trimmed)) return null;
+  try {
+    const local = section.querySelector(trimmed);
+    if (local) return local;
+  } catch {
+    // invalid selector
+  }
+  const stripped = trimmed.replace(
+    /^(?:html\s*>\s*)?(?:body\s*>\s*)?(?:[a-z][\w-]*\s*>\s*)*section(?:\.slide)?(?::nth-(?:of-type|child)\(\d+\))?\s*>\s*/i,
+    '',
+  );
+  if (!stripped || stripped === trimmed || isGenericTagSelector(stripped)) return null;
+  try {
+    return section.querySelector(stripped);
+  } catch {
+    return null;
+  }
+}
+
+function matchElementByHtmlHint(section: Element, hint: string): Element | null {
+  if (!hint.trim() || isSlideSurfaceHtmlHint(hint)) return null;
+  const parsed = parseManualEditSource(`<!doctype html><html><body>${hint}</body></html>`);
+  const hintEl = parsed?.body.firstElementChild;
+  if (!hintEl || isSlideSurfaceElement(hintEl)) return null;
+  const tag = hintEl.tagName;
+  const text = normalizeCommentTargetText(hintEl.textContent || '');
+  const fill = readElementFillColor(hintEl);
+  const candidates = [...section.querySelectorAll(tag)].filter(
+    (el) => el !== section && !isSlideSurfaceElement(el, section),
+  );
+  const exact = text
+    ? candidates.filter((el) => normalizeCommentTargetText(el.textContent || '') === text)
+    : candidates;
+  if (fill) {
+    const filled = (exact.length > 0 ? exact : candidates).filter((el) => isFilledChipBox(el));
+    if (filled.length > 0) return filled.at(-1) ?? null;
+  }
+  if (exact.length === 1) return exact[0] ?? null;
+  if (exact.length > 1) return exact.at(-1) ?? null;
+  return null;
+}
+
+function resolveFilledChipAncestor(el: Element, section: Element): Element | null {
+  const token = normalizeCommentTargetText(el.textContent || '');
+  if (token) {
+    const named = resolveFilledChipTarget(el, section, token);
+    if (named) return named;
+  }
+  let node: Element | null = el;
+  while (node && node !== section) {
+    if (isFilledChipBox(node) && !isSlideSurfaceElement(node, section)) return node;
+    node = node.parentElement;
+  }
+  return null;
+}
+
+function resolveAttachedCommentStyleTarget(
+  section: Element,
+  attachment: ChatCommentAttachment,
+): Element | null {
+  const ids = [
+    attachment.elementId,
+    ...scopedCommentElementIds(attachment),
+  ]
+    .map((id) => String(id || '').trim())
+    .filter(Boolean)
+    .filter((id) => !isPageLevelCommentId(id) && !id.startsWith('visual-mark-'))
+    .filter((id) => !isUnsafeCommentElementTargetId(id));
+  for (const id of [...new Set(ids)]) {
+    if (id.startsWith('dom:')) {
+      const found = querySelectorInSection(section, id);
+      if (found && !isSlideSurfaceElement(found, section)) return found;
+      continue;
+    }
+    if (isGenericTagSelector(id)) continue;
+    const escaped = cssQuotedAttrValue(id);
+    const byAttr = section.querySelector(
+      `[data-od-id="${escaped}"], [data-od-edit-id="${escaped}"], [data-od-runtime-id="${escaped}"], [id="${escaped}"]`,
+    );
+    if (byAttr && !isSlideSurfaceElement(byAttr, section)) return byAttr;
+  }
+  const selector = String(attachment.selector || '').trim();
+  if (selector && !isGenericTagSelector(selector) && !isSlideSurfaceSelector(selector)) {
+    const found = querySelectorInSection(section, selector);
+    if (found && !isSlideSurfaceElement(found, section)) return found;
+  }
+  const fromHint = matchElementByHtmlHint(section, String(attachment.htmlHint || ''));
+  if (fromHint) return fromHint;
+  const text = normalizeCommentTargetText(attachment.currentText || '');
+  if (!text) return null;
+  const matches = collectNamedTextColorTargets(section, text);
+  const chip = matches
+    .map((leaf) => resolveFilledChipTarget(leaf, section, text))
+    .find((node): node is Element => Boolean(node));
+  if (chip) return chip;
+  const leaf = selectBottomMostNamedTextTarget(matches);
+  if (leaf && !isSlideSurfaceElement(leaf, section)) return leaf;
+  return null;
+}
+
+function graftAttachmentTargetStyleOntoSlideOuterHtml(
+  slideHtml: string,
+  attachment: ChatCommentAttachment,
+  color: string,
+  instruction = '',
+): { html: string; alreadyApplied: boolean; kind: 'text-color' | 'chip-fill' } | null {
+  const doc = parseManualEditSource(`<!doctype html><html><body>${slideHtml}</body></html>`);
+  if (!doc) return null;
+  const section = doc.querySelector('section') ?? doc.body.firstElementChild;
+  if (!section) return null;
+  const target = resolveAttachedCommentStyleTarget(section, attachment);
+  if (!target || isSlideSurfaceElement(target, section)) return null;
+  const textOnly = isTextOnlyNamedColorInstruction(instruction);
+  const chip = !textOnly ? resolveFilledChipAncestor(target, section) : null;
+  const paint = chip
+    ?? (!textOnly && isBackgroundColorCommentInstruction(instruction) ? target : null);
+  if (paint && !isSlideSurfaceElement(paint, section)) {
+    if (
+      paint.getAttribute(COMMENT_CHIP_FILL_ATTR) === color
+      && elementFillMatches(paint, color)
+    ) {
+      return { html: slideHtml, alreadyApplied: true, kind: 'chip-fill' };
+    }
+    applyInlineChipFill(paint, color);
+    return { html: section.outerHTML, alreadyApplied: false, kind: 'chip-fill' };
+  }
+  if (target.getAttribute(COMMENT_TEXT_COLOR_ATTR) === color) {
+    const decls = parseInlineStyleDeclarations(target.getAttribute('style') || '');
+    if (decls.color?.trim().toLowerCase() === color.toLowerCase()) {
+      return { html: slideHtml, alreadyApplied: true, kind: 'text-color' };
+    }
+  }
+  applyInlineTextColor(target, color);
+  return { html: section.outerHTML, alreadyApplied: false, kind: 'text-color' };
+}
+
 function graftNamedTextColorOntoSlideOuterHtml(
   slideHtml: string,
   token: string,
@@ -1588,8 +1803,10 @@ function joinCommentStyleInstruction(input: {
 }
 
 /**
- * 1007-N01 X/Y — Apply font×2, named text/chip color, or a named background
- * onto the pinned slide using the prior deck only. MiniMax may return nothing.
+ * 1007-N01 X/Y/Z — Apply font×2, selected-element fill/color, named
+ * text/chip color, or a named slide background onto the pinned slide
+ * using the prior deck only. MiniMax may return nothing.
+ * Selected-element comments never paint `--paper` / section.slide.
  */
 export function graftLocalCommentStyleOntoPrior(input: {
   priorHtml: string;
@@ -1604,13 +1821,23 @@ export function graftLocalCommentStyleOntoPrior(input: {
   const namedToken = isNamedTextColorCommentInstruction(instruction)
     ? parseCommentNamedTextToken(instruction)
     : null;
+  const parsedColor = parseCommentBackgroundColor(instruction);
   const namedColor = namedToken
-    ? (parseCommentBackgroundColor(instruction) ?? DEFAULT_NAMED_TOKEN_COLOR)
+    ? (parsedColor ?? DEFAULT_NAMED_TOKEN_COLOR)
     : null;
-  const backgroundColor = !namedColor && isBackgroundColorCommentInstruction(instruction)
-    ? parseCommentBackgroundColor(instruction)
+  const elementTargeted = input.commentAttachments.some((attachment) =>
+    commentAttachmentHasElementTarget(attachment),
+  );
+  const elementColor = elementTargeted
+    ? (parsedColor ?? (COLOR_AS_TEXT_RE.test(instruction) ? DEFAULT_NAMED_TOKEN_COLOR : null))
     : null;
-  if (!fontScale && !backgroundColor && !(namedColor && namedToken)) {
+  // Whole-slide paper only when 배경 is explicit AND no selected element.
+  const backgroundColor = !elementTargeted
+    && !namedColor
+    && isBackgroundColorCommentInstruction(instruction)
+    ? parsedColor
+    : null;
+  if (!fontScale && !backgroundColor && !elementColor && !(namedColor && namedToken)) {
     return { ok: false, reason: 'comment is not a local style graft' };
   }
   const priorSlides = extractTopLevelSlideSections(extractDeckBodyContent(input.priorHtml));
@@ -1643,7 +1870,28 @@ export function graftLocalCommentStyleOntoPrior(input: {
         if (scaled.alreadyApplied) fontScaleAlreadyApplied = true;
       }
     }
-    if (namedColor && namedToken) {
+    let paintedElement = false;
+    if (elementColor) {
+      const attachmentsForSlide = input.commentAttachments.filter((attachment) =>
+        !hasValidDeckSlideIndex(attachment) || attachment.slideIndex === slideIndex,
+      );
+      for (const attachment of attachmentsForSlide) {
+        if (!commentAttachmentHasElementTarget(attachment)) continue;
+        const colored = graftAttachmentTargetStyleOntoSlideOuterHtml(
+          nextHtml,
+          attachment,
+          elementColor,
+          instruction,
+        );
+        if (!colored) continue;
+        nextHtml = colored.html;
+        namedKind = colored.kind;
+        if (colored.alreadyApplied) namedAlreadyApplied = true;
+        paintedElement = true;
+        break;
+      }
+    }
+    if (!paintedElement && namedColor && namedToken) {
       const colored = graftNamedTextColorOntoSlideOuterHtml(
         nextHtml,
         namedToken.token,
@@ -1669,7 +1917,7 @@ export function graftLocalCommentStyleOntoPrior(input: {
     if (fontScale && fontScaleAlreadyApplied) {
       return { ok: true, html: input.priorHtml, kind: 'font-scale' };
     }
-    if (namedColor && namedAlreadyApplied) {
+    if ((namedColor || elementColor) && namedAlreadyApplied) {
       return { ok: true, html: input.priorHtml, kind: namedKind };
     }
     return { ok: false, reason: 'local comment style did not graft' };
@@ -1681,10 +1929,15 @@ export function graftLocalCommentStyleOntoPrior(input: {
   if (!patched.ok) {
     return { ok: false, reason: 'local comment style patch failed' };
   }
+  const kind: LocalCommentStyleGraftKind = (namedColor && namedToken) || elementColor
+    ? namedKind
+    : fontScale
+      ? 'font-scale'
+      : 'background';
   return {
     ok: true,
     html: patched.html,
-    kind: namedColor && namedToken ? namedKind : fontScale ? 'font-scale' : 'background',
+    kind,
   };
 }
 
@@ -1904,6 +2157,7 @@ export function graftIncomingSlideBackgroundOntoPrior(input: {
  * (background/color onto the pinned slide; keep other slides and copy).
  * 1007-N01 X — Font×2 / named background must also work when incoming is empty.
  * 1007-N01 Y — Named bottom-most Teamver chip fill / © teamver text color is local too.
+ * 1007-N01 Z — Selected-element color/fill never paints slide `--paper`.
  */
 export function mergeCommentEditIncomingIntoPrior(input: {
   priorHtml: string;
@@ -1921,7 +2175,13 @@ export function mergeCommentEditIncomingIntoPrior(input: {
   }
 
   const instruction = joinCommentStyleInstruction(input);
-  const localStyle = canGraftLocalCommentStyleWithoutModel(instruction);
+  const localStyle = canGraftLocalCommentStyleWithoutModel(
+    instruction,
+    input.commentAttachments,
+  );
+  const elementTargeted = input.commentAttachments.some((attachment) =>
+    commentAttachmentHasElementTarget(attachment),
+  );
   if (incomingSlides.length === 0) {
     if (!localStyle) {
       return { ok: false, reason: 'incoming comment edit has no slides' };
@@ -1946,13 +2206,21 @@ export function mergeCommentEditIncomingIntoPrior(input: {
     return { ok: false, reason: grafted.reason };
   }
 
-  if (isNamedTextColorCommentInstruction(instruction)) {
+  const elementColorInstruction = elementTargeted && (
+    isNamedTextColorCommentInstruction(instruction)
+    || isBackgroundColorCommentInstruction(instruction)
+    || Boolean(parseCommentBackgroundColor(instruction))
+    || COLOR_AS_TEXT_RE.test(instruction)
+  );
+  if (elementColorInstruction || isNamedTextColorCommentInstruction(instruction)) {
     const grafted = graftLocalCommentStyleOntoPrior(input);
     if (grafted.ok) return { ok: true, html: grafted.html, merged: true };
-    return { ok: false, reason: grafted.reason };
+    if (elementColorInstruction) {
+      return { ok: false, reason: grafted.reason };
+    }
   }
 
-  if (isBackgroundColorCommentInstruction(instruction)) {
+  if (isBackgroundColorCommentInstruction(instruction) && !elementTargeted) {
     const grafted = graftIncomingSlideBackgroundOntoPrior({
       priorHtml: input.priorHtml,
       incomingHtml: input.incomingHtml,
