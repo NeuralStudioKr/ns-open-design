@@ -3672,8 +3672,19 @@ export function retryableAssistantMessage(
   if (paneStreaming) return null;
   const last = messages[messages.length - 1];
   if (!last || last.role !== 'assistant') return null;
-  if (last.id !== lastAssistantId) return null;
-  return last.runStatus === 'failed' ? last : null;
+  if (last.runStatus !== 'failed') return null;
+  // Trailing failed turns own the Retry dock + tail error card.
+  // `resolveLastAssistantMessageId` skips error-status-only rows so a later
+  // succeeded shell can keep `isLast` after auto-continue — that must not
+  // hide this turn when it is still the last message (comment-patch 529
+  // after a keep-prior deck used to paint the same guidance twice).
+  if (last.id !== lastAssistantId && lastAssistantId != null) {
+    const preferred = messages.find((message) => message.id === lastAssistantId);
+    if (preferred?.role === 'assistant' && isActiveRunStatus(preferred.runStatus)) {
+      return null;
+    }
+  }
+  return last;
 }
 
 export function isAssistantMessageStreaming(

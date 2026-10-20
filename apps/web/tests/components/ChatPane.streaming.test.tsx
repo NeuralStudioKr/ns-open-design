@@ -7,8 +7,10 @@ import { forwardRef, useImperativeHandle } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ChatPane, buildRunErrorDiagnosticText, retryableAssistantMessage } from '../../src/components/ChatPane';
+import { resolveLastAssistantMessageId } from '../../src/runtime/conversation-message-dedupe';
 import {
   encodePersistedRunErrorDetail,
+  formatPersistedProjectRunError,
   formatProjectRunDeliverableMissingError,
 } from '../../src/teamver/projectErrorMessages';
 import { DESIGN_SYSTEM_WORKSPACE_PROMPT_PREFIX } from '../../src/design-system-auto-prompt';
@@ -275,6 +277,101 @@ describe('ChatPane streaming state', () => {
     expect(retryableAssistantMessage(messages, failed.id, true)).toBeNull();
     expect(retryableAssistantMessage([...messages, { ...messages[0]!, id: 'user-2' }], failed.id, false))
       .toBeNull();
+  });
+
+  it('treats a trailing error-status-only failure as retryable even when lastAssistantId prefers an earlier deck', () => {
+    const prior: ChatMessage = {
+      id: 'assistant-prior',
+      role: 'assistant',
+      content: '작업이 완료되었습니다.',
+      createdAt: 1,
+      runStatus: 'succeeded',
+      producedFiles: [{ name: 'deck.html', path: 'deck.html', kind: 'html' }],
+    };
+    const persisted = formatPersistedProjectRunError(
+      Object.assign(new Error('Upstream error: 529'), { code: 'UPSTREAM_UNAVAILABLE' }),
+    );
+    const failed: ChatMessage = {
+      id: 'assistant-failed',
+      role: 'assistant',
+      content: '',
+      createdAt: 3,
+      runStatus: 'failed',
+      agentId: 'minimax-api',
+      events: [{
+        kind: 'status',
+        label: 'error',
+        detail: persisted.detail,
+        code: persisted.code,
+      }],
+    };
+    const messages: ChatMessage[] = [
+      { id: 'user-1', role: 'user', content: '만들어줘', createdAt: 0 },
+      prior,
+      { id: 'user-2', role: 'user', content: '이 박스 글자 키워줘', createdAt: 2 },
+      failed,
+    ];
+    const lastAssistantId = resolveLastAssistantMessageId(messages);
+
+    expect(lastAssistantId).toBe(prior.id);
+    expect(retryableAssistantMessage(messages, lastAssistantId, false)).toBe(failed);
+  });
+
+  it('renders one UPSTREAM_UNAVAILABLE guidance bubble after a keep-prior comment patch', () => {
+    const guidance = 'AI 서비스에 연결하지 못했습니다. 잠시 후 다시 시도하세요.';
+    const persisted = formatPersistedProjectRunError(
+      Object.assign(new Error('Upstream error: 529'), { code: 'UPSTREAM_UNAVAILABLE' }),
+    );
+    const messages: ChatMessage[] = [
+      { id: 'user-1', role: 'user', content: '만들어줘', createdAt: 0 },
+      {
+        id: 'assistant-prior',
+        role: 'assistant',
+        content: '작업이 완료되었습니다.',
+        createdAt: 1,
+        runStatus: 'succeeded',
+        producedFiles: [{ name: 'deck.html', path: 'deck.html', kind: 'html' }],
+      },
+      { id: 'user-2', role: 'user', content: '이 박스 글자 키워줘', createdAt: 2 },
+      {
+        id: 'assistant-failed',
+        role: 'assistant',
+        content: '',
+        createdAt: 3,
+        runStatus: 'failed',
+        agentId: 'minimax-api',
+        events: [{
+          kind: 'status',
+          label: 'error',
+          detail: persisted.detail,
+          code: persisted.code,
+        }],
+      },
+    ];
+
+    const { container } = render(
+      <ChatPane
+        projectKindForTracking="slide"
+        messages={messages}
+        streaming={false}
+        error={guidance}
+        errorKind="run"
+        projectId="project-1"
+        projectFiles={[{ name: 'deck.html', path: 'deck.html', kind: 'html' }]}
+        onEnsureProject={async () => 'project-1'}
+        onSend={vi.fn()}
+        onRetry={vi.fn()}
+        onStop={vi.fn()}
+        conversations={conversations}
+        activeConversationId="conv-1"
+        onSelectConversation={vi.fn()}
+        onDeleteConversation={vi.fn()}
+        projectMetadata={projectMetadata}
+      />,
+    );
+
+    expect(container.querySelectorAll('.msg.error')).toHaveLength(1);
+    expect(screen.getAllByText(guidance)).toHaveLength(1);
   });
 
   it('keeps conversation connection failures out of run diagnostics and retries in place', () => {
