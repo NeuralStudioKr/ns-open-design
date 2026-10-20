@@ -6,6 +6,11 @@
  * persist of in-progress (often emptied) text then let heal/empty-chip
  * hide or drop the node. Host must ignore that in-flight commit and tell
  * the iframe to restore the pre-edit snapshot.
+ *
+ * Per-element abort is not enough for session Cancel: blur persist can
+ * already have written earlier elements. FileViewer restores the edit-mode
+ * entry snapshot (`planManualEditSessionCancel`) and bumps persist epoch
+ * so in-flight writes lose to Cancel.
  */
 
 export function beginInlineTextEditGeneration(current: number): number {

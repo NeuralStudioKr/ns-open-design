@@ -550,8 +550,13 @@ import {
   resolveManualEditGraphicContainerId,
 } from '../edit-mode/manual-edit-target-resolve';
 import {
+  beginManualEditPersistEpoch,
+  captureManualEditSessionEntrySource,
+  commitManualEditSessionEntrySource,
   manualEditPatchBaseSource,
+  planManualEditSessionCancel,
   shouldHoldDiskPreviewDuringManualEdit,
+  shouldPersistManualEditSessionWrite,
   shouldSkipManualEditHistoryConfirm,
 } from '../edit-mode/manual-edit-session';
 import {
@@ -5784,6 +5789,9 @@ function HtmlViewer({
   const inlineTextCancelledGenerationRef = useRef(0);
   const inlineTextCommitInFlightRef = useRef<number | null>(null);
   const inlineTextPendingCommitGenerationRef = useRef<number | null>(null);
+  /** HTML at edit-mode entry (or last Confirm). Freeze remounts on set-text. */
+  const manualEditSessionEntrySourceRef = useRef<string | null>(null);
+  const manualEditPersistEpochRef = useRef(0);
   const [manualEditResizeDraftSize, setManualEditResizeDraftSize] = useState<{
     width: number;
     height: number;
@@ -6099,6 +6107,16 @@ function HtmlViewer({
         // edit mode paints the pre-edit freeze and looks "reverted".
         setManualEditFrozenSource(null);
         setManualEditInlineTextEditing(false);
+      }
+      if (value !== prev) {
+        if (value) {
+          manualEditSessionEntrySourceRef.current = captureManualEditSessionEntrySource(
+            null,
+            sourceRef.current,
+          );
+        } else {
+          manualEditSessionEntrySourceRef.current = null;
+        }
       }
       if (value !== prev && !value) {
         setManualEditViewportWidth(null);
@@ -7227,7 +7245,14 @@ function HtmlViewer({
       // Prefer sourceRef (includes a just-pinned save) over a lagging
       // livePreviewSource token so re-enter freezes the edited HTML.
       const snap = sourceRef.current ?? livePreviewSource;
-      if (snap != null) setManualEditFrozenSource(snap);
+      if (snap != null) {
+        setManualEditFrozenSource(snap);
+        // Session Cancel snapshot is independent of freeze remounts on set-text.
+        manualEditSessionEntrySourceRef.current = captureManualEditSessionEntrySource(
+          manualEditSessionEntrySourceRef.current,
+          snap,
+        );
+      }
     }
   }, [manualEditMode, manualEditFrozenSource, livePreviewSource]);
   const previewSource = (manualEditMode && manualEditFrozenSource !== null)
@@ -11674,9 +11699,13 @@ function HtmlViewer({
         // Text commits remount the freeze from saved source; flush style
         // drafts first or postMessage-only previews are lost on reload.
         const editGeneration = inlineTextEditGenerationRef.current;
+        const commitEpoch = manualEditPersistEpochRef.current;
         if (!shouldPersistInlineTextCommit({
           editGeneration,
           cancelledGeneration: inlineTextCancelledGenerationRef.current,
+        }) || !shouldPersistManualEditSessionWrite({
+          startedEpoch: commitEpoch,
+          currentEpoch: manualEditPersistEpochRef.current,
         })) {
           return;
         }
@@ -11689,6 +11718,9 @@ function HtmlViewer({
             if (!shouldPersistInlineTextCommit({
               editGeneration,
               cancelledGeneration: inlineTextCancelledGenerationRef.current,
+            }) || !shouldPersistManualEditSessionWrite({
+              startedEpoch: commitEpoch,
+              currentEpoch: manualEditPersistEpochRef.current,
             })) {
               return;
             }
@@ -11699,6 +11731,9 @@ function HtmlViewer({
             if (!shouldPersistInlineTextCommit({
               editGeneration,
               cancelledGeneration: inlineTextCancelledGenerationRef.current,
+            }) || !shouldPersistManualEditSessionWrite({
+              startedEpoch: commitEpoch,
+              currentEpoch: manualEditPersistEpochRef.current,
             })) {
               return;
             }
@@ -12932,12 +12967,19 @@ function HtmlViewer({
     if (shouldSkipManualEditStyleFlushWhilePaused(manualEditResizePausedRef.current, options)) {
       return true;
     }
+    const startedEpoch = manualEditPersistEpochRef.current;
     // Boundary flushes (exit / select / text commit) must not lose a race with
     // autosave: wait for the lock, then persist whatever draft remains.
     if (manualEditSavingRef.current) {
       if (!(await waitForManualEditSaveIdle(() => manualEditSavingRef.current))) {
         return false;
       }
+    }
+    if (!shouldPersistManualEditSessionWrite({
+      startedEpoch,
+      currentEpoch: manualEditPersistEpochRef.current,
+    })) {
+      return true;
     }
     const pending = manualEditPendingStyleRef.current;
     if (!pending) return true;
@@ -12973,6 +13015,12 @@ function HtmlViewer({
       }
       const ok = await applyManualEditBatch(patches, pending.label, parsedDoc);
       if (!ok) {
+        if (!shouldPersistManualEditSessionWrite({
+          startedEpoch,
+          currentEpoch: manualEditPersistEpochRef.current,
+        })) {
+          return true;
+        }
         manualEditPendingStyleRef.current = restoreManualEditPendingStyleAfterFailedFlush(
           manualEditPendingStyleRef.current,
           pending,
@@ -12999,6 +13047,12 @@ function HtmlViewer({
       }
       const ok = await applyManualEditBatch(patches, pending.label, parsedDoc);
       if (!ok) {
+        if (!shouldPersistManualEditSessionWrite({
+          startedEpoch,
+          currentEpoch: manualEditPersistEpochRef.current,
+        })) {
+          return true;
+        }
         manualEditPendingStyleRef.current = restoreManualEditPendingStyleAfterFailedFlush(
           manualEditPendingStyleRef.current,
           pending,
@@ -13027,6 +13081,12 @@ function HtmlViewer({
       parsedDoc,
     );
     if (!ok) {
+      if (!shouldPersistManualEditSessionWrite({
+        startedEpoch,
+        currentEpoch: manualEditPersistEpochRef.current,
+      })) {
+        return true;
+      }
       manualEditPendingStyleRef.current = restoreManualEditPendingStyleAfterFailedFlush(
         manualEditPendingStyleRef.current,
         pending,
@@ -13409,19 +13469,116 @@ function HtmlViewer({
     return true;
   }
 
+  function paintManualEditSessionSource(html: string) {
+    setSource(html);
+    sourceRef.current = html;
+    pinManualEditSavedSource(html);
+    setInlinedSource(null);
+    setManualEditFrozenSource(html);
+    capturePreviewScrollPosition();
+    queueMicrotask(() => activateManualEditPreviewHtml(html));
+    setManualEditDraft((current) => (
+      current.fullSource === html ? current : { ...current, fullSource: html }
+    ));
+  }
+
+  async function persistManualEditSessionRestore(
+    snapshot: string,
+    previousSource: string,
+  ): Promise<boolean> {
+    revisionSyncSuppressRef.current = true;
+    const truncateAfter = truncateAfterSequenceForStack(revisionStackRef.current);
+    const saved = await pushProjectFileRevision(projectId, file.name, {
+      content: snapshot,
+      source: 'manual_edit',
+      label: embedUiLabel('Discard edits', '편집 취소'),
+      truncateAfterSequence: truncateAfter,
+    });
+    if (!saved.ok) {
+      const status = 'status' in saved ? saved.status : undefined;
+      const code = 'code' in saved ? saved.code : undefined;
+      const message = 'message' in saved ? saved.message : 'Unknown save error';
+      if (status === 401) {
+        notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
+      }
+      setManualEditError(
+        isTeamverEmbedMode()
+          ? formatProjectArtifactSaveFailedError(file.name, { status, code, message })
+          : embedUiLabel(
+              `Could not discard edits${status ? ` (${status}${code ? ` ${code}` : ''})` : ''}: ${message}`,
+              '편집 취소를 저장하지 못했습니다.',
+            ),
+      );
+      return false;
+    }
+    commitRevisionStack(stackWithPushedRevision(
+      revisionStackRef.current,
+      saved.revision,
+      truncateAfter,
+    ));
+    setRevisionContentCache(projectId, file.name, saved.revision.id, snapshot);
+    cacheParentRevisionOnPush(projectId, file.name, saved.revision.parentRevisionId, previousSource);
+    revisionSkipReconcileOnceRef.current = true;
+    setActiveRevisionSequence(projectId, file.name, saved.revision.sequence);
+    emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'manual_edit');
+    setRevisionStackInvalidated(false);
+    warmRevisionListSoftCacheFromStack(
+      projectId,
+      file.name,
+      revisionStackRef.current,
+      saved.revision.sequence,
+      revisionRetentionLimit,
+    );
+    scheduleDeferredRevisionStackRefresh();
+    return true;
+  }
+
+  async function restoreManualEditSessionSnapshot(): Promise<void> {
+    await waitForManualEditSaveIdle(() => manualEditSavingRef.current);
+    const plan = planManualEditSessionCancel({
+      sessionSource: manualEditSessionEntrySourceRef.current,
+      liveSource: sourceRef.current,
+    });
+    if (!plan.restoreSource || !plan.remountPreview) return;
+    const previousSource = sourceRef.current ?? '';
+    paintManualEditSessionSource(plan.restoreSource);
+    if (!plan.writeSnapshotToDisk) return;
+    if (manualEditSavingRef.current) return;
+    manualEditSavingRef.current = true;
+    setManualEditSaving(true);
+    try {
+      await persistManualEditSessionRestore(plan.restoreSource, previousSource);
+    } finally {
+      revisionSyncSuppressRef.current = false;
+      manualEditSavingRef.current = false;
+      setManualEditSaving(false);
+    }
+  }
+
   // The inspector is scoped to one element (or the page). Closing it should
   // only collapse the panel and keep the user in edit mode — exiting edit is
-  // the toolbar toggle's job. Dismiss flushes any in-flight tweak first so
-  // nothing is lost; cancel reverts the in-flight unsaved tweak instead.
+  // the toolbar toggle's job. Save/Confirm commits the session snapshot;
+  // Cancel restores HTML from edit-mode entry (or last Confirm).
   async function dismissManualEditPanel() {
     const ok = await flushManualEditStyleSave({ force: true });
     if (!ok) return;
+    manualEditSessionEntrySourceRef.current = commitManualEditSessionEntrySource(
+      sourceRef.current ?? manualEditSessionEntrySourceRef.current,
+    );
     if (selectedManualEditTarget) void clearManualEditTargetSelection();
     else setManualEditPageStylesOpen(false);
   }
 
   function cancelManualEditPanel() {
+    // Invalidate in-flight blur persist before iframe focusout can finish POST.
+    manualEditPersistEpochRef.current = beginManualEditPersistEpoch(
+      manualEditPersistEpochRef.current,
+    );
+    inlineTextCancelledGenerationRef.current = inlineTextEditGenerationRef.current;
+    inlineTextPendingCommitGenerationRef.current = null;
+    postManualEditInlineTextCancel();
     abortInProgressInlineTextEdit();
+    void restoreManualEditSessionSnapshot();
     if (selectedManualEditTarget) {
       void clearManualEditTargetSelection({ discardPendingStyles: true });
     } else {
@@ -13463,6 +13620,7 @@ function HtmlViewer({
     sharedParsedDoc?: Document | null,
   ): Promise<boolean> {
     if (manualEditSavingRef.current) return false;
+    const startedEpoch = manualEditPersistEpochRef.current;
     const baseSource = manualEditPatchBaseSource({
       manualEditMode,
       frozenSource: manualEditFrozenSource,
@@ -13471,6 +13629,12 @@ function HtmlViewer({
     if (baseSource == null) return false;
     if (revisionDiskSyncPromiseRef.current) {
       await revisionDiskSyncPromiseRef.current;
+    }
+    if (!shouldPersistManualEditSessionWrite({
+      startedEpoch,
+      currentEpoch: manualEditPersistEpochRef.current,
+    })) {
+      return false;
     }
     manualEditSavingRef.current = true;
     setManualEditSaving(true);
@@ -13526,6 +13690,12 @@ function HtmlViewer({
             ),
           ))
         ) return false;
+      }
+      if (!shouldPersistManualEditSessionWrite({
+        startedEpoch,
+        currentEpoch: manualEditPersistEpochRef.current,
+      })) {
+        return false;
       }
       revisionSyncSuppressRef.current = true;
       // Do not echo `file.artifactManifest` on manual-edit pushes. Style/text
@@ -13751,6 +13921,7 @@ function HtmlViewer({
       return applyManualEdit(patches[0]!, label, undefined, undefined, sharedParsedDoc);
     }
     if (manualEditSavingRef.current) return false;
+    const startedEpoch = manualEditPersistEpochRef.current;
     const baseSource = manualEditPatchBaseSource({
       manualEditMode,
       frozenSource: manualEditFrozenSource,
@@ -13759,6 +13930,12 @@ function HtmlViewer({
     if (baseSource == null) return false;
     if (revisionDiskSyncPromiseRef.current) {
       await revisionDiskSyncPromiseRef.current;
+    }
+    if (!shouldPersistManualEditSessionWrite({
+      startedEpoch,
+      currentEpoch: manualEditPersistEpochRef.current,
+    })) {
+      return false;
     }
     manualEditSavingRef.current = true;
     setManualEditSaving(true);
@@ -13804,6 +13981,12 @@ function HtmlViewer({
             ),
           ))
         ) return false;
+      }
+      if (!shouldPersistManualEditSessionWrite({
+        startedEpoch,
+        currentEpoch: manualEditPersistEpochRef.current,
+      })) {
+        return false;
       }
       revisionSyncSuppressRef.current = true;
       const truncateAfter = truncateAfterSequenceForStack(revisionStackRef.current);

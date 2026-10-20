@@ -91,3 +91,61 @@ export function shouldSuppressHostDeckKeyboardNav(input: {
 }): boolean {
   return input.manualEditMode || input.inlineTextEditing;
 }
+
+/**
+ * Session Cancel snapshot. Freeze (`manualEditFrozenSource`) remounts on
+ * set-text, so it cannot restore the deck. Capture once at edit-mode entry
+ * (or last Confirm/Save) and never overwrite with later dirty live HTML.
+ */
+export function captureManualEditSessionEntrySource(
+  existing: string | null,
+  liveSource: string | null,
+): string | null {
+  return existing ?? liveSource;
+}
+
+/** Confirm/Save commits the current buffer so a later Cancel restores here. */
+export function commitManualEditSessionEntrySource(liveSource: string | null): string | null {
+  return liveSource;
+}
+
+export function beginManualEditPersistEpoch(current: number): number {
+  return current + 1;
+}
+
+/**
+ * Blur persist can already be in-flight when Cancel mousedown runs.
+ * Writes that started before the cancel epoch must not hit disk.
+ */
+export function shouldPersistManualEditSessionWrite(input: {
+  startedEpoch: number;
+  currentEpoch: number;
+}): boolean {
+  return input.startedEpoch === input.currentEpoch;
+}
+
+export type ManualEditSessionCancelPlan = {
+  restoreSource: string | null;
+  writeSnapshotToDisk: boolean;
+  remountPreview: boolean;
+};
+
+/**
+ * Cancel discards every in-session direct edit.
+ * - dirty live (blur already persisted A then B) → write the entry snapshot
+ * - live still matches (persist skipped) → remount iframe only, no dirty write
+ * - emptied persist → snapshot still has the node, write it back
+ */
+export function planManualEditSessionCancel(input: {
+  sessionSource: string | null;
+  liveSource: string | null;
+}): ManualEditSessionCancelPlan {
+  if (input.sessionSource == null) {
+    return { restoreSource: null, writeSnapshotToDisk: false, remountPreview: false };
+  }
+  return {
+    restoreSource: input.sessionSource,
+    writeSnapshotToDisk: input.liveSource !== input.sessionSource,
+    remountPreview: true,
+  };
+}

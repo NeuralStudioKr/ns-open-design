@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  beginManualEditPersistEpoch,
+  captureManualEditSessionEntrySource,
+  commitManualEditSessionEntrySource,
   manualEditPatchBaseSource,
+  planManualEditSessionCancel,
   shouldHoldDiskPreviewDuringManualEdit,
+  shouldPersistManualEditSessionWrite,
   shouldSkipManualEditHistoryConfirm,
   shouldSuppressHostDeckKeyboardNav,
 } from '../../src/edit-mode/manual-edit-session';
@@ -78,5 +83,75 @@ describe('manual edit session', () => {
     expect(shouldSuppressHostDeckKeyboardNav({ manualEditMode: true, inlineTextEditing: false })).toBe(true);
     expect(shouldSuppressHostDeckKeyboardNav({ manualEditMode: false, inlineTextEditing: true })).toBe(true);
     expect(shouldSuppressHostDeckKeyboardNav({ manualEditMode: false, inlineTextEditing: false })).toBe(false);
+  });
+});
+
+describe('manual edit session cancel snapshot', () => {
+  it('captures HTML once at entry and ignores later dirty live source', () => {
+    const original = '<h1>Original title</h1><p>Keep me</p>';
+    expect(captureManualEditSessionEntrySource(null, original)).toBe(original);
+    expect(captureManualEditSessionEntrySource(original, '<h1>Typed</h1><p>Keep me</p>')).toBe(original);
+  });
+
+  it('commits Confirm/Save as the next Cancel baseline', () => {
+    expect(commitManualEditSessionEntrySource('<h1>Saved</h1>')).toBe('<h1>Saved</h1>');
+  });
+
+  it('drops blur-then-cancel writes that started before the cancel epoch', () => {
+    const started = 3;
+    const cancelled = beginManualEditPersistEpoch(started);
+    expect(shouldPersistManualEditSessionWrite({
+      startedEpoch: started,
+      currentEpoch: cancelled,
+    })).toBe(false);
+    expect(shouldPersistManualEditSessionWrite({
+      startedEpoch: cancelled,
+      currentEpoch: cancelled,
+    })).toBe(true);
+  });
+
+  it('restores every in-session element, not only the last editor', () => {
+    const sessionSource = '<h1>Original title</h1><p>Keep me</p>';
+    const liveSource = '<h1>Changed title</h1><p>Changed body</p>';
+    expect(planManualEditSessionCancel({ sessionSource, liveSource })).toEqual({
+      restoreSource: sessionSource,
+      writeSnapshotToDisk: true,
+      remountPreview: true,
+    });
+  });
+
+  it('remounts the iframe after a skipped persist so Cancel does not write dirty HTML', () => {
+    const sessionSource = '<p>Keep me</p>';
+    expect(planManualEditSessionCancel({
+      sessionSource,
+      liveSource: sessionSource,
+    })).toEqual({
+      restoreSource: sessionSource,
+      writeSnapshotToDisk: false,
+      remountPreview: true,
+    });
+  });
+
+  it('writes the entry snapshot back when empty persist deleted the node text', () => {
+    const sessionSource = '<p data-od-id="chip">Keep me</p>';
+    expect(planManualEditSessionCancel({
+      sessionSource,
+      liveSource: '<p data-od-id="chip"></p>',
+    })).toEqual({
+      restoreSource: sessionSource,
+      writeSnapshotToDisk: true,
+      remountPreview: true,
+    });
+  });
+
+  it('is a no-op when edit mode never captured a snapshot', () => {
+    expect(planManualEditSessionCancel({
+      sessionSource: null,
+      liveSource: '<p>Draft</p>',
+    })).toEqual({
+      restoreSource: null,
+      writeSnapshotToDisk: false,
+      remountPreview: false,
+    });
   });
 });
