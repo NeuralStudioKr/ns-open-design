@@ -7,6 +7,7 @@ import {
   inferSlideIndexFromDeckHtml,
   mergeCommentEditIncomingIntoPrior,
   mergeScopedCommentTargetsFromPatchedDeck,
+  alignShortCommentIncomingToPriorDeck,
   resolveCommentEditTargetSlideIndexes,
   reconcileCommentAttachmentElementId,
   reconcileCommentAttachmentSlideIndex,
@@ -2077,5 +2078,336 @@ describe('1007-N01 Z selected-element color never paints slide paper', () => {
     const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
     expectChipFillRed(slides[1]?.outerHtml ?? '');
     expectSlidePaperCream(slides[1]?.outerHtml ?? '', slides[1]?.openTag ?? '');
+  });
+});
+
+describe('1007-N01 AA card title color and 1-slide identity stamp', () => {
+  const CREAM = '#f4efe4';
+  const DOTS =
+    `background-image:radial-gradient(circle, #111 1.2px, transparent 1.2px);`
+    + 'background-size:18px 18px';
+
+  function cardWithTitleDeck(): string {
+    return [
+      '<!doctype html><html lang="ko"><head><style>:root{--paper:#f4efe4}</style></head><body>',
+      `<section class="slide" data-slide-index="0" style="--paper:${CREAM}"><h2>표지</h2></section>`,
+      `<section class="slide" data-slide-index="1" style="--paper:${CREAM};background-color:${CREAM}">`,
+      '<div class="card" data-od-id="card-box" style="background:#ffffff;padding:24px">',
+      '<h2 data-od-id="card-title">카드 제목</h2>',
+      '<p data-od-id="card-body">카드 본문입니다.</p>',
+      '</div>',
+      '</section>',
+      ...Array.from({ length: 6 }, (_, i) =>
+        `<section class="slide" data-slide-index="${i + 2}" style="--paper:${CREAM}">`
+        + `<h2>슬라이드 ${i + 3}</h2><p>본문입니다.</p></section>`,
+      ),
+      '</body></html>',
+    ].join('');
+  }
+
+  function creamDotsDeck(): string {
+    return [
+      '<!doctype html><html lang="ko"><head><style>:root{--paper:#f4efe4}</style></head><body>',
+      `<section class="slide" data-slide-index="0" style="--paper:${CREAM}"><h1>표지 타이틀</h1></section>`,
+      `<section class="slide" data-slide-index="1" style="--paper:${CREAM};background-color:${CREAM};${DOTS}">`,
+      '<h2 data-od-id="page2-title">지금 팀의 일은 너무 많이 흩어져 있습니다.</h2>',
+      '<p data-od-id="page2-body">대화는 메신저에, 문서는 노션에</p>',
+      '<div class="card">SLACK 대화</div><div class="card">NOTION 문서</div>',
+      '<div style="position:relative;display:flex;align-items:center;gap:24px">',
+      '<div>→</div>',
+      '<div data-od-id="chip-teamver" data-od-edit-id="chip-teamver" style="background:#99E885;font-size:32px;font-weight:800">',
+      '<span data-od-id="chip-text">Teamver</span>',
+      '</div>',
+      '</div>',
+      '</section>',
+      ...Array.from({ length: 5 }, (_, i) =>
+        `<section class="slide" data-slide-index="${i + 2}" style="--paper:${CREAM}">`
+        + `<h2>슬라이드 ${i + 3}</h2><p>본문입니다.</p></section>`,
+      ),
+      `<section class="slide" data-slide-index="7" style="--paper:${CREAM}">`,
+      '<h2>Closing</h2><span>© teamver</span></section>',
+      '</body></html>',
+    ].join('');
+  }
+
+  function titleComment(comment: string): ChatCommentAttachment {
+    return {
+      id: 'c-card-title',
+      order: 1,
+      filePath: 'deck.html',
+      elementId: 'card-title',
+      selector: '[data-od-id="card-title"]',
+      label: 'h2',
+      comment,
+      currentText: '카드 제목',
+      htmlHint: '<h2 data-od-id="card-title">카드 제목</h2>',
+      pagePosition: { x: 0, y: 0, width: 10, height: 10 },
+      selectionKind: 'element',
+      slideIndex: 1,
+    };
+  }
+
+  function chipTextComment(comment: string): ChatCommentAttachment {
+    return {
+      id: 'c-chip-text',
+      order: 1,
+      filePath: 'deck.html',
+      elementId: 'chip-text',
+      selector: '[data-od-id="chip-text"]',
+      label: 'span',
+      comment,
+      currentText: 'Teamver',
+      htmlHint: '<span data-od-id="chip-text">Teamver</span>',
+      pagePosition: { x: 0, y: 0, width: 10, height: 10 },
+      selectionKind: 'element',
+      slideIndex: 1,
+    };
+  }
+
+  function chipBoxComment(comment: string): ChatCommentAttachment {
+    return {
+      id: 'c-chip-box',
+      order: 1,
+      filePath: 'deck.html',
+      elementId: 'chip-teamver',
+      selector: '[data-od-id="chip-teamver"]',
+      label: 'div',
+      comment,
+      currentText: 'Teamver',
+      htmlHint: '<div data-od-id="chip-teamver" style="background:#99E885">Teamver</div>',
+      pagePosition: { x: 0, y: 0, width: 10, height: 10 },
+      selectionKind: 'element',
+      slideIndex: 1,
+    };
+  }
+
+  function deletePage2Comment(): ChatCommentAttachment {
+    return {
+      id: 'c-delete-p2',
+      order: 1,
+      filePath: 'deck.html',
+      elementId: 'pin-slide-1',
+      selector: 'section.slide',
+      label: 'section',
+      comment: '지워줘',
+      currentText: '',
+      htmlHint: '',
+      pagePosition: { x: 0, y: 0, width: 10, height: 10 },
+      selectionKind: 'element',
+      slideIndex: 1,
+    };
+  }
+
+  function fontComment(): ChatCommentAttachment {
+    return {
+      id: 'c-font-aa',
+      order: 1,
+      filePath: 'deck.html',
+      elementId: 'card-title',
+      selector: '[data-od-id="card-title"]',
+      label: 'h2',
+      comment: '폰트를 두배 키우자',
+      currentText: '카드 제목',
+      htmlHint: '<h2 data-od-id="card-title">카드 제목</h2>',
+      pagePosition: { x: 0, y: 0, width: 10, height: 10 },
+      selectionKind: 'element',
+      slideIndex: 1,
+    };
+  }
+
+  function cardHtml(slideHtml: string): string | null {
+    return slideHtml.match(/<div[^>]*data-od-id="card-box"[^>]*>[\s\S]*?<\/div>/i)?.[0] ?? null;
+  }
+
+  function titleHtml(slideHtml: string): string | null {
+    return slideHtml.match(/<h2[^>]*data-od-id="card-title"[^>]*>[\s\S]*?<\/h2>/i)?.[0] ?? null;
+  }
+
+  function chipBoxHtml(slideHtml: string): string | null {
+    return slideHtml.match(/<div[^>]*data-od-id="chip-teamver"[^>]*>[\s\S]*?<\/div>/i)?.[0] ?? null;
+  }
+
+  it('selected h2 inside a filled card 빨간색으로 paints title color, not the card', () => {
+    const result = graftLocalCommentStyleOntoPrior({
+      priorHtml: cardWithTitleDeck(),
+      commentAttachments: [titleComment('빨간색으로')],
+      instructionText: '빨간색으로',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.kind).toBe('text-color');
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(slides).toHaveLength(8);
+    expect(titleHtml(slides[1]?.outerHtml ?? '')).toMatch(/color:\s*#dc2626/i);
+    expect(cardHtml(slides[1]?.outerHtml ?? '')).toMatch(/background:\s*#ffffff/i);
+    expect(cardHtml(slides[1]?.outerHtml ?? '')).not.toMatch(/background(?:-color)?:\s*#dc2626/i);
+    expect(slides[1]?.openTag).not.toMatch(/--paper:\s*#dc2626/i);
+    expect(slides[1]?.outerHtml).toContain('카드 본문입니다.');
+  });
+
+  it('selected h2 inside a filled card 배경색을 빨간색으로 fills the title node, not the card', () => {
+    const result = graftLocalCommentStyleOntoPrior({
+      priorHtml: cardWithTitleDeck(),
+      commentAttachments: [titleComment('배경색을 빨간색으로')],
+      instructionText: '배경색을 빨간색으로',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.kind).toBe('chip-fill');
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(titleHtml(slides[1]?.outerHtml ?? '')).toMatch(/background(?:-color)?:\s*#dc2626/i);
+    expect(cardHtml(slides[1]?.outerHtml ?? '')).toMatch(/background:\s*#ffffff/i);
+    expect(slides[1]?.openTag).not.toMatch(/--paper:\s*#dc2626/i);
+  });
+
+  it('chip-inside-text 빨간색으로 still fills the Teamver chip, not a parent card', () => {
+    const result = graftLocalCommentStyleOntoPrior({
+      priorHtml: creamDotsDeck(),
+      commentAttachments: [chipTextComment('빨간색으로')],
+      instructionText: '빨간색으로',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.kind).toBe('chip-fill');
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    const chip = chipBoxHtml(slides[1]?.outerHtml ?? '');
+    expect(chip).toMatch(/background(?:-color)?:\s*#dc2626/i);
+    expect(chip).not.toMatch(/background(?:-color)?:\s*#99E885/i);
+    expect(chip).toContain('Teamver');
+    expect(slides[1]?.openTag).toMatch(/--paper:\s*#f4efe4/i);
+    expect(slides[1]?.outerHtml).toMatch(/radial-gradient/i);
+    expect(slides[1]?.outerHtml).toContain('지금 팀의 일은 너무 많이 흩어져 있습니다.');
+  });
+
+  it('Z regression: selected Teamver chip 빨간색으로 / 배경색을 still fills chip; slide-level paints paper', () => {
+    const chipRed = graftLocalCommentStyleOntoPrior({
+      priorHtml: creamDotsDeck(),
+      commentAttachments: [chipBoxComment('빨간색으로')],
+      instructionText: '빨간색으로',
+    });
+    expect(chipRed.ok, JSON.stringify(chipRed)).toBe(true);
+    if (!chipRed.ok) return;
+    expect(chipRed.kind).toBe('chip-fill');
+    const chipSlides = extractTopLevelSlideSections(extractDeckBodyContent(chipRed.html));
+    expect(chipBoxHtml(chipSlides[1]?.outerHtml ?? '')).toMatch(/background(?:-color)?:\s*#dc2626/i);
+    expect(chipSlides[1]?.openTag).toMatch(/--paper:\s*#f4efe4/i);
+    expect(chipSlides[1]?.outerHtml).toMatch(/radial-gradient/i);
+
+    const chipBg = graftLocalCommentStyleOntoPrior({
+      priorHtml: creamDotsDeck(),
+      commentAttachments: [chipBoxComment('배경색을 빨간색으로')],
+      instructionText: '배경색을 빨간색으로',
+    });
+    expect(chipBg.ok, JSON.stringify(chipBg)).toBe(true);
+    if (!chipBg.ok) return;
+    const bgSlides = extractTopLevelSlideSections(extractDeckBodyContent(chipBg.html));
+    expect(chipBoxHtml(bgSlides[1]?.outerHtml ?? '')).toMatch(/background(?:-color)?:\s*#dc2626/i);
+    expect(bgSlides[1]?.openTag).toMatch(/--paper:\s*#f4efe4/i);
+
+    const slidePin: ChatCommentAttachment = {
+      ...chipBoxComment('배경색을 빨간색으로'),
+      id: 'c-slide-paper',
+      elementId: 'pin-slide-1',
+      selector: 'section.slide',
+      htmlHint: '',
+      currentText: '',
+    };
+    const paper = graftLocalCommentStyleOntoPrior({
+      priorHtml: creamDotsDeck(),
+      commentAttachments: [slidePin],
+      instructionText: '배경색을 빨간색으로',
+    });
+    expect(paper.ok, JSON.stringify(paper)).toBe(true);
+    if (!paper.ok) return;
+    expect(paper.kind).toBe('background');
+    const paperSlides = extractTopLevelSlideSections(extractDeckBodyContent(paper.html));
+    expect(paperSlides[1]?.openTag).toMatch(/--paper:\s*#dc2626/i);
+    expect(chipBoxHtml(paperSlides[1]?.outerHtml ?? '')).toMatch(/background:\s*#99E885/i);
+  });
+
+  it('2페이지 지워줘 + cover-only incoming keeps page 2 and does not stamp the cover', () => {
+    const incoming =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide s-cover" data-slide-index="0">'
+      + '<h1>표지 타이틀</h1><p>한 줄 표지.</p>'
+      + '</section></body></html>';
+    const result = mergeCommentEditIncomingIntoPrior({
+      priorHtml: creamDotsDeck(),
+      incomingHtml: incoming,
+      commentAttachments: [deletePage2Comment()],
+      instructionText: '2페이지 지워줘',
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe('comment 1-slide incoming did not match pinned slide');
+
+    const aligned = alignShortCommentIncomingToPriorDeck({
+      priorHtml: creamDotsDeck(),
+      incomingHtml: incoming,
+      commentAttachments: [deletePage2Comment()],
+    });
+    expect(aligned).toBe(incoming);
+    const priorSlides = extractTopLevelSlideSections(extractDeckBodyContent(creamDotsDeck()));
+    expect(priorSlides).toHaveLength(8);
+    expect(priorSlides[1]?.outerHtml).toContain('지금 팀의 일은 너무 많이 흩어져 있습니다.');
+    expect(priorSlides[1]?.outerHtml).not.toContain('s-cover');
+    expect(shouldSurfaceEmptyApiResponseChatError({
+      commentScoped: true,
+      localStyleGraftSucceeded: false,
+    })).toBe(true);
+  });
+
+  it('identity-matching 1-slide incoming still replaces the pinned slide', () => {
+    const incoming =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide">'
+      + '<h2 data-od-id="page2-title">지금 팀의 일은 너무 많이 흩어져 있습니다.</h2>'
+      + '<p data-od-id="page2-body">로컬 삭제는 없지만 같은 장이다.</p>'
+      + '</section></body></html>';
+    const result = mergeCommentEditIncomingIntoPrior({
+      priorHtml: creamDotsDeck(),
+      incomingHtml: incoming,
+      commentAttachments: [deletePage2Comment()],
+      instructionText: '2페이지 지워줘',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.merged).toBe(true);
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(slides).toHaveLength(8);
+    expect(slides[1]?.outerHtml).toContain('로컬 삭제는 없지만 같은 장이다.');
+    expect(slides[1]?.outerHtml).toContain('지금 팀의 일은 너무 많이 흩어져 있습니다.');
+    expect(slides[1]?.openTag).not.toMatch(/\bs-cover\b/i);
+    expect(slides[0]?.outerHtml).toContain('표지 타이틀');
+    expect(slides[2]?.outerHtml).toContain('슬라이드 3');
+  });
+
+  it('X font×2 still doubles pinned title+body only', () => {
+    const prior = [
+      '<!doctype html><html lang="ko"><body>',
+      ...Array.from({ length: 8 }, (_, i) =>
+        `<section class="slide" data-slide-index="${i}">`
+        + `<p class="kicker" style="font-size:12px">KICKER ${i + 1}</p>`
+        + `<h2 style="font-size:32px">슬라이드 ${i + 1}</h2>`
+        + `<p style="font-size:16px">본문입니다.</p>`
+        + '</section>',
+      ),
+      '</body></html>',
+    ].join('');
+    const result = graftLocalCommentStyleOntoPrior({
+      priorHtml: prior,
+      commentAttachments: [{ ...fontComment(), slideIndex: 2, currentText: '슬라이드 3' }],
+      instructionText: '폰트를 두배 키우자',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.kind).toBe('font-scale');
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(slides).toHaveLength(8);
+    expect(slides[2]?.outerHtml).toMatch(/font-size:\s*64px/i);
+    expect(slides[2]?.outerHtml).toMatch(/font-size:\s*32px/i);
+    expect(slides[2]?.outerHtml).toMatch(/font-size:\s*12px/i);
+    expect(slides[0]?.outerHtml).toMatch(/font-size:\s*32px/i);
+    expect(slides[0]?.outerHtml).not.toMatch(/font-size:\s*64px/i);
   });
 });

@@ -1503,8 +1503,42 @@ function readElementFillColor(el: Element): string | null {
   return bg;
 }
 
+/** Fill presence only. `matchElementByHtmlHint` prefers filled last-match via this. */
 function isFilledChipBox(el: Element): boolean {
   return Boolean(readElementFillColor(el));
+}
+
+function isCommentStyleHeadingOrBodyNode(el: Element): boolean {
+  try {
+    return el.matches(COMMENT_STYLE_CONTENT_SELECTOR);
+  } catch {
+    return false;
+  }
+}
+
+/** Filled `.card` / grid / cluster that already hosts heading or body copy. */
+function isLargeFilledCardOrSection(el: Element): boolean {
+  const tokens = [...el.classList].map((token) => token.toLowerCase());
+  const looksLikeCardOrCluster = tokens.some((token) => (
+    token === 'card'
+    || token === 'grid'
+    || token === 'cluster'
+    || token === 'od-body-fill-cluster'
+    || /(?:^|-)card$/.test(token)
+  ));
+  if (!looksLikeCardOrCluster) return false;
+  return Boolean(el.querySelector(COMMENT_STYLE_CONTENT_SELECTOR));
+}
+
+/**
+ * Climb-only chip detector. Do not reuse as `isFilledChipBox` — hint matching
+ * still needs any inline fill, including large cards.
+ */
+function isChipLikeFilledBox(el: Element, section: Element): boolean {
+  if (!isFilledChipBox(el) || isSlideSurfaceElement(el, section)) return false;
+  if (isCommentStyleHeadingOrBodyNode(el)) return false;
+  if (isLargeFilledCardOrSection(el)) return false;
+  return !el.querySelector(COMMENT_STYLE_CONTENT_SELECTOR);
 }
 
 /** Prefer the filled chip that still reads as exact `Teamver`, not a sentence wrap. */
@@ -1651,9 +1685,11 @@ function resolveFilledChipAncestor(el: Element, section: Element): Element | nul
     const named = resolveFilledChipTarget(el, section, token);
     if (named) return named;
   }
+  // Selected title/body inside a filled card must paint that node, not climb.
+  if (isCommentStyleHeadingOrBodyNode(el)) return null;
   let node: Element | null = el;
   while (node && node !== section) {
-    if (isFilledChipBox(node) && !isSlideSurfaceElement(node, section)) return node;
+    if (isChipLikeFilledBox(node, section)) return node;
     node = node.parentElement;
   }
   return null;
@@ -2075,6 +2111,75 @@ export function resolveCommentEditTargetSlideIndexes(input: {
   return [0];
 }
 
+const COMMENT_SLIDE_IDENTITY_ID_RE =
+  /\bdata-od-(?:id|edit-id)\s*=\s*(?:"([^"]+)"|'([^']+)')/gi;
+
+function collectCommentSlideIdentityIds(html: string): Set<string> {
+  const ids = new Set<string>();
+  const re = new RegExp(COMMENT_SLIDE_IDENTITY_ID_RE.source, 'gi');
+  let match: RegExpExecArray | null = re.exec(html);
+  while (match) {
+    const id = (match[1] ?? match[2] ?? '').trim();
+    if (
+      id
+      && !id.startsWith('pin-')
+      && !id.startsWith('file-comment-')
+      && !id.startsWith('visual-mark-')
+    ) {
+      ids.add(id);
+    }
+    match = re.exec(html);
+  }
+  return ids;
+}
+
+function classTokensFromSlideOpenTag(openTag: string): string[] {
+  const match = openTag.match(/\bclass\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+  return (match?.[1] ?? match?.[2] ?? '').trim().split(/\s+/).filter(Boolean);
+}
+
+function looksLikeCoverSlideFingerprint(slide: { openTag: string; outerHtml: string }): boolean {
+  const tokens = classTokensFromSlideOpenTag(slide.openTag).map((token) => token.toLowerCase());
+  if (tokens.includes('s-cover') || tokens.includes('cover')) return true;
+  return /<section\b[^>]*\bclass\s*=\s*["'][^"']*\b(?:s-cover|cover)\b/i.test(slide.outerHtml);
+}
+
+function firstCommentSlideHeadingText(outerHtml: string): string {
+  const doc = parseManualEditSource(`<!doctype html><html><body>${outerHtml}</body></html>`);
+  const section = doc?.querySelector('section') ?? doc?.body.firstElementChild;
+  if (!section) return '';
+  const heading = section.querySelector('.title, h1, h2');
+  return normalizeCommentTargetText(heading?.textContent || '');
+}
+
+/**
+ * 1007-N01 AA — 1-slide MiniMax HTML may stamp onto the pinned index only when
+ * it is the same slide (od-id / distinctive heading). Cover fingerprints must
+ * not replace a non-cover pin. `data-slide-index=0` on a 1-section draft is
+ * not identity.
+ */
+function incomingCommentSlideIdentityMatchesPrior(
+  incoming: { openTag: string; outerHtml: string },
+  priorPinned: { openTag: string; outerHtml: string },
+  pinIndex: number,
+  priorSlides: readonly { openTag: string; outerHtml: string }[],
+): boolean {
+  if (pinIndex !== 0 && looksLikeCoverSlideFingerprint(incoming)) return false;
+  const incomingIds = collectCommentSlideIdentityIds(incoming.outerHtml);
+  const priorIds = collectCommentSlideIdentityIds(priorPinned.outerHtml);
+  for (const id of incomingIds) {
+    if (priorIds.has(id)) return true;
+  }
+  const incomingHeading = firstCommentSlideHeadingText(incoming.outerHtml);
+  const priorHeading = firstCommentSlideHeadingText(priorPinned.outerHtml);
+  if (!incomingHeading || incomingHeading !== priorHeading) return false;
+  const headingMatches = priorSlides.filter((slide) => (
+    firstCommentSlideHeadingText(slide.outerHtml) === incomingHeading
+  ));
+  // Shared title with the cover (or any other slide) is fail-closed.
+  return headingMatches.length === 1;
+}
+
 /**
  * MiniMax often returns only the edited slide (index 0 in a 1-section
  * document). Expand that onto the prior deck at the pinned slide index so
@@ -2098,6 +2203,22 @@ export function alignShortCommentIncomingToPriorDeck(input: {
     priorSlides,
   });
   if (targets.length === 0) return input.incomingHtml;
+  if (incomingSlides.length === 1) {
+    const pinIndex = targets[0];
+    const priorPinned = pinIndex != null ? priorSlides[pinIndex] : undefined;
+    if (
+      pinIndex == null
+      || !priorPinned
+      || !incomingCommentSlideIdentityMatchesPrior(
+        incomingSlides[0]!,
+        priorPinned,
+        pinIndex,
+        priorSlides,
+      )
+    ) {
+      return input.incomingHtml;
+    }
+  }
   const ops: Array<{ op: 'replace'; slideIndex: number; html: string }> = [];
   // Only write pinned targets. A 3-slide short draft must not spray onto
   // neighbors via targets[0]+offset.
@@ -2235,6 +2356,28 @@ export function mergeCommentEditIncomingIntoPrior(input: {
 
   if (incomingSlides.length >= priorSlides.length) {
     return { ok: true, html: input.incomingHtml, merged: false };
+  }
+
+  // 1007-N01 AA — Fail before mergeScoped/visual swap can stamp a 1-slide
+  // cover onto a non-matching pin (e.g. 2페이지 지워줘).
+  if (incomingSlides.length === 1) {
+    const pinIndex = targets[0];
+    const priorPinned = pinIndex != null ? priorSlides[pinIndex] : undefined;
+    if (
+      pinIndex == null
+      || !priorPinned
+      || !incomingCommentSlideIdentityMatchesPrior(
+        incomingSlides[0]!,
+        priorPinned,
+        pinIndex,
+        priorSlides,
+      )
+    ) {
+      return {
+        ok: false,
+        reason: 'comment 1-slide incoming did not match pinned slide',
+      };
+    }
   }
 
   const scoped = mergeScopedCommentTargetsFromPatchedDeck({

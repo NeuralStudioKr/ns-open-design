@@ -20,6 +20,7 @@ import {
 } from '../src/artifacts/deck-patch';
 import {
   graftLocalCommentStyleOntoPrior,
+  mergeCommentEditIncomingIntoPrior,
   shouldSurfaceEmptyApiResponseChatError,
 } from '../src/edit-mode/scoped-deck-patch';
 import type { ChatCommentAttachment } from '../src/types';
@@ -560,5 +561,131 @@ describe('shouldFailRunForArtifactPersistResult', () => {
       kind: 'persisted',
       fileName: 'deck.html',
     }, { scopedCommentEdit: true })).toBe(false);
+  });
+
+  it('1007-N01 AA · 2페이지 지워줘 + cover-only keeps prior, not artifact_regression', () => {
+    const prior = [
+      '<!doctype html><html lang="ko"><body>',
+      '<section class="slide" data-slide-index="0"><h1>표지 타이틀</h1></section>',
+      '<section class="slide" data-slide-index="1">',
+      '<h2 data-od-id="page2-title">지금 팀의 일은 너무 많이 흩어져 있습니다.</h2>',
+      '<p>대화는 메신저에</p>',
+      '</section>',
+      ...Array.from({ length: 6 }, (_, i) =>
+        `<section class="slide" data-slide-index="${i + 2}"><h2>슬라이드 ${i + 3}</h2>`
+        + `<p>${'본문입니다. '.repeat(8)}</p></section>`,
+      ),
+      '</body></html>',
+    ].join('');
+    const coverOnly =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide s-cover" data-slide-index="0"><h1>표지 타이틀</h1><p>한 줄 표지.</p></section>'
+      + '</body></html>';
+    const comment: ChatCommentAttachment = {
+      id: 'c-delete-p2',
+      order: 1,
+      filePath: 'deck.html',
+      elementId: 'pin-slide-1',
+      selector: 'section.slide',
+      label: 'section',
+      comment: '지워줘',
+      currentText: '',
+      pagePosition: { x: 0, y: 0, width: 10, height: 10 },
+      selectionKind: 'element',
+      slideIndex: 1,
+    };
+    const merged = mergeCommentEditIncomingIntoPrior({
+      priorHtml: prior,
+      incomingHtml: coverOnly,
+      commentAttachments: [comment],
+      instructionText: '2페이지 지워줘',
+    });
+    expect(merged.ok).toBe(false);
+    const htmlBody = coverOnly;
+    const gate = findClientSlideCountRegression({
+      fileName: 'deck.html',
+      htmlBody,
+      priorHtml: prior,
+      strict: true,
+    });
+    expect(gate).toMatchObject({
+      priorCount: 8,
+      newCount: 1,
+      severity: 'reject',
+    });
+    const persist = classifySlideCountRegressionPersist({
+      severity: gate!.severity,
+      strict: true,
+      commentScoped: true,
+      continueFillOrRewriteTurn: false,
+      incomingCoverOnlyOrThin: true,
+      stillShort: false,
+    });
+    expect(persist.kind).not.toBe('artifact-regression');
+    expect(persist).toEqual({
+      kind: 'skipped-noop',
+      reason: SLIDE_COUNT_REGRESSION_KEEP_PRIOR_REASON,
+    });
+    expect(shouldFailRunForArtifactPersistResult({
+      kind: 'skipped-noop',
+      fileName: 'deck.html',
+      reason: persist.reason,
+    }, { scopedCommentEdit: true })).toBe(false);
+    const kept = extractTopLevelSlideSections(extractDeckBodyContent(prior));
+    expect(kept).toHaveLength(8);
+    expect(kept[1]?.outerHtml).toContain('지금 팀의 일은 너무 많이 흩어져 있습니다.');
+    expect(kept[1]?.outerHtml).not.toMatch(/\bs-cover\b/i);
+  });
+
+  it('1007-N01 AA · identity-matching 1-slide comment still merges onto the pin', () => {
+    const prior = [
+      '<!doctype html><html lang="ko"><body>',
+      '<section class="slide" data-slide-index="0"><h1>표지 타이틀</h1></section>',
+      '<section class="slide" data-slide-index="1">',
+      '<h2 data-od-id="page2-title">지금 팀의 일은 너무 많이 흩어져 있습니다.</h2>',
+      '<p data-od-id="page2-body">대화는 메신저에</p>',
+      '</section>',
+      ...Array.from({ length: 6 }, (_, i) =>
+        `<section class="slide" data-slide-index="${i + 2}"><h2>슬라이드 ${i + 3}</h2>`
+        + `<p>${'본문입니다. '.repeat(8)}</p></section>`,
+      ),
+      '</body></html>',
+    ].join('');
+    const incoming =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide">'
+      + '<h2 data-od-id="page2-title">지금 팀의 일은 너무 많이 흩어져 있습니다.</h2>'
+      + '<p data-od-id="page2-body">같은 장 수정본</p>'
+      + '</section></body></html>';
+    const comment: ChatCommentAttachment = {
+      id: 'c-edit-p2',
+      order: 1,
+      filePath: 'deck.html',
+      elementId: 'pin-slide-1',
+      selector: 'section.slide',
+      label: 'section',
+      comment: '지워줘',
+      currentText: '',
+      pagePosition: { x: 0, y: 0, width: 10, height: 10 },
+      selectionKind: 'element',
+      slideIndex: 1,
+    };
+    const merged = mergeCommentEditIncomingIntoPrior({
+      priorHtml: prior,
+      incomingHtml: incoming,
+      commentAttachments: [comment],
+      instructionText: '2페이지 지워줘',
+    });
+    expect(merged.ok, JSON.stringify(merged)).toBe(true);
+    if (!merged.ok) return;
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(merged.html));
+    expect(slides).toHaveLength(8);
+    expect(slides[1]?.outerHtml).toContain('같은 장 수정본');
+    expect(findClientSlideCountRegression({
+      fileName: 'deck.html',
+      htmlBody: merged.html,
+      priorHtml: prior,
+      strict: true,
+    })).toBeNull();
   });
 });
