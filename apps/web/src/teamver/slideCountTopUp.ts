@@ -415,6 +415,10 @@ export function isSlideCountRegressionContinueFillReason(
   return String(reason ?? "").trim() === SLIDE_COUNT_REGRESSION_CONTINUE_FILL_REASON;
 }
 
+/** Comment merge missed targets; disk deck is unchanged and previewable. */
+export const COMMENT_SCOPED_MERGE_MISS_KEEP_PRIOR_REASON =
+  "comment-scoped-merge-miss-keep-prior";
+
 /** skipped-noop reasons that still have a disk deck for APPEND / preview. */
 export function isPersistKeepDeckForContinueFillReason(
   reason: string | null | undefined,
@@ -425,6 +429,7 @@ export function isPersistKeepDeckForContinueFillReason(
     || value === SLIDE_COUNT_REGRESSION_CONTINUE_FILL_REASON
     || value === SLIDE_COUNT_REGRESSION_KEEP_PRIOR_REASON
     || value === TOP_UP_DID_NOT_APPEND_REASON
+    || value === COMMENT_SCOPED_MERGE_MISS_KEEP_PRIOR_REASON
   );
 }
 

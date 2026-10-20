@@ -619,6 +619,24 @@ export function applyScopedDeckPatchToHtml(input: {
       patchedSlides: sharedPatchedSlides,
     });
     if (!scoped.ok) {
+      const grafted = tryLocalCommentStyleGraftInsteadOfModel({
+        priorHtml: currentHtml,
+        commentAttachments: input.commentAttachments,
+        instructionText: input.instructionText,
+      });
+      if (grafted.ok) {
+        devLog.warn('[deck-patch] merge miss — applied local comment style graft', {
+          reason: scoped.reason,
+          kind: grafted.kind,
+        });
+        return finalizeScopedDeckMergeHtml({
+          currentHtml,
+          mergedHtml: grafted.html,
+          commentAttachments: input.commentAttachments,
+          instructionText: input.instructionText,
+          currentSlides: sharedCurrentSlides ?? undefined,
+        });
+      }
       return { ok: false, code: 'deck_patch_merge_failed', reason: scoped.reason };
     }
     if (scoped.narrowed) {
@@ -1162,7 +1180,7 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
 }
 
 const BACKGROUND_COMMENT_INSTRUCTION_RE =
-  /배경\s*색|배경색|(?:slide\s+)?background(?:-color)?|\bbg[\s-]*color/i;
+  /배경\s*색|배경색|배경\s*만|배경을|(?:slide\s+)?background(?:-color)?|\bbg[\s-]*color/i;
 
 const SURFACE_PRESENTATION_PROP_RE =
   /(?:^|[;\s{])((?:background(?:-color|-image|-size|-position|-repeat)?|--(?:paper|bg|shell|surface|fill)))\s*:\s*([^;}{]+)/gi;
@@ -1205,15 +1223,15 @@ export const COMMENT_FONT_SCALE_ATTR = 'data-od-comment-font-scale';
 const COMMENT_FONT_SCALE_FACTOR = 2;
 
 const COMMENT_BACKGROUND_COLOR_WORDS: ReadonlyArray<readonly [RegExp, string]> = [
-  [/파란|블루|\bblue\b/i, '#2563eb'],
-  [/빨간|레드|\bred\b/i, '#dc2626'],
+  [/파란|파랑|블루|\bblue\b/i, '#2563eb'],
+  [/빨간|빨강|레드|\bred\b/i, '#dc2626'],
   [/초록|그린|\bgreen\b/i, '#16a34a'],
-  [/검은|블랙|\bblack\b/i, '#111827'],
+  [/검은|검정|블랙|\bblack\b/i, '#111827'],
   [/회색|그레이|\bgr[ae]y\b/i, '#6b7280'],
-  [/노란|옐로|\byellow\b/i, '#eab308'],
+  [/노란|노랑|옐로|\byellow\b/i, '#eab308'],
   [/주황|오렌지|\borange\b/i, '#ea580c'],
   [/보라|퍼플|\bpurple\b/i, '#7c3aed'],
-  [/흰|화이트|\bwhite\b/i, '#ffffff'],
+  [/흰|하양|화이트|\bwhite\b/i, '#ffffff'],
 ];
 
 export type LocalCommentStyleGraftKind = 'font-scale' | 'background' | 'text-color' | 'chip-fill';
@@ -1224,7 +1242,7 @@ const TEXT_COLOR_CUE_RE =
   /글자\s*색|글씨\s*색|텍스트\s*색|텍스트\s*컬러|text[- ]?color|font[- ]?color|color\s+(?:the\s+)?text/i;
 
 const COLOR_AS_TEXT_RE =
-  /(?:빨간|레드|파란|블루|초록|그린|검은|블랙|회색|그레이|노란|옐로|주황|오렌지|보라|퍼플|흰|화이트|red|blue|green|black|gr[ae]y|yellow|orange|purple|white)(?:색)?\s*(?:으로|로)/i;
+  /(?:빨간|빨강|레드|파란|파랑|블루|초록|그린|검은|검정|블랙|회색|그레이|노란|노랑|옐로|주황|오렌지|보라|퍼플|흰|하양|화이트|red|blue|green|black|gr[ae]y|yellow|orange|purple|white)(?:색)?\s*(?:으로|로)/i;
 
 const ELEMENT_CUE_RE = /요소/;
 
@@ -1975,6 +1993,37 @@ export function graftLocalCommentStyleOntoPrior(input: {
     html: patched.html,
     kind,
   };
+}
+
+/**
+ * 1007-N01 AB — Selected-element fill / named bg / font×2 comments must
+ * not wait for MiniMax. Requires a comment attachment so a greenfield
+ * brief that happens to mention 빨강 still goes to the model.
+ */
+export function shouldSkipModelForLocalCommentStyle(input: {
+  instructionText?: string;
+  commentAttachments: readonly ChatCommentAttachment[];
+}): boolean {
+  if (input.commentAttachments.length === 0) return false;
+  return canGraftLocalCommentStyleWithoutModel(
+    joinCommentStyleInstruction(input),
+    input.commentAttachments,
+  );
+}
+
+/** Apply X/Y/Z local style onto the prior deck when MiniMax HTML is unused. */
+export function tryLocalCommentStyleGraftInsteadOfModel(input: {
+  priorHtml: string;
+  commentAttachments: readonly ChatCommentAttachment[];
+  instructionText?: string;
+}): { ok: true; html: string; kind: LocalCommentStyleGraftKind } | { ok: false; reason: string } {
+  if (!shouldSkipModelForLocalCommentStyle(input)) {
+    return { ok: false, reason: 'comment is not a local style graft' };
+  }
+  if (!String(input.priorHtml ?? '').trim()) {
+    return { ok: false, reason: 'no prior deck' };
+  }
+  return graftLocalCommentStyleOntoPrior(input);
 }
 
 function parseInlineStyleDeclarations(styleAttr: string): Record<string, string> {

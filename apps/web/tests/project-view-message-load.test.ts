@@ -385,7 +385,7 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const persistStart = source.indexOf("const persistArtifact = useCallback");
     expect(persistStart).toBeGreaterThan(0);
-    const persistBlock = source.slice(persistStart, persistStart + 48000);
+    const persistBlock = source.slice(persistStart, persistStart + 64000);
     // Terminal scrub after salvage/repair/stabilize — not 2–4× early passes.
     expect(persistBlock).toContain("htmlBody = sanitizeManualEditFullSource(htmlBody)");
     expect(persistBlock).toContain("mergeOfficialLookCssForTemplate");
@@ -448,7 +448,7 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const persistStart = source.indexOf("const persistArtifact = useCallback");
     expect(persistStart).toBeGreaterThan(0);
-    const persistBlock = source.slice(persistStart, persistStart + 48000);
+    const persistBlock = source.slice(persistStart, persistStart + 64000);
     expect(persistBlock).toContain("htmlBodyBeforeSanitize");
     expect(persistBlock).toContain("scoped edit scrubbed to no-op");
     expect(persistBlock).toContain(
@@ -461,7 +461,7 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const persistStart = source.indexOf("const persistArtifact = useCallback");
     expect(persistStart).toBeGreaterThan(0);
-    const persistBlock = source.slice(persistStart, persistStart + 48000);
+    const persistBlock = source.slice(persistStart, persistStart + 64000);
     expect(persistBlock).toContain("const readDiskHtml = async");
     expect(persistBlock).toContain("diskHtmlForTarget");
     expect(persistBlock).toContain("currentHtml: diskHtmlForTarget");
@@ -848,7 +848,7 @@ describe("ProjectView message loading", () => {
     // empty element-patch policy.
     const persistStart = source.indexOf("const persistArtifact = useCallback");
     expect(persistStart).toBeGreaterThan(0);
-    const persistBlock = source.slice(persistStart, persistStart + 48000);
+    const persistBlock = source.slice(persistStart, persistStart + 64000);
     expect(persistBlock).toContain(
       "isDeckPatchEmptyBody(art.html ?? '', merged.reason)",
     );
@@ -893,6 +893,15 @@ describe("ProjectView message loading", () => {
     const persistRoutingSource = readSource("src/edit-mode/scoped-comment-persist.ts");
     expect(persistRoutingSource).toContain("outside attached comment scope");
     expect(persistRoutingSource).toContain("No valid element targets in attached comment scope.");
+  });
+
+  it("1007-N01 AB skips MiniMax for local comment style and keeps prior on merge miss", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("tryPersistLocalCommentStyleOnSend");
+    expect(source).toContain("shouldSkipModelForLocalCommentStyle");
+    expect(source).toContain("shouldKeepPriorOnCommentScopedMergeMiss");
+    expect(source).toContain("comment merge miss — keep prior (not incomplete_output)");
+    expect(source).toContain("COMMENT_SCOPED_MERGE_MISS_KEEP_PRIOR_REASON");
   });
 
   it("self-heals leaked composer streaming markers after terminal turns settle", () => {

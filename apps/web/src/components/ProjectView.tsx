@@ -41,6 +41,8 @@ import {
   graftVisualMarksIntoDeckHtml,
   graftLocalCommentStyleOntoPrior,
   canGraftLocalCommentStyleWithoutModel,
+  shouldSkipModelForLocalCommentStyle,
+  tryLocalCommentStyleGraftInsteadOfModel,
   shouldSurfaceEmptyApiResponseChatError,
   stabilizeVisualMarkDeckHtml,
   hasElementScopedCommentAttachments,
@@ -62,7 +64,10 @@ export {
   targetTextPreservedInPatchedSlide,
 } from '../edit-mode/scoped-deck-patch';
 import { validateCommentEditIntentRespected } from '../edit-mode/comment-edit-intent';
-import { shouldRouteScopedCommentEditToAutoContinue } from '../edit-mode/scoped-comment-persist';
+import {
+  shouldKeepPriorOnCommentScopedMergeMiss,
+  shouldRouteScopedCommentEditToAutoContinue,
+} from '../edit-mode/scoped-comment-persist';
 import {
   clearPendingArtifactWrite,
   clearProjectPendingArtifactWrites,
@@ -408,6 +413,7 @@ import {
   verifySlideProducedHtmlDeliverable,
 } from '../runtime/slide-deliverable-recovery';
 import { tryPersistClientVisualMarksOnSend } from '../runtime/client-visual-mark-persist';
+import { tryPersistLocalCommentStyleOnSend } from '../runtime/client-comment-style-persist';
 import {
   isHiddenAutomationQueuedSend,
   resolveSlideTurnKindForSend,
@@ -658,6 +664,7 @@ import {
   classifyThinPriorRewriteTerminalPersist,
   classifySlideCountRegressionPersist,
   SLIDE_COUNT_REGRESSION_CONTINUE_FILL_REASON,
+  COMMENT_SCOPED_MERGE_MISS_KEEP_PRIOR_REASON,
   shouldPreferCoverOnlyContinueFillAppend,
   shouldDeferFirstFillSucceededForContinueFill,
   resolveSlideCountTopUpTarget,
@@ -1933,6 +1940,21 @@ export function promptWithTemplateCloneContentFillInstruction(
   return `${visiblePrompt}\n\n${slideTemplateCloneContentFillInstruction(options.imagePaths ?? [])}`;
 }
 
+function salvageLocalCommentStyleFromPrior(input: {
+  currentHtml: string | null | undefined;
+  commentAttachments?: readonly ChatCommentAttachment[];
+  instructionText?: string;
+}): DeckPatchMergeResult | null {
+  if (!input.currentHtml || !input.commentAttachments?.length) return null;
+  const grafted = tryLocalCommentStyleGraftInsteadOfModel({
+    priorHtml: input.currentHtml,
+    commentAttachments: input.commentAttachments,
+    instructionText: input.instructionText,
+  });
+  if (!grafted.ok) return null;
+  return { ok: true, html: grafted.html };
+}
+
 async function tryApplyElementPatchesAgainstCurrentDeck(input: {
   projectId: string;
   fileName: string;
@@ -2050,6 +2072,18 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
         currentSlides: input.currentSlides,
       });
     }
+    const salvagedStyle = salvageLocalCommentStyleFromPrior({
+      currentHtml,
+      commentAttachments: input.commentAttachments,
+      instructionText: input.instructionText,
+    });
+    if (salvagedStyle) {
+      devLog.warn('[element-patch] apply failed — persisted local comment style graft', {
+        fileName: input.fileName,
+        reason: applied.reason,
+      });
+      return salvagedStyle;
+    }
     devLog.warn('[element-patch] apply failed', { fileName: input.fileName, reason: applied.reason });
     return { ok: false, code: 'deck_patch_merge_failed', reason: applied.reason };
   }
@@ -2142,7 +2176,19 @@ function routeScopedCommentPersistFailure(input: {
   reason: string;
   runIsScoped: boolean;
   logLabel: string;
-}): Extract<ArtifactPersistResult, { kind: 'skipped-incomplete' | 'scope-rejected' }> {
+}): Extract<ArtifactPersistResult, { kind: 'skipped-incomplete' | 'skipped-noop' | 'scope-rejected' }> {
+  if (input.runIsScoped && shouldKeepPriorOnCommentScopedMergeMiss(input.code, input.reason)) {
+    devLog.warn(`[${input.logLabel}] comment merge miss — keep prior (not incomplete_output)`, {
+      fileName: input.fileName,
+      code: input.code,
+      reason: input.reason,
+    });
+    return {
+      kind: 'skipped-noop',
+      fileName: input.fileName,
+      reason: COMMENT_SCOPED_MERGE_MISS_KEEP_PRIOR_REASON,
+    };
+  }
   if (input.runIsScoped && shouldRouteScopedCommentEditToAutoContinue(input.code, input.reason)) {
     devLog.warn(`[${input.logLabel}] routing scoped edit to auto-continue`, {
       fileName: input.fileName,
@@ -2306,6 +2352,18 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
         currentSlides: input.currentSlides,
       });
     }
+    const salvagedStyle = salvageLocalCommentStyleFromPrior({
+      currentHtml,
+      commentAttachments: input.commentAttachments,
+      instructionText: input.instructionText,
+    });
+    if (salvagedStyle) {
+      devLog.warn('[deck-patch] parse failed — persisted local comment style graft', {
+        fileName: input.fileName,
+        parseReason: parsed.reason,
+      });
+      return salvagedStyle;
+    }
     devLog.warn('[deck-patch] parse failed', { fileName: input.fileName, reason: parsed.reason });
     return { ok: false, code: 'deck_patch_parse_failed', reason: parsed.reason };
   }
@@ -2318,6 +2376,18 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
     currentSlides: input.currentSlides,
   });
   if (!result.ok) {
+    const salvagedStyle = salvageLocalCommentStyleFromPrior({
+      currentHtml,
+      commentAttachments: input.commentAttachments,
+      instructionText: input.instructionText,
+    });
+    if (salvagedStyle) {
+      devLog.warn('[deck-patch] scoped deck patch failed — persisted local comment style graft', {
+        fileName: input.fileName,
+        reason: result.reason,
+      });
+      return salvagedStyle;
+    }
     devLog.warn('[deck-patch] scoped deck patch failed', {
       fileName: input.fileName,
       code: result.code,
@@ -5854,6 +5924,17 @@ export function ProjectView({
           // user (and future ops) can distinguish "model returned an
           // empty edit artifact" from "no artifact produced at all".
           const runIsScoped = persistCommentAttachments.length > 0;
+          if (runIsScoped && shouldKeepPriorOnCommentScopedMergeMiss(merged.code, merged.reason)) {
+            devLog.warn('[element-patch] comment merge miss — keep prior (not incomplete_output)', {
+              fileName: targetFileName,
+              reason: merged.reason,
+            });
+            return {
+              kind: 'skipped-noop',
+              fileName: targetFileName,
+              reason: COMMENT_SCOPED_MERGE_MISS_KEEP_PRIOR_REASON,
+            };
+          }
           if (
             runIsScoped &&
             (isElementPatchEmptyBody(merged.reason) ||
@@ -5905,6 +5986,17 @@ export function ProjectView({
         });
         if (!merged.ok) {
           const runIsScoped = persistCommentAttachments.length > 0;
+          if (runIsScoped && shouldKeepPriorOnCommentScopedMergeMiss(merged.code, merged.reason)) {
+            devLog.warn('[deck-patch] comment merge miss — keep prior (not incomplete_output)', {
+              fileName: targetFileName,
+              reason: merged.reason,
+            });
+            return {
+              kind: 'skipped-noop',
+              fileName: targetFileName,
+              reason: COMMENT_SCOPED_MERGE_MISS_KEEP_PRIOR_REASON,
+            };
+          }
           if (
             runIsScoped &&
             shouldRouteScopedCommentEditToAutoContinue(merged.code, merged.reason)
@@ -6008,7 +6100,29 @@ export function ProjectView({
               effectiveArt = { ...effectiveArt, html: salvaged.html };
               patchHtmlAlreadySanitized = true;
               scopeCheckPassed = true;
-            } else if (
+            } else {
+              const salvagedStyle = salvageLocalCommentStyleFromPrior({
+                currentHtml: diskHtmlForTarget,
+                commentAttachments: persistCommentAttachments,
+                instructionText: runVisiblePromptRef.current,
+              });
+              if (salvagedStyle) {
+                devLog.warn('[deck-patch] full-deck rewrite miss — persisted local comment style graft', {
+                  fileName: targetFileName,
+                  reason: salvaged.reason,
+                });
+                effectiveArt = { ...effectiveArt, html: salvagedStyle.html };
+                patchHtmlAlreadySanitized = false;
+                scopeCheckPassed = true;
+              } else if (shouldKeepPriorOnCommentScopedMergeMiss(scopeResult.code, salvaged.reason)
+                || shouldKeepPriorOnCommentScopedMergeMiss(scopeResult.code, scopeResult.reason)
+              ) {
+                return {
+                  kind: 'skipped-noop',
+                  fileName: targetFileName,
+                  reason: COMMENT_SCOPED_MERGE_MISS_KEEP_PRIOR_REASON,
+                };
+              } else if (
               shouldRouteScopedCommentEditToAutoContinue(scopeResult.code, salvaged.reason)
               || shouldRouteScopedCommentEditToAutoContinue(scopeResult.code, scopeResult.reason)
             ) {
@@ -6023,6 +6137,7 @@ export function ProjectView({
                 fileName: targetFileName,
                 reason: salvaged.reason,
               };
+            }
             }
           }
           if (!scopeCheckPassed) {
@@ -11461,6 +11576,91 @@ export function ProjectView({
           setFilesRefresh((count) => count + 1);
           await refreshProjectFiles().catch(() => undefined);
           requestOpenFile(clientVisual.fileName);
+          void patchAttachedStatuses(runCommentAttachments, 'resolved');
+          const consumedCommentIds = new Set(runCommentAttachments.map((attachment) => attachment.id));
+          setAttachedComments((current) =>
+            current.filter((comment) => !consumedCommentIds.has(comment.id)),
+          );
+          setConversations((curr) =>
+            curr.map((conversation) =>
+              conversation.id === runConversationId
+                ? {
+                    ...conversation,
+                    updatedAt: doneAt,
+                    latestRun: {
+                      status: 'succeeded',
+                      startedAt,
+                      endedAt: doneAt,
+                      durationMs: Math.max(0, doneAt - startedAt),
+                    },
+                  }
+                : conversation,
+            ),
+          );
+          onTouchProject();
+          return true;
+        }
+      }
+      // 1007-N01 AB — Selected-element / named background / font×2 comments
+      // graft locally. Do not spend a MiniMax turn (1m / thousands of tokens).
+      if (
+        slideOnlyMvp
+        && !isCloneHostFillTurn
+        && !isSlideCountTopUpSend
+        && shouldSkipModelForLocalCommentStyle({
+          instructionText: runVisiblePromptRef.current || prompt,
+          commentAttachments: runCommentAttachments,
+        })
+      ) {
+        const clientStyle = await tryPersistLocalCommentStyleOnSend({
+          projectId: project.id,
+          commentAttachments: runCommentAttachments,
+          projectFiles: filesSnapshot,
+          entryFile: project.metadata?.entryFile ?? null,
+          conversationId: runConversationId,
+          instructionText: runVisiblePromptRef.current || prompt,
+          fileName: runPersistTargetFileRef.current,
+        });
+        if (clientStyle.ok) {
+          const doneAt = Date.now();
+          const fastPathAssistantId = randomUUID();
+          const fastPathAssistant: ChatMessage = {
+            id: fastPathAssistantId,
+            role: 'assistant',
+            content: embedUiLabel(
+              'Applied the color to the selected element.',
+              '선택한 요소의 색을 반영했습니다.',
+            ),
+            agentId: assistantAgentId,
+            agentName: assistantAgentName,
+            createdAt: doneAt,
+            runStatus: 'succeeded',
+            startedAt,
+            endedAt: doneAt,
+            preTurnFileNames: [
+              ...new Set([
+                ...projectFilesRef.current.map((f) => f.name),
+                ...userVisualUploadBaselineNames(scopedCommentAttachments),
+              ]),
+            ],
+            ...(slideOnlyMvp ? { slideTurnKind: 'edit' as const } : {}),
+          };
+          const fastPathHistory = [...historyBase, userMsg];
+          setMessages(dedupeConversationAssistantRows([...fastPathHistory, fastPathAssistant]));
+          void saveMessage(project.id, runConversationId, userMsg)
+            .then(() => saveMessage(project.id, runConversationId, fastPathAssistant))
+            .catch(() => {});
+          emitRevisionPush(
+            analytics.track,
+            project.id,
+            projectListTrackingKind(project, { slideOnly: slideOnlyMvp }),
+            clientStyle.fileName,
+            clientStyle.revision,
+            'manual_edit',
+          );
+          setFilesRefresh((count) => count + 1);
+          await refreshProjectFiles().catch(() => undefined);
+          requestOpenFile(clientStyle.fileName);
           void patchAttachedStatuses(runCommentAttachments, 'resolved');
           const consumedCommentIds = new Set(runCommentAttachments.map((attachment) => attachment.id));
           setAttachedComments((current) =>

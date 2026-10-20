@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { shouldRouteScopedCommentEditToAutoContinue } from '../../src/edit-mode/scoped-comment-persist';
+import {
+  shouldKeepPriorOnCommentScopedMergeMiss,
+  shouldRouteScopedCommentEditToAutoContinue,
+} from '../../src/edit-mode/scoped-comment-persist';
 
 describe('shouldRouteScopedCommentEditToAutoContinue', () => {
   it('routes common merge failures to auto-continue', () => {
@@ -66,6 +69,21 @@ describe('shouldRouteScopedCommentEditToAutoContinue', () => {
         'no <section class="slide"> blocks in deck-patch body',
       ),
     ).toBe(true);
+  });
+
+  it('keeps prior for comment-scoped no-matching-targets instead of auto-continue', () => {
+    expect(
+      shouldKeepPriorOnCommentScopedMergeMiss(
+        'deck_patch_merge_failed',
+        'No matching targets found to merge.',
+      ),
+    ).toBe(true);
+    expect(
+      shouldKeepPriorOnCommentScopedMergeMiss(
+        'deck_patch_merge_failed',
+        'Selected targets were unchanged.',
+      ),
+    ).toBe(false);
   });
 
   it('does not route non-recoverable failures', () => {

@@ -1,5 +1,8 @@
+export const COMMENT_SCOPED_NO_MERGE_TARGETS_REASON =
+  'No matching targets found to merge.';
+
 const EXACT_MERGE_RETRY_REASONS = new Set([
-  'No matching targets found to merge.',
+  COMMENT_SCOPED_NO_MERGE_TARGETS_REASON,
   'Selected targets were unchanged.',
   'No valid element targets in attached comment scope.',
   'comment target slide could not be resolved from attachment or deck HTML',
@@ -7,6 +10,15 @@ const EXACT_MERGE_RETRY_REASONS = new Set([
   'current deck file unreadable',
   'Could not parse source.',
 ]);
+
+/** Comment-scoped targeting miss: keep prior, skip auto-continue / incomplete_output. */
+export function shouldKeepPriorOnCommentScopedMergeMiss(
+  code: string | null | undefined,
+  reason: string,
+): boolean {
+  if (code && code !== 'deck_patch_merge_failed') return false;
+  return String(reason || '').trim() === COMMENT_SCOPED_NO_MERGE_TARGETS_REASON;
+}
 
 /**
  * True when a scoped preview-comment persist failure should route through

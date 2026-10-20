@@ -18,6 +18,8 @@ import {
   graftVisualMarksIntoDeckHtml,
   graftLocalCommentStyleOntoPrior,
   canGraftLocalCommentStyleWithoutModel,
+  shouldSkipModelForLocalCommentStyle,
+  tryLocalCommentStyleGraftInsteadOfModel,
   commentAttachmentHasElementTarget,
   isBackgroundColorCommentInstruction,
   isNamedTextColorCommentInstruction,
@@ -2409,5 +2411,56 @@ describe('1007-N01 AA card title color and 1-slide identity stamp', () => {
     expect(slides[2]?.outerHtml).toMatch(/font-size:\s*12px/i);
     expect(slides[0]?.outerHtml).toMatch(/font-size:\s*32px/i);
     expect(slides[0]?.outerHtml).not.toMatch(/font-size:\s*64px/i);
+  });
+
+  it('1007-N01 AB · selected-element 배경색 skips MiniMax and grafts without model HTML', () => {
+    const onChip = chipBoxComment('배경색을 빨간색으로');
+    expect(isBackgroundColorCommentInstruction('이 요소 배경을 파랑')).toBe(true);
+    expect(isBackgroundColorCommentInstruction('배경만 빨간색으로')).toBe(true);
+    expect(canGraftLocalCommentStyleWithoutModel('이 요소 배경을 파랑', [onChip])).toBe(true);
+    expect(shouldSkipModelForLocalCommentStyle({
+      instructionText: '배경색을 빨간색으로',
+      commentAttachments: [onChip],
+    })).toBe(true);
+    expect(shouldSkipModelForLocalCommentStyle({
+      instructionText: '배경색을 빨간색으로',
+      commentAttachments: [],
+    })).toBe(false);
+    const grafted = tryLocalCommentStyleGraftInsteadOfModel({
+      priorHtml: creamDotsDeck(),
+      commentAttachments: [onChip],
+      instructionText: '배경색을 빨간색으로',
+    });
+    expect(grafted.ok, JSON.stringify(grafted)).toBe(true);
+    if (!grafted.ok) return;
+    expect(grafted.kind).toBe('chip-fill');
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(grafted.html));
+    expect(slides).toHaveLength(8);
+    expect(chipBoxHtml(slides[1]?.outerHtml ?? '')).toMatch(/background(?:-color)?:\s*#dc2626/i);
+    expect(slides[1]?.openTag).toMatch(/--paper:\s*#f4efe4/i);
+    expect(slides[1]?.openTag).not.toMatch(/--paper:\s*#dc2626/i);
+  });
+
+  it('1007-N01 AB · merge miss + local bg graft still paints the selected chip', () => {
+    const mismatchedPatch = {
+      ops: [{
+        op: 'replace' as const,
+        slideIndex: 1,
+        html: '<section class="slide" data-slide-index="1"><h2>다른 제목</h2><p>타깃 없음</p></section>',
+      }],
+    };
+    const result = applyScopedDeckPatchToHtml({
+      currentHtml: creamDotsDeck(),
+      patch: mismatchedPatch,
+      commentAttachments: [chipBoxComment('배경색을 빨간색으로')],
+      instructionText: '배경색을 빨간색으로',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    const slides = extractTopLevelSlideSections(extractDeckBodyContent(result.html));
+    expect(slides).toHaveLength(8);
+    expect(chipBoxHtml(slides[1]?.outerHtml ?? '')).toMatch(/background(?:-color)?:\s*#dc2626/i);
+    expect(slides[1]?.openTag).toMatch(/--paper:\s*#f4efe4/i);
+    expect(slides[1]?.outerHtml).toContain('지금 팀의 일은 너무 많이 흩어져 있습니다.');
   });
 });

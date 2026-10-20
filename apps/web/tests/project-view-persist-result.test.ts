@@ -13,7 +13,11 @@ import {
   classifySlideCountRegressionPersist,
   SLIDE_COUNT_REGRESSION_CONTINUE_FILL_REASON,
   SLIDE_COUNT_REGRESSION_KEEP_PRIOR_REASON,
+  COMMENT_SCOPED_MERGE_MISS_KEEP_PRIOR_REASON,
 } from '../src/teamver/slideCountTopUp';
+import {
+  shouldKeepPriorOnCommentScopedMergeMiss,
+} from '../src/edit-mode/scoped-comment-persist';
 import {
   extractDeckBodyContent,
   extractTopLevelSlideSections,
@@ -687,5 +691,22 @@ describe('shouldFailRunForArtifactPersistResult', () => {
       priorHtml: prior,
       strict: true,
     })).toBeNull();
+  });
+
+  it('1007-N01 AB · comment merge miss keep-prior is skipped-noop, not incomplete_output', () => {
+    expect(shouldKeepPriorOnCommentScopedMergeMiss(
+      'deck_patch_merge_failed',
+      'No matching targets found to merge.',
+    )).toBe(true);
+    expect(shouldFailRunForArtifactPersistResult({
+      kind: 'skipped-noop',
+      fileName: 'deck.html',
+      reason: COMMENT_SCOPED_MERGE_MISS_KEEP_PRIOR_REASON,
+    }, { scopedCommentEdit: true })).toBe(false);
+    expect(shouldFailRunForArtifactPersistResult({
+      kind: 'skipped-incomplete',
+      fileName: 'deck.html',
+      reason: 'No matching targets found to merge.',
+    }, { scopedCommentEdit: true })).toBe(true);
   });
 });
