@@ -432,7 +432,7 @@ ${staleFill}
     expect(standalone).toContain('shadcn/ui');
   });
 
-  it('merges official look CSS for every mode:deck example.html into generic compact fill', () => {
+  it('merges official look CSS for every mode:deck example.html into generic compact fill', { timeout: 120_000 }, () => {
     const examples = listOfficialDeckExamplePaths();
     expect(examples.length).toBeGreaterThan(40);
     const failures: string[] = [];

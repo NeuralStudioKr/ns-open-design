@@ -100,7 +100,7 @@ export const SPARSE_SIXTEEN_NINE_FILL_CSS = [
 ].join('');
 
 const SPARSE_NEEDLE_RE =
-  /\b(?:grid\s+g2|g2\s+grid|class="g2"|class='g2')\b|<(?:blockquote|figure)\b|\bclass\s*=\s*["'][^"']*\b(?:quote|qframe|quote-box|quote-frame|statement-box|pull-?quote|rule-label)\b|\bRULE\s*0?\d\b|<section\b[^>]*\bclass\s*=\s*["'][^"']*\bdark\b|grid-template-columns|style\s*=\s*["'][^"']*border\s*:|\bod-body-fill-cluster\b|\bod-step-track-stack\b|\bSTEP\s*0?\d\b/i;
+  /\b(?:grid\s+g2|g2\s+grid|class="g2"|class='g2')\b|<(?:blockquote|figure)\b|\bclass\s*=\s*["'][^"']*\b(?:quote|qframe|quote-box|quote-frame|statement-box|pull-?quote|rule-label)\b|\bRULE\s*0?\d\b|<section\b[^>]*\bclass\s*=\s*["'](?![^"']*\bs-cover\b)[^"']*\bdark\b|grid-template-columns|style\s*=\s*["'][^"']*border\s*:|\bod-body-fill-cluster\b|\bod-step-track-stack\b|\bSTEP\s*0?\d\b/i;
 
 export function htmlNeedsSparseSixteenNineFill(html: string): boolean {
   return SPARSE_NEEDLE_RE.test(String(html ?? ''));

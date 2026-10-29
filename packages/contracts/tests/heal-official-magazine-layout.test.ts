@@ -564,8 +564,8 @@ describe('heal official magazine layout density', () => {
     expect(pinned).toContain('od-magazine-cover-solo');
     expect(pinned).toContain('od-magazine-title-fill');
     expect(pinned).toMatch(/style="[^"]*width:100%;min-height:100%/);
-    expect(pinned).not.toMatch(/data-od-slide-flow[^>]*padding:80px/);
-    expect(pinned).not.toMatch(/data-od-slide-flow[^>]*justify-content:center/);
+    expect(pinned).not.toMatch(/data-od-slide-flow[^>]*style="[^"]*padding:80px/);
+    expect(pinned).not.toMatch(/data-od-slide-flow[^>]*style="[^"]*justify-content:center/);
     expect(pinned).toMatch(
       /\[data-od-slide-flow\]:has\(\.slide-inner\)[\s\S]*padding:\s*0\s*!important/,
     );

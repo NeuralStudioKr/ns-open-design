@@ -73,24 +73,42 @@ function expectNoSyntheticWritingTips(html: string) {
   expect(html).not.toMatch(/SPEAKER/);
 }
 
+function realBiennaleCoverDeck(): string {
+  return [
+    '<!doctype html><html lang="ko"><head><meta charset="utf-8"/>',
+    `<title>${COVER_TITLE}</title>`,
+    '<style data-od-official-look-css>:root{--sun:#F1EE2E;--paper:#E9E5DB;--ink:#1B2566}',
+    '.s-cover .sunglow{position:absolute;inset:0}.s-cover .blocks{display:grid}</style>',
+    '</head><body>',
+    '<section class="slide s-cover" style="background:var(--paper);color:var(--ink)">',
+    '<div data-od-slide-flow>',
+    '<div class="blocks" aria-hidden="true"><div class="b1"></div></div>',
+    `<div class="titlewrap"><h1 class="title">${COVER_TITLE}</h1></div>`,
+    '<div class="sunglow" aria-hidden="true"></div>',
+    '</div>',
+    '<div data-od-official-motif-html class="hero-shot"></div>',
+    '</section></body></html>',
+  ].join('');
+}
+
 describe('1007-N01 슬라이스 S — 스크린샷 mixed persist 커버', () => {
-  it('킷 titlewrap 하단 배치, 이질 hero-shot 제거, bleed가 킷 paper를 #ffffff로 덮지 않는다', () => {
+  it('tpl-product-launch 호스트는 hero-shot을 유지하고 유출된 비엔날레 deco·--paper를 벗긴다', () => {
     const source = screenshotMixedCoverDeck();
     expect(source).toContain('hero-shot');
     expect(source).toMatch(/data-od-slide-flow data-od-s-cover-kit-slots/);
     expect(source).toMatch(/background: #ffffff !important/);
 
     const stripped = stripForeignCoverKitMotifs(source);
-    expect(stripped).toContain('blocks');
-    expect(stripped).toContain('sunglow');
-    expect(stripped).not.toMatch(/class="hero-shot"/);
+    expect(stripped).toContain('hero-shot');
+    expect(stripped).not.toMatch(/class="blocks"/);
+    expect(stripped).not.toMatch(/class="sunglow"/);
     expect(stripped).toContain(COVER_TITLE.split(' ')[0]!);
 
     const slotted = injectSCoverKitSlotCss(source);
     expect(slotted).toMatch(/<style[^>]*data-od-s-cover-kit-slots/);
     expect(slotted).toMatch(/\.slide\.s-cover\s+\.titlewrap\{[^}]*position\s*:\s*absolute\s*!important/i);
-    expect(slotted).toMatch(/bottom\s*:\s*clamp\(48px,\s*6vh,\s*96px\)/i);
-    expect(slotted).toMatch(/left\s*:\s*clamp\(40px/i);
+    expect(slotted).toMatch(/top\s*:\s*50%/i);
+    expect(slotted).not.toMatch(/bottom\s*:\s*clamp\(48px,\s*6vh,\s*96px\)/i);
 
     const bleedFixed = repairCoverKitSurfaceBleed(source);
     const bleed = /<style\b[^>]*\bdata-od-slide-surface-bleed\b[^>]*>([\s\S]*?)<\/style>/i
@@ -99,26 +117,40 @@ describe('1007-N01 슬라이스 S — 스크린샷 mixed persist 커버', () => 
       /html,\s*body,\s*\.slide[^{]*\{[^}]*background(?:-color)?\s*:\s*#ffffff/i,
     );
     expect(bleed).not.toMatch(/:where\((?:[^)]*\s)?\.slide\s*,/i);
-    expect(bleedFixed).toContain('data-od-cover-kit-surface');
-    expect(bleedFixed).toMatch(/background:var\(--paper/i);
+    expect(bleedFixed).not.toContain('data-od-cover-kit-surface');
+    expect(bleedFixed).toMatch(/background:#0a0a12/i);
 
     const healed = healAiGeneratedDeckMarkup(source, COVER_TITLE);
     expect(healed).toContain('글을 매력적으로');
     expect(healed).toContain('쓰는 팁');
-    expect(healed).toContain('blocks');
-    expect(healed).toContain('sunglow');
-    expect(healed).not.toMatch(/class="hero-shot"/);
+    expect(healed).toContain('hero-shot');
+    expect(healed).not.toMatch(/class="blocks"/);
+    expect(healed).not.toMatch(/class="sunglow"/);
     expect(healed).toMatch(/<style[^>]*data-od-s-cover-kit-slots/);
     expect(healed).toMatch(/position\s*:\s*absolute\s*!important/i);
-    expect(healed).toContain('data-od-cover-kit-surface');
-    expect(healed).toMatch(/background:var\(--paper/i);
+    expect(healed).not.toContain('data-od-cover-kit-surface');
+    expect(healed).toMatch(/background:#0a0a12/i);
     expect(healed).toContain('첫 문장이 하는 일');
     expectNoSyntheticWritingTips(healed);
 
     const persisted = sanitizePersistedDeckHostLeaks(healed);
-    expect(persisted).not.toMatch(/class="hero-shot"/);
-    expect(persisted).toContain('blocks');
+    expect(persisted).toMatch(/class="hero-shot"/);
+    expect(persisted).not.toMatch(/class="blocks"/);
     expect(persisted).toContain('쓰는 팁');
+  });
+
+  it('진짜 비엔날레(--sun) 커버는 hero-shot만 벗기고 blocks/sunglow를 유지한다', () => {
+    const source = realBiennaleCoverDeck();
+    const stripped = stripForeignCoverKitMotifs(source);
+    expect(stripped).toContain('blocks');
+    expect(stripped).toContain('sunglow');
+    expect(stripped).not.toMatch(/class="hero-shot"/);
+    const healed = healAiGeneratedDeckMarkup(source, COVER_TITLE);
+    expect(healed).toContain('blocks');
+    expect(healed).toContain('sunglow');
+    expect(healed).not.toMatch(/class="hero-shot"/);
+    expect(healed).toContain(COVER_TITLE);
+    expectNoSyntheticWritingTips(healed);
   });
 
   it('호스트가 product-launch면 hero-shot을 유지하고 포스터 deco만 벗긴다', () => {
@@ -181,7 +213,7 @@ describe('1007-N01 슬라이스 S — 스크린샷 mixed persist 커버', () => 
     const bleedFixed = repairCoverKitSurfaceBleed(source);
     const coverOpen = /<section\b[^>]*\bs-cover\b[^>]*>/i.exec(bleedFixed)?.[0] ?? '';
     expect(coverOpen).toMatch(/background\s*:\s*#0a0a12/i);
-    expect(bleedFixed).toMatch(/data-od-cover-kit-surface/);
+    expect(bleedFixed).not.toContain('data-od-cover-kit-surface');
     expect(bleedFixed).not.toMatch(
       /\.slide\.s-cover[^{]*\{[^}]*background:var\(--paper[^;]*!important/i,
     );

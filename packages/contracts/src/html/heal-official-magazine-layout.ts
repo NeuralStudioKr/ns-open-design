@@ -23,6 +23,7 @@ import {
   injectCobaltAbsoluteSlotCss,
   injectSCoverKitSlotCss,
   repairCoverKitSurfaceBleed,
+  ensureProductLaunchCoverHeroShot,
   stripForeignCoverKitMotifs,
   restyleBiennaleSparseChapterBodies,
   restyleBiennaleSparseDataBodies,
@@ -1456,24 +1457,30 @@ export function healOfficialMagazineLayoutDensity(
     ),
     ),
   );
-  return stripCoverLedeDuplicatingCardKpi(repairCoverKitSurfaceBleed(injectSCoverKitSlotCss(
-  stripForeignCoverKitMotifs(
-  injectCobaltAbsoluteSlotCss(
+  const catalogHealed = injectCobaltAbsoluteSlotCss(
     healCobaltGridLeftoverCatalogCopy(
-    healCobaltOrphanDataStats(
-      healLongTableLeftoverCatalogCopy(
-        healSakuraLeftoverCatalogCopy(
-          healCobaltLeftoverCatalogCopy(
-            scrubCobaltFieldOfficeDemoSlots(healed),
+      healCobaltOrphanDataStats(
+        healLongTableLeftoverCatalogCopy(
+          healSakuraLeftoverCatalogCopy(
+            healCobaltLeftoverCatalogCopy(
+              scrubCobaltFieldOfficeDemoSlots(healed),
+              brief,
+            ),
             brief,
           ),
           brief,
         ),
-        brief,
+      ),
+      brief,
+    ),
+  );
+  return stripCoverLedeDuplicatingCardKpi(
+    repairCoverKitSurfaceBleed(
+      injectSCoverKitSlotCss(
+        ensureProductLaunchCoverHeroShot(
+          stripForeignCoverKitMotifs(catalogHealed),
+        ),
       ),
     ),
-    brief,
-    ),
-  ),
-  ))));
+  );
 }

@@ -25,6 +25,7 @@ import {
   injectSCoverKitSlotCss,
   injectSparseG2FillCss,
   repairCoverKitSurfaceBleed,
+  ensureProductLaunchCoverHeroShot,
   stripEmptyBodyLayoutChrome,
   stripForeignCoverKitMotifs,
   officialLookIsCapsule,
@@ -5568,10 +5569,14 @@ export function healAiGeneratedDeckMarkup(
   // 1007-N01 슬라이스 S — drop leaked product-launch hero-shot on poster
   // s-cover (or Biennale deco on product-launch) before kit CSS. No copy.
   out = stripForeignCoverKitMotifs(out);
+  // 1007-N01 AD — Halo covers that leaked Biennale blocks must get the orb
+  // back (root thumbnail). Persist heal used to skip this path.
+  out = ensureProductLaunchCoverHeroShot(out);
   // 1007-N01 슬라이스 I — after H: restore s-cover titlewrap kit position
   // (persist wraps it in [data-od-slide-flow]). No synthetic lede/brand.
   out = injectSCoverKitSlotCss(out);
   // 1007-N01 슬라이스 S — surface-bleed must not force #ffffff over kit paper.
+  // AD — Halo covers do not get `--paper` (undefined → white).
   out = repairCoverKitSurfaceBleed(out);
   // 1007-N01 슬라이스 W — body title-then-cluster, overlapping steps, empty chrome.
   // Covers already handled above. Reorder before L CSS so selectors see the new DOM.

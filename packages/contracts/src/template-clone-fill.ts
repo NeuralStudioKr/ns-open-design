@@ -1817,6 +1817,13 @@ export function healGenericTemplateCloneLeftover(
   const dest = String(html ?? '');
   if (!dest.trim() || !deckLooksLikeTemplateCloneSlideHost(dest)) return dest;
   const briefText = String(brief ?? '');
+  // Standalone export / gallery heal official English catalogs with an empty
+  // brief. Do not invent Hangul leftover copy — that trips catalog scrub and
+  // wipes presenter Motif (Capsule `CAPSULE`). Korean dest or a real brief
+  // still heals.
+  const destHasHangul = /[가-힣]/.test(visibleDeckCopy(dest));
+  const briefHasHangul = /[가-힣]/.test(briefText);
+  if (!destHasHangul && !briefHasHangul && !briefText.trim()) return dest;
   const spans = listHealSlideHostSpans(dest);
   if (spans.length === 0) {
     return stripGenericLeftoverCopyPhrases(dest);
@@ -3871,6 +3878,20 @@ function lookCssWithoutNeutralize(html: string): string {
   return officialLookCssBodiesFromDeck(html).replace(LOOK_NEUTRALIZE_TAIL_RE, '');
 }
 
+/** Element class token — neutralize CSS `:not(.s-cover)` / `.sunglow` must not count. */
+function destHasClassToken(html: string, token: string): boolean {
+  const escaped = String(token ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (!escaped) return false;
+  return new RegExp(
+    `<[a-zA-Z][^>]*\\bclass\\s*=\\s*["'][^"']*\\b${escaped}\\b`,
+    'i',
+  ).test(String(html ?? ''));
+}
+
+function destHasSCoverHost(html: string): boolean {
+  return destHasClassToken(html, 's-cover');
+}
+
 function officialLookIsIbMagazine(html: string): boolean {
   const css = lookCssWithoutNeutralize(html);
   if (!css.trim()) return false;
@@ -4014,8 +4035,21 @@ export function officialLookIsProductLaunchHalo(html: string): boolean {
   if (officialLookIsMat(source)) return false;
   if (officialLookIsEightBitOrbit(source)) return false;
   if (officialLookIsRawGridPitch(source)) return false;
-  if (/\btpl-product-launch\b/i.test(source)) return true;
-  return /\bhero-shot\b/i.test(source) && /\bprice-card\b/i.test(source);
+  // One-way denys only — these kits must not call back into Halo.
+  if (officialLookIsCapsule(source)) return false;
+  if (officialLookIsPlayful(source)) return false;
+  if (officialLookIsCoral(source)) return false;
+  if (officialLookIsNeoBrutalBlockFrame(source)) return false;
+  if (officialLookIsIbMagazine(source)) return false;
+  if (lookHasBiennaleSunTokens(source)) return false;
+  // Neutralize CSS mentions `body.tpl-product-launch` on every official-rich
+  // persist. Only the host <body> class or Halo token block counts.
+  if (/<body\b[^>]*\btpl-product-launch\b/i.test(source)) return true;
+  const css = lookCssWithoutNeutralize(source);
+  if (/\.tpl-product-launch\s*\{/i.test(css) && /--accent\s*:\s*#ff5a36/i.test(css)) {
+    return true;
+  }
+  return destHasClassToken(source, 'hero-shot') && destHasClassToken(source, 'price-card');
 }
 
 /** Stable kit key for Product Launch Halo catalog (resolver + heal). */
@@ -4250,15 +4284,27 @@ export function officialLookIsDaisyDays(html: string): boolean {
   return (cream || fredoka) && chrome;
 }
 
+function lookHasBiennaleSunTokens(html: string): boolean {
+  const css = lookCssWithoutNeutralize(html);
+  if (/--sun\s*:\s*#F1EE2E/i.test(css) && /--paper\s*:/i.test(css)) return true;
+  return /\.s-cover\s+\.sunglow\b/i.test(css) || /\.s-cover\s+\.blocks\b/i.test(css);
+}
+
 function officialLookIsBiennaleYellow(html: string): boolean {
   const source = String(html ?? '');
   if (!source.trim()) return false;
+  // 1007-N01 AD — `tpl-product-launch` + neutralize `:not(.sunglow)` used to
+  // match `.sunglow` in the full document and restyle Halo covers as
+  // Biennale paper. Root thumbnails stay dark+hero-shot; preview must too.
+  if (officialLookIsProductLaunchHalo(source) && !lookHasBiennaleSunTokens(source)) {
+    return false;
+  }
+  if (lookHasBiennaleSunTokens(source)) return true;
+  if (/<body\b[^>]*\btpl-product-launch\b/i.test(source)) return false;
   const css = lookCssWithoutNeutralize(source);
-  const hay = `${css}\n${source}`;
-  if (/\.sunglow\b/i.test(hay) && /\bs-cover\b/i.test(hay)) return true;
-  // MiniMax / reduced look sheets keep the sun token before `.sunglow` lands.
-  if (/--sun\s*:\s*#F1EE2E/i.test(hay) && /--paper\s*:/i.test(hay)) return true;
-  return /\bsunglow\b/i.test(source) && /\bs-cover\b/i.test(source);
+  if (/\.hero-shot\b/i.test(css) && !/--sun\s*:/i.test(css)) return false;
+  // Neutralize lists `.s-cover` / `:not(.sunglow)` — only real hosts count.
+  return destHasClassToken(source, 'sunglow') && destHasSCoverHost(source);
 }
 
 /**
@@ -4870,7 +4916,7 @@ export function stripEmptySlideChips(html: string): string {
  */
 export function ensureSCoverTitlewrap(html: string): string {
   const dest = String(html ?? '');
-  if (!/\bs-cover\b/i.test(dest)) return dest;
+  if (!destHasSCoverHost(dest)) return dest;
   const spans = listHealSlideHostSpans(dest);
   let out = dest;
   for (let i = spans.length - 1; i >= 0; i -= 1) {
@@ -5214,7 +5260,12 @@ export function injectSCoverKitSlotCss(html: string): string {
   dest = stripLeakedStyleMarkFromNonStyleTags(dest, S_COVER_KIT_SLOT_MARK);
   dest = ensureSCoverTitlewrap(dest);
   if (!dest.trim()) return dest;
-  if (!/\bs-cover\b/i.test(dest)) return dest;
+  if (!destHasSCoverHost(dest)) return dest;
+  const haloCover = productLaunchCoverUsesHaloSurface(dest);
+  if (haloCover) {
+    dest = stripStyleMark(dest, S_COVER_KIT_SLOT_MARK);
+    dest = stripStyleMark(dest, BIENNALE_SPARSE_FILL_MARK);
+  }
   if (htmlHasStyleMark(dest, S_COVER_KIT_SLOT_MARK)) return dest;
   const hasTitlewrap = /<[^>]*\bclass\s*=\s*["'][^"']*\btitlewrap\b/i.test(dest);
   const hangul = ((dest.match(/[가-힣]/g) ?? []).length >= 2);
@@ -5231,9 +5282,13 @@ export function injectSCoverKitSlotCss(html: string): string {
     );
     if (!officialLookCssHasSCoverTitlewrapBox(dest)) {
       rules.push(
-        '.slide.s-cover [data-od-slide-flow] .titlewrap{'
-          + 'left:clamp(40px,4vw,76px);top:auto;right:auto;'
-          + 'bottom:clamp(48px,6vh,96px);max-width:min(72%,1280px)}',
+        haloCover
+          ? '.slide.s-cover [data-od-slide-flow] .titlewrap{'
+            + 'left:clamp(80px,6vw,112px);top:50%;right:auto;bottom:auto;'
+            + 'transform:translateY(-50%);max-width:min(56%,980px)}'
+          : '.slide.s-cover [data-od-slide-flow] .titlewrap{'
+            + 'left:clamp(40px,4vw,76px);top:auto;right:auto;'
+            + 'bottom:clamp(48px,6vh,96px);max-width:min(72%,1280px)}',
       );
     }
   } else {
@@ -5320,8 +5375,13 @@ export function stripForeignCoverKitMotifs(html: string): string {
   const host = extractBalancedFrom(dest, cover.start);
   if (!host) return dest;
   const poster = coverHostLooksLikePosterKit(host, cover.attrs);
+  const haloHost = productLaunchCoverUsesHaloSurface(dest);
   let nextHost = host;
-  if (poster) {
+  if (haloHost) {
+    nextHost = stripExactClassBlocks(nextHost, 'blocks');
+    nextHost = stripExactClassBlocks(nextHost, 'sunglow');
+    nextHost = stripExactClassBlocks(nextHost, 'pixel-glitch');
+  } else if (poster) {
     nextHost = stripExactClassBlocks(nextHost, 'hero-shot');
   } else if (
     /\bhero-shot\b/i.test(host)
@@ -5367,15 +5427,48 @@ function rewriteWhiteBleedCssToSpareKitPaper(css: string): string {
  * `#ffffff`, which wins over kit `--paper`/`--bg` on `s-cover`. Keep letterbox
  * repair, but do not flatten cover paper to white. Dark kits stay dark.
  */
+function rewriteProductLaunchCoverPaperSurface(html: string): string {
+  const dest = String(html ?? '');
+  const cover = firstCoverHealSpan(dest);
+  if (!cover) return dest;
+  const host = extractBalancedFrom(dest, cover.start);
+  if (!host) return dest;
+  let nextHost = host.replace(
+    /background\s*:\s*var\(\s*--paper\s*\)/gi,
+    'background:#0a0a12',
+  );
+  nextHost = nextHost.replace(
+    /color\s*:\s*var\(\s*--ink\s*\)/gi,
+    'color:#f5f5f7',
+  );
+  const openEnd = nextHost.indexOf('>');
+  if (openEnd > 0) {
+    const open = nextHost.slice(0, openEnd + 1);
+    if (/\bs-cover\b/i.test(open) && !/\bdark\b/i.test(open)) {
+      nextHost = nextHost.replace(
+        /(\bclass\s*=\s*["'][^"']*\bs-cover\b[^"']*)(["'])/i,
+        '$1 dark$2',
+      );
+    }
+  }
+  if (nextHost === host) return dest;
+  return `${dest.slice(0, cover.start)}${nextHost}${dest.slice(cover.start + host.length)}`;
+}
+
 export function repairCoverKitSurfaceBleed(html: string): string {
   let dest = String(html ?? '');
   if (!dest.trim()) return dest;
-  if (!/\bs-cover\b/i.test(dest) && !KIT_PAPER_TOKEN_RE.test(dest)) return dest;
+  if (!destHasSCoverHost(dest) && !KIT_PAPER_TOKEN_RE.test(dest)) return dest;
   dest = dest.replace(SURFACE_BLEED_STYLE_RE, (_full, css: string) => (
     `<style data-od-slide-surface-bleed>${rewriteWhiteBleedCssToSpareKitPaper(css)}</style>`
   ));
+  if (productLaunchCoverUsesHaloSurface(dest)) {
+    dest = rewriteProductLaunchCoverPaperSurface(dest);
+    dest = stripStyleMark(dest, COVER_KIT_SURFACE_MARK);
+    return dest;
+  }
   if (htmlHasStyleMark(dest, COVER_KIT_SURFACE_MARK)) return dest;
-  if (!/\bs-cover\b/i.test(dest)) return dest;
+  if (!destHasSCoverHost(dest)) return dest;
   // No !important — inline `#0a0a12` dark covers and kit `.dark` rules must
   // win over `--paper` (often cream on mixed persist). White flatten is
   // already removed from `.slide` / `:where(.slide)` above. Color is left
@@ -6893,6 +6986,7 @@ function preservedCoverIdentityAttrs(attrs: string): string {
 export function restyleForeignIbMagazineCover(html: string): string {
   const dest = String(html ?? '');
   if (!dest.trim() || officialLookIsIbMagazine(dest)) return dest;
+  if (officialLookIsProductLaunchHalo(dest) && !lookHasBiennaleSunTokens(dest)) return dest;
   const biennale = officialLookIsBiennaleYellow(dest);
   const neo = officialLookIsNeoBrutalBlockFrame(dest);
   const eightBit = officialLookIsEightBitOrbit(dest);
@@ -7823,6 +7917,9 @@ function resolveOfficialPosterKit(html: string): OfficialPosterKitPlan | null {
       layoutMark: OFFICIAL_POSTER_LAYOUT_MARK,
     };
   }
+  if (officialLookIsProductLaunchHalo(dest) && !lookHasBiennaleSunTokens(dest)) {
+    return null;
+  }
   if (officialLookIsBiennaleYellow(dest)) {
     return {
       kind: 'biennale',
@@ -8021,12 +8118,24 @@ function dedupeAdjacentSameVisibleChildren(hostHtml: string): string {
   return `${open}${kept.join('')}${closeMatch[0]}`;
 }
 
+function stripStyleMark(html: string, mark: string): string {
+  const escaped = mark.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return String(html ?? '').replace(
+    new RegExp(`<style\\b[^>]*\\b${escaped}\\b[^>]*>[\\s\\S]*?<\\/style>`, 'gi'),
+    '',
+  );
+}
+
 function injectStyleMark(html: string, mark: string, css: string): string {
   if (html.includes(mark)) return html;
   const tag = `<style ${mark}>${css}</style>`;
   if (/<\/head>/i.test(html)) return html.replace(/<\/head>/i, `${tag}</head>`);
   if (/<\/body>/i.test(html)) return html.replace(/<\/body>/i, `${tag}</body>`);
   return `${html}${tag}`;
+}
+
+function productLaunchCoverUsesHaloSurface(html: string): boolean {
+  return officialLookIsProductLaunchHalo(html) && !lookHasBiennaleSunTokens(html);
 }
 
 /**
@@ -8038,6 +8147,9 @@ function injectStyleMark(html: string, mark: string, css: string): string {
 export function injectBiennaleSparseFillCss(html: string): string {
   const dest = String(html ?? '');
   if (!dest.trim()) return dest;
+  if (productLaunchCoverUsesHaloSurface(dest)) {
+    return stripStyleMark(dest, BIENNALE_SPARSE_FILL_MARK);
+  }
   const kit = resolveOfficialPosterKit(dest);
   if (!kit) return dest;
   return injectStyleMark(dest, kit.layoutMark, kit.layoutCss);
@@ -14634,18 +14746,19 @@ function productLaunchHasHeroShotElement(html: string): boolean {
   return /<(?:div|span|figure)\b[^>]*\bclass\s*=\s*["'][^"']*\bhero-shot\b[^"']*["'][^>]*>/i.test(html);
 }
 
-function ensureProductLaunchCoverHeroShot(html: string): string {
+export function ensureProductLaunchCoverHeroShot(html: string): string {
   const dest = String(html ?? '');
   // CSS in <head> (`.hero-shot`, `[data-od-official-motif-html].hero-shot`)
   // is not a node. Only an element with class hero-shot counts.
   // An existing shot — including a flat cover child with no flow wrapper —
   // is left in place so this heal does not duplicate it.
-  // 1007-N01 S — poster s-cover (Biennale/Cobalt deco) must not receive a
-  // product-launch orb. Body class `tpl-product-launch` is not enough.
+  // 1007-N01 S — real Biennale/Cobalt poster covers must not receive a
+  // product-launch orb. Halo hosts (`tpl-product-launch`) may still carry
+  // leaked `.blocks`/`.sunglow`; those are foreign and get an orb.
   if (
     !officialLookIsProductLaunchHalo(dest)
     || productLaunchHasHeroShotElement(dest)
-    || coverHasPosterKitDeco(dest)
+    || (coverHasPosterKitDeco(dest) && !productLaunchCoverUsesHaloSurface(dest))
   ) return dest;
   const spans = listHealSlideHostSpans(dest);
   const cover = spans[0];

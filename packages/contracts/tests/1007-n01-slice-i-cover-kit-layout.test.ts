@@ -95,12 +95,13 @@ describe('1007-N01 슬라이스 I — persist 후 titlewrap 킷 위치', () => {
     expect(out).not.toMatch(/<div[^>]*class="brand"/i);
   });
 
-  it('look CSS에 titlewrap bottom이 없으면 킷 left/bottom을 보충한다', () => {
+  it('look CSS에 titlewrap bottom이 없으면 Halo는 좌측 수직 중앙으로 보충한다', () => {
     const source = officialRichCoverDeck({ lookHasTitlewrapBottom: false });
     const out = injectSCoverKitSlotCss(source);
     expect(out).toContain('data-od-s-cover-kit-slots');
-    expect(out).toMatch(/bottom\s*:\s*clamp\(48px,\s*6vh,\s*96px\)/i);
-    expect(out).toMatch(/left\s*:\s*clamp\(40px/i);
+    expect(out).toMatch(/top\s*:\s*50%/i);
+    expect(out).toMatch(/left\s*:\s*clamp\(80px/i);
+    expect(out).not.toMatch(/bottom\s*:\s*clamp\(48px,\s*6vh,\s*96px\)/i);
     expect(out).toContain(COVER_TITLE);
   });
 
