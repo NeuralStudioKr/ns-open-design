@@ -842,6 +842,14 @@ describe("ProjectView message loading", () => {
     expect(deckPatchBlock).toContain("deckPatchBodyLooksLikeElementPatch(input.patchBody)");
     expect(deckPatchBlock).toContain("[deck-patch] body looks like element-patch — falling back");
     expect(deckPatchBlock).toContain("tryApplyElementPatchesAgainstCurrentDeck({");
+    // Generation may receive a one-slide LOOK/cover seed while the model
+    // numbers newly generated sections as replace(1), replace(2), ... . Only
+    // unscoped, contiguous boundary replacements may be recovered as appends;
+    // comment-scoped edits must retain strict bounds.
+    expect(deckPatchBlock).toContain(
+      "coerceSequentialOutOfBoundsReplacementsToAppends(currentHtml, parsed.patch)",
+    );
+    expect(deckPatchBlock).toContain("const recoveredCreatePatch = !runIsScoped");
 
     // Empty deck-patch routing: scoped run → skipped-incomplete;
     // unscoped run → rejected with a specific banner. Mirrors the
@@ -865,6 +873,10 @@ describe("ProjectView message loading", () => {
     expect(persistBlock).toContain(
       "!runIsScoped && merged.code === 'deck_patch_parse_failed'",
     );
+    expect(persistBlock).toContain(
+      "unscoped deck-patch could not be merged:",
+    );
+    expect(persistBlock).toContain("kind: 'skipped-incomplete'");
   });
 
   it("routes scoped empty element-patch failures to auto-continue without client-side fast-path salvage", () => {

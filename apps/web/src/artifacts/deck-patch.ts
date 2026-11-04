@@ -54,6 +54,56 @@ export interface DeckPatch {
   ops: DeckPatchSectionOp[];
 }
 
+/**
+ * Recover a common generation-time contract mismatch.
+ *
+ * An unscoped create turn can occasionally emit a deck-patch against a
+ * one-slide LOOK/cover seed and number the new slides as `replace` operations
+ * starting at the first index past the current deck. Those operations cannot
+ * replace anything, but their intent is unambiguous when the indexes are
+ * contiguous: append each section in order.
+ *
+ * This helper is deliberately NOT used for comment-scoped edits. It also
+ * refuses gaps, backwards indexes, removals at missing indexes, and every
+ * other out-of-bounds shape so a malformed patch cannot silently mutate the
+ * wrong slide.
+ */
+export function coerceSequentialOutOfBoundsReplacementsToAppends(
+  currentHtml: string,
+  patch: DeckPatch,
+): DeckPatch | null {
+  const currentSlideCount = extractTopLevelSlideSections(
+    extractDeckBodyContent(currentHtml),
+  ).length;
+  if (currentSlideCount <= 0 || patch.ops.length === 0) return null;
+
+  let simulatedSlideCount = currentSlideCount;
+  let changed = false;
+  const ops: DeckPatchSectionOp[] = [];
+
+  for (const op of patch.ops) {
+    if (op.op === 'replace' && op.slideIndex === simulatedSlideCount) {
+      ops.push({ ...op, op: 'append', slideIndex: simulatedSlideCount - 1 });
+      simulatedSlideCount += 1;
+      changed = true;
+      continue;
+    }
+
+    if (op.op === 'append' || op.op === 'prepend') {
+      if (op.slideIndex > simulatedSlideCount) return null;
+      simulatedSlideCount += 1;
+    } else if (op.op === 'remove') {
+      if (op.slideIndex >= simulatedSlideCount) return null;
+      simulatedSlideCount -= 1;
+    } else if (op.slideIndex >= simulatedSlideCount) {
+      return null;
+    }
+    ops.push(op);
+  }
+
+  return changed ? { ops } : null;
+}
+
 export interface ParseDeckPatchResult {
   ok: true;
   patch: DeckPatch;

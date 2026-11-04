@@ -13,6 +13,7 @@ import {
   validateHtmlArtifact,
 } from '../artifacts/validate';
 import {
+  coerceSequentialOutOfBoundsReplacementsToAppends,
   diffDeckSlideIndexes,
   appendIncomingSlidesOntoExistingDeck,
   countAppendableDeckSlides,
@@ -2367,9 +2368,22 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
     devLog.warn('[deck-patch] parse failed', { fileName: input.fileName, reason: parsed.reason });
     return { ok: false, code: 'deck_patch_parse_failed', reason: parsed.reason };
   }
+  const runIsScoped = Boolean(
+    allowedSlideIndexes?.length || input.commentAttachments?.length,
+  );
+  const recoveredCreatePatch = !runIsScoped
+    ? coerceSequentialOutOfBoundsReplacementsToAppends(currentHtml, parsed.patch)
+    : null;
+  if (recoveredCreatePatch) {
+    devLog.warn('[deck-patch] coerced sequential create replacements to appends', {
+      fileName: input.fileName,
+      originalOps: parsed.patch.ops.length,
+      recoveredOps: recoveredCreatePatch.ops.length,
+    });
+  }
   const result = applyScopedDeckPatchToHtml({
     currentHtml,
-    patch: parsed.patch,
+    patch: recoveredCreatePatch ?? parsed.patch,
     allowedSlideIndexes,
     commentAttachments: input.commentAttachments,
     instructionText: input.instructionText,
@@ -6050,6 +6064,20 @@ export function ProjectView({
               kind: 'rejected',
               fileName: targetFileName,
               reason: merged.reason,
+            };
+          }
+          // A generation turn has no selected comment scope. If the model
+          // still emitted a deck-patch that could not be merged (for example
+          // a non-contiguous out-of-range slide index), this is an incomplete
+          // deliverable, not an outside-selection edit. Preserve the current
+          // deck and let the normal continuation path request the missing
+          // full output instead of surfacing a misleading scope-rejected
+          // banner.
+          if (!runIsScoped) {
+            return {
+              kind: 'skipped-incomplete',
+              fileName: targetFileName,
+              reason: `unscoped deck-patch could not be merged: ${merged.reason}`,
             };
           }
           return routeScopedCommentPersistFailure({

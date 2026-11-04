@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   appendIncomingSlidesOntoExistingDeck,
   applyDeckPatch,
+  coerceSequentialOutOfBoundsReplacementsToAppends,
   countAppendableDeckSlides,
   diffDeckSlideIndexes,
   extractTopLevelSlideSections,
@@ -250,6 +251,52 @@ describe('salvageDeckPatchBodyMissingSlideWrapper', () => {
 });
 
 describe('applyDeckPatch', () => {
+  it('coerces contiguous create-time replacements beyond a one-slide seed into appends', () => {
+    const oneSlideSeed = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0"><h1>Cover</h1></section>',
+      '</body></html>',
+    ].join('');
+    const parsed = parseDeckPatch([
+      '<section class="slide" data-slide-index="1"><h2>Agenda</h2></section>',
+      '<section class="slide" data-slide-index="2"><h2>Details</h2></section>',
+    ].join('\n'));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+
+    const recovered = coerceSequentialOutOfBoundsReplacementsToAppends(
+      oneSlideSeed,
+      parsed.patch,
+    );
+    expect(recovered?.ops.map((op) => [op.op, op.slideIndex])).toEqual([
+      ['append', 0],
+      ['append', 1],
+    ]);
+    if (!recovered) return;
+    const applied = applyDeckPatch({ currentHtml: oneSlideSeed, patch: recovered });
+    expect(applied.ok, applied.ok ? '' : applied.reason).toBe(true);
+    if (!applied.ok) return;
+    expect(extractTopLevelSlideSections(applied.html)).toHaveLength(3);
+    expect(applied.html).toContain('<h2>Agenda</h2>');
+    expect(applied.html).toContain('<h2>Details</h2>');
+  });
+
+  it('does not coerce non-contiguous out-of-bounds replacements', () => {
+    const oneSlideSeed = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0"><h1>Cover</h1></section>',
+      '</body></html>',
+    ].join('');
+    const parsed = parseDeckPatch(
+      '<section class="slide" data-slide-index="2"><h2>Gap</h2></section>',
+    );
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(
+      coerceSequentialOutOfBoundsReplacementsToAppends(oneSlideSeed, parsed.patch),
+    ).toBeNull();
+  });
+
   it('replaces one slide by index while preserving <head>, <body> attributes, and non-slide siblings', () => {
     const parsed = parseDeckPatch(
       '<section class="slide" data-slide-index="1">' +
