@@ -608,6 +608,10 @@
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+a.entry-nav-rail__logo {
+  color: inherit;
+  text-decoration: none;
+}
 /* The logo doubles as the Home destination; when the home view is
    active it gets the same accent treatment as a primary nav button
    so users still see "you are here" without a dedicated Home icon. */

@@ -1,6 +1,6 @@
 import { Icon } from "./Icon";
 import { useTeamverT } from "../teamver/branding/useTeamverT";
-import { resolveTeamverLoginUrl, resolveTeamverMainOrigin } from "../teamver/designApiBase";
+import { resolveTeamverLoginUrl } from "../teamver/designApiBase";
 import {
   isDesignAuthRefreshDeclined,
   prepareDesignAuthSessionReload,
@@ -101,15 +101,6 @@ export function TeamverSessionBanner({ teamverEmbed }: Props) {
               다시 시도
             </button>
           ) : null}
-          <a
-            className="teamver-embed-bar__main-link teamver-embed-bar__teamver-app"
-            href={resolveTeamverMainOrigin()}
-            title={t("teamver.embed.teamverAppTitle")}
-            data-testid="teamver-embed-main-link"
-          >
-            <Icon name="external-link" size={14} className="teamver-embed-bar__main-link-icon" />
-            <span className="teamver-embed-bar__main-link-label">{t("teamver.embed.teamverApp")}</span>
-          </a>
           {embed.userLabel ? (
             <div
               className="teamver-embed-bar__user"

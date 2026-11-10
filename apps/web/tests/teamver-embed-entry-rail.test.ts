@@ -23,6 +23,8 @@ describe("Teamver embed entry nav rail", () => {
 
     expect(entryNavRail).toContain("{!teamverEmbed ? (");
     expect(entryNavRail).toContain('data-testid="entry-nav-collapse"');
+    expect(entryNavRail).toContain("resolveTeamverMainOrigin()");
+    expect(entryNavRail).toContain("teamver.embed.teamverAppTitle");
 
     expect(teamverCss).toContain(".entry-shell--teamver-embed.entry-shell--no-header .entry");
     expect(teamverCss).toContain(".entry-shell--teamver-embed .entry-rail-toggle");

@@ -20,6 +20,7 @@ import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider'
 import { TeamverLogo } from '../teamver/branding/TeamverLogo';
 import { useT } from '../i18n';
 import { embedUiLabel } from '../teamver/embedUiLabels';
+import { resolveTeamverMainOrigin } from '../teamver/designApiBase';
 
 export type EntryView =
   | 'home'
@@ -108,24 +109,32 @@ export function EntryNavRail({ view, onViewChange, onNewProject, newProjectDisab
     >
       <div className="entry-nav-rail__group">
         <div className="entry-nav-rail__brand">
-          <button
-            type="button"
-            className="entry-nav-rail__logo"
-            onClick={() => selectView('home')}
-            aria-label={brandLabel}
-            data-testid="entry-nav-logo"
-          >
-            {teamverEmbed ? (
+          {teamverEmbed ? (
+            <a
+              className="entry-nav-rail__logo"
+              href={resolveTeamverMainOrigin()}
+              aria-label={t('teamver.embed.teamverAppTitle')}
+              title={t('teamver.embed.teamverAppTitle')}
+              data-testid="entry-nav-logo"
+            >
               <TeamverLogo variant="navMark" height={16} className="entry-nav-rail__logo-img" />
-            ) : (
+            </a>
+          ) : (
+            <button
+              type="button"
+              className="entry-nav-rail__logo"
+              onClick={() => selectView('home')}
+              aria-label={brandLabel}
+              data-testid="entry-nav-logo"
+            >
               <img
                 src="/app-icon.svg"
                 alt=""
                 className="entry-nav-rail__logo-img"
                 draggable={false}
               />
-            )}
-          </button>
+            </button>
+          )}
           {!teamverEmbed ? (
           <button
             type="button"

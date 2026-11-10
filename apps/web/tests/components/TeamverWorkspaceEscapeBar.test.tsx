@@ -6,16 +6,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TeamverWorkspaceEscapeBar } from '../../src/components/TeamverWorkspaceEscapeBar';
 import { I18nProvider } from '../../src/i18n';
 
-vi.mock('../../src/teamver/designApiBase', () => ({
-  resolveTeamverMainOrigin: () => 'https://teamver.com',
-}));
-
 describe('TeamverWorkspaceEscapeBar', () => {
   afterEach(() => {
     cleanup();
   });
 
-  it('separates Slide home (in-app) from Teamver app (external link)', () => {
+  it('keeps Slide home in-app and hides the Teamver app header link', () => {
     const onDesignHome = vi.fn();
     render(
       <I18nProvider initial="ko">
@@ -30,9 +26,7 @@ describe('TeamverWorkspaceEscapeBar', () => {
     fireEvent.click(designHome);
     expect(onDesignHome).toHaveBeenCalledTimes(1);
 
-    const teamverApp = screen.getByTestId('teamver-embed-teamver-app');
-    expect(teamverApp.tagName).toBe('A');
-    expect(teamverApp.getAttribute('href')).toBe('https://teamver.com');
-    expect(teamverApp.textContent).toContain('Teamver 앱');
+    expect(screen.queryByTestId('teamver-embed-teamver-app')).toBeNull();
+    expect(screen.queryByText('Teamver 앱')).toBeNull();
   });
 });

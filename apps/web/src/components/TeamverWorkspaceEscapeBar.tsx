@@ -1,12 +1,11 @@
 import { Icon } from "./Icon";
 import { useTeamverT } from "../teamver/branding/useTeamverT";
-import { resolveTeamverMainOrigin } from "../teamver/designApiBase";
 
 type Props = {
   onDesignHome: () => void;
 };
 
-/** Embed project workspace — internal Slide home vs external Teamver app. */
+/** Embed project workspace — Slide home. Main Teamver is the left-rail logo. */
 export function TeamverWorkspaceEscapeBar({ onDesignHome }: Props) {
   const t = useTeamverT();
 
@@ -25,16 +24,6 @@ export function TeamverWorkspaceEscapeBar({ onDesignHome }: Props) {
         <Icon name="chevron-left" size={14} aria-hidden />
         <span>{t("teamver.embed.designHome")}</span>
       </button>
-      <div className="teamver-workspace-escape__spacer" aria-hidden />
-      <a
-        className="teamver-workspace-escape__teamver-app"
-        href={resolveTeamverMainOrigin()}
-        title={t("teamver.embed.teamverAppTitle")}
-        data-testid="teamver-embed-teamver-app"
-      >
-        <span>{t("teamver.embed.teamverApp")}</span>
-        <Icon name="external-link" size={13} aria-hidden />
-      </a>
     </header>
   );
 }

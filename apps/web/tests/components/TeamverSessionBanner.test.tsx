@@ -97,7 +97,7 @@ describe('TeamverSessionBanner', () => {
     expect(signIn.getAttribute('href')).toBe('https://teamver.com/auth/signin?returnTo=design');
   });
 
-  it('shows workspace switcher, Teamver app link, and user chip when authenticated', () => {
+  it('shows workspace switcher and user chip when authenticated, without a Teamver app header link', () => {
     embedState.authenticated = true;
     embedState.userLabel = '김워크';
     embedState.userId = 'user-1';
@@ -111,9 +111,8 @@ describe('TeamverSessionBanner', () => {
     expect(screen.getByTestId('teamver-workspace-chip').getAttribute('aria-label')).toBe(
       '워크스페이스: Alpha Team',
     );
-    const teamverApp = screen.getByTestId('teamver-embed-main-link');
-    expect(teamverApp.getAttribute('href')).toBe('https://teamver.com');
-    expect(teamverApp.textContent).toContain('Teamver 앱');
+    expect(screen.queryByTestId('teamver-embed-main-link')).toBeNull();
+    expect(screen.queryByText('Teamver 앱')).toBeNull();
     expect(screen.getByTestId('teamver-embed-user')).toBeTruthy();
   });
 
